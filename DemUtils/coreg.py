@@ -17,6 +17,22 @@ from typing import Optional
 import pdal
 import rasterio.warp
 
+def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]):
+    """
+    Function to filter values using a range.
+    """
+    print('Excluding values outside of range: {0:f} to {1:f}'.format(*rangelim))
+    out = np.ma.masked_outside(ds, *rangelim)
+    out.set_fill_value(ds.fill_value)
+    return out
+
+def filtered_slope(ds_slope, slope_lim=(0.1, 40)):
+    print("Slope filter: %0.2f - %0.2f" % slope_lim)
+    print("Initial count: %i" % ds_slope.count()) 
+    flt_slope = filter_by_range(ds_slope, slope_lim) 
+    print(flt_slope.count())
+    return flt_slope
+
 def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> np.ndarray:
     """
     Apply horizontal shift to rio dataset using Transform affine matrix
