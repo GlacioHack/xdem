@@ -1,6 +1,51 @@
 import rasterio as rio
 import richdem as rd
 import numpy as np
+from rasterio import Affine
+
+def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> np.ndarray:
+    """
+    Apply horizontal shift to rio dataset using Transform affine matrix
+    :param ds: DEM
+    :param dx: dx shift value
+    :param dy: dy shift value
+    
+    Returns:
+    Rio Dataset with updated transform
+    """
+    print("X shift: ", dx)
+    print("Y shift: ", dy)
+   
+    #Update geotransform
+    ds_meta = ds.meta
+    gt_orig = ds.transform
+    gt_align = Affine(gt_orig.a, gt_orig.b, gt_orig.c+dx, \
+                   gt_orig.d, gt_orig.e, gt_orig.f+dy)
+
+    print("Original transform:", gt_orig)
+    print("Updated transform:", gt_shift)
+
+    #Update ds Geotransform
+    ds_align = ds
+    meta_update = ds.meta.copy()
+    meta_update({"driver": "GTiff", "height": ds.shape[1],
+                 "width": ds.shape[2], "transform": gt_align, "crs": ds.crs})
+    #to split this part in two?
+    with rasterio.open(ds_align, "w", **meta_update) as dest:
+        dest.write(ds_align)
+        
+    return ds_align
+
+def apply_z_shift(ds: rio.DatasetReader, dz: float):
+    """
+    Apply vertical shift to rio dataset using Transform affine matrix
+    :param ds: DEM
+    :param dx: dz shift value
+    """
+    src_dem = rio.open(ds)
+    a = src_dem.read(1)
+    ds_shift = a + dz
+    return ds_shift
 
 def rio_to_rda(ds:rio.DatasetReader)->rd.rdarray:
     """
