@@ -505,20 +505,36 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 
 
 class Method(Enum):
+    """A selection of a coregistration method."""
+
     ICP = icp_coregistration
     AMAURY = amaury_coregister_dem
 
 
 class Coregistration:
+    """Metaclass for running different implementations of coregistration."""
 
     def __init__(self, method: Method):
+        """
+        Instantiate a Coregistration class.
+
+        :param method: The selected coregistration method.
+        """
         self.method = method
 
     def run(self, reference_raster: gu.raster_tools.Raster, to_be_aligned_raster: gu.raster_tools.Raster) -> tuple[gu.raster_tools.Raster, float]:
-        reference_raster_filename = reference_raster.filename
-        to_be_aligned_raster_filename = to_be_aligned_raster.filename
+        """
+        Run coregistration between two GeoUtils rasters, using the selected method.
 
-        reference_raster.load(1)
+        :param reference_raster: The raster acting reference.
+        :param: to_be_aligned_raster: The raster to be aligned.
+
+        :returns: The aligned raster and the error measure for the corresponding method.
+        """
+        to_be_aligned_raster_filename = to_be_aligned_raster.filename
+        # Make sure that the data is read into memory
+        if reference_raster.data is None:
+            reference_raster.load(1)
 
         intersection = reference_raster.intersection(to_be_aligned_raster)
         bounds = dict(zip(["west", "south", "east", "north"], intersection))
@@ -533,13 +549,15 @@ class Coregistration:
             crs=reference_raster.crs
         )
 
-        aligned_dem, error = self.method(
+        # Align the raster using the selected method. This returns a numpy array and the corresponding error
+        aligned_dem, error = self.method(  # type: ignore
             reference_dem=reference_raster.data,
             dem_to_be_aligned=to_be_aligned_dem,
             bounds=bounds,
             crs=reference_raster.crs
         )
 
+        # Construct a raster from the created numpy array
         aligned_raster = gu.raster_tools.Raster.from_array(
             data=aligned_dem,
             transform=reference_raster.transform,
@@ -575,4 +593,5 @@ def test_amaury_coregistration():
 
 
 if __name__ == "__main__":
+    test_icp_coregistration()
     test_amaury_coregistration()
