@@ -89,33 +89,6 @@ def get_terrainattr(ds:rio.DatasetReader,attrib='slope_degrees')->rd.rdarray:
 
     return terrattr
 
-#putting tests down here
-if __name__ == '__main__':
-
-    #TEST FOR RICHDEM SLOPE & OTHER TERRAIN ATTR WITHOUT USING GDAL
-    fn_test = '/home/atom/ongoing/glaciohack_testdata/DEM_2001.64734089.tif'
-
-    #1/ this works
-
-    # to check it gives similar result with GDAL opening
-    rda = rd.LoadGDAL(fn_test)
-    slp = rd.TerrainAttribute(rda, attrib='slope_degrees')
-    rd.rdShow(slp,cmap='Spectral',figsize=(10,10))
-
-    ds = rio.open(fn_test)
-    slp = get_terrainattr(ds,attrib='slope_degrees')
-    rd.rdShow(slp,cmap='Spectral',figsize=(10,10))
-
-    #2/ this does not work (need to pass georeferencing to richDEM array, grid is not sufficient)
-    rda = rd.LoadGDAL(fn_test)
-    slp = rd.TerrainAttribute(rda, attrib='slope_degrees')
-    rd.rdShow(slp, cmap='Spectral', figsize=(10, 10))
-
-    ds = rio.open(fn_test)
-    slp = rd.TerrainAttribute(rd.rdarray(ds.read(1),no_data=ds.get_nodatavals()[0]), attrib='slope_degrees')
-    rd.rdShow(slp, cmap='Spectral', figsize=(10, 10))
-
-
 def reproject_dem(dem: rio.DatasetReader, bounds: dict[str, float],
                   resolution: float, crs: Optional[rio.crs.CRS]) -> np.ndarray:
     """
