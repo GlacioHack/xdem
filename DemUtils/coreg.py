@@ -1,7 +1,6 @@
 """
 DEM coregistration functions.
 
-
 "Amaury's" functions are adapted from Amaury Dehecq.
 Source: https://github.com/GeoUtils/geoutils/blob/master/geoutils/dem_coregistration.py
 
@@ -15,16 +14,19 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from enum import Enum
 from typing import Callable, Optional
 
 import cv2
+import GeoUtils as gu
 import numpy as np
 import pdal
 import rasterio as rio
-import rasterio.warp
-import rasterio.windows
+import rasterio.warp  # pylint: disable=unused-import
+import rasterio.windows  # pylint: disable=unused-import
 import scipy
 import scipy.interpolate
+import scipy.ndimage
 import scipy.optimize
 from tqdm import trange
 
@@ -53,12 +55,12 @@ def reproject_dem(dem: rio.DatasetReader, bounds: dict[str, float],
     destination[:, :] = np.nan
 
     # Reproject the DEM and put the output in the destination array
-    rasterio.warp.reproject(
+    rio.warp.reproject(
         source=dem.read(1),
         destination=destination,
         src_transform=dem.transform,
         dst_transform=dst_transform,
-        resampling=rasterio.warp.Resampling.cubic_spline,
+        resampling=rio.warp.Resampling.cubic_spline,
         src_crs=dem.crs,
         dst_crs=dem.crs if crs is None else crs
     )
@@ -90,7 +92,8 @@ def write_geotiff(filepath: str, values: np.ndarray, crs: rio.crs.CRS, bounds: d
         outfile.write(values, 1)
 
 
-def icp_coregistration(reference_filepath: str, aligned_filepath: str, output_filepath: str, pixel_buffer: int = 3) -> float:
+def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
+                       bounds: dict[str, float], crs=rio.crs.CRS, pixel_buffer: int = 3) -> tuple[np.ndarray, float]:
     """
     Perform an ICP coregistration in areas where two DEMs overlap.
 
@@ -101,53 +104,35 @@ def icp_coregistration(reference_filepath: str, aligned_filepath: str, output_fi
 
     :returns: The ICP fitness measure of the coregistration.
     """
-    reference_dem = rio.open(reference_filepath)
-    resolution = reference_dem.res[0]
-
-    aligned_dem = rio.open(aligned_filepath)
-
-    # TODO: Fix dangerous assumption here that aligned_dem has the same crs
-    # Find new bounds that overlap with both datasets
-    max_bounds = {
-        "west": min(reference_dem.bounds.left, aligned_dem.bounds.left),
-        "east": max(reference_dem.bounds.right, aligned_dem.bounds.right),
-        "north": max(reference_dem.bounds.top, aligned_dem.bounds.top),
-        "south": min(reference_dem.bounds.bottom, aligned_dem.bounds.bottom)
-    }
-
-    # Make the bounds correspond well to the resolution of the raster
-    for corner in max_bounds:
-        max_bounds[corner] -= max_bounds[corner] % resolution
-
-    # Read and reproject the input data to the same shape
-    reference = reproject_dem(reference_dem, max_bounds, resolution, crs=reference_dem.crs)
-    aligned = reproject_dem(aligned_dem, max_bounds, resolution, crs=reference_dem.crs)
-
     # Make sure that the above step worked
-    assert reference.shape == aligned.shape
+    assert reference_dem.shape == dem_to_be_aligned.shape
 
     # Check where the datasets overlap (where both DEMs don't have nans)
-    overlapping_nobuffer = np.logical_and(np.logical_not(np.isnan(reference)), np.logical_not(np.isnan(aligned)))
+    overlapping_nobuffer = np.logical_and(np.logical_not(np.isnan(reference_dem)),
+                                          np.logical_not(np.isnan(dem_to_be_aligned)))
     # Buffer the mask to increase the likelyhood of including the correct values
     overlapping = scipy.ndimage.maximum_filter(overlapping_nobuffer, size=pixel_buffer, mode="constant")
 
     # Remove parts of the DEMs where no overlap existed
-    reference[~overlapping] = np.nan
-    aligned[~overlapping] = np.nan
+    reference_dem[~overlapping] = np.nan
+    dem_to_be_aligned[~overlapping] = np.nan
 
     # Make a temporary directory to write the overlap-fixed DEMs to
     temporary_dir = tempfile.TemporaryDirectory()
     reference_temp_filepath = os.path.join(temporary_dir.name, "reference.tif")
     aligned_temp_filepath = os.path.join(temporary_dir.name, "aligned_pre_icp.tif")
+    output_temp_filepath = os.path.join(temporary_dir.name, "output_dem.tif")
 
-    write_geotiff(reference_temp_filepath, reference, crs=reference_dem.crs, bounds=max_bounds)
-    write_geotiff(aligned_temp_filepath, aligned, crs=reference_dem.crs, bounds=max_bounds)
+    write_geotiff(reference_temp_filepath, reference_dem, crs=crs, bounds=bounds)
+    write_geotiff(aligned_temp_filepath, dem_to_be_aligned, crs=crs, bounds=bounds)
+
+    resolution = int((bounds["east"] - bounds["west"]) // reference_dem.shape[1])
 
     # Define values to fill the below pipeline with
-    pdal_values = {
+    pdal_parameters = {
         "REFERENCE_FILEPATH": reference_temp_filepath,
         "ALIGNED_FILEPATH": aligned_temp_filepath,
-        "OUTPUT_FILEPATH": output_filepath,
+        "OUTPUT_FILEPATH": output_temp_filepath,
         "RESOLUTION": resolution
     }
 
@@ -178,18 +163,20 @@ def icp_coregistration(reference_filepath: str, aligned_filepath: str, output_fi
     '''
 
     # Fill the pipeline "template" with appropriate values
-    for key in pdal_values:
-        pdal_pipeline = pdal_pipeline.replace(key, str(pdal_values[key]))
+    for key in pdal_parameters:
+        pdal_pipeline = pdal_pipeline.replace(key, str(pdal_parameters[key]))
 
     # Make the pipeline, execute it, and extract the resultant metadata
     pipeline = pdal.Pipeline(pdal_pipeline)
     pipeline.execute()
     metadata = pipeline.metadata
 
+    output = rio.open(output_temp_filepath).read(1)
+
     # Get the fitness value from the ICP coregistration
     fitness: float = json.loads(metadata)["metadata"]["filters.icp"]["fitness"]
 
-    return fitness
+    return output, fitness
 
 
 def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, aspect: np.ndarray,
@@ -198,8 +185,8 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
     Calculate the horizontal shift between two DEMs using the method presented in Nuth and Kääb (2011).
 
     :param elevation_difference: The elevation difference (reference_dem - aligned_dem).
-    :param slope: A slope map with the same shape as elevation_difference (units = pixels?) 
-    :param aspect: An aspect map with the same shape as elevation_difference (units = radians) 
+    :param slope: A slope map with the same shape as elevation_difference (units = pixels?)
+    :param aspect: An aspect map with the same shape as elevation_difference (units = radians)
 
     :returns: The pixel offsets in easting, northing, and the c_parameter (altitude?).
     """
@@ -408,8 +395,8 @@ def calculate_nmad(array: np.ndarray) -> float:
 
 
 def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
-                          max_iterations: int = 200, error_threshold: float = 0.05,
-                          deramping_degree: Optional[int] = 1, verbose: bool = True) -> tuple[np.ndarray, float]:
+                          max_iterations: int = 50, error_threshold: float = 0.05,
+                          deramping_degree: Optional[int] = 1, verbose: bool = True, **_) -> tuple[np.ndarray, float]:
     """
     Coregister a DEM using the Nuth and Kääb (2011) approach.
 
@@ -460,7 +447,7 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
             break
 
         # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
-        east_diff, north_diff, _ = get_horizontal_shift(
+        east_diff, north_diff, _ = get_horizontal_shift(  # types: ignore
             elevation_difference=elevation_difference,
             slope=slope,
             aspect=aspect
@@ -473,7 +460,7 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
         new_elevation = elevation_function(y=east_grid + offset_east, x=north_grid - offset_north)
         # Set NaNs where NaNs were in the original data
         new_nans = nodata_function(y=east_grid + offset_east, x=north_grid - offset_north)
-        new_elevation[new_nans != 0] = np.nan
+        #new_elevation[new_nans != 0] = np.nan
 
         # Assign the newly calculated elevations to the aligned_dem
         aligned_dem = new_elevation
@@ -517,25 +504,75 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
     return aligned_dem, nmad
 
 
-def test_icp():
-    """Test that the ICP coregistration works."""
-    fitness = icp_coregistration(
-        reference_filepath="examples/Longyearbyen/DEM_2009_ref.tif",
-        aligned_filepath="examples/Longyearbyen/DEM_1995.tif",
-        output_filepath="examples/Longyearbyen/DEM_1995_coreg.tif"
-    )
-    print(fitness)
+class Method(Enum):
+    ICP = icp_coregistration
+    AMAURY = amaury_coregister_dem
+
+
+class Coregistration:
+
+    def __init__(self, method: Method):
+        self.method = method
+
+    def run(self, reference_raster: gu.raster_tools.Raster, to_be_aligned_raster: gu.raster_tools.Raster) -> tuple[gu.raster_tools.Raster, float]:
+        reference_raster_filename = reference_raster.filename
+        to_be_aligned_raster_filename = to_be_aligned_raster.filename
+
+        reference_raster.load(1)
+
+        intersection = reference_raster.intersection(to_be_aligned_raster)
+        bounds = dict(zip(["west", "south", "east", "north"], intersection))
+        resolution = (bounds["east"] - bounds["west"]) / reference_raster.data.shape[1]
+
+        # TODO: Read the to_be_aligned_dem from the actual to_be_aligned_raster and not its filename
+        # TODO: The above leads to highly surprising results sometimes if the raster had been modified from its file.
+        to_be_aligned_dem = reproject_dem(
+            dem=rio.open(to_be_aligned_raster_filename),
+            bounds=bounds,
+            resolution=resolution,
+            crs=reference_raster.crs
+        )
+
+        aligned_dem, error = self.method(
+            reference_dem=reference_raster.data,
+            dem_to_be_aligned=to_be_aligned_dem,
+            bounds=bounds,
+            crs=reference_raster.crs
+        )
+
+        aligned_raster = gu.raster_tools.Raster.from_array(
+            data=aligned_dem,
+            transform=reference_raster.transform,
+            crs=reference_raster.crs
+        )
+
+        return aligned_raster, error
+
+
+def test_icp_coregistration():
+    """Test coregistration using ICP."""
+    reference_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_2009_ref.tif")
+    to_be_aligned_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_1995.tif")
+
+    coregistration = Coregistration(method=Method.ICP)
+    aligned_raster, error = coregistration.run(reference_raster, to_be_aligned_raster)
+
+    print(error)
+    print(aligned_raster)
 
 
 def test_amaury_coregistration():
-    """Test Amaury's coregistration by loading a dataset, then shifting it, and estimating said shift."""
-    reference_dem = cv2.imread("examples/Longyearbyen/DEM_2009_ref.tif", cv2.IMREAD_ANYDEPTH)
+    """Test coregistration using Amaury's method."""
+    reference_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_2009_ref.tif")
 
-    dem_to_be_aligned = np.roll(reference_dem, shift=5, axis=0)
+    to_be_aligned_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_1995.tif")
 
-    amaury_coregister_dem(reference_dem, dem_to_be_aligned)
+    coregistration = Coregistration(method=Method.AMAURY)
+    aligned_raster, error = coregistration.run(reference_raster, to_be_aligned_raster)
+
+    print(error)
+    print(aligned_raster)
 
 
 if __name__ == "__main__":
-
     test_amaury_coregistration()
