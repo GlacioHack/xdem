@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from typing import Optional
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
@@ -21,6 +21,7 @@ import rasterio.windows
 import scipy
 import scipy.interpolate
 import scipy.optimize
+from tqdm import trange
 
 
 def reproject_dem(dem: rio.DatasetReader, bounds: dict[str, float],
@@ -293,7 +294,115 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     return slope_px, aspect
 
 
-def coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, max_iterations: int = 200, error_threshold: float = 0.05) -> tuple[np.ndarray, float]:
+def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np.ndarray,
+              degree: int) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+    """
+    Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
+
+    param: elevation_difference: The elevation difference array to analyse.
+    param: x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
+    param: y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
+    param: degree: The polynomial degree to estimate the ramp.
+
+    return: ramp: A callable function to estimate the ramp.
+    """
+    # Extract only the finite values of the elevation difference and corresponding coordinates.
+    valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
+    valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
+    valid_y_coords = y_coordinates[np.isfinite(elevation_difference)]
+
+    # Randomly subsample the values if there are more than 500,000 of them.
+    if valid_x_coords.shape[0] > 500_000:
+        random_indices = np.random.randint(0, valid_x_coords.shape[0] - 1, 500_000)
+        valid_diffs = valid_diffs[random_indices]
+        valid_x_coords = valid_x_coords[random_indices]
+        valid_y_coords = valid_y_coords[random_indices]
+
+    # Create a function whose residuals will be attempted to minimise
+    def estimate_values(x_coordinates: np.ndarray, y_coordinates: np.ndarray,
+                        coefficients: np.ndarray, degree: int) -> np.ndarray:
+        """
+        Estimate values from a 2D-polynomial.
+
+        param: x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference)
+        param: y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference)
+        param: coefficients: The coefficients (a, b, c, etc.) of the polynomial.
+        param: degree: The degree of the polynomial.
+
+        return: estimated_values: The values estimated by the polynomial.
+        """
+        # Check that the coefficient size is correct.
+        coefficient_size = (degree + 1) * (degree + 2) / 2
+        if len(coefficients) != coefficient_size:
+            raise ValueError()
+
+        # Do Amaury's black magic to estimate the values.
+        estimated_values = np.sum([coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) *
+                                   y_coordinates ** j for k in range(degree + 1) for j in range(k + 1)], axis=0)
+        return estimated_values
+
+    # Creat the error function
+    def residuals(coefficients: np.ndarray, values: np.ndarray, x_coordinates: np.ndarray,
+                  y_coordinates: np.ndarray, degree: int) -> np.ndarray:
+        """
+        Calculate the difference between the estimated and measured values.
+
+        param: coefficients: Coefficients for the estimation.
+        param: values: The measured values.
+        param: x_coordinates: The x-coordinates of the values.
+        param: y_coordinates: The y-coordinates of the values.
+        param: degree: The degree of the polynomial to estimate.
+
+        return: error: An array of residuals.
+        """
+        error = estimate_values(x_coordinates, y_coordinates, coefficients, degree) - values
+        error = error[np.isfinite(error)]
+
+        return error
+
+    # Run a least-squares minimisation to estimate the correct coefficients.
+    # TODO: Maybe remove the full_output?
+    initial_guess = np.zeros(shape=((degree + 1) * (degree + 2) // 2))
+    coefficients, *_ = scipy.optimize.leastsq(
+        func=residuals,
+        x0=initial_guess,
+        args=(valid_diffs, valid_x_coords, valid_y_coords, degree),
+        full_output=True
+    )
+
+    # Generate the return-function which can correctly estimate the ramp
+    def ramp(x_coordinates: np.ndarray, y_coordinates: np.ndarray) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+        """
+        Get the values of the ramp that corresponds to given coordinates.
+
+        param: x_coordinates: x-coordinates of interest.
+        param: y_coordinates: y-coordinates of interest.
+
+        return: ramp_func: The estimated ramp offsets.
+        """
+        return estimate_values(x_coordinates, y_coordinates, coefficients, degree)
+
+    # Return the function which can be used later.
+    return ramp
+
+
+def calculate_nmad(array: np.ndarray) -> float:
+    """
+    Calculate the normalized (?) median absolute deviation of an array.
+
+    param: array: A one- or multidimensional array.
+
+    return: nmad: The NMAD of the array.
+    """
+    # TODO: Get a reference for why NMAD is used (and make sure the N stands for normalized)
+    nmad = 1.4826 * np.nanmedian(np.abs(array - np.nanmedian(array)))
+
+    return nmad
+
+
+def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
+                          max_iterations: int = 200, error_threshold: float = 0.05,
+                          deramping_degree: Optional[int] = 1, verbose: bool = True) -> tuple[np.ndarray, float]:
     """
     Coregister a DEM using the Nuth and Kääb (2011) approach.
 
@@ -301,50 +410,108 @@ def coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, max
     param: dem_to_be_aligned: The DEM to be aligned to the reference.
     param: max_iterations: The maximum of iterations to attempt the coregistration.
     param: error_threshold: The acceptable error threshold after which to stop the iterations.
+    param: deramping_degree: Optional. The polynomial degree to estimate for deramping the offset field.
+    param: verbose: Whether to print the progress or not.
 
     return: aligned_dem, nmad: The aligned DEM, and the NMAD (error) of the alignment.
     """
+    # TODO: Add offset_east and offset_north as return variables?
     # Make a new DEM which will be modified inplace
     aligned_dem = dem_to_be_aligned.copy()
+
+    # Make sure that the DEMs have the same shape
     assert reference_dem.shape == aligned_dem.shape
 
+    # Calculate slope and aspect maps from the reference DEM
     slope, aspect = calculate_slope_and_aspect(reference_dem)
 
+    # Make index grids for the east and north dimensions
     east_grid = np.arange(reference_dem.shape[1])
     north_grid = np.arange(reference_dem.shape[0])
 
+    # Make a function to estimate the aligned DEM (used to construct an offset DEM)
     elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=aligned_dem)
+    # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
     nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(aligned_dem))
+    # Initialise east and north pixel offset variables (these will be incremented up and down)
     offset_east, offset_north = 0.0, 0.0
 
-    for i in range(max_iterations):
+    # Iteratively run the analysis until the maximum iterations or until the error gets low enough
+    for i in trange(max_iterations, disable=(not verbose), desc="Iteratively correcting dataset"):
 
+        # Remove potential biases between the DEMs
         aligned_dem -= np.nanmedian(aligned_dem - reference_dem)
 
+        # Calculate the elevation difference and the residual (NMAD) between them.
         elevation_difference = reference_dem - aligned_dem
-        nmad = 1.4826 * np.nanmedian(np.abs(elevation_difference - np.nanmedian(elevation_difference)))
+        nmad = calculate_nmad(elevation_difference)
 
-        if nmad < error_threshold:
+        # Stop if the NMAD is low and a few iterations have been made
+        if i > 5 and nmad < error_threshold:
+            if verbose:
+                print(f"NMAD went below the error threshold of {error_threshold}")
             break
 
-        east_offset, north_offset, _ = get_horizontal_shift(
+        # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
+        east_diff, north_diff, _ = get_horizontal_shift(
             elevation_difference=elevation_difference,
             slope=slope,
             aspect=aspect
         )
-        offset_east += east_offset
-        offset_north += north_offset
+        # Increment the offsets with the overall offset
+        offset_east += east_diff
+        offset_north += north_diff
 
+        # Calculate new elevations from the offset x- and y-coordinates
         new_elevation = elevation_function(y=east_grid + offset_east, x=north_grid - offset_north)
+        # Set NaNs where NaNs were in the original data
         new_nans = nodata_function(y=east_grid + offset_east, x=north_grid - offset_north)
-        new_elevation[new_nans] = np.nan
+        new_elevation[new_nans != 0] = np.nan
 
+        # Assign the newly calculated elevations to the aligned_dem
         aligned_dem = new_elevation
 
-    print(f"Final easting offset: {offset_east} px, northing offset: {offset_north} px, NMAD: {nmad} m")
+    if verbose:
+        print(f"Final easting offset: {offset_east:.2f} px, northing offset: {offset_north:.2f} px, NMAD: {nmad:.3f} m")
+
+    # Try to account for rotations between the dataset
+    if deramping_degree is not None:
+
+        # Calculate the elevation difference and the residual (NMAD) between them.
+        elevation_difference = reference_dem - aligned_dem
+        nmad = calculate_nmad(elevation_difference)
+
+        # Remove outliers with an offset higher than three times the NMAD
+        elevation_difference[np.abs(elevation_difference - np.nanmedian(elevation_difference)) > 3 * nmad] = np.nan
+
+        # TODO: This makes the analysis georeferencing-invariant. Does this change the results?
+        x_coordinates, y_coordinates = np.meshgrid(
+            np.arange(elevation_difference.shape[1]),
+            np.arange(elevation_difference.shape[0])
+        )
+
+        # Estimate the deramping function.
+        ramp = deramping(
+            elevation_difference=elevation_difference,
+            x_coordinates=x_coordinates,
+            y_coordinates=y_coordinates,
+            degree=deramping_degree
+        )
+        # Apply the deramping function to the dataset
+        aligned_dem -= ramp(x_coordinates, y_coordinates)
+
+        # Calculate the final residual error of the analysis
+        elevation_difference = reference_dem - aligned_dem
+        nmad = calculate_nmad(elevation_difference)
+
+        if verbose:
+            print(f"NMAD after deramping (degree: {deramping_degree}): {nmad:.3f} m")
+
+    return aligned_dem, nmad
 
 
 def test_icp():
+    """Test that the ICP coregistration works."""
     fitness = icp_coregistration(
         reference_filepath="examples/Longyearbyen/DEM_2009_ref.tif",
         aligned_filepath="examples/Longyearbyen/DEM_1995.tif",
@@ -353,14 +520,15 @@ def test_icp():
     print(fitness)
 
 
-def test_coregistration():
+def test_amaury_coregistration():
+    """Test Amaury's coregistration by loading a dataset, then shifting it, and estimating said shift."""
     reference_dem = cv2.imread("examples/Longyearbyen/DEM_2009_ref.tif", cv2.IMREAD_ANYDEPTH)
 
-    aligned_dem = np.roll(reference_dem, shift=5, axis=0)
+    dem_to_be_aligned = np.roll(reference_dem, shift=5, axis=0)
 
-    coregister_dem(reference_dem, aligned_dem)
+    amaury_coregister_dem(reference_dem, dem_to_be_aligned)
 
 
 if __name__ == "__main__":
 
-    test_coregistration()
+    test_amaury_coregistration()
