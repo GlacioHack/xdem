@@ -10,10 +10,12 @@ Author(s):
 Date: 13 November 2020.
 """
 from __future__ import annotations
-
+import richdem as rd
+from rasterio import Affine
 import json
 import os
 import tempfile
+
 from enum import Enum
 from typing import Callable, Optional
 
@@ -30,6 +32,93 @@ import scipy.ndimage
 import scipy.optimize
 from tqdm import trange
 
+def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]):
+    """
+    Function to filter values using a range.
+    """
+    print('Excluding values outside of range: {0:f} to {1:f}'.format(*rangelim))
+    out = np.ma.masked_outside(ds, *rangelim)
+    out.set_fill_value(ds.fill_value)
+    return out
+
+def filtered_slope(ds_slope, slope_lim=(0.1, 40)):
+    print("Slope filter: %0.2f - %0.2f" % slope_lim)
+    print("Initial count: %i" % ds_slope.count()) 
+    flt_slope = filter_by_range(ds_slope, slope_lim) 
+    print(flt_slope.count())
+    return flt_slope
+
+def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> np.ndarray:
+    """
+    Apply horizontal shift to rio dataset using Transform affine matrix
+    :param ds: DEM
+    :param dx: dx shift value
+    :param dy: dy shift value
+    
+    Returns:
+    Rio Dataset with updated transform
+    """
+    print("X shift: ", dx)
+    print("Y shift: ", dy)
+   
+    #Update geotransform
+    ds_meta = ds.meta
+    gt_orig = ds.transform
+    gt_align = Affine(gt_orig.a, gt_orig.b, gt_orig.c+dx, \
+                   gt_orig.d, gt_orig.e, gt_orig.f+dy)
+
+    print("Original transform:", gt_orig)
+    print("Updated transform:", gt_shift)
+
+    #Update ds Geotransform
+    ds_align = ds
+    meta_update = ds.meta.copy()
+    meta_update({"driver": "GTiff", "height": ds.shape[1],
+                 "width": ds.shape[2], "transform": gt_align, "crs": ds.crs})
+    #to split this part in two?
+    with rasterio.open(ds_align, "w", **meta_update) as dest:
+        dest.write(ds_align)
+        
+    return ds_align
+
+def apply_z_shift(ds: rio.DatasetReader, dz: float):
+    """
+    Apply vertical shift to rio dataset using Transform affine matrix
+    :param ds: DEM
+    :param dx: dz shift value
+    """
+    src_dem = rio.open(ds)
+    a = src_dem.read(1)
+    ds_shift = a + dz
+    return ds_shift
+
+def rio_to_rda(ds:rio.DatasetReader)->rd.rdarray:
+    """
+    Get georeferenced richDEM array from rasterio dataset
+    :param ds: DEM
+    :return: DEM
+    """
+
+    arr = ds.read(1)
+    rda = rd.rdarray(arr, no_data=ds.get_nodatavals()[0])
+    rda.geotransform = ds.get_transform()
+    rda.projection = ds.get_gcps()
+
+    return rda
+
+def get_terrainattr(ds:rio.DatasetReader,attrib='slope_degrees')->rd.rdarray:
+    """
+    Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
+    "profile_curvature", "planform_curvature", "curvature" and others (see richDEM documentation)
+    :param ds: DEM
+    :param attrib: terrain attribute
+    :return:
+    """
+
+    rda = rio_to_rda(ds)
+    terrattr = rd.TerrainAttribute(rda, attrib=attrib)
+
+    return terrattr
 
 def reproject_dem(dem: rio.DatasetReader, bounds: dict[str, float],
                   resolution: float, crs: Optional[rio.crs.CRS]) -> np.ndarray:
