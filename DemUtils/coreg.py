@@ -2,8 +2,13 @@
 DEM coregistration functions.
 
 
+"Amaury's" functions are adapted from Amaury Dehecq.
+Source: https://github.com/GeoUtils/geoutils/blob/master/geoutils/dem_coregistration.py
+
 Author(s):
     Erik Schytt Holmlund (holmlund@vaw.baug.ethz.ch)
+
+Date: 13 November 2020.
 """
 from __future__ import annotations
 
@@ -29,12 +34,12 @@ def reproject_dem(dem: rio.DatasetReader, bounds: dict[str, float],
     """
     Reproject a DEM to the given bounds.
 
-    param: dem: A DEM read through rasterio.
-    param: bounds: The target west, east, north, and south bounding coordinates.
-    param: resolution: The target resolution in metres.
-    param: crs: Optional. The target CRS (defaults to the input DEM crs)
+    :param dem: A DEM read through rasterio.
+    :param bounds: The target west, east, north, and south bounding coordinates.
+    :param resolution: The target resolution in metres.
+    :param crs: Optional. The target CRS (defaults to the input DEM crs)
 
-    return: destination: The elevation array in the destination bounds, resolution and CRS.
+    :returns: The elevation array in the destination bounds, resolution and CRS.
     """
     # Calculate new shape of the dataset
     dst_shape = (int((bounds["north"] - bounds["south"]) // resolution),
@@ -65,10 +70,10 @@ def write_geotiff(filepath: str, values: np.ndarray, crs: rio.crs.CRS, bounds: d
     """
     Write a GeoTiff to the disk.
 
-    param: filepath: The output filepath of the geotiff.
-    param: values: The raster values to write.
-    param: crs: The coordinate system of the raster.
-    param: bounds: The bounding coordinates of the raster.
+    :param filepath: The output filepath of the geotiff.
+    :param values: The raster values to write.
+    :param crs: The coordinate system of the raster.
+    :param bounds: The bounding coordinates of the raster.
     """
     transform = rio.transform.from_bounds(**bounds, width=values.shape[1], height=values.shape[0])
 
@@ -89,12 +94,12 @@ def icp_coregistration(reference_filepath: str, aligned_filepath: str, output_fi
     """
     Perform an ICP coregistration in areas where two DEMs overlap.
 
-    param: reference_filepath: The input filepath to the DEM acting reference.
-    param: aligned_filepath: The input filepath to the DEM acting aligned.
-    param: output_filepath: The filepath of the aligned dataset after coregistration.
-    param: pixel_buffer: The number of pixels to buffer the overlap mask with.
+    :param reference_filepath: The input filepath to the DEM acting reference.
+    :param aligned_filepath: The input filepath to the DEM acting aligned.
+    :param output_filepath: The filepath of the aligned dataset after coregistration.
+    :param pixel_buffer: The number of pixels to buffer the overlap mask with.
 
-    return: fitness: The ICP fitness measure of the coregistration.
+    :returns: The ICP fitness measure of the coregistration.
     """
     reference_dem = rio.open(reference_filepath)
     resolution = reference_dem.res[0]
@@ -192,11 +197,11 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
     """
     Calculate the horizontal shift between two DEMs using the method presented in Nuth and Kääb (2011).
 
-    param: elevation_difference: The elevation difference (reference_dem - aligned_dem).
-    param: slope: A slope map with the same shape as elevation_difference (units = ??).
-    param: apsect: An aspect map with the same shape as elevation_difference (units = ??).
+    :param elevation_difference: The elevation difference (reference_dem - aligned_dem).
+    :param slope: A slope map with the same shape as elevation_difference (units = pixels?) 
+    :param aspect: An aspect map with the same shape as elevation_difference (units = radians) 
 
-    return: east_offset, north_offset, c_parameter: The offsets in easting, northing, and the c_parameter (altitude).
+    :returns: The pixel offsets in easting, northing, and the c_parameter (altitude?).
     """
     input_x_values = aspect
 
@@ -241,10 +246,10 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
 
         y(x) = a * cos(b - x) + c
 
-        param: x_values: The x-values to feed the above function.
-        param: parameters: The a, b, and c parameters to feed the above function
+        :param x_values: The x-values to feed the above function.
+        :param parameters: The a, b, and c parameters to feed the above function
 
-        return: estimated_ys: Estimated y-values with the same shape as the given x-values
+        :returns: Estimated y-values with the same shape as the given x-values
         """
         return parameters[0] * np.cos(parameters[1] - x_values) + parameters[2]
 
@@ -254,11 +259,11 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
 
         err(x, y) = est_y(x) - y
 
-        param: parameters: The a, b, and c parameters to use for the estimation.
-        param: y_values: The measured y-values.
-        param: x_values: The measured x-values
+        :param parameters: The a, b, and c parameters to use for the estimation.
+        :param y_values: The measured y-values.
+        :param x_values: The measured x-values
 
-        return: err: An array of residuals with the same shape as the input arrays.
+        :returns: An array of residuals with the same shape as the input arrays.
         """
         err = estimate_ys(x_values, parameters) - y_values
         return err
@@ -279,10 +284,12 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     """
     Calculate the slope and aspect of a DEM.
 
-    param: dem: A numpy array of elevation values.
+    :param dem: A numpy array of elevation values.
 
-    return: slope_px, aspect: The slope (in pixels??) and aspect (in radians) of the DEM.
+    :returns:  The slope (in pixels??) and aspect (in radians) of the DEM.
     """
+    # TODO: Figure out why slope is called slope_px. What units is it in?
+    # TODO: Change accordingly in the get_horizontal_shift docstring.
 
     # Calculate the gradient of the slope
     gradient_y, gradient_x = np.gradient(dem)
@@ -299,12 +306,12 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     """
     Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
 
-    param: elevation_difference: The elevation difference array to analyse.
-    param: x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
-    param: y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
-    param: degree: The polynomial degree to estimate the ramp.
+    :param elevation_difference: The elevation difference array to analyse.
+    :param x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
+    :param y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
+    :param degree: The polynomial degree to estimate the ramp.
 
-    return: ramp: A callable function to estimate the ramp.
+    :returns: A callable function to estimate the ramp.
     """
     # Extract only the finite values of the elevation difference and corresponding coordinates.
     valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
@@ -324,12 +331,12 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         """
         Estimate values from a 2D-polynomial.
 
-        param: x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference)
-        param: y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference)
-        param: coefficients: The coefficients (a, b, c, etc.) of the polynomial.
-        param: degree: The degree of the polynomial.
+        :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference)
+        :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference)
+        :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
+        :param degree: The degree of the polynomial.
 
-        return: estimated_values: The values estimated by the polynomial.
+        :returns: The values estimated by the polynomial.
         """
         # Check that the coefficient size is correct.
         coefficient_size = (degree + 1) * (degree + 2) / 2
@@ -347,13 +354,13 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         """
         Calculate the difference between the estimated and measured values.
 
-        param: coefficients: Coefficients for the estimation.
-        param: values: The measured values.
-        param: x_coordinates: The x-coordinates of the values.
-        param: y_coordinates: The y-coordinates of the values.
-        param: degree: The degree of the polynomial to estimate.
+        :param coefficients: Coefficients for the estimation.
+        :param values: The measured values.
+        :param x_coordinates: The x-coordinates of the values.
+        :param y_coordinates: The y-coordinates of the values.
+        :param degree: The degree of the polynomial to estimate.
 
-        return: error: An array of residuals.
+        :returns: An array of residuals.
         """
         error = estimate_values(x_coordinates, y_coordinates, coefficients, degree) - values
         error = error[np.isfinite(error)]
@@ -375,10 +382,10 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         """
         Get the values of the ramp that corresponds to given coordinates.
 
-        param: x_coordinates: x-coordinates of interest.
-        param: y_coordinates: y-coordinates of interest.
+        :param x_coordinates: x-coordinates of interest.
+        :param y_coordinates: y-coordinates of interest.
 
-        return: ramp_func: The estimated ramp offsets.
+        :returns: The estimated ramp offsets.
         """
         return estimate_values(x_coordinates, y_coordinates, coefficients, degree)
 
@@ -390,9 +397,9 @@ def calculate_nmad(array: np.ndarray) -> float:
     """
     Calculate the normalized (?) median absolute deviation of an array.
 
-    param: array: A one- or multidimensional array.
+    :param array: A one- or multidimensional array.
 
-    return: nmad: The NMAD of the array.
+    :returns: The NMAD of the array.
     """
     # TODO: Get a reference for why NMAD is used (and make sure the N stands for normalized)
     nmad = 1.4826 * np.nanmedian(np.abs(array - np.nanmedian(array)))
@@ -406,14 +413,14 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
     """
     Coregister a DEM using the Nuth and Kääb (2011) approach.
 
-    param: reference_dem: The DEM acting reference.
-    param: dem_to_be_aligned: The DEM to be aligned to the reference.
-    param: max_iterations: The maximum of iterations to attempt the coregistration.
-    param: error_threshold: The acceptable error threshold after which to stop the iterations.
-    param: deramping_degree: Optional. The polynomial degree to estimate for deramping the offset field.
-    param: verbose: Whether to print the progress or not.
+    :param reference_dem: The DEM acting reference.
+    :param dem_to_be_aligned: The DEM to be aligned to the reference.
+    :param max_iterations: The maximum of iterations to attempt the coregistration.
+    :param error_threshold: The acceptable error threshold after which to stop the iterations.
+    :param deramping_degree: Optional. The polynomial degree to estimate for deramping the offset field.
+    :param verbose: Whether to print the progress or not.
 
-    return: aligned_dem, nmad: The aligned DEM, and the NMAD (error) of the alignment.
+    :returns: The aligned DEM, and the NMAD (error) of the alignment.
     """
     # TODO: Add offset_east and offset_north as return variables?
     # Make a new DEM which will be modified inplace
