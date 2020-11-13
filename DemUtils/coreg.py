@@ -1,4 +1,3 @@
-=======
 """
 DEM coregistration functions.
 
