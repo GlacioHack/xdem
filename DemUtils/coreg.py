@@ -626,7 +626,7 @@ class Coregistration:
 
         intersection = reference_raster.intersection(to_be_aligned_raster)
         bounds = dict(zip(["west", "south", "east", "north"], intersection))
-        resolution = (bounds["east"] - bounds["west"]) / reference_raster.data.shape[1]
+        resolution = (bounds["east"] - bounds["west"]) / reference_raster.data.shape[2]
 
         # TODO: Read the to_be_aligned_dem from the actual to_be_aligned_raster and not its filename
         # TODO: The above leads to highly surprising results sometimes if the raster had been modified from its file.
@@ -639,7 +639,7 @@ class Coregistration:
 
         # Align the raster using the selected method. This returns a numpy array and the corresponding error
         aligned_dem, error = self.method(  # type: ignore
-            reference_dem=reference_raster.data,
+            reference_dem=reference_raster.data.squeeze(),
             dem_to_be_aligned=to_be_aligned_dem,
             bounds=bounds,
             crs=reference_raster.crs
