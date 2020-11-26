@@ -19,8 +19,7 @@ import tempfile
 from enum import Enum
 from typing import Callable, Optional
 
-import cv2
-import GeoUtils as gu
+import geoutils as gu
 import numpy as np
 import pdal
 import rasterio as rio
@@ -611,7 +610,7 @@ class Coregistration:
         """
         self.method = method
 
-    def run(self, reference_raster: gu.raster_tools.Raster, to_be_aligned_raster: gu.raster_tools.Raster) -> tuple[gu.raster_tools.Raster, float]:
+    def run(self, reference_raster: gu.georaster.Raster, to_be_aligned_raster: gu.georaster.Raster) -> tuple[gu.georaster.Raster, float]:
         """
         Run coregistration between two GeoUtils rasters, using the selected method.
 
@@ -627,7 +626,7 @@ class Coregistration:
 
         intersection = reference_raster.intersection(to_be_aligned_raster)
         bounds = dict(zip(["west", "south", "east", "north"], intersection))
-        resolution = (bounds["east"] - bounds["west"]) / reference_raster.data.shape[1]
+        resolution = (bounds["east"] - bounds["west"]) / reference_raster.data.shape[2]
 
         # TODO: Read the to_be_aligned_dem from the actual to_be_aligned_raster and not its filename
         # TODO: The above leads to highly surprising results sometimes if the raster had been modified from its file.
@@ -640,14 +639,14 @@ class Coregistration:
 
         # Align the raster using the selected method. This returns a numpy array and the corresponding error
         aligned_dem, error = self.method(  # type: ignore
-            reference_dem=reference_raster.data,
+            reference_dem=reference_raster.data.squeeze(),
             dem_to_be_aligned=to_be_aligned_dem,
             bounds=bounds,
             crs=reference_raster.crs
         )
 
         # Construct a raster from the created numpy array
-        aligned_raster = gu.raster_tools.Raster.from_array(
+        aligned_raster = gu.georaster.Raster.from_array(
             data=aligned_dem,
             transform=reference_raster.transform,
             crs=reference_raster.crs
@@ -658,8 +657,8 @@ class Coregistration:
 
 def test_icp_coregistration():
     """Test coregistration using ICP."""
-    reference_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_2009_ref.tif")
-    to_be_aligned_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_1995.tif")
+    reference_raster = gu.georaster.Raster("examples/Longyearbyen/DEM_2009_ref.tif")
+    to_be_aligned_raster = gu.georaster.Raster("examples/Longyearbyen/DEM_1995.tif")
 
     coregistration = Coregistration(method=Method.ICP)
     aligned_raster, error = coregistration.run(reference_raster, to_be_aligned_raster)
@@ -670,9 +669,9 @@ def test_icp_coregistration():
 
 def test_amaury_coregistration():
     """Test coregistration using Amaury's method."""
-    reference_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_2009_ref.tif")
+    reference_raster = gu.georaster.Raster("examples/Longyearbyen/DEM_2009_ref.tif")
 
-    to_be_aligned_raster = gu.raster_tools.Raster("examples/Longyearbyen/DEM_1995.tif")
+    to_be_aligned_raster = gu.georaster.Raster("examples/Longyearbyen/DEM_1995.tif")
 
     coregistration = Coregistration(method=Method.AMAURY)
     aligned_raster, error = coregistration.run(reference_raster, to_be_aligned_raster)
