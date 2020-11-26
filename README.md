@@ -6,15 +6,13 @@ More documentation to come!
 
 ## Installation ##
 
-### To be set up! ###
-
 * Summary of set up
 
 `pip install -e .` or `python setup.py install`
 
 * Main dependencies
 
-rasterio, geopandas, pyproj, richdem
+rasterio, geopandas, pyproj, richdem, pdal
 
 
 ## Structure 
