@@ -128,43 +128,6 @@ def get_terrainattr(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray
     return terrattr
 
 
-def reproject_dem(dem: rio.DatasetReader, bounds: dict[str, float],
-                  resolution: float, crs: Optional[rio.crs.CRS]) -> np.ndarray:
-    """
-    Reproject a DEM to the given bounds.
-
-    :param dem: A DEM read through rasterio.
-    :param bounds: The target west, east, north, and south bounding coordinates.
-    :param resolution: The target resolution in metres.
-    :param crs: Optional. The target CRS (defaults to the input DEM crs)
-
-    :returns: The elevation array in the destination bounds, resolution and CRS.
-    """
-    # Calculate new shape of the dataset
-    dst_shape = (int((bounds["north"] - bounds["south"]) // resolution),
-                 int((bounds["east"] - bounds["west"]) // resolution))
-
-    # Make an Affine transform from the bounds and the new size
-    dst_transform = rio.transform.from_bounds(**bounds, width=dst_shape[1], height=dst_shape[0])
-    # Make an empty numpy array which will later be filled with elevation values
-    destination = np.empty(dst_shape, dem.dtypes[0])
-    # Set all values to nan right now
-    destination[:, :] = np.nan
-
-    # Reproject the DEM and put the output in the destination array
-    rio.warp.reproject(
-        source=dem.read(1),
-        destination=destination,
-        src_transform=dem.transform,
-        dst_transform=dst_transform,
-        resampling=rio.warp.Resampling.cubic_spline,
-        src_crs=dem.crs,
-        dst_crs=dem.crs if crs is None else crs
-    )
-
-    return destination
-
-
 def write_geotiff(filepath: str, values: np.ndarray, crs: rio.crs.CRS, bounds: rio.coords.BoundingBox) -> None:
     """
     Write a GeoTiff to the disk.
@@ -178,6 +141,7 @@ def write_geotiff(filepath: str, values: np.ndarray, crs: rio.crs.CRS, bounds: r
 
     nodata_value = np.finfo(values.dtype).min
 
+    # Replace np.nan with the minimum value for the dtype
     values[np.isnan(values)] = nodata_value
 
     with rio.open(
