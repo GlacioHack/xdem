@@ -1,0 +1,18 @@
+name: glacio
+channels:
+  - conda-forge
+dependencies:
+  - geopandas
+  - ipython
+  - matplotlib
+  - pdal
+  - python-pdal
+  - pyproj
+  - rasterio
+  - richdem
+  - scipy
+  - tqdm
+  - pip
+  - pip:
+    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
+    - "--editable=git+https://github.com/GlacioHack/DemUtils.git#egg=DemUtils"
