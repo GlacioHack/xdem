@@ -9,9 +9,9 @@ import pytest
 
 from DemUtils import coreg
 EXAMPLE_PATHS = {
-    "dem1": "examples/Longyearbyen/DEM_2009_ref.tif",
-    "dem2": "examples/Longyearbyen/DEM_1995.tif",
-    "glacier_mask": "examples/Longyearbyen/glacier_mask/CryoClim_GAO_SJ_1990.shp"
+    "dem1": "examples/Longyearbyen/data/DEM_2009_ref.tif",
+    "dem2": "examples/Longyearbyen/data/DEM_1995.tif",
+    "glacier_mask": "examples/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
 }
 
 
