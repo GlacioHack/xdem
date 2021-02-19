@@ -498,7 +498,7 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
 
 def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np.ndarray,
-              degree: int) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+              degree: int, verbose: bool = False) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
     """
     Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
 
@@ -506,6 +506,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     :param x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
     :param y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
     :param degree: The polynomial degree to estimate the ramp.
+    :param verbose: Print the least squares optimization progress.
 
     :returns: A callable function to estimate the ramp.
     """
@@ -568,14 +569,17 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     # Run a least-squares minimisation to estimate the correct coefficients.
     # TODO: Maybe remove the full_output?
     initial_guess = np.zeros(shape=((degree + 1) * (degree + 2) // 2))
-    coefficients, *_ = scipy.optimize.leastsq(
-        func=residuals,
+    if verbose:
+        print("Deramping...")
+    coefficients = scipy.optimize.least_squares(
+        fun=residuals,
         x0=initial_guess,
         args=(valid_diffs, valid_x_coords, valid_y_coords, degree),
-        full_output=True
-    )
+        verbose=2 if verbose and degree > 1 else 0
+    ).x
 
     # Generate the return-function which can correctly estimate the ramp
+
     def ramp(x_coordinates: np.ndarray, y_coordinates: np.ndarray) -> np.ndarray:
         """
         Get the values of the ramp that corresponds to given coordinates.
@@ -592,7 +596,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
 
 
 def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: Optional[np.ndarray] = None,
-               deramping_degree: int = 1, **_) -> tuple[np.ndarray, float]:
+               deramping_degree: int = 1, verbose: bool = True, **_) -> tuple[np.ndarray, float]:
     """
     Deramp the given DEM using a reference DEM.
 
@@ -618,7 +622,7 @@ def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: O
     )
 
     # Estimate the ramp function.
-    ramp = deramping(elevation_difference, x_coordinates, y_coordinates, deramping_degree)
+    ramp = deramping(elevation_difference, x_coordinates, y_coordinates, deramping_degree, verbose=verbose)
 
     # Correct the elevation difference with the ramp and measure the error.
     elevation_difference -= ramp(x_coordinates, y_coordinates)
@@ -751,7 +755,8 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
             elevation_difference=elevation_difference,
             x_coordinates=x_coordinates,
             y_coordinates=y_coordinates,
-            degree=deramping_degree
+            degree=deramping_degree,
+            verbose=verbose,
         )
         # Apply the deramping function to the dataset
         aligned_dem += ramp(x_coordinates, y_coordinates)
@@ -816,7 +821,7 @@ class CoregMethod(Enum):
 
 
 def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_raster: Union[str, gu.georaster.Raster],
-               method: Union[CoregMethod, str] = "icp", mask: Optional[Union[str, gu.geovector.Vector]] = None,
+               method: Union[CoregMethod, str] = "nuth_kaab", mask: Optional[Union[str, gu.geovector.Vector]] = None,
                verbose=True, **kwargs) -> tuple[gu.georaster.Raster, float]:
     """
     Coregister one DEM to another.
