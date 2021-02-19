@@ -19,6 +19,7 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, Optional, Union
 
+import fiona
 import geoutils as gu
 import numpy as np
 import pyproj.crs
@@ -815,8 +816,51 @@ class CoregMethod(Enum):
                          f" Options: {list(valid_strings.keys())}")
 
 
+def mask_as_array(reference_raster: gu.georaster.Raster, mask: Union[str, gu.geovector.Vector, gu.georaster.Raster]) -> np.ndarray:
+    """
+    Convert a given mask into an array.
+
+    :param reference_raster: The raster to use for rasterizing the mask if the mask is a vector.
+    :param mask: A valid Vector, Raster or a respective filepath to a mask.
+
+    :raises: ValueError: If the mask path is invalid.
+    :raises: TypeError: If the wrong mask type was given.
+
+    :returns: The mask as a squeezed array.
+    """
+    # Try to load the mask file if it's a filepath
+    if isinstance(mask, str):
+        # First try to load it as a Vector
+        try:
+            mask = gu.geovector.Vector(mask)
+        # If the format is unsopported, try loading as a Raster
+        except fiona.errors.DriverError:
+            try:
+                mask = gu.georaster.Raster(mask)
+            # If that fails, raise an error
+            except rio.errors.RasterioIOError:
+                raise ValueError(f"Mask path not in a supported Raster or Vector format: {mask}")
+
+    # At this point, the mask variable is either a Raster or a Vector
+    # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
+    if isinstance(mask, gu.geovector.Vector):
+        mask_array = mask.create_mask(reference_raster) == 255
+    elif isinstance(mask, gu.georaster.Raster):
+        # The true value is the maximum value in the raster, unless the maximum value is 0 or False
+        true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
+        mask_array = (mask.data == true_value).squeeze()
+    else:
+        raise TypeError(
+            f"Mask has invalid type: {type(mask)}. Expected one of: "
+            f"{[gu.georaster.Raster, gu.geovector.Vector, str, type(None)]}"
+        )
+
+    return mask_array
+
+
 def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_raster: Union[str, gu.georaster.Raster],
-               method: Union[CoregMethod, str] = "icp", mask: Optional[Union[str, gu.geovector.Vector]] = None,
+               method: Union[CoregMethod, str] = "icp",
+               mask: Optional[Union[str, gu.geovector.Vector, gu.georaster.Raster]] = None,
                verbose=True, **kwargs) -> tuple[gu.georaster.Raster, float]:
     """
     Coregister one DEM to another.
@@ -826,7 +870,7 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     :param reference_raster: The raster object or filepath to act as reference.
     :param to_be_aligned_raster: The raster object or filepath to be aligned.
     :param method: The coregistration method to use.
-    :param mask: Optional. Features to avoid under the coregistration (e.g. glaciers).
+    :param mask: Optional. A Vector or Raster mask to exclude for the coregistration (e.g. glaciers).
     :param verbose: Whether to visually show the progress.
     :param **kwargs: Optional keyword arguments to feed the chosen coregistration method.
 
@@ -837,21 +881,19 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
         reference_raster = gu.georaster.Raster(reference_raster)
     if isinstance(to_be_aligned_raster, str):
         to_be_aligned_raster = gu.georaster.Raster(to_be_aligned_raster)
-    if isinstance(mask, str):
-        mask = gu.geovector.Vector(mask)
+
     if isinstance(method, str):
         method = CoregMethod.from_str(method)
     # Make sure that the data is read into memory
     if reference_raster.data is None:
         reference_raster.load(1)
 
+    mask_array = mask_as_array(reference_raster, mask) if mask is not None else None
+
     assert np.diff(reference_raster.res)[0] == 0, "The X and Y resolution of the reference needs to be the same."
 
     to_be_aligned_dem = to_be_aligned_raster.reproject(reference_raster).data.squeeze()
     reference_dem = reference_raster.data.squeeze().copy()  # type: ignore
-
-    mask_array = np.zeros_like(reference_dem, dtype=bool) if mask is None\
-        else mask.create_mask(reference_raster) == 255
 
     # Align the raster using the selected method. This returns a numpy array and the corresponding error
     aligned_dem, error = method(  # type: ignore
