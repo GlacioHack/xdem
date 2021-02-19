@@ -167,6 +167,8 @@ def run_pdal_pipeline(pipeline: str, output_metadata_file: Optional[str] = None,
     :param parameters: Optional. Parameters to fill the pipeline with, e.g. {"FILEPATH": "/path/to/file"}.
     :param show_warnings: Show the full stdout of the PDAL process.
 
+    :raises ValueError: If the PDAL pipeline string is poorly formatted.
+
     :returns: output_meta: The metadata produced by the output.
     """
     # Create a temporary directory to save the output metadata in
@@ -207,7 +209,13 @@ def run_pdal_pipeline(pipeline: str, output_metadata_file: Optional[str] = None,
 
 
 def check_for_pdal(min_version="2.2.0") -> None:
-    """Check that PDAL is installed and that it fills the minimum version requirement."""
+    """
+    Check that PDAL is installed and that it fills the minimum version requirement.
+
+    :param min_version: The minimum allowed PDAL version.
+
+    :raises AssertionError: If PDAL is not found or the version requirement is not met.
+    """
     # Try to run pdal --version (will error out if PDAL is not installed.
     try:
         result = subprocess.run(["pdal", "--version"], stdout=subprocess.PIPE,
@@ -237,14 +245,15 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     Perform an ICP coregistration in areas where two DEMs overlap.
 
     :param reference_dem: The input array of the DEM acting reference.
-    :param to_be_aligned_dem: The input array to the DEM acting aligned.
+    :param dem_to_be_aligned: The input array to the DEM acting aligned.
     :param bounds: The bounding coordinates of the reference_dem.
-    :param crs: The CRS of the reference_dem.
     :param mask: A boolean array of areas to exclude from the coregistration.
     :param max_assumed_offset: The maximum assumed offset between the DEMs in georeferenced horizontal units.
     :param verbose: Print progress messages.
 
     :returns: The aligned DEM (array) and the NMAD error.
+
+    # noqa: DAR101 **_
     """
     dem_to_be_aligned_unmasked = dem_to_be_aligned.copy()
     # Check that PDAL is installed.
@@ -380,8 +389,11 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
     Calculate the horizontal shift between two DEMs using the method presented in Nuth and Kääb (2011).
 
     :param elevation_difference: The elevation difference (reference_dem - aligned_dem).
-    :param slope: A slope map with the same shape as elevation_difference (units = pixels?)
-    :param aspect: An aspect map with the same shape as elevation_difference (units = radians)
+    :param slope: A slope map with the same shape as elevation_difference (units = pixels?).
+    :param aspect: An aspect map with the same shape as elevation_difference (units = radians).
+    :param min_count: The minimum allowed bin size to consider valid.
+
+    :raises ValueError: If very few finite values exist to analyse.
 
     :returns: The pixel offsets in easting, northing, and the c_parameter (altitude?).
     """
@@ -515,10 +527,12 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         """
         Estimate values from a 2D-polynomial.
 
-        :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference)
-        :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference)
+        :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference).
+        :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference).
         :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
         :param degree: The degree of the polynomial.
+
+        :raises ValueError: If the length of the coefficients list is not compatible with the degree.
 
         :returns: The values estimated by the polynomial.
         """
@@ -588,6 +602,8 @@ def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: O
     :param deramping_degree: The polynomial degree to estimate the ramp with.
 
     :returns: The aligned DEM (array) and the NMAD error.
+
+    # noqa: DAR101 **_
     """
     elevation_difference = (reference_dem - dem_to_be_aligned)
 
@@ -636,12 +652,15 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 
     :param reference_dem: The DEM acting reference.
     :param dem_to_be_aligned: The DEM to be aligned to the reference.
+    :param mask: A boolean array of areas to exclude from the coregistration.
     :param max_iterations: The maximum of iterations to attempt the coregistration.
     :param error_threshold: The acceptable error threshold after which to stop the iterations.
     :param deramping_degree: Optional. The polynomial degree to estimate for deramping the offset field.
     :param verbose: Whether to print the progress or not.
 
     :returns: The aligned DEM, and the NMAD (error) of the alignment.
+
+    # noqa: DAR101 **_
     """
     # TODO: Add offset_east and offset_north as return variables?
     # Make a new DEM which will be modified inplace
@@ -773,7 +792,15 @@ class CoregMethod(Enum):
 
     @ staticmethod
     def from_str(string: str) -> CoregMethod:
-        """Try to parse a coregistration method from a string."""
+        """
+        Try to parse a coregistration method from a string.
+
+        :param string: The string to attempt to parse.
+
+        :raises ValueError: If the string could not be parsed.
+
+        :returns: The parsed coregistration method.
+        """
         valid_strings = {
             "icp": CoregMethod.ICP,
             "amaury": CoregMethod.AMAURY,
@@ -801,6 +828,7 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     :param method: The coregistration method to use.
     :param mask: Optional. Features to avoid under the coregistration (e.g. glaciers).
     :param verbose: Whether to visually show the progress.
+    :param **kwargs: Optional keyword arguments to feed the chosen coregistration method.
 
     :returns: A coregistered Raster and the NMAD of the (potentially) masked offsets.
     """
