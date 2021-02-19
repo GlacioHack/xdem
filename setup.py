@@ -4,7 +4,7 @@ from os import path
 FULLVERSION = '0.0.1'
 VERSION = FULLVERSION
 
-setup(name='demutils',
+setup(name='DemUtils',
       version=FULLVERSION,
       description='',
       url='',
