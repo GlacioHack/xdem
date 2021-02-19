@@ -241,7 +241,7 @@ def check_for_pdal(min_version="2.2.0") -> None:
 
 def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, bounds: rio.coords.BoundingBox,
                        mask: Optional[np.ndarray] = None, max_assumed_offset: Optional[float] = None,
-                       verbose=False, **_) -> tuple[np.ndarray, float]:
+                       verbose=False, metadata: Optional[dict[str, Any]] = None, **_) -> tuple[np.ndarray, float]:
     """
     Perform an ICP coregistration in areas where two DEMs overlap.
 
@@ -251,6 +251,7 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     :param mask: A boolean array of areas to exclude from the coregistration.
     :param max_assumed_offset: The maximum assumed offset between the DEMs in georeferenced horizontal units.
     :param verbose: Print progress messages.
+    :param metadata: Optional. A metadata dictionary that will be updated with the key "icp".
 
     :returns: The aligned DEM (array) and the NMAD error.
 
@@ -339,7 +340,8 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
 
     if verbose:
         print("Running ICP coregistration...")
-    metadata = run_pdal_pipeline(pdal_pipeline, parameters=pdal_parameters)
+    pdal_metadata = run_pdal_pipeline(pdal_pipeline, parameters=pdal_parameters)
+
     if verbose:
         print("Done")
     aligned_dem = rio.open(output_temp_filepath).read(1)
@@ -352,7 +354,7 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     # If a mask was given, correct the unmasked DEM using the estimated transform
     if mask is not None:
         pdal_parameters["INPUT_FILEPATH"] = aligned_nonmasked_filepath
-        pdal_parameters["MATRIX"] = metadata["stages"]["filters.icp"]["composed"].replace("\n", " ")
+        pdal_parameters["MATRIX"] = pdal_metadata["stages"]["filters.icp"]["composed"].replace("\n", " ")
         pdal_pipeline = """
         [
             {
@@ -380,6 +382,10 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
         run_pdal_pipeline(pdal_pipeline, parameters=pdal_parameters)
         aligned_dem = rio.open(output_temp_filepath).read(1)
         aligned_dem[aligned_dem <= lowest_value] = np.nan
+
+    if metadata is not None:
+        metadata["icp"] = pdal_metadata["stages"]["filters.icp"]
+        metadata["icp"]["nmad"] = nmad
 
     return aligned_dem, nmad
 
@@ -499,7 +505,8 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
 
 def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np.ndarray,
-              degree: int, verbose: bool = False) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+              degree: int, verbose: bool = False,
+              metadata: Optional[dict[str, Any]] = None) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
     """
     Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
 
@@ -508,6 +515,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     :param y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
     :param degree: The polynomial degree to estimate the ramp.
     :param verbose: Print the least squares optimization progress.
+    :param metadata: Optional. A metadata dictionary that will be updated with the key "deramp".
 
     :returns: A callable function to estimate the ramp.
     """
@@ -592,12 +600,19 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         """
         return estimate_values(x_coordinates, y_coordinates, coefficients, degree)
 
+    if metadata is not None:
+        metadata["deramp"] = {
+            "coefficients": coefficients,
+            "nmad": calculate_nmad(residuals(coefficients, valid_diffs, valid_x_coords, valid_y_coords, degree))
+        }
+
     # Return the function which can be used later.
     return ramp
 
 
 def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: Optional[np.ndarray] = None,
-               deramping_degree: int = 1, verbose: bool = True, **_) -> tuple[np.ndarray, float]:
+               deramping_degree: int = 1, verbose: bool = True,
+               metadata: Optional[dict[str, Any]] = None, **_) -> tuple[np.ndarray, float]:
     """
     Deramp the given DEM using a reference DEM.
 
@@ -605,6 +620,7 @@ def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: O
     :param dem_to_be_aligned: The input array to the DEM acting aligned.
     :param mask: Optional. A boolean array to exclude areas from the analysis.
     :param deramping_degree: The polynomial degree to estimate the ramp with.
+    :param metadata: Optional. A metadata dictionary that will be updated with the key "deramp".
 
     :returns: The aligned DEM (array) and the NMAD error.
 
@@ -623,7 +639,8 @@ def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: O
     )
 
     # Estimate the ramp function.
-    ramp = deramping(elevation_difference, x_coordinates, y_coordinates, deramping_degree, verbose=verbose)
+    ramp = deramping(elevation_difference, x_coordinates, y_coordinates, deramping_degree,
+                     verbose=verbose, metadata=metadata)
 
     # Correct the elevation difference with the ramp and measure the error.
     elevation_difference -= ramp(x_coordinates, y_coordinates)
@@ -651,7 +668,8 @@ def calculate_nmad(array: np.ndarray) -> float:
 
 def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: Optional[np.ndarray] = None,
                           max_iterations: int = 50, error_threshold: float = 0.05,
-                          deramping_degree: Optional[int] = 1, verbose: bool = True, **_) -> tuple[np.ndarray, float]:
+                          deramping_degree: Optional[int] = 1, verbose: bool = True,
+                          metadata: Optional[dict[str, Any]] = None, **_) -> tuple[np.ndarray, float]:
     """
     Coregister a DEM using the Nuth and Kääb (2011) approach.
 
@@ -662,6 +680,7 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
     :param error_threshold: The acceptable error threshold after which to stop the iterations.
     :param deramping_degree: Optional. The polynomial degree to estimate for deramping the offset field.
     :param verbose: Whether to print the progress or not.
+    :param metadata: Optional. A metadata dictionary that will be updated with the key "nuth_kaab".
 
     :returns: The aligned DEM, and the NMAD (error) of the alignment.
 
@@ -785,6 +804,10 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 
         if deramping_degree is not None:
             aligned_dem += ramp(x_coordinates, y_coordinates)
+
+    if metadata is not None:
+        metadata["nuth_kaab"] = {"offset_east_px": offset_east, "offset_north_px": offset_north, "nmad": nmad,
+                                 "deramping_degree": deramping_degree}
 
     return aligned_dem, nmad
 

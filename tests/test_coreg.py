@@ -48,9 +48,21 @@ class TestCoreg:
 
     ref, tba, mask = load_examples()  # Load example reference, to-be-aligned and mask.
 
+    def test_icp(self):
+        """Test the ICP coregistration method."""
+        metadata = {}
+        _, error = coreg.coregister(self.ref, self.tba, method="icp", mask=self.mask, metadata=metadata)
+
+        assert metadata["icp"]["nmad"] == error
+
+        assert error < 10
+
     def test_deramping(self):
         """Test the deramping coregistration method."""
-        _, error = coreg.coregister(self.ref, self.tba, method="deramp", mask=self.mask)
+        metadata = {}
+        _, error = coreg.coregister(self.ref, self.tba, method="deramp", mask=self.mask, metadata=metadata)
+
+        assert round(metadata["deramp"]["nmad"], 1) == round(error, 1)
 
         assert error < 10
 
@@ -86,19 +98,16 @@ class TestCoreg:
 
     def test_amaury(self):
         """Test the Amaury/ Nuth & Kääb method."""
-        _, error = coreg.coregister(self.ref, self.tba, method="amaury", mask=self.mask)
+        metadata = {}
+        _, error = coreg.coregister(self.ref, self.tba, method="amaury", mask=self.mask, metadata=metadata)
+
+        assert metadata["nuth_kaab"]["nmad"] == error
 
         assert error < 10
 
     def test_amaury_high_degree(self):
         """Test the Amaury / Nuth & Kääb method with nonlinear deramping."""
         _, error = coreg.coregister(self.ref, self.tba, mask=self.mask, method="icp", deramping_degree=3)
-
-        assert error < 10
-
-    def test_icp(self):
-        """Test the ICP coregistration method."""
-        _, error = coreg.coregister(self.ref, self.tba, method="icp", mask=self.mask)
 
         assert error < 10
 
