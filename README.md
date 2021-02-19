@@ -6,14 +6,12 @@ More documentation to come!
 
 ## Installation ##
 
-* Summary of set up
-
-`pip install -e .` or `python setup.py install`
-
-* Main dependencies
-
-rasterio, geopandas, pyproj, richdem, pdal
-
+```
+$ git clone https://github.com/GlacioHack/DemUtils.git
+$ cd ./DemUtils
+$ conda create -f environment.yml
+$ conda activate glacio
+```
 
 ## Structure 
 
