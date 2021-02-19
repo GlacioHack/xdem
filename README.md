@@ -30,3 +30,38 @@ In the interest of keeping the documentation simple, please write all docstring 
 ### Testing - again please read!
 These tools are only valuable if we can rely on them to perform exactly as we expect. So, we need testing. Please create tests for every function that you make, as much as you are able. Guidance/examples here for the moment: https://github.com/GeoUtils/georaster/blob/master/test/test_georaster.py
 https://github.com/corteva/rioxarray/blob/master/test/integration/test_integration__io.py
+
+
+
+### Examples
+
+**Coregister a DEM to another DEM**
+```python
+import GeoUtils as gu
+
+reference_dem = "path/to/reference.tif"
+dem_to_be_aligned = "path/to/dem.tif"
+mask = "path/to/mask.shp"  # This is optional. Could for example be glacier outlines.
+
+aligned_dem, error = gu.coreg.coregister(reference_dem, dem_to_be_aligned, mask=mask)
+
+aligned_dem.save("path/to/coreg.tif")
+```
+The default coregistration method is a [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) implementation, but this can be changed with the keyword argument `method=...`, e.g. to `"icp"`.
+The currently supported methods are: `"nuth_kaab"`, `"icp"` and `"deramp"`.
+
+**Subtract one DEM with another**
+```python
+import GeoUtils as gu
+
+first_dem = "path/to/first.tif"
+second_dem = "path/to/second.tif"
+
+difference = gu.spatial_tools.subtract_rasters(first_dem, second_dem)
+
+difference.save("path/to/difference.tif")
+```
+By default, `second_dem` is reprojected to fit `first_dem`.
+This can be switched with the keyword argument `reference="second"`.
+The resampling method can also be changed (e.g. `resampling_method="nearest"`) from the default `"cubic_spline"`.
+
