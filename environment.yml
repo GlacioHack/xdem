@@ -3,11 +3,15 @@ channels:
   - conda-forge
 dependencies:
   - geopandas
+  - ipython
+  - matplotlib
+  - pdal
+  - python-pdal
+  - pyproj
   - rasterio
   - richdem
   - scipy
   - tqdm
-  - ipython
   - pip
   - pip:
     - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
