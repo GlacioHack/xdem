@@ -72,7 +72,7 @@ def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> np.ndarray:
                       gt_orig.d, gt_orig.e, gt_orig.f+dy)
 
     print("Original transform:", gt_orig)
-    print("Updated transform:", gt_shift)
+    print("Updated transform:", gt_align)
 
     # Update ds Geotransform
     ds_align = ds
@@ -104,7 +104,6 @@ def rio_to_rda(ds: rio.DatasetReader) -> rd.rdarray:
     :param ds: DEM
     :return: DEM
     """
-
     arr = ds.read(1)
     rda = rd.rdarray(arr, no_data=ds.get_nodatavals()[0])
     rda.geotransform = ds.get_transform()
@@ -121,14 +120,14 @@ def get_terrainattr(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray
     :param attrib: terrain attribute
     :return:
     """
-
     rda = rio_to_rda(ds)
     terrattr = rd.TerrainAttribute(rda, attrib=attrib)
 
     return terrattr
 
 
-def write_geotiff(filepath: str, values: np.ndarray, crs: rio.crs.CRS, bounds: rio.coords.BoundingBox) -> None:
+def write_geotiff(filepath: str, values: np.ndarray, crs: Optional[rio.crs.CRS],
+                  bounds: rio.coords.BoundingBox) -> None:
     """
     Write a GeoTiff to the disk.
 
@@ -232,18 +231,20 @@ def check_for_pdal(min_version="2.2.0") -> None:
 
 
 def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, bounds: rio.coords.BoundingBox,
-                       crs=rio.crs.CRS, mask: Optional[np.ndarray] = None,
-                       max_assumed_offset: Optional[float] = None, verbose=False) -> tuple[np.ndarray, float]:
+                       mask: Optional[np.ndarray] = None, max_assumed_offset: Optional[float] = None,
+                       verbose=False, **_) -> tuple[np.ndarray, float]:
     """
     Perform an ICP coregistration in areas where two DEMs overlap.
 
-    :param reference_filepath: The input filepath to the DEM acting reference.
-    :param aligned_filepath: The input filepath to the DEM acting aligned.
-    :param output_filepath: The filepath of the aligned dataset after coregistration.
-    :param max_believed_offset: The maximum assumed offset between the DEMs in georeferenced horizontal units.
+    :param reference_dem: The input array of the DEM acting reference.
+    :param to_be_aligned_dem: The input array to the DEM acting aligned.
+    :param bounds: The bounding coordinates of the reference_dem.
+    :param crs: The CRS of the reference_dem.
+    :param mask: A boolean array of areas to exclude from the coregistration.
+    :param max_assumed_offset: The maximum assumed offset between the DEMs in georeferenced horizontal units.
     :param verbose: Print progress messages.
 
-    :returns: The ICP fitness measure of the coregistration.
+    :returns: The aligned DEM (array) and the NMAD error.
     """
     dem_to_be_aligned_unmasked = dem_to_be_aligned.copy()
     # Check that PDAL is installed.
@@ -276,11 +277,11 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     output_temp_filepath = os.path.join(temporary_dir.name, "output_dem.tif")
 
     lowest_value = max(np.finfo(reference_dem.dtype).min, np.finfo(dem_to_be_aligned.dtype).min) + 0.1
-    write_geotiff(reference_temp_filepath, reference_dem, crs=crs, bounds=bounds)
-    write_geotiff(aligned_temp_filepath, dem_to_be_aligned, crs=crs, bounds=bounds)
+    write_geotiff(reference_temp_filepath, reference_dem, crs=None, bounds=bounds)
+    write_geotiff(aligned_temp_filepath, dem_to_be_aligned, crs=None, bounds=bounds)
 
     if mask is not None:
-        write_geotiff(aligned_nonmasked_filepath, dem_to_be_aligned_unmasked, crs=crs, bounds=bounds)
+        write_geotiff(aligned_nonmasked_filepath, dem_to_be_aligned_unmasked, crs=None, bounds=bounds)
 
     # Define values to fill the below pipeline with
     pdal_parameters = {
@@ -338,6 +339,7 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     elevation_difference = reference_dem - aligned_dem
     nmad = calculate_nmad(elevation_difference)
 
+    # If a mask was given, correct the unmasked DEM using the estimated transform
     if mask is not None:
         pdal_parameters["INPUT_FILEPATH"] = aligned_nonmasked_filepath
         pdal_parameters["MATRIX"] = metadata["stages"]["filters.icp"]["composed"].replace("\n", " ")
@@ -470,7 +472,7 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
     :returns:  The slope (in pixels??) and aspect (in radians) of the DEM.
     """
-    # TODO: Figure out why slope is called slope_px. What units is it in?
+    # TODO: Figure out why slope is called slope_px. What unit is it in?
     # TODO: Change accordingly in the get_horizontal_shift docstring.
 
     # Calculate the gradient of the slope
@@ -528,7 +530,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         # Do Amaury's black magic to estimate the values.
         estimated_values = np.sum([coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) *
                                    y_coordinates ** j for k in range(degree + 1) for j in range(k + 1)], axis=0)
-        return estimated_values
+        return estimated_values  # type: ignore
 
     # Creat the error function
     def residuals(coefficients: np.ndarray, values: np.ndarray, x_coordinates: np.ndarray,
@@ -575,9 +577,46 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     return ramp
 
 
+def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: Optional[np.ndarray] = None,
+               deramping_degree: int = 1, **_) -> tuple[np.ndarray, float]:
+    """
+    Deramp the given DEM using a reference DEM.
+
+    :param reference_dem: The input array of the DEM acting reference.
+    :param dem_to_be_aligned: The input array to the DEM acting aligned.
+    :param mask: Optional. A boolean array to exclude areas from the analysis.
+    :param deramping_degree: The polynomial degree to estimate the ramp with.
+
+    :returns: The aligned DEM (array) and the NMAD error.
+    """
+    elevation_difference = (reference_dem - dem_to_be_aligned)
+
+    # Apply the mask if it exists.
+    if mask is not None:
+        elevation_difference[mask] = np.nan
+
+    # Generate arbitrary x- and y- coordinates to supply the deramping function with.
+    x_coordinates, y_coordinates = np.meshgrid(
+        np.linspace(0, 1, num=elevation_difference.shape[1]),
+        np.linspace(0, 1, num=elevation_difference.shape[0])
+    )
+
+    # Estimate the ramp function.
+    ramp = deramping(elevation_difference, x_coordinates, y_coordinates, deramping_degree)
+
+    # Correct the elevation difference with the ramp and measure the error.
+    elevation_difference -= ramp(x_coordinates, y_coordinates)
+    error = calculate_nmad(elevation_difference)
+
+    # Correct the DEM to be aligned with the ramp
+    aligned_dem = dem_to_be_aligned + ramp(x_coordinates, y_coordinates)
+
+    return aligned_dem, error
+
+
 def calculate_nmad(array: np.ndarray) -> float:
     """
-    Calculate the normalized (?) median absolute deviation of an array.
+    Calculate the normalized median absolute deviation of an array.
 
     :param array: A one- or multidimensional array.
 
@@ -708,8 +747,11 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
     if mask is not None:
         full_aligned_dem = dem_to_be_aligned.copy()
         # Make new functions using the full dataset instead of just the masked one.
-        elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid,
-                                                                   z=np.where(np.isnan(full_aligned_dem), -9999, full_aligned_dem))
+        elevation_function = scipy.interpolate.RectBivariateSpline(
+            x=north_grid,
+            y=east_grid,
+            z=np.where(np.isnan(full_aligned_dem), -9999, full_aligned_dem)
+        )
         nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(full_aligned_dem))
 
         aligned_dem = elevation_function(y=east_grid + offset_east, x=north_grid - offset_north)
@@ -727,22 +769,28 @@ class CoregMethod(Enum):
 
     ICP = icp_coregistration
     AMAURY = amaury_coregister_dem
+    DERAMP = deramp_dem
 
-    @staticmethod
+    @ staticmethod
     def from_str(string: str) -> CoregMethod:
         """Try to parse a coregistration method from a string."""
-        if string.lower() == "icp":
-            return CoregMethod.ICP
+        valid_strings = {
+            "icp": CoregMethod.ICP,
+            "amaury": CoregMethod.AMAURY,
+            "nuth_kaab": CoregMethod.AMAURY,
+            "deramp": CoregMethod.DERAMP
+        }
 
-        if string.lower() in ["amaury", "nuth_kaab"]:
-            return CoregMethod.AMAURY
+        if string in valid_strings:
+            return valid_strings[string]
 
-        raise ValueError(f"'{string}' could not be parsed as a coregistration method.")
+        raise ValueError(f"'{string}' could not be parsed as a coregistration method."
+                         f" Options: {list(valid_strings.keys())}")
 
 
 def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_raster: Union[str, gu.georaster.Raster],
                method: Union[CoregMethod, str] = "icp", mask: Optional[Union[str, gu.geovector.Vector]] = None,
-               max_assumed_offset: Optional[float] = None, verbose=True) -> tuple[gu.georaster.Raster, float]:
+               verbose=True, **kwargs) -> tuple[gu.georaster.Raster, float]:
     """
     Coregister one DEM to another.
 
@@ -752,7 +800,6 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     :param to_be_aligned_raster: The raster object or filepath to be aligned.
     :param method: The coregistration method to use.
     :param mask: Optional. Features to avoid under the coregistration (e.g. glaciers).
-    :param max_assumed_offset: Optional. The maximum assumed offset between the DEMs.
     :param verbose: Whether to visually show the progress.
 
     :returns: A coregistered Raster and the NMAD of the (potentially) masked offsets.
@@ -782,11 +829,10 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     aligned_dem, error = method(  # type: ignore
         reference_dem=reference_dem,
         dem_to_be_aligned=to_be_aligned_dem,
-        bounds=reference_raster.bounds,
-        crs=reference_raster.crs,
         mask=mask_array,
-        max_assumed_offset=max_assumed_offset,
-        verbose=verbose
+        bounds=reference_raster.bounds,
+        verbose=verbose,
+        **kwargs
     )
 
     # Construct a raster from the created numpy array
