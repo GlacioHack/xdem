@@ -7,8 +7,8 @@ Author(s):
 import numpy as np
 import pytest
 
-import DemUtils as du
-from test_coreg import EXAMPLE_PATHS
+import xdem as du
+# from test_coreg import EXAMPLE_PATHS
 
 
 def test_dem_subtraction():
