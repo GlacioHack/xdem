@@ -4,13 +4,13 @@ from os import path
 FULLVERSION = '0.0.1'
 VERSION = FULLVERSION
 
-setup(name='DemUtils',
+setup(name='xdem',
       version=FULLVERSION,
       description='',
       url='',
       author='The GlacioHack Team',
       license='BSD-3',
-      packages=['DemUtils'],
+      packages=['xdem'],
       install_requires=['numpy', 'scipy', 'rasterio', 'geopandas', 'pyproj'],
       extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal':['pdal']},
       scripts=[],
