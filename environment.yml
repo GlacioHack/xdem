@@ -13,6 +13,7 @@ dependencies:
   - scipy
   - tqdm
   - pip
+  - proj-data
   - pip:
     - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
     - "--editable=git+https://github.com/GlacioHack/DemUtils.git#egg=DemUtils"
