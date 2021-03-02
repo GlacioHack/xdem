@@ -66,7 +66,7 @@ def subtract_rasters(first_raster: Union[str, gu.georaster.Raster], second_raste
             )
 
     # Reproject the non-reference and subtract the two rasters.
-    difference = first_raster.data - second_raster.reproject(second_raster, resampling=resampling_method).data if \
+    difference = first_raster.data - second_raster.reproject(first_raster, resampling=resampling_method).data if \
         reference == "first" else \
         first_raster.reproject(second_raster, resampling=resampling_method).data - second_raster.data
 
