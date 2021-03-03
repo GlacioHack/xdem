@@ -107,8 +107,10 @@ class DEM(SatelliteImage):
 
         #for names, we only look for WGS84 ellipsoid or the EGM96/EGM08 geoids: those are used 99% of the time
         if isinstance(vref_grid, str):
+
             if isinstance(vref_name, str):
                 print('Both a vertical reference name and vertical grid are provided: defaulting to using grid only.')
+
             if vref_grid == 'us_nga_egm08_25.tif':
                 self.vref = 'EGM08'
                 self.vref_grid = vref_grid
@@ -127,7 +129,7 @@ class DEM(SatelliteImage):
             if vref_name == 'WGS84':
                 self.vref_grid = None
                 self.vref = 'WGS84'  # WGS84 ellipsoid
-            if vref_name == 'EGM08':
+            elif vref_name == 'EGM08':
                 self.vref_grid = 'us_nga_egm08_25.tif'  # EGM2008 at 2.5 minute resolution
                 self.vref = 'EGM08'
             elif vref_name == 'EGM96':
@@ -136,7 +138,7 @@ class DEM(SatelliteImage):
             else:
                 raise ValueError(
                     'Vertical reference name must be either "WGS84", "EGM96" or "EGM08". Otherwise, provide'
-                    'a geoid grid from PROJ DATA: https://github.com/OSGeo/PROJ-data')
+                    ' a geoid grid from PROJ DATA: https://github.com/OSGeo/PROJ-data')
         else:
             raise ValueError('Vertical reference name or vertical grid must be a string')
 
@@ -175,13 +177,13 @@ class DEM(SatelliteImage):
             self.set_vref(vref_name=self.vref,compute_ccrs=True)
 
         # inital ccrs
-        ccrs_init = self.ccrs.copy()
+        ccrs_init = self.ccrs
 
         # destination crs
 
         # set the new reference (before calculation doesn't change anything, we need to update the data manually anyway)
         self.set_vref(vref_name=vref_name,vref_grid=vref_grid,compute_ccrs=True)
-        ccrs_dest = self.ccrs.copy()
+        ccrs_dest = self.ccrs
 
         # transform matrix
         transformer = Transformer.from_crs(ccrs_init, ccrs_dest)
