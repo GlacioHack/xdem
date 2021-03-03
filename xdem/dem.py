@@ -1,13 +1,21 @@
 """
 dem.py provides a class for working with digital elevation models (DEMs)
 """
+import os
 import pyproj
 import warnings
 from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 
 def parse_vref_from_product(product):
+    """
 
+    :param product: Product name (typically from satimg.parse_metadata_from_fn)
+    :type product: str
+
+    :return: vref_name: Vertical reference name
+    :rtype: vref_name: str
+    """
     # sources for defining vertical references:
     # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
     # SRTMGL1: https://lpdaac.usgs.gov/documents/179/SRTM_User_Guide_V3.pdf
@@ -20,33 +28,46 @@ def parse_vref_from_product(product):
     # COPERNICUS DEM: https://spacedata.copernicus.eu/web/cscda/dataset-details?articleId=394198
 
     if product in ['ArcticDEM/REMA','TDM1','NASADEM-HGTS']:
-        vref = 'WGS84'
+        vref_name = 'WGS84'
     elif product in ['AW3D30','SRTMv4.1','SRTMGL1','ASTGTM2','NASADEM-HGT']:
-        vref = 'EGM96'
+        vref_name = 'EGM96'
     elif product in ['COPDEM']:
-        vref = 'EGM08'
+        vref_name = 'EGM08'
     else:
-        vref = None
+        vref_name = None
 
-    return vref
+    return vref_name
 
 class DEM(SatelliteImage):
 
-    def __init__(self, filename, vref=None, vref_grid=None, ccrs = None, read_vref_from_prod=True, silent=False, **kwargs):
+    def __init__(self, filename, vref_name=None, vref_grid=None, silent=False, **kwargs):
+        """
+        Load digital elevation model data through the Raster class, parse additional attributes from filename or metadata
+        trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
+        For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
+
+        :param filename: The filename of the dataset.
+        :type filename: str
+        :param vref_name: Vertical reference name
+        :type vref_name: str
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
+        :type vref_grid: str
+        :param silent: Whether to display vertical reference setting
+        :param silent: boolean
+        """
 
         super().__init__(filename, **kwargs)
 
         if self.nbands > 1:
-            raise ValueError('DEM rasters should be composed of only one band only')
+            raise ValueError('DEM rasters should be composed of one band only')
 
-        # priority to user input
-        self.vref = vref
+        # user input
+        self.vref = vref_name
         self.vref_grid = vref_grid
-        self.ccrs = ccrs
+        self.ccrs = None
 
-        # trying to get vref from product name
-        if read_vref_from_prod:
-            self.__parse_vref_from_fn(silent=silent)
+        # trying to get vref from product name (priority to user input)
+        self.__parse_vref_from_fn(silent=silent)
 
 
     def __parse_vref_from_fn(self,silent=False):
@@ -74,20 +95,35 @@ class DEM(SatelliteImage):
         """
         Set vertical reference with a name or with a grid
 
-        :param vref_name: Name of geoid
-        :param vref_grid: PROJ DATA geoid grid file name
-        :param compute_ccrs: Whether to compute the ccrs (possibly reading pyproj-data grid file)
+        :param vref_name: Vertical reference name
         :type vref_name: str
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
         :type vref_grid: str
+        :param compute_ccrs: Whether to compute the ccrs (read pyproj-data grid file)
         :type compute_ccrs: boolean
 
         :return:
         """
 
         #for names, we only look for WGS84 ellipsoid or the EGM96/EGM08 geoids: those are used 99% of the time
-        if isinstance(vref_name, str):
-            if isinstance(vref_grid, str):
-                print('Both a vertical reference name and vertical grid are provided: defaulting to using name only.')
+        if isinstance(vref_grid, str):
+            if isinstance(vref_name, str):
+                print('Both a vertical reference name and vertical grid are provided: defaulting to using grid only.')
+            if vref_grid == 'us_nga_egm08_25.tif':
+                self.vref = 'EGM08'
+                self.vref_grid = vref_grid
+            elif vref_grid == 'us_nga_egm96_15.tif':
+                self.vref = 'EGM96'
+                self.vref_grid = vref_grid
+            else:
+                if os.path.exists(os.path.join(pyproj.datadir.get_data_dir(),vref_grid)):
+                    self.vref = 'Unknown vertical reference name from: '+vref_grid
+                    self.vref_grid = vref_grid
+                else:
+                    raise ValueError('Grid not found in '+str(pyproj.datadir.get_data_dir())+': check if proj-data is '
+                         'installed via conda-forge, the pyproj.datadir, and that you are using a grid available at '
+                         'https://github.com/OSGeo/PROJ-data')
+        elif isinstance(vref_name,str):
             if vref_name == 'WGS84':
                 self.vref_grid = None
                 self.vref = 'WGS84'  # WGS84 ellipsoid
@@ -99,14 +135,10 @@ class DEM(SatelliteImage):
                 self.vref = 'EGM96'
             else:
                 raise ValueError(
-                    'Vertical reference name must be either "WGS84", "EGM96" or "EGM08". Otherwise, provide only'
+                    'Vertical reference name must be either "WGS84", "EGM96" or "EGM08". Otherwise, provide'
                     'a geoid grid from PROJ DATA: https://github.com/OSGeo/PROJ-data')
-        elif not isinstance(vref_grid, str):
-            raise ValueError('Vertical reference grid name must be PROJ DATA file name, '
-                             'such as: "us_noaa_geoid06_ak.tif" for the Alaska GEOID2006')
         else:
-            self.vref = 'Unknown vertical reference name'
-            self.vref_grid = vref_grid
+            raise ValueError('Vertical reference name or vertical grid must be a string')
 
         # no deriving the ccrs until those are used in a reprojection (requires pyproj-data grids = ~500Mo)
         if compute_ccrs:
@@ -126,10 +158,10 @@ class DEM(SatelliteImage):
         """
         Convert between vertical references: ellipsoidal heights or geoid grids
 
-        :param vref_name: Name of geoid
-        :param vref_grid: PROJ DATA geoid grid file name
-        :type vref_name: str
+        :param vref_name: Vertical reference name
         :type vref_grid: str
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
+        :type vref_name: str
 
         :return:
         """
