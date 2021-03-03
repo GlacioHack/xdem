@@ -7,7 +7,14 @@ from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 
 def parse_vref_from_product(product):
+    """
 
+    :param product: Product name (typically from satimg.parse_metadata_from_fn)
+    :type product: str
+
+    :return: vref: Vertical reference name
+    :rtype: vref: str
+    """
     # sources for defining vertical references:
     # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
     # SRTMGL1: https://lpdaac.usgs.gov/documents/179/SRTM_User_Guide_V3.pdf
@@ -32,21 +39,36 @@ def parse_vref_from_product(product):
 
 class DEM(SatelliteImage):
 
-    def __init__(self, filename, vref=None, vref_grid=None, ccrs = None, read_vref_from_prod=True, silent=False, **kwargs):
+    def __init__(self, filename, vref=None, vref_grid=None, ccrs = None, silent=False, **kwargs):
+        """
+        Load digital elevation model data through the Raster class, parse additional attributes from filename or metadata
+        trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
+        For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
+
+        :param filename: The filename of the dataset.
+        :type filename: str
+        :param vref: Vertical reference name
+        :type vref: str
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
+        :type vref_grid: str
+        :param ccrs: Compound CRS (vertical + horizontal)
+        :param ccrs: pyproj.CRS
+        :param silent: Whether to display vertical reference setting
+        :param silent: boolean
+        """
 
         super().__init__(filename, **kwargs)
 
         if self.nbands > 1:
-            raise ValueError('DEM rasters should be composed of only one band only')
+            raise ValueError('DEM rasters should be composed of one band only')
 
-        # priority to user input
+        # user input
         self.vref = vref
         self.vref_grid = vref_grid
         self.ccrs = ccrs
 
-        # trying to get vref from product name
-        if read_vref_from_prod:
-            self.__parse_vref_from_fn(silent=silent)
+        # trying to get vref from product name (priority to user input)
+        self.__parse_vref_from_fn(silent=silent)
 
 
     def __parse_vref_from_fn(self,silent=False):
@@ -74,11 +96,11 @@ class DEM(SatelliteImage):
         """
         Set vertical reference with a name or with a grid
 
-        :param vref_name: Name of geoid
-        :param vref_grid: PROJ DATA geoid grid file name
-        :param compute_ccrs: Whether to compute the ccrs (possibly reading pyproj-data grid file)
+        :param vref_name: Vertical reference name
         :type vref_name: str
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
         :type vref_grid: str
+        :param compute_ccrs: Whether to compute the ccrs (read pyproj-data grid file)
         :type compute_ccrs: boolean
 
         :return:
@@ -126,10 +148,10 @@ class DEM(SatelliteImage):
         """
         Convert between vertical references: ellipsoidal heights or geoid grids
 
-        :param vref_name: Name of geoid
-        :param vref_grid: PROJ DATA geoid grid file name
-        :type vref_name: str
+        :param vref_name: Vertical reference name
         :type vref_grid: str
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
+        :type vref_name: str
 
         :return:
         """
