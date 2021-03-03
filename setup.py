@@ -1,5 +1,6 @@
-from setuptools import setup
 from os import path
+
+from setuptools import setup
 
 FULLVERSION = '0.0.1'
 VERSION = FULLVERSION
@@ -12,7 +13,7 @@ setup(name='xdem',
       license='BSD-3',
       packages=['xdem'],
       install_requires=['numpy', 'scipy', 'rasterio', 'geopandas', 'pyproj'],
-      extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal':['pdal']},
+      extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': ['pdal']},
       scripts=[],
       zip_safe=False)
 
@@ -25,7 +26,7 @@ version = '%s'
 short_version = '%s'
 """
     if not filename:
-        filename = path.join(path.dirname(__file__), 'DemUtils',
+        filename = path.join(path.dirname(__file__), 'xdem',
                              'version.py')
 
     a = open(filename, 'w')

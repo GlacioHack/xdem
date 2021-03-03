@@ -4,11 +4,13 @@ Author(s):
     Erik S. Holmlund
 
 """
+from __future__ import annotations
+
 import os
 import tempfile
+from typing import Any
 
 import geoutils as gu
-import pytest
 
 from xdem import coreg
 
@@ -50,7 +52,7 @@ class TestCoreg:
 
     def test_icp(self):
         """Test the ICP coregistration method."""
-        metadata = {}
+        metadata: dict[str, Any] = {}
         _, error = coreg.coregister(self.ref, self.tba, method="icp", mask=self.mask, metadata=metadata)
 
         assert metadata["icp"]["nmad"] == error
