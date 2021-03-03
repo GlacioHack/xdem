@@ -10,7 +10,7 @@ import tempfile
 import geoutils as gu
 import pytest
 
-from DemUtils import coreg
+from xdem import coreg
 
 EXAMPLE_PATHS = {
     "dem1": "examples/Longyearbyen/data/DEM_2009_ref.tif",
