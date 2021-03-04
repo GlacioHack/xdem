@@ -79,6 +79,7 @@ class TestDEM:
         transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
         z_out = transformer.transform(lng,lat,z)[2]
 
+        #check final elevation is finite, higher than ellipsoid with less than 40 m difference (typical geoid in Chile)
         assert np.logical_and.reduce((np.isfinite(z_out),np.greater(z_out,z),np.less(np.abs(z_out-z),40)))
 
 
@@ -91,6 +92,7 @@ class TestDEM:
         transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
         z_out = transformer.transform(lng,lat,z)[2]
 
+        #check final elevation is finite, higher than ellipsoid with less than 40 m difference (typical geoid in Chile)
         assert np.logical_and.reduce((np.isfinite(z_out),np.greater(z_out,z),np.less(np.abs(z_out-z),40)))
 
         #geoid2006 for Alaska
@@ -104,6 +106,7 @@ class TestDEM:
         transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
         z_out = transformer.transform(lng,lat,z)[2]
 
+        #check final elevation is finite, lower than ellipsoid with less than 20 m difference (typical geoid in Alaska)
         assert np.logical_and.reduce((np.isfinite(z_out),np.less(z_out,z),np.less(np.abs(z_out-z),20)))
 
 
@@ -118,6 +121,7 @@ class TestDEM:
         transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
         z_out = transformer.transform(lng,lat,z)[2]
 
+        #check final elevation is finite, lower than ellipsoid with less than 100 m difference (typical geoid in Iceland)
         assert np.logical_and.reduce((np.isfinite(z_out),np.less(z_out,z),np.less(np.abs(z_out-z),100)))
 
         #checking that the function does not run without a reference set
