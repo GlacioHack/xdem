@@ -10,14 +10,8 @@ import xdem
 import numpy as np
 from xdem.dem import DEM
 
-path_module = os.path.dirname(os.path.dirname(os.path.abspath(inspect.getsourcefile(xdem))))
-
-#TODO: move datasets to a "dataset" folder like in geoutils
-EXAMPLE_PATHS = {
-    "dem1": "examples/Longyearbyen/data/DEM_2009_ref.tif",
-    "dem2": "examples/Longyearbyen/data/DEM_1995.tif",
-    "glacier_mask": "examples/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
-}
+xdem.examples.download_longyearbyen_data(overwrite=False)
+xdem.examples.FILEPATHS["longyearbyen_ref_dem"]  # This is the same as EXAMPLE_PATHS["dem1"] before
 
 DO_PLOT = False
 
@@ -26,12 +20,12 @@ class TestDEM:
     def test_load(self):
 
         # check that the loading from DEM __init__ does not fail
-        fn_img = os.path.join(path_module,EXAMPLE_PATHS['dem1'])
+        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
         img = DEM(fn_img)
 
     def test_set_vref(self):
 
-        fn_img = os.path.join(path_module,EXAMPLE_PATHS['dem1'])
+        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
         img = DEM(fn_img)
 
         # check for WGS84
@@ -125,7 +119,7 @@ class TestDEM:
         assert np.logical_and.reduce((np.isfinite(z_out),np.less(z_out,z),np.less(np.abs(z_out-z),100)))
 
         #checking that the function does not run without a reference set
-        fn_img = os.path.join(path_module,EXAMPLE_PATHS['dem1'])
+        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
         img = DEM(fn_img)
         with pytest.raises(ValueError):
             img.to_vref(vref_name='EGM96')
