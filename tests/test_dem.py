@@ -75,7 +75,7 @@ class TestDEM:
             warnings.filterwarnings("ignore", module="pyproj")
             #init is deprecated by
             ellipsoid=pyproj.Proj(init="EPSG:4326") #WGS84 datum ellipsoid height
-            geoid=pyproj.Proj(init="EPSG:4326", geoidgrids='egm96_15.gtx') #EGM96 geoid in Chile, we expect ~30 m difference
+            geoid=pyproj.Proj(init="EPSG:4326", geoidgrids='us_nga_egm96_15.tif') #EGM96 geoid in Chile, we expect ~30 m difference
         transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
         z_out = transformer.transform(lng,lat,z)[2]
 
@@ -132,7 +132,18 @@ class TestDEM:
 
         #checking that the function properly runs with a reference set
         img.set_vref(vref_name='WGS84')
+        mean_ellips = np.nanmean(img.data)
         img.to_vref(vref_name='EGM96')
+        mean_geoid_96 = np.nanmean(img.data)
+
+        assert img.vref == 'EGM96'
+        assert img.vref_grid == 'us_nga_egm96_15.tif'
+
+        #check that the geoid is lower than ellipsoid, less than 15 m difference (Svalbard)
+
+        assert np.greater(mean_ellips,mean_geoid_96)
+        assert np.less(np.abs(mean_ellips-mean_geoid_96),15.)
+
 
 
 
