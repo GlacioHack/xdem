@@ -7,14 +7,14 @@ More documentation to come!
 ## Installation ##
 
 ```
-$ git clone https://github.com/GlacioHack/DemUtils.git
-$ cd ./DemUtils
+$ git clone https://github.com/GlacioHack/xdem.git
+$ cd ./xdem
 $ conda create -f environment.yml
 $ conda activate glacio
 ```
 or
 ```bash
-pip install git+https://github.com/GlacioHack/DemUtils.git
+pip install git+https://github.com/GlacioHack/xdem.git
 ```
 
 ## Structure 
@@ -26,7 +26,7 @@ xdem are for now composed of three libraries:
 
 ## How to contribute
 
-You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/DemUtils/issues) section. All contributions are welcome.
+You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/xdem/issues) section. All contributions are welcome.
 To avoid conflicts, it is suggested to use separate branches for each implementation. All changes must then be submitted to the dev branch using pull requests. Each PR must be reviewed by at least one other person.
 
 ### Documentation - please read ! ###
