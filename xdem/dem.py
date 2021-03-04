@@ -159,7 +159,10 @@ class DEM(SatelliteImage):
             raise ValueError('Vertical reference name or vertical grid must be a string')
 
         #temporary fix to get all types of CRS
-        crs = get_crs(self.filename)
+        if pyproj.proj_version_str >= "7.2.0":
+            crs = self.crs
+        else:
+            crs = get_crs(self.filename)
 
         # no deriving the ccrs until those are used in a reprojection (requires pyproj-data grids = ~500Mo)
         if compute_ccrs:
