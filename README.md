@@ -1,4 +1,4 @@
-# DemUtils
+# xdem
 Set of tools to manipulate Digital Elevation Models (DEMs)
 
 More documentation to come!
@@ -7,21 +7,26 @@ More documentation to come!
 ## Installation ##
 
 ```
-$ git clone https://github.com/GlacioHack/DemUtils.git
-$ cd ./DemUtils
+$ git clone https://github.com/GlacioHack/xdem.git
+$ cd ./xdem
 $ conda create -f environment.yml
 $ conda activate glacio
+```
+or
+```bash
+pip install git+https://github.com/GlacioHack/xdem.git
 ```
 
 ## Structure 
 
-DemUtils are for now composed of two libraries:
+xdem are for now composed of three libraries:
 - `coreg.py` with tools covering differet aspects of DEM coregistration
 - `spatial_tools.py` for spatial operations on DEMs
+- `dem.py` for DEM-specific operations, such as vertical datum correction.
 
 ## How to contribute
 
-You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/DemUtils/issues) section. All contributions are welcome.
+You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/xdem/issues) section. All contributions are welcome.
 To avoid conflicts, it is suggested to use separate branches for each implementation. All changes must then be submitted to the dev branch using pull requests. Each PR must be reviewed by at least one other person.
 
 ### Documentation - please read ! ###
@@ -37,13 +42,13 @@ https://github.com/corteva/rioxarray/blob/master/test/integration/test_integrati
 
 **Coregister a DEM to another DEM**
 ```python
-import GeoUtils as gu
+import xdem
 
 reference_dem = "path/to/reference.tif"
 dem_to_be_aligned = "path/to/dem.tif"
 mask = "path/to/mask.shp"  # This is optional. Could for example be glacier outlines.
 
-aligned_dem, error = gu.coreg.coregister(reference_dem, dem_to_be_aligned, mask=mask)
+aligned_dem, error = xdem.coreg.coregister(reference_dem, dem_to_be_aligned, mask=mask)
 
 aligned_dem.save("path/to/coreg.tif")
 ```
@@ -52,12 +57,12 @@ The currently supported methods are: `"nuth_kaab"`, `"icp"` and `"deramp"`.
 
 **Subtract one DEM with another**
 ```python
-import GeoUtils as gu
+import xdem
 
 first_dem = "path/to/first.tif"
 second_dem = "path/to/second.tif"
 
-difference = gu.spatial_tools.subtract_rasters(first_dem, second_dem)
+difference = xdem.spatial_tools.subtract_rasters(first_dem, second_dem)
 
 difference.save("path/to/difference.tif")
 ```
