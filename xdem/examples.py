@@ -1,26 +1,33 @@
+"""Utility functions to download and find example data."""
 import asyncio
 import os
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import rasterio as rio
+
+EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../", "examples/"))
+# Absolute filepaths to the example files.
+FILEPATHS = {
+    "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen/data/DEM_2009_ref.tif"),
+    "longyearbyen_tba_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen/data/DEM_1990.tif"),
+    "longyearbyen_glacier_outlines": os.path.join(
+        EXAMPLES_DIRECTORY,
+        "Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
+    )
+}
+
+# The URLs for where to find the data.
+URLS = {
+    "longyearbyen_ref_dem": ("zip+https://publicdatasets.data.npolar.no/kartdata/S0_Terrengmodell/"
+                             "Mosaikk/NP_S0_DTM20.zip!NP_S0_DTM20/S0_DTM20.tif"),
+    "longyearbyen_tba_dem": ("zip+https://publicdatasets.data.npolar.no/kartdata/S0_Terrengmodell/"
+                             "Historisk/NP_S0_DTM20_199095_33.zip!NP_S0_DTM20_199095_33/S0_DTM20_199095_33.tif"),
+    "longyearbyen_glacier_outlines": "http://public.data.npolar.no/cryoclim/CryoClim_GAO_SJ_1990.zip"
+}
 
 
 async def async_load_svalbard():
     """Load the datasets asynchronously."""
-    # The URLs for the files to load
-    urls = {
-        "ref": "zip+https://publicdatasets.data.npolar.no/kartdata/S0_Terrengmodell/Mosaikk/NP_S0_DTM20.zip!NP_S0_DTM20/S0_DTM20.tif",
-        "tba": "zip+https://publicdatasets.data.npolar.no/kartdata/S0_Terrengmodell/Historisk/NP_S0_DTM20_199095_33.zip!NP_S0_DTM20_199095_33/S0_DTM20_199095_33.tif",
-        "outlines": "http://public.data.npolar.no/cryoclim/CryoClim_GAO_SJ_1990.zip"
-    }
-
-    # The output filepaths to save the files at.
-    output_paths = {
-        "ref": "examples/Longyearbyen/data/DEM_2009_ref.tif",
-        "tba": "examples/Longyearbyen/data/DEM_1995.tif",
-        "outlines": "examples/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
-    }
     # The bounding coordinates to crop the datasets.
     bounds = {
         "west": 502810,
@@ -30,6 +37,7 @@ async def async_load_svalbard():
     }
 
     async def crop_dem(input_path, output_path, bounds):
+        """Read the input path and crop it to the given bounds."""
         dem = rio.open(input_path)
 
         upper, left = dem.index(bounds["west"], bounds["north"])
@@ -48,7 +56,7 @@ async def async_load_svalbard():
         print(f"Saved {output_path}")
 
     async def read_outlines(input_path, output_path):
-
+        """Read outlines from a path and save them."""
         outlines = gpd.read_file(input_path)
         for col in outlines:
             if outlines[col].dtype == "object":
@@ -57,22 +65,22 @@ async def async_load_svalbard():
         print(f"Saved {output_path}")
 
     await asyncio.gather(
-        crop_dem(urls["ref"], output_paths["ref"], bounds=bounds),
-        crop_dem(urls["tba"], output_paths["tba"], bounds=bounds),
-        read_outlines(urls["outlines"], output_paths["outlines"])
+        crop_dem(URLS["longyearbyen_ref_dem"], FILEPATHS["longyearbyen_ref_dem"], bounds=bounds),
+        crop_dem(URLS["longyearbyen_tba_dem"], FILEPATHS["longyearbyen_tba_dem"], bounds=bounds),
+        read_outlines(URLS["longyearbyen_glacier_outlines"], FILEPATHS["longyearbyen_glacier_outlines"])
     )
 
 
-def load_longyearbyen_examples(exist_ok: bool = True):
+def load_longyearbyen_examples(overwrite: bool = False):
     """
     Fetch the Longyearbyen example files.
 
-    :param exist_ok: Do not download the files again if they already exist.
+    :param overwrite: Do not download the files again if they already exist.
     """
-    if exist_ok and os.path.isfile("examples/Longyearbyen/data/DEM_2009_ref.tif"):
+    if not overwrite and all(map(os.path.isfile, list(FILEPATHS.values()))):
         print("Datasets exist")
         return
     print("Downloading datasets from Longyearbyen")
-    os.makedirs("examples/Longyearbyen/data/glacier_mask", exist_ok=True)
+    os.makedirs(os.path.dirname(FILEPATHS["longyearbyen_glacier_outlines"]), exist_ok=True)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(async_load_svalbard())
