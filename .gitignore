@@ -129,4 +129,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# version file
+xdem/version.py
+
 xdem/examples/
