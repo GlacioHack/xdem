@@ -6,6 +6,8 @@ import pyproj
 import warnings
 from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
+import json
+import subprocess
 
 def parse_vref_from_product(product):
     """
@@ -105,6 +107,20 @@ class DEM(SatelliteImage):
         :return:
         """
 
+        # temporary fix for some CRS with proj < 7.2
+        def get_crs(filepath: str) -> pyproj.CRS:
+            """Get the CRS of a raster with the given filepath."""
+            info = subprocess.run(
+                ["gdalinfo", "-json", filepath],
+                stdout=subprocess.PIPE,
+                check=True,
+                encoding="utf-8"
+            ).stdout
+
+            wkt_string = json.loads(info)["coordinateSystem"]["wkt"]
+
+            return pyproj.CRS.from_wkt(wkt_string)
+
         #for names, we only look for WGS84 ellipsoid or the EGM96/EGM08 geoids: those are used 99% of the time
         if isinstance(vref_grid, str):
 
@@ -142,18 +158,21 @@ class DEM(SatelliteImage):
         else:
             raise ValueError('Vertical reference name or vertical grid must be a string')
 
+        #temporary fix to get all types of CRS
+        crs = get_crs(self.filename)
+
         # no deriving the ccrs until those are used in a reprojection (requires pyproj-data grids = ~500Mo)
         if compute_ccrs:
             if self.vref == 'WGS84':
                 # the WGS84 ellipsoid essentially corresponds to no vertical reference in pyproj
-                self.ccrs = pyproj.CRS(self.crs)
+                self.ccrs = pyproj.CRS(crs)
             else:
                 # for other vrefs, keep same horizontal projection and add geoid grid (the "dirty" way: because init is so
                 # practical and still going to be used for a while)
                 # see https://gis.stackexchange.com/questions/352277/including-geoidgrids-when-initializing-projection-via-epsg/352300#352300
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", module="pyproj")
-                    self.ccrs = pyproj.Proj(init="EPSG:" + str(int(self.crs.to_epsg())), geoidgrids=self.vref_grid).crs
+                    self.ccrs = pyproj.Proj(init="EPSG:" + str(int(crs.to_epsg())), geoidgrids=self.vref_grid).crs
 
     def to_vref(self,vref_name='EGM96',vref_grid=None):
 
@@ -188,9 +207,9 @@ class DEM(SatelliteImage):
         # transform matrix
         transformer = Transformer.from_crs(ccrs_init, ccrs_dest)
         meta = self.ds.meta
-        zz = self.data[0,:]
+        zz = self.data
         xx, yy = self.coords(offset='center')
-        zz_trans = transformer.transform(xx,yy,zz)
+        zz_trans = transformer.transform(xx,yy,zz[0,:])[2]
         zz[0,:] = zz_trans
 
         # update raster
