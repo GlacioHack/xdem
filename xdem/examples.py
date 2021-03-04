@@ -5,7 +5,7 @@ import os
 import geopandas as gpd
 import rasterio as rio
 
-EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../", "examples/"))
+EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "examples/"))
 # Absolute filepaths to the example files.
 FILEPATHS = {
     "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen/data/DEM_2009_ref.tif"),
@@ -26,7 +26,7 @@ URLS = {
 }
 
 
-async def async_load_svalbard():
+async def _async_load_svalbard():
     """Load the datasets asynchronously."""
     # The bounding coordinates to crop the datasets.
     bounds = {
@@ -71,7 +71,7 @@ async def async_load_svalbard():
     )
 
 
-def load_longyearbyen_examples(overwrite: bool = False):
+def download_longyearbyen_examples(overwrite: bool = False):
     """
     Fetch the Longyearbyen example files.
 
@@ -83,4 +83,4 @@ def load_longyearbyen_examples(overwrite: bool = False):
     print("Downloading datasets from Longyearbyen")
     os.makedirs(os.path.dirname(FILEPATHS["longyearbyen_glacier_outlines"]), exist_ok=True)
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_load_svalbard())
+    loop.run_until_complete(_async_load_svalbard())
