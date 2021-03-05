@@ -1,19 +1,21 @@
-name: glacio
+name: xdem
 channels:
   - conda-forge
 dependencies:
+  - python=3
+  - proj=7.2
   - geopandas
   - ipython
   - matplotlib
   - pdal
-  - python-pdal
+  - pytest
   - pyproj
   - rasterio
-  - richdem
   - scipy
   - tqdm
   - pip
   - proj-data
   - pip:
-    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
-    - "--editable=git+https://github.com/GlacioHack/DemUtils.git#egg=DemUtils"
+    - richdem
+#    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
+#    - "--editable=git+https://github.com/GlacioHack/xdem.git#egg=xdem"
