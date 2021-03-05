@@ -10,7 +10,7 @@ import xdem
 import numpy as np
 from xdem.dem import DEM
 
-xdem.examples.download_longyearbyen_data(overwrite=False)
+xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 DO_PLOT = False
 
