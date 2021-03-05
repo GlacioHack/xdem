@@ -82,7 +82,7 @@ class DEM(SatelliteImage):
             vref = parse_vref_from_product(self.product)
             if vref is not None and self.vref is None:
                 if not silent:
-                    print('From product name "'+ str(self.product)+'": setting vertical reference as ' + str(self.vref))
+                    print('From product name "'+ str(self.product)+'": setting vertical reference as ' + str(vref))
                 self.vref = vref
             elif vref is not None and self.vref is not None:
                 if not silent:
