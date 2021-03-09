@@ -267,10 +267,6 @@ def icp_coregistration_pdal(reference_dem: np.ndarray, dem_to_be_aligned: np.nda
     # Check that PDAL is installed.
     check_for_pdal()
 
-    nodata_value = -9999
-    reference_dem[reference_dem <= nodata_value] = np.nan
-    dem_to_be_aligned[reference_dem <= nodata_value] = np.nan
-
     resolution = (bounds.right - bounds.left) / reference_dem.shape[1]
     # Make sure that the DEMs have the same shape
     assert reference_dem.shape == dem_to_be_aligned.shape, (reference_dem.shape, dem_to_be_aligned.shape)
@@ -362,8 +358,9 @@ def icp_coregistration_pdal(reference_dem: np.ndarray, dem_to_be_aligned: np.nda
 
     if verbose:
         print("Done")
-    aligned_dem = rio.open(output_dem_filepath).read(1)
-    aligned_dem[aligned_dem <= nodata_value] = np.nan
+    aligned_dem_reader = rio.open(output_dem_filepath)
+    aligned_dem = aligned_dem_reader.read(1)
+    aligned_dem[aligned_dem == aligned_dem_reader.nodata] = np.nan
 
     # Calculate the NMAD from the elevation difference between the reference and aligned DEM
     elevation_difference = reference_dem - aligned_dem
@@ -1025,6 +1022,12 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     # Make sure that the data is read into memory
     if reference_raster.data is None:
         reference_raster.load(1)
+
+    # Make sure that the input data are in a float format.
+    if reference_raster.data.dtype not in [np.float32, np.float64]:
+        reference_raster.set_dtypes(np.float32, update_array=True)
+    if to_be_aligned_raster.data.dtype not in [np.float32, np.float64]:
+        to_be_aligned_raster.set_dtypes(np.float32, update_array=True)
 
     mask_array = mask_as_array(reference_raster, mask) if mask is not None else None
 
