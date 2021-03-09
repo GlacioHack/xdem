@@ -132,4 +132,4 @@ dmypy.json
 # version file
 xdem/version.py
 
-xdem/examples/
+examples/*/data/
