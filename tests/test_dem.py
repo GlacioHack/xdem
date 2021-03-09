@@ -10,8 +10,7 @@ import xdem
 import numpy as np
 from xdem.dem import DEM
 
-xdem.examples.download_longyearbyen_data(overwrite=False)
-xdem.examples.FILEPATHS["longyearbyen_ref_dem"]  # This is the same as EXAMPLE_PATHS["dem1"] before
+xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 DO_PLOT = False
 
