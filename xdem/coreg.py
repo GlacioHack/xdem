@@ -34,6 +34,12 @@ import scipy.optimize
 from rasterio import Affine
 from tqdm import trange
 
+try:
+    import cv2
+    _has_cv2 = True
+except ImportError:
+    _has_cv2 = False
+
 
 def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]):
     """
@@ -239,9 +245,9 @@ def check_for_pdal(min_version="2.2.0") -> None:
         raise AssertionError(f"Installed PDAL has version: {version}, min required version is {min_version}")
 
 
-def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, bounds: rio.coords.BoundingBox,
-                       mask: Optional[np.ndarray] = None, max_assumed_offset: Optional[float] = None,
-                       verbose=False, metadata: Optional[dict[str, Any]] = None, **_) -> tuple[np.ndarray, float]:
+def icp_coregistration_pdal(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, bounds: rio.coords.BoundingBox,
+                            mask: Optional[np.ndarray] = None, max_assumed_offset: Optional[float] = None,
+                            verbose=False, metadata: Optional[dict[str, Any]] = None, **_) -> tuple[np.ndarray, float]:
     """
     Perform an ICP coregistration in areas where two DEMs overlap.
 
@@ -260,6 +266,10 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     dem_to_be_aligned_unmasked = dem_to_be_aligned.copy()
     # Check that PDAL is installed.
     check_for_pdal()
+
+    nodata_value = -9999
+    reference_dem[reference_dem <= nodata_value] = np.nan
+    dem_to_be_aligned[reference_dem <= nodata_value] = np.nan
 
     resolution = (bounds.right - bounds.left) / reference_dem.shape[1]
     # Make sure that the DEMs have the same shape
@@ -280,26 +290,35 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
         reference_dem[mask] = np.nan
         dem_to_be_aligned[mask] = np.nan
 
+    # Generate center point coordinates for each pixel
+    x_coords, y_coords = np.meshgrid(
+        np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=reference_dem.shape[1]),
+        np.linspace(bounds.bottom + resolution / 2, bounds.top -
+                    resolution / 2, num=reference_dem.shape[0])[::-1]
+    )
+
     # Make a temporary directory to write the overlap-fixed DEMs to
     temporary_dir = tempfile.TemporaryDirectory()
-    reference_temp_filepath = os.path.join(temporary_dir.name, "reference.tif")
-    aligned_temp_filepath = os.path.join(temporary_dir.name, "aligned_pre_icp.tif")
-    aligned_nonmasked_filepath = os.path.join(temporary_dir.name, "aligned_pre_unmasked.tif")
-    output_temp_filepath = os.path.join(temporary_dir.name, "output_dem.tif")
+    reference_temp_filepath = os.path.join(temporary_dir.name, "reference.xyz")
+    tba_temp_filepath = os.path.join(temporary_dir.name, "tba.xyz")
+    tba_nonmasked_temp_filepath = os.path.join(temporary_dir.name, "tba_nonmasked.tif")
+    output_dem_filepath = os.path.join(temporary_dir.name, "output_dem.tif")
 
-    lowest_value = max(np.finfo(reference_dem.dtype).min, np.finfo(dem_to_be_aligned.dtype).min) + 0.1
-    write_geotiff(reference_temp_filepath, reference_dem, crs=None, bounds=bounds)
-    write_geotiff(aligned_temp_filepath, dem_to_be_aligned, crs=None, bounds=bounds)
-
-    if mask is not None:
-        write_geotiff(aligned_nonmasked_filepath, dem_to_be_aligned_unmasked, crs=None, bounds=bounds)
+    # Save the x, y and z coordinates into a temporary xyz point cloud which will be read by PDAL.
+    for path, elev in zip([reference_temp_filepath, tba_temp_filepath], [reference_dem, dem_to_be_aligned]):
+        data = np.dstack([
+            x_coords[~np.isnan(elev)],
+            y_coords[~np.isnan(elev)],
+            elev[~np.isnan(elev)]
+        ]).squeeze()
+        assert data.shape[1] == 3, data.shape
+        np.savetxt(path, data, delimiter=",", header="X,Y,Z")
 
     # Define values to fill the below pipeline with
     pdal_parameters = {
         "REFERENCE_FILEPATH": reference_temp_filepath,
-        "ALIGNED_FILEPATH": aligned_temp_filepath,
-        "LOWEST_VALUE": f"{lowest_value:.4f}",
-        "OUTPUT_FILEPATH": output_temp_filepath,
+        "ALIGNED_FILEPATH": tba_temp_filepath,
+        "OUTPUT_FILEPATH": output_dem_filepath,
         "RESOLUTION": resolution,
         "WIDTH": reference_dem.shape[1],
         "HEIGHT": reference_dem.shape[0],
@@ -311,18 +330,17 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
     pdal_pipeline = '''
     [
         {
-            "type": "readers.gdal",
+            "type": "readers.text",
             "filename": "REFERENCE_FILEPATH",
-            "header": "Z"
+            "header": "X,Y,Z"
         },
         {
-            "type": "readers.gdal",
+            "type": "readers.text",
             "filename": "ALIGNED_FILEPATH",
-            "header": "Z"
+            "header": "X,Y,Z"
         },
         {
-            "type": "filters.icp",
-            "where": "(Z > LOWEST_VALUE)"
+            "type": "filters.icp"
         },
         {
             "type": "writers.gdal",
@@ -344,8 +362,8 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
 
     if verbose:
         print("Done")
-    aligned_dem = rio.open(output_temp_filepath).read(1)
-    aligned_dem[aligned_dem <= lowest_value] = np.nan
+    aligned_dem = rio.open(output_dem_filepath).read(1)
+    aligned_dem[aligned_dem <= nodata_value] = np.nan
 
     # Calculate the NMAD from the elevation difference between the reference and aligned DEM
     elevation_difference = reference_dem - aligned_dem
@@ -353,7 +371,8 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
 
     # If a mask was given, correct the unmasked DEM using the estimated transform
     if mask is not None:
-        pdal_parameters["INPUT_FILEPATH"] = aligned_nonmasked_filepath
+        write_geotiff(tba_nonmasked_temp_filepath, dem_to_be_aligned_unmasked, crs=None, bounds=bounds)
+        pdal_parameters["INPUT_FILEPATH"] = tba_nonmasked_temp_filepath
         pdal_parameters["MATRIX"] = pdal_metadata["stages"]["filters.icp"]["composed"].replace("\n", " ")
         pdal_pipeline = """
         [
@@ -380,12 +399,100 @@ def icp_coregistration(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray,
             }
         ]"""
         run_pdal_pipeline(pdal_pipeline, parameters=pdal_parameters)
-        aligned_dem = rio.open(output_temp_filepath).read(1)
-        aligned_dem[aligned_dem <= lowest_value] = np.nan
+        aligned_dem = rio.open(output_dem_filepath).read(1)
 
     if metadata is not None:
-        metadata["icp"] = pdal_metadata["stages"]["filters.icp"]
-        metadata["icp"]["nmad"] = nmad
+        metadata["icp_pdal"] = pdal_metadata["stages"]["filters.icp"]
+        metadata["icp_pdal"]["nmad"] = nmad
+
+    return aligned_dem, nmad
+
+
+def icp_coregistration_opencv(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, bounds: rio.coords.BoundingBox,
+                              mask: Optional[np.ndarray] = None, max_iterations=100, tolerance=0.05,
+                              rejection_scale=2.5, num_levels=6, metadata: Optional[dict[str, Any]] = None,
+                              **_) -> tuple[np.ndarray, float]:
+    """
+    Coregister one DEM to a reference DEM.
+
+    :param reference_dem: The input array of the DEM acting reference.
+    :param dem_to_be_aligned: The input array to the DEM acting aligned.
+    :param bounds: The bounding coordinates of the reference_dem.
+    :param mask: A boolean array of areas to exclude from the coregistration.
+    :param max_iterations: The maximum amount of iterations to run ICP.
+    :param tolerance: The minimum difference between iterations after which to stop.
+    :param rejection_scale: The threshold for outliers to be considered (scale * standard-deviation of residuals).
+    :param num_levels: Number of octrees to consider. A higher number is faster but may be more inaccurate.
+    :param metadata: Optional. A metadata dictionary that will be updated with the key "icp".
+
+    :returns: The aligned DEM (array) and the NMAD error.
+
+    # noqa: DAR101 **_
+    """
+    if not _has_cv2:
+        raise AssertionError("opencv (cv2) is not available and needs to be installed.")
+    dem_to_be_aligned_unmasked = dem_to_be_aligned.copy()
+
+    resolution = reference_dem.shape[1] / (bounds.right - bounds.left)
+    points: dict[str, np.ndarray] = {}
+    x_coords, y_coords = np.meshgrid(
+        np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=reference_dem.shape[1]),
+        np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=reference_dem.shape[0])[::-1]
+    )
+    x_coords -= bounds.left
+    y_coords -= bounds.bottom
+
+    if mask is not None:
+        reference_dem[mask] = np.nan
+        dem_to_be_aligned[mask] = np.nan
+
+    for key, dem in zip(["ref", "tba", "tba_unmasked"], [reference_dem, dem_to_be_aligned, dem_to_be_aligned_unmasked]):
+
+        gradient_x, gradient_y = np.gradient(dem)
+
+        normal_east = np.sin(np.arctan(gradient_y / resolution)) * -1
+        normal_north = np.sin(np.arctan(gradient_x / resolution))
+        normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
+
+        valid_mask = ~np.isnan(dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
+
+        point_cloud = np.dstack([
+            x_coords[valid_mask],
+            y_coords[valid_mask],
+            dem[valid_mask],
+            normal_east[valid_mask],
+            normal_north[valid_mask],
+            normal_up[valid_mask]
+        ]).squeeze()
+
+        points[key] = point_cloud[~np.any(np.isnan(point_cloud), axis=1)].astype("float32")
+
+    icp = cv2.ppf_match_3d_ICP(max_iterations, tolerance, rejection_scale, num_levels)
+    _, residual, transform = icp.registerModelToScene(points["tba"], points["ref"])
+
+    assert residual < 1000, f"ICP coregistration failed: {residual=}, threshold: 1000"
+
+    transformed_points = cv2.perspectiveTransform(points["tba_unmasked"][:, :3].reshape(1, -1, 3), transform).squeeze()
+
+    aligned_dem = scipy.interpolate.griddata(
+        points=transformed_points[:, :2],
+        values=transformed_points[:, 2],
+        xi=tuple(np.meshgrid(
+            np.linspace(bounds.left, bounds.right, reference_dem.shape[1]) - bounds.left,
+            np.linspace(bounds.bottom, bounds.top, reference_dem.shape[0])[::-1] - bounds.bottom
+        )),
+        method="nearest"
+    )
+    aligned_dem[np.isnan(dem_to_be_aligned_unmasked)] = np.nan
+
+    nmad = calculate_nmad(aligned_dem - reference_dem)
+
+    if metadata is not None:
+        metadata["icp_opencv"] = {
+            "transform": transform,
+            "residual": residual,
+            "nmad": nmad
+        }
 
     return aligned_dem, nmad
 
@@ -815,11 +922,12 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 class CoregMethod(Enum):
     """A selection of a coregistration method."""
 
-    ICP = icp_coregistration
+    ICP_PDAL = icp_coregistration_pdal
+    ICP_OPENCV = icp_coregistration_opencv
     AMAURY = amaury_coregister_dem
     DERAMP = deramp_dem
 
-    @ staticmethod
+    @staticmethod
     def from_str(string: str) -> CoregMethod:
         """
         Try to parse a coregistration method from a string.
@@ -831,7 +939,9 @@ class CoregMethod(Enum):
         :returns: The parsed coregistration method.
         """
         valid_strings = {
-            "icp": CoregMethod.ICP,
+            "icp_pdal": CoregMethod.ICP_PDAL,
+            "icp": CoregMethod.ICP_OPENCV,
+            "icp_opencv": CoregMethod.ICP_OPENCV,
             "amaury": CoregMethod.AMAURY,
             "nuth_kaab": CoregMethod.AMAURY,
             "deramp": CoregMethod.DERAMP
@@ -922,6 +1032,10 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
 
     to_be_aligned_dem = to_be_aligned_raster.reproject(reference_raster).data.squeeze()
     reference_dem = reference_raster.data.squeeze().copy()  # type: ignore
+
+    # Set nodata values to nans
+    to_be_aligned_dem[to_be_aligned_dem == to_be_aligned_raster.nodata] = np.nan
+    reference_dem[reference_dem == reference_raster.nodata] = np.nan
 
     # Align the raster using the selected method. This returns a numpy array and the corresponding error
     aligned_dem, error = method(  # type: ignore

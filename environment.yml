@@ -6,6 +6,7 @@ dependencies:
   - ipython
   - matplotlib
   - pdal
+  - opencv
   - python-pdal
   - pyproj
   - rasterio
