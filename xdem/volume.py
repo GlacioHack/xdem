@@ -1,10 +1,11 @@
 """Functions to calculate changes in volume (aimed for glaciers)."""
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import numpy as np
 import pandas as pd
+import scipy.interpolate
 
 
 def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
@@ -106,3 +107,38 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
     interpolated_values.index = hypsometric_bins.index
 
     return interpolated_values
+
+
+def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem: np.ndarray,
+                              pixel_size: Union[float, tuple[float, float]]) -> pd.Series:
+    """
+    Calculate the associated representative area of the given dDEM bins.
+
+    :param ddem_bins: A Series or DataFrame of dDEM values. If a DataFrame is given, the column 'value' will be used.
+    :param ref_dem: The reference DEM. This should not have any NaNs.
+    :param pixel_size: The xy or (x, y) size of the reference DEM pixels in georeferenced coordinates.
+
+    :returns: The representative area within the given dDEM bins.
+    """
+    assert not np.any(np.isnan(ref_dem)), "The given reference DEM has NaNs. No NaNs are allowed to calculate area!"
+
+    if isinstance(ddem_bins, pd.DataFrame):
+        ddem_bins = ddem_bins["value"]
+    assert not np.any(np.isnan(ddem_bins.values)), "The dDEM bins cannot contain NaNs. Remove or fill them first."
+    # Generate a continuous elevation vs. dDEM function
+    ddem_func = scipy.interpolate.interp1d(ddem_bins.index.mid, ddem_bins.values,
+                                           kind="linear", fill_value="extrapolate")
+    # Generate average elevations by subtracting half of the dDEM's values to the reference DEM
+    mean_dem = ref_dem - (ddem_func(ref_dem) / 2)
+
+    # Extract the bins from the dDEM series and compute the frequency of points in the bins.
+    bins = np.r_[[ddem_bins.index.left[0]], ddem_bins.index.right]
+    bin_counts = np.histogram(mean_dem, bins=bins)[0]
+
+    # Multiply the bin counts with the pixel area to get the full area.
+    bin_area = bin_counts * (pixel_size ** 2 if not isinstance(pixel_size, tuple) else pixel_size[0] * pixel_size[1])
+
+    # Put this in a series which will be returned.
+    output = pd.Series(index=ddem_bins.index, data=bin_area)
+
+    return output
