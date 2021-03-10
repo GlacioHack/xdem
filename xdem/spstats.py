@@ -12,7 +12,6 @@ import skgstat as skg
 from scipy import integrate
 import multiprocessing as mp
 import pandas as pd
-import ogr
 from functools import partial
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
@@ -104,6 +103,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
     """
 
     # checks
+    dh = dh.squeeze()
     if coords is None and gsd is None:
         raise TypeError('Must provide either coordinates or ground sampling distance.')
     elif gsd is not None and len(dh.shape) == 1:
@@ -159,6 +159,8 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         # subsetting
         dh_sub, coords_sub = random_subset(dh, coords, nsamp)
         # getting empirical variogram
+        print(dh_sub.shape)
+        print(coords_sub.shape)
         df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
         df['exp_sigma'] = np.nan
 
@@ -633,10 +635,10 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
     count = len(dh[~np.isnan(dh)])
     print('Number of valid pixels: ' +str(count))
     nb_cadrant = int(np.floor(np.sqrt((count * gsd **2) / area_size) + 1))
-    #rectangular
+    # rectangular
     nx_sub = int(np.floor((nx - 1) / nb_cadrant))
     ny_sub = int(np.floor((ny - 1) / nb_cadrant))
-    #radius size for a circular patch
+    # radius size for a circular patch
     rad = int(np.floor(np.sqrt(area_size/np.pi * gsd **2)))
 
     tile, mean_patch, med_patch, std_patch, nb_patch = ([],) * 5
