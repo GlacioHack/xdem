@@ -163,12 +163,12 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         # TODO: somewhere here we could think of adding random sampling without replacement
         if nproc == 1:
             print('Using 1 core...')
-            list_df = []
+            list_df_nb = []
             for i in range(nrun):
                 dh_sub, coords_sub = random_subset(dh,coords,nsamp)
                 df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
                 df['run'] = i
-                list_df.append(df)
+                list_df_nb.append(df)
         else:
             print('Using '+str(nproc)+ 'cores...')
             list_dh_sub = []
@@ -189,7 +189,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 df_nb = list_df[i]
                 df_nb['run'] = i
                 list_df_nb.append(df_nb)
-            df = pd.concat(list_df_nb)
+        df = pd.concat(list_df_nb)
 
     return df
 
