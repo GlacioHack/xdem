@@ -28,9 +28,9 @@ def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovec
 def test_coreg_method_enum():
     """Test that the CoregMethod enum works as it should."""
     # Try to generate an enum from a string
-    icp = coreg.CoregMethod.from_str("icp")
+    icp = coreg.CoregMethod.from_str("icp_pdal")
     # Make sure the enum points to the right function
-    assert icp == coreg.icp_coregistration   # pylint: disable=comparison-with-callable
+    assert icp == coreg.icp_coregistration_pdal   # pylint: disable=comparison-with-callable
 
     # Make sure the following madness ends up in a ValueError
     try:
@@ -46,12 +46,22 @@ class TestCoreg:
 
     ref, tba, mask = load_examples()  # Load example reference, to-be-aligned and mask.
 
-    def test_icp(self):
+    def test_icp_opencv(self):
+        """Test the opencv ICP coregistration method."""
+        metadata: dict[str, Any] = {}
+        _, error = coreg.coregister(self.ref, self.tba, method="icp_opencv", mask=self.mask, metadata=metadata)
+        print(metadata)
+
+        assert abs(metadata["icp_opencv"]["nmad"] - error) < 0.01
+
+        assert error < 10
+
+    def test_icp_pdal(self):
         """Test the ICP coregistration method."""
         metadata: dict[str, Any] = {}
-        _, error = coreg.coregister(self.ref, self.tba, method="icp", mask=self.mask, metadata=metadata)
+        _, error = coreg.coregister(self.ref, self.tba, method="icp_pdal", mask=self.mask, metadata=metadata)
 
-        assert metadata["icp"]["nmad"] == error
+        assert abs(metadata["icp_pdal"]["nmad"] - error) < 0.01
 
         assert error < 10
 
