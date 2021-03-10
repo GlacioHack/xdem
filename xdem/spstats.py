@@ -2,6 +2,7 @@
 xdem.spstats provides tools to use spatial statistics for elevation change data
 """
 from __future__ import annotations
+from typing import Callable, Union
 import os
 import numpy as np
 import math as m
@@ -34,11 +35,8 @@ def get_empirical_variogram(dh: np.ndarray,coords: np.ndarray, **kwargs) -> pd.D
         count[0:len(tmp_count)] = tmp_count
 
     # there are still some exceptions not well handled by skgstat
-    except:
-        if 'n_lags' in kwargs.keys():
-            n_lags = kwargs.get('n_lags')
-        else:
-            n_lags = 10
+    except ZeroDivisionError:
+        n_lags = kwargs.get('n_lags') or 10
         exp, bins, count = (np.zeros(n_lags)*np.nan for i in range(3))
 
     df = pd.DataFrame()
@@ -85,7 +83,8 @@ def random_subset(dh,coords,nsamp,method='random_index'):
     return dh_sub, coords_sub
 
 def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coords: np.ndarray = None,
-                                          nsamp: int = 10000, range_list: list= None, nrun=1, nproc=1, **kwargs) -> pd.DataFrame:
+                                          nsamp: int = 10000, range_list: list= None, nrun: int=1, nproc: int=1,
+                                          **kwargs) -> pd.DataFrame:
 
     """
     Wrapper to sample multi-range empirical variograms from the data.
@@ -97,6 +96,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
     :param range_list: successive ranges with even binning
     :param nsamp: number of samples to randomly draw from the elevation differences
     :param nrun: number of samplings
+    :param nproc: number of processing cores
 
     :return: empirical variogram (variance, lags, counts)
     """
@@ -193,7 +193,6 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     return df
 
-
 def exact_neff_sphsum_circular(area: float,crange1: float,psill1: float,crange2: float,psill2: float) -> float:
     """
     Number of effective samples derived from exact integration of sum of spherical variogram models over a circular area.
@@ -234,7 +233,7 @@ def exact_neff_sphsum_circular(area: float,crange1: float,psill1: float,crange2:
 
     return (psill1 + psill2)/std_err**2
 
-def neff_circ(area: float,list_vgm: list) -> float:
+def neff_circ(area: float,list_vgm: list[Union[float,str,float]]) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
@@ -310,7 +309,7 @@ def neff_rect(area: float,width: float,crange1: float,psill1: float,model1: str 
         return (psill1 + psill2) / std_err ** 2
 
 
-def integrate_fun(fun: Union[function,LowLevelCallable],low_b: float ,upp_b: float) -> float:
+def integrate_fun(fun: Union[function,],low_b: float ,upp_b: float) -> float:
     """
     Numerically integrate function between upper and lower bounds
     :param fun: function
@@ -322,7 +321,7 @@ def integrate_fun(fun: Union[function,LowLevelCallable],low_b: float ,upp_b: flo
 
     return integrate.quad(fun,low_b,upp_b)[0]
 
-def cov(h: float,crange: float,model: str='Sph',psill: float=1.,kappa: float=1/2,nugget: float=0) -> function:
+def cov(h: float,crange: float,model: str='Sph',psill: float=1.,kappa: float=1/2,nugget: float=0) -> Callable:
     """
     Covariance function based on variogram function (COV = STD - VGM)
 
@@ -372,19 +371,19 @@ def vgm(h: float ,crange: float,model: str='Sph',psill: float=1.,kappa:float=1/2
 
     return vgm
 
-def std_err_finite(std: float, Neff: float, neff: float) -> float:
+def std_err_finite(std: float, neff_tot: float, neff: float) -> float:
     """
     Standard error of subsample of a finite ensemble
 
     :param std: standard deviation
-    :param Neff: maximum number of effective samples
+    :param neff_tot: maximum number of effective samples
     :param neff: number of effective samples
 
     :return: standard error
     """
-    return std * np.sqrt(1 / Neff * (Neff - neff) / Neff)
+    return std * np.sqrt(1 / neff_tot * (neff_tot - neff) / neff_tot)
 
-def std_err(std: float, Neff: float) -> float:
+def std_err(std: float, neff: float) -> float:
     """
     Standard error
 
@@ -393,7 +392,7 @@ def std_err(std: float, Neff: float) -> float:
 
     :return: standard error
     """
-    return std * np.sqrt(1 / Neff)
+    return std * np.sqrt(1 / neff)
 
 def distance_latlon(tup1: tuple,tup2: tuple) -> float:
     """
@@ -458,8 +457,8 @@ def part_covar_sum(argsin:tuple) -> float:
 
     return part_var_err
 
-def double_sum_covar(list_tuple_errs: list, corr_ranges: list, list_area_tot: list, list_lat: list, list_lon: list,
-                     nproc: int=1):
+def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], list_area_tot: list[float],
+                     list_lat: list[float], list_lon: list[float], nproc: int=1):
 
     """
     Double sum of covariances for propagating multi-range correlated errors between disconnected spatial ensembles
