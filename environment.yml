@@ -8,6 +8,7 @@ dependencies:
   - ipython
   - matplotlib
   - pdal
+  - opencv
   - pytest
   - pyproj
   - rasterio

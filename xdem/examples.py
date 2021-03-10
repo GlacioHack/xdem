@@ -5,7 +5,7 @@ import os
 import geopandas as gpd
 import rasterio as rio
 
-EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "examples/"))
+EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../", "examples/"))
 # Absolute filepaths to the example files.
 FILEPATHS = {
     "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen/data/DEM_2009_ref.tif"),
