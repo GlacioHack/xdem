@@ -4,6 +4,7 @@ xdem.spstats provides tools to use spatial statistics for elevation change data
 from __future__ import annotations
 from typing import Callable, Union
 import os
+from scipy.optimize import curve_fit
 import numpy as np
 import math as m
 import skgstat as skg
@@ -13,7 +14,7 @@ import pandas as pd
 import ogr
 from functools import partial
 
-def get_empirical_variogram(dh: np.ndarray,coords: np.ndarray, **kwargs) -> pd.DataFrame:
+def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
     Get empirical variogram from skgstat.Variogram object
 
@@ -44,7 +45,7 @@ def get_empirical_variogram(dh: np.ndarray,coords: np.ndarray, **kwargs) -> pd.D
 
     return df
 
-def wrapper_get_empirical_variogram(argdict: dict,**kwargs) -> pd.DataFrame:
+def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
 
     """
     Multiprocessing wrapper for get_empirical_variogram
@@ -58,7 +59,7 @@ def wrapper_get_empirical_variogram(argdict: dict,**kwargs) -> pd.DataFrame:
 
     return get_empirical_variogram(dh=argdict['dh'],coords=argdict['coords'],**kwargs)
 
-def random_subset(dh,coords,nsamp,method='random_index'):
+def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int):
 
     #TODO: add methods that might be more relevant with the multi-distance sampling?
     """
@@ -66,7 +67,7 @@ def random_subset(dh,coords,nsamp,method='random_index'):
 
     :param dh: elevation differences
     :param coords: coordinates
-    :param method:
+    :param nsamp: number of sammples for subsampling
 
     :return: subsets of dh and coords
     """
@@ -193,7 +194,72 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     return df
 
-def exact_neff_sphsum_circular(area: float,crange1: float,psill1: float,crange2: float,psill2: float) -> float:
+def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> Callable:
+
+    """
+    Fit a multi-range variogram model to an empirical variogram, weighted based on sampling and elevation errors
+
+    :param list_model: list of variogram models to sum for the fit: from short-range to long-ranges
+    :param emp_vgm_df: empirical variogram
+
+    :return: modelled variogram
+    """
+
+    # TODO: expand to other models than spherical, exponential, gaussian (more than 2 arguments)
+    def vgm_sum(h, *args):
+        fn = 0
+        i = 0
+        for model in list_model:
+            fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
+            i += 2
+
+        return fn
+
+
+    # use shape of empirical variogram to assess rough boundaries/first estimates
+    n_average = np.ceil(len(emp_vgm_df.exp.values) / 10)
+    exp_movaverage = np.convolve(emp_vgm_df.exp.values, np.ones(n_average)/n_average, mode='valid')
+    grad = np.gradient(exp_movaverage,2)
+    # maximum variance
+    max_var = np.max(exp_movaverage)
+
+    # to simplify things for scipy, let's provide boundaries and first guesses
+    p0 = []
+    bounds = []
+    for i in range(len(list_model)):
+
+        # use largest boundaries possible for our problem
+        psill_bound = [0,1]*max_var
+        range_bound = [emp_vgm_df.bins.values[0],emp_vgm_df.bins.values[-1]]
+
+        # use psill evenly distributed
+        psill_p0 = (1/len(list_model))*max_var
+        # use corresponding ranges
+        ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
+        range_p0 = emp_vgm_df.bins.values[ind]
+
+        #TODO: if adding other variogram models, add condition here
+
+        # add bounds and guesses with same order as function arguments
+        bounds.append(range_bound)
+        bounds.append(psill_bound)
+
+        p0.append(range_p0)
+        p0.append(psill_p0)
+
+    if np.all(np.isnan(emp_vgm_df.sig.values)):
+        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values, emp_vgm_df.exp.values, method='trf', p0=p0, bounds=bounds)
+    else:
+        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values, emp_vgm_df.exp.values, method='trf', p0=p0, bounds=bounds
+                             ,sigma=emp_vgm_df.exp_sigma.values)
+
+
+    fun = partial(vgm,*cof)
+
+    return fun
+
+
+def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crange2: float, psill2: float) -> float:
     """
     Number of effective samples derived from exact integration of sum of spherical variogram models over a circular area.
     The number of effective samples serves to convert between standard deviation/partial sills and standard error
@@ -233,7 +299,7 @@ def exact_neff_sphsum_circular(area: float,crange1: float,psill1: float,crange2:
 
     return (psill1 + psill2)/std_err**2
 
-def neff_circ(area: float,list_vgm: list[Union[float,str,float]]) -> float:
+def neff_circ(area: float, list_vgm: list[Union[float,str,float]]) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
@@ -266,8 +332,8 @@ def neff_circ(area: float,list_vgm: list[Union[float,str,float]]) -> float:
     return psill_tot/std_err**2
 
 
-def neff_rect(area: float,width: float,crange1: float,psill1: float,model1: str ='Sph',crange2: float = None,
-              psill2: float = None,model2: str = None) -> float:
+def neff_rect(area: float, width: float, crange1: float, psill1: float, model1: str = 'Sph', crange2: float = None,
+              psill2: float = None, model2: str = None) -> float:
     """
     Number of effective samples derived from numerical integration for a sum of 2 variogram functions over a rectangular area
 
@@ -309,7 +375,7 @@ def neff_rect(area: float,width: float,crange1: float,psill1: float,model1: str 
         return (psill1 + psill2) / std_err ** 2
 
 
-def integrate_fun(fun: Union[function,],low_b: float ,upp_b: float) -> float:
+def integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
     """
     Numerically integrate function between upper and lower bounds
     :param fun: function
@@ -321,7 +387,7 @@ def integrate_fun(fun: Union[function,],low_b: float ,upp_b: float) -> float:
 
     return integrate.quad(fun,low_b,upp_b)[0]
 
-def cov(h: float,crange: float,model: str='Sph',psill: float=1.,kappa: float=1/2,nugget: float=0) -> Callable:
+def cov(h: float,crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0) -> Callable:
     """
     Covariance function based on variogram function (COV = STD - VGM)
 
@@ -337,7 +403,7 @@ def cov(h: float,crange: float,model: str='Sph',psill: float=1.,kappa: float=1/2
 
     return (nugget + psill) - vgm(h,crange,model=model,psill=psill,kappa=kappa)
 
-def vgm(h: float ,crange: float,model: str='Sph',psill: float=1.,kappa:float=1/2,nugget:float=0):
+def vgm(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0):
     """
     Compute variogram model function (Spherical, Exponential, Gaussian or Exponential Class)
 
@@ -350,7 +416,6 @@ def vgm(h: float ,crange: float,model: str='Sph',psill: float=1.,kappa:float=1/2
 
     :returns: variogram function
     """
-
 
     c0 = nugget #nugget
     c1 = psill #partial sill
@@ -388,13 +453,13 @@ def std_err(std: float, neff: float) -> float:
     Standard error
 
     :param std: standard deviation
-    :param Neff: number of effective samples
+    :param neff: number of effective samples
 
     :return: standard error
     """
     return std * np.sqrt(1 / neff)
 
-def distance_latlon(tup1: tuple,tup2: tuple) -> float:
+def distance_latlon(tup1: tuple, tup2: tuple) -> float:
     """
     Distance between two lat/lon coordinates projected on a spheroid
     :param tup1: lon/lat coordinates of first point
@@ -421,7 +486,7 @@ def distance_latlon(tup1: tuple,tup2: tuple) -> float:
 
     return distance
 
-def kernel_sph(xi: float,x0: float,a1: float)-> float:
+def kernel_sph(xi: float, x0: float, a1: float) -> float:
     #TODO: homogenize kernel/variogram use
     """
     Spherical kernel
@@ -437,7 +502,7 @@ def kernel_sph(xi: float,x0: float,a1: float)-> float:
         return 1 - 3 / 2 * np.abs(xi-x0) / a1 + 1 / 2 * (np.abs(xi-x0) / a1) ** 3
 
 
-def part_covar_sum(argsin:tuple) -> float:
+def part_covar_sum(argsin: tuple) -> float:
     """
     Multiprocessing wrapper for covariance summing
     :param argsin: Tupled argument for covariance calculation
@@ -458,7 +523,7 @@ def part_covar_sum(argsin:tuple) -> float:
     return part_var_err
 
 def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], list_area_tot: list[float],
-                     list_lat: list[float], list_lon: list[float], nproc: int=1):
+                     list_lat: list[float], list_lon: list[float], nproc: int=1) -> float:
 
     """
     Double sum of covariances for propagating multi-range correlated errors between disconnected spatial ensembles
