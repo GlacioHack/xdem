@@ -13,7 +13,7 @@ setup(name='xdem',
       license='BSD-3',
       packages=['xdem'],
       install_requires=['numpy', 'scipy', 'rasterio', 'geopandas', 'pyproj', 'tqdm', 'geoutils'],
-      extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': ['pdal']},
+      extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': ['pdal'], 'opencv': ['opencv']},
       scripts=[],
       zip_safe=False)
 
