@@ -72,3 +72,34 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
     )
 
     return output
+
+
+def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, height_column="median", method="polynomial", order=3,
+                                 count_threshold: Optional[int] = None) -> pd.Series:
+    """
+    Interpolate hypsometric bins using any valid Pandas interpolation technique.
+
+    NOTE: It will not extrapolate!
+
+    :param hypsometric_bins: Bins where nans will be interpolated.
+    :param height_column: The name of the column in 'hypsometric_bins' to use as heights.
+    :param method: Any valid Pandas interpolation technique (e.g. 'linear', 'polynomial', 'ffill', 'bfill').
+    :param order: The polynomial order to use. Only used if method='polynomial'.
+    :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
+    :returns: Bins interpolated with the chosen interpolation method.
+    """
+    bins = hypsometric_bins.copy()
+    bins.index = bins.index.mid
+
+    if count_threshold is not None:
+        assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
+        bins_under_threshold = bins["count"] < count_threshold
+        bins.loc[bins_under_threshold, height_column] = np.nan
+
+    interpolated_values = bins[height_column].interpolate(method=method, order=order, limit_direction="both")
+
+    if count_threshold is not None:
+        interpolated_values.loc[bins_under_threshold] = hypsometric_bins.loc[bins_under_threshold.values, height_column]
+    interpolated_values.index = hypsometric_bins.index
+
+    return interpolated_values
