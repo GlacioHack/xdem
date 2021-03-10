@@ -159,6 +159,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         dh_sub, coords_sub = random_subset(dh, coords, nsamp)
         # getting empirical variogram
         df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
+        df['exp_sigma'] = np.nan
 
     else:
         # TODO: somewhere here we could think of adding random sampling without replacement
@@ -191,6 +192,15 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 df_nb['run'] = i
                 list_df_nb.append(df_nb)
         df = pd.concat(list_df_nb)
+
+        # group results, use mean as empirical variogram, estimate sigma, and sum the counts
+        df_grouped = df.groupby('bins',dropna=False)
+        df_mean = df_grouped[['exp']].mean()
+        df_sig = df_grouped[['exp']].sigma()
+        df_count = df_grouped[['count']].sum()
+        df['exp']=df_mean['exp']
+        df['exp_sigma'] = df_sig['exp']
+        df['count'] = df_count['count']
 
     return df
 
