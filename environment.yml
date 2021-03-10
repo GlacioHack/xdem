@@ -18,5 +18,6 @@ dependencies:
   - proj-data
   - pip:
     - richdem
+    - scikit-gstat
 #    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
 #    - "--editable=git+https://github.com/GlacioHack/xdem.git#egg=xdem"
