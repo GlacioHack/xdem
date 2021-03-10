@@ -1,16 +1,14 @@
 """Functions to calculate changes in volume (aimed for glaciers)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
 
-import xdem
-
 
 def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
-                        normalized_bin_size: bool = False) -> pd.DataFrame:
+                        normalized_bin_size: bool = False, aggregation_function: Callable = np.median) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
 
@@ -20,6 +18,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
     :param ref_dem: The reference DEM as a 2D or 1D array.
     :param bin_size: The bin interval size in georeferenced units (or percent; 0-100, if normalized_bin_size=True)
     :param normalized_bin_size: If the given bin size should be parsed as a percentage of the glacier's elevation range.
+    :param aggregation_function: The function to aggregate the elevation values within a bin. Defaults to the median.
 
     :returns: A Pandas DataFrame with elevation bins and dDEM statistics.
     """
@@ -50,33 +49,35 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
 
     # Calculate statistics for each bin.
     # If no values exist, all stats should be nans (except count with should be 0)
-    medians, means, stds, nmads = (np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan, ) * 4
-    counts = np.zeros_like(medians, dtype=int)
+    # medians, means, stds, nmads = (np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan, ) * 4
+    values = np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan
+    counts = np.zeros_like(values, dtype=int)
     for i in np.arange(indices.min(), indices.max() + 1):
         values_in_bin = ddem[indices == i]
         # Skip if no values are in the bin.
         if values_in_bin.shape[0] == 0:
             continue
 
-        medians[i - 1] = np.median(values_in_bin)
-        means[i - 1] = np.mean(values_in_bin)
-        stds[i - 1] = np.std(values_in_bin)
+        values[i - 1] = aggregation_function(values_in_bin)
+        # medians[i - 1] = np.median(values_in_bin)
+        # means[i - 1] = np.mean(values_in_bin)
+        # stds[i - 1] = np.std(values_in_bin)
         counts[i - 1] = values_in_bin.shape[0]
-        nmads[i - 1] = xdem.spatial_tools.nmad(values_in_bin)
+        # nmads[i - 1] = xdem.spatial_tools.nmad(values_in_bin)
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
         index=pd.IntervalIndex.from_breaks(bins),
         data=np.vstack([
-            medians, means, stds, counts, nmads
+            values, counts
         ]).T,
-        columns=["median", "mean", "std", "count", "nmad"]
+        columns=["value", "count"]
     )
 
     return output
 
 
-def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, height_column="median", method="polynomial", order=3,
+def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="value", method="polynomial", order=3,
                                  count_threshold: Optional[int] = None) -> pd.Series:
     """
     Interpolate hypsometric bins using any valid Pandas interpolation technique.
@@ -84,7 +85,7 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, height_column="
     NOTE: It will not extrapolate!
 
     :param hypsometric_bins: Bins where nans will be interpolated.
-    :param height_column: The name of the column in 'hypsometric_bins' to use as heights.
+    :param value_column: The name of the column in 'hypsometric_bins' to use as values.
     :param method: Any valid Pandas interpolation technique (e.g. 'linear', 'polynomial', 'ffill', 'bfill').
     :param order: The polynomial order to use. Only used if method='polynomial'.
     :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
@@ -96,12 +97,12 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, height_column="
     if count_threshold is not None:
         assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
         bins_under_threshold = bins["count"] < count_threshold
-        bins.loc[bins_under_threshold, height_column] = np.nan
+        bins.loc[bins_under_threshold, value_column] = np.nan
 
-    interpolated_values = bins[height_column].interpolate(method=method, order=order, limit_direction="both")
+    interpolated_values = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
 
     if count_threshold is not None:
-        interpolated_values.loc[bins_under_threshold] = hypsometric_bins.loc[bins_under_threshold.values, height_column]
+        interpolated_values.loc[bins_under_threshold] = hypsometric_bins.loc[bins_under_threshold.values, value_column]
     interpolated_values.index = hypsometric_bins.index
 
     return interpolated_values

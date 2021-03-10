@@ -26,7 +26,15 @@ def test_local_hypsometric():
         np.ma.masked_array(dem_2009.data.squeeze(), mask=~mask)
     )
 
-    assert np.abs(np.mean(ddem_bins["median"] - ddem_bins_masked["median"])) < 0.01
+    ddem_stds = xdem.volume.hypsometric_binning(
+        ddem.squeeze()[mask],
+        dem_2009.data.squeeze()[mask],
+        aggregation_function=np.std
+    )
+
+    assert ddem_stds["value"].mean() < 50
+
+    assert np.abs(np.mean(ddem_bins["value"] - ddem_bins_masked["value"])) < 0.01
 
     # Simulate a missing bin
     ddem_bins.iloc[3, :] = np.nan
