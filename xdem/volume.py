@@ -1,3 +1,4 @@
+"""Functions to calculate changes in volume (aimed for glaciers)."""
 from __future__ import annotations
 
 from typing import Optional
@@ -28,15 +29,16 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
         np.isnan(ddem) if not isinstance(ddem, np.ma.masked_array) else ddem.mask,
         np.isnan(ref_dem) if not isinstance(ref_dem, np.ma.masked_array) else ref_dem.mask
     )
-    ddem = ddem[~nan_mask]
-    ref_dem = ref_dem[~nan_mask]
+    # Extract only the valid values and (if relevant) convert from masked_array to array
+    ddem = np.array(ddem[~nan_mask])
+    ref_dem = np.array(ref_dem[~nan_mask])
 
     # Calculate the mean representative elevations between the two DEMs
     mean_dem = ref_dem - (ddem / 2)
 
     # If the bin size should be seen as a percentage.
     if normalized_bin_size:
-        assert bin_size > 0 and bin_size < 100
+        assert 0 < bin_size < 100
 
         # Get the statistical elevation range to normalize the bin size with
         elevation_range = np.percentile(mean_dem, 99) - np.percentile(mean_dem, 1)
