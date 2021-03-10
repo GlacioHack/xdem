@@ -1,30 +1,38 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 
+import xdem
 
-def hypsometric_binning(ddem: np.ndarray, dem: np.ndarray, bin_size=50,
+
+def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
                         normalized_bin_size: bool = False) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
 
+    It is assumed that the dDEM is calculated as 'ref_dem - dem' (not 'dem - ref_dem').
+
     :param ddem: The dDEM as a 2D or 1D array.
-    :param dem: The reference DEM as a 2D or 1D array.
+    :param ref_dem: The reference DEM as a 2D or 1D array.
     :param bin_size: The bin interval size in georeferenced units (or percent; 0-100, if normalized_bin_size=True)
     :param normalized_bin_size: If the given bin size should be parsed as a percentage of the glacier's elevation range.
 
     :returns: A Pandas DataFrame with elevation bins and dDEM statistics.
     """
-
-    assert ddem.shape == dem.shape
+    assert ddem.shape == ref_dem.shape
     # Remove all nans, and flatten the inputs.
-    nan_mask = np.isnan(ddem) | np.isnan(dem)
+    nan_mask = np.logical_or(
+        np.isnan(ddem) if not isinstance(ddem, np.ma.masked_array) else ddem.mask,
+        np.isnan(ref_dem) if not isinstance(ref_dem, np.ma.masked_array) else ref_dem.mask
+    )
     ddem = ddem[~nan_mask]
-    dem = dem[~nan_mask]
+    ref_dem = ref_dem[~nan_mask]
 
     # Calculate the mean representative elevations between the two DEMs
-    mean_dem = dem - (ddem / 2)
+    mean_dem = ref_dem - (ddem / 2)
 
     # If the bin size should be seen as a percentage.
     if normalized_bin_size:
@@ -40,9 +48,7 @@ def hypsometric_binning(ddem: np.ndarray, dem: np.ndarray, bin_size=50,
 
     # Calculate statistics for each bin.
     # If no values exist, all stats should be nans (except count with should be 0)
-    medians = np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) + np.nan
-    means = medians.copy()
-    stds = medians.copy()
+    medians, means, stds, nmads = (np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan, ) * 4
     counts = np.zeros_like(medians, dtype=int)
     for i in np.arange(indices.min(), indices.max() + 1):
         values_in_bin = ddem[indices == i]
@@ -54,14 +60,15 @@ def hypsometric_binning(ddem: np.ndarray, dem: np.ndarray, bin_size=50,
         means[i - 1] = np.mean(values_in_bin)
         stds[i - 1] = np.std(values_in_bin)
         counts[i - 1] = values_in_bin.shape[0]
+        nmads[i - 1] = xdem.spatial_tools.nmad(values_in_bin)
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
         index=pd.IntervalIndex.from_breaks(bins),
         data=np.vstack([
-            medians, means, stds, counts
+            medians, means, stds, counts, nmads
         ]).T,
-        columns=["median", "mean", "std", "count"]
+        columns=["median", "mean", "std", "count", "nmad"]
     )
 
     return output
