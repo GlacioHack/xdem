@@ -4,6 +4,7 @@ xdem.spstats provides tools to use spatial statistics for elevation change data
 from __future__ import annotations
 from typing import Callable, Union
 import os
+import random
 from scipy.optimize import curve_fit
 import numpy as np
 import math as m
@@ -578,4 +579,110 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
 
     return np.sqrt(var_err)
 
+
+def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_size : float, perc_min_valid: float = 80.,
+                   patch_shape: str = 'circular',nmax : int = 1000) -> pd.DataFrame:
+
+    """
+    Patches method for empirical estimation of the standard error over an integration area
+
+    :param dh: elevation differences
+    :param mask: mask of sampled terrain
+    :param gsd: ground sampling distance
+    :param area_size: size of integration area
+    :param perc_min_valid: minimum valid area in the patch
+    :param patch_shape: shape of patch ['circular' or 'rectangular']
+    :param nmax: maximum number of patch to sample
+
+    #TODO: add overlap option?
+
+    :return: tile, mean, median, std and count of each patch
+    """
+
+    def create_circular_mask(h, w, center=None, radius=None):
+
+        """
+        Create circular mask on a raster
+
+        :param h: height position
+        :param w: width position
+        :param center: center
+        :param radius: radius
+        :return:
+        """
+
+        if center is None:  # use the middle of the image
+            center = [int(w / 2), int(h / 2)]
+        if radius is None:  # use the smallest distance between the center and image walls
+            radius = min(center[0], center[1], w - center[0], h - center[1])
+
+        Y, X = np.ogrid[:h, :w]
+        dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+
+        mask = dist_from_center <= radius
+
+        return mask
+
+
+    # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
+    valid_mask = np.logical_and(np.isfinite(dh),mask)
+    dh[~valid_mask] = np.nan
+
+    # divide raster in cadrants where we can sample
+    nx, ny = np.shape(dh)
+    count = len(dh[~np.isnan(dh)])
+    print('Number of valid pixels: ' +str(count))
+    nb_cadrant = int(np.floor(np.sqrt((count * gsd **2) / area_size) + 1))
+    #rectangular
+    nx_sub = int(np.floor((nx - 1) / nb_cadrant))
+    ny_sub = int(np.floor((ny - 1) / nb_cadrant))
+    #radius size for a circular patch
+    rad = int(np.floor(np.sqrt(area_size/np.pi * gsd **2)))
+
+    tile, mean_patch, med_patch, std_patch, nb_patch = ([],) * 5
+
+    # create list of all possible cadrants
+    list_cadrant = [[i,j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
+    u=0
+    # keep sampling while there is cadrants left and below maximum number of patch to sample
+    while len(list_cadrant)>0 and u<nmax:
+
+        check = 0
+        while check == 0:
+            rand_cadrant = random.randint(0, len(list_cadrant)-1)
+
+            i = list_cadrant[rand_cadrant][0]
+            j = list_cadrant[rand_cadrant][1]
+
+            check_x = int(np.floor(nx_sub*(i+1/2)))
+            check_y = int(np.floor(ny_sub*(j+1/2)))
+            if mask[check_x,check_y]:
+                check = 1
+
+        list_cadrant.remove(list_cadrant[rand_cadrant])
+
+        tile.append(int(str(i) + str(j)))
+        if patch_shape == 'rectangular':
+            patch = dh[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
+        elif patch_shape == 'circular':
+            center_x = np.floor(nx_sub*(i+1/2))
+            center_y = np.floor(ny_sub*(j+1/2))
+            mask = create_circular_mask(nx,ny,center=[center_x,center_y],radius=rad)
+            patch = dh[mask]
+        else:
+            raise ValueError('Patch method must be rectangular or circular.')
+
+        nb_pixel_total = len(patch)
+        nb_pixel_valid = len(patch[np.isfinite(patch)])
+        if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
+            u=u+1
+            mean_patch.append(np.nanmean(patch))
+            med_patch.append(np.nanmedian(patch))
+            std_patch.append(np.nanstd(patch))
+            nb_patch.append(nb_pixel_valid)
+
+    df = pd.DataFrame()
+    df = df.assign(tile=tile, mean=mean_patch, med=med_patch, std=std_patch, count=nb_patch)
+
+    return df
 
