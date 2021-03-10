@@ -6,6 +6,7 @@ dependencies:
   - proj=7.2
   - geopandas
   - ipython
+  - numba
   - matplotlib
   - pdal
   - opencv
