@@ -43,6 +43,7 @@ class TestLocalHypsometric:
         ddem = self.dem_2009.data - self.dem_1990.data
 
         ddem_bins = xdem.volume.hypsometric_binning(ddem.squeeze()[self.mask], self.dem_2009.data.squeeze()[self.mask])
+
         # Simulate a missing bin
         ddem_bins.iloc[3, :] = np.nan
 
@@ -103,36 +104,3 @@ class TestLocalHypsometric:
 
         # The area of Scott Turnerbreen was around 3.4 km² in 1990, so this should be close to that number.
         assert 2e6 < bin_area.sum() < 5e6
-
-
-def test_local_hypsometric():
-    """Test local hypsometric binning and bin interpolation."""
-    xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009)
-    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-    # Filter to only look at the Scott Turnerbreen glacier
-    outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
-
-    # Create a mask where glacier areas are True
-    mask = outlines.create_mask(dem_2009) == 255
-
-    ddem = dem_2009.data - dem_1990.data
-
-    ddem_bins = xdem.volume.hypsometric_binning(ddem.squeeze()[mask], dem_2009.data.squeeze()[mask])
-
-    ddem_bins_masked = xdem.volume.hypsometric_binning(
-        np.ma.masked_array(ddem.squeeze(), mask=~mask),
-        np.ma.masked_array(dem_2009.data.squeeze(), mask=~mask)
-    )
-
-    ddem_stds = xdem.volume.hypsometric_binning(
-        ddem.squeeze()[mask],
-        dem_2009.data.squeeze()[mask],
-        aggregation_function=np.std
-    )
-
-    assert ddem_stds["value"].mean() < 50
-
-    assert np.abs(np.mean(ddem_bins["value"] - ddem_bins_masked["value"])) < 0.01
