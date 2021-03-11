@@ -90,6 +90,18 @@ class TestLocalHypsometric:
             if "DEM has NaNs" not in str(exception):
                 raise exception
 
+        # Try to pass an incorrect timeframe= parameter
+        try:
+            xdem.volume.calculate_hypsometry_area(
+                ddem_bins,
+                self.dem_2009.data.squeeze()[self.mask],
+                pixel_size=self.dem_2009.res[0],
+                timeframe="blergh"
+            )
+        except ValueError as exception:
+            if "Argument 'timeframe='blergh'' is invalid" not in str(exception):
+                raise exception
+
         # Mess up the dDEM bins and see if it gives the correct error
         ddem_bins.iloc[3] = np.nan
         try:

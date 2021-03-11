@@ -110,17 +110,29 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
 
 
 def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem: np.ndarray,
-                              pixel_size: Union[float, tuple[float, float]]) -> pd.Series:
+                              pixel_size: Union[float, tuple[float, float]],
+                              timeframe: str = "mean") -> pd.Series:
     """
     Calculate the associated representative area of the given dDEM bins.
+
+    By default, the area bins will be representative of the mean timing between the reference and nonreference DEM:
+    elevations = ref_dem - (h_vs_dh_funcion(ref_dem) / 2)
+    This can be changed to either "reference":
+    elevations = ref_dem
+    Or "nonreference":
+    elevations = ref_dem - h_vs_dh_function(ref_dem)
 
     :param ddem_bins: A Series or DataFrame of dDEM values. If a DataFrame is given, the column 'value' will be used.
     :param ref_dem: The reference DEM. This should not have any NaNs.
     :param pixel_size: The xy or (x, y) size of the reference DEM pixels in georeferenced coordinates.
+    :param timeframe: The time at which the area bins are representative. Choices: "reference", "nonreference", "mean"
 
     :returns: The representative area within the given dDEM bins.
     """
     assert not np.any(np.isnan(ref_dem)), "The given reference DEM has NaNs. No NaNs are allowed to calculate area!"
+
+    if timeframe not in ["reference", "nonreference", "mean"]:
+        raise ValueError(f"Argument '{timeframe=}' is invalid. Choices: ['reference', 'nonreference', 'mean']")
 
     if isinstance(ddem_bins, pd.DataFrame):
         ddem_bins = ddem_bins["value"]
@@ -129,11 +141,16 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
     ddem_func = scipy.interpolate.interp1d(ddem_bins.index.mid, ddem_bins.values,
                                            kind="linear", fill_value="extrapolate")
     # Generate average elevations by subtracting half of the dDEM's values to the reference DEM
-    mean_dem = ref_dem - (ddem_func(ref_dem) / 2)
+    if timeframe == "mean":
+        elevations = ref_dem - (ddem_func(ref_dem) / 2)
+    elif timeframe == "reference":
+        elevations = ref_dem
+    elif timeframe == "nonreference":
+        elevations = ref_dem - ddem_func(ref_dem)
 
     # Extract the bins from the dDEM series and compute the frequency of points in the bins.
     bins = np.r_[[ddem_bins.index.left[0]], ddem_bins.index.right]
-    bin_counts = np.histogram(mean_dem, bins=bins)[0]
+    bin_counts = np.histogram(elevations, bins=bins)[0]
 
     # Multiply the bin counts with the pixel area to get the full area.
     bin_area = bin_counts * (pixel_size ** 2 if not isinstance(pixel_size, tuple) else pixel_size[0] * pixel_size[1])
