@@ -41,7 +41,7 @@ def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.
         exp, bins, count = (np.zeros(n_lags)*np.nan for i in range(3))
 
     df = pd.DataFrame()
-    df = df.assign(exp=exp, bins=bins, n=count)
+    df = df.assign(exp=exp, bins=bins, count=count)
 
     return df
 
@@ -148,9 +148,9 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
     #     if range_list is not None:
     #         print('Both range_list and bin_func are defined for binning: defaulting to bin_func')
 
-    # default value we want to use
+    # default value we want to use (kmeans is failing)
     if 'bin_func' not in kwargs.keys():
-        kwargs.update({'bin_func':'kmeans'})
+        kwargs.update({'bin_func':'even'})
     if 'n_lags' not in kwargs.keys():
         kwargs.update({'n_lags':100})
 
@@ -165,6 +165,17 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         df['exp_sigma'] = np.nan
 
     else:
+
+        # multiple run only work for an even binning function for now (would need a customized binning not supported by skgstat)
+        if kwargs.get('bin_func') is None:
+            raise ValueError('Binning function must be "even" when doing multiple runs.')
+
+        # define max range as half the maximum distance between coordinates
+        max_range = np.sqrt((np.max(coords[:,0])-np.min(coords[:,0]))**2+(np.max(coords[:,1])-np.min(coords[:,1]))**2)/2
+        # also need a cutoff value to get the exact same bins
+        if 'maxlag' not in kwargs.keys():
+            kwargs.update({'maxlag': max_range})
+
         # TODO: somewhere here we could think of adding random sampling without replacement
         if nproc == 1:
             print('Using 1 core...')
@@ -175,7 +186,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 df['run'] = i
                 list_df_nb.append(df)
         else:
-            print('Using '+str(nproc)+ 'cores...')
+            print('Using '+str(nproc)+ ' cores...')
             list_dh_sub = []
             list_coords_sub = []
             for i in range(nrun):
@@ -184,7 +195,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 list_coords_sub.append(coords_sub)
 
             pool = mp.Pool(nproc, maxtasksperchild=1)
-            argsin = [{'dh': list_dh_sub[i], 'coords_sub': list_coords_sub[i],'i':i,'max_i':nrun} for i in range(nrun)]
+            argsin = [{'dh': list_dh_sub[i], 'coords': list_coords_sub[i],'i':i,'max_i':nrun} for i in range(nrun)]
             list_df = pool.map(partial(wrapper_get_empirical_variogram,**kwargs), argsin, chunksize=1)
             pool.close()
             pool.join()
@@ -199,11 +210,12 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         # group results, use mean as empirical variogram, estimate sigma, and sum the counts
         df_grouped = df.groupby('bins',dropna=False)
         df_mean = df_grouped[['exp']].mean()
-        df_sig = df_grouped[['exp']].sigma()
+        df_sig = df_grouped[['exp']].std()
         df_count = df_grouped[['count']].sum()
-        df['exp']=df_mean['exp']
-        df['exp_sigma'] = df_sig['exp']
-        df['count'] = df_count['count']
+        df_mean['bins'] = df_mean.index.values
+        df_mean['exp_sigma'] = df_sig['exp']
+        df_mean['count'] = df_count['count']
+        df = df_mean
 
     return df
 
