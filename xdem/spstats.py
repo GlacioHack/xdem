@@ -13,6 +13,7 @@ from scipy import integrate
 import multiprocessing as mp
 import pandas as pd
 from functools import partial
+from skgstat import models
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
@@ -93,7 +94,8 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     :param dh: elevation differences
     :param gsd: ground sampling distance (if array is 2D on structured grid)
-    :param coords: coordinates (if array is 1D)
+    :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of
+    the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
     :param range_list: successive ranges with even binning
     :param nsamp: number of samples to randomly draw from the elevation differences
     :param nrun: number of samplings
@@ -106,9 +108,9 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
     dh = dh.squeeze()
     if coords is None and gsd is None:
         raise TypeError('Must provide either coordinates or ground sampling distance.')
-    elif gsd is not None and len(dh.shape) == 1:
+    elif gsd is not None and dh.ndim == 1:
         raise TypeError('Array must be 2-dimensional when providing only ground sampling distance')
-    elif coords is not None and len(dh.shape) != 1:
+    elif coords is not None and dh.ndim != 1:
         raise TypeError('Coordinate array must be provided with 1-dimensional input array')
     elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
         raise TypeError('One dimension of the coordinates array must be of length equal to 2')
@@ -219,7 +221,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     return df
 
-def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> Callable:
+def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
 
     """
     Fit a multi-range variogram model to an empirical variogram, weighted based on sampling and elevation errors
@@ -235,7 +237,8 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> Callab
         fn = 0
         i = 0
         for model in list_model:
-            fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
+            fn += skg.models.spherical(h,args[i],args[i+1])
+            # fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
             i += 2
 
         return fn
@@ -243,7 +246,7 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> Callab
 
     # use shape of empirical variogram to assess rough boundaries/first estimates
     n_average = np.ceil(len(emp_vgm_df.exp.values) / 10)
-    exp_movaverage = np.convolve(emp_vgm_df.exp.values, np.ones(n_average)/n_average, mode='valid')
+    exp_movaverage = np.convolve(emp_vgm_df.exp.values, np.ones(int(n_average))/n_average, mode='valid')
     grad = np.gradient(exp_movaverage,2)
     # maximum variance
     max_var = np.max(exp_movaverage)
@@ -254,7 +257,7 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> Callab
     for i in range(len(list_model)):
 
         # use largest boundaries possible for our problem
-        psill_bound = [0,1]*max_var
+        psill_bound = [0,max_var]
         range_bound = [emp_vgm_df.bins.values[0],emp_vgm_df.bins.values[-1]]
 
         # use psill evenly distributed
@@ -272,16 +275,26 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> Callab
         p0.append(range_p0)
         p0.append(psill_p0)
 
-    if np.all(np.isnan(emp_vgm_df.sig.values)):
+    bounds = np.transpose(np.array(bounds))
+
+    if np.all(np.isnan(emp_vgm_df.exp_sigma.values)):
         cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values, emp_vgm_df.exp.values, method='trf', p0=p0, bounds=bounds)
     else:
         cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values, emp_vgm_df.exp.values, method='trf', p0=p0, bounds=bounds
                              ,sigma=emp_vgm_df.exp_sigma.values)
 
+    # rewriting the output function: couldn't find a way to pass this with functool.partial because arguments are unordered
+    def vgm_sum_fit(h):
+        fn = 0
+        i = 0
+        for model in list_model:
+            fn += skg.models.spherical(h, cof[i], cof[i+1])
+            # fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
+            i += 2
 
-    fun = partial(vgm,*cof)
+        return fn
 
-    return fun
+    return vgm_sum_fit, cof
 
 
 def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crange2: float, psill2: float) -> float:
@@ -484,17 +497,16 @@ def std_err(std: float, neff: float) -> float:
     """
     return std * np.sqrt(1 / neff)
 
-def distance_latlon(tup1: tuple, tup2: tuple) -> float:
+def distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> float:
     """
     Distance between two lat/lon coordinates projected on a spheroid
+    ref: https://stackoverflow.com/questions/19412462/getting-distance-between-two-points-based-on-latitude-longitude
     :param tup1: lon/lat coordinates of first point
     :param tup2: lon/lat coordinates of second point
+    :param earth_rad: radius of the earth in meters
 
     :return: distance
     """
-
-    # approximate radius of earth in km
-    R = 6373000
 
     lat1 = m.radians(abs(tup1[1]))
     lon1 = m.radians(abs(tup1[0]))
@@ -507,7 +519,7 @@ def distance_latlon(tup1: tuple, tup2: tuple) -> float:
     a = m.sin(dlat / 2)**2 + m.cos(lat1) * m.cos(lat2) * m.sin(dlon / 2)**2
     c = 2 * m.atan2(m.sqrt(a), m.sqrt(1 - a))
 
-    distance = R * c
+    distance = earth_rad * c
 
     return distance
 
