@@ -70,7 +70,8 @@ class dDEM(gu.georaster.Raster):   # pylint: disable=invalid-name
 class tDEM:
     """A temporal collection of DEMs."""
 
-    def __init__(self, dems: list[gu.georaster.Raster], timestamps: list[datetime.datetime],
+    def __init__(self, dems: Union[list[gu.georaster.Raster], list[xdem.dem.DEM]],
+                 timestamps: list[datetime.datetime],
                  reference_dem: Union[int, gu.georaster.Raster] = 0):
         """
         Create a new temporal DEM collection.
@@ -81,6 +82,10 @@ class tDEM:
 
         :returns: A new tDEM instance.
         """
+
+        if not all(isinstance(dem, xdem.dem.DEM) for dem in dems):
+            dems = [xdem.dem.DEM.from_array(dem.data, dem.transform, dem.crs, dem.nodata) for dem in dems]
+
         assert len(dems) == len(timestamps), "The 'dem' and 'timestamps' len differ."
 
         # Convert the timestamps to datetime64

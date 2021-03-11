@@ -1,15 +1,14 @@
 import datetime
 
 import geoutils as gu
-import matplotlib.pyplot as plt
 import numpy as np
 
 import xdem
 
 
 class TesttDEM:
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
+    dem_2009 = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+    dem_1990 = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
     outlines_1990 = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
 
     def test_create(self):
@@ -32,8 +31,8 @@ class TesttDEM:
         )
 
         # Check that the first raster is the oldest one and
-        assert tdem.dems[0] == self.dem_1990
-        assert tdem.reference_dem == self.dem_2009
+        assert tdem.dems[0].data.max() == self.dem_1990.data.max()
+        assert tdem.reference_dem.data.max() == self.dem_2009.data.max()
 
         tdem.subtract_dems(resampling_method="nearest")
 
