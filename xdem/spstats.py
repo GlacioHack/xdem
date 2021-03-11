@@ -14,6 +14,7 @@ import multiprocessing as mp
 import pandas as pd
 from functools import partial
 from skgstat import models
+import matplotlib.pyplot as plt
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
@@ -258,13 +259,16 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
 
         # use largest boundaries possible for our problem
         psill_bound = [0,max_var]
-        range_bound = [emp_vgm_df.bins.values[0],emp_vgm_df.bins.values[-1]]
+        range_bound = [0,emp_vgm_df.bins.values[-1]]
 
         # use psill evenly distributed
-        psill_p0 = (1/len(list_model))*max_var
+        psill_p0 = ((i+1)/len(list_model))*max_var
         # use corresponding ranges
-        ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
-        range_p0 = emp_vgm_df.bins.values[ind]
+
+        # this fails when no empirical value crosses this (too wide binning/nugget)
+        # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
+        # range_p0 = emp_vgm_df.bins.values[ind]
+        range_p0 = ((i+1)/len(list_model))*emp_vgm_df.bins.values[-1]
 
         #TODO: if adding other variogram models, add condition here
 
@@ -278,10 +282,12 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
     bounds = np.transpose(np.array(bounds))
 
     if np.all(np.isnan(emp_vgm_df.exp_sigma.values)):
-        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values, emp_vgm_df.exp.values, method='trf', p0=p0, bounds=bounds)
+        valid = ~np.isnan(emp_vgm_df.exp.values)
+        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid], emp_vgm_df.exp.values[valid], method='trf', p0=p0, bounds=bounds)
     else:
-        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values, emp_vgm_df.exp.values, method='trf', p0=p0, bounds=bounds
-                             ,sigma=emp_vgm_df.exp_sigma.values)
+        valid = np.logical_and(~np.isnan(emp_vgm_df.exp.values), ~np.isnan(emp_vgm_df.exp_sigma.values))
+        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid], emp_vgm_df.exp.values[valid], method='trf', p0=p0, bounds=bounds
+                             ,sigma=emp_vgm_df.exp_sigma.values[valid])
 
     # rewriting the output function: couldn't find a way to pass this with functool.partial because arguments are unordered
     def vgm_sum_fit(h):
@@ -712,3 +718,22 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
     return df
 
+def plot_vgm(df: pd.DataFrame, fit_fun : Callable = None):
+
+    fig, ax = plt.subplots(1)
+    if np.all(np.isnan(df.exp_sigma)):
+        ax.scatter(df.bins, df.exp, label='Empirical variogram', color='blue')
+    else:
+        ax.errorbar(df.bins,df.exp,yerr=df.exp_sigma, label='Empirical variogram (1-sigma s.d)')
+
+    if fit_fun is not None:
+        x = np.linspace(0,np.max(df.bins),10000)
+        y = fit_fun(x)
+
+        ax.plot(x,y,linestyle='dashed',color='black',label='Model fit')
+
+    ax.set_xlabel('Lag (m)')
+    ax.set_ylabel('Variance [$\mu$ $\pm \sigma$]')
+    ax.legend(loc='best')
+    ax.grid()
+    plt.show()
