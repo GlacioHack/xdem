@@ -71,7 +71,7 @@ class tDEM:
     """A temporal collection of DEMs."""
 
     def __init__(self, dems: Union[list[gu.georaster.Raster], list[xdem.dem.DEM]],
-                 timestamps: list[datetime.datetime],
+                 timestamps: Optional[list[datetime.datetime]] = None,
                  reference_dem: Union[int, gu.georaster.Raster] = 0):
         """
         Create a new temporal DEM collection.
@@ -82,6 +82,14 @@ class tDEM:
 
         :returns: A new tDEM instance.
         """
+        # If timestamps is not given, try to parse it from the (potential) 'datetime' attribute of each DEM.
+        if timestamps is None:
+            timestamp_attributes = [dem.datetime for dem in dems]
+            print(timestamp_attributes)
+            if any([stamp is None for stamp in timestamp_attributes]):
+                raise ValueError("'timestamps' not provided and the given DEMs do not all have datetime attributes")
+
+            timestamps = timestamp_attributes
 
         if not all(isinstance(dem, xdem.dem.DEM) for dem in dems):
             dems = [xdem.dem.DEM.from_array(dem.data, dem.transform, dem.crs, dem.nodata) for dem in dems]

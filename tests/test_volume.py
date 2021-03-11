@@ -45,3 +45,14 @@ class TesttDEM:
         # print(cumulative_dh)
 
         #raise NotImplementedError
+
+    def test_dem_datetimes(self):
+        """Try to create the tDEM without the timestamps argument (instead relying on datetime attributes)."""
+        self.dem_1990.datetime = datetime.datetime(1990, 8, 1)
+        self.dem_2009.datetime = datetime.datetime(2009, 8, 1)
+
+        tdem = xdem.volume.tDEM(
+            [self.dem_1990, self.dem_2009]
+        )
+
+        assert len(tdem.timestamps) > 0
