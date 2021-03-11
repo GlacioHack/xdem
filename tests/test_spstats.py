@@ -7,7 +7,8 @@ import numpy as np
 import xdem
 from xdem import examples
 import geoutils as gu
-
+from skgstat import models
+import pandas as pd
 
 def load_diff() -> tuple[gu.georaster.Raster, np.ndarray] :
     """Load example files to try coregistration methods with."""
@@ -65,6 +66,30 @@ class TestVariogram:
         # triple model fit
         fun2, _ = xdem.spstats.fit_model_sum_vgm(['Sph','Sph','Sph'],emp_vgm_df=df_sig)
         xdem.spstats.plot_vgm(df_sig,fit_fun=fun2)
+
+    def test_multirange_fit_performance(self):
+
+        # first, generate a true sum of variograms with some added noise
+        r1, ps1, r2, ps2, r3, ps3 = (100,0.7,1000,0.2,10000,0.1)
+
+        x = np.linspace(10,20000,500)
+        y = models.spherical(x,r=r1,c0=ps1) + models.spherical(x,r=r2,c0=ps2) \
+            + models.spherical(x,r=r3,c0=ps3)
+
+        sig = 0.025
+        y_noise = np.random.normal(0,sig,size=len(x))
+
+        y_simu = y + y_noise
+        sigma = np.ones(len(x))*sig
+
+        df = pd.DataFrame()
+        df = df.assign(bins=x,exp=y_simu,exp_sigma=sig)
+
+        # then, run the fitting
+        fun, params = xdem.spstats.fit_model_sum_vgm(['Sph','Sph','Sph'],df)
+
+        xdem.spstats.plot_vgm(df,fit_fun=fun)
+
 
     def test_neff_estimation(self):
 
