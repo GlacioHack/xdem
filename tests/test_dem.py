@@ -9,6 +9,7 @@ import inspect
 import xdem
 import numpy as np
 from xdem.dem import DEM
+import copy
 
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
@@ -21,6 +22,35 @@ class TestDEM:
         # check that the loading from DEM __init__ does not fail
         fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
         img = DEM(fn_img)
+
+    def test_copy(self):
+
+        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+
+        img = DEM(fn_img)
+
+        img2 = copy.copy(img)
+        img3 = img.copy()
+        
+        # check the copied object is indeed a SatelliteImage
+        assert isinstance(img2, xdem.dem.DEM)
+        assert isinstance(img3, xdem.dem.DEM)
+
+        # check all immutable attributes are equal
+        georaster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+                           'res', 'shape', 'transform', 'width']
+        satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
+        dem_attrs = ['vref','vref_grid','ccrs']
+
+        all_attrs = georaster_attrs + satimg_attrs + dem_attrs
+
+        for attr in all_attrs:
+            assert img2.__getattribute__(attr) == img.__getattribute__(attr)
+
+        # check data array
+        assert np.count_nonzero(~img.data == img2.data) == 0
+        # check dataset_mask array
+        assert np.count_nonzero(~img2.dataset_mask() == img2.dataset_mask()) == 0
 
     def test_set_vref(self):
 
