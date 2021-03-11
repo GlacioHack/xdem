@@ -26,14 +26,16 @@ def load_diff() -> tuple[gu.georaster.Raster, np.ndarray] :
 
     return diff, mask
 
-class TestEmpiricalVariogram:
+class TestVariogram:
 
-    def test_empirical_variogram(self):
+    # check that the scripts are running
+    def test_empirical_fit_variogram_running(self):
 
+        # get some data
         diff, mask = load_diff()
-
         x, y = diff.coords(offset='center')
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
+
 
         # check the base script runs with right input shape
         df = xdem.spstats.get_empirical_variogram(dh=diff.data.flatten()[0:1000],coords=coords[0:1000,:])
@@ -86,7 +88,17 @@ class TestEmpiricalVariogram:
                                                                           ,psill2=p2)
                 neff_circ_numer = xdem.spstats.neff_circ(area,[(r1,'Sph',p1),(r2,'Sph',p2)])
 
-                assert np.abs(neff_circ_exact-neff_circ_exact)<0.001
+                assert np.abs(neff_circ_exact-neff_circ_numer)<0.001
+
+
+class TestPatchesMethod:
+
+    def test_patches_method(self):
+
+        diff, mask = load_diff()
+
+        # check the patches method runs
+        df_patches = xdem.spstats.patches_method(diff.data,mask=~mask.astype(bool),gsd=diff.res[0],area_size=10000)
 
 
 
