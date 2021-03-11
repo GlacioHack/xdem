@@ -657,6 +657,7 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
 
     # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
+    dh = dh.squeeze()
     valid_mask = np.logical_and(np.isfinite(dh),mask)
     dh[~valid_mask] = np.nan
 
@@ -671,7 +672,7 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
     # radius size for a circular patch
     rad = int(np.floor(np.sqrt(area_size/np.pi * gsd **2)))
 
-    tile, mean_patch, med_patch, std_patch, nb_patch = ([],) * 5
+    tile, mean_patch, med_patch, std_patch, nb_patch = ([] for i in range(5))
 
     # create list of all possible cadrants
     list_cadrant = [[i,j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
@@ -693,7 +694,7 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
         list_cadrant.remove(list_cadrant[rand_cadrant])
 
-        tile.append(int(str(i) + str(j)))
+        tile.append(str(i) + '_'+ str(j))
         if patch_shape == 'rectangular':
             patch = dh[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
         elif patch_shape == 'circular':
@@ -708,6 +709,7 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
         nb_pixel_valid = len(patch[np.isfinite(patch)])
         if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
             u=u+1
+            print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
             mean_patch.append(np.nanmean(patch))
             med_patch.append(np.nanmedian(patch))
             std_patch.append(np.nanstd(patch))
