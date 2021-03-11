@@ -40,10 +40,21 @@ class TestEmpiricalVariogram:
 
         # check the wrapper script runs with various inputs
         df_gsd = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data,gsd=diff.res[0],bin_func='even')
-        df_coords = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data.flatten(),coords=coords,bin_func='uniform')
-        df_1000_bins = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data,gsd=diff.res[0],bin_func='even',n_lags=1000)
+
+        df_coords = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data.flatten(),coords=coords,
+                                                                       bin_func='uniform')
+
+        df_1000_bins = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data,gsd=diff.res[0],
+                                                                          bin_func='even',n_lags=1000)
+
         df_sig = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data,gsd=diff.res[0],bin_func='even',
                                                                     nsamp=1000,nrun=30,nproc=10)
+
+        fun = xdem.spstats.fit_model_sum_vgm(['Sph'],df_sig)
+
+        fun2 = xdem.spstats.fit_model_sum_vgm(['Sph','Sph','Sph'],emp_vgm_df=df_sig)
+
+
 
 
 
