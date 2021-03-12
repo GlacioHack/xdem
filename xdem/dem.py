@@ -8,6 +8,7 @@ from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 import json
 import subprocess
+import copy
 
 def parse_vref_from_product(product):
     """
@@ -40,6 +41,9 @@ def parse_vref_from_product(product):
 
     return vref_name
 
+
+dem_attrs = ['vref','vref_grid','ccrs']
+
 class DEM(SatelliteImage):
 
     def __init__(self, filename, vref_name=None, vref_grid=None, silent=False, **kwargs):
@@ -58,7 +62,7 @@ class DEM(SatelliteImage):
         :param silent: boolean
         """
 
-        super().__init__(filename, **kwargs)
+        super().__init__(filename, silent=silent, **kwargs)
 
         if self.nbands > 1:
             raise ValueError('DEM rasters should be composed of one band only')
@@ -71,6 +75,20 @@ class DEM(SatelliteImage):
         # trying to get vref from product name (priority to user input)
         self.__parse_vref_from_fn(silent=silent)
 
+    def __copy__(self):
+
+        new_dem = super().copy()
+        new_dem.filename = None
+        # those attributes are immutable, including pyproj.CRS
+        # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
+        for attrs in dem_attrs:
+            setattr(new_dem, attrs, getattr(self, attrs))
+
+        return new_dem
+
+    def copy(self):
+
+        return copy.copy(self)
 
     def __parse_vref_from_fn(self,silent=False):
 

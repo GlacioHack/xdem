@@ -6,9 +6,12 @@ import pytest
 import warnings
 import pyproj
 import inspect
+import geoutils.georaster as gr
+import geoutils.satimg as si
 import xdem
 import numpy as np
 from xdem.dem import DEM
+import copy
 
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
@@ -21,6 +24,45 @@ class TestDEM:
         # check that the loading from DEM __init__ does not fail
         fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
         img = DEM(fn_img)
+
+    def test_copy(self):
+        """
+              Test that the copy method works as expected for DEM. In particular
+              when copying r to r2:
+              - if r.data is modified and r copied, the updated data is copied
+              - if r is copied, r.data changed, r2.data should be unchanged
+              """
+        # Open dataset, update data and make a copy
+        r = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        r.data += 5
+        r2 = r.copy()
+
+        # Objects should be different (not pointing to the same memory)
+        assert r is not r2
+
+        # Check the object is a DEM
+        assert isinstance(r2, xdem.dem.DEM)
+
+        # check all immutable attributes are equal
+        # georaster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+        #                    'res', 'shape', 'transform', 'width']
+        # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
+        # dem_attrs = ['vref', 'vref_grid', 'ccrs']
+        # using list directly available in Class
+        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
+        for attr in all_attrs:
+            assert r.__getattribute__(attr) == r2.__getattribute__(attr)
+
+        # Check data array
+        assert np.array_equal(r.data, r2.data, equal_nan=True)
+
+        # Check dataset_mask array
+        assert np.all(r.data.mask == r2.data.mask)
+
+        # Check that if r.data is modified, it does not affect r2.data
+        r.data += 5
+        assert not np.array_equal(r.data, r2.data, equal_nan=True)
 
     def test_set_vref(self):
 
