@@ -4,6 +4,7 @@ dem.py provides a class for working with digital elevation models (DEMs)
 import os
 import pyproj
 import warnings
+from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 import json
@@ -53,7 +54,7 @@ class DEM(SatelliteImage):
         For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
 
         :param filename: The filename of the dataset.
-        :type filename: str
+        :type filename: str, DEM, SatelliteImage, Raster, rio.io.Dataset, rio.io.MemoryFile
         :param vref_name: Vertical reference name
         :type vref_name: str
         :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
@@ -62,7 +63,14 @@ class DEM(SatelliteImage):
         :param silent: boolean
         """
 
-        super().__init__(filename, silent=silent, **kwargs)
+        # If DEM is passed, simply point back to DEM
+        if isinstance(filename, DEM):
+            for key in filename.__dict__:
+                setattr(self, key, filename.__dict__[key])
+            return
+        # Else rely on parent Raster class options (including raised errors)
+        else:
+            super().__init__(filename, silent=silent, **kwargs)
 
         if self.nbands > 1:
             raise ValueError('DEM rasters should be composed of one band only')
