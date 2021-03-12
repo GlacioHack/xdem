@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import warnings
 from typing import Any, Optional, Union
 
 import geoutils as gu
@@ -158,13 +159,14 @@ class tDEM:
         self.ddems = ddems
         return self.ddems
 
-    def get_dh_series(self, mask: Optional[np.ndarray] = None) -> pd.Series:
+    def get_dh_series(self, mask: Optional[np.ndarray] = None, warn_nans: bool = True) -> pd.Series:
         """
         Return a series of mean dDEM values for every timestamp.
 
         The values are centered around the reference DEM timestamp.
 
         :param mask: Optional. A mask for areas of interest.
+        :param warn_nans: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
         :returns: A series of dH values with an Interval[Timestamp] index.
         """
@@ -173,24 +175,30 @@ class tDEM:
 
         dh_values = pd.DataFrame(columns=["dh"], dtype=float)
         for ddem in self.ddems:
+            # Skip if the dDEM is a self-comparison
             if float(ddem.time) == 0:
                 continue
             data = ddem.data if mask is None else ddem.data[mask]
+
+            nan_count = np.count_nonzero(np.isnan(data))
+            if nan_count > 0 and warn_nans:
+                warnings.warn(f"{nan_count} NaNs found in dDEM ({ddem.start_time} - {ddem.end_time}).")
             mean_dh = np.nanmean(data)
 
             dh_values.loc[pd.Interval(pd.Timestamp(ddem.start_time), pd.Timestamp(ddem.end_time))] = mean_dh
 
         return dh_values
 
-    def get_cumulative_dh(self, mask: Optional[np.ndarray] = None) -> pd.Series:
+    def get_cumulative_dh(self, mask: Optional[np.ndarray] = None, warn_nans: bool = True) -> pd.Series:
         """
         Get the cumulative dH since the first timestamp.
 
         :param mask: Optional. A mask for areas of interest.
+        :param warn_nans: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
         :returns: A series of cumulative dH with a Timestamp index.
         """
-        dh_series = self.get_dh_series(mask=mask)
+        dh_series = self.get_dh_series(mask=mask, warn_nans=warn_nans)
 
         dh_interim = pd.Series(dtype=float)
         dh_interim[self.reference_timestamp] = 0.0

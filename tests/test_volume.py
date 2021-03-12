@@ -1,4 +1,5 @@
 import datetime
+import warnings
 
 import geoutils as gu
 import numpy as np
@@ -40,6 +41,19 @@ class TesttDEM:
 
         cumulative_dh = tdem.get_cumulative_dh(mask=mask)
 
+        # Generate 10000 NaN values randomly in one of the dDEMs
+        tdem.ddems[0].data[np.random.randint(0, tdem.ddems[0].data.shape[0], 100),
+                           np.random.randint(0, tdem.ddems[0].data.shape[1], 100)] = np.nan
+        # Check that the cumulative_dh function warns for NaNs
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            try:
+                tdem.get_cumulative_dh(mask=mask, warn_nans=True)
+            except UserWarning as exception:
+                if "NaNs found in dDEM" not in str(exception):
+                    raise exception
+
+        # Simple check that the cumulative_dh is overall negative.
         assert cumulative_dh.iloc[0] > cumulative_dh.iloc[-1]
 
         # print(cumulative_dh)
