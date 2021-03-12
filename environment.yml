@@ -6,6 +6,7 @@ dependencies:
   - proj=7.2
   - geopandas
   - ipython
+  - numba
   - matplotlib
   - pdal
   - opencv
@@ -18,5 +19,6 @@ dependencies:
   - proj-data
   - pip:
     - richdem
+    - scikit-gstat
 #    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
 #    - "--editable=git+https://github.com/GlacioHack/xdem.git#egg=xdem"
