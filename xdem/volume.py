@@ -7,6 +7,7 @@ from typing import Any, Optional, Union
 import geoutils as gu
 import numpy as np
 import pandas as pd
+import rasterio.fill
 import scipy.interpolate
 
 import xdem
@@ -108,12 +109,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             nan_mask = self.data.mask | np.isnan(self.data.data) if isinstance(
                 self.data, np.ma.masked_array) else np.isnan(self.data)
 
-            interpolated_ddem = scipy.interpolate.griddata(
-                (coords[0][~nan_mask.squeeze()], coords[1][~nan_mask.squeeze()]),
-                values=self.data[~nan_mask],
-                xi=(coords[0], coords[1]),
-                method="linear"
-            )
+            interpolated_ddem = rasterio.fill.fillnodata(self.data, mask=~nan_mask.astype("uint8"))
 
             # Fill the nans (values outside of the value boundaries) with the median value
             # This triggers a warning with np.masked_array's because it ignores the mask
