@@ -7,11 +7,12 @@ from typing import Any, Optional, Union
 import geoutils as gu
 import numpy as np
 import pandas as pd
+import scipy.interpolate
 
 import xdem
 
 
-class dDEM(gu.georaster.Raster):   # pylint: disable=invalid-name
+class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
     """A difference-DEM object."""
 
     def __init__(self, raster: gu.georaster.Raster, start_time: np.datetime64, end_time: np.datetime64,
@@ -31,10 +32,38 @@ class dDEM(gu.georaster.Raster):   # pylint: disable=invalid-name
         self.start_time = start_time
         self.end_time = end_time
         self.error = error
+        self._filled_data: Optional[np.ndarray] = None
 
     def __str__(self) -> str:
         """Return a summary of the dDEM."""
         return f"dDEM from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
+
+    @property
+    def filled_data(self) -> Optional[np.ndarray]:
+        """
+        Get the filled data array if it exists, or else the original data if it has no nans.
+
+        Returns None if the filled_data array does not exist, and the original data has nans.
+
+        :returns: An array or None
+        """
+        if self._filled_data is not None:
+            return self._filled_data
+        if (isinstance(self.data, np.ma.masked_array) and np.any(self.data.mask)) or np.any(np.isnan(self.data)):
+            return None
+
+        return self.data
+
+    @filled_data.setter
+    def filled_data(self, array: np.ndarray):
+        """Set the filled_data attribute and make sure that it is valid."""
+
+        assert self.data.shape == array.shape, f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
+
+        if (isinstance(array, np.ma.masked_array) and np.any(array.mask)) or np.any(np.isnan(array)):
+            raise ValueError("Data contains NaNs")
+
+        self._filled_data = array
 
     @property
     def time(self) -> np.timedelta64:
@@ -66,6 +95,38 @@ class dDEM(gu.georaster.Raster):   # pylint: disable=invalid-name
             end_time=end_time,
             error=error,
         )
+
+    def interpolate(self, method: str = "linear"):
+        """
+        Interpolate the dDEM using the given method.
+
+        :param method: The method to use for interpolation.
+        """
+        if method == "linear":
+            coords = self.coords(offset="center")
+            # Create a mask for where nans exist
+            nan_mask = self.data.mask | np.isnan(self.data.data) if isinstance(
+                self.data, np.ma.masked_array) else np.isnan(self.data)
+
+            interpolated_ddem = scipy.interpolate.griddata(
+                (coords[0][~nan_mask.squeeze()], coords[1][~nan_mask.squeeze()]),
+                values=self.data[~nan_mask],
+                xi=(coords[0], coords[1]),
+                method="linear"
+            )
+
+            # Fill the nans (values outside of the value boundaries) with the median value
+            # This triggers a warning with np.masked_array's because it ignores the mask
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                interpolated_ddem[np.isnan(interpolated_ddem)] = np.nanmedian(self.data)
+
+            self.filled_data = interpolated_ddem.reshape(self.data.shape)
+
+        else:
+            raise NotImplementedError
+
+        return self.filled_data
 
 
 class tDEM:
@@ -159,14 +220,26 @@ class tDEM:
         self.ddems = ddems
         return self.ddems
 
-    def get_dh_series(self, mask: Optional[np.ndarray] = None, warn_nans: bool = True) -> pd.Series:
+    def interpolate_ddems(self, method="linear"):
+        """
+        Interpolate all the dDEMs in the tDEM object using the chosen interpolation method.
+
+        :param method: The chosen interpolation method.
+        """
+        # TODO: Change is loop to run concurrently
+        for ddem in self.ddems:
+            ddem.interpolate(method=method)
+
+        return [ddem.filled_data for ddem in self.ddems]
+
+    def get_dh_series(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
         """
         Return a series of mean dDEM values for every timestamp.
 
         The values are centered around the reference DEM timestamp.
 
         :param mask: Optional. A mask for areas of interest.
-        :param warn_nans: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
+        :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
         :returns: A series of dH values with an Interval[Timestamp] index.
         """
@@ -178,27 +251,33 @@ class tDEM:
             # Skip if the dDEM is a self-comparison
             if float(ddem.time) == 0:
                 continue
-            data = ddem.data if mask is None else ddem.data[mask]
 
-            nan_count = np.count_nonzero(np.isnan(data))
-            if nan_count > 0 and warn_nans:
-                warnings.warn(f"{nan_count} NaNs found in dDEM ({ddem.start_time} - {ddem.end_time}).")
+            # If no mask was specified, make a full true boolean mask in its stead.
+            if mask is None:
+                mask = np.ones(shape=ddem.shape, dtype=bool)
+
+            # Warn if the dDEM contains nans and that's not okay
+            if ddem.filled_data is None and not nans_ok:
+                warnings.warn(f"NaNs found in dDEM ({ddem.start_time} - {ddem.end_time}).")
+
+            data = ddem.data[mask] if ddem.filled_data is None else ddem.filled_data[mask]
+
             mean_dh = np.nanmean(data)
 
             dh_values.loc[pd.Interval(pd.Timestamp(ddem.start_time), pd.Timestamp(ddem.end_time))] = mean_dh
 
         return dh_values
 
-    def get_cumulative_dh(self, mask: Optional[np.ndarray] = None, warn_nans: bool = True) -> pd.Series:
+    def get_cumulative_dh(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
         """
         Get the cumulative dH since the first timestamp.
 
         :param mask: Optional. A mask for areas of interest.
-        :param warn_nans: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
+        :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
         :returns: A series of cumulative dH with a Timestamp index.
         """
-        dh_series = self.get_dh_series(mask=mask, warn_nans=warn_nans)
+        dh_series = self.get_dh_series(mask=mask, nans_ok=nans_ok)
 
         dh_interim = pd.Series(dtype=float)
         dh_interim[self.reference_timestamp] = 0.0
