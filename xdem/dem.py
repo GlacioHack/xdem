@@ -41,6 +41,9 @@ def parse_vref_from_product(product):
 
     return vref_name
 
+
+dem_attrs = ['vref','vref_grid','ccrs']
+
 class DEM(SatelliteImage):
 
     def __init__(self, filename, vref_name=None, vref_grid=None, silent=False, **kwargs):
@@ -74,14 +77,14 @@ class DEM(SatelliteImage):
 
     def __copy__(self):
 
-        new_satimg = super().copy()
-        new_satimg.filename = self.filename
+        new_dem = super().copy()
+        new_dem.filename = None
         # those attributes are immutable, including pyproj.CRS
-        # name_attrs = ['vref','vref_grid','ccrs']
-        # for attrs in name_attrs:
-        #     setattr(new_dem, attrs, getattr(self, attrs))
+        # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
+        for attrs in dem_attrs:
+            setattr(new_dem, attrs, getattr(self, attrs))
 
-        return DEM(new_satimg.filename,silent=True)
+        return new_dem
 
     def copy(self):
 
