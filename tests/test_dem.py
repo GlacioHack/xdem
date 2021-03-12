@@ -27,7 +27,7 @@ class TestDEM:
 
     def test_copy(self):
         """
-              Test that the copy method works as expected for satimg. In particular
+              Test that the copy method works as expected for DEM. In particular
               when copying r to r2:
               - if r.data is modified and r copied, the updated data is copied
               - if r is copied, r.data changed, r2.data should be unchanged
@@ -63,9 +63,6 @@ class TestDEM:
         # Check that if r.data is modified, it does not affect r2.data
         r.data += 5
         assert not np.array_equal(r.data, r2.data, equal_nan=True)
-
-        # Check that both have same output type
-        assert type(r) == type(r2)
 
     def test_set_vref(self):
 
