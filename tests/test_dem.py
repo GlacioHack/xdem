@@ -37,6 +37,10 @@ class TestDEM:
         r.data += 5
         r2 = r.copy()
 
+        # Objects should be different (not pointing to the same memory)
+        assert r is not r2
+
+        # Check the object is a DEM
         assert isinstance(r2, xdem.dem.DEM)
 
         # check all immutable attributes are equal
@@ -44,8 +48,9 @@ class TestDEM:
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
         # dem_attrs = ['vref', 'vref_grid', 'ccrs']
-        all_attrs = gr.default_attrs + si.satimg_attrs + xdem.dem.dem_attrs
-
+        # using list directly available in Class
+        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)
 
@@ -57,7 +62,7 @@ class TestDEM:
 
         # Check that if r.data is modified, it does not affect r2.data
         r.data += 5
-        assert not np.array_equal(r.data == r2.data, equal_nan=True)
+        assert not np.array_equal(r.data, r2.data, equal_nan=True)
 
         # Check that both have same output type
         assert type(r) == type(r2)
