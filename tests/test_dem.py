@@ -19,11 +19,47 @@ DO_PLOT = False
 
 class TestDEM:
 
-    def test_load(self):
+    def test_init(self):
+        """
+        Test that inputs work properly in DEM class init
+        """
 
-        # check that the loading from DEM __init__ does not fail
         fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-        img = DEM(fn_img)
+
+        # from filename
+        dem = DEM(fn_img)
+        assert isinstance(dem,DEM)
+
+        # from DEM
+        dem2 = DEM(dem)
+        assert isinstance(dem2,DEM)
+
+        # from Raster
+        r = gr.Raster(fn_img)
+        dem3 = DEM(r)
+        assert isinstance(dem3,DEM)
+
+        # from SatelliteImage
+        img = si.SatelliteImage(fn_img)
+        dem4 = DEM(img)
+        assert isinstance(dem4,DEM)
+
+        list_dem = [dem,dem2,dem3,dem4]
+
+        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
+        for attr in all_attrs:
+            attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
+            assert all(attrs_per_dem)
+
+        assert np.logical_and.reduce((np.array_equal(dem.data,dem2.data,equal_nan=True),
+                               np.array_equal(dem2.data,dem3.data,equal_nan=True),
+                               np.array_equal(dem3.data,dem4.data,equal_nan=True)))
+
+        assert np.logical_and.reduce((np.all(dem.data.mask==dem2.data.mask),
+                               np.all(dem2.data.mask==dem3.data.mask),
+                               np.all(dem3.data.mask==dem4.data.mask)))
+
 
     def test_copy(self):
         """
