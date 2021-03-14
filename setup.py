@@ -12,8 +12,10 @@ setup(name='xdem',
       author='The GlacioHack Team',
       license='BSD-3',
       packages=['xdem'],
-      install_requires=['numpy', 'scipy', 'rasterio', 'geopandas', 'pyproj', 'tqdm', 'geoutils'],
+      install_requires=['numpy', 'scipy', 'rasterio', 'geopandas',
+                        'pyproj', 'tqdm', 'geoutils', 'richdem', 'scikit-gstat'],
       extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': ['pdal'], 'opencv': ['opencv']},
+      dependency_links=["https://github.com/GlacioHack/GeoUtils.git"],
       scripts=[],
       zip_safe=False)
 
