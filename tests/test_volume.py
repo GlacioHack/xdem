@@ -1,12 +1,8 @@
-import warnings
-
 import geoutils as gu
 import numpy as np
 import pandas as pd
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import xdem
+import xdem
 
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
