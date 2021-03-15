@@ -136,7 +136,7 @@ class TestLocalHypsometric:
             ddem.squeeze()[self.mask],
             self.dem_2009.data.squeeze()[self.mask],
             bins=50,
-            kind="equal_count"
+            kind="fixed_count"
         )
         assert equal_count_bins.shape[0] == 50
 
