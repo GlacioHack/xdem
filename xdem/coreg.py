@@ -26,13 +26,18 @@ import pyproj.crs
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import rasterio.windows  # pylint: disable=unused-import
-import richdem as rd
 import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 from rasterio import Affine
 from tqdm import trange
+
+try:
+    import richdem as rd
+    _has_rd = True
+except ImportError:
+    _has_rd = False
 
 try:
     import cv2
