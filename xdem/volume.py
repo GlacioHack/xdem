@@ -9,7 +9,7 @@ import scipy.interpolate
 
 
 def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float, np.ndarray] = 50.0,
-                        kind: str = "equal_height", aggregation_function: Callable = np.median) -> pd.DataFrame:
+                        kind: str = "fixed", aggregation_function: Callable = np.median) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
 
@@ -18,7 +18,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     :param ddem: The dDEM as a 2D or 1D array.
     :param ref_dem: The reference DEM as a 2D or 1D array.
     :param bins: The bin size, count, or array, depending on the binning method ('kind').
-    :param kind: The kind of binning to do. Choices: ['equal_height', 'fixed_count', 'equal_area', 'custom'].
+    :param kind: The kind of binning to do. Choices: ['fixed', 'count', 'quantile', 'custom'].
     :param aggregation_function: The function to aggregate the elevation values within a bin. Defaults to the median.
 
     :returns: A Pandas DataFrame with elevation bins and dDEM statistics.
@@ -38,13 +38,13 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     mean_dem = ref_dem - (ddem / 2)
 
     # If the bin size should be seen as a percentage.
-    if kind == "equal_height":
+    if kind == "fixed":
         zbins = np.arange(mean_dem.min(), mean_dem.max() + bins, step=bins)
-    elif kind == "fixed_count":
+    elif kind == "count":
         # Make bins between mean_dem.min() and a little bit above mean_dem.max().
         # The bin count has to be bins + 1 because zbins[0] will be a "below min value" bin, which will be irrelevant.
         zbins = np.linspace(mean_dem.min(), mean_dem.max() + 1e-6 / bins, num=int(bins + 1))
-    elif kind == "equal_area":
+    elif kind == "quantile":
         # Make the percentile steps. The bins + 1 is explained above.
         steps = np.linspace(0, 100, num=int(bins) + 1)
         zbins = np.fromiter(
@@ -56,7 +56,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     elif kind == "custom":
         zbins = bins
     else:
-        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['equal_height', 'fixed_count', 'equal_area', 'custom']")
+        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom']")
 
     # Generate bins and get bin indices from the mean DEM
     indices = np.digitize(mean_dem, bins=zbins)

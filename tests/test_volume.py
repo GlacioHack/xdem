@@ -27,7 +27,7 @@ class TestLocalHypsometric:
             ddem.squeeze()[self.mask],
             self.dem_2009.data.squeeze()[self.mask],
             bins=50,
-            kind="equal_height")
+            kind="fixed")
 
         ddem_bins_masked = xdem.volume.hypsometric_binning(
             np.ma.masked_array(ddem.squeeze(), mask=~self.mask),
@@ -132,28 +132,28 @@ class TestLocalHypsometric:
             ddem.squeeze()[self.mask],
             self.dem_2009.data.squeeze()[self.mask],
             bins=50,
-            kind="fixed_count"
+            kind="count"
         )
         assert equal_count_bins.shape[0] == 50
 
         # Make 50 bins with approximately the same area (pixel count)
-        equal_area_bins = xdem.volume.hypsometric_binning(
+        quantile_bins = xdem.volume.hypsometric_binning(
             ddem.squeeze()[self.mask],
             self.dem_2009.data.squeeze()[self.mask],
             bins=50,
-            kind="equal_area"
+            kind="quantile"
         )
 
-        assert equal_area_bins.shape[0] == 50
+        assert quantile_bins.shape[0] == 50
         # Make sure that the pixel count variation is low.
-        assert equal_area_bins["count"].std() < 1
+        assert quantile_bins["count"].std() < 1
 
         # Try to feed the previous bins as "custom" bins to the function.
         custom_bins = xdem.volume.hypsometric_binning(
             ddem.squeeze()[self.mask],
             self.dem_2009.data.squeeze()[self.mask],
-            bins=np.r_[equal_area_bins.index.left[0], equal_area_bins.index.right],
+            bins=np.r_[quantile_bins.index.left[0], quantile_bins.index.right],
             kind="custom"
         )
 
-        assert custom_bins.shape[0] == equal_area_bins.shape[0]
+        assert custom_bins.shape[0] == quantile_bins.shape[0]
