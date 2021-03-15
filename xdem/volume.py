@@ -34,21 +34,18 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     ddem = np.array(ddem[~nan_mask])
     ref_dem = np.array(ref_dem[~nan_mask])
 
-    # Calculate the mean representative elevations between the two DEMs
-    mean_dem = ref_dem - (ddem / 2)
-
     # If the bin size should be seen as a percentage.
     if kind == "fixed":
-        zbins = np.arange(mean_dem.min(), mean_dem.max() + bins, step=bins)
+        zbins = np.arange(ref_dem.min(), ref_dem.max() + bins, step=bins)
     elif kind == "count":
         # Make bins between mean_dem.min() and a little bit above mean_dem.max().
         # The bin count has to be bins + 1 because zbins[0] will be a "below min value" bin, which will be irrelevant.
-        zbins = np.linspace(mean_dem.min(), mean_dem.max() + 1e-6 / bins, num=int(bins + 1))
+        zbins = np.linspace(ref_dem.min(), ref_dem.max() + 1e-6 / bins, num=int(bins + 1))
     elif kind == "quantile":
         # Make the percentile steps. The bins + 1 is explained above.
         steps = np.linspace(0, 100, num=int(bins) + 1)
         zbins = np.fromiter(
-            (np.percentile(mean_dem, step) for step in steps),
+            (np.percentile(ref_dem, step) for step in steps),
             dtype=float
         )
         # The uppermost bin needs to be a tiny amount larger than the highest value to include it.
@@ -59,7 +56,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
         raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom']")
 
     # Generate bins and get bin indices from the mean DEM
-    indices = np.digitize(mean_dem, bins=zbins)
+    indices = np.digitize(ref_dem, bins=zbins)
 
     # Calculate statistics for each bin.
     # If no values exist, all stats should be nans (except count with should be 0)
@@ -124,7 +121,7 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
 
 def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem: np.ndarray,
                               pixel_size: Union[float, tuple[float, float]],
-                              timeframe: str = "mean") -> pd.Series:
+                              timeframe: str = "reference") -> pd.Series:
     """
     Calculate the associated representative area of the given dDEM bins.
 
