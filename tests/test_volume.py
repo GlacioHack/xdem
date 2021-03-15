@@ -1,8 +1,12 @@
+import warnings
+
 import geoutils as gu
 import numpy as np
 import pandas as pd
 
-import xdem
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import xdem
 
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
@@ -23,7 +27,11 @@ class TestLocalHypsometric:
         """Test dDEM binning."""
         ddem = self.dem_2009.data - self.dem_1990.data
 
-        ddem_bins = xdem.volume.hypsometric_binning(ddem.squeeze()[self.mask], self.dem_2009.data.squeeze()[self.mask])
+        ddem_bins = xdem.volume.hypsometric_binning(
+            ddem.squeeze()[self.mask],
+            self.dem_2009.data.squeeze()[self.mask],
+            bins=50,
+            kind="equal_height")
 
         ddem_bins_masked = xdem.volume.hypsometric_binning(
             np.ma.masked_array(ddem.squeeze(), mask=~self.mask),
@@ -116,3 +124,40 @@ class TestLocalHypsometric:
 
         # The area of Scott Turnerbreen was around 3.4 km² in 1990, so this should be close to that number.
         assert 2e6 < bin_area.sum() < 5e6
+
+    def test_ddem_bin_methods(self):
+        """Test different dDEM binning methods."""
+        ddem = self.dem_2009.data - self.dem_1990.data
+
+        # equal height is already tested in test_bin_ddem
+
+        # Make a fixed amount of bins
+        equal_count_bins = xdem.volume.hypsometric_binning(
+            ddem.squeeze()[self.mask],
+            self.dem_2009.data.squeeze()[self.mask],
+            bins=50,
+            kind="equal_count"
+        )
+        assert equal_count_bins.shape[0] == 50
+
+        # Make 50 bins with approximately the same area (pixel count)
+        equal_area_bins = xdem.volume.hypsometric_binning(
+            ddem.squeeze()[self.mask],
+            self.dem_2009.data.squeeze()[self.mask],
+            bins=50,
+            kind="equal_area"
+        )
+
+        assert equal_area_bins.shape[0] == 50
+        # Make sure that the pixel count variation is low.
+        assert equal_area_bins["count"].std() < 1
+
+        # Try to feed the previous bins as "custom" bins to the function.
+        custom_bins = xdem.volume.hypsometric_binning(
+            ddem.squeeze()[self.mask],
+            self.dem_2009.data.squeeze()[self.mask],
+            bins=np.r_[equal_area_bins.index.left[0], equal_area_bins.index.right],
+            kind="custom"
+        )
+
+        assert custom_bins.shape[0] == equal_area_bins.shape[0]

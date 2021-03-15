@@ -8,8 +8,8 @@ import pandas as pd
 import scipy.interpolate
 
 
-def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
-                        normalized_bin_size: bool = False, aggregation_function: Callable = np.median) -> pd.DataFrame:
+def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float, np.ndarray] = 50.0,
+                        kind: str = "equal_height", aggregation_function: Callable = np.median) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
 
@@ -17,13 +17,14 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
 
     :param ddem: The dDEM as a 2D or 1D array.
     :param ref_dem: The reference DEM as a 2D or 1D array.
-    :param bin_size: The bin interval size in georeferenced units (or percent; 0-100, if normalized_bin_size=True)
-    :param normalized_bin_size: If the given bin size should be parsed as a percentage of the glacier's elevation range.
+    :param bins: The bin size, count, or array, depending on the binning method ('kind').
+    :param kind: The kind of binning to do. Choices: ['equal_height', 'equal_count', 'equal_area', 'custom'].
     :param aggregation_function: The function to aggregate the elevation values within a bin. Defaults to the median.
 
     :returns: A Pandas DataFrame with elevation bins and dDEM statistics.
     """
     assert ddem.shape == ref_dem.shape
+
     # Remove all nans, and flatten the inputs.
     nan_mask = np.logical_or(
         np.isnan(ddem) if not isinstance(ddem, np.ma.masked_array) else ddem.mask,
@@ -37,21 +38,33 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
     mean_dem = ref_dem - (ddem / 2)
 
     # If the bin size should be seen as a percentage.
-    if normalized_bin_size:
-        assert 0 < bin_size < 100
-
-        # Get the statistical elevation range to normalize the bin size with
-        elevation_range = np.percentile(mean_dem, 99) - np.percentile(mean_dem, 1)
-        bin_size = elevation_range / bin_size
+    if kind == "equal_height":
+        zbins = np.arange(mean_dem.min(), mean_dem.max() + bins, step=bins)
+    elif kind == "equal_count":
+        # Make bins between mean_dem.min() and a little bit above mean_dem.max().
+        # The bin count has to be bins + 1 because zbins[0] will be a "below min value" bin, which will be irrelevant.
+        zbins = np.linspace(mean_dem.min(), mean_dem.max() + 1e-6 / bins, num=int(bins + 1))
+    elif kind == "equal_area":
+        # Make the percentile steps. The bins + 1 is explained above.
+        steps = np.linspace(0, 100, num=int(bins) + 1)
+        zbins = np.fromiter(
+            (np.percentile(mean_dem, step) for step in steps),
+            dtype=float
+        )
+        # The uppermost bin needs to be a tiny amount larger than the highest value to include it.
+        zbins[-1] += 1e-6
+    elif kind == "custom":
+        zbins = bins
+    else:
+        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['equal_size', 'equal_count', 'equal_area', 'custom']")
 
     # Generate bins and get bin indices from the mean DEM
-    bins = np.arange(mean_dem.min(), mean_dem.max() + bin_size, step=bin_size)
-    indices = np.digitize(mean_dem, bins=bins)
+    indices = np.digitize(mean_dem, bins=zbins)
 
     # Calculate statistics for each bin.
     # If no values exist, all stats should be nans (except count with should be 0)
     # medians, means, stds, nmads = (np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan, ) * 4
-    values = np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan
+    values = np.zeros(shape=zbins.shape[0] - 1, dtype=ddem.dtype) * np.nan
     counts = np.zeros_like(values, dtype=int)
     for i in np.arange(indices.min(), indices.max() + 1):
         values_in_bin = ddem[indices == i]
@@ -68,7 +81,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bin_size=50,
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
-        index=pd.IntervalIndex.from_breaks(bins),
+        index=pd.IntervalIndex.from_breaks(zbins),
         data=np.vstack([
             values, counts
         ]).T,
@@ -142,11 +155,11 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
                                            kind="linear", fill_value="extrapolate")
     # Generate average elevations by subtracting half of the dDEM's values to the reference DEM
     if timeframe == "mean":
-        elevations = ref_dem - (ddem_func(ref_dem) / 2)
+        elevations = ref_dem - (ddem_func(ref_dem.data) / 2)
     elif timeframe == "reference":
         elevations = ref_dem
     elif timeframe == "nonreference":
-        elevations = ref_dem - ddem_func(ref_dem)
+        elevations = ref_dem - ddem_func(ref_dem.data)
 
     # Extract the bins from the dDEM series and compute the frequency of points in the bins.
     bins = np.r_[[ddem_bins.index.left[0]], ddem_bins.index.right]
