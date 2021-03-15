@@ -6,9 +6,12 @@ import pytest
 import warnings
 import pyproj
 import inspect
+import geoutils.georaster as gr
+import geoutils.satimg as si
 import xdem
 import numpy as np
 from xdem.dem import DEM
+import copy
 
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
@@ -16,11 +19,86 @@ DO_PLOT = False
 
 class TestDEM:
 
-    def test_load(self):
+    def test_init(self):
+        """
+        Test that inputs work properly in DEM class init
+        """
 
-        # check that the loading from DEM __init__ does not fail
         fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-        img = DEM(fn_img)
+
+        # from filename
+        dem = DEM(fn_img)
+        assert isinstance(dem,DEM)
+
+        # from DEM
+        dem2 = DEM(dem)
+        assert isinstance(dem2,DEM)
+
+        # from Raster
+        r = gr.Raster(fn_img)
+        dem3 = DEM(r)
+        assert isinstance(dem3,DEM)
+
+        # from SatelliteImage
+        img = si.SatelliteImage(fn_img)
+        dem4 = DEM(img)
+        assert isinstance(dem4,DEM)
+
+        list_dem = [dem,dem2,dem3,dem4]
+
+        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
+        for attr in all_attrs:
+            attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
+            assert all(attrs_per_dem)
+
+        assert np.logical_and.reduce((np.array_equal(dem.data,dem2.data,equal_nan=True),
+                               np.array_equal(dem2.data,dem3.data,equal_nan=True),
+                               np.array_equal(dem3.data,dem4.data,equal_nan=True)))
+
+        assert np.logical_and.reduce((np.all(dem.data.mask==dem2.data.mask),
+                               np.all(dem2.data.mask==dem3.data.mask),
+                               np.all(dem3.data.mask==dem4.data.mask)))
+
+
+    def test_copy(self):
+        """
+              Test that the copy method works as expected for DEM. In particular
+              when copying r to r2:
+              - if r.data is modified and r copied, the updated data is copied
+              - if r is copied, r.data changed, r2.data should be unchanged
+              """
+        # Open dataset, update data and make a copy
+        r = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        r.data += 5
+        r2 = r.copy()
+
+        # Objects should be different (not pointing to the same memory)
+        assert r is not r2
+
+        # Check the object is a DEM
+        assert isinstance(r2, xdem.dem.DEM)
+
+        # check all immutable attributes are equal
+        # georaster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+        #                    'res', 'shape', 'transform', 'width']
+        # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
+        # dem_attrs = ['vref', 'vref_grid', 'ccrs']
+        # using list directly available in Class
+        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
+        for attr in all_attrs:
+            assert r.__getattribute__(attr) == r2.__getattribute__(attr)
+
+        # Check data array
+        assert np.array_equal(r.data, r2.data, equal_nan=True)
+
+        # Check dataset_mask array
+        assert np.all(r.data.mask == r2.data.mask)
+
+        # Check that if r.data is modified, it does not affect r2.data
+        r.data += 5
+        assert not np.array_equal(r.data, r2.data, equal_nan=True)
 
     def test_set_vref(self):
 
