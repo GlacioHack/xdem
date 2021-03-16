@@ -70,3 +70,9 @@ Or a single test:
 ```bash
 pytest tests/test_volume.py::TestLocalHypsometric
 ```
+
+It is also recommended to try the tests from the parent directory, to validate that import statements work as they should:
+```bash
+cd ../  # Change to the parent directory
+pytest xdem
+```
