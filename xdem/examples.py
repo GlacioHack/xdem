@@ -13,7 +13,12 @@ FILEPATHS = {
     "longyearbyen_glacier_outlines": os.path.join(
         EXAMPLES_DIRECTORY,
         "Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
+    ),
+    "longyearbyen_glacier_outlines_2010": os.path.join(
+        EXAMPLES_DIRECTORY,
+        "Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_2010.shp"
     )
+
 }
 
 # The URLs for where to find the data.
@@ -22,7 +27,8 @@ URLS = {
                              "Mosaikk/NP_S0_DTM20.zip!NP_S0_DTM20/S0_DTM20.tif"),
     "longyearbyen_tba_dem": ("zip+https://publicdatasets.data.npolar.no/kartdata/S0_Terrengmodell/"
                              "Historisk/NP_S0_DTM20_199095_33.zip!NP_S0_DTM20_199095_33/S0_DTM20_199095_33.tif"),
-    "longyearbyen_glacier_outlines": "http://public.data.npolar.no/cryoclim/CryoClim_GAO_SJ_1990.zip"
+    "longyearbyen_glacier_outlines": "http://public.data.npolar.no/cryoclim/CryoClim_GAO_SJ_1990.zip",
+    "longyearbyen_glacier_outlines_2010": "https://public.data.npolar.no/cryoclim/CryoClim_GAO_SJ_2001-2010.zip"
 }
 
 
@@ -67,7 +73,8 @@ async def _async_load_svalbard():
     await asyncio.gather(
         crop_dem(URLS["longyearbyen_ref_dem"], FILEPATHS["longyearbyen_ref_dem"], bounds=bounds),
         crop_dem(URLS["longyearbyen_tba_dem"], FILEPATHS["longyearbyen_tba_dem"], bounds=bounds),
-        read_outlines(URLS["longyearbyen_glacier_outlines"], FILEPATHS["longyearbyen_glacier_outlines"])
+        read_outlines(URLS["longyearbyen_glacier_outlines"], FILEPATHS["longyearbyen_glacier_outlines"]),
+        read_outlines(URLS["longyearbyen_glacier_outlines_2010"], FILEPATHS["longyearbyen_glacier_outlines_2010"])
     )
 
 

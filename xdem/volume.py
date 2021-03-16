@@ -130,12 +130,14 @@ class tDEM:
 
     def __init__(self, dems: Union[list[gu.georaster.Raster], list[xdem.dem.DEM]],
                  timestamps: Optional[list[datetime.datetime]] = None,
+                 outlines: Optional[Union[gu.geovector.Vector, dict[datetime.datetime, gu.geovector.Vector]]] = None,
                  reference_dem: Union[int, gu.georaster.Raster] = 0):
         """
         Create a new temporal DEM collection.
 
         :param dems: A list of DEMs.
         :param timestamps: A list of DEM timestamps.
+        :param outlines: Polygons to separate the changing area of interest. Could for example be glacier outlines.
         :param reference_dem: An instance or index of which DEM in the 'dems' list is the reference.
 
         :returns: A new tDEM instance.
@@ -160,12 +162,22 @@ class tDEM:
         # Find the sort indices from the timestamps
         indices = np.argsort(self.timestamps.astype("int64"))
         self.dems = np.asarray(dems)[indices]
-        self.ddems: Optional[list[dDEM]] = None
+        self.ddems: list[dDEM] = []
         # The reference index changes place when sorted
         if isinstance(reference_dem, int):
             self.reference_index = np.argwhere(indices == reference_dem)[0][0]
         elif isinstance(reference_dem, gu.georaster.Raster):
             self.reference_index = np.argwhere(self.dems == reference_dem)[0][0]
+
+        if outlines is None:
+            self.outlines: dict[np.datetime64, gu.geovector.Vector] = {}
+        elif isinstance(outlines, gu.geovector.Vector):
+            self.outlines = {self.timestamps[self.reference_index]: outlines}
+        elif all(isinstance(value, gu.geovector.Vector) for value in outlines.values()):
+            self.outlines = dict(zip(np.array(list(outlines.keys())).astype("datetime64[ns]"), outlines.values()))
+        else:
+            raise ValueError(f"Invalid format on 'outlines': {type(outlines)},"
+                             " expected one of ['gu.geovector.Vector', 'dict[datetime.datetime, gu.geovector.Vector']")
 
     @property
     def reference_dem(self) -> gu.georaster.Raster:
@@ -228,63 +240,120 @@ class tDEM:
 
         return [ddem.filled_data for ddem in self.ddems]
 
-    def get_dh_series(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
+    def get_ddem_mask(self, ddem: dDEM) -> np.ndarray:
         """
-        Return a series of mean dDEM values for every timestamp.
+        Get a fitting dDEM mask for a provided dDEM.
 
-        The values are centered around the reference DEM timestamp.
+        The mask is created by evaluating these factors, in order:
 
-        :param mask: Optional. A mask for areas of interest.
+        If self.outlines do not exist, a full True boolean mask is returned.
+        If self.outlines have keys for the start and end time, their union is returned.
+        If self.outlines only have contain the start_time, its mask is returned.
+        If len(self.outlines) == 1, the mask of that outline is returned.
+
+        :returns: A mask from the above conditions.
+        """
+        if not any(ddem is ddem_in_list for ddem_in_list in self.ddems):
+            raise ValueError("Given dDEM must be a part of the tDEM object.")
+
+        # If both the start and end time outlines exist, a mask is created from their union.
+        if ddem.start_time in self.outlines and ddem.end_time in self.outlines:
+            mask = np.logical_or(
+                self.outlines[ddem.start_time].create_mask(ddem) == 255,
+                self.outlines[ddem.end_time].create_mask(ddem) == 255
+            )
+        # If only start time outlines exist, these should be used as a mask
+        elif ddem.start_time in self.outlines:
+            mask = self.outlines[ddem.start_time].create_mask(ddem) == 255
+        # If only one outlines file exist, use that as a mask.
+        elif len(self.outlines) == 1:
+            mask = list(self.outlines.values())[0].create_mask(ddem) == 255
+        # If no fitting outlines were found, make a full true boolean mask in its stead.
+        else:
+            mask = np.ones(shape=ddem.data.shape, dtype=bool)
+        return mask.reshape(ddem.data.shape)
+
+    def get_dh_series(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.DataFrame:
+        """
+        Return a dataframe of mean dDEM values and respective areas for every timestamp.
+
+        The values are always compared to the reference DEM timestamp.
+
+        :param mask: Optional. A mask for areas of interest. Overrides potential outlines of the same date.
         :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
-        :returns: A series of dH values with an Interval[Timestamp] index.
+        :returns: A dataframe of dH values and respective areas with an Interval[Timestamp] index.
         """
-        if self.ddems is None:
+        if len(self.ddems) == 0:
             raise ValueError("dDEMs have not yet been calculated")
 
-        dh_values = pd.DataFrame(columns=["dh"], dtype=float)
-        for ddem in self.ddems:
+        dh_values = pd.DataFrame(columns=["dh", "area"], dtype=float)
+        for i, ddem in enumerate(self.ddems):
             # Skip if the dDEM is a self-comparison
             if float(ddem.time) == 0:
                 continue
 
-            # If no mask was specified, make a full true boolean mask in its stead.
-            if mask is None:
-                mask = np.ones(shape=ddem.shape, dtype=bool)
+            # Use the provided mask unless it's None, otherwise make a dDEM mask.
+            ddem_mask = mask if mask is not None else self.get_ddem_mask(ddem)
 
             # Warn if the dDEM contains nans and that's not okay
             if ddem.filled_data is None and not nans_ok:
                 warnings.warn(f"NaNs found in dDEM ({ddem.start_time} - {ddem.end_time}).")
 
-            data = ddem.data[mask] if ddem.filled_data is None else ddem.filled_data[mask]
+            data = ddem.data[ddem_mask] if ddem.filled_data is None else ddem.filled_data[ddem_mask]
 
             mean_dh = np.nanmean(data)
+            area = np.count_nonzero(ddem_mask) * self.reference_dem.res[0] * self.reference_dem.res[1]
 
-            dh_values.loc[pd.Interval(pd.Timestamp(ddem.start_time), pd.Timestamp(ddem.end_time))] = mean_dh
+            dh_values.loc[pd.Interval(pd.Timestamp(ddem.start_time), pd.Timestamp(ddem.end_time))] = mean_dh, area
 
         return dh_values
 
-    def get_cumulative_dh(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
+    def get_dv_series(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
         """
-        Get the cumulative dH since the first timestamp.
+        Return a series of mean volume change (dV) for every timestamp.
 
+        The values are always compared to the reference DEM timestamp.
+
+        :param mask: Optional. A mask for areas of interest. Overrides potential outlines of the same date.
+        :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
+
+        :returns: A series of dV values with an Interval[Timestamp] index.
+        """
+        dh_values = self.get_dh_series(mask=mask, nans_ok=nans_ok)
+
+        return dh_values["area"] * dh_values["dh"]
+
+    def get_cumulative_series(self, kind: str = "dh", mask: Optional[np.ndarray] = None,
+                              nans_ok: bool = False) -> pd.Series:
+        """
+        Get the cumulative dH (elevation) or dV (volume) since the first timestamp.
+
+        :param kind: The kind of series. Can be dh or dv.
         :param mask: Optional. A mask for areas of interest.
         :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
-        :returns: A series of cumulative dH with a Timestamp index.
+        :returns: A series of cumulative dH/dV with a Timestamp index.
         """
-        dh_series = self.get_dh_series(mask=mask, nans_ok=nans_ok)
+        if kind.lower() == "dh":
+            # Get the dH series (where all indices are: "year to reference_year")
+            d_series = self.get_dh_series(mask=mask, nans_ok=nans_ok)["dh"]
+        elif kind.lower() == "dv":
+            # Get the dV series (where all indices are: "year to reference_year")
+            d_series = self.get_dv_series(mask=mask, nans_ok=nans_ok)
+        else:
+            raise ValueError("Invalid argument: '{dh=}'. Choices: ['dh', 'dv']")
 
-        dh_interim = pd.Series(dtype=float)
-        dh_interim[self.reference_timestamp] = 0.0
-
-        for i, value in zip(dh_series.index, dh_series.values):
+        # Simplify the index to just "year" (implictly still the same as above)
+        cumulative_dh = pd.Series(dtype=d_series.dtype)
+        cumulative_dh[self.reference_timestamp] = 0.0
+        for i, value in zip(d_series.index, d_series.values):
             non_reference_year = [date for date in [i.left, i.right] if date != self.reference_timestamp][0]
-            dh_interim.loc[non_reference_year] = value[0]
+            cumulative_dh.loc[non_reference_year] = value
 
-        dh_interim.sort_index(inplace=True)
-        dh_interim -= dh_interim.iloc[0]
-
-        cumulative_dh = dh_interim.cumsum()
+        # Sort the dates (just to be sure. It should already be sorted)
+        cumulative_dh.sort_index(inplace=True)
+        # Subtract the entire series by the first value to
+        cumulative_dh -= cumulative_dh.iloc[0]
 
         return cumulative_dh

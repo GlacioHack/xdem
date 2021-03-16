@@ -4,13 +4,14 @@ import warnings
 import geoutils as gu
 import numpy as np
 
-import xdem
+xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 
 class TesttDEM:
     dem_2009 = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
     dem_1990 = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
     outlines_1990 = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    outlines_2010 = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines_2010"])
 
     def test_create(self):
 
@@ -19,15 +20,22 @@ class TesttDEM:
         scott_1990 = gu.geovector.Vector(
             self.outlines_1990.ds.loc[self.outlines_1990.ds["NAME"] == "Scott Turnerbreen"]
         )
+        scott_2010 = gu.geovector.Vector(
+            self.outlines_2010.ds.loc[self.outlines_2010.ds["NAME"] == "Scott Turnerbreen"]
+        )
 
-        mask = (scott_1990.create_mask(self.dem_2009) == 255).reshape(self.dem_2009.data.shape)
+        # Make sure the glacier was bigger in 1990, since this is assumed later.
+        assert scott_1990.ds.area.sum() > scott_2010.ds.area.sum()
+
+        mask_2010 = (scott_2010.create_mask(self.dem_2009) == 255).reshape(self.dem_2009.data.shape)
 
         dem_2060 = self.dem_2009.copy()
-        dem_2060.data[mask] -= 30
+        dem_2060.data[mask_2010] -= 30
 
         tdem = xdem.volume.tDEM(
             [self.dem_1990, self.dem_2009, dem_2060],
             timestamps=timestamps,
+            outlines=dict(zip(timestamps[:2], [scott_1990, scott_2010])),
             reference_dem=1
         )
 
@@ -39,7 +47,19 @@ class TesttDEM:
 
         assert np.mean(tdem.ddems[0].data) > 0
 
-        cumulative_dh = tdem.get_cumulative_dh(mask=mask)
+        dh_series = tdem.get_dh_series()
+
+        # The 1990-2009 area should be the union of those years. The 2009-2060 area should just be the 2010 area.
+        assert dh_series.iloc[0]["area"] > dh_series.iloc[-1]["area"]
+
+        cumulative_dh = tdem.get_cumulative_series(kind="dh")
+        cumulative_dv = tdem.get_cumulative_series(kind="dv")
+
+        # Simple check that the cumulative_dh is overall negative.
+        assert cumulative_dh.iloc[0] > cumulative_dh.iloc[-1]
+
+        # Simple check that the dV number is of a greater magnitude than the dH number.
+        assert abs(cumulative_dv.iloc[-1]) > abs(cumulative_dh.iloc[-1])
 
         # Generate 10000 NaN values randomly in one of the dDEMs
         tdem.ddems[0].data[np.random.randint(0, tdem.ddems[0].data.shape[0], 100),
@@ -48,13 +68,10 @@ class TesttDEM:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             try:
-                tdem.get_cumulative_dh(mask=mask, nans_ok=False)
+                tdem.get_cumulative_series(nans_ok=False)
             except UserWarning as exception:
                 if "NaNs found in dDEM" not in str(exception):
                     raise exception
-
-        # Simple check that the cumulative_dh is overall negative.
-        assert cumulative_dh.iloc[0] > cumulative_dh.iloc[-1]
 
         # print(cumulative_dh)
 
