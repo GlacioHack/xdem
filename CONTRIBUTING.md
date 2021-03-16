@@ -49,8 +49,8 @@ Clone the git repo and create a conda environment
 ```bash
 git clone https://github.com/GlacioHack/xdem.git
 cd xdem
-conda create -f environment.yml  # add '-n customname' if you want.
-conda activate glacio  # or any other name specified above
+conda create -f environment.yml  # add '-n custom_name' if you want.
+conda activate xdem  # or any other name specified above
 pip install -e .  # Install xdem
 ```
 The linters and formatters mentioned above are recommended to install now.
