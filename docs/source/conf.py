@@ -13,10 +13,13 @@
 import os
 import sys
 
+# Allow conf.py to find the xdem module
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
 # -- Project information -----------------------------------------------------
 
 project = 'xdem'
 copyright = '2021, xdem contributors'
+
 author = 'xdem contributors'
 
 # The full version, including alpha/beta/rc tags
@@ -64,7 +67,7 @@ def run_apidoc(_):
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     cur_dir = os.path.abspath(os.path.dirname(__file__))
-    module = os.path.join(cur_dir, "../", "xdem")
+    module = os.path.join(cur_dir, "../../", "xdem")
     output_path = os.path.join(cur_dir, 'source/api/')
     main(['-e', '-o', output_path, module, '--force'])
 
