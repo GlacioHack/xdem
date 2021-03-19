@@ -63,7 +63,7 @@ html_static_path = ['_static']
 def run_apidoc(_):
     #sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     cur_dir = os.path.abspath(os.path.dirname(__file__))
-    module = '../xdem'
+    module = '../../xdem'
     output_path = os.path.join(cur_dir, 'api/')
     main(['-e', '-o', output_path, module, '--force'])
 
