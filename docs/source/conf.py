@@ -13,8 +13,6 @@
 import os
 import sys
 
-from sphinx.ext.apidoc import main
-
 # -- Project information -----------------------------------------------------
 
 project = 'xdem'
@@ -61,10 +59,13 @@ html_static_path = ['_static']
 
 
 def run_apidoc(_):
-    sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
+    from sphinx.ext.apidoc import main
+    import os
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     cur_dir = os.path.abspath(os.path.dirname(__file__))
-    module = '../'
-    output_path = os.path.join(cur_dir, 'api/')
+    module = os.path.join(cur_dir, "../..", "xdem")
+    output_path = os.path.join(cur_dir, 'source/api/')
     main(['-e', '-o', output_path, module, '--force'])
 
 
