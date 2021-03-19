@@ -1070,3 +1070,156 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     )
 
     return aligned_raster, error
+
+
+def superimpose(pc1: np.ndarray, pc2: np.ndarray,
+                       weights: np.ndarray = None, allow_rescale: bool = False) -> tuple[float, np.ndarray, np.ndarray, float]:
+    """
+    Takes two lists of xyz coordinates, (of the same length)
+    and attempts to superimpose them using rotations, translations, and 
+    (optionally) rescale operations in order to minimize the 
+    root-mean-squared-distance (RMSD) between them.
+    These operations should be applied to the "pc2" argument.
+
+    This function implements a more general variant of the method from:
+    R. Diamond, (1988)
+    "A Note on the Rotational Superposition Problem",
+    Acta Cryst. A44, pp. 211-216
+    This version has been augmented slightly.  The version in the original 
+    paper only considers rotation and translation and does not allow the 
+    coordinates of either object to be rescaled (multiplication by a scalar).
+
+    This code is largely inspired from https://github.com/jewettaij/superpose3d
+
+    :param pc1: First point-cloud, array of dimension (N, 3)
+    :param pc2: Second point-cloud, array of dimension (N, 3)
+    :param weights: optional weights for the calculation of RMSD (same shape as PCs)
+    :param allow_rescale: Attempt to rescale second point cloud
+
+    :returns:
+      (RMSD, optimal_translation, optimal_rotation, and optimal_scale_factor)
+    """
+    # Make sure input array are np arrays
+    pc1 = np.asarray(pc1)
+    pc2 = np.asarray(pc2)
+    N = pc1.shape[0]
+
+    # Checj arrays have same size
+    if pc1.shape[0] != pc2.shape[0]:
+        raise ValueError("Inputs should have the same size.")
+
+    # Convert weights into array
+    if (weights is None) or (len(weights) == 0):
+        weights = np.full((N, 1), 1.0)
+    else:
+        # reshape weights so multiplications are done column-wise
+        weights = np.array(weights).reshape(N, 1)
+
+    # Find the center of mass of each object:
+    center1 = np.sum(pc1 * weights, axis=0)
+    center2 = np.sum(pc2 * weights, axis=0)
+
+    sum_weights = np.sum(weights, axis=0)
+    if sum_weights != 0:
+        center1 /= sum_weights
+        center2 /= sum_weights
+
+    # Subtract the centers-of-mass from the original coordinates for each object
+    pc1_centered = pc1 - center1
+    pc2_centered = pc2 - center2
+
+    # Calculate the "M" array from the Diamond paper (equation 16)
+    M = np.matmul(pc2_centered.T, (pc1_centered * weights))
+
+    # Calculate Q (equation 17)
+    Q = M + M.T - 2*np.eye(3)*np.trace(M)
+
+    # Calculate V (equation 18)
+    V = np.empty(3)
+    V[0] = M[1][2] - M[2][1]
+    V[1] = M[2][0] - M[0][2]
+    V[2] = M[0][1] - M[1][0]
+
+    # Calculate "P" (equation 22)
+    P = np.zeros((4, 4))
+    P[:3, :3] = Q
+    P[3, :3] = V
+    P[:3, 3] = V
+
+    # Calculate "p".
+    # "p" contains the optimal rotation (in backwards-quaternion format)
+    # (Note: A discussion of various quaternion conventions is included below.)
+    # First, specify the default value for p:
+    p = np.zeros(4)
+    p[3] = 1.0           # p = [0,0,0,1]    default value
+    pPp = 0.0            # = p^T * P * p    (zero by default)
+    singular = (N < 2)   # (it doesn't make sense to rotate a single point)
+
+    try:
+        #http://docs.scipy.org/doc/numpy/reference/generated/numpy.linalg.eigh.html
+        aEigenvals, aaEigenvects = np.linalg.eigh(P)
+
+    except np.linalg.LinAlgError:
+        singular = True  # (I have never seen this happen.)
+
+    if not singular:  # (don't crash if the caller supplies nonsensical input)
+        i_eval_max = np.argmax(aEigenvals)
+        pPp = np.max(aEigenvals)
+        p[:] = aaEigenvects[:, i_eval_max]
+
+    # normalize the vector
+    # (It should be normalized already, but just in case it is not, do it again)
+    p /= np.linalg.norm(p)
+
+    # Finally, calculate the rotation matrix corresponding to "p"
+    # (p is in backwards-quaternion format)
+
+    aaRotate = np.empty((3, 3))
+    aaRotate[0][0] = (p[0]*p[0])-(p[1]*p[1])-(p[2]*p[2])+(p[3]*p[3])
+    aaRotate[1][1] = -(p[0]*p[0])+(p[1]*p[1])-(p[2]*p[2])+(p[3]*p[3])
+    aaRotate[2][2] = -(p[0]*p[0])-(p[1]*p[1])+(p[2]*p[2])+(p[3]*p[3])
+    aaRotate[0][1] = 2*(p[0]*p[1] - p[2]*p[3])
+    aaRotate[1][0] = 2*(p[0]*p[1] + p[2]*p[3])
+    aaRotate[1][2] = 2*(p[1]*p[2] - p[0]*p[3])
+    aaRotate[2][1] = 2*(p[1]*p[2] + p[0]*p[3])
+    aaRotate[0][2] = 2*(p[0]*p[2] + p[1]*p[3])
+    aaRotate[2][0] = 2*(p[0]*p[2] - p[1]*p[3])
+
+    # Alternatively, in modern python versions, this code also works:
+    """
+    from scipy.spatial.transform import Rotation as R
+    the_rotation = R.from_quat(p)
+    aaRotate = the_rotation.as_matrix()
+    """
+
+    # Optional: Decide the scale factor, c
+    c = 1.0   # by default, don't rescale the coordinates
+    if allow_rescale and (not singular):
+        Waxaixai = np.sum(weights * pc2_centered ** 2)
+        WaxaiXai = np.sum(weights * pc1_centered ** 2)
+
+        c = (WaxaiXai + pPp) / Waxaixai
+
+    # Finally compute the RMSD between the two coordinate sets:
+    # First compute E0 from equation 24 of the paper
+    E0 = np.sum((pc1_centered - c*pc2_centered)**2)
+    sum_sqr_dist = max(0, E0 - c * 2.0 * pPp)
+
+    rmsd = 0.0
+    if sum_weights != 0.0:
+        rmsd = np.sqrt(sum_sqr_dist/sum_weights)
+
+    # Lastly, calculate the translational offset:
+    # Recall that:
+    #RMSD=sqrt((Σ_i  w_i * |X_i - (Σ_j c*R_ij*x_j + T_i))|^2) / (Σ_j w_j))
+    #    =sqrt((Σ_i  w_i * |X_i - x_i'|^2) / (Σ_j w_j))
+    #  where
+    # x_i' = Σ_j c*R_ij*x_j + T_i
+    #      = Xcm_i + c*R_ij*(x_j - xcm_j)
+    #  and Xcm and xcm = center_of_mass for the frozen and mobile point clouds
+    #                  = center1[]       and       center2[],  respectively
+    # Hence:
+    #  T_i = Xcm_i - Σ_j c*R_ij*xcm_j  =  aTranslate[i]
+    aTranslate = center1 - np.matmul(c*aaRotate, center2).T.reshape(3,)
+
+    return rmsd, aaRotate, aTranslate, c
