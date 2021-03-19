@@ -614,7 +614,7 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
 
 
 def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np.ndarray,
-              degree: int, verbose: bool = False,
+              degree: int, verbose: bool = False, max_npts: int = 500_000,
               metadata: Optional[dict[str, Any]] = None) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
     """
     Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
@@ -623,19 +623,25 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     :param x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
     :param y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
     :param degree: The polynomial degree to estimate the ramp.
+    :param max_npts: Maximum number of points to randomly extract.
     :param verbose: Print the least squares optimization progress.
     :param metadata: Optional. A metadata dictionary that will be updated with the key "deramp".
 
     :returns: A callable function to estimate the ramp.
     """
     # Extract only the finite values of the elevation difference and corresponding coordinates.
-    valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
-    valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
-    valid_y_coords = y_coordinates[np.isfinite(elevation_difference)]
+    if isinstance(elevation_difference, np.ma.masked_array):
+        valid_diffs = elevation_difference[~elevation_difference.mask]
+        valid_x_coords = x_coordinates[~elevation_difference.mask]
+        valid_y_coords = y_coordinates[~elevation_difference.mask]
+    else:
+        valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
+        valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
+        valid_y_coords = y_coordinates[np.isfinite(elevation_difference)]
 
     # Randomly subsample the values if there are more than 500,000 of them.
-    if valid_x_coords.shape[0] > 500_000:
-        random_indices = np.random.randint(0, valid_x_coords.shape[0] - 1, 500_000)
+    if len(valid_x_coords) > max_npts:
+        random_indices = np.random.randint(0, len(valid_x_coords) - 1, max_npts)
         valid_diffs = valid_diffs[random_indices]
         valid_x_coords = valid_x_coords[random_indices]
         valid_y_coords = valid_y_coords[random_indices]
@@ -646,8 +652,8 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         """
         Estimate values from a 2D-polynomial.
 
-        :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference).
-        :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference).
+        :param x_coordinates: x-coordinates of the difference array (same shape as elevation_difference).
+        :param y_coordinates: y-coordinates of the difference array (same shape as elevation_difference).
         :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
         :param degree: The degree of the polynomial.
 
@@ -658,7 +664,8 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
         # Check that the coefficient size is correct.
         coefficient_size = (degree + 1) * (degree + 2) / 2
         if len(coefficients) != coefficient_size:
-            raise ValueError()
+            raise ValueError("Number of coefficients must be equal to",
+                             (degree + 1) * (degree + 2) / 2)
 
         # Do Amaury's black magic to estimate the values.
         estimated_values = np.sum([coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) *
