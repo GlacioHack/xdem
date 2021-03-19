@@ -732,7 +732,7 @@ def plot_vgm(df: pd.DataFrame, fit_fun : Callable = None):
         x = np.linspace(0,np.max(df.bins),10000)
         y = fit_fun(x)
 
-        ax.plot(x,y,linestyle='dashed',color='black',label='Model fit')
+        ax.plot(x,y,linestyle='dashed',color='black',label='Model fit',zorder=30)
 
     ax.set_xlabel('Lag (m)')
     ax.set_ylabel('Variance [$\mu$ $\pm \sigma$]')

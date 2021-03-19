@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pyproj
 import rasterio.fill
+from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 
@@ -53,16 +54,19 @@ def parse_vref_from_product(product):
     return vref_name
 
 
+dem_attrs = ['vref', 'vref_grid', 'ccrs']
+
+
 class DEM(SatelliteImage):
 
-    def __init__(self, filename, vref_name=None, vref_grid=None, silent=False, **kwargs):
+    def __init__(self, filename_or_dataset, vref_name=None, vref_grid=None, silent=False, **kwargs):
         """
         Load digital elevation model data through the Raster class, parse additional attributes from filename or metadata
         trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
         For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
 
-        :param filename: The filename of the dataset.
-        :type filename: str
+        :param filename_or_dataset: The filename of the dataset.
+        :type filename_or_dataset: str, DEM, SatelliteImage, Raster, rio.io.Dataset, rio.io.MemoryFile
         :param vref_name: Vertical reference name
         :type vref_name: str
         :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
@@ -71,7 +75,14 @@ class DEM(SatelliteImage):
         :param silent: boolean
         """
 
-        super().__init__(filename, **kwargs)
+        # If DEM is passed, simply point back to DEM
+        if isinstance(filename_or_dataset, DEM):
+            for key in filename_or_dataset.__dict__:
+                setattr(self, key, filename_or_dataset.__dict__[key])
+            return
+        # Else rely on parent Raster class options (including raised errors)
+        else:
+            super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
         if self.nbands > 1:
             raise ValueError('DEM rasters should be composed of one band only')
@@ -83,6 +94,16 @@ class DEM(SatelliteImage):
 
         # trying to get vref from product name (priority to user input)
         self.__parse_vref_from_fn(silent=silent)
+
+    def copy(self, new_array=None):
+
+        new_dem = super().copy()
+        # those attributes are immutable, including pyproj.CRS
+        # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
+        for attrs in dem_attrs:
+            setattr(new_dem, attrs, getattr(self, attrs))
+
+        return new_dem
 
     def __parse_vref_from_fn(self, silent=False):
         """
