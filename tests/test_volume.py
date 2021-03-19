@@ -7,7 +7,7 @@ import numpy as np
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 
-class TesttDEM:
+class TestDEMCollection:
     dem_2009 = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
     dem_1990 = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
     outlines_1990 = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
@@ -32,7 +32,7 @@ class TesttDEM:
         dem_2060 = self.dem_2009.copy()
         dem_2060.data[mask_2010] -= 30
 
-        tdem = xdem.volume.tDEM(
+        dems = xdem.volume.DEMCollection(
             [self.dem_1990, self.dem_2009, dem_2060],
             timestamps=timestamps,
             outlines=dict(zip(timestamps[:2], [scott_1990, scott_2010])),
@@ -40,20 +40,20 @@ class TesttDEM:
         )
 
         # Check that the first raster is the oldest one and
-        assert tdem.dems[0].data.max() == self.dem_1990.data.max()
-        assert tdem.reference_dem.data.max() == self.dem_2009.data.max()
+        assert dems.dems[0].data.max() == self.dem_1990.data.max()
+        assert dems.reference_dem.data.max() == self.dem_2009.data.max()
 
-        tdem.subtract_dems(resampling_method="nearest")
+        dems.subtract_dems(resampling_method="nearest")
 
-        assert np.mean(tdem.ddems[0].data) > 0
+        assert np.mean(dems.ddems[0].data) > 0
 
-        dh_series = tdem.get_dh_series()
+        dh_series = dems.get_dh_series()
 
         # The 1990-2009 area should be the union of those years. The 2009-2060 area should just be the 2010 area.
         assert dh_series.iloc[0]["area"] > dh_series.iloc[-1]["area"]
 
-        cumulative_dh = tdem.get_cumulative_series(kind="dh")
-        cumulative_dv = tdem.get_cumulative_series(kind="dv")
+        cumulative_dh = dems.get_cumulative_series(kind="dh")
+        cumulative_dv = dems.get_cumulative_series(kind="dv")
 
         # Simple check that the cumulative_dh is overall negative.
         assert cumulative_dh.iloc[0] > cumulative_dh.iloc[-1]
@@ -62,13 +62,13 @@ class TesttDEM:
         assert abs(cumulative_dv.iloc[-1]) > abs(cumulative_dh.iloc[-1])
 
         # Generate 10000 NaN values randomly in one of the dDEMs
-        tdem.ddems[0].data[np.random.randint(0, tdem.ddems[0].data.shape[0], 100),
-                           np.random.randint(0, tdem.ddems[0].data.shape[1], 100)] = np.nan
+        dems.ddems[0].data[np.random.randint(0, dems.ddems[0].data.shape[0], 100),
+                           np.random.randint(0, dems.ddems[0].data.shape[1], 100)] = np.nan
         # Check that the cumulative_dh function warns for NaNs
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             try:
-                tdem.get_cumulative_series(nans_ok=False)
+                dems.get_cumulative_series(nans_ok=False)
             except UserWarning as exception:
                 if "NaNs found in dDEM" not in str(exception):
                     raise exception
@@ -78,15 +78,15 @@ class TesttDEM:
         #raise NotImplementedError
 
     def test_dem_datetimes(self):
-        """Try to create the tDEM without the timestamps argument (instead relying on datetime attributes)."""
+        """Try to create the DEMCollection without the timestamps argument (instead relying on datetime attributes)."""
         self.dem_1990.datetime = datetime.datetime(1990, 8, 1)
         self.dem_2009.datetime = datetime.datetime(2009, 8, 1)
 
-        tdem = xdem.volume.tDEM(
+        dems = xdem.volume.DEMCollection(
             [self.dem_1990, self.dem_2009]
         )
 
-        assert len(tdem.timestamps) > 0
+        assert len(dems.timestamps) > 0
 
     def test_ddem_interpolation(self):
         """Test that dDEM interpolation works as it should."""
@@ -94,33 +94,33 @@ class TesttDEM:
         # All warnings should raise errors from now on
         warnings.simplefilter("error")
 
-        # Create a tDEM object
-        tdem = xdem.volume.tDEM(
+        # Create a DEMCollection object
+        dems = xdem.volume.DEMCollection(
             [self.dem_2009, self.dem_1990],
             timestamps=[datetime.datetime(year, 8, 1) for year in (2009, 1990)])
 
         # Create dDEMs
-        tdem.subtract_dems(resampling_method="nearest")
+        dems.subtract_dems(resampling_method="nearest")
 
         # The example data does not have NaNs, so filled_data should exist.
-        assert tdem.ddems[0].filled_data is not None
+        assert dems.ddems[0].filled_data is not None
 
         # Try to set the filled_data property with an invalid size.
         try:
-            tdem.ddems[0].filled_data = np.zeros(3)
+            dems.ddems[0].filled_data = np.zeros(3)
         except AssertionError as exception:
             if "differs from the data shape" not in str(exception):
                 raise exception
 
         # Generate 10000 NaN values randomly in one of the dDEMs
-        tdem.ddems[0].data[np.random.randint(0, tdem.ddems[0].data.shape[0], 100),
-                           np.random.randint(0, tdem.ddems[0].data.shape[1], 100)] = np.nan
+        dems.ddems[0].data[np.random.randint(0, dems.ddems[0].data.shape[0], 100),
+                           np.random.randint(0, dems.ddems[0].data.shape[1], 100)] = np.nan
 
         # Make sure that filled_data is not available anymore, since the data now has nans
-        assert tdem.ddems[0].filled_data is None
+        assert dems.ddems[0].filled_data is None
 
         # Interpolate the nans
-        tdem.ddems[0].interpolate(method="linear")
+        dems.ddems[0].interpolate(method="linear")
 
         # Make sure that the filled_data is available again
-        assert tdem.ddems[0].filled_data is not None
+        assert dems.ddems[0].filled_data is not None

@@ -125,7 +125,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         return self.filled_data
 
 
-class tDEM:
+class DEMCollection:
     """A temporal collection of DEMs."""
 
     def __init__(self, dems: Union[list[gu.georaster.Raster], list[xdem.dem.DEM]],
@@ -140,7 +140,7 @@ class tDEM:
         :param outlines: Polygons to separate the changing area of interest. Could for example be glacier outlines.
         :param reference_dem: An instance or index of which DEM in the 'dems' list is the reference.
 
-        :returns: A new tDEM instance.
+        :returns: A new DEMCollection instance.
         """
         # If timestamps is not given, try to parse it from the (potential) 'datetime' attribute of each DEM.
         if timestamps is None:
@@ -230,7 +230,7 @@ class tDEM:
 
     def interpolate_ddems(self, method="linear"):
         """
-        Interpolate all the dDEMs in the tDEM object using the chosen interpolation method.
+        Interpolate all the dDEMs in the DEMCollection object using the chosen interpolation method.
 
         :param method: The chosen interpolation method.
         """
@@ -254,7 +254,7 @@ class tDEM:
         :returns: A mask from the above conditions.
         """
         if not any(ddem is ddem_in_list for ddem_in_list in self.ddems):
-            raise ValueError("Given dDEM must be a part of the tDEM object.")
+            raise ValueError("Given dDEM must be a part of the DEMCollection object.")
 
         # If both the start and end time outlines exist, a mask is created from their union.
         if ddem.start_time in self.outlines and ddem.end_time in self.outlines:
