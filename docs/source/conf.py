@@ -68,8 +68,8 @@ def run_apidoc(_):
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     cur_dir = os.path.abspath(os.path.dirname(__file__))
     module = os.path.join(cur_dir, "../../", "xdem")
-    output_path = os.path.join(cur_dir, 'source/api/')
-    main(['-e', '-o', output_path, module, '--force'])
+    output_path = os.path.join(cur_dir, 'api/')
+    main(['-e', '-o', output_path, module, os.path.join(module, "version.py"), "--force"])
 
 
 def setup(app):
