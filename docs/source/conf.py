@@ -15,9 +15,6 @@ import sys
 
 from sphinx.ext.apidoc import main
 
-sys.path.insert(0, os.path.abspath("../"))
-
-
 # -- Project information -----------------------------------------------------
 
 project = 'xdem'
@@ -64,7 +61,7 @@ html_static_path = ['_static']
 
 
 def run_apidoc(_):
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    #sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     cur_dir = os.path.abspath(os.path.dirname(__file__))
     module = '../xdem'
     output_path = os.path.join(cur_dir, 'api/')
