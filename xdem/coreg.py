@@ -1049,8 +1049,16 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     reference_dem = reference_raster.data.squeeze().copy()  # type: ignore
 
     # Set nodata values to nans
-    to_be_aligned_dem[to_be_aligned_dem == to_be_aligned_raster.nodata] = np.nan
-    reference_dem[reference_dem == reference_raster.nodata] = np.nan
+    if isinstance(to_be_aligned_dem, np.ma.masked_array):
+        to_be_aligned_dem.data[to_be_aligned_dem.mask] = np.nan
+        to_be_aligned_dem = to_be_aligned_dem.data
+    else:
+        to_be_aligned_dem[to_be_aligned_dem == to_be_aligned_raster.nodata] = np.nan
+    if isinstance(reference_dem, np.ma.masked_array):
+        reference_dem.data[reference_dem.mask] = np.nan
+        reference_dem = reference_dem.data
+    else:
+        reference_dem[reference_dem == reference_raster.nodata] = np.nan
 
     # Align the raster using the selected method. This returns a numpy array and the corresponding error
     aligned_dem, error = method(  # type: ignore
