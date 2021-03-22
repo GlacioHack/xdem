@@ -74,9 +74,10 @@ def subtract_rasters(first_raster: Union[str, gu.georaster.Raster], second_raste
         resampling_method = resampling_method_from_str(resampling_method)
 
     # Reproject the non-reference and subtract the two rasters.
-    difference = first_raster.data - second_raster.reproject(first_raster, resampling=resampling_method).data if \
+    difference = \
+        first_raster.data - second_raster.reproject(first_raster, resampling=resampling_method, silent=True).data if \
         reference == "first" else \
-        first_raster.reproject(second_raster, resampling=resampling_method).data - second_raster.data
+        first_raster.reproject(second_raster, resampling=resampling_method, silent=True).data - second_raster.data
 
     # Generate a GeoUtils raster from the difference array
     difference_raster = gu.georaster.Raster.from_array(

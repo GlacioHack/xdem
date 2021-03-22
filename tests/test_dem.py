@@ -244,7 +244,7 @@ class TestDEMCollection:
         dems = xdem.DEMCollection(
             [self.dem_1990, self.dem_2009, dem_2060],
             timestamps=timestamps,
-            outlines=dict(zip(timestamps[:2], [scott_1990, scott_2010])),
+            outlines=dict(zip(timestamps[:2], [self.outlines_1990, self.outlines_2010])),
             reference_dem=1
         )
 
@@ -256,13 +256,15 @@ class TestDEMCollection:
 
         assert np.mean(dems.ddems[0].data) > 0
 
-        dh_series = dems.get_dh_series()
+        scott_filter = "NAME == 'Scott Turnerbreen'"
+
+        dh_series = dems.get_dh_series(outlines_filter=scott_filter)
 
         # The 1990-2009 area should be the union of those years. The 2009-2060 area should just be the 2010 area.
         assert dh_series.iloc[0]["area"] > dh_series.iloc[-1]["area"]
 
-        cumulative_dh = dems.get_cumulative_series(kind="dh")
-        cumulative_dv = dems.get_cumulative_series(kind="dv")
+        cumulative_dh = dems.get_cumulative_series(kind="dh", outlines_filter=scott_filter)
+        cumulative_dv = dems.get_cumulative_series(kind="dv", outlines_filter=scott_filter)
 
         # Simple check that the cumulative_dh is overall negative.
         assert cumulative_dh.iloc[0] > cumulative_dh.iloc[-1]
@@ -299,7 +301,6 @@ class TestDEMCollection:
 
     def test_ddem_interpolation(self):
         """Test that dDEM interpolation works as it should."""
-
         # All warnings should raise errors from now on
         warnings.simplefilter("error")
 

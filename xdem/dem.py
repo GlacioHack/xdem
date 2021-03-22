@@ -476,7 +476,7 @@ class DEMCollection:
 
         return [ddem.filled_data for ddem in self.ddems]
 
-    def get_ddem_mask(self, ddem: dDEM) -> np.ndarray:
+    def get_ddem_mask(self, ddem: dDEM, outlines_filter: Optional[str] = None) -> np.ndarray:
         """
         Get a fitting dDEM mask for a provided dDEM.
 
@@ -487,10 +487,20 @@ class DEMCollection:
         If self.outlines only have contain the start_time, its mask is returned.
         If len(self.outlines) == 1, the mask of that outline is returned.
 
+        :param ddem: The dDEM to create a mask for.
+        :param outlines_filter: A query to filter the outline vectors. Example: "name_column == 'specific glacier'".
+
         :returns: A mask from the above conditions.
         """
         if not any(ddem is ddem_in_list for ddem_in_list in self.ddems):
             raise ValueError("Given dDEM must be a part of the DEMCollection object.")
+
+        if outlines_filter is None:
+            outlines = self.outlines
+        else:
+            outlines = self.outlines.copy()
+            for key in outlines:
+                outlines[key].ds = outlines[key].ds.query(outlines_filter)
 
         # If both the start and end time outlines exist, a mask is created from their union.
         if ddem.start_time in self.outlines and ddem.end_time in self.outlines:
@@ -509,7 +519,8 @@ class DEMCollection:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)
         return mask.reshape(ddem.data.shape)
 
-    def get_dh_series(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.DataFrame:
+    def get_dh_series(self, outlines_filter: Optional[str] = None, mask: Optional[np.ndarray] = None,
+                      nans_ok: bool = False) -> pd.DataFrame:
         """
         Return a dataframe of mean dDEM values and respective areas for every timestamp.
 
@@ -530,7 +541,7 @@ class DEMCollection:
                 continue
 
             # Use the provided mask unless it's None, otherwise make a dDEM mask.
-            ddem_mask = mask if mask is not None else self.get_ddem_mask(ddem)
+            ddem_mask = mask if mask is not None else self.get_ddem_mask(ddem, outlines_filter=outlines_filter)
 
             # Warn if the dDEM contains nans and that's not okay
             if ddem.filled_data is None and not nans_ok:
@@ -545,27 +556,31 @@ class DEMCollection:
 
         return dh_values
 
-    def get_dv_series(self, mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
+    def get_dv_series(self, outlines_filter: Optional[str] = None,
+                      mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
         """
         Return a series of mean volume change (dV) for every timestamp.
 
         The values are always compared to the reference DEM timestamp.
 
+        :param outlines_filter: A query to filter the outline vectors. Example: "name_column == 'specific glacier'".
         :param mask: Optional. A mask for areas of interest. Overrides potential outlines of the same date.
         :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
         :returns: A series of dV values with an Interval[Timestamp] index.
         """
-        dh_values = self.get_dh_series(mask=mask, nans_ok=nans_ok)
+        dh_values = self.get_dh_series(outlines_filter=outlines_filter, mask=mask, nans_ok=nans_ok)
 
         return dh_values["area"] * dh_values["dh"]
 
-    def get_cumulative_series(self, kind: str = "dh", mask: Optional[np.ndarray] = None,
+    def get_cumulative_series(self, kind: str = "dh", outlines_filter: Optional[str] = None,
+                              mask: Optional[np.ndarray] = None,
                               nans_ok: bool = False) -> pd.Series:
         """
         Get the cumulative dH (elevation) or dV (volume) since the first timestamp.
 
         :param kind: The kind of series. Can be dh or dv.
+        :param outlines_filter: A query to filter the outline vectors. Example: "name_column == 'specific glacier'".
         :param mask: Optional. A mask for areas of interest.
         :param nans_ok: Warn if NaNs are encountered in a dDEM (it should have been gap-filled).
 
@@ -573,10 +588,10 @@ class DEMCollection:
         """
         if kind.lower() == "dh":
             # Get the dH series (where all indices are: "year to reference_year")
-            d_series = self.get_dh_series(mask=mask, nans_ok=nans_ok)["dh"]
+            d_series = self.get_dh_series(mask=mask, outlines_filter=outlines_filter, nans_ok=nans_ok)["dh"]
         elif kind.lower() == "dv":
             # Get the dV series (where all indices are: "year to reference_year")
-            d_series = self.get_dv_series(mask=mask, nans_ok=nans_ok)
+            d_series = self.get_dv_series(mask=mask, outlines_filter=outlines_filter, nans_ok=nans_ok)
         else:
             raise ValueError("Invalid argument: '{dh=}'. Choices: ['dh', 'dv']")
 
