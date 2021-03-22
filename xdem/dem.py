@@ -451,7 +451,7 @@ class DEMCollection:
                     raster=xdem.spatial_tools.subtract_rasters(
                         self.reference_dem,
                         dem,
-                        reference="second",
+                        reference="first",
                         resampling_method=resampling_method
                     ),
                     start_time=min(self.reference_timestamp, self.timestamps[i]),
