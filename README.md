@@ -3,7 +3,7 @@ Set of tools to manipulate Digital Elevation Models (DEMs)
 
 More documentation to come!
 
-![](https://readthedocs.org/projects/xdem/badge/?version=latest)
+[![Documentation Status](https://readthedocs.org/projects/xdem/badge/?version=latest)](https://xdem.readthedocs.io/en/latest/?badge=latest)
 
 
 ## Installation ##
