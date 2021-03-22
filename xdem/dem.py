@@ -381,7 +381,6 @@ class DEMCollection:
         # If timestamps is not given, try to parse it from the (potential) 'datetime' attribute of each DEM.
         if timestamps is None:
             timestamp_attributes = [dem.datetime for dem in dems]
-            print(timestamp_attributes)
             if any([stamp is None for stamp in timestamp_attributes]):
                 raise ValueError("'timestamps' not provided and the given DEMs do not all have datetime attributes")
 
@@ -450,8 +449,8 @@ class DEMCollection:
             else:
                 ddem = dDEM(
                     raster=xdem.spatial_tools.subtract_rasters(
-                        dem,
                         self.reference_dem,
+                        dem,
                         reference="second",
                         resampling_method=resampling_method
                     ),
@@ -498,22 +497,22 @@ class DEMCollection:
         if outlines_filter is None:
             outlines = self.outlines
         else:
-            outlines = self.outlines.copy()
+            outlines = {key: gu.Vector(outline.ds.copy()) for key, outline in self.outlines.items()}
             for key in outlines:
                 outlines[key].ds = outlines[key].ds.query(outlines_filter)
 
         # If both the start and end time outlines exist, a mask is created from their union.
-        if ddem.start_time in self.outlines and ddem.end_time in self.outlines:
+        if ddem.start_time in outlines and ddem.end_time in outlines:
             mask = np.logical_or(
-                self.outlines[ddem.start_time].create_mask(ddem) == 255,
-                self.outlines[ddem.end_time].create_mask(ddem) == 255
+                outlines[ddem.start_time].create_mask(ddem) == 255,
+                outlines[ddem.end_time].create_mask(ddem) == 255
             )
         # If only start time outlines exist, these should be used as a mask
-        elif ddem.start_time in self.outlines:
-            mask = self.outlines[ddem.start_time].create_mask(ddem) == 255
+        elif ddem.start_time in outlines:
+            mask = outlines[ddem.start_time].create_mask(ddem) == 255
         # If only one outlines file exist, use that as a mask.
-        elif len(self.outlines) == 1:
-            mask = list(self.outlines.values())[0].create_mask(ddem) == 255
+        elif len(outlines) == 1:
+            mask = list(outlines.values())[0].create_mask(ddem) == 255
         # If no fitting outlines were found, make a full true boolean mask in its stead.
         else:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)
@@ -600,7 +599,7 @@ class DEMCollection:
         cumulative_dh[self.reference_timestamp] = 0.0
         for i, value in zip(d_series.index, d_series.values):
             non_reference_year = [date for date in [i.left, i.right] if date != self.reference_timestamp][0]
-            cumulative_dh.loc[non_reference_year] = value
+            cumulative_dh.loc[non_reference_year] = -value
 
         # Sort the dates (just to be sure. It should already be sorted)
         cumulative_dh.sort_index(inplace=True)

@@ -254,7 +254,7 @@ class TestDEMCollection:
 
         dems.subtract_dems(resampling_method="nearest")
 
-        assert np.mean(dems.ddems[0].data) > 0
+        assert np.mean(dems.ddems[0].data) < 0
 
         scott_filter = "NAME == 'Scott Turnerbreen'"
 
