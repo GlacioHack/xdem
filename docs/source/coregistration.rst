@@ -57,6 +57,9 @@ The loop is stopped either when the maximum iteration limit is reached, or when 
         import xdem
         import geoutils as gu
         import matplotlib.pyplot as plt
+
+        xdem.examples.download_longyearbyen_examples(overwrite=False)
+
         dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
         dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
         outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])

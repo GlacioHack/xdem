@@ -108,6 +108,9 @@ Linear spatial interpolation (also often called bilinear interpolation) of dDEMs
         
         import xdem
         import geoutils as gu
+
+        xdem.examples.download_longyearbyen_examples(overwrite=False)
+
         dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
         dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
         outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
@@ -164,6 +167,9 @@ Then, voids are interpolated by replacing them with what "should be there" at th
         import xdem
         import geoutils as gu
         import matplotlib.pyplot as plt
+        
+        xdem.examples.download_longyearbyen_examples(overwrite=False)
+
         dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
         dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
         outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
@@ -233,6 +239,9 @@ Of course, the accuracy of such an averaging is much lower than if the local hyp
         import xdem
         import geoutils as gu
         import matplotlib.pyplot as plt
+
+        xdem.examples.download_longyearbyen_examples(overwrite=False)
+
         dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
         dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
         outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
