@@ -103,6 +103,48 @@ Linear spatial interpolation (also often called bilinear interpolation) of dDEMs
 
         ddem.interpolate(method="linear")
 
+
+.. plot::
+        
+        import xdem
+        import geoutils as gu
+        dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
+        outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+
+        ddem = xdem.dDEM(
+                xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest"),
+                start_time=np.datetime64("1990-08-01"),
+                end_time=np.datetime64("2009-08-01")
+        )
+        # The example DEMs are void-free, so let's make some random voids.
+        ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)  # Reset the mask
+        # Introduce 50000 nans randomly throughout the dDEM.
+        ddem.data.mask.ravel()[np.random.choice(ddem.data.size, 50000, replace=False)] = True
+
+        ddem.interpolate(method="linear")
+
+        ylim = (300, 100)
+        xlim = (800, 1050)
+        
+        plt.figure(figsize=(8, 5))
+        plt.subplot(121)
+        plt.imshow(ddem.data.squeeze(), cmap="coolwarm_r", vmin=-50, vmax=50)
+        plt.ylim(ylim)
+        plt.xlim(xlim)
+        plt.axis("off")
+        plt.title("dDEM with random voids")
+        plt.subplot(122)
+        plt.imshow(ddem.filled_data.squeeze(), cmap="coolwarm_r", vmin=-50, vmax=50)
+        plt.ylim(ylim)
+        plt.xlim(xlim)
+        plt.axis("off")
+        plt.title("Linearly interpolated dDEM")
+
+        
+        plt.tight_layout()
+        plt.show()
+
 Local hypsometric interpolation
 *******************************
 This approach assumes that there is a relationship between the elevation and the elevation change in the dDEM, which is often the case for glaciers.
@@ -116,6 +158,65 @@ Then, voids are interpolated by replacing them with what "should be there" at th
         
         ddem.interpolate(method="local_hypsometric", reference_elevation=dem_2009, mask=outlines_1990)
 
+
+.. plot::
+        
+        import xdem
+        import geoutils as gu
+        import matplotlib.pyplot as plt
+        dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
+        outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+
+        ddem = xdem.dDEM(
+                xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest"),
+                start_time=np.datetime64("1990-08-01"),
+                end_time=np.datetime64("2009-08-01")
+        )
+
+        ddem.data /= (2009 - 1990)
+
+        scott_1990 = outlines_1990.query("NAME == 'Scott Turnerbreen'")
+        mask = (scott_1990.create_mask(ddem) == 255).reshape(ddem.data.shape)
+
+        ddem_bins = xdem.volume.hypsometric_binning(ddem.data[mask], dem_2009.data[mask])
+        stds = xdem.volume.hypsometric_binning(ddem.data[mask], dem_2009.data[mask], aggregation_function=np.std)
+
+        plt.figure(figsize=(8, 8))
+        plt.grid(zorder=0)
+        plt.plot(ddem_bins["value"], ddem_bins.index.mid, linestyle="--", zorder=1)
+
+        plt.barh(
+                y=ddem_bins.index.mid,
+                width=stds["value"],
+                left=ddem_bins["value"] - stds["value"] / 2,
+                height=(ddem_bins.index.left - ddem_bins.index.right) * 1,
+                zorder=2,
+                edgecolor="black",
+        )
+        for bin in ddem_bins.index:
+                plt.vlines(ddem_bins.loc[bin, "value"], bin.left, bin.right, color="black", zorder=3)
+
+        plt.xlabel("Elevation change (m / a)")
+        plt.twiny()
+        plt.barh(
+                y=ddem_bins.index.mid,
+                width=ddem_bins["count"] / ddem_bins["count"].sum(),
+                left=0,
+                height=(ddem_bins.index.left - ddem_bins.index.right) * 1,
+                zorder=2,
+                alpha=0.2,
+        )
+        plt.xlabel("Normalized area distribution (hypsometry)")
+        
+        plt.ylabel("Elevation (m a.s.l.)")
+
+        plt.tight_layout()
+        plt.show()
+
+*Caption: The elevation dependent elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard devation of the bin. The light blue background bars show the area distribution with elevation.*
+
+
 Regional hypsometric interpolation
 **********************************
 Similarly to `Local hypsometric interpolation`_, the elevation change is assumed to be largely elevation-dependent.
@@ -126,6 +227,64 @@ Of course, the accuracy of such an averaging is much lower than if the local hyp
 .. code-block:: python
         
         ddem.interpolate(method="regional_hypsometric", reference_elevation=dem_2009, mask=outlines_1990)
+
+.. plot::
+        
+        import xdem
+        import geoutils as gu
+        import matplotlib.pyplot as plt
+        dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
+        outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+
+        ddem = xdem.dDEM(
+                xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest"),
+                start_time=np.datetime64("1990-08-01"),
+                end_time=np.datetime64("2009-08-01")
+        )
+
+        ddem.data /= (2009 - 1990)
+
+        mask = (outlines_1990.create_mask(ddem) == 255).reshape(ddem.data.shape)
+
+        ddem_bins = xdem.volume.hypsometric_binning(ddem.data[mask], dem_2009.data[mask])
+        stds = xdem.volume.hypsometric_binning(ddem.data[mask], dem_2009.data[mask], aggregation_function=np.std)
+
+        plt.figure(figsize=(8, 8))
+        plt.grid(zorder=0)
+
+        
+
+        plt.plot(ddem_bins["value"], ddem_bins.index.mid, linestyle="--", zorder=1)
+
+        plt.barh(
+                y=ddem_bins.index.mid,
+                width=stds["value"],
+                left=ddem_bins["value"] - stds["value"] / 2,
+                height=(ddem_bins.index.left - ddem_bins.index.right) * 1,
+                zorder=2,
+                edgecolor="black",
+        )
+        for bin in ddem_bins.index:
+                plt.vlines(ddem_bins.loc[bin, "value"], bin.left, bin.right, color="black", zorder=3)
+
+        plt.xlabel("Elevation change (m / a)")
+        plt.twiny()
+        plt.barh(
+                y=ddem_bins.index.mid,
+                width=ddem_bins["count"] / ddem_bins["count"].sum(),
+                left=0,
+                height=(ddem_bins.index.left - ddem_bins.index.right) * 1,
+                zorder=2,
+                alpha=0.2,
+        )
+        plt.xlabel("Normalized area distribution (hypsometry)")
+        plt.ylabel("Elevation (m a.s.l.)")
+
+        plt.tight_layout()
+        plt.show()
+
+*Caption: The regional elevation dependent elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard devation of the bin. The light blue background bars show the area distribution with elevation.*
 
 The DEMCollection object
 ^^^^^^^^^^^^^^^^^^^^^^^^
