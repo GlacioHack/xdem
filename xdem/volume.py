@@ -1,11 +1,15 @@
 """Functions to calculate changes in volume (aimed for glaciers)."""
 from __future__ import annotations
 
+import warnings
 from typing import Callable, Optional, Union
 
 import numpy as np
 import pandas as pd
+import rasterio.fill
 import scipy.interpolate
+
+import xdem
 
 
 def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float, np.ndarray] = 50.0,
@@ -167,5 +171,95 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
 
     # Put this in a series which will be returned.
     output = pd.Series(index=ddem_bins.index, data=bin_area)
+
+    return output
+
+
+def linear_interpolation(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
+    """
+    Interpolate a 2D array using bilinear interpolation.
+
+    :param array: An array with NaNs or a masked array to interpolate.
+    :returns: A filled array with no NaNs
+    """
+    # Create a mask for where nans exist
+    nan_mask = (array.mask | np.isnan(array)) if isinstance(array, np.ma.masked_array) else np.isnan(array)
+
+    interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=~nan_mask.astype("uint8"))
+
+    # Fill the nans (values outside of the value boundaries) with the median value
+    # This triggers a warning with np.masked_array's because it ignores the mask
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        interpolated_array[np.isnan(interpolated_array)] = np.nanmedian(array)
+
+    return interpolated_array.reshape(array.shape)
+
+
+def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
+                              ref_dem: Union[np.ndarray, np.ma.masked_array],
+                              mask: np.ndarray) -> np.ma.masked_array:
+    """
+    Interpolate a dDEM using hypsometric interpolation within the given mask.
+
+    The dDEM is assumed to have been created as "voided_ddem = reference_dem - other_dem".
+    Areas outside the mask will be linearly interpolated, but are masked out.
+
+    :param voided_ddem: A dDEM with voids (either an array with nans or a masked array).
+    :param ref_dem: The reference DEM in the dDEM comparison.
+    :param mask: A mask to delineate the area that will be interpolated (True means hypsometric will be used).
+    """
+    ddem = np.asarray(voided_ddem)
+    # The exclusion mask is the union of the nan mask and the potential masked_array mask
+    ddem_mask = np.isnan(ddem) | (voided_ddem.mask if isinstance(voided_ddem, np.ma.masked_array) else False)
+    # Maybe temporary: Make sure that interpolation works as it should by messing up the masked values.
+    ddem[ddem_mask] = np.nan
+
+    dem = np.asarray(ref_dem)
+    # The exclusion mask is the union of the nan mask and the potential masked_array mask
+    dem_mask = np.isnan(dem) | (ref_dem.mask if isinstance(ref_dem, np.ma.masked_array) else False)
+
+    # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
+    inlier_mask = mask & (~ddem_mask | ~dem_mask)
+
+    # Estimate the elevation dependent gradient.
+    gradient = xdem.volume.hypsometric_binning(
+        ddem[inlier_mask],
+        dem[inlier_mask]
+    )
+
+    #
+    interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(gradient)
+
+    gradient_model = scipy.interpolate.interp1d(
+        interpolated_gradient.index.mid,
+        interpolated_gradient.values,
+        fill_value="extrapolate"
+    )
+
+    # Create an idealized dDEM (only considering the dH gradient)
+    idealized_ddem = gradient_model(dem)
+    idealized_ddem[~mask] = 0.0
+
+    # Measure the difference between the original dDEM and the idealized dDEM
+    assert ddem.shape == idealized_ddem.shape
+    ddem_difference = ddem.astype("float64") - idealized_ddem.astype("float64")
+
+    # Spatially interpolate the difference between these two products.
+    #interpolated_ddem_diff = ddem_difference.copy()
+    #interpolated_ddem_diff[ddem_mask] = np.nan
+    # rasterio.fill.fillnodata(
+    #    interpolated_ddem_diff, mask=~np.isnan(interpolated_ddem_diff))
+    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
+
+    # Correct the idealized dDEM with the difference to the original dDEM.
+    corrected_ddem = idealized_ddem + interpolated_ddem_diff
+
+    output = np.ma.masked_array(
+        corrected_ddem,
+        mask=(~mask & (ddem_mask | dem_mask))
+    )
+
+    assert output is not None
 
     return output

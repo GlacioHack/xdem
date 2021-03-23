@@ -122,7 +122,7 @@ class DEMCollection:
         """
         # TODO: Change is loop to run concurrently
         for ddem in self.ddems:
-            ddem.interpolate(method=method)
+            ddem.interpolate(method=method, reference_elevation=self.reference_dem, mask=self.get_ddem_mask(ddem))
 
         return [ddem.filled_data for ddem in self.ddems]
 
