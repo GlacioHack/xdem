@@ -92,7 +92,7 @@ Now, we can easily calculate the elevation or volume change between the DEMs, fo
 
 .. code-block:: python
 
-        dems.get_cumulative_series(kind="dh", outline_filter="NAME == `Scott Turnerbreen`")
+        dems.get_cumulative_series(kind="dh", outline_filter="NAME == 'Scott Turnerbreen'")
 
 which will return a Pandas Series:
 
