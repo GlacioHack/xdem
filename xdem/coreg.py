@@ -1063,3 +1063,107 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     )
 
     return aligned_raster, error
+
+
+class Coreg:
+    _model: Optional[Callable[[np.ndarray, rio.transform.Affine], np.ndarray]] = None
+    _meta: Optional[dict[str, Any]] = None
+
+    def __init__(self):
+        raise ValueError("Coreg class should not be instantiated directly.")
+
+    def fit(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
+            dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+            mask: Optional[np.ndarray] = None,
+            transform: Optional[rio.transform.Affine] = None,
+            weights: Optional[np.ndarray] = None):
+        mask = np.asarray(mask)
+        assert mask.dtype == bool
+
+        ref_mask = np.isnan(reference_dem) | (reference_dem.mask
+                                              if isinstance(reference_dem, np.ma.masked_array) else False)
+        tba_mask = np.isnan(dem_to_be_aligned) | (dem_to_be_aligned.mask
+                                                  if isinstance(dem_to_be_aligned, np.ma.masked_array) else False)
+
+        full_mask = ~ref_mask & ~tba_mask & (np.asarray(
+            mask) if mask is not None else np.ones_like(ref_mask, dtype=bool))
+
+        ref_dem = np.where(full_mask, np.asarray(reference_dem), np.nan)
+        tba_dem = np.where(full_mask, np.asarray(dem_to_be_aligned), np.nan)
+
+        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights)
+
+    def apply(self, dem: Union[np.ndarray, np.ma.masked_array], transform: rio.transform.Affine):
+        """
+        Apply the estimated transform to a DEM.
+
+        :param dem: A DEM to apply the transform on.
+        :param transform: The transform object of the DEM. TODO: Remove??
+
+        :returns: The transformed DEM.
+        """
+        if self._model is None:
+            raise AssertionError("Model does not exist. Has .fit() been called?")
+        dem_mask = np.isnan(dem) | (dem.mask if isinstance(dem, np.ma.masked_array) else False)
+
+        dem_array = np.where(~dem_mask, np.asarray(dem), np.nan)
+
+        return self._model(dem_array, transform)
+
+    def apply_pts(self, coords: np.ndarray) -> np.ndarray:
+        """
+        Apply the estimated transform to a set of 3D points.
+
+        :param coords: A (N, 3) array of X/Y/Z coordinates.
+
+        :returns: The transformed coordinates.
+        """
+        if self._model is None:
+            raise AssertionError("Model does not exist. Has .fit() been called?")
+        assert coords.shape[1] == 3
+
+        return self._apply_pts_func(coords)
+
+    def to_matrix(self) -> np.ndarray:
+        """Convert the transform to a 4x4 transformation matrix."""
+        return self._to_matrix_func()
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, **_):
+        raise NotImplementedError("This should have been implemented by subclassing")
+
+    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        raise NotImplementedError("This should have been implemented by subclassing")
+
+    def _to_matrix_func(self) -> np.ndarray:
+        raise NotImplementedError("This should be implemented by subclassing")
+
+
+class BiasCorr(Coreg):
+
+    def __init__(self):
+        self._meta: dict[str, Any] = {}
+        pass
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, **_):
+
+        bias = np.nanmedian(ref_dem - tba_dem)
+
+        def model(dem: np.ndarray, *_) -> np.ndarray:
+            return dem + bias
+
+        self._model = model
+        self._meta = {"bias": bias}
+
+    def _apply_pts_func(self, coords: np.ndarray):
+
+        new_coords = coords.copy()
+        new_coords[:, 2] += self._model(coords[:, 2], None)  # type: ignore
+
+        return new_coords
+
+    def _to_matrix_func(self) -> np.ndarray:
+        empty_matrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=float)
+
+        empty_matrix[2, 3] += self._meta["bias"]
+
+        return empty_matrix

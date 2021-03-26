@@ -6,13 +6,18 @@ Author(s):
 """
 from __future__ import annotations
 
+import copy
 import os
 import tempfile
+import warnings
 from typing import Any
 
 import geoutils as gu
+import numpy as np
 
-from xdem import coreg, examples
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from xdem import coreg, examples
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
@@ -126,3 +131,47 @@ def test_only_paths():
     to_be_aligned_raster = examples.FILEPATHS["longyearbyen_tba_dem"]
 
     coreg.coregister(reference_raster, to_be_aligned_raster)
+
+
+class TestCoregClass:
+    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
+    mask = outlines.create_mask(ref) == 255
+
+    def test_bias(self):
+        warnings.simplefilter("error")
+
+        # Create a bias correction instance
+        biascorr = coreg.BiasCorr()
+        # Fit the bias model to the data
+        biascorr.fit(reference_dem=self.ref.data, dem_to_be_aligned=self.tba.data, mask=self.mask)
+
+        # Check that a bias was found.
+        assert biascorr._meta.get("bias") is not None
+        assert biascorr._meta["bias"] != 0.0
+
+        # Copy the bias to see if it changes in the test (it shouldn't)
+        bias = copy.copy(biascorr._meta["bias"])
+
+        # Check that the to_matrix function works as it should
+        matrix = biascorr.to_matrix()
+        assert matrix[2, 3] == bias, matrix
+
+        # Create some 3D coordinates with Z coordinates being 0
+        points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+        # Cehck that the first z coordinate is now the bias
+        assert biascorr.apply_pts(points)[0, 2] == biascorr._meta["bias"]
+
+        # Apply the model to correct the DEM
+        tba_unbiased = biascorr.apply(self.tba.data, None)
+
+        # Create a new bias correction model
+        biascorr2 = coreg.BiasCorr()
+        # Check that this is indeed a new object
+        assert biascorr is not biascorr2
+        # Fit the corrected DEM to see if the bias will be close to or at zero
+        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, mask=self.mask)
+        # Test the bias
+        assert abs(biascorr2._meta.get("bias")) < 0.01
+
+        # Check that the original model's bias has not changed (the _meta dicts are two different objects)
+        assert biascorr._meta["bias"] == bias
