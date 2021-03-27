@@ -472,7 +472,7 @@ def icp_coregistration_opencv(reference_dem: np.ndarray, dem_to_be_aligned: np.n
     icp = cv2.ppf_match_3d_ICP(max_iterations, tolerance, rejection_scale, num_levels)
     _, residual, transform = icp.registerModelToScene(points["tba"], points["ref"])
 
-    assert residual < 1000, f"ICP coregistration failed: {residual=}, threshold: 1000"
+    assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
     transformed_points = cv2.perspectiveTransform(points["tba_unmasked"][:, :3].reshape(1, -1, 3), transform).squeeze()
 

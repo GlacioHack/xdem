@@ -1,5 +1,4 @@
-from . import coreg
-from . import spatial_tools
-from . import dem
-from . import examples
-from . import spstats
+from . import coreg, dem, examples, spatial_tools, spstats, volume
+from .ddem import dDEM
+from .dem import DEM
+from .demcollection import DEMCollection

@@ -11,7 +11,6 @@ import geoutils.satimg as si
 import xdem
 import numpy as np
 from xdem.dem import DEM
-import copy
 
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
@@ -50,7 +49,7 @@ class TestDEM:
         all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
-            assert all(attrs_per_dem)
+            assert all(at == attrs_per_dem[0] for at in attrs_per_dem)
 
         assert np.logical_and.reduce((np.array_equal(dem.data,dem2.data,equal_nan=True),
                                np.array_equal(dem2.data,dem3.data,equal_nan=True),
@@ -210,10 +209,10 @@ class TestDEM:
         assert img.vref == 'EGM96'
         assert img.vref_grid == 'us_nga_egm96_15.tif'
 
-        #check that the geoid is lower than ellipsoid, less than 15 m difference (Svalbard)
+        #check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
 
         assert np.greater(mean_ellips,mean_geoid_96)
-        assert np.less(np.abs(mean_ellips-mean_geoid_96),15.)
+        assert np.less(np.abs(mean_ellips-mean_geoid_96),35.)
 
 
 
