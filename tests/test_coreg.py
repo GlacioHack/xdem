@@ -175,3 +175,25 @@ class TestCoregClass:
 
         # Check that the original model's bias has not changed (the _meta dicts are two different objects)
         assert biascorr._meta["bias"] == bias
+
+    def test_icp_opencv(self):
+        warnings.simplefilter("error")
+
+        icp = coreg.ICP(max_iterations=3)
+
+        icp.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
+
+        aligned_dem = icp.apply(self.tba.data, self.ref.transform)
+
+        assert aligned_dem.shape == self.ref.data.squeeze().shape
+
+    def test_pipeline(self):
+        warnings.simplefilter("error")
+
+        pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP(max_iterations=3)])
+
+        pipeline.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
+
+        aligned_dem = pipeline.apply(self.tba.data, self.ref.transform)
+
+        assert aligned_dem.shape == self.ref.data.squeeze().shape
