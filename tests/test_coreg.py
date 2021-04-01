@@ -137,13 +137,22 @@ class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     mask = outlines.create_mask(ref) == 255
 
+    fit_params = dict(
+        reference_dem=ref.data,
+        dem_to_be_aligned=tba.data,
+        mask=~mask,
+        transform=ref.transform
+    )
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+
     def test_bias(self):
         warnings.simplefilter("error")
 
         # Create a bias correction instance
         biascorr = coreg.BiasCorr()
         # Fit the bias model to the data
-        biascorr.fit(reference_dem=self.ref.data, dem_to_be_aligned=self.tba.data, mask=self.mask)
+        biascorr.fit(**self.fit_params)
 
         # Check that a bias was found.
         assert biascorr._meta.get("bias") is not None
@@ -156,10 +165,8 @@ class TestCoregClass:
         matrix = biascorr.to_matrix()
         assert matrix[2, 3] == bias, matrix
 
-        # Create some 3D coordinates with Z coordinates being 0
-        points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
         # Cehck that the first z coordinate is now the bias
-        assert biascorr.apply_pts(points)[0, 2] == biascorr._meta["bias"]
+        assert biascorr.apply_pts(self.points)[0, 2] == biascorr._meta["bias"]
 
         # Apply the model to correct the DEM
         tba_unbiased = biascorr.apply(self.tba.data, None)
@@ -169,12 +176,75 @@ class TestCoregClass:
         # Check that this is indeed a new object
         assert biascorr is not biascorr2
         # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, mask=self.mask)
+        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, mask=~self.mask)
         # Test the bias
         assert abs(biascorr2._meta.get("bias")) < 0.01
 
-        # Check that the original model's bias has not changed (the _meta dicts are two different objects)
+        # Check that the original model's bias has not changed (that the _meta dicts are two different objects)
         assert biascorr._meta["bias"] == bias
+
+    def test_nuth_kaab(self):
+        warnings.simplefilter("error")
+
+        nuth_kaab = coreg.NuthKaab(max_iterations=10)
+
+        # Synthesize a shifted and vertically offset DEM
+        pixel_shift = 2
+        bias = 5
+        shifted_dem = self.ref.data.squeeze().copy()
+        shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
+        shifted_dem[:, :pixel_shift] = np.nan
+        shifted_dem += bias
+
+        nuth_kaab.fit(self.ref.data.squeeze(), shifted_dem, transform=self.ref.transform)
+
+        assert abs(nuth_kaab._meta["offset_east_px"] - pixel_shift) < 0.03
+        assert abs(nuth_kaab._meta["offset_north_px"]) < 0.03
+        assert abs(nuth_kaab._meta["bias"] + bias) < 0.03
+
+        unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
+        diff = np.asarray(self.ref.data.squeeze() - unshifted_dem)
+
+        assert np.abs(np.nanmedian(diff)) < 0.01
+        assert np.sqrt(np.nanmean(np.square(diff))) < 1
+
+        transformed_points = nuth_kaab.apply_pts(self.points)
+
+        assert abs((transformed_points[0, 0] - self.points[0, 0]) + pixel_shift * self.ref.res[0]) < 0.1
+        assert abs((transformed_points[0, 2] - self.points[0, 2]) + bias) < 0.1
+
+    def test_deramping(self):
+        warnings.simplefilter("error")
+
+        deramp = coreg.Deramp(degree=1)
+
+        deramp.fit(**self.fit_params)
+
+        deramped_dem = deramp.apply(self.tba.data, self.ref.transform)
+
+        periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[~self.mask.squeeze()]
+        pre_offset = (self.ref.data - self.tba.data).squeeze()[~self.mask]
+
+        # Check that the error improved
+        assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
+
+        # Check that the mean periglacial offset is low
+        assert -1 < np.mean(periglacial_offset) < 1
+
+        deramp0 = coreg.Deramp(degree=0)
+
+        deramp0.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
+
+        assert len(deramp0._meta["coefficients"]) == 1
+        bias = deramp0._meta["coefficients"][0]
+
+        # Make sure to_matrix does not throw an error.
+        deramp0.to_matrix()
+
+        # Create some 3D coordinates with Z coordinates being 0
+        points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+
+        assert deramp0.apply_pts(points)[0, 2] == bias
 
     def test_icp_opencv(self):
         warnings.simplefilter("error")
@@ -192,8 +262,14 @@ class TestCoregClass:
 
         pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP(max_iterations=3)])
 
-        pipeline.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
+        pipeline.fit(**self.fit_params)
 
         aligned_dem = pipeline.apply(self.tba.data, self.ref.transform)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
+
+        pipeline2 = coreg.CoregPipeline([coreg.BiasCorr(), coreg.BiasCorr()])
+        pipeline2.pipeline[0]._meta["bias"] = 1
+        pipeline2.pipeline[1]._meta["bias"] = 1
+
+        pipeline2.to_matrix()[2, 3] == 2.0
