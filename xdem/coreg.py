@@ -1313,7 +1313,7 @@ class ICP(Coreg):
         self._meta["matrix"] = matrix
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-
+        """Apply the coregistration matrix to a DEM."""
         bounds, resolution = _transform_to_bounds_and_res(dem, transform)
         x_coords, y_coords = np.meshgrid(
             np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=dem.shape[1]),
@@ -1343,24 +1343,35 @@ class ICP(Coreg):
         return aligned_dem
 
     def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        """Apply the coregistration matrix to a set of points."""
         transformed_points = cv2.perspectiveTransform(coords.reshape(1, -1, 3), self.to_matrix()).squeeze()
         return transformed_points
 
     def _to_matrix_func(self) -> np.ndarray:
+        """Return the coregistration matrix."""
         return self._meta["matrix"]
 
 
 class Deramp(Coreg):
+    """
+    Polynomial DEM deramping.
+
+    Estimates an n-D polynomial between the difference of two DEMs.
+    """
 
     def __init__(self, degree: int = 1):
+        """
+        Instantiate a deramping correction object.
 
+        :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
+        """
         self.degree = degree
 
         self._meta: dict[str, Any] = {}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
-
+        """Fit the dDEM between the DEMs to a least squares polynomial equation."""
         bounds, resolution = _transform_to_bounds_and_res(ref_dem, transform)
         x_coords, y_coords = np.meshgrid(
             np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=ref_dem.shape[1]),
@@ -1412,6 +1423,7 @@ class Deramp(Coreg):
         self._meta["func"] = lambda x, y: poly2d(x, y, coefs)
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+        """Apply the deramp function to a DEM."""
         bounds, resolution = _transform_to_bounds_and_res(dem, transform)
         x_coords, y_coords = np.meshgrid(
             np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=dem.shape[1]),
@@ -1423,6 +1435,7 @@ class Deramp(Coreg):
         return dem + ramp
 
     def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        """Apply the deramp function to a set of points."""
         new_coords = coords.copy()
 
         new_coords[:, 2] += self._meta["func"](new_coords[:, 0], new_coords[:, 1])
@@ -1430,6 +1443,7 @@ class Deramp(Coreg):
         return new_coords
 
     def _to_matrix_func(self) -> np.ndarray:
+        """Return a transform matrix if possible."""
         if self.degree > 1:
             raise ValueError(
                 "Nonlinear deramping degrees cannot be represented as transformation matrices."
@@ -1446,14 +1460,22 @@ class Deramp(Coreg):
 
 
 class CoregPipeline(Coreg):
-    def __init__(self, pipeline: list[Coreg]):  # pylint: disable=super-init-not-called
+    """
+    A sequential set of coregistration steps.
+    """
 
+    def __init__(self, pipeline: list[Coreg]):  # pylint: disable=super-init-not-called
+        """
+        Instantiate a new coregistration pipeline.
+
+        :param: Coregistration steps to run in the sequence they are given.
+        """
         self.pipeline = pipeline
         self._meta = {}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
-
+        """Fit each coregistration step with the previously transformed DEM."""
         tba_dem_mod = tba_dem.copy()
 
         for coreg in self.pipeline:
@@ -1462,10 +1484,8 @@ class CoregPipeline(Coreg):
 
             tba_dem_mod = coreg._apply_func(tba_dem_mod, transform)
 
-        #self._fit_called = True
-
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-
+        """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
 
         for coreg in self.pipeline:
@@ -1474,7 +1494,7 @@ class CoregPipeline(Coreg):
         return dem_mod
 
     def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
-
+        """Apply the coregistration steps sequentially to a set of points."""
         coords_mod = coords.copy()
 
         for coreg in self.pipeline:
@@ -1483,13 +1503,14 @@ class CoregPipeline(Coreg):
         return coords_mod
 
     def _to_matrix_func(self) -> np.ndarray:
-
+        """Try to join the coregistration steps to a single transformation matrix."""
         if not _HAS_P3D:
             raise ValueError("Optional dependency needed. Install 'pytransform3d'")
 
         transform_mgr = TransformManager()
 
         with warnings.catch_warnings():
+            # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
             warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
             for i, coreg in enumerate(self.pipeline):
                 new_matrix = coreg.to_matrix()
@@ -1498,10 +1519,38 @@ class CoregPipeline(Coreg):
 
             return transform_mgr.get_transform(0, len(self.pipeline))
 
+    def __iter__(self):
+        """Iterate over the pipeline steps."""
+        for coreg in self.pipeline:
+            yield coreg
+
+    def __add__(self, other: Union[list[Coreg], Coreg, CoregPipeline]) -> CoregPipeline:
+        """Append Coreg(s) or a CoregPipeline to the pipeline."""
+        if not isinstance(other, Coreg):
+            other = list(other)
+        else:
+            other = [other]
+
+        pipelines = self.pipeline + other
+
+        return CoregPipeline(pipelines)
+
 
 class NuthKaab(Coreg):
-    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):
+    """
+    Nuth and Kääb (2011) DEM coregistration.
 
+    Implemented after the paper:
+    https://doi.org/10.5194/tc-5-271-2011
+    """
+
+    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):
+        """
+        Instantiate a new Nuth and Kääb (2011) coregistration object.
+
+        :param max_iterations: The maximum allowed iterations before stopping.
+        :param error_threshold: The residual change threshold after which to stop the iterations.
+        """
         self.max_iterations = max_iterations
         self.error_threshold = error_threshold
 
@@ -1509,7 +1558,7 @@ class NuthKaab(Coreg):
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
-
+        """Estimate the x/y/z offset between two DEMs."""
         bounds, resolution = _transform_to_bounds_and_res(ref_dem, transform)
         verbose = False  # TODO: Make this an argument somewhere.
         # Make a new DEM which will be modified inplace
@@ -1575,6 +1624,7 @@ class NuthKaab(Coreg):
         self._meta["resolution"] = resolution
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+        """Apply the estimated x/y/z offsets to a DEM."""
         bounds, resolution = _transform_to_bounds_and_res(dem, transform)
         scaling_factor = self._meta["resolution"] / resolution
 
@@ -1600,6 +1650,7 @@ class NuthKaab(Coreg):
         return shifted_dem
 
     def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        """Apply the estimated x/y/z offsets to a set of points."""
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
@@ -1611,6 +1662,7 @@ class NuthKaab(Coreg):
         return new_coords
 
     def _to_matrix_func(self) -> np.ndarray:
+        """Return a transformation matrix from the estimated offsets."""
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 

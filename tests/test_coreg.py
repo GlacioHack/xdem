@@ -276,19 +276,31 @@ class TestCoregClass:
 
     def test_coreg_add(self):
         warnings.simplefilter("error")
+        # Test with a bias of 4
+        bias = 4
 
         bias1 = coreg.BiasCorr()
         bias2 = coreg.BiasCorr()
 
+        # Set the bias attribute
         for bias in (bias1, bias2):
-            bias._meta["bias"] = 4
+            bias._meta["bias"] = bias
 
+        # Add the two coregs and check that the resulting bias is 2* bias
         bias3 = bias1 + bias2
+        assert bias3.to_matrix()[2, 3] == bias * 2
 
-        assert bias3.to_matrix()[2, 3] == 8
-
+        # Make sure the correct exception is raised on incorrect additions
         try:
             bias1 + 1
         except ValueError as exception:
             if "Incompatible add type" not in str(exception):
                 raise exception
+
+        # Try to add a Coreg step to an already existing CoregPipeline
+        bias4 = bias3 + bias1
+        assert bias4.to_matrix()[2, 3] == bias * 3
+
+        # Try to add two CoregPipelines
+        bias5 = bias3 + bias3
+        assert bias5.to_matrix()[2, 3] == bias * 4
