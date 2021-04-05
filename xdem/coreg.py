@@ -1554,7 +1554,7 @@ class NuthKaab(Coreg):
     https://doi.org/10.5194/tc-5-271-2011
     """
 
-    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):
+    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):  # pylint: disable=super-init-not-called
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
