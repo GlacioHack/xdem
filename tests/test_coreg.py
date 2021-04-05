@@ -283,8 +283,8 @@ class TestCoregClass:
         bias2 = coreg.BiasCorr()
 
         # Set the bias attribute
-        for bias in (bias1, bias2):
-            bias._meta["bias"] = bias
+        for bias_corr in (bias1, bias2):
+            bias_corr._meta["bias"] = bias
 
         # Add the two coregs and check that the resulting bias is 2* bias
         bias3 = bias1 + bias2
