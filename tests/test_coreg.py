@@ -273,3 +273,22 @@ class TestCoregClass:
         pipeline2.pipeline[1]._meta["bias"] = 1
 
         pipeline2.to_matrix()[2, 3] == 2.0
+
+    def test_coreg_add(self):
+        warnings.simplefilter("error")
+
+        bias1 = coreg.BiasCorr()
+        bias2 = coreg.BiasCorr()
+
+        for bias in (bias1, bias2):
+            bias._meta["bias"] = 4
+
+        bias3 = bias1 + bias2
+
+        assert bias3.to_matrix()[2, 3] == 8
+
+        try:
+            bias1 + 1
+        except ValueError as exception:
+            if "Incompatible add type" not in str(exception):
+                raise exception

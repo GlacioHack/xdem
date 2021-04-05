@@ -1175,6 +1175,12 @@ class Coreg:
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
 
+    def __add__(self, other: Coreg) -> CoregPipeline:
+        """Return a pipeline consisting of self and the other coreg function."""
+        if not isinstance(other, Coreg):
+            raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
+        return CoregPipeline([self, other])
+
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
         raise NotImplementedError("This should have been implemented by subclassing")
