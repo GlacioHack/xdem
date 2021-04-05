@@ -156,6 +156,7 @@ def write_geotiff(filepath: str, values: np.ndarray, crs: Optional[rio.crs.CRS],
     :param crs: The coordinate system of the raster.
     :param bounds: The bounding coordinates of the raster.
     """
+    warnings.warn("This function is not needed anymore.", DeprecationWarning)
     transform = rio.transform.from_bounds(*bounds, width=values.shape[1], height=values.shape[0])
 
     nodata_value = np.finfo(values.dtype).min
@@ -276,6 +277,7 @@ def icp_coregistration_pdal(reference_dem: np.ndarray, dem_to_be_aligned: np.nda
 
     # noqa: DAR101 **_
     """
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     dem_to_be_aligned_unmasked = dem_to_be_aligned.copy()
     # Check that PDAL is installed.
     check_for_pdal()
@@ -439,6 +441,7 @@ def icp_coregistration_opencv(reference_dem: np.ndarray, dem_to_be_aligned: np.n
 
     # noqa: DAR101 **_
     """
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     if not _has_cv2:
         raise AssertionError("opencv (cv2) is not available and needs to be installed.")
     dem_to_be_aligned_unmasked = dem_to_be_aligned.copy()
@@ -636,6 +639,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
 
     :returns: A callable function to estimate the ramp.
     """
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     # Extract only the finite values of the elevation difference and corresponding coordinates.
     valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
     valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
@@ -743,6 +747,7 @@ def deramp_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarray, mask: O
 
     # noqa: DAR101 **_
     """
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     elevation_difference = (reference_dem - dem_to_be_aligned)
 
     # Apply the mask if it exists.
@@ -777,6 +782,7 @@ def calculate_nmad(array: np.ndarray) -> float:
 
     :returns: The NMAD of the array.
     """
+    warnings.warn("This function is deprecated in favour of xdem.spatial_tools.nmad().", DeprecationWarning)
     # TODO: Get a reference for why NMAD is used (and make sure the N stands for normalized)
     nmad = 1.4826 * np.nanmedian(np.abs(array - np.nanmedian(array)))
 
@@ -803,6 +809,7 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 
     # noqa: DAR101 **_
     """
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     # TODO: Add offset_east and offset_north as return variables?
     # Make a new DEM which will be modified inplace
     aligned_dem = dem_to_be_aligned.copy()
@@ -932,6 +939,8 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 class CoregMethod(Enum):
     """A selection of a coregistration method."""
 
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
+
     ICP_PDAL = icp_coregistration_pdal
     ICP_OPENCV = icp_coregistration_opencv
     AMAURY = amaury_coregister_dem
@@ -1024,6 +1033,7 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
 
     :returns: A coregistered Raster and the NMAD of the (potentially) masked offsets.
     """
+    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     # Load GeoUtils Rasters/Vectors if filepaths are given as arguments.
     if isinstance(reference_raster, str):
         reference_raster = gu.georaster.Raster(reference_raster)
