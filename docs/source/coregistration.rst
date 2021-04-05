@@ -51,7 +51,7 @@ Examples are given using data close to Longyearbyen on Svalbard. These can be lo
 
 
 
-The ``Coreg`` object
+The Coreg object
 ^^^^^^^^^^^^^^^^^^^^
 :class:`xdem.coreg.Coreg`
 
@@ -202,7 +202,7 @@ Example
         aligned_dem = icp.apply(tba_data, transform=transform)
 
 
-The ``CoregPipeline`` object
+The CoregPipeline object
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 :class:`xdem.coreg.CoregPipeline`
 
