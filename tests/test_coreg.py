@@ -166,7 +166,7 @@ class TestCoregClass:
         matrix = biascorr.to_matrix()
         assert matrix[2, 3] == bias, matrix
 
-        # Cehck that the first z coordinate is now the bias
+        # Check that the first z coordinate is now the bias
         assert biascorr.apply_pts(self.points)[0, 2] == biascorr._meta["bias"]
 
         # Apply the model to correct the DEM
@@ -197,61 +197,75 @@ class TestCoregClass:
         shifted_dem[:, :pixel_shift] = np.nan
         shifted_dem += bias
 
+        # Fit the synthesized shifted DEM to the original
         nuth_kaab.fit(self.ref.data.squeeze(), shifted_dem, transform=self.ref.transform)
 
+        # Make sure that the estimated offsets are similar to what was synthesized.
         assert abs(nuth_kaab._meta["offset_east_px"] - pixel_shift) < 0.03
         assert abs(nuth_kaab._meta["offset_north_px"]) < 0.03
         assert abs(nuth_kaab._meta["bias"] + bias) < 0.03
 
+        # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
+        # Measure the difference (should be more or less zero)
         diff = np.asarray(self.ref.data.squeeze() - unshifted_dem)
 
+        # Check that the median is very close to zero
         assert np.abs(np.nanmedian(diff)) < 0.01
+        # Check that the RMSE is low
         assert np.sqrt(np.nanmean(np.square(diff))) < 1
 
+        # Transform some arbitrary points.
         transformed_points = nuth_kaab.apply_pts(self.points)
 
+        # Check that the x shift is close to the pixel_shift * image resolution
         assert abs((transformed_points[0, 0] - self.points[0, 0]) + pixel_shift * self.ref.res[0]) < 0.1
+        # Check that the z shift is close to the original bias.
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + bias) < 0.1
 
     def test_deramping(self):
         warnings.simplefilter("error")
 
+        # Try a 1st degree deramping.
         deramp = coreg.Deramp(degree=1)
 
+        # Fit the data
         deramp.fit(**self.fit_params)
 
+        # Apply the deramping to a DEm
         deramped_dem = deramp.apply(self.tba.data, self.ref.transform)
 
+        # Get the periglacial offset after deramping
         periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[~self.mask.squeeze()]
+        # Get the periglacial offset before deramping
         pre_offset = (self.ref.data - self.tba.data).squeeze()[~self.mask]
 
         # Check that the error improved
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
 
         # Check that the mean periglacial offset is low
-        assert -1 < np.mean(periglacial_offset) < 1
+        assert np.abs(np.mean(periglacial_offset)) < 1
 
+        # Try a 0 degree deramp (basically bias correction)
         deramp0 = coreg.Deramp(degree=0)
-
         deramp0.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
 
+        # Check that only one coefficient exists (y = x + a => coefficients=["a"])
         assert len(deramp0._meta["coefficients"]) == 1
+        # Extract said bias
         bias = deramp0._meta["coefficients"][0]
 
-        # Make sure to_matrix does not throw an error.
+        # Make sure to_matrix does not throw an error. It will for higher degree deramps
         deramp0.to_matrix()
 
-        # Create some 3D coordinates with Z coordinates being 0
-        points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-
-        assert deramp0.apply_pts(points)[0, 2] == bias
+        # Check that the apply_pts would apply a z shift equal to the bias
+        assert deramp0.apply_pts(self.points)[0, 2] == bias
 
     def test_icp_opencv(self):
         warnings.simplefilter("error")
 
+        # Do a fast an dirty 3 iteration ICP just to make sure it doesn't error out.
         icp = coreg.ICP(max_iterations=3)
-
         icp.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
 
         aligned_dem = icp.apply(self.tba.data, self.ref.transform)
@@ -261,18 +275,21 @@ class TestCoregClass:
     def test_pipeline(self):
         warnings.simplefilter("error")
 
+        # Create a pipeline from two coreg methods.
         pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP(max_iterations=3)])
-
         pipeline.fit(**self.fit_params)
 
         aligned_dem = pipeline.apply(self.tba.data, self.ref.transform)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
+        # Make a new pipeline with two bias correction approaches.
         pipeline2 = coreg.CoregPipeline([coreg.BiasCorr(), coreg.BiasCorr()])
+        # Set both "estimated" biases to be 1
         pipeline2.pipeline[0]._meta["bias"] = 1
         pipeline2.pipeline[1]._meta["bias"] = 1
 
+        # Assert that the combined bias is 2
         pipeline2.to_matrix()[2, 3] == 2.0
 
     def test_coreg_add(self):
