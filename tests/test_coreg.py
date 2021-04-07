@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import os
 import tempfile
+import time
 import warnings
 from typing import Any
 
@@ -304,3 +305,45 @@ class TestCoregClass:
         # Try to add two CoregPipelines
         bias5 = bias3 + bias3
         assert bias5.to_matrix()[2, 3] == bias * 4
+
+    def test_subsample(self):
+        warnings.simplefilter("error")
+
+        # Test subsampled bias correction
+        bias_sub = coreg.BiasCorr()
+
+        # Fit the bias using 50% of the unmasked data using a fraction
+        bias_sub.fit(**self.fit_params, subsample=0.5)
+        # Do the same but specify the pixel count instead.
+        # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
+        # But this would just repeat the subsample code, so that makes little sense to test.
+        bias_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+
+        # Do full bias corr to compare
+        bias_full = coreg.BiasCorr()
+        bias_full.fit(**self.fit_params)
+
+        # Check that the estimated biases are similar
+        assert abs(bias_sub._meta["bias"] - bias_full._meta["bias"]) < 0.1
+
+        # Test ICP with subsampling
+        icp_full = coreg.ICP(max_iterations=20)
+        icp_sub = coreg.ICP(max_iterations=20)
+
+        # Measure the start and stop time to get the duration
+        start_time = time.time()
+        icp_full.fit(**self.fit_params)
+        icp_full_duration = time.time() - start_time
+
+        # Do the same with 50% subsampling
+        start_time = time.time()
+        icp_sub.fit(**self.fit_params, subsample=0.5)
+        icp_sub_duration = time.time() - start_time
+
+        # Make sure that the subsampling increased performance
+        assert icp_full_duration > icp_sub_duration
+
+        # Calculate the difference in the full vs. subsampled ICP matrices
+        matrix_diff = np.abs(icp_full.to_matrix() - icp_sub.to_matrix())
+        # Check that the x/y/z differences do not exceed 30cm
+        assert np.count_nonzero(matrix_diff > 0.3) == 0

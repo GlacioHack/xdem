@@ -1104,7 +1104,8 @@ class Coreg:
             dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
             mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
-            weights: Optional[np.ndarray] = None):
+            weights: Optional[np.ndarray] = None,
+            subsample: Union[float, int] = 1.0):
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -1113,6 +1114,7 @@ class Coreg:
         :param mask: Optional. 2D boolean array of areas to include in the analysis.
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param weights: Optional. Per-pixel weights for the coregistration.
+        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         """
         # Make sure that the mask has an expected format.
         if mask is not None:
@@ -1131,6 +1133,20 @@ class Coreg:
 
         # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
         full_mask = (~ref_mask & ~tba_mask & (np.asarray(mask) if mask is not None else True)).squeeze()
+
+        # If subsample is not equal to one, subsampling should be performed.
+        if subsample != 1.0:
+            # If subsample is less than one, it is parsed as a fraction (e.g. 0.8 => retain 80% of the values)
+            if subsample < 1.0:
+                subsample = int(np.count_nonzero(full_mask) * (1 - subsample))
+
+            # Randomly pick N inliers in the full_mask where N=subsample
+            random_falses = np.random.choice(np.argwhere(full_mask.flatten()).squeeze(), int(subsample), replace=False)
+            # Convert the 1D indices to 2D indices
+            cols = (random_falses // full_mask.shape[0]).astype(int)
+            rows = random_falses % full_mask.shape[0]
+            # Set the N random inliers to be parsed as outliers instead.
+            full_mask[rows, cols] = False
 
         # The arrays to provide the functions will be ndarrays with NaNs for masked out areas.
         ref_dem = np.where(full_mask, np.asarray(reference_dem), np.nan).squeeze()
