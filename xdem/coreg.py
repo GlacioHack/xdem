@@ -1102,7 +1102,7 @@ class Coreg:
 
     def fit(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
             dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
-            mask: Optional[np.ndarray] = None,
+            inlier_mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0):
@@ -1111,15 +1111,15 @@ class Coreg:
 
         :param reference_dem: 2D array of elevation values acting reference. 
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-        :param mask: Optional. 2D boolean array of areas to include in the analysis.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         """
         # Make sure that the mask has an expected format.
-        if mask is not None:
-            mask = np.asarray(mask)
-            assert mask.dtype == bool, f"Invalid mask dtype: '{mask.dtype}'. Expected 'bool'"
+        if inlier_mask is not None:
+            inlier_mask = np.asarray(inlier_mask)
+            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
 
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
@@ -1132,7 +1132,7 @@ class Coreg:
                                                   if isinstance(dem_to_be_aligned, np.ma.masked_array) else False)
 
         # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
-        full_mask = (~ref_mask & ~tba_mask & (np.asarray(mask) if mask is not None else True)).squeeze()
+        full_mask = (~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
 
         # If subsample is not equal to one, subsampling should be performed.
         if subsample != 1.0:

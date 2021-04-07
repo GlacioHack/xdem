@@ -136,12 +136,12 @@ def test_only_paths():
 
 class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    mask = outlines.create_mask(ref) == 255
+    inlier_mask = outlines.create_mask(ref) != 255
 
     fit_params = dict(
         reference_dem=ref.data,
         dem_to_be_aligned=tba.data,
-        mask=~mask,
+        inlier_mask=inlier_mask,
         transform=ref.transform
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
@@ -177,7 +177,7 @@ class TestCoregClass:
         # Check that this is indeed a new object
         assert biascorr is not biascorr2
         # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, mask=~self.mask)
+        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, inlier_mask=self.inlier_mask)
         # Test the bias
         assert abs(biascorr2._meta.get("bias")) < 0.01
 
@@ -236,9 +236,9 @@ class TestCoregClass:
         deramped_dem = deramp.apply(self.tba.data, self.ref.transform)
 
         # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[~self.mask.squeeze()]
+        periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[self.inlier_mask.squeeze()]
         # Get the periglacial offset before deramping
-        pre_offset = (self.ref.data - self.tba.data).squeeze()[~self.mask]
+        pre_offset = (self.ref.data - self.tba.data).squeeze()[self.inlier_mask]
 
         # Check that the error improved
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
@@ -248,7 +248,7 @@ class TestCoregClass:
 
         # Try a 0 degree deramp (basically bias correction)
         deramp0 = coreg.Deramp(degree=0)
-        deramp0.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
+        deramp0.fit(self.ref.data, self.tba.data, ~self.inlier_mask, transform=self.ref.transform)
 
         # Check that only one coefficient exists (y = x + a => coefficients=["a"])
         assert len(deramp0._meta["coefficients"]) == 1
@@ -266,7 +266,7 @@ class TestCoregClass:
 
         # Do a fast an dirty 3 iteration ICP just to make sure it doesn't error out.
         icp = coreg.ICP(max_iterations=3)
-        icp.fit(self.ref.data, self.tba.data, ~self.mask, transform=self.ref.transform)
+        icp.fit(self.ref.data, self.tba.data, ~self.inlier_mask, transform=self.ref.transform)
 
         aligned_dem = icp.apply(self.tba.data, self.ref.transform)
 
