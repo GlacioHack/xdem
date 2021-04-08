@@ -83,7 +83,8 @@ def subtract_rasters(first_raster: Union[str, gu.georaster.Raster], second_raste
     difference_raster = gu.georaster.Raster.from_array(
         difference,
         transform=first_raster.transform if reference == "first" else second_raster.transform,
-        crs=first_raster.crs if reference == "first" else second_raster.crs
+        crs=first_raster.crs if reference == "first" else second_raster.crs,
+        nodata=first_raster.nodata if reference == "first" else second_raster.nodata
     )
 
     return difference_raster
