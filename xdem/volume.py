@@ -40,7 +40,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
 
     # If the bin size should be seen as a percentage.
     if kind == "fixed":
-        zbins = np.arange(ref_dem.min(), ref_dem.max() + bins, step=bins)
+        zbins = np.arange(ref_dem.min(), ref_dem.max() + bins + 1e-6, step=bins)  # +1e-6 in case min=max (1 point)
     elif kind == "count":
         # Make bins between mean_dem.min() and a little bit above mean_dem.max().
         # The bin count has to be bins + 1 because zbins[0] will be a "below min value" bin, which will be irrelevant.
@@ -220,7 +220,10 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     dem_mask = np.isnan(dem) | (ref_dem.mask if isinstance(ref_dem, np.ma.masked_array) else False)
 
     # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
-    inlier_mask = mask & (~ddem_mask | ~dem_mask)
+    inlier_mask = mask & (~ddem_mask & ~dem_mask)
+    if np.count_nonzero(inlier_mask) == 0:
+        warnings.warn("No valid data found within mask, returning copy", UserWarning)
+        return np.copy(ddem)
 
     # Estimate the elevation dependent gradient.
     gradient = xdem.volume.hypsometric_binning(

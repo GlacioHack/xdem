@@ -157,7 +157,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
                         interpolated_ddem,
                         reference_elevation.data,
                         mask=feature_mask
-                    ).data
+                    )#.data   # This causes an issue at l 172: NotImplementedError: sub-views are not implemented
                 except ValueError as exception:
                     # Skip the feature if too few glacier values exist.
                     if "x and y arrays must have at least 2 entries" in str(exception):
