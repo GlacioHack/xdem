@@ -107,6 +107,7 @@ Linear spatial interpolation (also often called bilinear interpolation) of dDEMs
 .. plot::
         
         import xdem
+        import numpy as np
         import geoutils as gu
 
         xdem.examples.download_longyearbyen_examples(overwrite=False)
@@ -166,6 +167,7 @@ Then, voids are interpolated by replacing them with what "should be there" at th
         
         import xdem
         import geoutils as gu
+        import numpy as np
         import matplotlib.pyplot as plt
         
         xdem.examples.download_longyearbyen_examples(overwrite=False)
@@ -238,6 +240,7 @@ Of course, the accuracy of such an averaging is much lower than if the local hyp
         
         import xdem
         import geoutils as gu
+        import numpy as np
         import matplotlib.pyplot as plt
 
         xdem.examples.download_longyearbyen_examples(overwrite=False)
