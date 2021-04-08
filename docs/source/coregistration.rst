@@ -52,6 +52,45 @@ A cosine function is solved using these products to find the most probable offse
 This is an iterative process, and cosine functions with suggested shifts are applied in a loop, continuously refining the total offset.
 The loop is stopped either when the maximum iteration limit is reached, or when the :ref:`spatial_stats_nmad` between the two products stops improving significantly.
 
+.. plot::
+
+        import xdem
+        import geoutils as gu
+        import matplotlib.pyplot as plt
+
+        xdem.examples.download_longyearbyen_examples(overwrite=False)
+
+        dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
+        outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+
+        dem_coreg, error = xdem.coreg.coregister(dem_2009, dem_1990, method="nuth_kaab", mask=outlines_1990, max_iterations=5)
+
+        ddem_pre = xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest")
+        ddem_post = xdem.spatial_tools.subtract_rasters(dem_2009, dem_coreg, resampling_method="nearest")
+
+        nmad_pre = xdem.spatial_tools.nmad(ddem_pre.data.data)
+
+        vlim = 20
+        plt.figure(figsize=(8, 5))
+        plt.subplot2grid((1, 15), (0, 0), colspan=7) 
+        plt.title(f"Before coregistration. NMAD={nmad_pre:.1f} m")
+        plt.imshow(ddem_pre.data.squeeze(), cmap="coolwarm_r", vmin=-vlim, vmax=vlim)
+        plt.axis("off")
+        plt.subplot2grid((1, 15), (0, 7), colspan=7) 
+        plt.title(f"After coregistration. NMAD={error:.1f} m")
+        img = plt.imshow(ddem_post.data.squeeze(), cmap="coolwarm_r", vmin=-vlim, vmax=vlim) 
+        plt.axis("off")
+        plt.subplot2grid((1, 15), (0, 14), colspan=1) 
+        cbar = plt.colorbar(img, fraction=0.4)
+        cbar.set_label("Elevation change (m)")
+        plt.axis("off")
+
+        plt.tight_layout()
+        plt.show()
+
+*Caption: Demonstration of the Nuth and Kääb (2011) approach from Svalbard. Note that large improvements are seen, but nonlinear offsets still exist. The NMAD is calculated from the off-glacier surfaces.*
+
 Limitations
 ***********
 The Nuth and Kääb (2011) coregistation approach does not take rotation into account.
