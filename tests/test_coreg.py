@@ -142,7 +142,8 @@ class TestCoregClass:
         reference_dem=ref.data,
         dem_to_be_aligned=tba.data,
         inlier_mask=inlier_mask,
-        transform=ref.transform
+        transform=ref.transform,
+        verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -198,7 +199,8 @@ class TestCoregClass:
         shifted_dem += bias
 
         # Fit the synthesized shifted DEM to the original
-        nuth_kaab.fit(self.ref.data.squeeze(), shifted_dem, transform=self.ref.transform)
+        nuth_kaab.fit(self.ref.data.squeeze(), shifted_dem,
+                      transform=self.ref.transform, verbose=self.fit_params["verbose"])
 
         # Make sure that the estimated offsets are similar to what was synthesized.
         assert abs(nuth_kaab._meta["offset_east_px"] - pixel_shift) < 0.03

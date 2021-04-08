@@ -1116,7 +1116,8 @@ class Coreg:
             inlier_mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
-            subsample: Union[float, int] = 1.0):
+            subsample: Union[float, int] = 1.0,
+            verbose: bool = False):
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -1126,6 +1127,7 @@ class Coreg:
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
+        :param verbose: Print progress messages to stdout.
         """
         # Make sure that the mask has an expected format.
         if inlier_mask is not None:
@@ -1164,7 +1166,7 @@ class Coreg:
         tba_dem = np.where(full_mask, np.asarray(dem_to_be_aligned), np.nan).squeeze()
 
         # Run the associated fitting function
-        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights)
+        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -1219,7 +1221,7 @@ class Coreg:
         return CoregPipeline([self, other])
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray]):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         raise NotImplementedError("This should have been implemented by subclassing")
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
@@ -1248,14 +1250,19 @@ class BiasCorr(Coreg):
         self._meta: dict[str, Any] = {"bias_func": bias_func}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray]):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         """Estimate the bias using the bias_func."""
+        if verbose:
+            print("Estimating bias...")
         diff = ref_dem - tba_dem
         diff = diff[np.isfinite(diff)]
 
         # Use weights if those were provided.
         bias = self._meta["bias_func"](diff) if weights is None \
             else self._meta["bias_func"](diff, weights=weights)
+
+        if verbose:
+            print("Bias estimated")
 
         self._meta["bias"] = bias
 
@@ -1307,7 +1314,7 @@ class ICP(Coreg):
         self._meta: dict[str, Any] = {}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray]):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         """Estimate the rigid transform from tba_dem to ref_dem."""
         if weights is not None:
             warnings.warn("ICP was given weights, but does not support it.")
@@ -1341,7 +1348,11 @@ class ICP(Coreg):
             points[key] = point_cloud[~np.any(np.isnan(point_cloud), axis=1)].astype("float32")
 
         icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
+        if verbose:
+            print("Running ICP...")
         _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+        if verbose:
+            print("ICP finished")
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
@@ -1402,7 +1413,7 @@ class Deramp(Coreg):
         self._meta: dict[str, Any] = {}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray]):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
 
@@ -1440,11 +1451,13 @@ class Deramp(Coreg):
         def residuals(coefs: np.ndarray, x_coords: np.ndarray, y_coords: np.ndarray, targets: np.ndarray):
             return np.median(np.abs(targets - poly2d(x_coords, y_coords, coefs)))
 
+        if verbose:
+            print("Estimating deramp function...")
         coefs = scipy.optimize.fmin(
             func=residuals,
             x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
             args=(x_coords, y_coords, ddem),
-            disp=False
+            disp=verbose
         )
 
         self._meta["coefficients"] = coefs
@@ -1498,12 +1511,14 @@ class CoregPipeline(Coreg):
         self._meta = {}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray]):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         """Fit each coregistration step with the previously transformed DEM."""
         tba_dem_mod = tba_dem.copy()
 
-        for coreg in self.pipeline:
-            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, weights=weights)
+        for i, coreg in enumerate(self.pipeline):
+            if verbose:
+                print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
+            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
             tba_dem_mod = coreg._apply_func(tba_dem_mod, transform)
@@ -1581,10 +1596,9 @@ class NuthKaab(Coreg):
         self._meta: dict[str, Any] = {}
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray]):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         """Estimate the x/y/z offset between two DEMs."""
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        verbose = False  # TODO: Make this an argument somewhere.
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
 
@@ -1603,6 +1617,8 @@ class NuthKaab(Coreg):
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, bias = 0.0, 0.0, 0.0
 
+        if verbose:
+            print("Running Nuth and Kääb (2011) coregistration")
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
         for i in trange(self.max_iterations, disable=not verbose, desc="Iteratively correcting dataset"):
 
