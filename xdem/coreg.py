@@ -1083,11 +1083,11 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     return aligned_raster, error
 
 
-def _transform_to_bounds_and_res(dem: np.ndarray,
+def _transform_to_bounds_and_res(shape: tuple[int, int],
                                  transform: rio.transform.Affine) -> tuple[rio.coords.BoundingBox, float]:
     bounds = rio.coords.BoundingBox(
-        *rio.transform.array_bounds(dem.shape[0], dem.shape[1], transform=transform))
-    resolution = (bounds.right - bounds.left) / dem.shape[1]
+        *rio.transform.array_bounds(shape[0], shape[1], transform=transform))
+    resolution = (bounds.right - bounds.left) / shape[1]
 
     return bounds, resolution
 
@@ -1275,6 +1275,7 @@ class ICP(Coreg):
     Estimates a rigid transform (rotation + translation) between two DEMs.
 
     Requires 'opencv'
+    See opencv docs for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(self, max_iterations=100, tolerance=0.05, rejection_scale=2.5, num_levels=6):  # pylint: disable=super-init-not-called
@@ -1300,7 +1301,7 @@ class ICP(Coreg):
         if weights is not None:
             warnings.warn("ICP was given weights, but does not support it.")
 
-        bounds, resolution = _transform_to_bounds_and_res(ref_dem, transform)
+        bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         points: dict[str, np.ndarray] = {}
         # Generate the x and y coordinates for the reference_dem
         x_coords, y_coords = np.meshgrid(
@@ -1340,7 +1341,7 @@ class ICP(Coreg):
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the coregistration matrix to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem, transform)
+        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
         x_coords, y_coords = np.meshgrid(
             np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=dem.shape[1]),
             np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=dem.shape[0])[::-1]
@@ -1362,7 +1363,7 @@ class ICP(Coreg):
                 np.linspace(bounds.left, bounds.right, dem.shape[1]) - bounds.left,
                 np.linspace(bounds.bottom, bounds.top, dem.shape[0])[::-1] - bounds.bottom
             )),
-            method="nearest"
+            method="linear"
         )
         aligned_dem[~valid_mask] = np.nan
 
@@ -1398,7 +1399,7 @@ class Deramp(Coreg):
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
-        bounds, resolution = _transform_to_bounds_and_res(ref_dem, transform)
+        bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         x_coords, y_coords = np.meshgrid(
             np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=ref_dem.shape[1]),
             np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=ref_dem.shape[0])[::-1]
@@ -1450,7 +1451,7 @@ class Deramp(Coreg):
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the deramp function to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem, transform)
+        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
         x_coords, y_coords = np.meshgrid(
             np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=dem.shape[1]),
             np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=dem.shape[0])[::-1]
@@ -1585,7 +1586,7 @@ class NuthKaab(Coreg):
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
         """Estimate the x/y/z offset between two DEMs."""
-        bounds, resolution = _transform_to_bounds_and_res(ref_dem, transform)
+        bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         verbose = False  # TODO: Make this an argument somewhere.
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
@@ -1651,7 +1652,7 @@ class NuthKaab(Coreg):
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the estimated x/y/z offsets to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem, transform)
+        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
         scaling_factor = self._meta["resolution"] / resolution
 
         # Make index grids for the east and north dimensions
