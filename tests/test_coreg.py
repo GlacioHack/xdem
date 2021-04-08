@@ -18,7 +18,7 @@ import numpy as np
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import coreg, examples
+    from xdem import coreg, examples, spatial_tools
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
@@ -248,7 +248,7 @@ class TestCoregClass:
 
         # Try a 0 degree deramp (basically bias correction)
         deramp0 = coreg.Deramp(degree=0)
-        deramp0.fit(self.ref.data, self.tba.data, ~self.inlier_mask, transform=self.ref.transform)
+        deramp0.fit(**self.fit_params)
 
         # Check that only one coefficient exists (y = x + a => coefficients=["a"])
         assert len(deramp0._meta["coefficients"]) == 1
@@ -266,7 +266,7 @@ class TestCoregClass:
 
         # Do a fast an dirty 3 iteration ICP just to make sure it doesn't error out.
         icp = coreg.ICP(max_iterations=3)
-        icp.fit(self.ref.data, self.tba.data, ~self.inlier_mask, transform=self.ref.transform)
+        icp.fit(**self.fit_params)
 
         aligned_dem = icp.apply(self.tba.data, self.ref.transform)
 

@@ -1085,11 +1085,22 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
 
 def _transform_to_bounds_and_res(shape: tuple[int, int],
                                  transform: rio.transform.Affine) -> tuple[rio.coords.BoundingBox, float]:
+    """Get the bounding box and (horizontal) resolution from a transform and the shape of a DEM."""
     bounds = rio.coords.BoundingBox(
         *rio.transform.array_bounds(shape[0], shape[1], transform=transform))
     resolution = (bounds.right - bounds.left) / shape[1]
 
     return bounds, resolution
+
+
+def _get_x_and_y_coords(shape: tuple[int, int], transform: rio.transform.Affine):
+    """Generate center coordinates from a transform and the shape of a DEM."""
+    bounds, resolution = _transform_to_bounds_and_res(shape, transform)
+    x_coords, y_coords = np.meshgrid(
+        np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=shape[1]),
+        np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=shape[0])[::-1]
+    )
+    return x_coords, y_coords
 
 
 class Coreg:
@@ -1261,7 +1272,7 @@ class BiasCorr(Coreg):
 
     def _to_matrix_func(self) -> np.ndarray:
         """Convert the bias to a transform matrix."""
-        empty_matrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=float)
+        empty_matrix = np.diag(np.ones(4, dtype=float))
 
         empty_matrix[2, 3] += self._meta["bias"]
 
@@ -1304,10 +1315,7 @@ class ICP(Coreg):
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         points: dict[str, np.ndarray] = {}
         # Generate the x and y coordinates for the reference_dem
-        x_coords, y_coords = np.meshgrid(
-            np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=ref_dem.shape[1]),
-            np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=ref_dem.shape[0])[::-1]
-        )
+        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= bounds.left
         y_coords -= bounds.bottom
@@ -1342,10 +1350,7 @@ class ICP(Coreg):
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the coregistration matrix to a DEM."""
         bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-        x_coords, y_coords = np.meshgrid(
-            np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=dem.shape[1]),
-            np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=dem.shape[0])[::-1]
-        )
+        x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
         x_coords -= bounds.left
         y_coords -= bounds.bottom
 
@@ -1399,11 +1404,7 @@ class Deramp(Coreg):
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray]):
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
-        bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        x_coords, y_coords = np.meshgrid(
-            np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=ref_dem.shape[1]),
-            np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=ref_dem.shape[0])[::-1]
-        )
+        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
 
         ddem = ref_dem - tba_dem
         valid_mask = np.isfinite(ddem)
@@ -1451,11 +1452,7 @@ class Deramp(Coreg):
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the deramp function to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-        x_coords, y_coords = np.meshgrid(
-            np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=dem.shape[1]),
-            np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=dem.shape[0])[::-1]
-        )
+        x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
 
         ramp = self._meta["func"](x_coords, y_coords)
 
@@ -1479,7 +1476,7 @@ class Deramp(Coreg):
             raise NotImplementedError("Vertical shift, rotation and horizontal scaling has to be implemented.")
 
         # If degree==0, it's just a bias correction
-        empty_matrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=float)
+        empty_matrix = np.diag(np.ones(4, dtype=float))
 
         empty_matrix[2, 3] += self._meta["coefficients"][0]
 
@@ -1693,7 +1690,7 @@ class NuthKaab(Coreg):
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
-        matrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=float)
+        matrix = np.diag(np.ones(4, dtype=float))
         matrix[0, 3] += offset_east
         matrix[1, 3] += offset_north
         matrix[2, 3] += self._meta["bias"]
