@@ -1363,7 +1363,7 @@ class ICP(Coreg):
                 np.linspace(bounds.left, bounds.right, dem.shape[1]) - bounds.left,
                 np.linspace(bounds.bottom, bounds.top, dem.shape[0])[::-1] - bounds.bottom
             )),
-            method="linear"
+            method="cubic"
         )
         aligned_dem[~valid_mask] = np.nan
 
