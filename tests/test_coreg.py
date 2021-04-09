@@ -13,8 +13,10 @@ import time
 import warnings
 from typing import Any
 
+import cv2
 import geoutils as gu
 import numpy as np
+import pytransform3d.transformations
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -366,3 +368,69 @@ class TestCoregClass:
         matrix_diff = np.abs(icp_full.to_matrix() - icp_sub.to_matrix())
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
+
+    def test_apply_matrix(self):
+        warnings.simplefilter("error")
+        # This should maybe be its own function, but would just repeat the data loading procedure..
+
+        # Synthesize a shifted and vertically offset DEM
+        pixel_shift = 2
+        bias = 5
+        shifted_dem = self.ref.data.squeeze().copy()
+        shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
+        shifted_dem[:, :pixel_shift] = np.nan
+        shifted_dem += bias
+
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[0, 3] = pixel_shift * self.tba.res[0]
+        matrix[2, 3] = -bias
+
+        transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(), self.ref.transform, matrix)
+
+        diff = np.asarray(self.ref.data.squeeze() - transformed_dem)
+
+        # Check that the median is very close to zero
+        assert np.abs(np.nanmedian(diff)) < 0.01
+        # Check that the NMAD is low
+        assert spatial_tools.nmad(diff) < 1
+
+        rotation = np.deg2rad(3)
+        rotation_matrix = np.array([
+            [1, 0, 0, 0],
+            [0, np.cos(rotation), -np.sin(rotation), 0],
+            [0, np.sin(rotation), np.cos(rotation), 0],
+            [0, 0, 0, 1]
+        ])
+        with warnings.catch_warnings():
+            # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
+            warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
+            inverse_matrix = pytransform3d.transformations.invert_transform(rotation_matrix)
+
+        rotated_dem = coreg.apply_matrix(self.ref.data.data.squeeze(), self.ref.transform, rotation_matrix)
+        unrotated_dem = coreg.apply_matrix(rotated_dem, self.ref.transform, inverse_matrix)
+
+        diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
+
+        if False:
+            import matplotlib.pyplot as plt
+
+            vmin = 0
+            vmax = 1500
+            plt.figure(figsize=(12, 4), dpi=200)
+            plt.subplot(151)
+            plt.imshow(self.ref.data.squeeze(), vmin=vmin, vmax=vmax)
+            plt.subplot(152)
+            plt.imshow(rotated_dem, vmin=vmin, vmax=vmax)
+            plt.subplot(153)
+            plt.imshow(unrotated_dem, vmin=vmin, vmax=vmax)
+            plt.subplot(154)
+            plt.imshow(diff)
+            plt.subplot(155)
+            plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-50, 50, 100))
+            plt.show()
+
+        # Check that the median is very close to zero
+        assert np.abs(np.nanmedian(diff)) < 2
+        # Check that the NMAD is low
+        assert spatial_tools.nmad(diff) < 20
+        print(np.nanmedian(diff), spatial_tools.nmad(diff))

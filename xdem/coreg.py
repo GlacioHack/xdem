@@ -49,6 +49,7 @@ except ImportError:
 
 try:
     from pytransform3d.transform_manager import TransformManager
+    import pytransform3d.transformations
     _HAS_P3D = True
 except ImportError:
     _HAS_P3D = False
@@ -639,7 +640,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
 
     :returns: A callable function to estimate the ramp.
     """
-    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
+    #warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     # Extract only the finite values of the elevation difference and corresponding coordinates.
     valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
     valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
@@ -1712,3 +1713,101 @@ class NuthKaab(Coreg):
         matrix[2, 3] += self._meta["bias"]
 
         return matrix
+
+
+def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = True) -> np.ndarray:
+
+    # TODO: Figure out if invert should be True or False per default.
+
+    assert len(dem.shape) == 2, f"DEM must be 2D array. Given shape: {dem.shape}"
+
+    bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
+
+    # Set the mask to be nans (and the potential dem.mask)
+    nan_mask = np.isnan(dem) | (dem.mask if isinstance(dem, np.ma.masked_array) else False)
+    # Convert the DEM to an ndarray (not e.g. masked_array).
+    dem = np.asarray(dem)
+
+    minval = np.nanmin(dem)
+    maxval = np.nanmax(dem)
+
+    nodata_value = -9999  # cv2 transforms don't like nans, so they have to be replaced with this
+    #dem[np.isnan(dem)] = nodata_value
+
+    minval_px = minval / resolution
+    maxval_px = maxval / resolution
+
+    with warnings.catch_warnings():
+        # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
+        warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
+
+        # Invert the transform if wanted.
+        if invert:
+            matrix = pytransform3d.transformations.invert_transform(matrix)
+
+        # Scale the matrix to pixel-coordinates.
+        scaled_matrix = pytransform3d.transformations.scale_transform(
+            matrix,
+            s_xt=1/resolution,
+            s_yt=1/resolution,
+            s_zt=1/resolution
+        )
+
+    # Make a 3D bounding box. It represents the X/Y/Z coordinates in pixels
+    offset = 0.5
+    orig_points = np.array([
+        [0 + offset, 0 + offset, minval_px],
+        [0 + offset, 0 + offset, maxval_px],
+        [0 + offset, dem.shape[0] + offset, minval_px],
+        [0 + offset, dem.shape[0] + offset, maxval_px],
+        [dem.shape[1] + offset, 0 + offset, minval_px],
+        [dem.shape[1] + offset, 0 + offset, maxval_px],
+        [dem.shape[1] + offset, dem.shape[0] + offset, minval_px],
+        [dem.shape[1] + offset, dem.shape[0] + offset, maxval_px],
+    ])
+    orig_plane = np.mean([
+            orig_points[[0,1], :],
+            orig_points[[2,3], :],
+            orig_points[[4,5], :],
+            orig_points[[6,7], :],
+    ], axis=1)
+
+    # Make a slice object to represent only the bottom points of the bounding box
+    bottom_pts = np.s_[[0, 2, 4, 6]]
+
+    # Transform the above points with the scaled matrix.
+    trans_points = cv2.perspectiveTransform(orig_points.reshape(1, -1, 3), scaled_matrix).squeeze()
+    trans_plane = cv2.perspectiveTransform(orig_plane.reshape(1, -1, 3), scaled_matrix).squeeze()
+
+    # Estimate a strictly horizontal perspective transform from the bottom points of the bounding box.
+    matrix2d = cv2.getPerspectiveTransform(
+            src=orig_plane[:, :2].astype("float32"),
+            dst=trans_plane[:, :2].astype("float32")
+    )
+
+    # Transform the horizontal components of the original points and append the unchanged elevations.
+    trans_points_2d = np.append(
+            cv2.perspectiveTransform(
+                orig_points[:, :2].reshape(1, -1, 2), 
+                matrix2d).squeeze(),
+            trans_points[:, 2].reshape(-1, 1),
+            axis=1
+    )
+
+    #orig_ramp = deramping(orig_points[bottom_pts, 2], orig_points[bottom_pts, 0], orig_points[bottom_pts, 1], degree=1)
+    trans_ramp = deramping(trans_points_2d[bottom_pts, 2], trans_points_2d[bottom_pts, 0],
+                           trans_points_2d[bottom_pts, 1], degree=1)
+
+    x_px, y_px = np.meshgrid(np.arange(dem.shape[1]) + 0.5, np.arange(dem.shape[0]) + 0.5)
+
+    warped_dem = cv2.warpPerspective(dem, matrix2d, dsize=dem.shape[::-1],
+                                     flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=nodata_value)
+    frame = cv2.warpPerspective(np.zeros(shape=warped_dem.shape, dtype=int), matrix2d, dsize=dem.shape[::-1],
+                                flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=1).astype(bool)
+    warped_dem[frame | nan_mask] = np.nan
+
+    ramp = (minval_px - trans_ramp(x_px, y_px)) * resolution
+
+    warped_dem += ramp
+
+    return warped_dem
