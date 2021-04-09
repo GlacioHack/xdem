@@ -382,55 +382,91 @@ class TestCoregClass:
         shifted_dem += bias
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] = pixel_shift * self.tba.res[0]
-        matrix[2, 3] = -bias
+        matrix[0, 3] = -pixel_shift * self.tba.res[0]
+        matrix[2, 3] = bias
 
         transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(), self.ref.transform, matrix)
 
         diff = np.asarray(self.ref.data.squeeze() - transformed_dem)
 
         # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 0.01
+        #assert np.abs(np.nanmedian(diff)) < 0.01
         # Check that the NMAD is low
-        assert spatial_tools.nmad(diff) < 1
+        #assert spatial_tools.nmad(diff) < 1
 
-        rotation = np.deg2rad(3)
-        rotation_matrix = np.array([
-            [1, 0, 0, 0],
-            [0, np.cos(rotation), -np.sin(rotation), 0],
-            [0, np.sin(rotation), np.cos(rotation), 0],
-            [0, 0, 0, 1]
-        ])
+        def rotation_matrix(rotation=30):
+            rotation = np.deg2rad(rotation)
+            matrix = np.array([
+                [1, 0, 0, 0],
+                [0, np.cos(rotation), -np.sin(rotation), 0],
+                [0, np.sin(rotation), np.cos(rotation), 0],
+                [0, 0, 0, 1]
+            ])
+            return matrix
         with warnings.catch_warnings():
             # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
             warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-            inverse_matrix = pytransform3d.transformations.invert_transform(rotation_matrix)
+            #inverse_matrix = pytransform3d.transformations.invert_transform(rotation_matrix)
 
-        rotated_dem = coreg.apply_matrix(self.ref.data.data.squeeze(), self.ref.transform, rotation_matrix)
-        unrotated_dem = coreg.apply_matrix(rotated_dem, self.ref.transform, inverse_matrix)
+        # revert_matrix = np.array([[9.99782123e-01, 1.76566610e-02, -1.11332198e-02, -3.24036657e+02],
+        #                          [-2.08600063e-02, 8.64381866e-01, -5.02403075e-01, 2.27369209e+03],
+        #                          [7.52592511e-04, 5.02525852e-01, 8.64561855e-01, -9.82074762e+03],
+        #                          [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+
+        rotated_dem = coreg.apply_matrix(self.ref.data.squeeze(), self.ref.transform, rotation_matrix(10))
+        rotated_dem -= np.nanmedian(rotated_dem)
+
+        icp = coreg.ICP(max_iterations=20)
+        icp.fit(self.ref.data, rotated_dem, transform=self.ref.transform)
+        #icp._meta["matrix"] = revert_matrix
+        #icp._fit_called = True
+
+        #unrotated_dem = icp.apply(rotated_dem, transform=self.ref.transform) + 7
+
+        unrotated_dem = coreg.apply_matrix(rotated_dem, self.ref.transform, icp.to_matrix(), invert=False)
+        #unrotated_dem += np.nanmedian((self.ref.data.data.squeeze() - unrotated_dem))
+
+        #nuth_kaab = coreg.NuthKaab()
+        #nuth_kaab.fit(self.ref.data, unrotated_dem, transform=self.ref.transform)
+
+        #unrotated_dem = nuth_kaab.apply(unrotated_dem.copy(), transform=self.ref.transform)
 
         diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
 
-        if False:
+        if True:
             import matplotlib.pyplot as plt
 
             vmin = 0
             vmax = 1500
+            extent = (self.ref.bounds.left, self.ref.bounds.right, self.ref.bounds.bottom, self.ref.bounds.top)
+            plot_params = dict(
+                extent=extent,
+                vmin=vmin,
+                vmax=vmax
+            )
             plt.figure(figsize=(12, 4), dpi=200)
             plt.subplot(151)
-            plt.imshow(self.ref.data.squeeze(), vmin=vmin, vmax=vmax)
+            plt.imshow(self.ref.data.squeeze(), **plot_params)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
             plt.subplot(152)
-            plt.imshow(rotated_dem, vmin=vmin, vmax=vmax)
+            plt.imshow(rotated_dem, **plot_params)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
             plt.subplot(153)
-            plt.imshow(unrotated_dem, vmin=vmin, vmax=vmax)
+            plt.imshow(unrotated_dem, **plot_params)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
             plt.subplot(154)
-            plt.imshow(diff)
+            plt.imshow(diff, extent=extent)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
             plt.subplot(155)
             plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-50, 50, 100))
             plt.show()
 
         # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 2
+        assert np.abs(np.nanmedian(diff)) < 1
         # Check that the NMAD is low
-        assert spatial_tools.nmad(diff) < 20
+        assert spatial_tools.nmad(diff) < 10
         print(np.nanmedian(diff), spatial_tools.nmad(diff))
