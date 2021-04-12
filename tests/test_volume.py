@@ -17,7 +17,7 @@ class TestLocalHypsometric:
     # Filter to only look at the Scott Turnerbreen glacier
     outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
     # Create a mask where glacier areas are True
-    mask = outlines.create_mask(dem_2009) == 255
+    mask = outlines.create_mask(dem_2009)
 
     def test_bin_ddem(self):
         """Test dDEM binning."""

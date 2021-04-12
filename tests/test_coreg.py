@@ -136,7 +136,7 @@ def test_only_paths():
 
 class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    inlier_mask = outlines.create_mask(ref) != 255
+    inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
         reference_dem=ref.data,

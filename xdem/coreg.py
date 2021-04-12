@@ -1001,7 +1001,7 @@ def mask_as_array(reference_raster: gu.georaster.Raster, mask: Union[str, gu.geo
     # At this point, the mask variable is either a Raster or a Vector
     # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
     if isinstance(mask, gu.geovector.Vector):
-        mask_array = mask.create_mask(reference_raster) == 255
+        mask_array = mask.create_mask(reference_raster)
     elif isinstance(mask, gu.georaster.Raster):
         # The true value is the maximum value in the raster, unless the maximum value is 0 or False
         true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
