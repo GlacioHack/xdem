@@ -183,9 +183,9 @@ def linear_interpolation(array: Union[np.ndarray, np.ma.masked_array]) -> np.nda
     :returns: A filled array with no NaNs
     """
     # Create a mask for where nans exist
-    nan_mask = (array.mask | np.isnan(array)) if isinstance(array, np.ma.masked_array) else np.isnan(array)
+    nan_mask = (array.mask | np.isnan(array.data)) if isinstance(array, np.ma.masked_array) else np.isnan(array)
 
-    interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=~nan_mask.astype("uint8"))
+    interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"))
 
     # Fill the nans (values outside of the value boundaries) with the median value
     # This triggers a warning with np.masked_array's because it ignores the mask
@@ -241,8 +241,8 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     )
 
     # Create an idealized dDEM (only considering the dH gradient)
-    idealized_ddem = gradient_model(dem)
-    idealized_ddem[~mask] = 0.0
+    idealized_ddem = np.zeros_like(dem)
+    idealized_ddem[mask] = gradient_model(dem[mask])
 
     # Measure the difference between the original dDEM and the idealized dDEM
     assert ddem.shape == idealized_ddem.shape
