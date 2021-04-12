@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
+import cv2
 
 import xdem
 
@@ -175,23 +176,45 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
     return output
 
 
-def linear_interpolation(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
+def linear_interpolation(array: Union[np.ndarray, np.ma.masked_array], max_search_distance: int = 10,
+                         extrapolate: bool = False, force_fill: bool = False) -> np.ndarray:
     """
-    Interpolate a 2D array using bilinear interpolation.
+    Interpolate a 2D array using rasterio's fillnodata.
 
     :param array: An array with NaNs or a masked array to interpolate.
+    :param max_search_distance: The maximum number of pixels to search in all directions to find values \
+to interpolate from. The default is 10.
+    :param extrapolate: if False, will remove pixels that have been extrapolated by fillnodata. Default is False.
+    :param force_fill: if True, will replace all remaining gaps by the median of all valid values. Default is False.
+
     :returns: A filled array with no NaNs
     """
     # Create a mask for where nans exist
     nan_mask = (array.mask | np.isnan(array.data)) if isinstance(array, np.ma.masked_array) else np.isnan(array)
 
-    interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"))
+    interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"),
+                                                  max_search_distance=max_search_distance)
+
+    # Remove extrapolated values
+    if not extrapolate:
+        interp_mask = cv2.morphologyEx((~nan_mask).squeeze().astype('uint8'), cv2.MORPH_CLOSE,
+                                       kernel=np.ones((max_search_distance - 1, )*2)).astype('bool')
+        if np.ndim(array) == 3:
+            interpolated_array[:, ~interp_mask] = np.nan
+        else:
+            interpolated_array[~interp_mask] = np.nan
 
     # Fill the nans (values outside of the value boundaries) with the median value
     # This triggers a warning with np.masked_array's because it ignores the mask
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        interpolated_array[np.isnan(interpolated_array)] = np.nanmedian(array)
+    if force_fill:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            interpolated_array[np.isnan(interpolated_array)] = np.nanmedian(array)
+    else:
+        # If input is masked array, return a masked array
+        extrap_mask = (interpolated_array != array.data)
+        if isinstance(array, np.ma.masked_array):
+            interpolated_array = np.ma.masked_array(interpolated_array, mask = (nan_mask & ~extrap_mask))
 
     return interpolated_array.reshape(array.shape)
 

@@ -66,9 +66,6 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
 
         assert self.data.shape == array.shape, f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
 
-        if (isinstance(array, np.ma.masked_array) and np.any(array.mask)) or np.any(np.isnan(array)):
-            raise ValueError("Data contains NaNs")
-
         self._filled_data = np.asarray(array)
 
     @property
