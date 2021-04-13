@@ -1717,6 +1717,7 @@ class NuthKaab(Coreg):
 
 
 def invert_matrix(matrix: np.ndarray) -> np.ndarray:
+    """Invert a transformation matrix."""
     with warnings.catch_warnings():
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
@@ -1726,6 +1727,7 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
 
 
 def _create_nan_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
+    """Will be replaced by Amaury's version once that is merged."""
     nans = ~np.isfinite(np.asarray(array))
 
     if isinstance(array, np.ma.masked_array):
@@ -1749,7 +1751,6 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
 
     :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
-
     # Parse the resampling argument given.
     if isinstance(resampling, int):
         resampling_order = resampling
@@ -1795,13 +1796,8 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     # Shift the Z components by the centroid.
     point_cloud[:, 2] -= centroid[2]
 
-    with warnings.catch_warnings():
-        # Deprecation warning from pytransform3d. Fixed in the upcoming 1.8
-        warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-
-        # Invert the transform if provided.
-        if invert:
-            matrix = pytransform3d.transformations.invert_transform(matrix)
+    if invert:
+        matrix = invert_matrix(matrix)
 
     # Transform the point cloud using the matrix.
     transformed_points = cv2.perspectiveTransform(
@@ -1851,7 +1847,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         mode="constant",
         cval=1,
         preserve_range=True
-    ) > 0.95  # Due to different interpolation approaches, everything above 0.95 is assumed to be 1 (True)
+    ) > 0.5  # Due to different interpolation approaches, everything above 0.5 is assumed to be 1 (True)
 
     # Apply the transformed nan_mask
     transformed_dem[tr_nan_mask] = np.nan

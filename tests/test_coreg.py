@@ -411,13 +411,13 @@ class TestCoregClass:
             rotation_matrix(rotation),
         )
         # Make sure that the rotated DEM is way off.
-        assert np.abs(np.nanmedian(rotated_dem - self.ref.data.data)) > 200
+        assert np.abs(np.nanmedian(rotated_dem - self.ref.data.data)) > 400
 
         # Apply a rotation in the opposite direction
         unrotated_dem = coreg.apply_matrix(
             rotated_dem,
             self.ref.transform,
-            rotation_matrix(-rotation * 0.989)  # TODO: Figure out why this correction factor is needed.
+            rotation_matrix(-rotation * 0.989)  # This is not exactly -rotation, probably due to displaced pixels.
         )
 
         diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
@@ -433,25 +433,32 @@ class TestCoregClass:
                 vmin=vmin,
                 vmax=vmax
             )
-            plt.figure(figsize=(12, 4), dpi=200)
+            plt.figure(figsize=(22, 4), dpi=100)
             plt.subplot(151)
+            plt.title("Original")
             plt.imshow(self.ref.data.squeeze(), **plot_params)
             plt.xlim(*extent[:2])
             plt.ylim(*extent[2:])
             plt.subplot(152)
+            plt.title(f"Rotated {rotation} degrees")
             plt.imshow(rotated_dem, **plot_params)
             plt.xlim(*extent[:2])
             plt.ylim(*extent[2:])
             plt.subplot(153)
+            plt.title(f"De-rotated {-rotation} degrees")
             plt.imshow(unrotated_dem, **plot_params)
             plt.xlim(*extent[:2])
             plt.ylim(*extent[2:])
             plt.subplot(154)
-            plt.imshow(diff, extent=extent, vmin=-10, vmax=10)
+            plt.title("Original vs. de-rotated")
+            plt.imshow(diff, extent=extent, vmin=-10, vmax=10, cmap="coolwarm_r")
+            plt.colorbar()
             plt.xlim(*extent[:2])
             plt.ylim(*extent[2:])
             plt.subplot(155)
-            plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-50, 50, 100))
+            plt.title("Original vs. de-rotated")
+            plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-10, 10, 100))
+            plt.tight_layout(w_pad=0.05)
             plt.show()
 
         # Check that the median is very close to zero
