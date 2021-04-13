@@ -30,6 +30,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
+import skimage.transform
 from rasterio import Affine
 from tqdm import trange
 
@@ -1724,26 +1725,27 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
         return pytransform3d.transformations.invert_transform(matrix)
 
 
-def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = True) -> np.ndarray:
+def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = True, centroid: Optional[tuple[float, float, float]] = None) -> np.ndarray:
 
-    # TODO: Figure out if invert should be True or False per default.
-    demc = dem.copy()
+    demc = np.array(dem)
+    demc[demc == -9999] = np.nan
+    filled_dem = np.where(np.isfinite(demc), demc, -9999)
+    assert np.count_nonzero(~np.isnan(demc)) > 0, "Transformed DEM had all nans."
+    x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
 
-    assert len(demc.shape) == 2, f"DEM must be 2D array. Given shape: {demc.shape}"
+    bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
 
-    bounds, resolution = _transform_to_bounds_and_res(demc.shape, transform)
+    if centroid is None:
+        centroid = (bounds.left, bounds.bottom, 0.0)
+    else:
+        assert len(centroid) == 3, f"Expected centroid to be 3D X/Y/Z coordinate. Got shape of {len(centroid)}"
 
-    # Set the mask to be nans (and the potential dem.mask)
-    nan_mask = np.isnan(demc) | (demc.mask if isinstance(demc, np.ma.masked_array) else False) | (demc == -9999)
-    # Convert the DEM to an ndarray (not e.g. masked_array).
-    demc = np.asarray(demc)
+    x_coords -= centroid[0]
+    y_coords -= centroid[1]
 
-    minval = np.min(demc[~nan_mask])
-    maxval = np.max(demc[~nan_mask])
 
-    minval_px = minval / resolution
-    maxval_px = maxval / resolution
-    meanval_px = np.mean([minval_px, maxval_px])
+    point_cloud = np.dstack((x_coords, y_coords, filled_dem))
+    point_cloud[:, 2] -= centroid[2]
 
     with warnings.catch_warnings():
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
@@ -1753,91 +1755,51 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         if invert:
             matrix = pytransform3d.transformations.invert_transform(matrix)
 
-        # Scale the matrix to pixel-coordinates.
-        scaled_matrix = pytransform3d.transformations.scale_transform(
-            matrix,
-            s_t=1/resolution,
-        )
+    transformed_points = cv2.perspectiveTransform(
+        point_cloud.reshape((1, -1, 3)),
+        matrix,
+    ).reshape(point_cloud.shape)
 
-    # Make a 3D bounding box. It represents the X/Y/Z coordinates in pixels
-    offset = 0.5
-    orig_points = np.array([
-        [0 + offset, 0 + offset, meanval_px],
-        [0 + offset, demc.shape[0] + offset, meanval_px],
-        [demc.shape[1] + offset, 0 + offset, meanval_px],
-        [demc.shape[1] + offset, demc.shape[0] + offset, meanval_px],
-    ])
-
-    # Make a slice object to represent only the bottom points of the bounding box
-    #bottom_pts = np.s_[[0, 2, 4, 6]]
-
-    # Transform the above points with the scaled matrix.
-    trans_points = cv2.perspectiveTransform(orig_points.reshape(1, -1, 3), scaled_matrix).squeeze()
-
-    # Estimate a strictly horizontal perspective transform from the bottom points of the bounding box.
-    matrix2d = cv2.getPerspectiveTransform(
-        src=orig_points[:, :2].astype("float32"),
-        dst=trans_points[:, :2].astype("float32")
-    )
-
-    # Transform the X/Y coordinates of the original points and append the (so far) unchanged Z coordinates.
-    trans_points_2d = np.append(
-        cv2.perspectiveTransform(
-            orig_points[:, :2].reshape(1, -1, 2),
-            matrix2d).squeeze(),
-        orig_points[:, 2].reshape(-1, 1),
-        axis=1
-    )
-
-    # Estimate a 1st degree (linear) ramp to explain the tilt of the transformed points.
-    trans2d_ramp = deramping(
-        trans_points_2d[:, 2],
-        trans_points_2d[:, 0],
-        trans_points_2d[:, 1],
+    deramp = deramping(
+        (point_cloud[:, :, 2] - transformed_points[:, :, 2])[np.isfinite(dem)].flatten(),
+        point_cloud[:, :, 0][np.isfinite(dem)].flatten(),
+        point_cloud[:, :, 1][np.isfinite(dem)].flatten(),
         degree=1
     )
-    # Estimate a 1st degree (linear) ramp to explain the tilt of the transformed points.
-    trans_ramp = deramping(
-        trans_points[:, 2],
-        trans_points[:, 0],
-        trans_points[:, 1],
-        degree=1
+    ramp = deramp(x_coords, y_coords)
+    demc -= ramp
+
+    x_inds = rio.fill.fillnodata(transformed_points[:, :, 0].copy(), mask=np.isfinite(demc).astype("uint8"))
+    y_inds = rio.fill.fillnodata(transformed_points[:, :, 1].copy(), mask=np.isfinite(demc).astype("uint8"))
+
+    x_inds /= resolution
+    y_inds /= resolution
+    x_inds -= x_coords.min() / resolution
+    #y_inds -= y_coords.min() / resolution
+    y_inds = (y_coords.max() / resolution) - y_inds
+
+    inds = np.vstack((y_inds.reshape((1,) + y_inds.shape), x_inds.reshape((1,) + x_inds.shape)))
+
+    transformed_dem = skimage.transform.warp(
+        np.where(np.isfinite(demc), demc, -9999),
+        inds,
+        order=1,
+        mode="constant",
+        cval=0,
+        preserve_range=True
     )
-    # Generate x and y pixel center coordinates to interpolate the ramp on.
-    x_px, y_px = np.meshgrid(np.arange(demc.shape[1]) + 0.5, np.arange(demc.shape[0]) + 0.5)
-
-    # The ramp is the difference between the original plane (meanval_px) and the transformed plane
-    # It is then multiplied with the resolution to convert from px to m.
-    print(trans_points)
-    bias = (trans_points[:, 2].mean() - trans_points_2d[:, 2].mean()) * 1.96
-    ramp = (trans2d_ramp(x_px, y_px) - trans_ramp(x_px, y_px) + bias) * resolution
-
-    nodata_value = -9999  # cv2 transforms don't like nans, so they have to be replaced with this
-    demc[nan_mask] = nodata_value
-
-    # Warp the DEM using a perspective warp. Values outside will be given the temporary nan value.
-    warped_dem = cv2.warpPerspective(
-        demc,
-        matrix2d,
-        dsize=demc.shape[::-1],
-        flags=(cv2.INTER_CUBIC + cv2.WARP_INVERSE_MAP),
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=nodata_value
+    nan_mask = skimage.transform.warp(
+        np.isnan(demc).astype("uint8"),
+        inds,
+        order=1,
+        mode="constant",
+        cval=1,
+        preserve_range=True
     )
 
-    # frame = cv2.warpPerspective(np.zeros(shape=warped_dem.shape, dtype=int), matrix2d, dsize=dem.shape[::-1],
-    #                            flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=1).astype(bool)
-    trans_nan_mask = cv2.warpPerspective(
-        nan_mask.astype(float),
-        matrix2d,
-        dsize=demc.shape[::-1],
-        flags=cv2.INTER_CUBIC + cv2.WARP_INVERSE_MAP,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=1.0
-    ) != 0.0
+    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM had all nans."
+    transformed_dem[nan_mask > 0.95] = np.nan
 
-    warped_dem += ramp
+    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM had all nans."
 
-    warped_dem[trans_nan_mask] = np.nan
-
-    return warped_dem
+    return transformed_dem

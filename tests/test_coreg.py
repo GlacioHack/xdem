@@ -374,8 +374,8 @@ class TestCoregClass:
         # This should maybe be its own function, but would just repeat the data loading procedure..
 
         # Synthesize a shifted and vertically offset DEM
-        pixel_shift = 2
-        bias = 5
+        pixel_shift = 11
+        bias = 0
         shifted_dem = self.ref.data.squeeze().copy()
         shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
         shifted_dem[:, :pixel_shift] = np.nan
@@ -383,16 +383,16 @@ class TestCoregClass:
 
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[0, 3] = -pixel_shift * self.tba.res[0]
-        matrix[2, 3] = bias
+        matrix[2, 3] = -bias
 
         transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(), self.ref.transform, matrix)
 
         diff = np.asarray(self.ref.data.squeeze() - transformed_dem)
 
         # Check that the median is very close to zero
-        #assert np.abs(np.nanmedian(diff)) < 0.01
+        assert np.abs(np.nanmedian(diff)) < 0.05
         # Check that the NMAD is low
-        #assert spatial_tools.nmad(diff) < 1
+        assert spatial_tools.nmad(diff) < 3
 
         def rotation_matrix(rotation=30):
             rotation = np.deg2rad(rotation)
@@ -403,18 +403,16 @@ class TestCoregClass:
                 [0, 0, 0, 1]
             ])
             return matrix
-        with warnings.catch_warnings():
-            # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
-            warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-            #inverse_matrix = pytransform3d.transformations.invert_transform(rotation_matrix)
 
-        # revert_matrix = np.array([[9.99782123e-01, 1.76566610e-02, -1.11332198e-02, -3.24036657e+02],
-        #                          [-2.08600063e-02, 8.64381866e-01, -5.02403075e-01, 2.27369209e+03],
-        #                          [7.52592511e-04, 5.02525852e-01, 8.64561855e-01, -9.82074762e+03],
-        #                          [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+        rotated_dem = coreg.apply_matrix(
+            self.ref.data.squeeze(),
+            self.ref.transform,
+            rotation_matrix(4),
+        )  # centroid=(self.ref.bounds.left, self.ref.bounds.bottom, 0))
+        bias = np.nanmedian(rotated_dem)
 
-        rotated_dem = coreg.apply_matrix(self.ref.data.squeeze(), self.ref.transform, rotation_matrix(10))
-        rotated_dem -= np.nanmedian(rotated_dem)
+        #rotated_dem -= bias
+        print(bias)
 
         icp = coreg.ICP(max_iterations=20)
         icp.fit(self.ref.data, rotated_dem, transform=self.ref.transform)
@@ -423,7 +421,13 @@ class TestCoregClass:
 
         #unrotated_dem = icp.apply(rotated_dem, transform=self.ref.transform) + 7
 
-        unrotated_dem = coreg.apply_matrix(rotated_dem, self.ref.transform, icp.to_matrix(), invert=False)
+        unrotated_dem = coreg.apply_matrix(
+            rotated_dem,
+            self.ref.transform,
+            icp.to_matrix(),
+            invert=False,
+            #centroid=(self.ref.bounds.left, self.ref.bounds.bottom, 0)
+        )
         #unrotated_dem += np.nanmedian((self.ref.data.data.squeeze() - unrotated_dem))
 
         #nuth_kaab = coreg.NuthKaab()
@@ -433,7 +437,7 @@ class TestCoregClass:
 
         diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
 
-        if True:
+        if False:
             import matplotlib.pyplot as plt
 
             vmin = 0
