@@ -31,10 +31,8 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     assert ddem.shape == ref_dem.shape
 
     # Remove all nans, and flatten the inputs.
-    nan_mask = np.logical_or(
-        np.isnan(ddem) if not isinstance(ddem, np.ma.masked_array) else ddem.mask,
-        np.isnan(ref_dem) if not isinstance(ref_dem, np.ma.masked_array) else ref_dem.mask
-    )
+    nan_mask = np.logical_or(xdem.spatial_tools.get_mask(ddem), xdem.spatial_tools.get_mask(ref_dem))
+
     # Extract only the valid values and (if relevant) convert from masked_array to array
     ddem = np.array(ddem[~nan_mask])
     ref_dem = np.array(ref_dem[~nan_mask])
@@ -190,7 +188,7 @@ to interpolate from. The default is 10.
     :returns: A filled array with no NaNs
     """
     # Create a mask for where nans exist
-    nan_mask = (array.mask | np.isnan(array.data)) if isinstance(array, np.ma.masked_array) else np.isnan(array)
+    nan_mask = xdem.spatial_tools.get_mask(array)
 
     interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"),
                                                   max_search_distance=max_search_distance)
@@ -232,15 +230,11 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     :param ref_dem: The reference DEM in the dDEM comparison.
     :param mask: A mask to delineate the area that will be interpolated (True means hypsometric will be used).
     """
-    ddem = np.asarray(voided_ddem)
-    # The exclusion mask is the union of the nan mask and the potential masked_array mask
-    ddem_mask = np.isnan(ddem) | (voided_ddem.mask if isinstance(voided_ddem, np.ma.masked_array) else False)
-    # Maybe temporary: Make sure that interpolation works as it should by messing up the masked values.
-    ddem[ddem_mask] = np.nan
+    # Get ddem array with invalid pixels converted to NaN and mask of invalid pixels
+    ddem, ddem_mask = xdem.spatial_tools.get_array_and_mask(voided_ddem)
 
-    dem = np.asarray(ref_dem)
-    # The exclusion mask is the union of the nan mask and the potential masked_array mask
-    dem_mask = np.isnan(dem) | (ref_dem.mask if isinstance(ref_dem, np.ma.masked_array) else False)
+    # Get ref_dem array with invalid pixels converted to NaN and mask of invalid pixels
+    dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
 
     # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
     inlier_mask = mask & (~ddem_mask & ~dem_mask)
