@@ -5,6 +5,7 @@ import warnings
 from typing import Callable, Optional, Union
 
 import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
@@ -279,6 +280,138 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
         corrected_ddem,
         mask=(~mask & (ddem_mask | dem_mask))
     )
+
+    assert output is not None
+
+    return output
+
+
+def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
+                                    ref_dem: Union[np.ndarray, np.ma.masked_array],
+                                    mask: np.ndarray, min_coverage: float = 0.2,
+                                    plot: bool = False) -> np.ma.masked_array:
+    """
+    Interpolate a dDEM using local hypsometric interpolation.
+    The algorithm loops through each features in the vector file.
+
+    The dDEM is assumed to have been created as "voided_ddem = reference_dem - other_dem".
+
+    :param voided_ddem: A dDEM with voids (either an array with nans or a masked array).
+    :param ref_dem: The reference DEM in the dDEM comparison.
+    :param mask: A raster of same shape as voided_ddem and ref_dem, containing a diferent non-0 pixel value for \
+each geometry on which to loop.
+    :param min_coverage: The minimum coverage fraction to be considered for interpolation. Default is 0.2.
+    :param plot: Set to True to display intermediate plots.
+    """
+    # Remove any unnecessary dimension
+    orig_shape = voided_ddem.shape
+    voided_ddem = voided_ddem.squeeze()
+    ref_dem = ref_dem.squeeze()
+    mask = mask.squeeze()
+
+    # Check that all arrays have same dimensions
+    assert voided_ddem.shape == ref_dem.shape == mask.shape
+
+    # Get ddem array with invalid pixels converted to NaN and mask of invalid pixels
+    ddem, ddem_mask = xdem.spatial_tools.get_array_and_mask(voided_ddem)
+
+    # Get ref_dem array with invalid pixels converted to NaN and mask of invalid pixels
+    dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
+
+    # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
+    inlier_mask = (mask !=0) & (~ddem_mask & ~dem_mask)
+    if np.count_nonzero(inlier_mask) == 0:
+        warnings.warn("No valid data found within mask, returning copy", UserWarning)
+        return np.copy(ddem)
+
+    if plot:
+        plt.matshow(inlier_mask)
+        plt.title("inlier mask")
+        plt.show()
+
+    # List of indexes to loop on
+    geometry_index = np.unique(mask[mask!=0])
+    print("Found {:d} geometries".format(len(geometry_index)))
+
+    # Get fraction of valid pixels for each geometry
+    coverage = np.zeros(len(geometry_index))
+    for k, index in enumerate(geometry_index):
+        local_inlier_mask = inlier_mask & (mask == index)
+        total_pixels = np.count_nonzero((mask == index))
+        valid_pixels = np.count_nonzero(local_inlier_mask)
+        coverage[k] = valid_pixels/float(total_pixels)
+
+    # Filter geometries with too little coverage
+    valid_geometry_index = geometry_index[coverage >= min_coverage]
+    print("Found {:d} geometries with sufficient coverage".format(len(valid_geometry_index)))
+
+    idealized_ddem = -9999 * np.ones_like(dem)
+
+    for k, index in enumerate(valid_geometry_index):
+
+        # Mask of valid pixel within geometry
+        local_inlier_mask = inlier_mask & (mask == index)
+
+        # Estimate the elevation dependent gradient
+        gradient = xdem.volume.hypsometric_binning(
+            ddem[local_inlier_mask],
+            dem[local_inlier_mask]
+        )
+
+        # Interpolate missing elevation bins
+        interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(gradient)
+
+        # Create a model for 2D interpolation
+        gradient_model = scipy.interpolate.interp1d(
+            interpolated_gradient.index.mid,
+            interpolated_gradient.values,
+            fill_value="extrapolate"
+        )
+
+        if plot:
+            local_ddem = np.where(local_inlier_mask, ddem, np.nan)
+            vmax = max(np.abs(np.nanpercentile(local_ddem, [2,98])))
+            rowmin, rowmax, colmin, colmax = xdem.spatial_tools.get_valid_extent(mask == index)
+
+            fig = plt.figure(figsize=(12, 8))
+            plt.subplot(121)
+            plt.imshow((mask == index)[rowmin:rowmax, colmin:colmax], cmap='Greys',
+                       vmin=0, vmax=2, interpolation='none')
+
+            plt.imshow(local_ddem[rowmin:rowmax, colmin:colmax], cmap='RdYlBu',
+                       vmin=-vmax, vmax=vmax, interpolation='none')
+            plt.colorbar()
+            plt.title("ddem for geometry # {:d}".format(index))
+
+            plt.subplot(122)
+            plt.plot(gradient["value"], gradient.index.mid, label='raw')
+            plt.plot(interpolated_gradient, gradient.index.mid, label='interpolated', ls='--')
+            plt.xlabel('ddem')
+            plt.ylabel('Elevation')
+            plt.legend()
+            plt.title("Average ddem per elevation bin")
+            plt.tight_layout()
+            plt.show()
+
+        # Create an idealized dDEM (only considering the dH gradient)
+        idealized_ddem[mask == index] = gradient_model(dem[mask == index])
+
+    # Measure the difference between the original dDEM and the idealized dDEM
+    assert ddem.shape == idealized_ddem.shape
+    ddem_difference = ddem.astype("float32") - idealized_ddem.astype("float32")
+    ddem_difference[idealized_ddem == -9999] = np.nan
+
+    # Spatially interpolate the difference between these two products.
+    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
+    interpolated_ddem_diff[np.isnan(interpolated_ddem_diff)] = 0
+
+    # Correct the idealized dDEM with the difference to the original dDEM.
+    corrected_ddem = idealized_ddem + interpolated_ddem_diff
+
+    output = np.ma.masked_array(
+        corrected_ddem,
+        mask=(corrected_ddem == -9999)  #mask=((mask != 0) & (ddem_mask | dem_mask))
+    ).reshape(orig_shape)
 
     assert output is not None
 
