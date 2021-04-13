@@ -146,7 +146,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             ddem_mask = nans.copy()
             for i in entries.index:
                 feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(
-                    self) == 255).reshape(self.data.shape)
+                    self)).reshape(self.data.shape)
                 if np.count_nonzero(feature_mask) == 0:
                     continue
                 try:
