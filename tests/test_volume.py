@@ -24,19 +24,19 @@ class TestLocalHypsometric:
         ddem = self.dem_2009.data - self.dem_1990.data
 
         ddem_bins = xdem.volume.hypsometric_binning(
-            ddem.squeeze()[self.mask],
-            self.dem_2009.data.squeeze()[self.mask],
+            ddem[self.mask],
+            self.dem_2009.data[self.mask],
             bins=50,
             kind="fixed")
 
         ddem_bins_masked = xdem.volume.hypsometric_binning(
-            np.ma.masked_array(ddem.squeeze(), mask=~self.mask),
-            np.ma.masked_array(self.dem_2009.data.squeeze(), mask=~self.mask)
+            np.ma.masked_array(ddem, mask=~self.mask),
+            np.ma.masked_array(self.dem_2009.data, mask=~self.mask)
         )
 
         ddem_stds = xdem.volume.hypsometric_binning(
-            ddem.squeeze()[self.mask],
-            self.dem_2009.data.squeeze()[self.mask],
+            ddem[self.mask],
+            self.dem_2009.data[self.mask],
             aggregation_function=np.std
         )
         assert ddem_stds["value"].mean() < 50
@@ -46,7 +46,7 @@ class TestLocalHypsometric:
         """Test dDEM bin interpolation."""
         ddem = self.dem_2009.data - self.dem_1990.data
 
-        ddem_bins = xdem.volume.hypsometric_binning(ddem.squeeze()[self.mask], self.dem_2009.data.squeeze()[self.mask])
+        ddem_bins = xdem.volume.hypsometric_binning(ddem[self.mask], self.dem_2009.data[self.mask])
 
         # Simulate a missing bin
         ddem_bins.iloc[3, :] = np.nan
@@ -66,7 +66,7 @@ class TestLocalHypsometric:
         # Test the area calculation with normal parameters.
         bin_area = xdem.volume.calculate_hypsometry_area(
             ddem_bins,
-            self.dem_2009.data.squeeze()[self.mask],
+            self.dem_2009.data[self.mask],
             pixel_size=self.dem_2009.res[0]
         )
 
@@ -75,12 +75,12 @@ class TestLocalHypsometric:
         ddem_bins.name = "value"
         xdem.volume.calculate_hypsometry_area(
             ddem_bins.to_frame(),
-            self.dem_2009.data.squeeze()[self.mask],
+            self.dem_2009.data[self.mask],
             pixel_size=(self.dem_2009.res[0], self.dem_2009.res[0] + 1)
         )
 
         # Add some nans to the reference DEM
-        data_with_nans = self.dem_2009.data.squeeze()[self.mask]
+        data_with_nans = self.dem_2009.data[self.mask]
         data_with_nans[[2, 5]] = np.nan
 
         # Make sure that the above results in the correct error.
@@ -98,7 +98,7 @@ class TestLocalHypsometric:
         try:
             xdem.volume.calculate_hypsometry_area(
                 ddem_bins,
-                self.dem_2009.data.squeeze()[self.mask],
+                self.dem_2009.data[self.mask],
                 pixel_size=self.dem_2009.res[0],
                 timeframe="blergh"
             )
@@ -111,7 +111,7 @@ class TestLocalHypsometric:
         try:
             xdem.volume.calculate_hypsometry_area(
                 ddem_bins,
-                self.dem_2009.data.squeeze()[self.mask],
+                self.dem_2009.data[self.mask],
                 pixel_size=self.dem_2009.res[0]
             )
         except AssertionError as exception:
@@ -129,8 +129,8 @@ class TestLocalHypsometric:
 
         # Make a fixed amount of bins
         equal_count_bins = xdem.volume.hypsometric_binning(
-            ddem.squeeze()[self.mask],
-            self.dem_2009.data.squeeze()[self.mask],
+            ddem[self.mask],
+            self.dem_2009.data[self.mask],
             bins=50,
             kind="count"
         )
@@ -138,8 +138,8 @@ class TestLocalHypsometric:
 
         # Make 50 bins with approximately the same area (pixel count)
         quantile_bins = xdem.volume.hypsometric_binning(
-            ddem.squeeze()[self.mask],
-            self.dem_2009.data.squeeze()[self.mask],
+            ddem[self.mask],
+            self.dem_2009.data[self.mask],
             bins=50,
             kind="quantile"
         )
@@ -150,8 +150,8 @@ class TestLocalHypsometric:
 
         # Try to feed the previous bins as "custom" bins to the function.
         custom_bins = xdem.volume.hypsometric_binning(
-            ddem.squeeze()[self.mask],
-            self.dem_2009.data.squeeze()[self.mask],
+            ddem[self.mask],
+            self.dem_2009.data[self.mask],
             bins=np.r_[quantile_bins.index.left[0], quantile_bins.index.right],
             kind="custom"
         )

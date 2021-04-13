@@ -84,7 +84,7 @@ class TestCoreg:
         """Test different ways of providing the mask as a raster instead of vector."""
         # Create a mask Raster.
         raster_mask = gu.georaster.Raster.from_array(
-            data=self.mask.create_mask(self.ref),
+            data=self.mask.create_mask(self.ref).astype('uint8'),
             transform=self.ref.transform,  # pylint: disable=no-member
             crs=self.ref.crs  # pylint: disable=no-member
         )
@@ -240,7 +240,7 @@ class TestCoregClass:
         # Get the periglacial offset after deramping
         periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[self.inlier_mask.squeeze()]
         # Get the periglacial offset before deramping
-        pre_offset = (self.ref.data - self.tba.data).squeeze()[self.inlier_mask]
+        pre_offset = ((self.ref.data - self.tba.data)[self.inlier_mask]).squeeze()
 
         # Check that the error improved
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))

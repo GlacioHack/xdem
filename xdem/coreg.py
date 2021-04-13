@@ -1052,7 +1052,7 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     if to_be_aligned_raster.data.dtype not in [np.float32, np.float64]:
         to_be_aligned_raster.set_dtypes(np.float32, update_array=True)
 
-    mask_array = mask_as_array(reference_raster, mask) if mask is not None else None
+    mask_array = mask_as_array(reference_raster, mask).squeeze() if mask is not None else None
 
     assert np.diff(reference_raster.res)[0] == 0, "The X and Y resolution of the reference needs to be the same."
 
