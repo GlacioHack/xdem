@@ -13,6 +13,7 @@ import time
 import warnings
 from typing import Any
 
+import cv2
 import geoutils as gu
 import numpy as np
 
@@ -366,3 +367,62 @@ class TestCoregClass:
         matrix_diff = np.abs(icp_full.to_matrix() - icp_sub.to_matrix())
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
+
+    def test_z_scale_corr(self):
+        warnings.simplefilter("error")
+
+        # Instantiate a Z scale correction object
+        zcorr = coreg.ZScaleCorr()
+
+        # This is the z-scale to multiply the DEM with.
+        factor = 1.2
+        scaled_dem = self.ref.data * factor
+
+        # Fit the correction
+        zcorr.fit(self.ref.data, scaled_dem)
+
+        # Apply the correction
+        unscaled_dem = zcorr.apply(scaled_dem, None)
+
+        # Make sure the difference is now minimal
+        diff = (self.ref.data - unscaled_dem).filled(np.nan)
+        assert np.abs(np.nanmedian(diff)) < 0.01
+
+        # Create a spatially correlated error field to mess with the algorithm a bit.
+        corr_size = int(self.ref.data.shape[2] / 100)
+        error_field = cv2.resize(
+            cv2.GaussianBlur(
+                np.repeat(np.repeat(
+                    np.random.randint(0, 255, (self.ref.data.shape[1]//corr_size,
+                                               self.ref.data.shape[2]//corr_size), dtype='uint8'),
+                    corr_size, axis=0), corr_size, axis=1),
+                ksize=(2*corr_size + 1, 2*corr_size + 1),
+                sigmaX=corr_size) / 255,
+            dsize=(self.ref.data.shape[2], self.ref.data.shape[1])
+        )
+
+        # Create 50000 random nans
+        dem_with_nans = self.ref.data.copy()
+        dem_with_nans.mask = np.zeros_like(dem_with_nans, dtype=bool)
+        dem_with_nans.mask.ravel()[np.random.choice(dem_with_nans.data.size, 50000, replace=False)] = True
+
+        # Add spatially correlated errors in the order of +- 5 m
+        dem_with_nans += error_field * 3
+
+        # Try the fit now with the messed up DEM as reference.
+        zcorr.fit(dem_with_nans, scaled_dem)
+        unscaled_dem = zcorr.apply(scaled_dem, None)
+        diff = (dem_with_nans - unscaled_dem).filled(np.nan)
+        assert np.abs(np.nanmedian(diff)) < 0.05
+
+        # Try a second-degree scaling
+        scaled_dem = 1e-4 * self.ref.data ** 2 + 300 + self.ref.data * factor
+
+        # Try to correct using a nonlinear correction.
+        zcorr_nonlinear = coreg.ZScaleCorr(degree=2)
+        zcorr_nonlinear.fit(dem_with_nans, scaled_dem)
+
+        # Make sure the difference is minimal
+        unscaled_dem = zcorr_nonlinear.apply(scaled_dem, None)
+        diff = (dem_with_nans - unscaled_dem).filled(np.nan)
+        assert np.abs(np.nanmedian(diff)) < 0.05
