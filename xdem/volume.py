@@ -126,6 +126,61 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
     return interpolated_values
 
 
+def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str = "value", degree: int = 3,
+                              iterations: int = 1, count_threshold: Optional[int] = None) -> pd.Series:
+    """
+    Fit a polynomial to the hypsometric bins.
+
+    :param hypsometric_bins: Bins where nans will be interpolated.
+    :param value_column: The name of the column in 'hypsometric_bins' to use as values.
+    :param degree: The degree of the polynomial to use.
+    :param iterations: The number of iterations to run. \
+ At each iteration, values with residuals larger than 3 times the residuals' standard deviation are excluded.
+    :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
+    :returns: Bins replaced by the polynomial fit.
+    """
+    bins = hypsometric_bins.copy()
+    bins.index = bins.index.mid
+
+    if count_threshold is not None:
+        assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
+        bins_under_threshold = bins["count"] < count_threshold
+        bins.loc[bins_under_threshold, value_column] = np.nan
+
+
+    # Remove invalid bins
+    valids = np.isfinite(np.asarray(bins[value_column]))
+
+    for k in range(iterations):
+
+        # Fit polynomial
+        x = bins.index[valids]
+        y = bins[value_column][valids]
+        pcoeff = np.polyfit(x, y, deg=degree)
+
+        # Calculate residuals
+        interpolated_values = np.polyval(pcoeff, bins.index)
+        residuals = interpolated_values - bins[value_column]
+        residuals_std = np.nanstd(residuals.values)
+
+        # Filter outliers further than 3 std
+        valids_old = np.copy(valids)
+        valids[np.abs(residuals.values) > 3*residuals_std] = False
+        if np.array_equal(valids, valids_old):
+            break
+
+    # Save as pandas' DataFrame
+    output = pd.DataFrame(
+        index=hypsometric_bins.index,
+        data=np.vstack([
+            interpolated_values, bins["count"]
+        ]).T,
+        columns=["value", "count"]
+    )
+
+    return output
+
+
 def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem: np.ndarray,
                               pixel_size: Union[float, tuple[float, float]],
                               timeframe: str = "reference") -> pd.Series:
