@@ -1725,81 +1725,137 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
         return pytransform3d.transformations.invert_transform(matrix)
 
 
-def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = True, centroid: Optional[tuple[float, float, float]] = None) -> np.ndarray:
+def _create_nan_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
+    nans = ~np.isfinite(np.asarray(array))
 
+    if isinstance(array, np.ma.masked_array):
+        nans = nans | array.mask
+
+    return nans
+
+
+def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
+                 centroid: Optional[tuple[float, float, float]] = None,
+                 resampling: Union[int, str] = "cubic") -> np.ndarray:
+    """
+    Apply a transformation matrix to a DEM.
+
+    :param dem: The DEM to transform.
+    :param transform: The Affine transform object (georeferencing) of the DEM.
+    :param matrix: A 4x4 transformation matrix to apply to the DEM.
+    :param invert: Invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to lower left corner.
+    :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
+
+    :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
+    """
+
+    # Parse the resampling argument given.
+    if isinstance(resampling, int):
+        resampling_order = resampling
+    elif resampling == "cubic":
+        resampling_order = 3
+    elif resampling == "bilinear":
+        resampling_order = 1
+    elif resampling == "nearest":
+        resampling_order = 0
+    else:
+        raise ValueError(
+            f"`{resampling}` is not a valid resampling mode."
+            " Choices: [`nearest`, `bilinear`, `cubic`] or an integer."
+        )
+
+    # Copy the DEM to make sure the original is not modified, and convert it into an ndarray
     demc = np.array(dem)
+    # Temporary. Should probably be removed.
     demc[demc == -9999] = np.nan
-    filled_dem = np.where(np.isfinite(demc), demc, -9999)
-    assert np.count_nonzero(~np.isnan(demc)) > 0, "Transformed DEM had all nans."
+    nan_mask = _create_nan_mask(dem)
+    assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
+    # Create a filled version of the DEM. (skimage doesn't like nans)
+    filled_dem = np.where(~nan_mask, demc, -9999)
+
+    # Get the centre coordinates of the DEM pixels.
     x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
 
     bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
 
+    # If a centroid was not given, default to the bottom left corner.
     if centroid is None:
         centroid = (bounds.left, bounds.bottom, 0.0)
     else:
         assert len(centroid) == 3, f"Expected centroid to be 3D X/Y/Z coordinate. Got shape of {len(centroid)}"
 
+    # Shift the coordinates to centre around the centroid.
     x_coords -= centroid[0]
     y_coords -= centroid[1]
 
-
+    # Create a point cloud of X/Y/Z coordinates
     point_cloud = np.dstack((x_coords, y_coords, filled_dem))
+
+    # Shift the Z components by the centroid.
     point_cloud[:, 2] -= centroid[2]
 
     with warnings.catch_warnings():
-        # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
+        # Deprecation warning from pytransform3d. Fixed in the upcoming 1.8
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
 
-        # Invert the transform if wanted.
+        # Invert the transform if provided.
         if invert:
             matrix = pytransform3d.transformations.invert_transform(matrix)
 
+    # Transform the point cloud using the matrix.
     transformed_points = cv2.perspectiveTransform(
         point_cloud.reshape((1, -1, 3)),
         matrix,
     ).reshape(point_cloud.shape)
 
+    # Estimate the vertical difference of old and new point cloud elevations.
     deramp = deramping(
-        (point_cloud[:, :, 2] - transformed_points[:, :, 2])[np.isfinite(dem)].flatten(),
-        point_cloud[:, :, 0][np.isfinite(dem)].flatten(),
-        point_cloud[:, :, 1][np.isfinite(dem)].flatten(),
+        (point_cloud[:, :, 2] - transformed_points[:, :, 2])[~nan_mask].flatten(),
+        point_cloud[:, :, 0][~nan_mask].flatten(),
+        point_cloud[:, :, 1][~nan_mask].flatten(),
         degree=1
     )
-    ramp = deramp(x_coords, y_coords)
-    demc -= ramp
+    # Shift the elevation values of the soon-to-be-warped DEM.
+    filled_dem -= deramp(x_coords, y_coords)
 
-    x_inds = rio.fill.fillnodata(transformed_points[:, :, 0].copy(), mask=np.isfinite(demc).astype("uint8"))
-    y_inds = rio.fill.fillnodata(transformed_points[:, :, 1].copy(), mask=np.isfinite(demc).astype("uint8"))
+    # Create gap-free arrays of x and y coordinates to be converted into index coordinates.
+    x_inds = rio.fill.fillnodata(transformed_points[:, :, 0].copy(), mask=(~nan_mask).astype("uint8"))
+    y_inds = rio.fill.fillnodata(transformed_points[:, :, 1].copy(), mask=(~nan_mask).astype("uint8"))
 
+    # Divide the coordinates by the resolution to create index coordinates.
     x_inds /= resolution
     y_inds /= resolution
+    # Shift the x coords so that bounds.left is equivalent to xindex -0.5
     x_inds -= x_coords.min() / resolution
-    #y_inds -= y_coords.min() / resolution
+    # Shift the y coords so that bounds.top is equivalent to yindex -0.5
     y_inds = (y_coords.max() / resolution) - y_inds
 
+    # Create a skimage-compatible array of the new index coordinates that the pixels shall have after warping.
     inds = np.vstack((y_inds.reshape((1,) + y_inds.shape), x_inds.reshape((1,) + x_inds.shape)))
 
+    # Warp the DEM
     transformed_dem = skimage.transform.warp(
-        np.where(np.isfinite(demc), demc, -9999),
+        filled_dem,
         inds,
-        order=1,
+        order=resampling_order,
         mode="constant",
         cval=0,
         preserve_range=True
     )
-    nan_mask = skimage.transform.warp(
-        np.isnan(demc).astype("uint8"),
+    # Warp the NaN mask, setting true to all values outside the new frame.
+    tr_nan_mask = skimage.transform.warp(
+        nan_mask.astype("uint8"),
         inds,
-        order=1,
+        order=resampling_order,
         mode="constant",
         cval=1,
         preserve_range=True
-    )
+    ) > 0.95  # Due to different interpolation approaches, everything above 0.95 is assumed to be 1 (True)
 
-    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM had all nans."
-    transformed_dem[nan_mask > 0.95] = np.nan
+    # Apply the transformed nan_mask
+    transformed_dem[tr_nan_mask] = np.nan
 
-    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM had all nans."
+    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
 
     return transformed_dem

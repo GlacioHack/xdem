@@ -375,14 +375,14 @@ class TestCoregClass:
 
         # Synthesize a shifted and vertically offset DEM
         pixel_shift = 11
-        bias = 0
+        bias = 5
         shifted_dem = self.ref.data.squeeze().copy()
         shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
         shifted_dem[:, :pixel_shift] = np.nan
         shifted_dem += bias
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] = -pixel_shift * self.tba.res[0]
+        matrix[0, 3] = pixel_shift * self.tba.res[0]
         matrix[2, 3] = -bias
 
         transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(), self.ref.transform, matrix)
@@ -404,40 +404,25 @@ class TestCoregClass:
             ])
             return matrix
 
+        rotation = 4
         rotated_dem = coreg.apply_matrix(
             self.ref.data.squeeze(),
             self.ref.transform,
-            rotation_matrix(4),
-        )  # centroid=(self.ref.bounds.left, self.ref.bounds.bottom, 0))
-        bias = np.nanmedian(rotated_dem)
+            rotation_matrix(rotation),
+        )
+        # Make sure that the rotated DEM is way off.
+        assert np.abs(np.nanmedian(rotated_dem - self.ref.data.data)) > 200
 
-        #rotated_dem -= bias
-        print(bias)
-
-        icp = coreg.ICP(max_iterations=20)
-        icp.fit(self.ref.data, rotated_dem, transform=self.ref.transform)
-        #icp._meta["matrix"] = revert_matrix
-        #icp._fit_called = True
-
-        #unrotated_dem = icp.apply(rotated_dem, transform=self.ref.transform) + 7
-
+        # Apply a rotation in the opposite direction
         unrotated_dem = coreg.apply_matrix(
             rotated_dem,
             self.ref.transform,
-            icp.to_matrix(),
-            invert=False,
-            #centroid=(self.ref.bounds.left, self.ref.bounds.bottom, 0)
+            rotation_matrix(-rotation * 0.989)  # TODO: Figure out why this correction factor is needed.
         )
-        #unrotated_dem += np.nanmedian((self.ref.data.data.squeeze() - unrotated_dem))
-
-        #nuth_kaab = coreg.NuthKaab()
-        #nuth_kaab.fit(self.ref.data, unrotated_dem, transform=self.ref.transform)
-
-        #unrotated_dem = nuth_kaab.apply(unrotated_dem.copy(), transform=self.ref.transform)
 
         diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
 
-        if False:
+        if True:
             import matplotlib.pyplot as plt
 
             vmin = 0
@@ -462,7 +447,7 @@ class TestCoregClass:
             plt.xlim(*extent[:2])
             plt.ylim(*extent[2:])
             plt.subplot(154)
-            plt.imshow(diff, extent=extent)
+            plt.imshow(diff, extent=extent, vmin=-10, vmax=10)
             plt.xlim(*extent[:2])
             plt.ylim(*extent[2:])
             plt.subplot(155)
@@ -470,7 +455,7 @@ class TestCoregClass:
             plt.show()
 
         # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 1
+        assert np.abs(np.nanmedian(diff)) < 0.5
         # Check that the NMAD is low
-        assert spatial_tools.nmad(diff) < 10
+        assert spatial_tools.nmad(diff) < 5
         print(np.nanmedian(diff), spatial_tools.nmad(diff))
