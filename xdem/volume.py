@@ -18,6 +18,8 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
                         kind: str = "fixed", aggregation_function: Callable = np.median) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
+    The elevation bins will be calculated based on all ref_dem valid pixels.
+    ddem may contain NaN/masked values over the same area, they will be excluded before the aggregation.
 
     It is assumed that the dDEM is calculated as 'ref_dem - dem' (not 'dem - ref_dem').
 
@@ -31,12 +33,13 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     """
     assert ddem.shape == ref_dem.shape
 
-    # Remove all nans, and flatten the inputs.
-    nan_mask = np.logical_or(xdem.spatial_tools.get_mask(ddem), xdem.spatial_tools.get_mask(ref_dem))
+    # Convert ddem mask into NaN
+    ddem, _ = xdem.spatial_tools.get_array_and_mask(ddem)
 
-    # Extract only the valid values and (if relevant) convert from masked_array to array
-    ddem = np.array(ddem[~nan_mask])
-    ref_dem = np.array(ref_dem[~nan_mask])
+    # Extract only the valid values, i.e. valid in ref_dem
+    valid_mask = ~xdem.spatial_tools.get_mask(ref_dem)
+    ddem = np.array(ddem[valid_mask])
+    ref_dem = np.array(ref_dem[valid_mask])
 
     # If the bin size should be seen as a percentage.
     if kind == "fixed":
@@ -69,16 +72,16 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     counts = np.zeros_like(values, dtype=int)
     for i in np.arange(indices.min(), indices.max() + 1):
         values_in_bin = ddem[indices == i]
+
+        # Remove possible Nans
+        values_in_bin = values_in_bin[np.isfinite(values_in_bin)]
+
         # Skip if no values are in the bin.
         if values_in_bin.shape[0] == 0:
             continue
 
         values[i - 1] = aggregation_function(values_in_bin)
-        # medians[i - 1] = np.median(values_in_bin)
-        # means[i - 1] = np.mean(values_in_bin)
-        # stds[i - 1] = np.std(values_in_bin)
         counts[i - 1] = values_in_bin.shape[0]
-        # nmads[i - 1] = xdem.spatial_tools.nmad(values_in_bin)
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
@@ -289,7 +292,7 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
                                     mask: np.ndarray, min_coverage: float = 0.2,
-                                    plot: bool = False) -> np.ma.masked_array:
+                                    count_threshold: Optional[int] = 1, plot: bool = False) -> np.ma.masked_array:
     """
     Interpolate a dDEM using local hypsometric interpolation.
     The algorithm loops through each features in the vector file.
@@ -300,8 +303,12 @@ def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_
     :param ref_dem: The reference DEM in the dDEM comparison.
     :param mask: A raster of same shape as voided_ddem and ref_dem, containing a diferent non-0 pixel value for \
 each geometry on which to loop.
-    :param min_coverage: The minimum coverage fraction to be considered for interpolation. Default is 0.2.
+    :param min_coverage: Optional. The minimum coverage fraction to be considered for interpolation.
+    :param count_threshold: Optional. A pixel count threshold to exclude during the hypsometric curve fit.
     :param plot: Set to True to display intermediate plots.
+
+    :returns: A dDEM with gaps filled by applying a hypsometric interpolation for each geometry in mask, \
+for areas filling the min_coverage criterion.
     """
     # Remove any unnecessary dimension
     orig_shape = voided_ddem.shape
@@ -350,16 +357,23 @@ each geometry on which to loop.
     for k, index in enumerate(valid_geometry_index):
 
         # Mask of valid pixel within geometry
-        local_inlier_mask = inlier_mask & (mask == index)
+        local_mask = (mask == index)
+        local_inlier_mask = inlier_mask & (local_mask)
 
         # Estimate the elevation dependent gradient
         gradient = xdem.volume.hypsometric_binning(
-            ddem[local_inlier_mask],
-            dem[local_inlier_mask]
+            ddem[local_mask],
+            dem[local_mask]
         )
 
+        # Remove bins with loo low count
+        filt_gradient = gradient.copy()
+        if count_threshold > 1:
+            bins_under_threshold = filt_gradient["count"] < count_threshold
+            filt_gradient.loc[bins_under_threshold, "value"] = np.nan
+
         # Interpolate missing elevation bins
-        interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(gradient)
+        interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(filt_gradient)
 
         # Create a model for 2D interpolation
         gradient_model = scipy.interpolate.interp1d(
