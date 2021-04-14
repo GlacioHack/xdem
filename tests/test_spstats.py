@@ -49,13 +49,10 @@ def load_diff() -> tuple[gu.georaster.Raster, np.ndarray]:
 class TestVariogram:
 
     # check that the scripts are running
-    @pytest.mark.skip(reason="Function takes too long.")
     def test_empirical_fit_variogram_running(self):
 
         # get some data
         diff, mask = load_diff()
-
-        #diff.data.ravel()[np.random.choice(diff.data.size, int(diff.data.size * 0.8), replace=False)] = np.nan
 
         x, y = diff.coords(offset='center')
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
@@ -81,7 +78,11 @@ class TestVariogram:
             nsamp=1000)
 
         # using more bins
-        df_1000_bins = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data, gsd=diff.res[0], n_lags=1000)
+        df_1000_bins = xdem.spstats.sample_multirange_empirical_variogram(
+            dh=diff.data,
+            gsd=diff.res[0],
+            n_lags=1000,
+            nsamp=1000)
 
         # using multiple runs with parallelized function
         df_sig = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data, gsd=diff.res[0], nsamp=1000,
