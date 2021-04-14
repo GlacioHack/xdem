@@ -719,6 +719,7 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
             print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
             mean_patch.append(np.nanmean(patch))
             med_patch.append(np.nanmedian(patch))
+            med_patch.append(np.nanmedian(patch.filled(np.nan) if isinstance(patch, np.ma.masked_array) else patch))
             std_patch.append(np.nanstd(patch))
             nb_patch.append(nb_pixel_valid)
 
@@ -742,7 +743,7 @@ def plot_vgm(df: pd.DataFrame, fit_fun : Callable = None):
         ax.plot(x,y,linestyle='dashed',color='black',label='Model fit',zorder=30)
 
     ax.set_xlabel('Lag (m)')
-    ax.set_ylabel('Variance [$\mu$ $\pm \sigma$]')
+    ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
     ax.legend(loc='best')
     ax.grid()
     plt.show()
