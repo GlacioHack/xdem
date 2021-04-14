@@ -93,7 +93,7 @@ The loop is stopped either when the maximum iteration limit is reached, or when 
         dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
         dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
         outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-        inlier_mask = outlines_1990.create_mask(dem_2009) != 255
+        inlier_mask = ~outlines_1990.create_mask(dem_2009)
 
         nuth_kaab = xdem.coreg.NuthKaab()
         nuth_kaab.fit(dem_2009.data, dem_1990.data, transform=dem_2009.transform, inlier_mask=inlier_mask)
