@@ -34,7 +34,7 @@ def download_longyearbyen_examples(overwrite: bool = False):
     # Static commit hash to be bumped every time it needs to be.
     commit = "321f84d5a67666f45a196a31a2697e22bfaf3c59"
     # The URL from which to download the repository
-    url = f"https://github.com/erikmannerfelt/xdem-data/tarball/main#commit={commit}"
+    url = f"https://github.com/GlacioHack/xdem-data/tarball/main#commit={commit}"
 
     # Create a temporary directory to extract the tarball in.
     temp_dir = tempfile.TemporaryDirectory()
