@@ -44,9 +44,9 @@ Examples are given using data close to Longyearbyen on Svalbard. These can be lo
 
 
         # Prepare the inputs for coregistration.
-        ref_data = reference_dem.data  # This is a numpy 2D array/masked_array
-        tba_data = dem_to_be_aligned.data  # This is a numpy 2D array/masked_array
-        mask = glacier_outlines.create_mask(reference_dem) == 255  # This is a boolean numpy 2D array
+        ref_data = reference_dem.data.squeeze()  # This is a numpy 2D array/masked_array
+        tba_data = dem_to_be_aligned.data.squeeze()  # This is a numpy 2D array/masked_array
+        inlier_mask = ~glacier_outlines.create_mask(reference_dem)  # This is a boolean numpy 2D array. Note the bitwise not (~) symbol
         transform = reference_dem.transform  # This is a rio.transform.Affine object.
 
 
@@ -93,23 +93,27 @@ The loop is stopped either when the maximum iteration limit is reached, or when 
         dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
         dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
         outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+        inlier_mask = outlines_1990.create_mask(dem_2009) != 255
 
-        dem_coreg, error = xdem.coreg.coregister(dem_2009, dem_1990, method="nuth_kaab", mask=outlines_1990, max_iterations=5)
+        nuth_kaab = xdem.coreg.NuthKaab()
+        nuth_kaab.fit(dem_2009.data, dem_1990.data, transform=dem_2009.transform, inlier_mask=inlier_mask)
+        dem_coreg = nuth_kaab.apply(dem_1990.data, transform=dem_1990.transform)
 
-        ddem_pre = xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest")
-        ddem_post = xdem.spatial_tools.subtract_rasters(dem_2009, dem_coreg, resampling_method="nearest")
+        ddem_pre = (dem_2009.data - dem_1990.data).filled(np.nan).squeeze()
+        ddem_post = (dem_2009.data - dem_coreg).filled(np.nan).squeeze()
 
-        nmad_pre = xdem.spatial_tools.nmad(ddem_pre.data.data)
+        nmad_pre = xdem.spatial_tools.nmad(ddem_pre[inlier_mask])
+        nmad_post = xdem.spatial_tools.nmad(ddem_post[inlier_mask])
 
         vlim = 20
         plt.figure(figsize=(8, 5))
         plt.subplot2grid((1, 15), (0, 0), colspan=7) 
         plt.title(f"Before coregistration. NMAD={nmad_pre:.1f} m")
-        plt.imshow(ddem_pre.data.squeeze(), cmap="coolwarm_r", vmin=-vlim, vmax=vlim)
+        plt.imshow(ddem_pre, cmap="coolwarm_r", vmin=-vlim, vmax=vlim)
         plt.axis("off")
         plt.subplot2grid((1, 15), (0, 7), colspan=7) 
-        plt.title(f"After coregistration. NMAD={error:.1f} m")
-        img = plt.imshow(ddem_post.data.squeeze(), cmap="coolwarm_r", vmin=-vlim, vmax=vlim) 
+        plt.title(f"After coregistration. NMAD={nmad_post:.1f} m")
+        img = plt.imshow(ddem_post, cmap="coolwarm_r", vmin=-vlim, vmax=vlim) 
         plt.axis("off")
         plt.subplot2grid((1, 15), (0, 14), colspan=1) 
         cbar = plt.colorbar(img, fraction=0.4)
@@ -134,7 +138,7 @@ Example
 
         nuth_kaab = coreg.NuthKaab()
         # Fit the data to a suitable x/y/z offset.
-        nuth_kaab.fit(ref_data, tba_data, transform=transform, mask=mask)
+        nuth_kaab.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
 
         # Apply the transformation to the data (or any other data)
         aligned_dem = nuth_kaab.apply(tba_data, transform=transform)
@@ -165,7 +169,7 @@ Example
         # Instantiate a 1st order deramping object.
         deramp = coreg.Deramp(degree=1)
         # Fit the data to a suitable polynomial solution.
-        deramp.fit(ref_data, tba_data, transform=transform, mask=mask)
+        deramp.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
 
         # Apply the transformation to the data (or any other data)
         deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform)
@@ -193,7 +197,7 @@ Example
 
         bias_corr = coreg.BiasCorr()
         # Note that the transform argument is not needed, since it is a simple vertical correction.
-        bias_corr.fit(ref_data, tba_data, mask=mask)
+        bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
 
         # Apply the bias to a DEM
         corrected_dem = bias_corr.apply(tba_data)
@@ -235,7 +239,7 @@ Example
         # Instantiate the object with default parameters
         icp = coreg.ICP()
         # Fit the data to a suitable transformation.
-        icp.fit(ref_data, tba_data, transform=transform, mask=mask)
+        icp.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
 
         # Apply the transformation matrix to the data (or any other data)
         aligned_dem = icp.apply(tba_data, transform=transform)
