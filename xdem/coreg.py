@@ -1721,7 +1721,7 @@ class ZScaleCorr(Coreg):
     Often useful for nadir image DEM correction, where the focal length is slightly miscalculated.
 
     DISCLAIMER: This function may introduce error when correcting non-photogrammetric biases.
-    See Gardelle et al. (2012) (Figure 2), http://dx.doi.org/10.3189/2012jog11j175.
+    See Gardelle et al. (2012) (Figure 2), http://dx.doi.org/10.3189/2012jog11j175, for curvature-related biases.
     """
 
     def __init__(self, degree=1, bin_count=100):
