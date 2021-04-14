@@ -15,6 +15,7 @@ from typing import Any
 
 import geoutils as gu
 import numpy as np
+import pytest
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -31,6 +32,7 @@ def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovec
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
+@pytest.mark.skip(reason="Functions are deprecated")
 def test_coreg_method_enum():
     """Test that the CoregMethod enum works as it should."""
     # Try to generate an enum from a string
