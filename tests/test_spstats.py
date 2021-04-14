@@ -156,6 +156,7 @@ class TestPatchesMethod:
 
         diff, mask = load_diff()
 
+        warnings.filterwarnings("error")
         # check the patches method runs
         df_patches = xdem.spstats.patches_method(
             diff.data.squeeze(),
