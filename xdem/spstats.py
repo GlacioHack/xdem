@@ -2,19 +2,26 @@
 xdem.spstats provides tools to use spatial statistics for elevation change data
 """
 from __future__ import annotations
-from typing import Callable, Union
+
+import math as m
+import multiprocessing as mp
 import os
 import random
-from scipy.optimize import curve_fit
-import numpy as np
-import math as m
-import skgstat as skg
-from scipy import integrate
-import multiprocessing as mp
-import pandas as pd
+import warnings
 from functools import partial
-from skgstat import models
+from typing import Callable, Union
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy import integrate
+from scipy.optimize import curve_fit
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    import skgstat as skg
+    from skgstat import models
+
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
