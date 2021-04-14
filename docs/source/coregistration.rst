@@ -102,8 +102,8 @@ The loop is stopped either when the maximum iteration limit is reached, or when 
         ddem_pre = (dem_2009.data - dem_1990.data).filled(np.nan).squeeze()
         ddem_post = (dem_2009.data - dem_coreg).filled(np.nan).squeeze()
 
-        nmad_pre = xdem.spatial_tools.nmad(ddem_pre[inlier_mask])
-        nmad_post = xdem.spatial_tools.nmad(ddem_post[inlier_mask])
+        nmad_pre = xdem.spatial_tools.nmad(ddem_pre[inlier_mask.squeeze()])
+        nmad_post = xdem.spatial_tools.nmad(ddem_post[inlier_mask.squeeze()])
 
         vlim = 20
         plt.figure(figsize=(8, 5))
