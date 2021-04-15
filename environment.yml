@@ -20,5 +20,6 @@ dependencies:
   - pip:
     - richdem
     - scikit-gstat
+    - pytransform3d
 #    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
 #    - "--editable=git+https://github.com/GlacioHack/xdem.git#egg=xdem"
