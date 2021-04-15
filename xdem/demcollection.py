@@ -155,15 +155,15 @@ class DEMCollection:
         # If both the start and end time outlines exist, a mask is created from their union.
         if ddem.start_time in outlines and ddem.end_time in outlines:
             mask = np.logical_or(
-                outlines[ddem.start_time].create_mask(ddem) == 255,
-                outlines[ddem.end_time].create_mask(ddem) == 255
+                outlines[ddem.start_time].create_mask(ddem),
+                outlines[ddem.end_time].create_mask(ddem)
             )
         # If only start time outlines exist, these should be used as a mask
         elif ddem.start_time in outlines:
-            mask = outlines[ddem.start_time].create_mask(ddem) == 255
+            mask = outlines[ddem.start_time].create_mask(ddem)
         # If only one outlines file exist, use that as a mask.
         elif len(outlines) == 1:
-            mask = list(outlines.values())[0].create_mask(ddem) == 255
+            mask = list(outlines.values())[0].create_mask(ddem)
         # If no fitting outlines were found, make a full true boolean mask in its stead.
         else:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)

@@ -1003,7 +1003,7 @@ def mask_as_array(reference_raster: gu.georaster.Raster, mask: Union[str, gu.geo
     # At this point, the mask variable is either a Raster or a Vector
     # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
     if isinstance(mask, gu.geovector.Vector):
-        mask_array = mask.create_mask(reference_raster) == 255
+        mask_array = mask.create_mask(reference_raster)
     elif isinstance(mask, gu.georaster.Raster):
         # The true value is the maximum value in the raster, unless the maximum value is 0 or False
         true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
@@ -1054,7 +1054,7 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     if to_be_aligned_raster.data.dtype not in [np.float32, np.float64]:
         to_be_aligned_raster.set_dtypes(np.float32, update_array=True)
 
-    mask_array = mask_as_array(reference_raster, mask) if mask is not None else None
+    mask_array = mask_as_array(reference_raster, mask).squeeze() if mask is not None else None
 
     assert np.diff(reference_raster.res)[0] == 0, "The X and Y resolution of the reference needs to be the same."
 
@@ -1855,3 +1855,61 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
 
     return transformed_dem
+
+
+class ZScaleCorr(Coreg):
+    """
+    Correct linear or nonlinear elevation scale errors.
+
+    Often useful for nadir image DEM correction, where the focal length is slightly miscalculated.
+
+    DISCLAIMER: This function may introduce error when correcting non-photogrammetric biases.
+    See Gardelle et al. (2012) (Figure 2), http://dx.doi.org/10.3189/2012jog11j175, for curvature-related biases.
+    """
+
+    def __init__(self, degree=1, bin_count=100):
+        """
+        Instantiate a elevation scale correction object.
+
+        :param degree: The polynomial degree to estimate.
+        :param bin_count: The amount of bins to divide the elevation change in.
+        """
+        self.degree = degree
+        self.bin_count = bin_count
+        self._meta: dict[str, Any] = {}
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
+                  weights: Optional[np.ndarray], verbose: bool = False):
+        """Estimate the scale difference between the two DEMs."""
+        ddem = ref_dem - tba_dem
+
+        medians = xdem.volume.hypsometric_binning(
+            ddem=ddem,
+            ref_dem=tba_dem,
+            bins=self.bin_count,
+            kind="count"
+        )["value"]
+
+        coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
+        self._meta["coefficients"] = coefficients
+
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+        """Apply the scaling model to a DEM."""
+        model = np.poly1d(self._meta["coefficients"])
+
+        return dem + model(dem)
+
+    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        """Apply the scaling model to a set of points."""
+        model = np.poly1d(self._meta["coefficients"])
+
+        new_coords = coords.copy()
+        new_coords[:, 2] += model(new_coords[:, 2])
+        return new_coords
+
+    def _to_matrix_func(self) -> np.ndarray:
+        """Convert the transform to a matrix, if possible."""
+        if self.degree < 2:
+            raise NotImplementedError
+
+        raise ValueError("Model cannot be described as a rigid transformation matrix.")

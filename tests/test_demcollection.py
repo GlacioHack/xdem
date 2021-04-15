@@ -29,7 +29,7 @@ class TestDEMCollection:
         # Make sure the glacier was bigger in 1990, since this is assumed later.
         assert scott_1990.ds.area.sum() > scott_2010.ds.area.sum()
 
-        mask_2010 = (scott_2010.create_mask(self.dem_2009) == 255).reshape(self.dem_2009.data.shape)
+        mask_2010 = scott_2010.create_mask(self.dem_2009).reshape(self.dem_2009.data.shape)
 
         dem_2060 = self.dem_2009.copy()
         dem_2060.data[mask_2010] -= 30

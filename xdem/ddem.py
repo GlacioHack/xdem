@@ -149,15 +149,17 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             ddem_mask = nans.copy()
             for i in entries.index:
                 feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(
-                    self) == 255).reshape(self.data.shape)
+                    self)).reshape(self.data.shape)
                 if np.count_nonzero(feature_mask) == 0:
                     continue
                 try:
-                    interpolated_ddem = xdem.volume.hypsometric_interpolation(
-                        interpolated_ddem,
-                        reference_elevation.data,
-                        mask=feature_mask
-                    ).data
+                    interpolated_ddem = np.asarray(
+                        xdem.volume.hypsometric_interpolation(
+                            interpolated_ddem,
+                            reference_elevation.data,
+                            mask=feature_mask
+                        )
+                    )
                 except ValueError as exception:
                     # Skip the feature if too few glacier values exist.
                     if "x and y arrays must have at least 2 entries" in str(exception):
