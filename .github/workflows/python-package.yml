@@ -22,8 +22,10 @@ jobs:
         python-version: 3.9
     - name: Install dependencies
       run: |
-        $CONDA/bin/conda env update --file environment.yml --name base
+        $CONDA/bin/conda install mamba -y
+        $CONDA/bin/mamba env update --file environment.yml --name base
         $CONDA/bin/pip install git+https://github.com/GlacioHack/GeoUtils.git
+        $CONDA/bin/pip install -r dev-requirements.txt
         $CONDA/bin/pip install .
     - name: Lint with flake8
       run: |
