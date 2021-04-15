@@ -24,7 +24,7 @@ jobs:
       run: |
         $CONDA/bin/conda env update --file environment.yml --name base
         $CONDA/bin/pip install git+https://github.com/GlacioHack/GeoUtils.git
-        $CONDA/bin/pip install . -e
+        $CONDA/bin/pip install .
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
