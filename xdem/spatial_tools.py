@@ -98,12 +98,10 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
         for key in "bottom", "left":
             max_bounds[key] = np.nanmin([max_bounds[key], bound.__getattribute__(key)])
 
-    for key in max_bounds:
-        modulo = max_bounds[key] % resolution
-        max_bounds[key] -= modulo
-
-        if key in ["right", "top"] and modulo > 0:
-            max_bounds[key] += resolution
+    # Make sure that extent is a multiple of resolution
+    for key1, key2 in zip(("left", "bottom"), ("right", "top")):
+        modulo = (max_bounds[key2] - max_bounds[key1]) % resolution
+        max_bounds[key2] += modulo
 
     return rio.coords.BoundingBox(**max_bounds)
 
