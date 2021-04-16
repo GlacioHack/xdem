@@ -115,6 +115,9 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
     Merge a list of rasters into one larger raster.
 
     Reprojects the rasters to the reference raster CRS and resolution.
+    Note that currently all rasters will be loaded once in memory. However, if rasters data is not loaded prior to \
+    merge_rasters it will be loaded for reprojection and deleted, therefore avoiding duplication and \
+    optimizing memory usage.
 
     :param rasters: A list of geoutils Raster objects.
     :param reference: The reference index (defaults to the first raster in the list).
@@ -145,6 +148,13 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
     data: list[np.ndarray] = []
     rasters_to_merge = rasters if include_ref else rasters[1:]
     for raster in rasters_to_merge:
+
+        # Check that data is loaded, otherwise temporarily load it
+        if not raster.is_loaded:
+            raster.load()
+            raster.is_loaded = False
+
+        # Reproject to reference grid
         reprojected_raster = raster.reproject(
             dst_bounds=max_bounds,
             dst_res=reference_raster.res,
@@ -153,6 +163,10 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
             nodata=np.nan  # quick fix, should use get_mask when other PR is merged (this could fail if dtype is int)
         )
         data.append(reprojected_raster.data.squeeze())
+
+        # Remove unloaded rasters
+        if not raster.is_loaded:
+            raster._data = None
 
     # Try to use the keyword axis=0 for the merging algorithm (if it's a numpy ufunc).
     try:
