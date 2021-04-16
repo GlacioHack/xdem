@@ -109,7 +109,8 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
 
 
 def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_algorithm: Callable = np.nanmean,
-                  resampling_method: Union[str, rio.warp.Resampling] = "nearest") -> gu.georaster.Raster:
+                  resampling_method: Union[str, rio.warp.Resampling] = "bilinear", include_ref = True,
+                  use_ref_bounds = False) -> gu.georaster.Raster:
     """
     Merge a list of rasters into one larger raster.
 
@@ -119,6 +120,8 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
     :param reference: The reference index (defaults to the first raster in the list).
     :param merge_algorithm: The algorithm to merge the rasters with. Defaults to the mean.
     :param resampling_method: The resampling method for the raster reprojections.
+    :param include_ref: If False, will not merge the reference with the others
+    :param use_ref_bounds: If True, will use reference bounds, otherwise will use maximum bounds of all rasters.
 
     :returns: The merged raster with the same parameters (excl. bounds) as the reference.
     """
@@ -131,17 +134,23 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
         resampling_method = resampling_method_from_str(resampling_method)
 
     reference_raster = rasters[reference]
-    # Find the maximum covering bounding box
-    max_bounds = merge_bounding_boxes([raster.bounds for raster in rasters], resolution=reference_raster.res[0])
+
+    if use_ref_bounds:
+        max_bounds = reference_raster.bounds
+    else:
+        # Find the maximum covering bounding box
+        max_bounds = merge_bounding_boxes([raster.bounds for raster in rasters], resolution=reference_raster.res[0])
 
     # Make a data list and add all of the reprojected rasters into it.
     data: list[np.ndarray] = []
-    for raster in rasters:
+    rasters_to_merge = rasters if include_ref else rasters[1:]
+    for raster in rasters_to_merge:
         reprojected_raster = raster.reproject(
             dst_bounds=max_bounds,
+            dst_res=reference_raster.res,
             dst_crs=reference_raster.crs,
             dtype=reference_raster.data.dtype,
-            nodata=reference_raster.nodata
+            nodata=np.nan  # quick fix, should use get_mask when other PR is merged (this could fail if dtype is int)
         )
         data.append(reprojected_raster.data.squeeze())
 
