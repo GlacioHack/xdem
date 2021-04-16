@@ -19,7 +19,7 @@ def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
 
     :returns invalid_mask: boolean array, True where array is masked or Nan.
     """
-    return (array.mask | np.isnan(array.data)) if isinstance(array, np.ma.masked_array) else np.isnan(array)
+    return (array.mask | ~np.isfinite(array.data)) if isinstance(array, np.ma.masked_array) else ~np.isfinite(array)
 
 
 def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array]) -> (np.ndarray, np.ndarray):

@@ -252,7 +252,8 @@ to interpolate from. The default is 10.
     interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"),
                                                   max_search_distance=max_search_distance)
 
-    # Remove extrapolated values
+    # Remove extrapolated values: gaps up to the size of max_search_distance are kept,
+    # but surfaces that artifically grow on the edges are removed
     if not extrapolate:
         interp_mask = cv2.morphologyEx((~nan_mask).squeeze().astype('uint8'), cv2.MORPH_CLOSE,
                                        kernel=np.ones((max_search_distance - 1, )*2)).astype('bool')
