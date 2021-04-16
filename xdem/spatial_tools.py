@@ -108,7 +108,8 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
     return rio.coords.BoundingBox(**max_bounds)
 
 
-def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_algorithm: Callable = np.nanmean,
+def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0,
+                  merge_algorithm: Union[Callable, list(Callable)] = np.nanmean,
                   resampling_method: Union[str, rio.warp.Resampling] = "bilinear", include_ref = True,
                   use_ref_bounds = False) -> gu.georaster.Raster:
     """
@@ -121,31 +122,41 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
 
     :param rasters: A list of geoutils Raster objects.
     :param reference: The reference index (defaults to the first raster in the list).
-    :param merge_algorithm: The algorithm to merge the rasters with. Defaults to the mean.
+    :param merge_algorithm: The algorithm, or list of algorithms, to merge the rasters with. Defaults to the mean.\
+If several algorithms are provided, each result is returned as a separate band.
     :param resampling_method: The resampling method for the raster reprojections.
-    :param include_ref: If False, will not merge the reference with the others
+    :param include_ref: If False, will not merge the reference with the others.
     :param use_ref_bounds: If True, will use reference bounds, otherwise will use maximum bounds of all rasters.
 
     :returns: The merged raster with the same parameters (excl. bounds) as the reference.
     """
+    # Make sure merge_algorithm is a list
+    if not isinstance(merge_algorithm, (list, tuple)):
+        merge_algorithm = [merge_algorithm,]
+
     # Try to run the merge_algorithm with an arbitrary list. Raise an error if the algorithm is incompatible.
-    try:
-        merge_algorithm([1, 2])
-    except TypeError as exception:
-        raise TypeError(f"merge_algorithm must be able to take a list as its first argument.\n\n{exception}")
+    for algo in merge_algorithm:
+        try:
+            algo([1, 2])
+        except TypeError as exception:
+            raise TypeError(f"merge_algorithm must be able to take a list as its first argument.\n\n{exception}")
+
+    # Check resampling method
     if isinstance(resampling_method, str):
         resampling_method = resampling_method_from_str(resampling_method)
 
+    # Select reference raster
     reference_raster = rasters[reference]
 
+    # Set output bounds
     if use_ref_bounds:
         max_bounds = reference_raster.bounds
     else:
-        # Find the maximum covering bounding box
         max_bounds = merge_bounding_boxes([raster.bounds for raster in rasters], resolution=reference_raster.res[0])
 
     # Make a data list and add all of the reprojected rasters into it.
     data: list[np.ndarray] = []
+
     rasters_to_merge = rasters if include_ref else rasters[1:]
     for raster in rasters_to_merge:
 
@@ -169,17 +180,21 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
             raster._data = None
 
     # Try to use the keyword axis=0 for the merging algorithm (if it's a numpy ufunc).
-    try:
-        merged_data = merge_algorithm(data, axis=0)
-    # If that doesn't work, use the slower np.apply_along_axis approach.
-    except TypeError as exception:
-        if "'axis' is an invalid keyword" not in str(exception):
-            raise exception
-        merged_data = np.apply_along_axis(merge_algorithm, axis=0, arr=data)
+    merged_data = []
+    for algo in merge_algorithm:
+        try:
+            merged_data.append(algo(data, axis=0))
+        # If that doesn't work, use the slower np.apply_along_axis approach.
+        except TypeError as exception:
+            if "'axis' is an invalid keyword" not in str(exception):
+                raise exception
+            merged_data.append(np.apply_along_axis(algo, axis=0, arr=data))
 
     merged_raster = gu.georaster.Raster.from_array(
-        data=merged_data.reshape((1,) + merged_data.shape),
-        transform=rio.transform.from_bounds(*max_bounds, width=merged_data.shape[1], height=merged_data.shape[0]),
+        data=np.reshape(merged_data, (len(merged_data),) + merged_data[0].shape),
+        transform=rio.transform.from_bounds(
+            *max_bounds, width=merged_data[0].shape[1], height=merged_data[0].shape[0]
+        ),
         crs=reference_raster.crs,
         nodata=reference_raster.nodata
     )
