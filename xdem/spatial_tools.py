@@ -106,6 +106,72 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
     return rio.coords.BoundingBox(**max_bounds)
 
 
+def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
+                  resampling_method: Union[str, rio.warp.Resampling] = "bilinear",
+                  use_ref_bounds = False) -> tuple[gu.georaster.Raster, rio.coords.BoundingBox]:
+    """
+    Stack a list of rasters into a common grid as a 3D np array with nodata set to Nan.
+
+    Note that currently all rasters will be loaded once in memory. However, if rasters data is not loaded prior to \
+    merge_rasters it will be loaded for reprojection and deleted, therefore avoiding duplication and \
+    optimizing memory usage.
+
+    :param rasters: A list of geoutils Raster objects to be stacked.
+    :param reference: The reference index, in case the reference is to be stacked, or a separate Raster object \
+ in case the reference should not be stacked. Defaults to the first raster in the list.
+    :param resampling_method: The resampling method for the raster reprojections.
+    :param use_ref_bounds: If True, will use reference bounds, otherwise will use maximum bounds of all rasters.
+
+    :returns: The stacked raster with the same parameters (optionally bounds) as the reference and output bounds.
+    """
+    # Check resampling method
+    if isinstance(resampling_method, str):
+        resampling_method = resampling_method_from_str(resampling_method)
+
+    # Select reference raster
+    if isinstance(reference, int):
+        reference_raster = rasters[reference]
+    elif isinstance(reference, gu.Raster):
+        reference_raster = reference
+    else:
+        raise ValueError("reference should be either an integer or geoutils.Raster object")
+
+    # Set output bounds
+    if use_ref_bounds:
+        dst_bounds = reference_raster.bounds
+    else:
+        dst_bounds = merge_bounding_boxes([raster.bounds for raster in rasters], resolution=reference_raster.res[0])
+
+    # Make a data list and add all of the reprojected rasters into it.
+    data: list[np.ndarray] = []
+
+    for raster in rasters:
+
+        # Check that data is loaded, otherwise temporarily load it
+        if not raster.is_loaded:
+            raster.load()
+            raster.is_loaded = False
+
+        # Reproject to reference grid
+        reprojected_raster = raster.reproject(
+            dst_bounds=dst_bounds,
+            dst_res=reference_raster.res,
+            dst_crs=reference_raster.crs,
+            dtype=reference_raster.data.dtype,
+            nodata=np.nan  # quick fix, should use get_mask when other PR is merged (this could fail if dtype is int)
+        )
+        data.append(reprojected_raster.data.squeeze())
+
+        # Remove unloaded rasters
+        if not raster.is_loaded:
+            raster._data = None
+
+    # Convert to numpy array
+    data = np.asarray(data)
+
+    return data, dst_bounds
+
+
 def merge_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
                   merge_algorithm: Union[Callable, list[Callable]] = np.nanmean,
                   resampling_method: Union[str, rio.warp.Resampling] = "bilinear",
@@ -139,10 +205,6 @@ If several algorithms are provided, each result is returned as a separate band.
         except TypeError as exception:
             raise TypeError(f"merge_algorithm must be able to take a list as its first argument.\n\n{exception}")
 
-    # Check resampling method
-    if isinstance(resampling_method, str):
-        resampling_method = resampling_method_from_str(resampling_method)
-
     # Select reference raster
     if isinstance(reference, int):
         reference_raster = rasters[reference]
@@ -151,35 +213,9 @@ If several algorithms are provided, each result is returned as a separate band.
     else:
         raise ValueError("reference should be either an integer or geoutils.Raster object")
 
-    # Set output bounds
-    if use_ref_bounds:
-        max_bounds = reference_raster.bounds
-    else:
-        max_bounds = merge_bounding_boxes([raster.bounds for raster in rasters], resolution=reference_raster.res[0])
-
-    # Make a data list and add all of the reprojected rasters into it.
-    data: list[np.ndarray] = []
-
-    for raster in rasters:
-
-        # Check that data is loaded, otherwise temporarily load it
-        if not raster.is_loaded:
-            raster.load()
-            raster.is_loaded = False
-
-        # Reproject to reference grid
-        reprojected_raster = raster.reproject(
-            dst_bounds=max_bounds,
-            dst_res=reference_raster.res,
-            dst_crs=reference_raster.crs,
-            dtype=reference_raster.data.dtype,
-            nodata=np.nan  # quick fix, should use get_mask when other PR is merged (this could fail if dtype is int)
-        )
-        data.append(reprojected_raster.data.squeeze())
-
-        # Remove unloaded rasters
-        if not raster.is_loaded:
-            raster._data = None
+    # Reproject and stack all rasters
+    data, dst_bounds = stack_rasters(rasters, reference=reference, resampling_method=resampling_method,
+                         use_ref_bounds=use_ref_bounds)
 
     # Try to use the keyword axis=0 for the merging algorithm (if it's a numpy ufunc).
     merged_data = []
@@ -192,10 +228,11 @@ If several algorithms are provided, each result is returned as a separate band.
                 raise exception
             merged_data.append(np.apply_along_axis(algo, axis=0, arr=data))
 
+    # Save as gu.Raster
     merged_raster = gu.georaster.Raster.from_array(
         data=np.reshape(merged_data, (len(merged_data),) + merged_data[0].shape),
         transform=rio.transform.from_bounds(
-            *max_bounds, width=merged_data[0].shape[1], height=merged_data[0].shape[0]
+            *dst_bounds, width=merged_data[0].shape[1], height=merged_data[0].shape[0]
         ),
         crs=reference_raster.crs,
         nodata=reference_raster.nodata
