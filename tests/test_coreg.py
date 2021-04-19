@@ -150,6 +150,30 @@ class TestCoregClass:
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
+    def test_from_classmethods(self):
+        warnings.simplefilter("error")
+
+        # Check that the from_matrix function works as expected.
+        bias = 5
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[2, 3] = bias
+        coreg_obj = coreg.Coreg.from_matrix(matrix)
+        transformed_points = coreg_obj.apply_pts(self.points)
+        assert transformed_points[0, 2] == bias
+
+        # Check that the from_translation function works as expected.
+        x_offset = 5
+        coreg_obj2 = coreg.Coreg.from_translation(x_off=x_offset)
+        transformed_points2 = coreg_obj2.apply_pts(self.points)
+        assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
+
+        # Try to make a Coreg object from a nan translation (should fail).
+        try:
+            coreg.Coreg.from_translation(np.nan)
+        except ValueError as exception:
+            if "non-finite values" not in str(exception):
+                raise exception
+
     def test_bias(self):
         warnings.simplefilter("error")
 
@@ -173,7 +197,7 @@ class TestCoregClass:
         assert biascorr.apply_pts(self.points)[0, 2] == biascorr._meta["bias"]
 
         # Apply the model to correct the DEM
-        tba_unbiased = biascorr.apply(self.tba.data, None)
+        tba_unbiased = biascorr.apply(self.tba.data, self.ref.transform)
 
         # Create a new bias correction model
         biascorr2 = coreg.BiasCorr()
@@ -372,6 +396,17 @@ class TestCoregClass:
     def test_apply_matrix(self):
         warnings.simplefilter("error")
         # This should maybe be its own function, but would just repeat the data loading procedure..
+
+        # Test only bias (it should just apply the bias and not make anything else)
+        bias = 5
+        matrix = np.diag(np.ones(4, float))
+        matrix[2, 3] = bias
+        transformed_dem = coreg.apply_matrix(self.ref.data.squeeze(), self.ref.transform, matrix)
+        reverted_dem = transformed_dem - bias
+
+        # Check that the revered DEM has the exact same values as the initial one
+        # (resampling is not an exact science, so this will only apply for bias corrections)
+        assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(self.ref.data))
 
         # Synthesize a shifted and vertically offset DEM
         pixel_shift = 11
