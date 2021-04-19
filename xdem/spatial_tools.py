@@ -156,8 +156,8 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
 
 
 def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
-                  resampling_method: Union[str, rio.warp.Resampling] = "bilinear",
-                  use_ref_bounds = False) -> tuple[gu.georaster.Raster, rio.coords.BoundingBox]:
+                  resampling_method: Union[str, rio.warp.Resampling] = "bilinear", use_ref_bounds: bool = False,
+                  diff: bool = False) -> tuple[gu.georaster.Raster, rio.coords.BoundingBox]:
     """
     Stack a list of rasters into a common grid as a 3D np array with nodata set to Nan.
 
@@ -170,6 +170,7 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
  in case the reference should not be stacked. Defaults to the first raster in the list.
     :param resampling_method: The resampling method for the raster reprojections.
     :param use_ref_bounds: If True, will use reference bounds, otherwise will use maximum bounds of all rasters.
+    :param diff: If True, will return the difference to the reference, rather than the DEMs.
 
     :returns: The stacked raster with the same parameters (optionally bounds) as the reference and output bounds.
     """
@@ -207,9 +208,17 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
             dst_res=reference_raster.res,
             dst_crs=reference_raster.crs,
             dtype=reference_raster.data.dtype,
-            nodata=np.nan  # quick fix, should use get_mask when other PR is merged (this could fail if dtype is int)
+            nodata=reference_raster.nodata
         )
-        data.append(reprojected_raster.data.squeeze())
+
+        # Optionally calculate difference
+        if diff:
+            ddem = (reference_raster.data - reprojected_raster.data).squeeze()
+            ddem, _ = get_array_and_mask(ddem)
+            data.append(ddem)
+        else:
+            dem, _ = get_array_and_mask(reprojected_raster.data.squeeze())
+            data.append(dem)
 
         # Remove unloaded rasters
         if not raster.is_loaded:
