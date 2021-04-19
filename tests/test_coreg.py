@@ -247,7 +247,7 @@ class TestCoregClass:
         transformed_points = nuth_kaab.apply_pts(self.points)
 
         # Check that the x shift is close to the pixel_shift * image resolution
-        assert abs((transformed_points[0, 0] - self.points[0, 0]) + pixel_shift * self.ref.res[0]) < 0.1
+        assert abs((transformed_points[0, 0] - self.points[0, 0]) - pixel_shift * self.ref.res[0]) < 0.1
         # Check that the z shift is close to the original bias.
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + bias) < 0.1
 

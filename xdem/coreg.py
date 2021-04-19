@@ -1085,7 +1085,7 @@ def coregister(reference_raster: Union[str, gu.georaster.Raster], to_be_aligned_
     return aligned_raster, error
 
 
-def _transform_to_bounds_and_res(shape: tuple[int, int],
+def _transform_to_bounds_and_res(shape: tuple[int, ...],
                                  transform: rio.transform.Affine) -> tuple[rio.coords.BoundingBox, float]:
     """Get the bounding box and (horizontal) resolution from a transform and the shape of a DEM."""
     bounds = rio.coords.BoundingBox(
@@ -1095,7 +1095,7 @@ def _transform_to_bounds_and_res(shape: tuple[int, int],
     return bounds, resolution
 
 
-def _get_x_and_y_coords(shape: tuple[int, int], transform: rio.transform.Affine):
+def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine):
     """Generate center coordinates from a transform and the shape of a DEM."""
     bounds, resolution = _transform_to_bounds_and_res(shape, transform)
     x_coords, y_coords = np.meshgrid(
@@ -1106,6 +1106,11 @@ def _get_x_and_y_coords(shape: tuple[int, int], transform: rio.transform.Affine)
 
 
 class Coreg:
+    """
+    Generic Coreg class.
+
+    Made to be subclassed.
+    """
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_rigid: Optional[bool] = None
 
@@ -1357,17 +1362,6 @@ class BiasCorr(Coreg):
 
         self._meta["bias"] = bias
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        """Apply the bias to a DEM."""
-        return dem + self._meta["bias"]
-
-    def _apply_pts_func(self, coords: np.ndarray):
-        """Apply the bias to a given coordinate array."""
-        new_coords = coords.copy()
-        new_coords[:, 2] += self._apply_func(coords[:, 2], None)  # type: ignore
-
-        return new_coords
-
     def _to_matrix_func(self) -> np.ndarray:
         """Convert the bias to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
@@ -1450,42 +1444,6 @@ class ICP(Coreg):
 
         self._meta["matrix"] = matrix
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        """Apply the coregistration matrix to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-        x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
-        x_coords -= bounds.left
-        y_coords -= bounds.bottom
-
-        valid_mask = np.isfinite(dem)
-        transformed_points = self._apply_pts_func(np.dstack([
-            x_coords[valid_mask],
-            y_coords[valid_mask],
-            dem[valid_mask]
-        ]).squeeze())
-
-        aligned_dem = scipy.interpolate.griddata(
-            points=transformed_points[:, :2],
-            values=transformed_points[:, 2],
-            xi=tuple(np.meshgrid(
-                np.linspace(bounds.left, bounds.right, dem.shape[1]) - bounds.left,
-                np.linspace(bounds.bottom, bounds.top, dem.shape[0])[::-1] - bounds.bottom
-            )),
-            method="cubic"
-        )
-        aligned_dem[~valid_mask] = np.nan
-
-        return aligned_dem
-
-    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
-        """Apply the coregistration matrix to a set of points."""
-        transformed_points = cv2.perspectiveTransform(coords.reshape(1, -1, 3), self.to_matrix()).squeeze()
-        return transformed_points
-
-    def _to_matrix_func(self) -> np.ndarray:
-        """Return the coregistration matrix."""
-        return self._meta["matrix"]
-
 
 class Deramp(Coreg):
     """
@@ -1503,7 +1461,6 @@ class Deramp(Coreg):
         self.degree = degree
 
         super().__init__()
-
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -1615,7 +1572,7 @@ class CoregPipeline(Coreg):
             coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
-            tba_dem_mod = coreg._apply_func(tba_dem_mod, transform)
+            tba_dem_mod = coreg.apply(tba_dem_mod, transform)
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the coregistration steps sequentially to a DEM."""
@@ -1631,7 +1588,7 @@ class CoregPipeline(Coreg):
         coords_mod = coords.copy()
 
         for coreg in self.pipeline:
-            coords_mod = coreg._apply_pts_func(coords_mod)
+            coords_mod = coreg.apply_pts(coords_mod)
 
         return coords_mod
 
@@ -1688,7 +1645,6 @@ class NuthKaab(Coreg):
         self.error_threshold = error_threshold
 
         super().__init__()
-
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -1757,44 +1713,6 @@ class NuthKaab(Coreg):
         self._meta["offset_north_px"] = offset_north
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
-
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        """Apply the estimated x/y/z offsets to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-        scaling_factor = self._meta["resolution"] / resolution
-
-        # Make index grids for the east and north dimensions
-        east_grid = np.arange(dem.shape[1]) * scaling_factor
-        north_grid = np.arange(dem.shape[0]) * scaling_factor
-
-        # Make a function to estimate the DEM (used to construct an offset DEM)
-        elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid,
-                                                                   z=np.where(np.isnan(dem), -9999, dem))
-        # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
-        nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(dem))
-
-        shifted_east_grid = east_grid + self._meta["offset_east_px"]
-        shifted_north_grid = north_grid - self._meta["offset_north_px"]
-
-        shifted_dem = elevation_function(y=shifted_east_grid, x=shifted_north_grid)
-        new_nans = nodata_function(y=shifted_east_grid, x=shifted_north_grid)
-        shifted_dem[new_nans >= 1] = np.nan
-
-        shifted_dem += self._meta["bias"]
-
-        return shifted_dem
-
-    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
-        """Apply the estimated x/y/z offsets to a set of points."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
-
-        new_coords = coords.copy()
-        new_coords[:, 0] -= offset_east
-        new_coords[:, 1] -= offset_north
-        new_coords[:, 2] += self._meta["bias"]
-
-        return new_coords
 
     def _to_matrix_func(self) -> np.ndarray:
         """Return a transformation matrix from the estimated offsets."""
