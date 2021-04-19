@@ -106,9 +106,9 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
     return rio.coords.BoundingBox(**max_bounds)
 
 
-def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0,
-                  merge_algorithm: Union[Callable, list(Callable)] = np.nanmean,
-                  resampling_method: Union[str, rio.warp.Resampling] = "bilinear", include_ref = True,
+def merge_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
+                  merge_algorithm: Union[Callable, list[Callable]] = np.nanmean,
+                  resampling_method: Union[str, rio.warp.Resampling] = "bilinear",
                   use_ref_bounds = False) -> gu.georaster.Raster:
     """
     Merge a list of rasters into one larger raster.
@@ -118,12 +118,12 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0,
     merge_rasters it will be loaded for reprojection and deleted, therefore avoiding duplication and \
     optimizing memory usage.
 
-    :param rasters: A list of geoutils Raster objects.
-    :param reference: The reference index (defaults to the first raster in the list).
+    :param rasters: A list of geoutils Raster objects to be merged.
+    :param reference: The reference index, in case the reference is to be merged, or a separate Raster object \
+ in case the reference should not be merged. Defaults to the first raster in the list.
     :param merge_algorithm: The algorithm, or list of algorithms, to merge the rasters with. Defaults to the mean.\
 If several algorithms are provided, each result is returned as a separate band.
     :param resampling_method: The resampling method for the raster reprojections.
-    :param include_ref: If False, will not merge the reference with the others.
     :param use_ref_bounds: If True, will use reference bounds, otherwise will use maximum bounds of all rasters.
 
     :returns: The merged raster with the same parameters (excl. bounds) as the reference.
@@ -144,7 +144,12 @@ If several algorithms are provided, each result is returned as a separate band.
         resampling_method = resampling_method_from_str(resampling_method)
 
     # Select reference raster
-    reference_raster = rasters[reference]
+    if isinstance(reference, int):
+        reference_raster = rasters[reference]
+    elif isinstance(reference, gu.Raster):
+        reference_raster = reference
+    else:
+        raise ValueError("reference should be either an integer or geoutils.Raster object")
 
     # Set output bounds
     if use_ref_bounds:
@@ -155,8 +160,7 @@ If several algorithms are provided, each result is returned as a separate band.
     # Make a data list and add all of the reprojected rasters into it.
     data: list[np.ndarray] = []
 
-    rasters_to_merge = rasters if include_ref else rasters[1:]
-    for raster in rasters_to_merge:
+    for raster in rasters:
 
         # Check that data is loaded, otherwise temporarily load it
         if not raster.is_loaded:

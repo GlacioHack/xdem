@@ -55,9 +55,16 @@ def test_merge_rasters():
 
     assert np.abs(np.nanmean(diff)) < 0.0001
 
-    # Check that include_ref works
-    merged_dem2 = xdem.spatial_tools.merge_rasters([dem, dem1, dem2], include_ref=False)
+    # Check that reference works
+    merged_dem2 = xdem.spatial_tools.merge_rasters([dem1, dem2], reference=dem)
     assert merged_dem2 == merged_dem
+
+    # Others than int or gu.Raster should raise a ValueError
+    try:
+        merged_dem2 = xdem.spatial_tools.merge_rasters([dem1, dem2], reference="a string")
+    except ValueError as exception:
+        if "reference should be" not in str(exception):
+            raise exception
 
     # Check that use_ref_bounds work - use a DEM that do not cover the whole extent
     dem2 = dem.copy()
@@ -73,5 +80,5 @@ def test_merge_rasters():
     assert merged_dem.bounds != dem.bounds
 
     # This case should preserve original extent
-    merged_dem2 = xdem.spatial_tools.merge_rasters([dem, dem1, dem2], include_ref = False, use_ref_bounds=True)
+    merged_dem2 = xdem.spatial_tools.merge_rasters([dem1, dem2], reference=dem, use_ref_bounds=True)
     assert merged_dem2.bounds == dem.bounds
