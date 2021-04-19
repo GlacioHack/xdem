@@ -11,6 +11,55 @@ import rasterio as rio
 import rasterio.warp
 
 
+def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
+    """
+    Return the mask of invalid values, whether array is a ndarray with NaNs or a np.ma.masked_array.
+
+    :param array: Input array.
+
+    :returns invalid_mask: boolean array, True where array is masked or Nan.
+    """
+    return (array.mask | ~np.isfinite(array.data)) if isinstance(array, np.ma.masked_array) else ~np.isfinite(array)
+
+
+def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array]) -> (np.ndarray, np.ndarray):
+    """
+    Return array with masked values set to NaN and the associated mask.
+    Works whether array is a ndarray with NaNs or a np.ma.masked_array.
+    WARNING, if array is of dtype float, will return a view only, if integer dtype, will return a copy.
+
+    :param array: Input array.
+
+    :returns array_data, invalid_mask: a tuple of ndarrays. First is array with invalid pixels converted to NaN, \
+    second is mask of invalid pixels (True if invalid).
+    """
+    # Get mask of invalid pixels
+    invalid_mask = get_mask(array)
+
+    # If array is of type integer, need to be converted to float, forcing not duplicate
+    if np.issubdtype(array.dtype, np.integer):
+        array = array.astype('float32')
+
+    # Convert into a regular ndarray and convert invalid values to NaN
+    array_data = np.asarray(array)
+    array_data[invalid_mask] = np.nan
+
+    return array_data, invalid_mask
+
+
+def get_valid_extent(array: Union[np.ndarray, np.ma.masked_array]) -> tuple:
+    """
+    Return (rowmin, rowmax, colmin, colmax), the first/last row/column of array with valid pixels
+    """
+    if not array.dtype == 'bool':
+        valid_mask = ~get_mask(array)
+    else:
+        valid_mask = array
+    cols_nonzero = np.where(np.count_nonzero(valid_mask, axis=0) > 0)[0]
+    rows_nonzero = np.where(np.count_nonzero(valid_mask, axis=1) > 0)[0]
+    return rows_nonzero[0], rows_nonzero[-1], cols_nonzero[0], cols_nonzero[-1]
+
+
 def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     """
     Calculate the normalized median absolute deviation (NMAD) of an array.
