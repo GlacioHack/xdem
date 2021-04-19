@@ -1737,8 +1737,6 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
         return pytransform3d.transformations.invert_transform(matrix)
 
 
-
-
 def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
                  centroid: Optional[tuple[float, float, float]] = None,
                  resampling: Union[int, str] = "cubic") -> np.ndarray:
@@ -1919,5 +1917,9 @@ class ZScaleCorr(Coreg):
 
     def _to_matrix_func(self) -> np.ndarray:
         """Convert the transform to a matrix, if possible."""
-        if self.degree < 2:
+        if self.degree == 0:  # If it's just a bias correction.
+            return self._meta["coefficients"][-1]
+        elif self.degree < 2:
             raise NotImplementedError
+        else:
+            raise ValueError("A 2nd degree or higher ZScaleCorr cannot be described as a 4x4 matrix!")
