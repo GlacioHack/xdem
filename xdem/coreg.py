@@ -1737,14 +1737,6 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
         return pytransform3d.transformations.invert_transform(matrix)
 
 
-def _create_nan_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
-    """Will be replaced by Amaury's version once that is merged."""
-    nans = ~np.isfinite(np.asarray(array))
-
-    if isinstance(array, np.ma.masked_array):
-        nans = nans | array.mask
-
-    return nans
 
 
 def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
@@ -1787,7 +1779,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
 
     # Temporary. Should probably be removed.
     demc[demc == -9999] = np.nan
-    nan_mask = _create_nan_mask(dem)
+    nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Create a filled version of the DEM. (skimage doesn't like nans)
     filled_dem = np.where(~nan_mask, demc, -9999)
