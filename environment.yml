@@ -15,6 +15,7 @@ dependencies:
   - rasterio
   - scipy
   - tqdm
+  - scikit-image
   - pip
   - proj-data
   - pip:
