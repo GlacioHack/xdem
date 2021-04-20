@@ -2,13 +2,14 @@
 
 """
 from __future__ import annotations
-
 from typing import Callable, Union
 
-import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
+from tqdm import tqdm
+
+import geoutils as gu
 
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
@@ -157,7 +158,7 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
 
 def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
                   resampling_method: Union[str, rio.warp.Resampling] = "bilinear", use_ref_bounds: bool = False,
-                  diff: bool = False) -> tuple[gu.georaster.Raster, rio.coords.BoundingBox]:
+                  diff: bool = False, progress: bool = True) -> tuple[gu.georaster.Raster, rio.coords.BoundingBox]:
     """
     Stack a list of rasters into a common grid as a 3D np array with nodata set to Nan.
 
@@ -171,6 +172,7 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
     :param resampling_method: The resampling method for the raster reprojections.
     :param use_ref_bounds: If True, will use reference bounds, otherwise will use maximum bounds of all rasters.
     :param diff: If True, will return the difference to the reference, rather than the DEMs.
+    :param progress: If True, will display a progress bar. Default is True.
 
     :returns: The stacked raster with the same parameters (optionally bounds) as the reference and output bounds.
     """
@@ -195,7 +197,7 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
     # Make a data list and add all of the reprojected rasters into it.
     data: list[np.ndarray] = []
 
-    for raster in rasters:
+    for raster in tqdm(rasters, disable=~progress):
 
         # Check that data is loaded, otherwise temporarily load it
         if not raster.is_loaded:
