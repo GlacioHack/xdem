@@ -1734,8 +1734,9 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
 
+        checked_matrix = pytransform3d.transformations.check_matrix(matrix)
         # Invert the transform if wanted.
-        return pytransform3d.transformations.invert_transform(matrix)
+        return pytransform3d.transformations.invert_transform(checked_matrix)
 
 
 def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
@@ -1777,7 +1778,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         return demc + matrix[2, 3]
 
     # Temporary. Should probably be removed.
-    demc[demc == -9999] = np.nan
+    #demc[demc == -9999] = np.nan
     nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Create a filled version of the DEM. (skimage doesn't like nans)
