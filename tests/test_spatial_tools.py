@@ -52,4 +52,4 @@ def test_merge_rasters():
 
     diff = dem.data - merged_dem.data
 
-    assert np.abs(np.nanmean(diff)) < 0.0001
+    assert np.abs(np.nanmean(diff)) < 0.05
