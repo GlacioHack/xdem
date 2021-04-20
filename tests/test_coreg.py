@@ -16,6 +16,7 @@ from typing import Any
 import cv2
 import geoutils as gu
 import numpy as np
+import pytest
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
