@@ -2,8 +2,8 @@ name: xdem
 channels:
   - conda-forge
 dependencies:
-  - python=3
-  - proj=7.2
+  - python>=3
+  - proj>=7.2
   - geopandas
   - ipython
   - numba
@@ -20,5 +20,6 @@ dependencies:
   - pip:
     - richdem
     - scikit-gstat
+    - pytransform3d
 #    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
 #    - "--editable=git+https://github.com/GlacioHack/xdem.git#egg=xdem"

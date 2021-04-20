@@ -16,6 +16,7 @@ from typing import Any
 import cv2
 import geoutils as gu
 import numpy as np
+import pytest
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -32,6 +33,7 @@ def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovec
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
+@pytest.mark.skip(reason="Functions are deprecated")
 def test_coreg_method_enum():
     """Test that the CoregMethod enum works as it should."""
     # Try to generate an enum from a string
@@ -53,6 +55,7 @@ class TestCoreg:
 
     ref, tba, mask = load_examples()  # Load example reference, to-be-aligned and mask.
 
+    @pytest.mark.skip(reason="Functions are deprecated")
     def test_icp_opencv(self):
         """Test the opencv ICP coregistration method."""
         metadata: dict[str, Any] = {}
@@ -63,6 +66,7 @@ class TestCoreg:
 
         assert error < 10
 
+    @pytest.mark.skip(reason="Functions are deprecated")
     def test_icp_pdal(self):
         """Test the ICP coregistration method."""
         metadata: dict[str, Any] = {}
@@ -72,6 +76,7 @@ class TestCoreg:
 
         assert error < 10
 
+    @pytest.mark.skip(reason="Functions are deprecated")
     def test_deramping(self):
         """Test the deramping coregistration method."""
         metadata = {}
@@ -81,6 +86,7 @@ class TestCoreg:
 
         assert error < 10
 
+    @pytest.mark.skip(reason="Functions are deprecated")
     def test_raster_mask(self):
         """Test different ways of providing the mask as a raster instead of vector."""
         # Create a mask Raster.
@@ -111,6 +117,7 @@ class TestCoreg:
             else:
                 raise exception
 
+    @pytest.mark.skip(reason="Functions are deprecated")
     def test_amaury(self):
         """Test the Amaury/ Nuth & Kääb method."""
         metadata = {}
@@ -120,6 +127,7 @@ class TestCoreg:
 
         assert error < 10
 
+    @pytest.mark.skip(reason="Functions are deprecated")
     def test_amaury_high_degree(self):
         """Test the Amaury / Nuth & Kääb method with nonlinear deramping."""
         _, error = coreg.coregister(self.ref, self.tba, mask=self.mask, method="icp", deramping_degree=3)
@@ -127,6 +135,7 @@ class TestCoreg:
         assert error < 10
 
 
+@pytest.mark.skip(reason="Functions are deprecated")
 def test_only_paths():
     """Test that raster paths can be specified instead of Raster objects."""
     reference_raster = examples.FILEPATHS["longyearbyen_ref_dem"]
