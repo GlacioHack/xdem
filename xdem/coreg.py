@@ -939,7 +939,8 @@ def amaury_coregister_dem(reference_dem: np.ndarray, dem_to_be_aligned: np.ndarr
 class CoregMethod(Enum):
     """A selection of a coregistration method."""
 
-    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
+    # The warning below would sometimes get triggered when just importing the script.
+    #warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
 
     ICP_PDAL = icp_coregistration_pdal
     ICP_OPENCV = icp_coregistration_opencv

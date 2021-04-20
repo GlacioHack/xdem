@@ -4,6 +4,7 @@ Set of tools to manipulate Digital Elevation Models (DEMs)
 More documentation to come!
 
 [![Documentation Status](https://readthedocs.org/projects/xdem/badge/?version=latest)](https://xdem.readthedocs.io/en/latest/?badge=latest)
+[![build](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml/badge.svg)](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml)
 
 
 ## Installation ##
