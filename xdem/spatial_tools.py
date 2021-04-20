@@ -158,7 +158,7 @@ def merge_bounding_boxes(bounds: list[rio.coords.BoundingBox], resolution: float
 
 def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
                   resampling_method: Union[str, rio.warp.Resampling] = "bilinear", use_ref_bounds: bool = False,
-                  diff: bool = False, progress: bool = True) -> tuple[gu.georaster.Raster, rio.coords.BoundingBox]:
+                  diff: bool = False, progress: bool = True) -> gu.georaster.Raster:
     """
     Stack a list of rasters into a common grid as a 3D np array with nodata set to Nan.
 
@@ -174,7 +174,7 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
     :param diff: If True, will return the difference to the reference, rather than the DEMs.
     :param progress: If True, will display a progress bar. Default is True.
 
-    :returns: The stacked raster with the same parameters (optionally bounds) as the reference and output bounds.
+    :returns: The stacked raster with the same parameters (optionally bounds) as the reference.
     """
     # Check resampling method
     if isinstance(resampling_method, str):
@@ -229,7 +229,17 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
     # Convert to numpy array
     data = np.asarray(data)
 
-    return data, dst_bounds
+    # Save as gu.Raster
+    raster = gu.georaster.Raster.from_array(
+        data=data,
+        transform=rio.transform.from_bounds(
+            *dst_bounds, width=data[0].shape[1], height=data[0].shape[0]
+        ),
+        crs=reference_raster.crs,
+        nodata=reference_raster.nodata
+    )
+
+    return raster
 
 
 def merge_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.Raster] = 0,
@@ -274,25 +284,25 @@ If several algorithms are provided, each result is returned as a separate band.
         raise ValueError("reference should be either an integer or geoutils.Raster object")
 
     # Reproject and stack all rasters
-    data, dst_bounds = stack_rasters(rasters, reference=reference, resampling_method=resampling_method,
-                         use_ref_bounds=use_ref_bounds)
+    raster_stack = stack_rasters(rasters, reference=reference, resampling_method=resampling_method,
+                                   use_ref_bounds=use_ref_bounds)
 
     # Try to use the keyword axis=0 for the merging algorithm (if it's a numpy ufunc).
     merged_data = []
     for algo in merge_algorithm:
         try:
-            merged_data.append(algo(data, axis=0))
+            merged_data.append(algo(raster_stack.data, axis=0))
         # If that doesn't work, use the slower np.apply_along_axis approach.
         except TypeError as exception:
             if "'axis' is an invalid keyword" not in str(exception):
                 raise exception
-            merged_data.append(np.apply_along_axis(algo, axis=0, arr=data))
+            merged_data.append(np.apply_along_axis(algo, axis=0, arr=raster_stack.data))
 
     # Save as gu.Raster
     merged_raster = gu.georaster.Raster.from_array(
         data=np.reshape(merged_data, (len(merged_data),) + merged_data[0].shape),
         transform=rio.transform.from_bounds(
-            *dst_bounds, width=merged_data[0].shape[1], height=merged_data[0].shape[0]
+            *raster_stack.bounds, width=merged_data[0].shape[1], height=merged_data[0].shape[0]
         ),
         crs=reference_raster.crs,
         nodata=reference_raster.nodata

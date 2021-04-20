@@ -61,22 +61,22 @@ class TestMerging:
     def test_stack_rasters(self):
         """Test stack_rasters"""
         # Merge the two overlapping DEMs and check that output bounds and shape is correct
-        stacked_dem, out_bounds = xdem.spatial_tools.stack_rasters([self.dem1, self.dem2])
+        stacked_dem = xdem.spatial_tools.stack_rasters([self.dem1, self.dem2])
 
-        assert stacked_dem.shape[0] == 2
-        assert self.dem.data.shape[1:] == stacked_dem.shape[1:]
+        assert stacked_dem.count == 2
+        assert self.dem.shape == stacked_dem.shape
 
         merged_bounds = xdem.spatial_tools.merge_bounding_boxes([self.dem1.bounds, self.dem2.bounds],
                                                                 resolution=self.dem1.res[0])
-        assert merged_bounds == out_bounds
+        assert merged_bounds == stacked_dem.bounds
 
         # Check that reference works with input Raster
-        stacked_dem, out_bounds = xdem.spatial_tools.stack_rasters([self.dem1, self.dem2], reference=self.dem)
-        assert self.dem.bounds == out_bounds
+        stacked_dem = xdem.spatial_tools.stack_rasters([self.dem1, self.dem2], reference=self.dem)
+        assert self.dem.bounds == stacked_dem.bounds
 
         # Others than int or gu.Raster should raise a ValueError
         try:
-            merged_dem = xdem.spatial_tools.stack_rasters([self.dem1, self.dem2], reference="a string")
+            stacked_dem = xdem.spatial_tools.stack_rasters([self.dem1, self.dem2], reference="a string")
         except ValueError as exception:
             if "reference should be" not in str(exception):
                 raise exception
@@ -84,12 +84,12 @@ class TestMerging:
         # Check that use_ref_bounds works - use a DEM that do not cover the whole extent
 
         # This case should not preserve original extent
-        stacked_dem, out_bounds = xdem.spatial_tools.stack_rasters([self.dem1, self.dem3])
-        assert out_bounds != self.dem.bounds
+        stacked_dem = xdem.spatial_tools.stack_rasters([self.dem1, self.dem3])
+        assert stacked_dem.bounds != self.dem.bounds
 
         # This case should preserve original extent
-        stacked_dem2, out_bounds2 = xdem.spatial_tools.stack_rasters([self.dem1, self.dem3], reference=self.dem, use_ref_bounds=True)
-        assert out_bounds2 == self.dem.bounds
+        stacked_dem2 = xdem.spatial_tools.stack_rasters([self.dem1, self.dem3], reference=self.dem, use_ref_bounds=True)
+        assert stacked_dem2.bounds == self.dem.bounds
 
     def test_merge_rasters(self):
         """Test merge_rasters"""
