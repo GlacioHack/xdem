@@ -28,6 +28,9 @@ author = 'xdem contributors'
 release = "0.0.1"
 
 
+os.environ["PYTHON"] = sys.executable
+
+
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be

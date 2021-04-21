@@ -36,10 +36,21 @@ class TestDocs:
         if os.path.isdir("build/"):
             shutil.rmtree("build/")
 
+        # Copy the environment and set the SPHINXBUILD variable to call the module.
+        # This is for it to work properly with GitHub Workflows
+        env = os.environ.copy()
+        env["SPHINXBUILD"] = f"{sys.executable} -m sphinx"
+
         # Run the makefile
         build_commands = ["make", "html"]
-        result = subprocess.run(build_commands, check=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, encoding="utf-8")
+        result = subprocess.run(
+            build_commands,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            env=env
+        )
 
         # Raise an error if the string "error" is in the stderr.
         if "error" in str(result.stderr).lower():

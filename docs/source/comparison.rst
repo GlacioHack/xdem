@@ -121,6 +121,7 @@ Now, we can easily calculate the elevation or volume change between the DEMs, fo
 
 which will return a Pandas Series:
 
-.. program-output:: python code/comparison_print_cumulative_dh.py 
+.. program-output:: $PYTHON code/comparison_print_cumulative_dh.py 
+        :shell:
 
 `See here for the outline filtering syntax <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.query.html>`_.
