@@ -13,7 +13,7 @@
 import os
 import sys
 
-import xdem.version
+#import xdem.version
 
 # Allow conf.py to find the xdem module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
@@ -25,7 +25,7 @@ copyright = '2021, xdem contributors'
 author = 'xdem contributors'
 
 # The full version, including alpha/beta/rc tags
-release = xdem.version.version
+release = "0.0.1"
 
 
 # -- General configuration ---------------------------------------------------
