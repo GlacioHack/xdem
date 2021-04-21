@@ -26,30 +26,8 @@ Below is a summary of how each method works, and when it should (and should not)
 Examples are given using data close to Longyearbyen on Svalbard. These can be loaded as:
 
 
-.. code-block:: python
-
-        import geoutils as gu
-        import xdem
-
-        # Download the necessary data. This may take a few minutes.
-        xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-        ### Load the data using xdem and geoutils (could be with rasterio and geopandas instead)
-        # Load a reference DEM from 2009
-        reference_dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-        # Load a moderately well aligned DEM from 1990
-        dem_to_be_aligned = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).resample(reference_dem)
-        # Load glacier outlines from 1990. This will act as the unstable ground.
-        glacier_outlines = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-
-
-        # Prepare the inputs for coregistration.
-        ref_data = reference_dem.data.squeeze()  # This is a numpy 2D array/masked_array
-        tba_data = dem_to_be_aligned.data.squeeze()  # This is a numpy 2D array/masked_array
-        inlier_mask = ~glacier_outlines.create_mask(reference_dem)  # This is a boolean numpy 2D array. Note the bitwise not (~) symbol
-        transform = reference_dem.transform  # This is a rio.transform.Affine object.
-
-
+.. literalinclude:: code/coregistration.py
+        :lines: 5-27
 
 The Coreg object
 ^^^^^^^^^^^^^^^^^^^^
@@ -65,6 +43,9 @@ Each coregistration approach has the methods:
 * ``.to_matrix()`` to convert the transform to a 4x4 transformation matrix, if possible.
 
 First, ``.fit()`` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
+
+.. inheritance-diagram:: xdem.coreg
+        :top-classes: xdem.coreg.Coreg
 
 Nuth and Kääb (2011)
 ^^^^^^^^^^^^^^^^^^^^
@@ -82,66 +63,22 @@ A cosine function is solved using these products to find the most probable offse
 This is an iterative process, and cosine functions with suggested shifts are applied in a loop, continuously refining the total offset.
 The loop is stopped either when the maximum iteration limit is reached, or when the :ref:`spatial_stats_nmad` between the two products stops improving significantly.
 
-.. plot::
-
-        import xdem
-        import geoutils as gu
-        import matplotlib.pyplot as plt
-
-        xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-        dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-        dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
-        outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-        inlier_mask = ~outlines_1990.create_mask(dem_2009)
-
-        nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(dem_2009.data, dem_1990.data, transform=dem_2009.transform, inlier_mask=inlier_mask)
-        dem_coreg = nuth_kaab.apply(dem_1990.data, transform=dem_1990.transform)
-
-        ddem_pre = (dem_2009.data - dem_1990.data).filled(np.nan).squeeze()
-        ddem_post = (dem_2009.data - dem_coreg).filled(np.nan).squeeze()
-
-        nmad_pre = xdem.spatial_tools.nmad(ddem_pre[inlier_mask.squeeze()])
-        nmad_post = xdem.spatial_tools.nmad(ddem_post[inlier_mask.squeeze()])
-
-        vlim = 20
-        plt.figure(figsize=(8, 5))
-        plt.subplot2grid((1, 15), (0, 0), colspan=7) 
-        plt.title(f"Before coregistration. NMAD={nmad_pre:.1f} m")
-        plt.imshow(ddem_pre, cmap="coolwarm_r", vmin=-vlim, vmax=vlim)
-        plt.axis("off")
-        plt.subplot2grid((1, 15), (0, 7), colspan=7) 
-        plt.title(f"After coregistration. NMAD={nmad_post:.1f} m")
-        img = plt.imshow(ddem_post, cmap="coolwarm_r", vmin=-vlim, vmax=vlim) 
-        plt.axis("off")
-        plt.subplot2grid((1, 15), (0, 14), colspan=1) 
-        cbar = plt.colorbar(img, fraction=0.4)
-        cbar.set_label("Elevation change (m)")
-        plt.axis("off")
-
-        plt.tight_layout()
-        plt.show()
+.. plot:: code/coregistration_plot_nuth_kaab.py
 
 *Caption: Demonstration of the Nuth and Kääb (2011) approach from Svalbard. Note that large improvements are seen, but nonlinear offsets still exist. The NMAD is calculated from the off-glacier surfaces.*
 
 Limitations
 ***********
-The Nuth and Kääb (2011) coregistation approach does not take rotation into account.
+The Nuth and Kääb (2011) coregistration approach does not take rotation into account.
 Rotational corrections are often needed on for example satellite derived DEMs, so a complementary tool is required for a perfect fit.
 1st or higher degree `Deramping`_ can be used for small rotational corrections.
 For large rotations, the Nuth and Kääb (2011) approach will not work properly, and `ICP`_ is recommended instead.
 
 Example
 *******
-.. code-block:: python
 
-        nuth_kaab = coreg.NuthKaab()
-        # Fit the data to a suitable x/y/z offset.
-        nuth_kaab.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
-
-        # Apply the transformation to the data (or any other data)
-        aligned_dem = nuth_kaab.apply(tba_data, transform=transform)
+.. literalinclude:: code/coregistration.py
+        :lines: 33-38
 
 Deramping
 ^^^^^^^^^
@@ -164,15 +101,9 @@ For large rotational corrections, `ICP`_ is recommended.
 
 Example
 *******
-.. code-block:: python
 
-        # Instantiate a 1st order deramping object.
-        deramp = coreg.Deramp(degree=1)
-        # Fit the data to a suitable polynomial solution.
-        deramp.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
-
-        # Apply the transformation to the data (or any other data)
-        deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform)
+.. literalinclude:: code/coregistration.py
+        :lines: 44-50
 
 
 Bias correction
@@ -193,19 +124,8 @@ Only performs vertical corrections, so it should be combined with another approa
 
 Example
 *******
-.. code-block:: python
-
-        bias_corr = coreg.BiasCorr()
-        # Note that the transform argument is not needed, since it is a simple vertical correction.
-        bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
-
-        # Apply the bias to a DEM
-        corrected_dem = bias_corr.apply(tba_data)
-
-        # Use median bias instead
-        bias_median = coreg.BiasCorr(bias_func=np.median)
-
-        bias_median.fit(... # etc.
+.. literalinclude:: code/coregistration.py
+        :lines: 56-66
 
 ICP
 ^^^
@@ -234,16 +154,8 @@ Due to the repeated nearest neighbour calculations, ICP is often the slowest cor
 
 Example
 *******
-.. code-block:: python
-
-        # Instantiate the object with default parameters
-        icp = coreg.ICP()
-        # Fit the data to a suitable transformation.
-        icp.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
-
-        # Apply the transformation matrix to the data (or any other data)
-        aligned_dem = icp.apply(tba_data, transform=transform)
-
+.. literalinclude:: code/coregistration.py
+        :lines: 72-78
 
 The CoregPipeline object
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -252,14 +164,8 @@ The CoregPipeline object
 Often, more than one coregistration approach is necessary to obtain the best results.
 For example, ICP works poorly with large initial biases, so a ``CoregPipeline`` can be constructed to perform both sequentially:
 
-.. code-block:: python
-
-        pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP()])
-
-        pipeline.fit(...  # etc.
-
-        # This works identically to the syntax above
-        pipeline2 = coreg.BiasCorr() + coreg.ICP()
+.. literalinclude:: code/coregistration.py
+        :lines: 84-89
 
 The ``CoregPipeline`` object exposes the same interface as the ``Coreg`` object.
 The results of a pipeline can be used in other programs by exporting the combined transformation matrix:
