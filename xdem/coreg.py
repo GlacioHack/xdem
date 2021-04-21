@@ -1068,7 +1068,17 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
                  centroid: Optional[tuple[float, float, float]] = None,
                  resampling: Union[int, str] = "cubic") -> np.ndarray:
     """
-    Apply a transformation matrix to a DEM.
+    Apply a 3D transformation matrix to a 2.5D DEM.
+
+    The transformation is applied as a value correction using linear deramping, and 2D image warping.
+
+    1. Convert the DEM into a point cloud (not for gridding; for estimating the DEM shifts).
+    2. Transform the point cloud in 3D using the 4x4 matrix.
+    3. Measure the difference in elevation between the original and transformed points.
+    4. Estimate a linear deramp from the elevation difference, and apply the correction to the DEM values.
+    5. Convert the horizontal coordinates of the transformed points to pixel index coordinates.
+    6. Apply the pixel-wise displacement in 2D using the new pixel coordinates.
+    7. Apply the same displacement to a nodata-mask to exclude previous and/or new nans.
 
     :param dem: The DEM to transform.
     :param transform: The Affine transform object (georeferencing) of the DEM.
