@@ -1,6 +1,8 @@
 sphinx
 numpydoc
 sphinx_rtd_theme
+sphinx_autodoc_typehints
+sphinxcontrib-programoutput
 numpy
 scipy
 rasterio
