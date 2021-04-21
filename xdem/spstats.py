@@ -97,12 +97,12 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                                           **kwargs) -> pd.DataFrame:
     """
     Wrapper to sample multi-range empirical variograms from the data.
+
     If no option is passed, a varying binning is used with adapted ranges and data subsampling
 
     :param dh: elevation differences
     :param gsd: ground sampling distance (if array is 2D on structured grid)
-    :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of
-    the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
+    :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of \the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
     :param range_list: successive ranges with even binning
     :param nsamp: number of samples to randomly draw from the elevation differences
     :param nrun: number of samplings
