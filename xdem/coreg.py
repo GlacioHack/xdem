@@ -1066,7 +1066,7 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
 
 def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
                  centroid: Optional[tuple[float, float, float]] = None,
-                 resampling: Union[int, str] = "cubic") -> np.ndarray:
+                 resampling: Union[int, str] = "bilinear") -> np.ndarray:
     """
     Apply a 3D transformation matrix to a 2.5D DEM.
 

@@ -16,10 +16,8 @@ from typing import Any
 import cv2
 import geoutils as gu
 import numpy as np
-import pytransform3d.transformations
-
 import pytest
-
+import pytransform3d.transformations
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -320,14 +318,15 @@ class TestCoregClass:
         matrix[0, 3] = pixel_shift * self.tba.res[0]
         matrix[2, 3] = -bias
 
-        transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(), self.ref.transform, matrix)
+        transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(),
+                                             self.ref.transform, matrix, resampling="bilinear")
 
         diff = np.asarray(self.ref.data.squeeze() - transformed_dem)
 
         # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 0.05
+        assert np.abs(np.nanmedian(diff)) < 0.01
         # Check that the NMAD is low
-        assert spatial_tools.nmad(diff) < 3
+        assert spatial_tools.nmad(diff) < 0.01
 
         def rotation_matrix(rotation=30):
             rotation = np.deg2rad(rotation)
