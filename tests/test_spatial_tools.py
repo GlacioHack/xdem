@@ -12,7 +12,6 @@ import warnings
 import geoutils as gu
 import numpy as np
 import rasterio as rio
-import scipy.optimize
 
 import xdem
 from xdem import examples

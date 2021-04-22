@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from typing import Callable, Sequence, Union
+from typing import Callable, Union
 
 import geoutils as gu
 import numpy as np
@@ -214,7 +214,7 @@ def merge_rasters(rasters: list[gu.georaster.Raster], reference: int = 0, merge_
 
 
 def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[float, tuple[float, float]],
-              azimuth: float = 30., altitude: float = 30., z_factor: float = 1.0) -> np.ndarray:
+              azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0) -> np.ndarray:
     """
     Generate a hillshade from the given DEM.
 
