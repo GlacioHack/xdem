@@ -279,4 +279,5 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     shaded[mask] = np.nan
 
     # Return the hillshade, scaled to uint8 ranges.
-    return np.clip(255 * (shaded + 0.5) / 2, 0, 255).astype("float32")
+    # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
+    return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")

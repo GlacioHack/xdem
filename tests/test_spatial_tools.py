@@ -5,6 +5,7 @@ Author(s):
 
 """
 import os
+import shutil
 import subprocess
 import tempfile
 import warnings
@@ -68,7 +69,7 @@ def test_hillshade():
         temp_hillshade_path = os.path.join(temp_dir.name, "hillshade.tif")
         gdal_commands = ["gdaldem", "hillshade",
                          filepath, temp_hillshade_path,
-                         "-az", "30", "-alt", "30"]
+                         "-az", "315", "-alt", "45"]
         subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
 
         data = gu.Raster(temp_hillshade_path).data
@@ -78,13 +79,14 @@ def test_hillshade():
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
     dem = xdem.DEM(filepath)
 
-    gdal_hillshade = make_gdal_hillshade(filepath)
     xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
-    diff = gdal_hillshade - xdem_hillshade
+    if shutil.which("gdaldem") is not None:  # Compare with a GDAL version if GDAL commands are available.
+        gdal_hillshade = make_gdal_hillshade(filepath)
+        diff = gdal_hillshade - xdem_hillshade
 
-    # Check that the xdem and gdal hillshades are relatively similar.
-    assert np.mean(diff) < 5
-    assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
+        # Check that the xdem and gdal hillshades are relatively similar.
+        assert np.mean(diff) < 5
+        assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
 
     # Try giving the hillshade invalid arguments.
     try:
