@@ -1066,7 +1066,8 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
 
 def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
                  centroid: Optional[tuple[float, float, float]] = None,
-                 resampling: Union[int, str] = "bilinear") -> np.ndarray:
+                 resampling: Union[int, str] = "bilinear",
+                 dilate_mask: bool = False) -> np.ndarray:
     """
     Apply a 3D transformation matrix to a 2.5D DEM.
 
@@ -1086,6 +1087,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     :param invert: Invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to lower left corner.
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
+    :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
 
     :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
@@ -1117,7 +1119,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Create a filled version of the DEM. (skimage doesn't like nans)
-    filled_dem = np.where(~nan_mask, demc, -9999)
+    filled_dem = np.where(~nan_mask, demc, np.median(demc[~nan_mask]))
 
     # Get the centre coordinates of the DEM pixels.
     x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
@@ -1192,6 +1194,9 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         cval=1,
         preserve_range=True
     ) > 0.5  # Due to different interpolation approaches, everything above 0.5 is assumed to be 1 (True)
+
+    if dilate_mask:
+        tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
 
     # Apply the transformed nan_mask
     transformed_dem[tr_nan_mask] = np.nan

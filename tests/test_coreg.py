@@ -321,6 +321,13 @@ class TestCoregClass:
         transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(),
                                              self.ref.transform, matrix, resampling="bilinear")
 
+        # Dilate the mask a bit to ensure that edge pixels are removed.
+        transformed_dem_dilated = coreg.apply_matrix(
+            shifted_dem.data.squeeze(),
+            self.ref.transform, matrix, resampling="bilinear", dilate_mask=True)
+        # Validate that some pixels were removed.
+        assert np.count_nonzero(np.isfinite(transformed_dem)) > np.count_nonzero(np.isfinite(transformed_dem_dilated))
+
         diff = np.asarray(self.ref.data.squeeze() - transformed_dem)
 
         # Check that the median is very close to zero
