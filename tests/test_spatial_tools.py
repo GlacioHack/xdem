@@ -60,66 +60,6 @@ def test_merge_rasters():
     assert np.abs(np.nanmean(diff)) < 0.05
 
 
-def find_coefs(plot=True):
-    filepaths = [
-        xdem.examples.FILEPATHS["longyearbyen_ref_dem"],
-        "/remotes/buffet/Maud/Erik/Osorterat/Backup/Master/Breinosa/Data/Rieperbreen/DEM/Rieperbreen_DEM_2019_190901.tif",
-    ]
-    temp_dir = tempfile.TemporaryDirectory()
-
-    temp_hillshade_paths = [os.path.join(temp_dir.name, os.path.basename(filepath)) for filepath in filepaths]
-    dems = [xdem.DEM(filepath) for filepath in filepaths]
-
-    gdal_hillshades = []
-
-    for i, filepath in enumerate(filepaths):
-        gdal_commands = ["gdaldem", "hillshade",
-                         filepath, temp_hillshade_paths[i],
-                         "-az", "30", "-alt", "30"]
-        subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
-
-        gdal_hillshade = gu.Raster(temp_hillshade_paths[i]).data
-        gdal_hillshades.append(gdal_hillshade)
-
-    def eval_coefs(coeffs):
-
-        diffs = []
-        for i, dem in enumerate(dems):
-            hillshade = xdem.spatial_tools.hillshade(dem.data, res=dem.res, coeffs=coeffs)
-            diff = gdal_hillshades[i] - hillshade
-
-            diffs.append(diff.flatten())
-
-        diffs = np.concatenate(diffs)
-        diffs = diffs[np.isfinite(diffs)]
-
-        return diffs
-
-    coeffs = scipy.optimize.least_squares(eval_coefs, [0.1, 0.1, 1]).x
-    print(coeffs)
-
-    if plot:
-        import matplotlib.pyplot as plt
-
-        imshow_params = dict(
-            cmap="Greys_r",
-            vmin=0,
-            vmax=255
-        )
-        for i, dem in enumerate(dems):
-            hillshade = xdem.spatial_tools.hillshade(dem.data, res=dem.res, coeffs=coeffs)
-            plt.close()
-            plt.figure(figsize=(8, 5), dpi=200)
-
-            plt.subplot(121)
-            plt.imshow(gdal_hillshades[i].squeeze(), **imshow_params)
-            plt.subplot(122)
-            plt.imshow(hillshade.squeeze(), **imshow_params)
-            plt.show()
-
-    return coeffs
-
-
 def test_hillshade():
     """Test the hillshade algorithm, partly by comparing it to the GDAL hillshade function."""
     warnings.simplefilter("error")
