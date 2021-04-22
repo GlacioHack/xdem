@@ -438,7 +438,7 @@ class Coreg:
     """
 
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
-    _is_rigid: Optional[bool] = None
+    _is_affine: Optional[bool] = None
 
     def __init__(self, meta: Optional[dict[str, Any]] = None, matrix: Optional[np.ndarray] = None):
         """Instantiate a generic Coreg method."""
@@ -536,7 +536,7 @@ class Coreg:
             applied_dem = self._apply_func(dem_array, transform)  # pylint: disable=assignment-from-no-return
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
-            if self.is_rigid:  # This only works on it's rigid, however.
+            if self.is_affine:  # This only works on it's rigid, however.
                 applied_dem = apply_matrix(dem_array, transform=transform, matrix=self.to_matrix())
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
@@ -561,7 +561,7 @@ class Coreg:
             transformed_points = self._apply_pts_func(coords)
         # If it doesn't exist, use opencv's perspectiveTransform
         except NotImplementedError:
-            if self.is_rigid:  # This only works on it's rigid, however.
+            if self.is_affine:  # This only works on it's rigid, however.
                 transformed_points = cv2.perspectiveTransform(coords.reshape(1, -1, 3), self.to_matrix()).squeeze()
             else:
                 raise ValueError("Coreg method is non-rigid but has not implemented _apply_pts_func")
@@ -569,18 +569,18 @@ class Coreg:
         return transformed_points
 
     @property
-    def is_rigid(self) -> bool:
-        """Check if the transform be explained by a rigid transform."""
-        # _is_rigid is found by seeing if to_matrix() raises an error.
+    def is_affine(self) -> bool:
+        """Check if the transform be explained by a 3D affine transform."""
+        # _is_affine is found by seeing if to_matrix() raises an error.
         # If this hasn't been done yet, it will be None
-        if self._is_rigid is None:
+        if self._is_affine is None:
             try:  # See if to_matrix() raises an error.
                 self.to_matrix()
-                self._is_rigid = True
+                self._is_affine = True
             except (ValueError, NotImplementedError):
-                self._is_rigid = False
+                self._is_affine = False
 
-        return self._is_rigid
+        return self._is_affine
 
     def to_matrix(self) -> np.ndarray:
         """Convert the transform to a 4x4 transformation matrix."""
