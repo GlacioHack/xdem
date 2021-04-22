@@ -1,6 +1,8 @@
 sphinx
 numpydoc
 sphinx_rtd_theme
+sphinx_autodoc_typehints
+sphinxcontrib-programoutput
 numpy
 scipy
 rasterio
@@ -10,3 +12,4 @@ tqdm
 git+https://github.com/GlacioHack/GeoUtils.git
 scikit-gstat
 flake8
+opencv-contrib-python

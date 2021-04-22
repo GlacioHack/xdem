@@ -4,6 +4,7 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
+from distutils.dir_util import copy_tree
 
 EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../", "examples/"))
 # Absolute filepaths to the example files.
@@ -60,4 +61,4 @@ def download_longyearbyen_examples(overwrite: bool = False):
     )
 
     # Copy the data to the examples directory.
-    shutil.copytree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen/data"), dirs_exist_ok=True)
+    copy_tree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen/data"))
