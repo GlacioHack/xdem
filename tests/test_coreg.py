@@ -346,20 +346,25 @@ class TestCoregClass:
             return matrix
 
         rotation = 4
+        centroid = [np.mean([self.ref.bounds.left, self.ref.bounds.right]), np.mean(
+            [self.ref.bounds.top, self.ref.bounds.bottom]), self.ref.data.mean()]
         rotated_dem = coreg.apply_matrix(
             self.ref.data.squeeze(),
             self.ref.transform,
             rotation_matrix(rotation),
+            centroid=centroid
         )
-        # Make sure that the rotated DEM is way off.
-        assert np.abs(np.nanmedian(rotated_dem - self.ref.data.data)) > 400
+        # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
+        assert np.abs(np.nanmedian(rotated_dem - self.ref.data.data)) < 1
+        assert spatial_tools.nmad(rotated_dem - self.ref.data.data) > 500
 
         # Apply a rotation in the opposite direction
         unrotated_dem = coreg.apply_matrix(
             rotated_dem,
             self.ref.transform,
-            rotation_matrix(-rotation * 0.989)  # This is not exactly -rotation, probably due to displaced pixels.
-        )
+            rotation_matrix(-rotation * 0.99),
+            centroid=centroid
+        ) + 4.0  # TODO: Check why the 0.99 rotation and +4 biases were introduced.
 
         diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
 

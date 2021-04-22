@@ -536,8 +536,10 @@ class Coreg:
             applied_dem = self._apply_func(dem_array, transform)  # pylint: disable=assignment-from-no-return
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
-            if self.is_affine:  # This only works on it's rigid, however.
-                applied_dem = apply_matrix(dem_array, transform=transform, matrix=self.to_matrix())
+            if self.is_affine:  # This only works on it's affine, however.
+                # Apply the matrix around the centroid (if defined, otherwise just from the center).
+                applied_dem = apply_matrix(dem_array, transform=transform,
+                                           matrix=self.to_matrix(), centroid=self._meta.get("centroid"))
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
@@ -556,13 +558,21 @@ class Coreg:
             raise AssertionError(".fit() does not seem to have been called yet")
         assert coords.shape[1] == 3, f"'coords' shape must be (N, 3). Given shape: {coords.shape}"
 
+        coords_c = coords.copy()
+
         # See if an _apply_pts_func exists
         try:
             transformed_points = self._apply_pts_func(coords)
         # If it doesn't exist, use opencv's perspectiveTransform
         except NotImplementedError:
             if self.is_affine:  # This only works on it's rigid, however.
-                transformed_points = cv2.perspectiveTransform(coords.reshape(1, -1, 3), self.to_matrix()).squeeze()
+                # Transform the points (around the centroid if it exists).
+                if self._meta.get("centroid") is not None:
+                    coords_c -= self._meta["centroid"]
+                transformed_points = cv2.perspectiveTransform(coords_c.reshape(1, -1, 3), self.to_matrix()).squeeze()
+                if self._meta.get("centroid") is not None:
+                    transformed_points += self._meta["centroid"]
+
             else:
                 raise ValueError("Coreg method is non-rigid but has not implemented _apply_pts_func")
 
@@ -735,9 +745,11 @@ class ICP(Coreg):
         points: dict[str, np.ndarray] = {}
         # Generate the x and y coordinates for the reference_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
+
+        centroid = np.array([np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0])
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
-        x_coords -= bounds.left
-        y_coords -= bounds.bottom
+        x_coords -= centroid[0]
+        y_coords -= centroid[1]
         for key, dem in zip(["ref", "tba"], [ref_dem, tba_dem]):
 
             gradient_x, gradient_y = np.gradient(dem)
@@ -768,6 +780,7 @@ class ICP(Coreg):
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
+        self._meta["centroid"] = centroid
         self._meta["matrix"] = matrix
 
 
@@ -1085,7 +1098,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     :param transform: The Affine transform object (georeferencing) of the DEM.
     :param matrix: A 4x4 transformation matrix to apply to the DEM.
     :param invert: Invert the transformation matrix.
-    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to lower left corner.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
     :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
 
@@ -1128,7 +1141,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
 
     # If a centroid was not given, default to the bottom left corner.
     if centroid is None:
-        centroid = (bounds.left, bounds.bottom, 0.0)
+        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
     else:
         assert len(centroid) == 3, f"Expected centroid to be 3D X/Y/Z coordinate. Got shape of {len(centroid)}"
 
