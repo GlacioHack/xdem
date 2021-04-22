@@ -4,10 +4,15 @@ Author(s):
     Erik S. Holmlund
 
 """
+import os
+import subprocess
+import tempfile
+import warnings
+
 import geoutils as gu
-import matplotlib.pyplot as plt
 import numpy as np
 import rasterio as rio
+import scipy.optimize
 
 import xdem
 from xdem import examples
@@ -53,3 +58,116 @@ def test_merge_rasters():
     diff = dem.data - merged_dem.data
 
     assert np.abs(np.nanmean(diff)) < 0.05
+
+
+def find_coefs(plot=True):
+    filepaths = [
+        xdem.examples.FILEPATHS["longyearbyen_ref_dem"],
+        "/remotes/buffet/Maud/Erik/Osorterat/Backup/Master/Breinosa/Data/Rieperbreen/DEM/Rieperbreen_DEM_2019_190901.tif",
+    ]
+    temp_dir = tempfile.TemporaryDirectory()
+
+    temp_hillshade_paths = [os.path.join(temp_dir.name, os.path.basename(filepath)) for filepath in filepaths]
+    dems = [xdem.DEM(filepath) for filepath in filepaths]
+
+    gdal_hillshades = []
+
+    for i, filepath in enumerate(filepaths):
+        gdal_commands = ["gdaldem", "hillshade",
+                         filepath, temp_hillshade_paths[i],
+                         "-az", "30", "-alt", "30"]
+        subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
+
+        gdal_hillshade = gu.Raster(temp_hillshade_paths[i]).data
+        gdal_hillshades.append(gdal_hillshade)
+
+    def eval_coefs(coeffs):
+
+        diffs = []
+        for i, dem in enumerate(dems):
+            hillshade = xdem.spatial_tools.hillshade(dem.data, res=dem.res, coeffs=coeffs)
+            diff = gdal_hillshades[i] - hillshade
+
+            diffs.append(diff.flatten())
+
+        diffs = np.concatenate(diffs)
+        diffs = diffs[np.isfinite(diffs)]
+
+        return diffs
+
+    coeffs = scipy.optimize.least_squares(eval_coefs, [0.1, 0.1, 1]).x
+    print(coeffs)
+
+    if plot:
+        import matplotlib.pyplot as plt
+
+        imshow_params = dict(
+            cmap="Greys_r",
+            vmin=0,
+            vmax=255
+        )
+        for i, dem in enumerate(dems):
+            hillshade = xdem.spatial_tools.hillshade(dem.data, res=dem.res, coeffs=coeffs)
+            plt.close()
+            plt.figure(figsize=(8, 5), dpi=200)
+
+            plt.subplot(121)
+            plt.imshow(gdal_hillshades[i].squeeze(), **imshow_params)
+            plt.subplot(122)
+            plt.imshow(hillshade.squeeze(), **imshow_params)
+            plt.show()
+
+    return coeffs
+
+
+def test_hillshade():
+    """Test the hillshade algorithm, partly by comparing it to the GDAL hillshade function."""
+    warnings.simplefilter("error")
+
+    def make_gdal_hillshade(filepath) -> np.ndarray:
+        temp_dir = tempfile.TemporaryDirectory()
+        temp_hillshade_path = os.path.join(temp_dir.name, "hillshade.tif")
+        gdal_commands = ["gdaldem", "hillshade",
+                         filepath, temp_hillshade_path,
+                         "-az", "30", "-alt", "30"]
+        subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
+
+        data = gu.Raster(temp_hillshade_path).data
+        temp_dir.cleanup()
+        return data
+
+    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+    dem = xdem.DEM(filepath)
+
+    gdal_hillshade = make_gdal_hillshade(filepath)
+    xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
+    diff = gdal_hillshade - xdem_hillshade
+
+    # Check that the xdem and gdal hillshades are relatively similar.
+    assert np.mean(diff) < 5
+    assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
+
+    # Try giving the hillshade invalid arguments.
+    try:
+        xdem.spatial_tools.hillshade(dem.data, dem.res, azimuth=361)
+    except ValueError as exception:
+        if "Azimuth must be a value between 0 and 360" not in str(exception):
+            raise exception
+    try:
+        xdem.spatial_tools.hillshade(dem.data, dem.res, altitude=91)
+    except ValueError as exception:
+        if "Altitude must be a value between 0 and 90" not in str(exception):
+            raise exception
+
+    try:
+        xdem.spatial_tools.hillshade(dem.data, dem.res, z_factor=np.inf)
+    except ValueError as exception:
+        if "z_factor must be a non-negative finite value" not in str(exception):
+            raise exception
+
+    # Introduce some nans
+    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+    dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+
+    # Make sure that this doesn't create weird division warnings.
+    xdem.spatial_tools.hillshade(dem.data, dem.res)
