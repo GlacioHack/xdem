@@ -78,10 +78,8 @@ class TestLocalHypsometric:
         )
 
         # Test area calculation with differing pixel x/y resolution.
-        # Also test that ddem_bins can be a DataFrame (as long as the column name 'value' exists)
-        ddem_bins.name = "value"
         xdem.volume.calculate_hypsometry_area(
-            ddem_bins.to_frame(),
+            ddem_bins,
             self.dem_2009.data[self.mask],
             pixel_size=(self.dem_2009.res[0], self.dem_2009.res[0] + 1)
         )
