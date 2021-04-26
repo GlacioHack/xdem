@@ -319,7 +319,7 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 
     gradient_model = scipy.interpolate.interp1d(
         interpolated_gradient.index.mid,
-        interpolated_gradient.values,
+        interpolated_gradient["value"].values,
         fill_value="extrapolate"
     )
 
