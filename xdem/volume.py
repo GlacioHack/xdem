@@ -4,12 +4,12 @@ from __future__ import annotations
 import warnings
 from typing import Callable, Optional, Union
 
-import numpy as np
+import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
-import cv2
 
 import xdem
 
@@ -96,7 +96,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
 
 
 def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="value", method="polynomial", order=3,
-                                 count_threshold: Optional[int] = None) -> pd.Series:
+                                 count_threshold: Optional[int] = None) -> pd.DataFrame:
     """
     Interpolate hypsometric bins using any valid Pandas interpolation technique.
 
@@ -146,7 +146,6 @@ def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str 
         assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
-
 
     # Remove invalid bins
     valids = np.isfinite(np.asarray(bins[value_column]))
@@ -272,7 +271,7 @@ to interpolate from. The default is 10.
         # If input is masked array, return a masked array
         extrap_mask = (interpolated_array != array.data)
         if isinstance(array, np.ma.masked_array):
-            interpolated_array = np.ma.masked_array(interpolated_array, mask = (nan_mask & ~extrap_mask))
+            interpolated_array = np.ma.masked_array(interpolated_array, mask=(nan_mask & ~extrap_mask))
 
     return interpolated_array.reshape(array.shape)
 
@@ -382,7 +381,7 @@ for areas filling the min_coverage criterion.
     dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
 
     # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
-    inlier_mask = (mask !=0) & (~ddem_mask & ~dem_mask)
+    inlier_mask = (mask != 0) & (~ddem_mask & ~dem_mask)
     if np.count_nonzero(inlier_mask) == 0:
         warnings.warn("No valid data found within mask, returning copy", UserWarning)
         return np.copy(ddem)
@@ -393,7 +392,7 @@ for areas filling the min_coverage criterion.
         plt.show()
 
     # List of indexes to loop on
-    geometry_index = np.unique(mask[mask!=0])
+    geometry_index = np.unique(mask[mask != 0])
     print("Found {:d} geometries".format(len(geometry_index)))
 
     # Get fraction of valid pixels for each geometry
@@ -440,7 +439,7 @@ for areas filling the min_coverage criterion.
 
         if plot:
             local_ddem = np.where(local_inlier_mask, ddem, np.nan)
-            vmax = max(np.abs(np.nanpercentile(local_ddem, [2,98])))
+            vmax = max(np.abs(np.nanpercentile(local_ddem, [2, 98])))
             rowmin, rowmax, colmin, colmax = xdem.spatial_tools.get_valid_extent(mask == index)
 
             fig = plt.figure(figsize=(12, 8))
@@ -480,7 +479,7 @@ for areas filling the min_coverage criterion.
 
     output = np.ma.masked_array(
         corrected_ddem,
-        mask=(corrected_ddem == -9999)  #mask=((mask != 0) & (ddem_mask | dem_mask))
+        mask=(corrected_ddem == -9999)  # mask=((mask != 0) & (ddem_mask | dem_mask))
     ).reshape(orig_shape)
 
     assert output is not None
