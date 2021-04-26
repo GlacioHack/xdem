@@ -109,21 +109,28 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
     :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
     :returns: Bins interpolated with the chosen interpolation method.
     """
+    # Copy the bins that will be filled.
     bins = hypsometric_bins.copy()
+    # Temporarily set the index to be the midpoint (for interpolation)
     bins.index = bins.index.mid
 
+    # Set all bins that are under a (potentially) specified count to NaN (they should be excluded from interpolation)
     if count_threshold is not None:
-        assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
+        assert "count" in hypsometric_bins.columns, "'count' not a column in the dataframe"
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
 
-    interpolated_values = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
+    # Interpolate all bins that are NaN.
+    bins[value_column] = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
 
+    # If some points were temporarily set to NaN (to exclude from the interpolation), re-set them.
     if count_threshold is not None:
-        interpolated_values.loc[bins_under_threshold] = hypsometric_bins.loc[bins_under_threshold.values, value_column]
-    interpolated_values.index = hypsometric_bins.index
+        bins.loc[bins_under_threshold, value_column] = hypsometric_bins.loc[bins_under_threshold.values, value_column]
 
-    return interpolated_values
+    # Return the index to intervals instead of the midpoint.
+    bins.index = hypsometric_bins.index
+
+    return bins
 
 
 def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str = "value", degree: int = 3,
