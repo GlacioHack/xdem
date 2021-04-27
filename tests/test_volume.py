@@ -1,3 +1,5 @@
+import warnings
+
 import geoutils as gu
 import numpy as np
 import pandas as pd
@@ -14,6 +16,7 @@ class TestLocalHypsometric:
     dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
     dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
     outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    all_outlines = outlines.copy()
     # Filter to only look at the Scott Turnerbreen glacier
     outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
     # Create a mask where glacier areas are True
@@ -157,3 +160,30 @@ class TestLocalHypsometric:
         )
 
         assert custom_bins.shape[0] == quantile_bins.shape[0]
+
+    def test_regional_hypsometric_signal(self):
+
+        warnings.simplefilter("error")
+
+        ddem = self.dem_2009.data - self.dem_1990.data
+
+        glacier_index_map = self.all_outlines.rasterize(self.dem_2009)
+
+        signal = xdem.volume.get_regional_hypsometric_signal(
+            ddem=ddem, ref_dem=self.dem_2009.data, glacier_index_map=glacier_index_map)
+
+        assert signal["w_mean"].min() >= 0
+        assert signal["w_mean"].max() <= 1
+
+        if True:
+            import matplotlib.pyplot as plt
+            plt.fill_between(signal.index.mid, signal["median"] - signal["std"],
+                             signal["median"] + signal["std"], label="Median±std")
+            plt.plot(signal.index.mid, signal["median"], color="black", linestyle=":", label="Median")
+            plt.plot(signal.index.mid, signal["w_mean"], color="black", label="Weighted mean")
+
+            plt.xlabel("Normalized elevation")
+            plt.ylabel("Normalized elevation change")
+            plt.legend()
+
+            plt.show()
