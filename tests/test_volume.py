@@ -1,3 +1,5 @@
+import warnings
+
 import geoutils as gu
 import numpy as np
 import pandas as pd
@@ -14,6 +16,7 @@ class TestLocalHypsometric:
     dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
     dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
     outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    all_outlines = outlines.copy()
     # Filter to only look at the Scott Turnerbreen glacier
     outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
     # Create a mask where glacier areas are True
@@ -157,3 +160,49 @@ class TestLocalHypsometric:
         )
 
         assert custom_bins.shape[0] == quantile_bins.shape[0]
+
+    def test_regional_hypsometric_signal(self):
+
+        warnings.simplefilter("error")
+
+        # Extract a normalized regional hypsometric signal.
+        ddem = self.dem_2009.data - self.dem_1990.data
+        glacier_index_map = self.all_outlines.rasterize(self.dem_2009)
+        signal = xdem.volume.get_regional_hypsometric_signal(
+            ddem=ddem, ref_dem=self.dem_2009.data, glacier_index_map=glacier_index_map)
+
+        assert signal["w_mean"].min() >= 0
+        assert signal["w_mean"].max() <= 1
+
+        if False:
+            import matplotlib.pyplot as plt
+            plt.fill_between(signal.index.mid, signal["median"] - signal["std"],
+                             signal["median"] + signal["std"], label="Median±std")
+            plt.plot(signal.index.mid, signal["median"], color="black", linestyle=":", label="Median")
+            plt.plot(signal.index.mid, signal["w_mean"], color="black", label="Weighted mean")
+
+            plt.xlabel("Normalized elevation")
+            plt.ylabel("Normalized elevation change")
+            plt.legend()
+
+            plt.show()
+
+        # Try the normalized regional hypsometric interpolation.
+        # Synthesize random nans in 80% of the data.
+        ddem.mask.ravel()[np.random.choice(ddem.data.size, int(ddem.data.size * 0.80), replace=False)] = True
+        # Fill the dDEM using the de-normalized signal.
+        filled_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
+            voided_ddem=ddem,
+            ref_dem=self.dem_2009.data,
+            glacier_index_map=glacier_index_map
+        )
+
+        # Extract the finite glacier values.
+        changes = ddem.data.squeeze()[glacier_index_map > 0]
+        changes = changes[np.isfinite(changes)]
+        interp_changes = filled_ddem[glacier_index_map > 0]
+        interp_changes = interp_changes[np.isfinite(interp_changes)]
+
+        # Validate that the interpolated (20% data) means and stds are similar to the original (100% data)
+        assert abs(changes.mean() - interp_changes.mean()) < 1
+        assert abs(changes.std() - interp_changes.std()) < 1
