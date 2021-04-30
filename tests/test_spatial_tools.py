@@ -4,10 +4,16 @@ Author(s):
     Erik S. Holmlund
 
 """
+import os
+import shutil
+import subprocess
+import tempfile
+import warnings
+
 import geoutils as gu
-import matplotlib.pyplot as plt
 import numpy as np
 import rasterio as rio
+from osgeo import gdal
 
 import xdem
 from xdem import examples
@@ -53,3 +59,62 @@ def test_merge_rasters():
     diff = dem.data - merged_dem.data
 
     assert np.abs(np.nanmean(diff)) < 0.05
+
+
+def test_hillshade():
+    """Test the hillshade algorithm, partly by comparing it to the GDAL hillshade function."""
+    warnings.simplefilter("error")
+
+    def make_gdal_hillshade(filepath) -> np.ndarray:
+        temp_dir = tempfile.TemporaryDirectory()
+        temp_hillshade_path = os.path.join(temp_dir.name, "hillshade.tif")
+        # gdal_commands = ["gdaldem", "hillshade",
+        #                 filepath, temp_hillshade_path,
+        #                 "-az", "315", "-alt", "45"]
+        #subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
+        gdal.DEMProcessing(
+            destName=temp_hillshade_path,
+            srcDS=filepath,
+            processing="hillshade",
+            options=gdal.DEMProcessingOptions(azimuth=315, altitude=45)
+        )
+
+        data = gu.Raster(temp_hillshade_path).data
+        temp_dir.cleanup()
+        return data
+
+    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+    dem = xdem.DEM(filepath)
+
+    xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
+    gdal_hillshade = make_gdal_hillshade(filepath)
+    diff = gdal_hillshade - xdem_hillshade
+
+    # Check that the xdem and gdal hillshades are relatively similar.
+    assert np.mean(diff) < 5
+    assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
+
+    # Try giving the hillshade invalid arguments.
+    try:
+        xdem.spatial_tools.hillshade(dem.data, dem.res, azimuth=361)
+    except ValueError as exception:
+        if "Azimuth must be a value between 0 and 360" not in str(exception):
+            raise exception
+    try:
+        xdem.spatial_tools.hillshade(dem.data, dem.res, altitude=91)
+    except ValueError as exception:
+        if "Altitude must be a value between 0 and 90" not in str(exception):
+            raise exception
+
+    try:
+        xdem.spatial_tools.hillshade(dem.data, dem.res, z_factor=np.inf)
+    except ValueError as exception:
+        if "z_factor must be a non-negative finite value" not in str(exception):
+            raise exception
+
+    # Introduce some nans
+    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+    dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+
+    # Make sure that this doesn't create weird division warnings.
+    xdem.spatial_tools.hillshade(dem.data, dem.res)
