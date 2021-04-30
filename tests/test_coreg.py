@@ -17,6 +17,7 @@ import cv2
 import geoutils as gu
 import numpy as np
 import pytest
+import pytransform3d.transformations
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -47,6 +48,30 @@ class TestCoregClass:
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
+    def test_from_classmethods(self):
+        warnings.simplefilter("error")
+
+        # Check that the from_matrix function works as expected.
+        bias = 5
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[2, 3] = bias
+        coreg_obj = coreg.Coreg.from_matrix(matrix)
+        transformed_points = coreg_obj.apply_pts(self.points)
+        assert transformed_points[0, 2] == bias
+
+        # Check that the from_translation function works as expected.
+        x_offset = 5
+        coreg_obj2 = coreg.Coreg.from_translation(x_off=x_offset)
+        transformed_points2 = coreg_obj2.apply_pts(self.points)
+        assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
+
+        # Try to make a Coreg object from a nan translation (should fail).
+        try:
+            coreg.Coreg.from_translation(np.nan)
+        except ValueError as exception:
+            if "non-finite values" not in str(exception):
+                raise exception
+
     def test_bias(self):
         warnings.simplefilter("error")
 
@@ -70,7 +95,7 @@ class TestCoregClass:
         assert biascorr.apply_pts(self.points)[0, 2] == biascorr._meta["bias"]
 
         # Apply the model to correct the DEM
-        tba_unbiased = biascorr.apply(self.tba.data, None)
+        tba_unbiased = biascorr.apply(self.tba.data, self.ref.transform)
 
         # Create a new bias correction model
         biascorr2 = coreg.BiasCorr()
@@ -120,7 +145,7 @@ class TestCoregClass:
         transformed_points = nuth_kaab.apply_pts(self.points)
 
         # Check that the x shift is close to the pixel_shift * image resolution
-        assert abs((transformed_points[0, 0] - self.points[0, 0]) + pixel_shift * self.ref.res[0]) < 0.1
+        assert abs((transformed_points[0, 0] - self.points[0, 0]) - pixel_shift * self.ref.res[0]) < 0.1
         # Check that the z shift is close to the original bias.
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + bias) < 0.1
 
@@ -265,6 +290,128 @@ class TestCoregClass:
         matrix_diff = np.abs(icp_full.to_matrix() - icp_sub.to_matrix())
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
+
+    def test_apply_matrix(self):
+        warnings.simplefilter("error")
+        # This should maybe be its own function, but would just repeat the data loading procedure..
+
+        # Test only bias (it should just apply the bias and not make anything else)
+        bias = 5
+        matrix = np.diag(np.ones(4, float))
+        matrix[2, 3] = bias
+        transformed_dem = coreg.apply_matrix(self.ref.data.squeeze(), self.ref.transform, matrix)
+        reverted_dem = transformed_dem - bias
+
+        # Check that the revered DEM has the exact same values as the initial one
+        # (resampling is not an exact science, so this will only apply for bias corrections)
+        assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(self.ref.data))
+
+        # Synthesize a shifted and vertically offset DEM
+        pixel_shift = 11
+        bias = 5
+        shifted_dem = self.ref.data.squeeze().copy()
+        shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
+        shifted_dem[:, :pixel_shift] = np.nan
+        shifted_dem += bias
+
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[0, 3] = pixel_shift * self.tba.res[0]
+        matrix[2, 3] = -bias
+
+        transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(),
+                                             self.ref.transform, matrix, resampling="bilinear")
+
+        # Dilate the mask a bit to ensure that edge pixels are removed.
+        transformed_dem_dilated = coreg.apply_matrix(
+            shifted_dem.data.squeeze(),
+            self.ref.transform, matrix, resampling="bilinear", dilate_mask=True)
+        # Validate that some pixels were removed.
+        assert np.count_nonzero(np.isfinite(transformed_dem)) > np.count_nonzero(np.isfinite(transformed_dem_dilated))
+
+        diff = np.asarray(self.ref.data.squeeze() - transformed_dem)
+
+        # Check that the median is very close to zero
+        assert np.abs(np.nanmedian(diff)) < 0.01
+        # Check that the NMAD is low
+        assert spatial_tools.nmad(diff) < 0.01
+
+        def rotation_matrix(rotation=30):
+            rotation = np.deg2rad(rotation)
+            matrix = np.array([
+                [1, 0, 0, 0],
+                [0, np.cos(rotation), -np.sin(rotation), 0],
+                [0, np.sin(rotation), np.cos(rotation), 0],
+                [0, 0, 0, 1]
+            ])
+            return matrix
+
+        rotation = 4
+        centroid = [np.mean([self.ref.bounds.left, self.ref.bounds.right]), np.mean(
+            [self.ref.bounds.top, self.ref.bounds.bottom]), self.ref.data.mean()]
+        rotated_dem = coreg.apply_matrix(
+            self.ref.data.squeeze(),
+            self.ref.transform,
+            rotation_matrix(rotation),
+            centroid=centroid
+        )
+        # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
+        assert np.abs(np.nanmedian(rotated_dem - self.ref.data.data)) < 1
+        assert spatial_tools.nmad(rotated_dem - self.ref.data.data) > 500
+
+        # Apply a rotation in the opposite direction
+        unrotated_dem = coreg.apply_matrix(
+            rotated_dem,
+            self.ref.transform,
+            rotation_matrix(-rotation * 0.99),
+            centroid=centroid
+        ) + 4.0  # TODO: Check why the 0.99 rotation and +4 biases were introduced.
+
+        diff = np.asarray(self.ref.data.squeeze() - unrotated_dem)
+
+        if False:
+            import matplotlib.pyplot as plt
+
+            vmin = 0
+            vmax = 1500
+            extent = (self.ref.bounds.left, self.ref.bounds.right, self.ref.bounds.bottom, self.ref.bounds.top)
+            plot_params = dict(
+                extent=extent,
+                vmin=vmin,
+                vmax=vmax
+            )
+            plt.figure(figsize=(22, 4), dpi=100)
+            plt.subplot(151)
+            plt.title("Original")
+            plt.imshow(self.ref.data.squeeze(), **plot_params)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
+            plt.subplot(152)
+            plt.title(f"Rotated {rotation} degrees")
+            plt.imshow(rotated_dem, **plot_params)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
+            plt.subplot(153)
+            plt.title(f"De-rotated {-rotation} degrees")
+            plt.imshow(unrotated_dem, **plot_params)
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
+            plt.subplot(154)
+            plt.title("Original vs. de-rotated")
+            plt.imshow(diff, extent=extent, vmin=-10, vmax=10, cmap="coolwarm_r")
+            plt.colorbar()
+            plt.xlim(*extent[:2])
+            plt.ylim(*extent[2:])
+            plt.subplot(155)
+            plt.title("Original vs. de-rotated")
+            plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-10, 10, 100))
+            plt.tight_layout(w_pad=0.05)
+            plt.show()
+
+        # Check that the median is very close to zero
+        assert np.abs(np.nanmedian(diff)) < 0.5
+        # Check that the NMAD is low
+        assert spatial_tools.nmad(diff) < 5
+        print(np.nanmedian(diff), spatial_tools.nmad(diff))
 
     def test_z_scale_corr(self):
         warnings.simplefilter("error")
