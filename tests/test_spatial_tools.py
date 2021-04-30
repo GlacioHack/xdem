@@ -13,6 +13,7 @@ import warnings
 import geoutils as gu
 import numpy as np
 import rasterio as rio
+from osgeo import gdal
 
 import xdem
 from xdem import examples
@@ -67,10 +68,16 @@ def test_hillshade():
     def make_gdal_hillshade(filepath) -> np.ndarray:
         temp_dir = tempfile.TemporaryDirectory()
         temp_hillshade_path = os.path.join(temp_dir.name, "hillshade.tif")
-        gdal_commands = ["gdaldem", "hillshade",
-                         filepath, temp_hillshade_path,
-                         "-az", "315", "-alt", "45"]
-        subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
+        # gdal_commands = ["gdaldem", "hillshade",
+        #                 filepath, temp_hillshade_path,
+        #                 "-az", "315", "-alt", "45"]
+        #subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
+        gdal.DEMProcessing(
+            destName=temp_hillshade_path,
+            srcDS=filepath,
+            processing="hillshade",
+            options=gdal.DEMProcessingOptions(azimuth=315, altitude=45)
+        )
 
         data = gu.Raster(temp_hillshade_path).data
         temp_dir.cleanup()
@@ -80,13 +87,12 @@ def test_hillshade():
     dem = xdem.DEM(filepath)
 
     xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
-    if shutil.which("gdaldem") is not None:  # Compare with a GDAL version if GDAL commands are available.
-        gdal_hillshade = make_gdal_hillshade(filepath)
-        diff = gdal_hillshade - xdem_hillshade
+    gdal_hillshade = make_gdal_hillshade(filepath)
+    diff = gdal_hillshade - xdem_hillshade
 
-        # Check that the xdem and gdal hillshades are relatively similar.
-        assert np.mean(diff) < 5
-        assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
+    # Check that the xdem and gdal hillshades are relatively similar.
+    assert np.mean(diff) < 5
+    assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
 
     # Try giving the hillshade invalid arguments.
     try:
