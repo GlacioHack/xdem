@@ -4,12 +4,12 @@ from __future__ import annotations
 import warnings
 from typing import Callable, Optional, Union
 
-import numpy as np
+import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
-import cv2
 
 import xdem
 
@@ -96,7 +96,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
 
 
 def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="value", method="polynomial", order=3,
-                                 count_threshold: Optional[int] = None) -> pd.Series:
+                                 count_threshold: Optional[int] = None) -> pd.DataFrame:
     """
     Interpolate hypsometric bins using any valid Pandas interpolation technique.
 
@@ -109,21 +109,28 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
     :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
     :returns: Bins interpolated with the chosen interpolation method.
     """
+    # Copy the bins that will be filled.
     bins = hypsometric_bins.copy()
+    # Temporarily set the index to be the midpoint (for interpolation)
     bins.index = bins.index.mid
 
+    # Set all bins that are under a (potentially) specified count to NaN (they should be excluded from interpolation)
     if count_threshold is not None:
-        assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
+        assert "count" in hypsometric_bins.columns, "'count' not a column in the dataframe"
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
 
-    interpolated_values = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
+    # Interpolate all bins that are NaN.
+    bins[value_column] = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
 
+    # If some points were temporarily set to NaN (to exclude from the interpolation), re-set them.
     if count_threshold is not None:
-        interpolated_values.loc[bins_under_threshold] = hypsometric_bins.loc[bins_under_threshold.values, value_column]
-    interpolated_values.index = hypsometric_bins.index
+        bins.loc[bins_under_threshold, value_column] = hypsometric_bins.loc[bins_under_threshold.values, value_column]
 
-    return interpolated_values
+    # Return the index to intervals instead of the midpoint.
+    bins.index = hypsometric_bins.index
+
+    return bins
 
 
 def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str = "value", degree: int = 3,
@@ -146,7 +153,6 @@ def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str 
         assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
-
 
     # Remove invalid bins
     valids = np.isfinite(np.asarray(bins[value_column]))
@@ -272,7 +278,7 @@ to interpolate from. The default is 10.
         # If input is masked array, return a masked array
         extrap_mask = (interpolated_array != array.data)
         if isinstance(array, np.ma.masked_array):
-            interpolated_array = np.ma.masked_array(interpolated_array, mask = (nan_mask & ~extrap_mask))
+            interpolated_array = np.ma.masked_array(interpolated_array, mask=(nan_mask & ~extrap_mask))
 
     return interpolated_array.reshape(array.shape)
 
@@ -313,7 +319,7 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 
     gradient_model = scipy.interpolate.interp1d(
         interpolated_gradient.index.mid,
-        interpolated_gradient.values,
+        interpolated_gradient["value"].values,
         fill_value="extrapolate"
     )
 
@@ -382,7 +388,7 @@ for areas filling the min_coverage criterion.
     dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
 
     # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
-    inlier_mask = (mask !=0) & (~ddem_mask & ~dem_mask)
+    inlier_mask = (mask != 0) & (~ddem_mask & ~dem_mask)
     if np.count_nonzero(inlier_mask) == 0:
         warnings.warn("No valid data found within mask, returning copy", UserWarning)
         return np.copy(ddem)
@@ -393,7 +399,7 @@ for areas filling the min_coverage criterion.
         plt.show()
 
     # List of indexes to loop on
-    geometry_index = np.unique(mask[mask!=0])
+    geometry_index = np.unique(mask[mask != 0])
     print("Found {:d} geometries".format(len(geometry_index)))
 
     # Get fraction of valid pixels for each geometry
@@ -440,7 +446,7 @@ for areas filling the min_coverage criterion.
 
         if plot:
             local_ddem = np.where(local_inlier_mask, ddem, np.nan)
-            vmax = max(np.abs(np.nanpercentile(local_ddem, [2,98])))
+            vmax = max(np.abs(np.nanpercentile(local_ddem, [2, 98])))
             rowmin, rowmax, colmin, colmax = xdem.spatial_tools.get_valid_extent(mask == index)
 
             fig = plt.figure(figsize=(12, 8))
@@ -480,7 +486,7 @@ for areas filling the min_coverage criterion.
 
     output = np.ma.masked_array(
         corrected_ddem,
-        mask=(corrected_ddem == -9999)  #mask=((mask != 0) & (ddem_mask | dem_mask))
+        mask=(corrected_ddem == -9999)  # mask=((mask != 0) & (ddem_mask | dem_mask))
     ).reshape(orig_shape)
 
     assert output is not None
