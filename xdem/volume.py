@@ -120,8 +120,17 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
 
-    # Interpolate all bins that are NaN.
-    bins[value_column] = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
+    # Count number of valid (finite) values
+    values = bins[value_column]
+    nvalids = len(values[np.isfinite(values)])
+
+    if nvalids <= order + 1:
+        # Cannot interpolate -> leave as it is
+        warnings.warn("Not enough valid bins for interpolation -> returning copy", UserWarning)
+        return hypsometric_bins.copy()
+    else:
+        # Interpolate all bins that are NaN.
+        bins[value_column] = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
 
     # If some points were temporarily set to NaN (to exclude from the interpolation), re-set them.
     if count_threshold is not None:
@@ -437,10 +446,19 @@ for areas filling the min_coverage criterion.
         # Interpolate missing elevation bins
         interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(filt_gradient)
 
+        # At least 2 points needed for interp1d, if not skip feature
+        nvalues = len(interpolated_gradient['value'].values)
+        if nvalues < 2:
+            warnings.warn(
+                "Not enough valid bins for feature with index {:d} -> skipping interpolation".format(index),
+                UserWarning
+            )
+            continue
+
         # Create a model for 2D interpolation
         gradient_model = scipy.interpolate.interp1d(
             interpolated_gradient.index.mid,
-            interpolated_gradient.values,
+            interpolated_gradient['value'].values,
             fill_value="extrapolate"
         )
 
