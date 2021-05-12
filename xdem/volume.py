@@ -363,7 +363,8 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
                                     mask: np.ndarray, min_coverage: float = 0.2,
-                                    count_threshold: Optional[int] = 1, plot: bool = False) -> np.ma.masked_array:
+                                    count_threshold: Optional[int] = 1, nodata: float = -9999,
+                                    plot: bool = False) -> np.ma.masked_array:
     """
     Interpolate a dDEM using local hypsometric interpolation.
     The algorithm loops through each features in the vector file.
@@ -376,6 +377,7 @@ def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_
 each geometry on which to loop.
     :param min_coverage: Optional. The minimum coverage fraction to be considered for interpolation.
     :param count_threshold: Optional. A pixel count threshold to exclude during the hypsometric curve fit.
+    :param nodara: Optional. No data value to be used for the output masked_array.
     :param plot: Set to True to display intermediate plots.
 
     :returns: A dDEM with gaps filled by applying a hypsometric interpolation for each geometry in mask, \
@@ -423,7 +425,7 @@ for areas filling the min_coverage criterion.
     valid_geometry_index = geometry_index[coverage >= min_coverage]
     print("Found {:d} geometries with sufficient coverage".format(len(valid_geometry_index)))
 
-    idealized_ddem = -9999 * np.ones_like(dem)
+    idealized_ddem = nodata * np.ones_like(dem)
 
     for k, index in enumerate(valid_geometry_index):
 
@@ -493,7 +495,7 @@ for areas filling the min_coverage criterion.
     # Measure the difference between the original dDEM and the idealized dDEM
     assert ddem.shape == idealized_ddem.shape
     ddem_difference = ddem.astype("float32") - idealized_ddem.astype("float32")
-    ddem_difference[idealized_ddem == -9999] = np.nan
+    ddem_difference[idealized_ddem == nodata] = np.nan
 
     # Spatially interpolate the difference between these two products.
     interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
@@ -502,9 +504,12 @@ for areas filling the min_coverage criterion.
     # Correct the idealized dDEM with the difference to the original dDEM.
     corrected_ddem = idealized_ddem + interpolated_ddem_diff
 
+    # Set Nans to nodata
+    corrected_ddem[~np.isfinite(corrected_ddem)] = nodata
+
     output = np.ma.masked_array(
         corrected_ddem,
-        mask=(corrected_ddem == -9999)  # mask=((mask != 0) & (ddem_mask | dem_mask))
+        mask=(corrected_ddem == nodata)  # mask=((mask != 0) & (ddem_mask | dem_mask))
     ).reshape(orig_shape)
 
     assert output is not None
