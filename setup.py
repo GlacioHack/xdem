@@ -1,22 +1,45 @@
-from os import path
+import os
+import subprocess
+import sys
 
 from setuptools import setup
+from setuptools.command.install import install
 
-FULLVERSION = '0.0.1'
+FULLVERSION = '0.0.2-2'
 VERSION = FULLVERSION
+
+class PostInstall(install):
+    """Post install script to install github dependencies."""
+
+    pkgs = "git+https://github.com/GlacioHack/GeoUtils.git"
+
+
+    def run(self):
+        install.run(self)
+
+        print(subprocess.getoutput(f"{sys.executable} -m pip install --force-reinstall {self.pkgs}"))
+
+
+
+with open(os.path.join(os.path.dirname(__file__), "README.md")) as infile:
+    LONG_DESCRIPTION = infile.read()
 
 setup(name='xdem',
       version=FULLVERSION,
-      description='',
-      url='',
+      description='Set of tools to manipulate Digital Elevation Models (DEMs) ',
+      long_description=LONG_DESCRIPTION,
+      long_description_content_type="text/markdown",
+      url='https://github.com/GlacioHack/xdem',
       author='The GlacioHack Team',
+      author_email="john@doe.com",
       license='BSD-3',
       packages=['xdem'],
       install_requires=['numpy', 'scipy', 'rasterio', 'geopandas',
-                        'pyproj', 'tqdm', 'geoutils @ https://github.com/GlacioHack/GeoUtils/tarball/master', 'scikit-gstat', 'scikit-image'],
+          'pyproj', 'tqdm', 'scikit-gstat', 'scikit-image'],
       extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': [
           'pdal'], 'opencv': ['opencv'], "pytransform3d": ["pytransform3d"]},
       scripts=[],
+      cmdclass={"install": PostInstall},
       zip_safe=False)
 
 write_version = True
@@ -28,7 +51,7 @@ version = '%s'
 short_version = '%s'
 """
     if not filename:
-        filename = path.join(path.dirname(__file__), 'xdem',
+        filename = os.path.join(os.path.dirname(__file__), 'xdem',
                              'version.py')
 
     a = open(filename, 'w')
