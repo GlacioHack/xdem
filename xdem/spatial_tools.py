@@ -20,10 +20,11 @@ def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
 
     :returns invalid_mask: boolean array, True where array is masked or Nan.
     """
-    return (array.mask | ~np.isfinite(array.data)) if isinstance(array, np.ma.masked_array) else ~np.isfinite(array)
+    mask = (array.mask | ~np.isfinite(array.data)) if isinstance(array, np.ma.masked_array) else ~np.isfinite(array)
+    return mask.squeeze()
 
 
-def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array]) -> (np.ndarray, np.ndarray):
+def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape: bool = True) -> (np.ndarray, np.ndarray):
     """
     Return array with masked values set to NaN and the associated mask.
     Works whether array is a ndarray with NaNs or a np.ma.masked_array.
@@ -34,6 +35,12 @@ def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array]) -> (np.ndar
     :returns array_data, invalid_mask: a tuple of ndarrays. First is array with invalid pixels converted to NaN, \
     second is mask of invalid pixels (True if invalid).
     """
+    if check_shape:
+        if len(array.shape) > 2 and array.shape[0] > 1:
+            raise ValueError(
+                    f"Invalid array shape given: {array.shape}."
+                    "Expected 2D array or 3D array where arr.shape[0] == 1"
+            )
     # Get mask of invalid pixels
     invalid_mask = get_mask(array)
 
@@ -42,7 +49,7 @@ def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array]) -> (np.ndar
         array = array.astype('float32')
 
     # Convert into a regular ndarray and convert invalid values to NaN
-    array_data = np.asarray(array)
+    array_data = np.asarray(array).squeeze()
     array_data[invalid_mask] = np.nan
 
     return array_data, invalid_mask

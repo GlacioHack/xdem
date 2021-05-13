@@ -39,7 +39,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     # Extract only the valid values, i.e. valid in ref_dem
     valid_mask = ~xdem.spatial_tools.get_mask(ref_dem)
     ddem = np.array(ddem[valid_mask])
-    ref_dem = np.array(ref_dem[valid_mask])
+    ref_dem = np.array(ref_dem.squeeze()[valid_mask])
 
     # If the bin size should be seen as a percentage.
     if kind == "fixed":
@@ -301,6 +301,9 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 
     # Get ref_dem array with invalid pixels converted to NaN and mask of invalid pixels
     dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
+
+    # Make sure the mask does not have e.g. the shape (1, height, width)
+    mask = mask.squeeze()
 
     # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
     inlier_mask = mask & (~ddem_mask & ~dem_mask)

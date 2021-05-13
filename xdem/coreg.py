@@ -477,18 +477,19 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
-        # The reference mask is the union of the nan occurrence and the (potential) ma mask.
-        ref_mask = np.isnan(reference_dem) | (reference_dem.mask
-                                              if isinstance(reference_dem, np.ma.masked_array) else False)
-        # The to-be-aligned mask is the union of the nan occurrence and the (potential) ma mask.
-        tba_mask = np.isnan(dem_to_be_aligned) | (dem_to_be_aligned.mask
-                                                  if isinstance(dem_to_be_aligned, np.ma.masked_array) else False)
 
-        # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
-        full_mask = (~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
+        ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
+        tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
+
+        if np.all(ref_mask):
+            raise ValueError("'reference_dem' had only NaNs")
+        if np.all(tba_mask):
+            raise ValueError("'dem_to_be_aligned' had only NaNs")
 
         # If subsample is not equal to one, subsampling should be performed.
         if subsample != 1.0:
+            # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
+            full_mask = (~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
             # If subsample is less than one, it is parsed as a fraction (e.g. 0.8 => retain 80% of the values)
             if subsample < 1.0:
                 subsample = int(np.count_nonzero(full_mask) * (1 - subsample))
@@ -501,9 +502,6 @@ class Coreg:
             # Set the N random inliers to be parsed as outliers instead.
             full_mask[rows, cols] = False
 
-        # The arrays to provide the functions will be ndarrays with NaNs for masked out areas.
-        ref_dem = np.where(full_mask, np.asarray(reference_dem), np.nan).squeeze()
-        tba_dem = np.where(full_mask, np.asarray(dem_to_be_aligned), np.nan).squeeze()
 
         # Run the associated fitting function
         self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose)
@@ -524,11 +522,10 @@ class Coreg:
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        # The mask is the union of the nan occurrence and the (potential) ma mask.
-        dem_mask = (np.isnan(dem) | (dem.mask if isinstance(dem, np.ma.masked_array) else False)).squeeze()
-
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
-        dem_array = np.where(~dem_mask, np.asarray(dem), np.nan).squeeze()
+        dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+        if np.all(dem_mask):
+            raise ValueError("'dem' had only NaNs")
 
         # See if a _apply_func exists
         try:
@@ -595,6 +592,90 @@ class Coreg:
     def to_matrix(self) -> np.ndarray:
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
+
+    def centroid(self) -> Optional[tuple[float, float, float]]:
+        """Get the centroid of the coregistration, if defined."""
+        meta_centroid = self._meta.get("centroid")
+
+        if meta_centroid is None:
+            return None
+
+        # Unpack the centroid in case it is in an unexpected format (an array, list or something else).
+        return (meta_centroid[0], meta_centroid[1], meta_centroid[2])
+
+    def residuals(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
+                  dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+                  inlier_mask: Optional[np.ndarray] = None,
+                  transform: Optional[rio.transform.Affine] = None) -> np.ndarray:
+        """
+        Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
+
+        :param reference_dem: 2D array of elevation values acting reference. 
+        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
+        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+
+        :returns: A 1D array of finite residuals.
+        """
+        # Use the transform to correct the DEM to be aligned.
+        aligned_dem = self.apply(dem_to_be_aligned, transform=transform)
+
+        # Format the reference DEM
+        ref_arr, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
+
+        if inlier_mask is None:
+            inlier_mask = np.ones(ref_arr.shape, dtype=bool)
+
+        # Create the full inlier mask (manual inliers plus non-nans)
+        full_mask = (~ref_mask) & np.isfinite(aligned_dem) & inlier_mask
+
+        # Calculate the DEM difference
+        diff = ref_arr - aligned_dem
+
+        # Return the difference values within the full inlier mask
+        return diff[full_mask]
+
+    def error(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
+              dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+              error_type: str = "nmad",
+              inlier_mask: Optional[np.ndarray] = None,
+              transform: Optional[rio.transform.Affine] = None) -> float:
+        """
+        Calculate the error of a coregistration approach.
+
+        Choices:
+            - "nmad": Default. The Normalized Median Absolute Deviation of the residuals.
+            - "median": The median of the residuals.
+            - "mean": The mean/average of the residuals
+            - "std": The standard deviation of the residuals.
+            - "rms": The root mean square of the residuals.
+
+        :param reference_dem: 2D array of elevation values acting reference. 
+        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param error_type: The type of error meaure to calculate.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
+        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+
+        :returns: The error measure of choice for the residuals.
+        """
+
+        residuals = self.residuals(reference_dem=reference_dem, dem_to_be_aligned=dem_to_be_aligned,
+                                   inlier_mask=inlier_mask, transform=transform)
+
+        if error_type == "nmad":
+            error = xdem.spatial_tools.nmad(residuals)
+        elif error_type == "median":
+            error = np.median(residuals)
+        elif error_type == "mean":
+            error = np.mean(residuals)
+        elif error_type == "std":
+            error = np.std(residuals)
+        elif error_type == "rms":
+            error = np.sqrt(np.mean(np.square(residuals)))
+        else:
+            raise ValueError(f"Invalid 'error_type': '{error_type}'. Choices: ['nmad', 'median', 'mean', 'std', 'rms']")
+
+        return error
 
     @classmethod
     def from_matrix(cls, matrix: np.ndarray):
@@ -771,10 +852,21 @@ class ICP(Coreg):
 
             points[key] = point_cloud[~np.any(np.isnan(point_cloud), axis=1)].astype("float32")
 
-        icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
+            icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
         if verbose:
             print("Running ICP...")
-        _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+        try:
+            _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+        except cv2.error as exception:
+            if "(expected: 'n > 0'), where" not in str(exception):
+                raise exception
+
+            raise ValueError(
+                    "Not enough valid points in input data."
+                    f"'reference_dem' had {points['ref'].size} valid points."
+                    f"'dem_to_be_aligned' had {points['tba'].size} valid points."
+            )
+    
         if verbose:
             print("ICP finished")
 
@@ -1123,8 +1215,8 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
 
     # Check if the matrix only contains a Z correction. In that case, only shift the DEM values by the bias.
     empty_matrix = np.diag(np.ones(4, float))
-    matrix_diff = matrix - empty_matrix
-    if abs(matrix_diff[matrix_diff != matrix_diff[2, 3]].mean()) < 1e-4:
+    empty_matrix[2, 3] = matrix[2, 3]
+    if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
         return demc + matrix[2, 3]
 
     # Temporary. Should probably be removed.
