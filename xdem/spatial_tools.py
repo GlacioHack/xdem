@@ -77,8 +77,11 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
 
     :returns nmad: (normalized) median absolute deviation of data.
     """
-    m = np.nanmedian(data)
-    return nfact * np.nanmedian(np.abs(data - m))
+    if isinstance(data, np.ma.masked_array):
+        data_arr = get_array_and_mask(data, check_shape=False)[0]
+    else:
+        data_arr = np.asarray(data)
+    return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
 
 def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
