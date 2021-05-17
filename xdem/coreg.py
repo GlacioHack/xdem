@@ -649,6 +649,8 @@ class Coreg:
             - "mean": The mean/average of the residuals
             - "std": The standard deviation of the residuals.
             - "rms": The root mean square of the residuals.
+            - "mae": The mean absolute error of the residuals.
+            - "count": The residual count.
 
         :param reference_dem: 2D array of elevation values acting reference. 
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
@@ -672,8 +674,15 @@ class Coreg:
             error = np.std(residuals)
         elif error_type == "rms":
             error = np.sqrt(np.mean(np.square(residuals)))
+        elif error_type == "mae":
+            error = np.mean(np.abs(residuals))
+        elif error_type == "count":
+            error = residuals.size
         else:
-            raise ValueError(f"Invalid 'error_type': '{error_type}'. Choices: ['nmad', 'median', 'mean', 'std', 'rms']")
+            raise ValueError(
+                    f"Invalid 'error_type': '{error_type}'."
+                    "Choices: ['nmad', 'median', 'mean', 'std', 'rms', 'mae', 'count']"
+            )
 
         return error
 
