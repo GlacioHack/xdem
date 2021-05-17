@@ -297,8 +297,8 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     """
     Interpolate a dDEM using hypsometric interpolation within the given mask.
 
-    The dDEM is assumed to have been created as "voided_ddem = reference_dem - other_dem".
-    Areas outside the mask will be linearly interpolated, but are masked out.
+    Using `ref_dem`, elevation bins of constant height (hard-coded to 50 m for now) are created.
+    Gaps in `voided-ddem`, within the provided `mask`, are filled with the median dDEM value within that bin.
 
     :param voided_ddem: A dDEM with voids (either an array with nans or a masked array).
     :param ref_dem: The reference DEM in the dDEM comparison.
@@ -322,7 +322,7 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
         dem[inlier_mask]
     )
 
-    #
+    # Interpolate possible missing elevation bins in 1D - no extrapolation done here
     interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(gradient)
 
     gradient_model = scipy.interpolate.interp1d(
@@ -331,27 +331,16 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
         fill_value="extrapolate"
     )
 
-    # Create an idealized dDEM (only considering the dH gradient)
+    # Create an idealized dDEM using the relationship between elevation and dDEM
     idealized_ddem = np.zeros_like(dem)
     idealized_ddem[mask] = gradient_model(dem[mask])
 
-    # Measure the difference between the original dDEM and the idealized dDEM
-    assert ddem.shape == idealized_ddem.shape
-    ddem_difference = ddem.astype("float64") - idealized_ddem.astype("float64")
-
-    # Spatially interpolate the difference between these two products.
-    #interpolated_ddem_diff = ddem_difference.copy()
-    #interpolated_ddem_diff[ddem_mask] = np.nan
-    # rasterio.fill.fillnodata(
-    #    interpolated_ddem_diff, mask=~np.isnan(interpolated_ddem_diff))
-    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
-
-    # Correct the idealized dDEM with the difference to the original dDEM.
-    corrected_ddem = idealized_ddem + interpolated_ddem_diff
+    # Replace ddem gaps with idealized hypsometric ddem, but only within mask
+    corrected_ddem = np.where(ddem_mask & mask, idealized_ddem, ddem)
 
     output = np.ma.masked_array(
         corrected_ddem,
-        mask=(~mask & (ddem_mask | dem_mask))
+        mask=~np.isfinite(corrected_ddem)
     )
 
     assert output is not None
