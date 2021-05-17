@@ -121,8 +121,7 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
         bins.loc[bins_under_threshold, value_column] = np.nan
 
     # Count number of valid (finite) values
-    values = bins[value_column]
-    nvalids = len(values[np.isfinite(values)])
+    nvalids = np.count_nonzero(np.isfinite(bins[value_column]))
 
     if nvalids <= order + 1:
         # Cannot interpolate -> leave as it is
@@ -363,7 +362,7 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
                                     mask: np.ndarray, min_coverage: float = 0.2,
-                                    count_threshold: Optional[int] = 1, nodata: float = -9999,
+                                    count_threshold: Optional[int] = 1, nodata: Union[float, int] = -9999,
                                     plot: bool = False) -> np.ma.masked_array:
     """
     Interpolate a dDEM using local hypsometric interpolation.
@@ -377,7 +376,7 @@ def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_
 each geometry on which to loop.
     :param min_coverage: Optional. The minimum coverage fraction to be considered for interpolation.
     :param count_threshold: Optional. A pixel count threshold to exclude during the hypsometric curve fit.
-    :param nodara: Optional. No data value to be used for the output masked_array.
+    :param nodata: Optional. No data value to be used for the output masked_array.
     :param plot: Set to True to display intermediate plots.
 
     :returns: A dDEM with gaps filled by applying a hypsometric interpolation for each geometry in mask, \
