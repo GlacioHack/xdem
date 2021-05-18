@@ -37,4 +37,6 @@ jobs:
         $CONDA/bin/flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
+        # Symlink the proj data to the pyproj data directory (the proj-data will otherwise not always be found)
+        ln -s $PROJ_LIB/* $CONDA_DEFAULT_ENV/lib/python{{ matrix.python-version }}/site-packages/pyproj/proj_dir/share/proj/
         $CONDA/bin/pytest -rA
