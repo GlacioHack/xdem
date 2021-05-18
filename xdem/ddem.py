@@ -64,9 +64,9 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
     def filled_data(self, array: np.ndarray):
         """Set the filled_data attribute and make sure that it is valid."""
 
-        assert self.data.shape == array.shape, f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
+        assert self.data.size == array.size, f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
 
-        self._filled_data = np.asarray(array)
+        self._filled_data = np.asarray(array).reshape(self.data.shape)
 
     @property
     def fill_method(self) -> str:
@@ -137,16 +137,13 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             if not isinstance(mask, gu.Vector):
                 mask = gu.Vector(mask)
 
-            nans = np.isnan(np.asarray(self.data)) | (self.data.mask
-                                                      if isinstance(self.data, np.ma.masked_array)
-                                                      else False)
-            interpolated_ddem = np.where(nans, np.nan, np.asarray(self.data))
+            interpolated_ddem, nans = xdem.spatial_tools.get_array_and_mask(self.data.copy())
             entries = mask.ds[mask.ds.intersects(shapely.geometry.box(*self.bounds))]
 
-            ddem_mask = nans.copy()
+            ddem_mask = nans.copy().squeeze()
             for i in entries.index:
                 feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(
-                    self)).reshape(self.data.shape)
+                    self)).reshape(interpolated_ddem.shape)
                 if np.count_nonzero(feature_mask) == 0:
                     continue
                 try:
