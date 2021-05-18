@@ -1,0 +1,37 @@
+name: xdem-dev
+
+channels:
+  - conda-forge
+
+dependencies:
+        - python>=3
+        - proj>=7.2
+        - geopandas
+        - ipython
+        - numba
+        - matplotlib
+        - pdal
+        - opencv
+        - pyproj
+        - rasterio
+        - scipy
+        - tqdm
+        - scikit-image
+        - pip
+        - proj-data
+
+        # Development-specific
+        - pytest
+        - pytest-xdist
+        - sphinx
+        - numpydoc
+        - sphinx_rtd_theme
+        - sphinxcontrib-programoutput
+        - flake8
+        - pip:
+                - richdem
+                - scikit-gstat
+                - pytransform3d
+                # Development-specific
+                - sphinx_autodoc_typehints
+                - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
