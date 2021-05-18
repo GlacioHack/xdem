@@ -23,7 +23,3 @@ dependencies:
     - scikit-gstat
     - pytransform3d
     - https://github.com/GlacioHack/GeoUtils/tarball/master
-#    - "--editable=git+https://github.com/GlacioHack/GeoUtils.git#egg=GeoUtils"
-#    - "--editable=git+https://github.com/GlacioHack/xdem.git#egg=xdem"
-variables:
-    - PIP_FORCE_REINSTALL=1  # Since geoutils has no versioning system, this is needed.
