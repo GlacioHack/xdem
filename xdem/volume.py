@@ -120,8 +120,16 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
 
-    # Interpolate all bins that are NaN.
-    bins[value_column] = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
+    # Count number of valid (finite) values
+    nvalids = np.count_nonzero(np.isfinite(bins[value_column]))
+
+    if nvalids <= order + 1:
+        # Cannot interpolate -> leave as it is
+        warnings.warn("Not enough valid bins for interpolation -> returning copy", UserWarning)
+        return hypsometric_bins.copy()
+    else:
+        # Interpolate all bins that are NaN.
+        bins[value_column] = bins[value_column].interpolate(method=method, order=order, limit_direction="both")
 
     # If some points were temporarily set to NaN (to exclude from the interpolation), re-set them.
     if count_threshold is not None:
@@ -289,8 +297,8 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     """
     Interpolate a dDEM using hypsometric interpolation within the given mask.
 
-    The dDEM is assumed to have been created as "voided_ddem = reference_dem - other_dem".
-    Areas outside the mask will be linearly interpolated, but are masked out.
+    Using `ref_dem`, elevation bins of constant height (hard-coded to 50 m for now) are created.
+    Gaps in `voided-ddem`, within the provided `mask`, are filled with the median dDEM value within that bin.
 
     :param voided_ddem: A dDEM with voids (either an array with nans or a masked array).
     :param ref_dem: The reference DEM in the dDEM comparison.
@@ -317,7 +325,7 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
         dem[inlier_mask]
     )
 
-    #
+    # Interpolate possible missing elevation bins in 1D - no extrapolation done here
     interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(gradient)
 
     gradient_model = scipy.interpolate.interp1d(
@@ -326,27 +334,16 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
         fill_value="extrapolate"
     )
 
-    # Create an idealized dDEM (only considering the dH gradient)
+    # Create an idealized dDEM using the relationship between elevation and dDEM
     idealized_ddem = np.zeros_like(dem)
     idealized_ddem[mask] = gradient_model(dem[mask])
 
-    # Measure the difference between the original dDEM and the idealized dDEM
-    assert ddem.shape == idealized_ddem.shape
-    ddem_difference = ddem.astype("float64") - idealized_ddem.astype("float64")
-
-    # Spatially interpolate the difference between these two products.
-    #interpolated_ddem_diff = ddem_difference.copy()
-    #interpolated_ddem_diff[ddem_mask] = np.nan
-    # rasterio.fill.fillnodata(
-    #    interpolated_ddem_diff, mask=~np.isnan(interpolated_ddem_diff))
-    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
-
-    # Correct the idealized dDEM with the difference to the original dDEM.
-    corrected_ddem = idealized_ddem + interpolated_ddem_diff
+    # Replace ddem gaps with idealized hypsometric ddem, but only within mask
+    corrected_ddem = np.where(ddem_mask & mask, idealized_ddem, ddem)
 
     output = np.ma.masked_array(
         corrected_ddem,
-        mask=(~mask & (ddem_mask | dem_mask))
+        mask=~np.isfinite(corrected_ddem)
     )
 
     assert output is not None
@@ -357,7 +354,8 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
 def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
                                     mask: np.ndarray, min_coverage: float = 0.2,
-                                    count_threshold: Optional[int] = 1, plot: bool = False) -> np.ma.masked_array:
+                                    count_threshold: Optional[int] = 1, nodata: Union[float, int] = -9999,
+                                    plot: bool = False) -> np.ma.masked_array:
     """
     Interpolate a dDEM using local hypsometric interpolation.
     The algorithm loops through each features in the vector file.
@@ -370,6 +368,7 @@ def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_
 each geometry on which to loop.
     :param min_coverage: Optional. The minimum coverage fraction to be considered for interpolation.
     :param count_threshold: Optional. A pixel count threshold to exclude during the hypsometric curve fit.
+    :param nodata: Optional. No data value to be used for the output masked_array.
     :param plot: Set to True to display intermediate plots.
 
     :returns: A dDEM with gaps filled by applying a hypsometric interpolation for each geometry in mask, \
@@ -417,7 +416,7 @@ for areas filling the min_coverage criterion.
     valid_geometry_index = geometry_index[coverage >= min_coverage]
     print("Found {:d} geometries with sufficient coverage".format(len(valid_geometry_index)))
 
-    idealized_ddem = -9999 * np.ones_like(dem)
+    idealized_ddem = nodata * np.ones_like(dem)
 
     for k, index in enumerate(valid_geometry_index):
 
@@ -440,10 +439,19 @@ for areas filling the min_coverage criterion.
         # Interpolate missing elevation bins
         interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(filt_gradient)
 
+        # At least 2 points needed for interp1d, if not skip feature
+        nvalues = len(interpolated_gradient['value'].values)
+        if nvalues < 2:
+            warnings.warn(
+                "Not enough valid bins for feature with index {:d} -> skipping interpolation".format(index),
+                UserWarning
+            )
+            continue
+
         # Create a model for 2D interpolation
         gradient_model = scipy.interpolate.interp1d(
             interpolated_gradient.index.mid,
-            interpolated_gradient.values,
+            interpolated_gradient['value'].values,
             fill_value="extrapolate"
         )
 
@@ -478,7 +486,7 @@ for areas filling the min_coverage criterion.
     # Measure the difference between the original dDEM and the idealized dDEM
     assert ddem.shape == idealized_ddem.shape
     ddem_difference = ddem.astype("float32") - idealized_ddem.astype("float32")
-    ddem_difference[idealized_ddem == -9999] = np.nan
+    ddem_difference[idealized_ddem == nodata] = np.nan
 
     # Spatially interpolate the difference between these two products.
     interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
@@ -487,9 +495,12 @@ for areas filling the min_coverage criterion.
     # Correct the idealized dDEM with the difference to the original dDEM.
     corrected_ddem = idealized_ddem + interpolated_ddem_diff
 
+    # Set Nans to nodata
+    corrected_ddem[~np.isfinite(corrected_ddem)] = nodata
+
     output = np.ma.masked_array(
         corrected_ddem,
-        mask=(corrected_ddem == -9999)  # mask=((mask != 0) & (ddem_mask | dem_mask))
+        mask=(corrected_ddem == nodata)  # mask=((mask != 0) & (ddem_mask | dem_mask))
     ).reshape(orig_shape)
 
     assert output is not None
