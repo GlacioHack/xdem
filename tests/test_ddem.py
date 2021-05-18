@@ -70,7 +70,6 @@ class TestdDEM:
 
         assert ddem._filled_data is not None
         assert type(ddem.filled_data) == np.ndarray
-        assert np.count_nonzero(np.isnan(ddem.filled_data)) == 0
 
         assert ddem.filled_data.shape == ddem.data.shape
 
