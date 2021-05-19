@@ -1,3 +1,8 @@
+"""
+Functions to test the filters.py submodule.
+"""
+from __future__ import annotations
+
 import numpy as np
 import pytest
 
@@ -13,11 +18,6 @@ class TestFilters:
     # Load example data.
     dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
     dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-    # Filter to only look at the Scott Turnerbreen glacier
-    outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
-    # Create a mask where glacier areas are True
-    mask = outlines.create_mask(dem_2009)
 
     def test_gauss(self):
         """Test applying the various Gaussian filters on DEMs with/without NaNs"""
