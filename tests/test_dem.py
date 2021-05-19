@@ -48,7 +48,7 @@ class TestDEM:
 
         list_dem = [dem, dem2, dem3, dem4]
 
-        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        attrs = [at for at in r._get_rio_attrs() if at not in ['name', 'dataset_mask', 'driver']]
         all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
@@ -86,7 +86,7 @@ class TestDEM:
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
         # dem_attrs = ['vref', 'vref_grid', 'ccrs']
         # using list directly available in Class
-        attrs = [at for at in gr.default_attrs if at not in ['name', 'dataset_mask', 'driver']]
+        attrs = [at for at in r._get_rio_attrs() if at not in ['name', 'dataset_mask', 'driver']]
         all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)

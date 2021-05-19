@@ -13,7 +13,7 @@ setup(name='xdem',
       license='BSD-3',
       packages=['xdem'],
       install_requires=['numpy', 'scipy', 'rasterio', 'geopandas',
-                        'pyproj', 'tqdm', 'geoutils @ https://github.com/GlacioHack/GeoUtils/tarball/master', 'scikit-gstat'],
+                        'pyproj', 'tqdm', 'geoutils @ https://github.com/GlacioHack/GeoUtils/tarball/master', 'scikit-gstat', 'scikit-image'],
       extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': [
           'pdal'], 'opencv': ['opencv'], "pytransform3d": ["pytransform3d"]},
       scripts=[],

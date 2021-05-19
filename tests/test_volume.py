@@ -52,14 +52,21 @@ class TestLocalHypsometric:
         ddem_bins = xdem.volume.hypsometric_binning(ddem[self.mask], self.dem_2009.data[self.mask])
 
         # Simulate a missing bin
-        ddem_bins.iloc[3, :] = np.nan
+        ddem_bins.iloc[3, 0] = np.nan
 
         # Interpolate the bins and exclude bins with low pixel counts from the interpolation.
         interpolated_bins = xdem.volume.interpolate_hypsometric_bins(ddem_bins, count_threshold=200)
 
-        assert abs(np.mean(interpolated_bins)) < 40
-        assert abs(np.mean(interpolated_bins)) > 0
+        # Check that the count column has not changed.
+        assert np.array_equal(ddem_bins["count"], interpolated_bins["count"])
+
+        # Assert that the absolute mean is somewhere between 0 and 40
+        assert abs(np.mean(interpolated_bins["value"])) < 40
+        assert abs(np.mean(interpolated_bins["value"])) > 0
+        # Check that no nans exist.
         assert not np.any(np.isnan(interpolated_bins))
+
+        # Return the value so that they can be used in other tests.
         return interpolated_bins
 
     def test_area_calculation(self):
@@ -74,10 +81,8 @@ class TestLocalHypsometric:
         )
 
         # Test area calculation with differing pixel x/y resolution.
-        # Also test that ddem_bins can be a DataFrame (as long as the column name 'value' exists)
-        ddem_bins.name = "value"
         xdem.volume.calculate_hypsometry_area(
-            ddem_bins.to_frame(),
+            ddem_bins,
             self.dem_2009.data[self.mask],
             pixel_size=(self.dem_2009.res[0], self.dem_2009.res[0] + 1)
         )
