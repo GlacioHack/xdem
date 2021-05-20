@@ -12,13 +12,16 @@ More documentation to come!
 ```
 $ git clone https://github.com/GlacioHack/xdem.git
 $ cd ./xdem
-$ conda create -f environment.yml
-$ conda activate glacio
+$ conda env create -f environment.yml
+$ conda activate xdem
+$ pip install .
 ```
 or
 ```bash
 pip install git+https://github.com/GlacioHack/xdem.git
 ```
+
+To update, please use the `--force-reinstall` flag for `conda` or `pip` to ensure the latest version is installed (`geoutils` and `xdem` do not yet have proper release schedules as of 2021-05-13).
 
 ## Structure 
 
@@ -47,16 +50,24 @@ https://github.com/corteva/rioxarray/blob/master/test/integration/test_integrati
 ```python
 import xdem
 
-reference_dem = "path/to/reference.tif"
-dem_to_be_aligned = "path/to/dem.tif"
-mask = "path/to/mask.shp"  # This is optional. Could for example be glacier outlines.
+reference_dem = xdem.DEM("path/to/reference.tif")
+dem_to_be_aligned = xdem.DEM("path/to/dem.tif")
 
-aligned_dem, error = xdem.coreg.coregister(reference_dem, dem_to_be_aligned, mask=mask)
+nuth_kaab = xdem.coreg.NuthKaab()
+
+nuth_kaab.fit(reference_dem.data, dem_to_be_aligned.data, transform=reference_dem.transform)
+
+
+aligned_dem = xdem.DEM.from_array(
+	nuth_kaab.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform),
+	transform=dem_to_be_aligned.transform,
+	crs=dem_to_be_aligned.crs
+)
 
 aligned_dem.save("path/to/coreg.tif")
 ```
-The default coregistration method is a [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) implementation, but this can be changed with the keyword argument `method=...`, e.g. to `"icp"`.
-The currently supported methods are: `"nuth_kaab"`, `"icp"` and `"deramp"`.
+This is an implementation of the [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) approach.
+[Please see the documentation](https://xdem.readthedocs.io/en/latest/coregistration.html) for more approaches.
 
 **Subtract one DEM with another**
 ```python
