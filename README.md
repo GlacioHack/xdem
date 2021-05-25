@@ -23,6 +23,12 @@ pip install git+https://github.com/GlacioHack/xdem.git
 
 To update, please use the `--force-reinstall` flag for `conda` or `pip` to ensure the latest version is installed (`geoutils` and `xdem` do not yet have proper release schedules as of 2021-05-13).
 
+After installing, we recommend to check that everything is working by running the tests:
+
+```
+$ pytest -rA
+```
+
 ## Structure 
 
 xdem are for now composed of three libraries:
