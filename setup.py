@@ -24,7 +24,7 @@ setup(name='xdem',
       install_requires=[
           'numpy', 'scipy', 'rasterio', 'geopandas',
           'pyproj', 'tqdm', 'scikit-gstat', 'scikit-image',
-          "geoutils @ https://github.com/GlacioHack/geoutils/tarball/master"
+          "geoutils @ https://github.com/GlacioHack/geoutils/tarball/main"
       ],
       extras_require={'rioxarray': ['rioxarray'], 'richdem': ['richdem'], 'pdal': [
           'pdal'], 'opencv': ['opencv'], "pytransform3d": ["pytransform3d"]},

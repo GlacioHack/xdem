@@ -22,4 +22,4 @@ dependencies:
     - richdem
     - scikit-gstat
     - pytransform3d
-    - https://github.com/GlacioHack/GeoUtils/tarball/master
+    - https://github.com/GlacioHack/GeoUtils/tarball/main
