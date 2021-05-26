@@ -81,8 +81,14 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
         if values_in_bin.shape[0] == 0:
             continue
 
-        values[i - 1] = aggregation_function(values_in_bin)
-        counts[i - 1] = values_in_bin.shape[0]
+        try:
+            values[i - 1] = aggregation_function(values_in_bin)
+            counts[i - 1] = values_in_bin.shape[0]
+        except IndexError as exception:
+            # If custom bins were added, i may exceed the bin range, which will be silently ignored.
+            if kind == "custom" and "out of bounds" in str(exception):
+                continue
+            raise exception
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
@@ -674,6 +680,13 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
             bins=np.r_[[signal.index.left[0]], signal.index.right],  # This will generate the same steps as the signal.
             kind="custom"
         )
+        bin_stds = hypsometric_binning(
+            ddem=differences,
+            ref_dem=elevations,
+            bins=np.r_[[signal.index.left[0]], signal.index.right],
+            kind="custom",
+            aggregation_function=np.nanstd
+        )
         # Check which of the bins were non-empty.
         non_empty_bins = np.isfinite(hypsometric_bins["value"])
 
@@ -682,6 +695,11 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         if np.count_nonzero(non_empty_bins) < 4:
             continue
 
+        
+        # The weights are the squared inverse of the standard deviation of each bin.
+        bin_weights = bin_stds["value"].values[non_empty_bins] / np.sqrt(hypsometric_bins["count"].values[non_empty_bins])
+        bin_weights[bin_weights == 0.0] = 1e-8  # Avoid divide by zero problems.
+
         # Fit linear coefficients to scale the regional signal to the hypsometric bins properly.
         # The inverse of the pixel counts are used as weights, to properly disregard poorly constrained bins.
         coeffs = scipy.optimize.curve_fit(
@@ -689,7 +707,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
             xdata=signal.values[non_empty_bins],  # The xdata is the normalized regional signal
             ydata=hypsometric_bins["value"].values[non_empty_bins],  # The ydata is the actual values.
             p0=[1, 0],  # The initial guess of a and b (doesn't matter too much)
-            sigma=1 / hypsometric_bins["count"].values[non_empty_bins]  # Weights are the inverse pixel count.
+            sigma=bin_weights
         )[0]
 
         # Create a linear model from the elevations and the scaled regional signal.
