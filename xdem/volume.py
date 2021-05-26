@@ -511,16 +511,18 @@ for areas filling the min_coverage criterion.
 
 def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
-                                    glacier_index_map: np.ndarray) -> pd.DataFrame:
+                                    glacier_index_map: np.ndarray, n_bins: int = 20,
+                                    min_coverage: float = 0.05) -> pd.DataFrame:
     """
     Get the normalized regional hypsometric elevation change signal, read "the general shape of it".
 
     :param ddem: The dDEM to analyse.
     :param ref_dem: A void-free reference DEM.
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
-    """
-    n_bins = 20  # TODO: This should be an argument.
+    :param n_bins: The number of elevation bins to subdivide each glacier in.
 
+    :returns: A DataFrame of bin statistics, scaled by elevation and elevation change.
+    """
     # Extract the array and mask representations of the arrays.
     ddem_arr, ddem_mask = xdem.spatial_tools.get_array_and_mask(ddem.squeeze())
     ref_arr, ref_mask = xdem.spatial_tools.get_array_and_mask(ref_dem.squeeze())
@@ -530,9 +532,6 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
 
     # The unique indices are the unique glaciers.
     unique_indices = np.unique(glacier_index_map)
-
-    # Generate bins of normalized elevation.
-    elev_norm = np.linspace(0, 1, n_bins)
 
     # Create empty (ddem) value and (pixel) count arrays which will be filled iteratively.
     values = np.empty((n_bins, unique_indices.shape[0]), dtype=float) + np.nan
@@ -548,15 +547,19 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         # Create a mask representing a particular glacier.
         glacier_values = (glacier_index_map == i)
 
-        # Stop if the amount of pixels is tiny.
-        # TODO: Make this more dynamic.
+        # Stop if the "glacier" is tiny. It might be a cropped glacier outline for example.
         if np.count_nonzero(glacier_values) < 10:
             continue
-        # At this point, invalid glaciers have been skipped and the counter should be incremented.
-        count += 1
 
         # The inlier mask is where that particular glacier is and where nans don't exist.
         inlier_mask = glacier_values & ~ddem_mask
+
+        # Skip if the coverage is below the threshold
+        if (np.count_nonzero(inlier_mask) / np.count_nonzero(glacier_values)) < min_coverage:
+            continue
+
+        # At this point, invalid glaciers have been skipped and the counter should be incremented.
+        count += 1
 
         # Extract only the difference and elevation values that correspond to the glacier.
         differences = ddem_arr[inlier_mask]
@@ -568,23 +571,25 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         # Min-max scale by elevation.
         bins.index = (bins.index.mid - bins.index.left.min()) / (bins.index.right.max() - bins.index.left.min())
 
-        # Normalize by difference.
-        bins["value"] -= np.nanmin(bins["value"])
-        bins["value"] /= np.nanmax(bins["value"])
+        # Scale by difference.
+        bins["value"] = (bins["value"] - np.nanmin(bins["value"])) / (np.nanmax(bins["value"]) - np.nanmin(bins["value"]))
 
         # Assign the values and counts to the output array.
         values[:, count] = bins["value"]
         counts[:, count] = bins["count"]
 
-    values_weighted_mean = np.nansum(values * counts, axis=1) / np.nansum(counts, axis=1)
-    values_median = np.nanmedian(values, axis=1)
-    values_std = np.nanstd(values, axis=1)
-    count_sum = np.nansum(counts, axis=1)
-
     output = pd.DataFrame(
-        data=np.transpose([values_weighted_mean, values_median, values_std, count_sum]),
-        index=pd.IntervalIndex.from_arrays(left=elev_norm - 1 / n_bins, right=elev_norm + 1 / n_bins),
-        columns=["w_mean", "median", "std", "count"]
+        data={
+            "w_mean": np.nansum(values * counts, axis=1) / np.nansum(counts, axis=1),
+            "median": np.nanmedian(values, axis=1),
+            "std": np.nanstd(values, axis=1),
+            "sigma-1-lower": np.nanpercentile(values, 16, axis=1),
+            "sigma-1-upper": np.nanpercentile(values, 84, axis=1),
+            "sigma-2-lower": np.nanpercentile(values, 2.5, axis=1),
+            "sigma-2-upper": np.nanpercentile(values, 97.5, axis=1),
+            "count": np.nansum(counts, axis=1).astype(int),
+        },
+        index=pd.IntervalIndex.from_breaks(np.linspace(0, 1, n_bins + 1)),
     )
 
     return output
