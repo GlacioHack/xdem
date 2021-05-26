@@ -70,11 +70,10 @@ class TestdDEM:
 
         assert ddem._filled_data is not None
         assert type(ddem.filled_data) == np.ndarray
-        assert np.count_nonzero(np.isnan(ddem.filled_data)) == 0
 
         assert ddem.filled_data.shape == ddem.data.shape
 
-        assert np.abs(np.mean(self.ddem.data - ddem.filled_data)) < 1
+        assert np.abs(np.nanmean(self.ddem.data - ddem.filled_data)) < 1
 
     def test_local_hypso(self):
         """Test the local hypsometric approach."""
