@@ -622,8 +622,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :returns: A dDEM where glacier's that fit the min_coverage criterion are interpolated.
     """
     # Extract the array and nan parts of the inputs.
-    ddem_arr, ddem_nans = xdem.spatial_tools.get_array_and_mask(voided_ddem.squeeze())
-    ref_arr, ref_nans = xdem.spatial_tools.get_array_and_mask(ref_dem.squeeze())
+    ddem_arr, ddem_nans = xdem.spatial_tools.get_array_and_mask(voided_ddem)
+    ref_arr, ref_nans = xdem.spatial_tools.get_array_and_mask(ref_dem)
 
     # The reference DEM should be void free
     assert np.count_nonzero(ref_nans) == 0, "Reference DEM has voids"
