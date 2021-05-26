@@ -565,10 +565,8 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         # Run the hypsometric binning.
         bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
 
-        # Normalize by elevation.
-        bins.index = bins.index.mid
-        bins.index -= bins.index.min()
-        bins.index /= bins.index.max()
+        # Min-max scale by elevation.
+        bins.index = (bins.index.mid - bins.index.left.min()) / (bins.index.right.max() - bins.index.left.min())
 
         # Normalize by difference.
         bins["value"] -= np.nanmin(bins["value"])
