@@ -605,7 +605,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
                                             ref_dem: Union[np.ndarray, np.ma.masked_array],
                                             glacier_index_map: np.ndarray,
                                             min_coverage: float = 0.1,
-                                            regional_signal: Optional[pd.DataFrame] = None) -> np.ndarray:
+                                            regional_signal: Optional[pd.DataFrame] = None,
+                                            min_bin_count: int = 4) -> np.ndarray:
     """
     Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
 
@@ -616,6 +617,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
+    :param min_bin_count: The minimum allowed bin count to scale a signal from. The theoretical minimum is 2.
 
     :raises AssertionError: If `ref_dem` has voids.
 
@@ -690,9 +692,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         # Check which of the bins were non-empty.
         non_empty_bins = np.isfinite(hypsometric_bins["value"])
 
-        # A theoretical minimum of two bins are needed for the rest of the analysis, but that's a bit low, right?
-        # I'll set this to 4 right now, and we can discuss this.
-        if np.count_nonzero(non_empty_bins) < 4:
+        # A theoretical minimum of 2 bins are needed for the curve fit, but the threshold should be a bit higher.
+        if np.count_nonzero(non_empty_bins) < min_bin_count:
             continue
 
         
