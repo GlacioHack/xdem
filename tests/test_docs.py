@@ -4,6 +4,7 @@ import subprocess
 import sys
 import warnings
 
+import sphinx.cmd.build
 
 class TestDocs:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "docs/")
@@ -28,36 +29,12 @@ class TestDocs:
 
     def test_build(self):
         """Try building the docs and see if it works."""
-        current_dir = os.getcwd()
-        # Change into the docs directory.
-        os.chdir(self.docs_dir)
-
         # Remove the build directory if it exists.
-        if os.path.isdir("build/"):
-            shutil.rmtree("build/")
+        if os.path.isdir(os.path.join(self.docs_dir, "build/")):
+            shutil.rmtree(os.path.join(self.docs_dir, "build/"))
 
-        # Copy the environment and set the SPHINXBUILD variable to call the module.
-        # This is for it to work properly with GitHub Workflows
-        env = os.environ.copy()
-        env["SPHINXBUILD"] = f"{sys.executable} -m sphinx"
+        sphinx.cmd.build.main([
+            os.path.join(self.docs_dir, "source/"),
+            os.path.join(self.docs_dir, "build/")
+        ])
 
-        # Run the makefile
-        build_commands = ["make", "html"]
-        result = subprocess.run(
-            build_commands,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding="utf-8",
-            env=env
-        )
-
-        # Raise an error if the string "error" is in the stderr.
-        if "error" in str(result.stderr).lower():
-            raise RuntimeError(result.stderr)
-
-        # If "error" is not in the stderr string but it exists, show it as a warning.
-        if len(result.stderr) > 0:
-            warnings.warn(result.stderr)
-
-        os.chdir(current_dir)
