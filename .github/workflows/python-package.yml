@@ -37,13 +37,12 @@ jobs:
         mamba-version: "*"
         channels: conda-forge
         channel-priority: strict
-        environment-file: environment.yml
-        activate-environment: xdem
+        environment-file: dev-environment.yml
+        activate-environment: xdem-dev
 
     # Install the dependencies that are not in the environment file
     - name: Install dependencies
       run: |
-        mamba install sphinx numpydoc sphinx_rtd_theme sphinx-autodoc-typehints sphinxcontrib-programoutput flake8 pytest pylint
         pip install . --no-dependencies
 
     - name: Lint with flake8
