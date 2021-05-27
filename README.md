@@ -7,8 +7,9 @@ More documentation to come!
 [![build](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml/badge.svg)](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml)
 
 
-## Installation ##
+## Installation
 
+Recommended: Use conda for depencency solving.
 ```
 $ git clone https://github.com/GlacioHack/xdem.git
 $ cd ./xdem
@@ -16,18 +17,18 @@ $ conda env create -f environment.yml
 $ conda activate xdem
 $ pip install .
 ```
-or
-```bash
-pip install git+https://github.com/GlacioHack/xdem.git
-```
-
-To update, please use the `--force-reinstall` flag for `conda` or `pip` to ensure the latest version is installed (`geoutils` and `xdem` do not yet have proper release schedules as of 2021-05-13).
-
 After installing, we recommend to check that everything is working by running the tests:
 
 ```
 $ pytest -rA
 ```
+
+### Installing with pip
+**NOTE**: Setting up GDAL and PROJ may need some extra steps, depending on your operating system and configuration.
+```bash
+pip install xdem
+```
+
 
 ## Structure 
 
@@ -40,6 +41,8 @@ xdem are for now composed of three libraries:
 
 You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/xdem/issues) section. All contributions are welcome.
 To avoid conflicts, it is suggested to use separate branches for each implementation. All changes must then be submitted to the dev branch using pull requests. Each PR must be reviewed by at least one other person.
+
+Please see our [contribution page](CONTRIBUTING.md) for more detailed instructions.
 
 ### Documentation
 See the documentation at https://xdem.readthedocs.io
