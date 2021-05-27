@@ -1,0 +1,28 @@
+name: xdem-dev
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.7
+  - proj>=7.2
+  - geopandas
+  - numba
+  - matplotlib
+  - opencv
+  - pyproj
+  - rasterio
+  - scipy
+  - tqdm
+  - scikit-image
+  - proj-data
+  - scikit-gstat
+  - pytransform3d
+  - geoutils
+
+  # Development-specific
+  - pytest
+  - pytest-xdist
+  - sphinx
+  - numpydoc
+  - sphinxcontrib-programoutput
+  - flake8
+  - sphinx-autodoc-typehints
