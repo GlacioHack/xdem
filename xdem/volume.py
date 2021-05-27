@@ -708,7 +708,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
             xdata=signal.values[non_empty_bins],  # The xdata is the normalized regional signal
             ydata=hypsometric_bins["value"].values[non_empty_bins],  # The ydata is the actual values.
             p0=[1, 0],  # The initial guess of a and b (doesn't matter too much)
-            sigma=bin_weights
+            sigma=bin_weights,
+            warn_cov=False
         )[0]
 
         # Create a linear model from the elevations and the scaled regional signal.
