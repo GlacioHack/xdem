@@ -13,10 +13,10 @@
 import os
 import sys
 
+# Allow conf.py to find the xdem module
+sys.path.insert(0, os.path.abspath("../xdem/'"))
 import xdem.version
 
-# Allow conf.py to find the xdem module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
 # -- Project information -----------------------------------------------------
 
 project = 'xdem'
@@ -45,6 +45,8 @@ extensions = [
     "sphinx_autodoc_typehints",  # Include type hints in the API documentation.
     "sphinxcontrib.programoutput"
 ]
+
+autosummary_generate = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
