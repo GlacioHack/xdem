@@ -150,7 +150,7 @@ class TestCoregClass:
 
         # Create random noise and see if the standard deviation is equal (it should)
         dem3 = dem1 + np.random.random(size=dem1.size).reshape(dem1.shape)
-        assert biascorr.error(dem1, dem3, transform=affine, error_type="std") == np.std(dem3)
+        assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
 
 
