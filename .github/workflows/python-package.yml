@@ -11,30 +11,47 @@ on:
 
 jobs:
   build:
+    name: ${{ matrix.os }}, python ${{ matrix.python-version}}
+    runs-on: ${{ matrix.os }}
 
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        os: ["ubuntu-latest"]
+        python-version: ["3.7", "3.8", "3.9"]
+
+
+    # Run all shells using bash (including Windows)
+    defaults:
+      run:
+        shell: bash -l {0}
 
     steps:
     - uses: actions/checkout@v2
+
+    # Set up the conda-forge environment with mamba
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: conda-incubator/setup-miniconda@v2
       with:
+        auto-update-conda: true
         python-version: ${{ matrix.python-version }}
+        mamba-version: "*"
+        channels: conda-forge
+        channel-priority: strict
+        environment-file: environment.yml
+        activate-environment: xdem
+
+    # Install the dependencies that are not in the environment file
     - name: Install dependencies
       run: |
-        $CONDA/bin/conda install -c conda-forge mamba -y
-        $CONDA/bin/mamba env update --file environment.yml --name base
-        $CONDA/bin/pip install -r dev-requirements.txt
-        $CONDA/bin/pip install .
+        mamba install sphinx numpydoc sphinx_rtd_theme sphinx-autodoc-typehints sphinxcontrib-programoutput flake8 pytest pylint
+        pip install . --no-dependencies
+
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
-        $CONDA/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        $CONDA/bin/flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        $CONDA/bin/pytest -rA
+        pytest -rA

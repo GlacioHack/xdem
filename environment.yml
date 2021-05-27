@@ -2,24 +2,18 @@ name: xdem
 channels:
   - conda-forge
 dependencies:
-  - python>=3
+  - python>=3.7
   - proj>=7.2
   - geopandas
-  - ipython
   - numba
   - matplotlib
-  - pdal
   - opencv
-  - pytest
   - pyproj
   - rasterio
   - scipy
   - tqdm
   - scikit-image
-  - pip
   - proj-data
-  - pip:
-    - richdem
-    - scikit-gstat
-    - pytransform3d
-    - https://github.com/GlacioHack/GeoUtils/tarball/main
+  - scikit-gstat
+  - pytransform3d
+  - geoutils
