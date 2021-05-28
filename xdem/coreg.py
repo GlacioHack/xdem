@@ -255,7 +255,7 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     gradient_y, gradient_x = np.gradient(dem)
 
     slope_px = np.sqrt(gradient_x ** 2 + gradient_y ** 2)
-    aspect = np.arctan(-gradient_x, gradient_y)
+    aspect = np.arctan2(-gradient_x, gradient_y)
     aspect += np.pi
 
     return slope_px, aspect
