@@ -1087,13 +1087,18 @@ class NuthKaab(Coreg):
         super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], verbose: bool = False):
+                  weights: Optional[np.ndarray], verbose: Union[bool, int] = False):
         """Estimate the x/y/z offset between two DEMs."""
+        if verbose > 0:
+            print("Running Nuth and Kääb (2011) coregistration")
+
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
 
         # Calculate slope and aspect maps from the reference DEM
+        if verbose > 1:
+            print("   Calculate slope and aspect")
         slope, aspect = calculate_slope_and_aspect(ref_dem)
 
         # Make index grids for the east and north dimensions
@@ -1108,10 +1113,22 @@ class NuthKaab(Coreg):
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, bias = 0.0, 0.0, 0.0
 
-        if verbose:
-            print("Running Nuth and Kääb (2011) coregistration")
+        # Calculate initial dDEM statistics
+        elevation_difference = ref_dem - aligned_dem
+        bias = np.nanmedian(elevation_difference)
+        nmad_old = xdem.spatial_tools.nmad(elevation_difference)
+        if verbose > 0:
+            print("   Statistics on initial dh:")
+            print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_old))
+
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-        for i in trange(self.max_iterations, disable=not verbose, desc="Iteratively correcting dataset"):
+        if verbose > 0:
+            print("   Iteratively estimating horizontal shit:")
+
+        # If verbose is True or 1, will use progressbar, if verbose > 1, will print more statements
+        progressbar = True if ((verbose is True) or (verbose == 1)) else False
+
+        for i in trange(self.max_iterations, disable=not progressbar):
 
             # Calculate the elevation difference and the residual (NMAD) between them.
             elevation_difference = ref_dem - aligned_dem
@@ -1119,22 +1136,15 @@ class NuthKaab(Coreg):
             # Correct potential biases
             elevation_difference -= bias
 
-            nmad = xdem.spatial_tools.nmad(elevation_difference)
-
-            assert ~np.isnan(nmad), (offset_east, offset_north)
-
-            # Stop if the NMAD is low and a few iterations have been made
-            if i > 5 and nmad < self.error_threshold:
-                if verbose:
-                    print(f"NMAD went below the error threshold of {self.error_threshold}")
-                break
-
             # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
             east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
                 elevation_difference=elevation_difference,
                 slope=slope,
                 aspect=aspect
             )
+            if verbose > 1:
+                print("      #{:d} - Offset in pixels : ({:.2f}, {:.2f})".format(i + 1, east_diff, north_diff))
+
             # Increment the offsets with the overall offset
             offset_east += east_diff
             offset_north += north_diff
@@ -1148,6 +1158,30 @@ class NuthKaab(Coreg):
 
             # Assign the newly calculated elevations to the aligned_dem
             aligned_dem = new_elevation
+
+            # Update statistics
+            elevation_difference = ref_dem - aligned_dem
+            bias = np.nanmedian(elevation_difference)
+            nmad_new = xdem.spatial_tools.nmad(elevation_difference)
+            nmad_gain = (nmad_new - nmad_old) / nmad_old*100
+
+            if verbose > 1:
+                print("      Median = {:.2f} - NMAD = {:.2f}  ==>  Gain = {:.2f}%".format(bias, nmad_new, nmad_gain))
+
+            # Stop if the NMAD is low and a few iterations have been made
+            assert ~np.isnan(nmad_new), (offset_east, offset_north)
+            if i > 5 and nmad_new < self.error_threshold:
+                if verbose > 0:
+                    print(f"NMAD went below the error threshold of {self.error_threshold}")
+                break
+
+            nmad_old = nmad_new
+
+        # Print final results
+        if verbose > 0:
+            print("   Final offset in pixels (east, north) : ({:f}, {:f})".format(offset_east, offset_north))
+            print("   Statistics on coregistered dh:")
+            print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_new))
 
         self._meta["offset_east_px"] = offset_east
         self._meta["offset_north_px"] = offset_north
