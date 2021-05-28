@@ -210,4 +210,4 @@ class TestLocalHypsometric:
 
         # Validate that the interpolated (20% data) means and stds are similar to the original (100% data)
         assert abs(changes.mean() - interp_changes.mean()) < 1
-        assert abs(changes.std() - interp_changes.std()) < 1
+        assert abs(changes.std() - interp_changes.std()) < 3
