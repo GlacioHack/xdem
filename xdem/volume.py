@@ -703,14 +703,16 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
 
         # Fit linear coefficients to scale the regional signal to the hypsometric bins properly.
         # The inverse of the pixel counts are used as weights, to properly disregard poorly constrained bins.
-        coeffs = scipy.optimize.curve_fit(
-            f=lambda x, a, b: a * x + b,  # Estimate a linear function "f(x) = ax + b".
-            xdata=signal.values[non_empty_bins],  # The xdata is the normalized regional signal
-            ydata=hypsometric_bins["value"].values[non_empty_bins],  # The ydata is the actual values.
-            p0=[1, 0],  # The initial guess of a and b (doesn't matter too much)
-            sigma=bin_weights,
-            warn_cov=False
-        )[0]
+        with warnings.catch_warnings():
+            # curve_fit will sometimes say "can't estimate covariance". This is okay.
+            warnings.filterwarnings("ignore", message="covariance")  
+            coeffs = scipy.optimize.curve_fit(
+                f=lambda x, a, b: a * x + b,  # Estimate a linear function "f(x) = ax + b".
+                xdata=signal.values[non_empty_bins],  # The xdata is the normalized regional signal
+                ydata=hypsometric_bins["value"].values[non_empty_bins],  # The ydata is the actual values.
+                p0=[1, 0],  # The initial guess of a and b (doesn't matter too much)
+                sigma=bin_weights,
+            )[0]
 
         # Create a linear model from the elevations and the scaled regional signal.
         model = scipy.interpolate.interp1d(signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False)
