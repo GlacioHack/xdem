@@ -1074,15 +1074,15 @@ class NuthKaab(Coreg):
     https://doi.org/10.5194/tc-5-271-2011
     """
 
-    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):
+    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05):
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param max_iterations: The maximum allowed iterations before stopping.
-        :param error_threshold: The residual change threshold after which to stop the iterations.
+        :param offset_threshold: The residual offset threshold after which to stop the iterations.
         """
         self.max_iterations = max_iterations
-        self.error_threshold = error_threshold
+        self.offset_threshold = offset_threshold
 
         super().__init__()
 
@@ -1170,16 +1170,18 @@ class NuthKaab(Coreg):
 
             # Stop if the NMAD is low and a few iterations have been made
             assert ~np.isnan(nmad_new), (offset_east, offset_north)
-            if i > 5 and nmad_new < self.error_threshold:
+
+            offset = np.sqrt(east_diff**2 + north_diff**2)
+            if i > 1 and offset < self.offset_threshold:
                 if verbose > 0:
-                    print(f"NMAD went below the error threshold of {self.error_threshold}")
+                    print(f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping")
                 break
 
             nmad_old = nmad_new
 
         # Print final results
         if verbose > 0:
-            print("   Final offset in pixels (east, north) : ({:f}, {:f})".format(offset_east, offset_north))
+            print("\n   Final offset in pixels (east, north) : ({:f}, {:f})".format(offset_east, offset_north))
             print("   Statistics on coregistered dh:")
             print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_new))
 
