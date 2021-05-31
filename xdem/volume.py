@@ -606,7 +606,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
                                             glacier_index_map: np.ndarray,
                                             min_coverage: float = 0.1,
                                             regional_signal: Optional[pd.DataFrame] = None,
-                                            min_bin_count: int = 4) -> np.ndarray:
+                                            min_bin_count: int = 4,
+                                            idealized_ddem: bool = False) -> np.ndarray:
     """
     Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
 
@@ -618,6 +619,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
     :param min_bin_count: The minimum allowed bin count to scale a signal from. The theoretical minimum is 2.
+    :param idealized_ddem: Replace observed glacier values with the hypsometric signal. Good for error assessments.
 
     :raises AssertionError: If `ref_dem` has voids.
 
@@ -718,7 +720,11 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         model = scipy.interpolate.interp1d(signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False)
 
         # Find which values to fill using the model (all nans within the glacier extent)
-        values_to_fill = glacier_values & ddem_nans
+        if not idealized_ddem:
+            values_to_fill = glacier_values & ddem_nans
+        # If it should be idealized, replace all glacier values with the model
+        else:
+            values_to_fill = glacier_values
         # Fill the nans using the scaled regional signal.
         ddem_filled[values_to_fill] = model(ref_arr[values_to_fill])
 

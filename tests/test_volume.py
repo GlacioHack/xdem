@@ -2,6 +2,7 @@ import warnings
 
 import geoutils as gu
 import numpy as np
+import scipy.ndimage
 import pandas as pd
 
 import xdem
@@ -172,6 +173,7 @@ class TestLocalHypsometric:
 
         # Extract a normalized regional hypsometric signal.
         ddem = self.dem_2009.data - self.dem_1990.data
+        ddem_full = ddem.copy().filled(np.nan)
         glacier_index_map = self.all_outlines.rasterize(self.dem_2009)
         signal = xdem.volume.get_regional_hypsometric_signal(
             ddem=ddem, ref_dem=self.dem_2009.data, glacier_index_map=glacier_index_map)
@@ -208,8 +210,14 @@ class TestLocalHypsometric:
             glacier_index_map=glacier_index_map,
             idealized_ddem=True
         )
+        assert not np.array_equal(filled_ddem, idealized_ddem)
 
-        if True:
+        # Validate that the un-idealized dDEM has a higher gradient variance (more ups and downs)
+        filled_gradient = np.linalg.norm(np.gradient(filled_ddem), axis=0)
+        ideal_gradient = np.linalg.norm(np.gradient(idealized_ddem), axis=0)
+        assert np.nanstd(filled_gradient) > np.nanstd(ideal_gradient)
+
+        if False:
             import matplotlib.pyplot as plt
 
             plt.subplot(121)
@@ -218,10 +226,6 @@ class TestLocalHypsometric:
             plt.imshow(idealized_ddem, cmap="coolwarm_r", vmin=-10, vmax=10)
 
             plt.show()
-        assert not np.array_equal(filled_ddem, idealized_ddem)
-        assert np.nanstd(filled_ddem[glacier_index_map > 0]) > np.nanstd(idealized_ddem[glacier_index_map >0])
-
-
 
         # Extract the finite glacier values.
         changes = ddem.data.squeeze()[glacier_index_map > 0]
