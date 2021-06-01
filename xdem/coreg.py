@@ -1106,10 +1106,16 @@ class NuthKaab(Coreg):
         north_grid = np.arange(ref_dem.shape[0])
 
         # Make a function to estimate the aligned DEM (used to construct an offset DEM)
-        elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid,
-                                                                   z=np.where(np.isnan(aligned_dem), -9999, aligned_dem))
+        elevation_function = scipy.interpolate.RectBivariateSpline(
+            x=north_grid, y=east_grid, z=np.where(np.isnan(aligned_dem), -9999, aligned_dem), kx=1, ky=1
+        )
+
         # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
-        nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(aligned_dem))
+        # Use spline degree 1, as higher degrees will create instabilities around 1 and mess up the nodata mask
+        nodata_function = scipy.interpolate.RectBivariateSpline(
+            x=north_grid, y=east_grid, z=np.isnan(aligned_dem), kx=1, ky=1
+        )
+
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, bias = 0.0, 0.0, 0.0
 
