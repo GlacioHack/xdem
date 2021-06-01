@@ -2,7 +2,7 @@
 xdem.spstats provides tools to use spatial statistics for elevation change data
 """
 from __future__ import annotations
-from typing import Callable, Union
+from typing import Callable, Union, Optional, Tuple, Any
 import os
 import random
 from scipy.optimize import curve_fit
@@ -61,11 +61,11 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
 
     return get_empirical_variogram(dh=argdict['dh'],coords=argdict['coords'],**kwargs)
 
-def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int):
+def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> Tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
 
     #TODO: add methods that might be more relevant with the multi-distance sampling?
     """
-    Subsampling of elevation differences
+    Subsampling of elevation differences with random coordinates
 
     :param dh: elevation differences
     :param coords: coordinates
@@ -84,6 +84,74 @@ def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int):
         dh_sub = dh
 
     return dh_sub, coords_sub
+
+def create_circular_mask(h: float, w: float, center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
+    """
+    Create circular mask on a raster
+
+    :param h: height of array
+    :param w: width of array
+    :param center: center
+    :param radius: radius
+    :return:
+    """
+
+    if center is None:  # use the middle of the image
+        center = [int(w / 2), int(h / 2)]
+    if radius is None:  # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w - center[0], h - center[1])
+
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+
+    mask = dist_from_center <= radius
+
+    return mask
+
+def create_ring_mask(h: float, w: float, center: Optional[list[float]] = None, in_radius: float = 0., out_radius: float = 0.) -> np.ndarray:
+    """
+    Create ring mask on a raster
+
+    :param h: height of array
+    :param w: width of array
+    :param center: center
+    :param in_radius: inside radius
+    :param out_radius: outside radius
+    :return:
+    """
+
+    mask_inside = create_circular_mask(h,w,center=center,radius=in_radius)
+    mask_outside = create_circular_mask(h,w,center=center,radius=out_radius)
+
+    mask_ring = np.logical_and(~mask_inside,mask_outside)
+
+    return mask_ring
+
+
+def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, outside_radius: float = 0) -> Tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
+    """
+    Subsampling of elevation differences within a ring/disk (to sample points at similar pairwise distances)
+
+    :param dh: elevation differences
+    :param coords: coordinates
+    :param inside_radius: radius of inside ring disk in pixels
+    :param outside_radius: radius of outside ring disk in pixels
+
+    :return: subsets of dh and coords
+    """
+
+    # select random center coordinates
+    nx, ny = np.shape(dh)
+    center_x = np.random.choice(nx, 1)
+    center_y = np.random.choice(ny, 1)
+
+    mask_ring = create_ring_mask(nx,ny,center=[center_x,center_y],in_radius=inside_radius,out_radius=outside_radius)
+
+    dh_ring = dh[mask_ring]
+    coords_ring = coords[mask_ring]
+
+    return dh_ring, coords_ring
+
 
 def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coords: np.ndarray = None,
                                           nsamp: int = 10000, range_list: list= None, nrun: int=1, nproc: int=1,
@@ -208,6 +276,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 df_nb = list_df[i]
                 df_nb['run'] = i
                 list_df_nb.append(df_nb)
+
         df = pd.concat(list_df_nb)
 
         # group results, use mean as empirical variogram, estimate sigma, and sum the counts
@@ -343,7 +412,7 @@ def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crang
 
     return (psill1 + psill2)/std_err**2
 
-def neff_circ(area: float, list_vgm: list[Union[float,str,float]]) -> float:
+def neff_circ(area: float, list_vgm: list[Tuple[float,str,float]]) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
