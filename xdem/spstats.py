@@ -682,7 +682,7 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
 
 
 def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_size : float, perc_min_valid: float = 80.,
-                   patch_shape: str = 'circular',nmax : int = 1000) -> pd.DataFrame:
+                   patch_shape: str = 'circular',nmax : int = 1000, verbose: bool = False) -> pd.DataFrame:
 
     """
     Patches method for empirical estimation of the standard error over an integration area
@@ -699,31 +699,6 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
     :return: tile, mean, median, std and count of each patch
     """
-
-    def create_circular_mask(h, w, center=None, radius=None):
-
-        """
-        Create circular mask on a raster
-
-        :param h: height position
-        :param w: width position
-        :param center: center
-        :param radius: radius
-        :return:
-        """
-
-        if center is None:  # use the middle of the image
-            center = [int(w / 2), int(h / 2)]
-        if radius is None:  # use the smallest distance between the center and image walls
-            radius = min(center[0], center[1], w - center[0], h - center[1])
-
-        Y, X = np.ogrid[:h, :w]
-        dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-
-        mask = dist_from_center <= radius
-
-        return mask
-
 
     # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
     dh = dh.squeeze()
@@ -778,7 +753,8 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
         nb_pixel_valid = len(patch[np.isfinite(patch)])
         if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
             u=u+1
-            print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
+            if verbose:
+                print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
             mean_patch.append(np.nanmean(patch))
             med_patch.append(np.nanmedian(patch))
             std_patch.append(np.nanstd(patch))
