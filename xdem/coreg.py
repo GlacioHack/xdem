@@ -892,13 +892,15 @@ class Deramp(Coreg):
     Estimates an n-D polynomial between the difference of two DEMs.
     """
 
-    def __init__(self, degree: int = 1):
+    def __init__(self, degree: int = 1, max_points: int = 5e5):
         """
         Instantiate a deramping correction object.
 
         :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
+        :param max_points: The maximum number of random points to extract for fitting (for speed-up).
         """
         self.degree = degree
+        self.max_points = int(max_points)
 
         super().__init__()
 
@@ -943,6 +945,14 @@ class Deramp(Coreg):
 
         if verbose:
             print("Estimating deramp function...")
+
+        # reduce number of elements for speed
+        if len(x_coords) > self.max_points:
+            indices = np.random.randint(0, len(x_coords) - 1, self.max_points)
+            x_coords = x_coords[indices]
+            y_coords = y_coords[indices]
+            ddem = ddem[indices]
+
         coefs = scipy.optimize.fmin(
             func=residuals,
             x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
