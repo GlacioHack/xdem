@@ -7,18 +7,28 @@ More documentation to come!
 [![build](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml/badge.svg)](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml)
 
 
-## Installation ##
+## Installation
 
+Recommended: Use conda for depencency solving.
 ```
 $ git clone https://github.com/GlacioHack/xdem.git
 $ cd ./xdem
-$ conda create -f environment.yml
-$ conda activate glacio
+$ conda env create -f environment.yml
+$ conda activate xdem
+$ pip install .
 ```
-or
+After installing, we recommend to check that everything is working by running the tests:
+
+```
+$ pytest -rA
+```
+
+### Installing with pip
+**NOTE**: Setting up GDAL and PROJ may need some extra steps, depending on your operating system and configuration.
 ```bash
-pip install git+https://github.com/GlacioHack/xdem.git
+pip install xdem
 ```
+
 
 ## Structure 
 
@@ -31,6 +41,8 @@ xdem are for now composed of three libraries:
 
 You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/xdem/issues) section. All contributions are welcome.
 To avoid conflicts, it is suggested to use separate branches for each implementation. All changes must then be submitted to the dev branch using pull requests. Each PR must be reviewed by at least one other person.
+
+Please see our [contribution page](CONTRIBUTING.md) for more detailed instructions.
 
 ### Documentation
 See the documentation at https://xdem.readthedocs.io
@@ -47,16 +59,24 @@ https://github.com/corteva/rioxarray/blob/master/test/integration/test_integrati
 ```python
 import xdem
 
-reference_dem = "path/to/reference.tif"
-dem_to_be_aligned = "path/to/dem.tif"
-mask = "path/to/mask.shp"  # This is optional. Could for example be glacier outlines.
+reference_dem = xdem.DEM("path/to/reference.tif")
+dem_to_be_aligned = xdem.DEM("path/to/dem.tif")
 
-aligned_dem, error = xdem.coreg.coregister(reference_dem, dem_to_be_aligned, mask=mask)
+nuth_kaab = xdem.coreg.NuthKaab()
+
+nuth_kaab.fit(reference_dem.data, dem_to_be_aligned.data, transform=reference_dem.transform)
+
+
+aligned_dem = xdem.DEM.from_array(
+	nuth_kaab.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform),
+	transform=dem_to_be_aligned.transform,
+	crs=dem_to_be_aligned.crs
+)
 
 aligned_dem.save("path/to/coreg.tif")
 ```
-The default coregistration method is a [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) implementation, but this can be changed with the keyword argument `method=...`, e.g. to `"icp"`.
-The currently supported methods are: `"nuth_kaab"`, `"icp"` and `"deramp"`.
+This is an implementation of the [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) approach.
+[Please see the documentation](https://xdem.readthedocs.io/en/latest/coregistration.html) for more approaches.
 
 **Subtract one DEM with another**
 ```python

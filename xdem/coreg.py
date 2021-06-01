@@ -29,6 +29,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
+import skimage.transform
 from rasterio import Affine
 from tqdm import trange
 
@@ -48,6 +49,7 @@ except ImportError:
 
 try:
     from pytransform3d.transform_manager import TransformManager
+    import pytransform3d.transformations
     _HAS_P3D = True
 except ImportError:
     _HAS_P3D = False
@@ -274,7 +276,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
 
     :returns: A callable function to estimate the ramp.
     """
-    warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
+    #warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
     # Extract only the finite values of the elevation difference and corresponding coordinates.
     valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
     valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
@@ -408,7 +410,7 @@ def mask_as_array(reference_raster: gu.georaster.Raster, mask: Union[str, gu.geo
     return mask_array
 
 
-def _transform_to_bounds_and_res(shape: tuple[int, int],
+def _transform_to_bounds_and_res(shape: tuple[int, ...],
                                  transform: rio.transform.Affine) -> tuple[rio.coords.BoundingBox, float]:
     """Get the bounding box and (horizontal) resolution from a transform and the shape of a DEM."""
     bounds = rio.coords.BoundingBox(
@@ -418,7 +420,7 @@ def _transform_to_bounds_and_res(shape: tuple[int, int],
     return bounds, resolution
 
 
-def _get_x_and_y_coords(shape: tuple[int, int], transform: rio.transform.Affine):
+def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine):
     """Generate center coordinates from a transform and the shape of a DEM."""
     bounds, resolution = _transform_to_bounds_and_res(shape, transform)
     x_coords, y_coords = np.meshgrid(
@@ -429,12 +431,25 @@ def _get_x_and_y_coords(shape: tuple[int, int], transform: rio.transform.Affine)
 
 
 class Coreg:
-    _meta: Optional[dict[str, Any]] = None  # All __init__ functions should instantiate an empty dict.
-    _fit_called = False  # Flag to check if the .fit() method has been called.
+    """
+    Generic Coreg class.
 
-    def __init__(self):
-        """This function should have been overwritten by subclassing."""
-        raise ValueError("Coreg class should not be instantiated directly.")
+    Made to be subclassed.
+    """
+
+    _fit_called: bool = False  # Flag to check if the .fit() method has been called.
+    _is_affine: Optional[bool] = None
+
+    def __init__(self, meta: Optional[dict[str, Any]] = None, matrix: Optional[np.ndarray] = None):
+        """Instantiate a generic Coreg method."""
+        self._meta: dict[str, Any] = meta or {}  # All __init__ functions should instantiate an empty dict.
+
+        if matrix is not None:
+            with warnings.catch_warnings():
+                # This error is fixed in the upcoming 1.8
+                warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
+                valid_matrix = pytransform3d.transformations.check_transform(matrix)
+            self._meta["matrix"] = valid_matrix
 
     def fit(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
             dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
@@ -462,18 +477,19 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
-        # The reference mask is the union of the nan occurrence and the (potential) ma mask.
-        ref_mask = np.isnan(reference_dem) | (reference_dem.mask
-                                              if isinstance(reference_dem, np.ma.masked_array) else False)
-        # The to-be-aligned mask is the union of the nan occurrence and the (potential) ma mask.
-        tba_mask = np.isnan(dem_to_be_aligned) | (dem_to_be_aligned.mask
-                                                  if isinstance(dem_to_be_aligned, np.ma.masked_array) else False)
 
-        # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
-        full_mask = (~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
+        ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
+        tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
+
+        if np.all(ref_mask):
+            raise ValueError("'reference_dem' had only NaNs")
+        if np.all(tba_mask):
+            raise ValueError("'dem_to_be_aligned' had only NaNs")
 
         # If subsample is not equal to one, subsampling should be performed.
         if subsample != 1.0:
+            # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
+            full_mask = (~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
             # If subsample is less than one, it is parsed as a fraction (e.g. 0.8 => retain 80% of the values)
             if subsample < 1.0:
                 subsample = int(np.count_nonzero(full_mask) * (1 - subsample))
@@ -486,9 +502,6 @@ class Coreg:
             # Set the N random inliers to be parsed as outliers instead.
             full_mask[rows, cols] = False
 
-        # The arrays to provide the functions will be ndarrays with NaNs for masked out areas.
-        ref_dem = np.where(full_mask, np.asarray(reference_dem), np.nan).squeeze()
-        tba_dem = np.where(full_mask, np.asarray(dem_to_be_aligned), np.nan).squeeze()
 
         # Run the associated fitting function
         self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose)
@@ -506,17 +519,26 @@ class Coreg:
 
         :returns: The transformed DEM.
         """
-        if not self._fit_called:
+        if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        # The mask is the union of the nan occurrence and the (potential) ma mask.
-        dem_mask = (np.isnan(dem) | (dem.mask if isinstance(dem, np.ma.masked_array) else False)).squeeze()
-
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
-        dem_array = np.where(~dem_mask, np.asarray(dem), np.nan).squeeze()
+        dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+        if np.all(dem_mask):
+            raise ValueError("'dem' had only NaNs")
 
-        # Run the associated apply function
-        applied_dem = self._apply_func(dem_array, transform)
+        # See if a _apply_func exists
+        try:
+            # Run the associated apply function
+            applied_dem = self._apply_func(dem_array, transform)  # pylint: disable=assignment-from-no-return
+        # If it doesn't exist, use apply_matrix()
+        except NotImplementedError:
+            if self.is_affine:  # This only works on it's affine, however.
+                # Apply the matrix around the centroid (if defined, otherwise just from the center).
+                applied_dem = apply_matrix(dem_array, transform=transform,
+                                           matrix=self.to_matrix(), centroid=self._meta.get("centroid"))
+            else:
+                raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Return the array in the same format as it was given (ndarray or masked_array)
         return np.ma.masked_array(applied_dem, mask=dem.mask) if isinstance(dem, np.ma.masked_array) else applied_dem
@@ -529,15 +551,179 @@ class Coreg:
 
         :returns: The transformed coordinates.
         """
-        if not self._fit_called:
+        if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
         assert coords.shape[1] == 3, f"'coords' shape must be (N, 3). Given shape: {coords.shape}"
 
-        return self._apply_pts_func(coords)
+        coords_c = coords.copy()
+
+        # See if an _apply_pts_func exists
+        try:
+            transformed_points = self._apply_pts_func(coords)
+        # If it doesn't exist, use opencv's perspectiveTransform
+        except NotImplementedError:
+            if self.is_affine:  # This only works on it's rigid, however.
+                # Transform the points (around the centroid if it exists).
+                if self._meta.get("centroid") is not None:
+                    coords_c -= self._meta["centroid"]
+                transformed_points = cv2.perspectiveTransform(coords_c.reshape(1, -1, 3), self.to_matrix()).squeeze()
+                if self._meta.get("centroid") is not None:
+                    transformed_points += self._meta["centroid"]
+
+            else:
+                raise ValueError("Coreg method is non-rigid but has not implemented _apply_pts_func")
+
+        return transformed_points
+
+    @property
+    def is_affine(self) -> bool:
+        """Check if the transform be explained by a 3D affine transform."""
+        # _is_affine is found by seeing if to_matrix() raises an error.
+        # If this hasn't been done yet, it will be None
+        if self._is_affine is None:
+            try:  # See if to_matrix() raises an error.
+                self.to_matrix()
+                self._is_affine = True
+            except (ValueError, NotImplementedError):
+                self._is_affine = False
+
+        return self._is_affine
 
     def to_matrix(self) -> np.ndarray:
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
+
+    def centroid(self) -> Optional[tuple[float, float, float]]:
+        """Get the centroid of the coregistration, if defined."""
+        meta_centroid = self._meta.get("centroid")
+
+        if meta_centroid is None:
+            return None
+
+        # Unpack the centroid in case it is in an unexpected format (an array, list or something else).
+        return (meta_centroid[0], meta_centroid[1], meta_centroid[2])
+
+    def residuals(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
+                  dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+                  inlier_mask: Optional[np.ndarray] = None,
+                  transform: Optional[rio.transform.Affine] = None) -> np.ndarray:
+        """
+        Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
+
+        :param reference_dem: 2D array of elevation values acting reference. 
+        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
+        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+
+        :returns: A 1D array of finite residuals.
+        """
+        # Use the transform to correct the DEM to be aligned.
+        aligned_dem = self.apply(dem_to_be_aligned, transform=transform)
+
+        # Format the reference DEM
+        ref_arr, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
+
+        if inlier_mask is None:
+            inlier_mask = np.ones(ref_arr.shape, dtype=bool)
+
+        # Create the full inlier mask (manual inliers plus non-nans)
+        full_mask = (~ref_mask) & np.isfinite(aligned_dem) & inlier_mask
+
+        # Calculate the DEM difference
+        diff = ref_arr - aligned_dem
+
+        # Return the difference values within the full inlier mask
+        return diff[full_mask]
+
+    def error(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
+              dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+              error_type: str = "nmad",
+              inlier_mask: Optional[np.ndarray] = None,
+              transform: Optional[rio.transform.Affine] = None) -> float:
+        """
+        Calculate the error of a coregistration approach.
+
+        Choices:
+            - "nmad": Default. The Normalized Median Absolute Deviation of the residuals.
+            - "median": The median of the residuals.
+            - "mean": The mean/average of the residuals
+            - "std": The standard deviation of the residuals.
+            - "rms": The root mean square of the residuals.
+            - "mae": The mean absolute error of the residuals.
+            - "count": The residual count.
+
+        :param reference_dem: 2D array of elevation values acting reference. 
+        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param error_type: The type of error meaure to calculate.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
+        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+
+        :returns: The error measure of choice for the residuals.
+        """
+
+        residuals = self.residuals(reference_dem=reference_dem, dem_to_be_aligned=dem_to_be_aligned,
+                                   inlier_mask=inlier_mask, transform=transform)
+
+        if error_type == "nmad":
+            error = xdem.spatial_tools.nmad(residuals)
+        elif error_type == "median":
+            error = np.median(residuals)
+        elif error_type == "mean":
+            error = np.mean(residuals)
+        elif error_type == "std":
+            error = np.std(residuals)
+        elif error_type == "rms":
+            error = np.sqrt(np.mean(np.square(residuals)))
+        elif error_type == "mae":
+            error = np.mean(np.abs(residuals))
+        elif error_type == "count":
+            error = residuals.size
+        else:
+            raise ValueError(
+                    f"Invalid 'error_type': '{error_type}'."
+                    "Choices: ['nmad', 'median', 'mean', 'std', 'rms', 'mae', 'count']"
+            )
+
+        return error
+
+    @classmethod
+    def from_matrix(cls, matrix: np.ndarray):
+        """
+        Instantiate a generic Coreg class from a transformation matrix.
+
+        :param matrix: A 4x4 transformation matrix. Shape must be (4,4).
+
+        :raises ValueError: If the matrix is incorrectly formatted.
+
+        :returns: The instantiated generic Coreg class.
+        """
+        if np.any(~np.isfinite(matrix)):
+            raise ValueError(f"Matrix has non-finite values:\n{matrix}")
+        with warnings.catch_warnings():
+            # This error is fixed in the upcoming 1.8
+            warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
+            valid_matrix = pytransform3d.transformations.check_transform(matrix)
+        return cls(matrix=valid_matrix)
+
+    @classmethod
+    def from_translation(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0):
+        """
+        Instantiate a generic Coreg class from a X/Y/Z translation.
+
+        :param x_off: The offset to apply in the X (west-east) direction.
+        :param y_off: The offset to apply in the Y (south-north) direction.
+        :param z_off: The offset to apply in the Z (vertical) direction.
+
+        :raises ValueError: If the given translation contained invalid values.
+
+        :returns: An instantiated generic Coreg class.
+        """
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[0, 3] = x_off
+        matrix[1, 3] = y_off
+        matrix[2, 3] = z_off
+
+        return cls.from_matrix(matrix)
 
     def __add__(self, other: Coreg) -> CoregPipeline:
         """Return a pipeline consisting of self and the other coreg function."""
@@ -547,16 +733,27 @@ class Coreg:
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
-        raise NotImplementedError("This should have been implemented by subclassing")
-
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        raise NotImplementedError("This should have been implemented by subclassing")
-
-    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This should have been implemented by subclassing")
 
     def _to_matrix_func(self) -> np.ndarray:
+        # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
+
+        # Try to see if a matrix exists.
+        meta_matrix = self._meta.get("matrix")
+        if meta_matrix is not None:
+            assert meta_matrix.shape == (4, 4), f"Invalid _meta matrix shape. Expected: (4, 4), got {meta_matrix.shape}"
+            return meta_matrix
+
         raise NotImplementedError("This should be implemented by subclassing")
+
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
+        raise NotImplementedError("This should have been implemented by subclassing")
+
+    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
+        raise NotImplementedError("This should have been implemented by subclassing")
 
 
 class BiasCorr(Coreg):
@@ -572,7 +769,7 @@ class BiasCorr(Coreg):
 
         :param bias_func: The function to use for calculating the bias. Default: (weighted) average.
         """
-        self._meta: dict[str, Any] = {"bias_func": bias_func}
+        super().__init__(meta={"bias_func": bias_func})
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -590,17 +787,6 @@ class BiasCorr(Coreg):
             print("Bias estimated")
 
         self._meta["bias"] = bias
-
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        """Apply the bias to a DEM."""
-        return dem + self._meta["bias"]
-
-    def _apply_pts_func(self, coords: np.ndarray):
-        """Apply the bias to a given coordinate array."""
-        new_coords = coords.copy()
-        new_coords[:, 2] += self._apply_func(coords[:, 2], None)  # type: ignore
-
-        return new_coords
 
     def _to_matrix_func(self) -> np.ndarray:
         """Convert the bias to a transform matrix."""
@@ -621,7 +807,7 @@ class ICP(Coreg):
     See opencv docs for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
-    def __init__(self, max_iterations=100, tolerance=0.05, rejection_scale=2.5, num_levels=6):  # pylint: disable=super-init-not-called
+    def __init__(self, max_iterations=100, tolerance=0.05, rejection_scale=2.5, num_levels=6):
         """
         Instantiate an ICP coregistration object.
 
@@ -636,7 +822,8 @@ class ICP(Coreg):
         self.tolerance = tolerance
         self.rejection_scale = rejection_scale
         self.num_levels = num_levels
-        self._meta: dict[str, Any] = {}
+
+        super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -648,9 +835,11 @@ class ICP(Coreg):
         points: dict[str, np.ndarray] = {}
         # Generate the x and y coordinates for the reference_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
+
+        centroid = np.array([np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0])
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
-        x_coords -= bounds.left
-        y_coords -= bounds.bottom
+        x_coords -= centroid[0]
+        y_coords -= centroid[1]
         for key, dem in zip(["ref", "tba"], [ref_dem, tba_dem]):
 
             gradient_x, gradient_y = np.gradient(dem)
@@ -672,52 +861,28 @@ class ICP(Coreg):
 
             points[key] = point_cloud[~np.any(np.isnan(point_cloud), axis=1)].astype("float32")
 
-        icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
+            icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
         if verbose:
             print("Running ICP...")
-        _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+        try:
+            _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+        except cv2.error as exception:
+            if "(expected: 'n > 0'), where" not in str(exception):
+                raise exception
+
+            raise ValueError(
+                    "Not enough valid points in input data."
+                    f"'reference_dem' had {points['ref'].size} valid points."
+                    f"'dem_to_be_aligned' had {points['tba'].size} valid points."
+            )
+    
         if verbose:
             print("ICP finished")
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
+        self._meta["centroid"] = centroid
         self._meta["matrix"] = matrix
-
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        """Apply the coregistration matrix to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-        x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
-        x_coords -= bounds.left
-        y_coords -= bounds.bottom
-
-        valid_mask = np.isfinite(dem)
-        transformed_points = self._apply_pts_func(np.dstack([
-            x_coords[valid_mask],
-            y_coords[valid_mask],
-            dem[valid_mask]
-        ]).squeeze())
-
-        aligned_dem = scipy.interpolate.griddata(
-            points=transformed_points[:, :2],
-            values=transformed_points[:, 2],
-            xi=tuple(np.meshgrid(
-                np.linspace(bounds.left, bounds.right, dem.shape[1]) - bounds.left,
-                np.linspace(bounds.bottom, bounds.top, dem.shape[0])[::-1] - bounds.bottom
-            )),
-            method="cubic"
-        )
-        aligned_dem[~valid_mask] = np.nan
-
-        return aligned_dem
-
-    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
-        """Apply the coregistration matrix to a set of points."""
-        transformed_points = cv2.perspectiveTransform(coords.reshape(1, -1, 3), self.to_matrix()).squeeze()
-        return transformed_points
-
-    def _to_matrix_func(self) -> np.ndarray:
-        """Return the coregistration matrix."""
-        return self._meta["matrix"]
 
 
 class Deramp(Coreg):
@@ -735,7 +900,7 @@ class Deramp(Coreg):
         """
         self.degree = degree
 
-        self._meta: dict[str, Any] = {}
+        super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -826,14 +991,15 @@ class CoregPipeline(Coreg):
     A sequential set of coregistration steps.
     """
 
-    def __init__(self, pipeline: list[Coreg]):  # pylint: disable=super-init-not-called
+    def __init__(self, pipeline: list[Coreg]):
         """
         Instantiate a new coregistration pipeline.
 
         :param: Coregistration steps to run in the sequence they are given.
         """
         self.pipeline = pipeline
-        self._meta = {}
+
+        super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -846,7 +1012,7 @@ class CoregPipeline(Coreg):
             coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
-            tba_dem_mod = coreg._apply_func(tba_dem_mod, transform)
+            tba_dem_mod = coreg.apply(tba_dem_mod, transform)
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the coregistration steps sequentially to a DEM."""
@@ -862,7 +1028,7 @@ class CoregPipeline(Coreg):
         coords_mod = coords.copy()
 
         for coreg in self.pipeline:
-            coords_mod = coreg._apply_pts_func(coords_mod)
+            coords_mod = coreg.apply_pts(coords_mod)
 
         return coords_mod
 
@@ -908,7 +1074,7 @@ class NuthKaab(Coreg):
     https://doi.org/10.5194/tc-5-271-2011
     """
 
-    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):  # pylint: disable=super-init-not-called
+    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
@@ -918,7 +1084,7 @@ class NuthKaab(Coreg):
         self.max_iterations = max_iterations
         self.error_threshold = error_threshold
 
-        self._meta: dict[str, Any] = {}
+        super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -988,44 +1154,6 @@ class NuthKaab(Coreg):
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
-        """Apply the estimated x/y/z offsets to a DEM."""
-        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-        scaling_factor = self._meta["resolution"] / resolution
-
-        # Make index grids for the east and north dimensions
-        east_grid = np.arange(dem.shape[1]) * scaling_factor
-        north_grid = np.arange(dem.shape[0]) * scaling_factor
-
-        # Make a function to estimate the DEM (used to construct an offset DEM)
-        elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid,
-                                                                   z=np.where(np.isnan(dem), -9999, dem))
-        # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
-        nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(dem))
-
-        shifted_east_grid = east_grid + self._meta["offset_east_px"]
-        shifted_north_grid = north_grid - self._meta["offset_north_px"]
-
-        shifted_dem = elevation_function(y=shifted_east_grid, x=shifted_north_grid)
-        new_nans = nodata_function(y=shifted_east_grid, x=shifted_north_grid)
-        shifted_dem[new_nans >= 1] = np.nan
-
-        shifted_dem += self._meta["bias"]
-
-        return shifted_dem
-
-    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
-        """Apply the estimated x/y/z offsets to a set of points."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
-
-        new_coords = coords.copy()
-        new_coords[:, 0] -= offset_east
-        new_coords[:, 1] -= offset_north
-        new_coords[:, 2] += self._meta["bias"]
-
-        return new_coords
-
     def _to_matrix_func(self) -> np.ndarray:
         """Return a transformation matrix from the estimated offsets."""
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
@@ -1037,6 +1165,159 @@ class NuthKaab(Coreg):
         matrix[2, 3] += self._meta["bias"]
 
         return matrix
+
+
+def invert_matrix(matrix: np.ndarray) -> np.ndarray:
+    """Invert a transformation matrix."""
+    with warnings.catch_warnings():
+        # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
+        warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
+
+        checked_matrix = pytransform3d.transformations.check_matrix(matrix)
+        # Invert the transform if wanted.
+        return pytransform3d.transformations.invert_transform(checked_matrix)
+
+
+def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
+                 centroid: Optional[tuple[float, float, float]] = None,
+                 resampling: Union[int, str] = "bilinear",
+                 dilate_mask: bool = False) -> np.ndarray:
+    """
+    Apply a 3D transformation matrix to a 2.5D DEM.
+
+    The transformation is applied as a value correction using linear deramping, and 2D image warping.
+
+    1. Convert the DEM into a point cloud (not for gridding; for estimating the DEM shifts).
+    2. Transform the point cloud in 3D using the 4x4 matrix.
+    3. Measure the difference in elevation between the original and transformed points.
+    4. Estimate a linear deramp from the elevation difference, and apply the correction to the DEM values.
+    5. Convert the horizontal coordinates of the transformed points to pixel index coordinates.
+    6. Apply the pixel-wise displacement in 2D using the new pixel coordinates.
+    7. Apply the same displacement to a nodata-mask to exclude previous and/or new nans.
+
+    :param dem: The DEM to transform.
+    :param transform: The Affine transform object (georeferencing) of the DEM.
+    :param matrix: A 4x4 transformation matrix to apply to the DEM.
+    :param invert: Invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
+    :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
+    :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
+
+    :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
+    """
+    # Parse the resampling argument given.
+    if isinstance(resampling, int):
+        resampling_order = resampling
+    elif resampling == "cubic":
+        resampling_order = 3
+    elif resampling == "bilinear":
+        resampling_order = 1
+    elif resampling == "nearest":
+        resampling_order = 0
+    else:
+        raise ValueError(
+            f"`{resampling}` is not a valid resampling mode."
+            " Choices: [`nearest`, `bilinear`, `cubic`] or an integer."
+        )
+    # Copy the DEM to make sure the original is not modified, and convert it into an ndarray
+    demc = np.array(dem)
+
+    # Check if the matrix only contains a Z correction. In that case, only shift the DEM values by the bias.
+    empty_matrix = np.diag(np.ones(4, float))
+    empty_matrix[2, 3] = matrix[2, 3]
+    if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
+        return demc + matrix[2, 3]
+
+    # Temporary. Should probably be removed.
+    #demc[demc == -9999] = np.nan
+    nan_mask = xdem.spatial_tools.get_mask(dem)
+    assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
+    # Create a filled version of the DEM. (skimage doesn't like nans)
+    filled_dem = np.where(~nan_mask, demc, np.median(demc[~nan_mask]))
+
+    # Get the centre coordinates of the DEM pixels.
+    x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
+
+    bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
+
+    # If a centroid was not given, default to the bottom left corner.
+    if centroid is None:
+        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
+    else:
+        assert len(centroid) == 3, f"Expected centroid to be 3D X/Y/Z coordinate. Got shape of {len(centroid)}"
+
+    # Shift the coordinates to centre around the centroid.
+    x_coords -= centroid[0]
+    y_coords -= centroid[1]
+
+    # Create a point cloud of X/Y/Z coordinates
+    point_cloud = np.dstack((x_coords, y_coords, filled_dem))
+
+    # Shift the Z components by the centroid.
+    point_cloud[:, 2] -= centroid[2]
+
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # Transform the point cloud using the matrix.
+    transformed_points = cv2.perspectiveTransform(
+        point_cloud.reshape((1, -1, 3)),
+        matrix,
+    ).reshape(point_cloud.shape)
+
+    # Estimate the vertical difference of old and new point cloud elevations.
+    deramp = deramping(
+        (point_cloud[:, :, 2] - transformed_points[:, :, 2])[~nan_mask].flatten(),
+        point_cloud[:, :, 0][~nan_mask].flatten(),
+        point_cloud[:, :, 1][~nan_mask].flatten(),
+        degree=1
+    )
+    # Shift the elevation values of the soon-to-be-warped DEM.
+    filled_dem -= deramp(x_coords, y_coords)
+
+    # Create gap-free arrays of x and y coordinates to be converted into index coordinates.
+    x_inds = rio.fill.fillnodata(transformed_points[:, :, 0].copy(), mask=(~nan_mask).astype("uint8"))
+    y_inds = rio.fill.fillnodata(transformed_points[:, :, 1].copy(), mask=(~nan_mask).astype("uint8"))
+
+    # Divide the coordinates by the resolution to create index coordinates.
+    x_inds /= resolution
+    y_inds /= resolution
+    # Shift the x coords so that bounds.left is equivalent to xindex -0.5
+    x_inds -= x_coords.min() / resolution
+    # Shift the y coords so that bounds.top is equivalent to yindex -0.5
+    y_inds = (y_coords.max() / resolution) - y_inds
+
+    # Create a skimage-compatible array of the new index coordinates that the pixels shall have after warping.
+    inds = np.vstack((y_inds.reshape((1,) + y_inds.shape), x_inds.reshape((1,) + x_inds.shape)))
+
+    # Warp the DEM
+    transformed_dem = skimage.transform.warp(
+        filled_dem,
+        inds,
+        order=resampling_order,
+        mode="constant",
+        cval=0,
+        preserve_range=True
+    )
+    # Warp the NaN mask, setting true to all values outside the new frame.
+    tr_nan_mask = skimage.transform.warp(
+        nan_mask.astype("uint8"),
+        inds,
+        order=resampling_order,
+        mode="constant",
+        cval=1,
+        preserve_range=True
+    ) > 0.5  # Due to different interpolation approaches, everything above 0.5 is assumed to be 1 (True)
+
+    if dilate_mask:
+        tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
+
+    # Apply the transformed nan_mask
+    transformed_dem[tr_nan_mask] = np.nan
+
+    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
+
+    return transformed_dem
 
 
 class ZScaleCorr(Coreg):
@@ -1058,7 +1339,8 @@ class ZScaleCorr(Coreg):
         """
         self.degree = degree
         self.bin_count = bin_count
-        self._meta: dict[str, Any] = {}
+
+        super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -1091,7 +1373,9 @@ class ZScaleCorr(Coreg):
 
     def _to_matrix_func(self) -> np.ndarray:
         """Convert the transform to a matrix, if possible."""
-        if self.degree < 2:
+        if self.degree == 0:  # If it's just a bias correction.
+            return self._meta["coefficients"][-1]
+        elif self.degree < 2:
             raise NotImplementedError
-
-        raise ValueError("Model cannot be described as a rigid transformation matrix.")
+        else:
+            raise ValueError("A 2nd degree or higher ZScaleCorr cannot be described as a 4x4 matrix!")
