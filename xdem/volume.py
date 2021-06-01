@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
+from tqdm import tqdm
 
 import xdem
 
@@ -490,13 +491,15 @@ for areas filling the min_coverage criterion.
 
 def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
-                                    glacier_index_map: np.ndarray) -> pd.DataFrame:
+                                    glacier_index_map: np.ndarray,
+                                    verbose: bool = False) -> pd.DataFrame:
     """
     Get the normalized regional hypsometric elevation change signal, read "the general shape of it".
 
     :param ddem: The dDEM to analyse.
     :param ref_dem: A void-free reference DEM.
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
+    :param verbose: Show progress bar.
     """
     n_bins = 20  # TODO: This should be an argument.
 
@@ -520,7 +523,7 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
     # Start a counter of glaciers that are actually processed.
     count = 0
     # Loop over each unique glacier.
-    for i in np.unique(glacier_index_map):
+    for i in tqdm(np.unique(glacier_index_map), desc="Finding regional signal", disable=(not verbose)):
         # If i ==0, it's assumed to be periglacial.
         if i == 0:
             continue
@@ -531,8 +534,6 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         # TODO: Make this more dynamic.
         if np.count_nonzero(glacier_values) < 10:
             continue
-        # At this point, invalid glaciers have been skipped and the counter should be incremented.
-        count += 1
 
         # The inlier mask is where that particular glacier is and where nans don't exist.
         inlier_mask = glacier_values & ~ddem_mask
@@ -542,7 +543,12 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         elevations = ref_arr[inlier_mask]
 
         # Run the hypsometric binning.
-        bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
+        try:
+            bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
+        except ValueError:  # ValueError: zero-size array to reduction operation minimum which has no identity on "zbins=" call
+            continue
+        # At this point, invalid glaciers have been skipped and the counter should be incremented.
+        count += 1
 
         # Normalize by elevation.
         bins.index = bins.index.mid
@@ -575,7 +581,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
                                             ref_dem: Union[np.ndarray, np.ma.masked_array],
                                             glacier_index_map: np.ndarray,
                                             min_coverage: float = 0.1,
-                                            regional_signal: Optional[pd.DataFrame] = None) -> np.ndarray:
+                                            regional_signal: Optional[pd.DataFrame] = None,
+                                            verbose: bool = False) -> np.ndarray:
     """
     Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
 
@@ -586,6 +593,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
+    :param verbose: Show progress bars.
 
     :raises AssertionError: If `ref_dem` has voids.
 
@@ -603,7 +611,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         regional_signal = get_regional_hypsometric_signal(
             ddem=ddem_arr,
             ref_dem=ref_arr,
-            glacier_index_map=glacier_index_map
+            glacier_index_map=glacier_index_map,
+            verbose=verbose
         )
 
     # The unique indices are the unique glaciers.
@@ -612,7 +621,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     # Make a copy of the dDEM which will be filled iteratively.
     ddem_filled = ddem_arr.copy()
     # Loop over all glaciers and fill the dDEM accordingly.
-    for i in unique_indices:
+    for i in tqdm(unique_indices, desc="Interpolating dDEM", disable=(not verbose)):
         if i == 0:  # i==0 is assumed to mean stable ground.
             continue
         # Create a mask representing a particular glacier.
