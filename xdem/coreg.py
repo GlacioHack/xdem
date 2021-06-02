@@ -1097,7 +1097,7 @@ class NuthKaab(Coreg):
         super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], verbose: Unionbool = False):
+                  weights: Optional[np.ndarray], verbose: bool = False):
         """Estimate the x/y/z offset between two DEMs."""
         if verbose:
             print("Running Nuth and Kääb (2011) coregistration")
