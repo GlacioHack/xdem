@@ -892,15 +892,17 @@ class Deramp(Coreg):
     Estimates an n-D polynomial between the difference of two DEMs.
     """
 
-    def __init__(self, degree: int = 1, max_points: int = 5e5):
+    def __init__(self, degree: int = 1, subsample: Union[int, float] = 5e5):
         """
         Instantiate a deramping correction object.
 
         :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
-        :param max_points: The maximum number of random points to extract for fitting (for speed-up).
+        :param subsample: Factor for subsampling the input raster for speed-up.
+        If < 1, will be considered a fraction of valid pixels to extract.
+        If > 1 will be considered the number of pixels to extract.
         """
         self.degree = degree
-        self.max_points = int(max_points)
+        self.subsample = subsample
 
         super().__init__()
 
@@ -947,12 +949,22 @@ class Deramp(Coreg):
             print("Estimating deramp function...")
 
         # reduce number of elements for speed
-        if len(x_coords) > self.max_points:
-            indices = np.random.randint(0, len(x_coords) - 1, self.max_points)
+        # Get number of points to extract
+        max_points = len(x_coords)
+        if (self.subsample <= 1) & (self.subsample >= 0):
+            npoints = int(self.subsample * max_points)
+        elif self.subsample > 1:
+            npoints = int(self.subsample)
+        else:
+            raise ValueError("`subsample` must be >= 0")
+
+        if max_points > npoints:
+            indices = np.random.choice(max_points, npoints, replace=False)
             x_coords = x_coords[indices]
             y_coords = y_coords[indices]
             ddem = ddem[indices]
 
+        # Optimize polynomial parameters
         coefs = scipy.optimize.fmin(
             func=residuals,
             x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
