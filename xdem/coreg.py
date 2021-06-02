@@ -1097,9 +1097,9 @@ class NuthKaab(Coreg):
         super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], verbose: Union[bool, int] = False):
+                  weights: Optional[np.ndarray], verbose: Unionbool = False):
         """Estimate the x/y/z offset between two DEMs."""
-        if verbose > 0:
+        if verbose:
             print("Running Nuth and Kääb (2011) coregistration")
 
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
@@ -1107,7 +1107,7 @@ class NuthKaab(Coreg):
         aligned_dem = tba_dem.copy()
 
         # Calculate slope and aspect maps from the reference DEM
-        if verbose > 1:
+        if verbose:
             print("   Calculate slope and aspect")
         slope, aspect = calculate_slope_and_aspect(ref_dem)
 
@@ -1133,18 +1133,17 @@ class NuthKaab(Coreg):
         elevation_difference = ref_dem - aligned_dem
         bias = np.nanmedian(elevation_difference)
         nmad_old = xdem.spatial_tools.nmad(elevation_difference)
-        if verbose > 0:
+        if verbose:
             print("   Statistics on initial dh:")
             print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_old))
 
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-        if verbose > 0:
+        if verbose:
             print("   Iteratively estimating horizontal shit:")
 
-        # If verbose is True or 1, will use progressbar, if verbose > 1, will print more statements
-        progressbar = True if ((verbose is True) or (verbose == 1)) else False
-
-        for i in trange(self.max_iterations, disable=not progressbar):
+        # If verbose is True, will use progressbar and print additional statements
+        pbar = trange(self.max_iterations, disable=not verbose, desc="   Progress")
+        for i in pbar:
 
             # Calculate the elevation difference and the residual (NMAD) between them.
             elevation_difference = ref_dem - aligned_dem
@@ -1158,8 +1157,8 @@ class NuthKaab(Coreg):
                 slope=slope,
                 aspect=aspect
             )
-            if verbose > 1:
-                print("      #{:d} - Offset in pixels : ({:.2f}, {:.2f})".format(i + 1, east_diff, north_diff))
+            if verbose:
+                pbar.write("      #{:d} - Offset in pixels : ({:.2f}, {:.2f})".format(i + 1, east_diff, north_diff))
 
             # Increment the offsets with the overall offset
             offset_east += east_diff
@@ -1181,22 +1180,22 @@ class NuthKaab(Coreg):
             nmad_new = xdem.spatial_tools.nmad(elevation_difference)
             nmad_gain = (nmad_new - nmad_old) / nmad_old*100
 
-            if verbose > 1:
-                print("      Median = {:.2f} - NMAD = {:.2f}  ==>  Gain = {:.2f}%".format(bias, nmad_new, nmad_gain))
+            if verbose:
+                pbar.write("      Median = {:.2f} - NMAD = {:.2f}  ==>  Gain = {:.2f}%".format(bias, nmad_new, nmad_gain))
 
             # Stop if the NMAD is low and a few iterations have been made
             assert ~np.isnan(nmad_new), (offset_east, offset_north)
 
             offset = np.sqrt(east_diff**2 + north_diff**2)
             if i > 1 and offset < self.offset_threshold:
-                if verbose > 0:
-                    print(f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping")
+                if verbose:
+                    pbar.write(f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping")
                 break
 
             nmad_old = nmad_new
 
         # Print final results
-        if verbose > 0:
+        if verbose:
             print("\n   Final offset in pixels (east, north) : ({:f}, {:f})".format(offset_east, offset_north))
             print("   Statistics on coregistered dh:")
             print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_new))
