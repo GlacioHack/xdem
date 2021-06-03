@@ -226,3 +226,7 @@ class TestSubsample:
         # Test if subsample < 1
         random_values = xdem.spatial_tools.subsample_raster(array, subsample=0.5)
         assert np.size(random_values) == int(np.size(array) * 0.5)
+
+        # Test with optional argument return_indices
+        random_values, indices = xdem.spatial_tools.subsample_raster(array, subsample=0.3, return_indices=True)
+        assert np.all(array[indices] == random_values)
