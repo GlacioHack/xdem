@@ -396,3 +396,42 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     # Return the hillshade, scaled to uint8 ranges.
     # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
+
+
+def subsample_raster(array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int],
+                     return_indices: bool = False) -> np.ndarray:
+    """
+    Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
+
+    :param subsample: If < 1, will be considered a fraction of valid pixels to extract.
+If > 1 will be considered the number of pixels to extract.
+    :param return_indices: If set to True, will also return the extracted indices.
+
+    :returns: The subsampled array (1D)
+    """
+    # Get number of points to extract
+    if (subsample <= 1) & (subsample > 0):
+        npoints = int(subsample * np.size(array))
+    elif subsample > 1:
+        npoints = int(subsample)
+    else:
+        raise ValueError("`subsample` must be > 0")
+
+    # Remove invalid values and flatten array
+    mask = get_mask(array) #-> need to remove .squeeze in get_mask
+    valids = np.argwhere(~mask.flatten()).squeeze()
+
+    # Checks that array and npoints are correct
+    assert np.ndim(valids) == 1
+    if npoints > np.size(valids):
+        npoints = np.size(valids)
+
+    # Randomly extract npoints without replacement
+    indices = np.random.choice(valids, npoints, replace=False)
+    unraveled_indices = np.unravel_index(indices, array.shape)
+
+    if return_indices:
+        return array[unraveled_indices], unraveled_indices
+
+    else:
+        return array[unraveled_indices]
