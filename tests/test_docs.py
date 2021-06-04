@@ -35,6 +35,6 @@ class TestDocs:
 
         sphinx.cmd.build.main([
             os.path.join(self.docs_dir, "source/"),
-            os.path.join(self.docs_dir, "build/")
+            os.path.join(self.docs_dir, "build/html")
         ])
 

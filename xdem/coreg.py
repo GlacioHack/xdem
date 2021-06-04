@@ -469,10 +469,6 @@ class Coreg:
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
         """
-        # Make sure that the mask has an expected format.
-        if inlier_mask is not None:
-            inlier_mask = np.asarray(inlier_mask)
-            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
 
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
@@ -480,6 +476,17 @@ class Coreg:
 
         ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
         tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
+
+        # Make sure that the mask has an expected format.
+        if inlier_mask is not None:
+            inlier_mask = np.asarray(inlier_mask).squeeze()
+            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+
+            if np.all(~inlier_mask):
+                raise ValueError("'inlier_mask' had no inliers.")
+
+            ref_dem[~inlier_mask] = np.nan
+            tba_dem[~inlier_mask] = np.nan
 
         if np.all(ref_mask):
             raise ValueError("'reference_dem' had only NaNs")
@@ -553,7 +560,7 @@ class Coreg:
         """
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
-        assert coords.shape[1] == 3, f"'coords' shape must be (N, 3). Given shape: {coords.shape}"
+        assert len(np.shape(coords)) == 2 and np.shape(coords)[1] == 3, f"'coords' shape must be (N, 3). Given shape: {np.shape(coords)}"
 
         coords_c = coords.copy()
 
@@ -778,6 +785,9 @@ class BiasCorr(Coreg):
             print("Estimating bias...")
         diff = ref_dem - tba_dem
         diff = diff[np.isfinite(diff)]
+
+        if np.count_nonzero(np.isfinite(diff)) == 0:
+            raise ValueError("No finite values in bias comparison.")
 
         # Use weights if those were provided.
         bias = self._meta["bias_func"](diff) if weights is None \
@@ -1442,3 +1452,101 @@ class ZScaleCorr(Coreg):
             raise NotImplementedError
         else:
             raise ValueError("A 2nd degree or higher ZScaleCorr cannot be described as a 4x4 matrix!")
+
+class PiecewiseCoreg(Coreg):
+    """
+    Piece-wise coreg class for nonlinear estimations.
+    """
+
+    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int):
+        """
+        Instantiate a piecewise coreg object.
+
+        :param coreg: An instantiated coreg object to fit in the subdivided DEMs.
+        :param subdivision: The number of grids to divide the DEMs in. E.g. 4 means four different transforms.
+        """
+
+        if isinstance(coreg, type):
+            raise ValueError(
+                    "The 'coreg' argument must be an instantiated Coreg subclass. "
+                    "Hint: write e.g. ICP() instead of ICP"
+            )
+        self.coreg = coreg
+        self.subdivision = subdivision
+
+        super().__init__()
+
+        self._meta["coreg_meta"] = []
+
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: rio.transform.Affine | None,
+                  weights: np.ndarray | None, verbose: bool = False):
+        """Fit the coreg approach for each subdivision."""
+
+        groups = xdem.spatial_tools.subdivide_array(tba_dem.shape, count=self.subdivision)
+
+        for i in np.unique(groups):
+            inlier_mask = groups == i
+            inlier_positions = np.argwhere(inlier_mask)
+
+            self.coreg.fit(reference_dem=ref_dem.copy(), dem_to_be_aligned=tba_dem.copy(), transform=transform, inlier_mask=inlier_mask)
+
+            meta: dict[str, Any] = {
+                    "i": i,
+                    "min_row": inlier_positions[:, 0].min(),
+                    "max_row": inlier_positions[:, 0].max(),
+                    "min_col": inlier_positions[:, 1].min(),
+                    "max_col": inlier_positions[:, 1].max(),
+                    "transform": transform
+            }
+            mid_row = np.mean([meta["min_row"], meta["max_row"]]).astype(int)
+            mid_col = np.mean([meta["min_col"], meta["max_col"]]).astype(int)
+
+            # Find the indices of all finites within the mask
+            finites = np.argwhere(np.isfinite(tba_dem) & inlier_mask)
+            # Calculate the distance between the approximate center and all finite indices
+            distances = np.linalg.norm(finites - np.array([mid_row, mid_col]), axis=1)
+            # Find the index representing the closest finite value to the center.
+            closest = np.argwhere(distances == distances.min())
+
+            # Assign the closest finite value as the representative point
+            meta["representative_row"], meta["representative_col"] = finites[closest][0][0]
+            meta["representative_val"] = ref_dem[meta["representative_row"], meta["representative_col"]]
+            meta.update(self.coreg._meta)
+
+            self._meta["coreg_meta"].append(meta)
+
+    def to_points(self) -> np.ndarray:
+        """
+        Convert the piecewise coregistration matrices to 3D (source -> destination) points.
+
+        The returned shape is (N, 3, 2) where the dimensions represent:
+            0. The point index where N is equal to the amount of subdivisions.
+            1. The X/Y/Z coordinate of the point.
+            2. The old/new position of the point.
+
+        To acquire the first point's original position: points[0, :, 0]
+        To acquire the first point's new position: points[0, :, 1]
+        To acquire the first point's Z difference: points[0, 2, 1] - points[0, 2, 0]
+
+        :returns: An array of 3D source -> destionation points.
+        """
+        points = np.empty(shape=(0, 3, 2))
+        for meta in self._meta["coreg_meta"]:
+            self.coreg._meta = meta
+
+            x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"], meta["representative_col"])
+
+            old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (-1, 3))
+            new_position = self.coreg.apply_pts(old_position)
+        
+            points = np.append(points, np.dstack((old_position, new_position)), axis=0)
+
+        return points
+
+
+
+
+
+
+

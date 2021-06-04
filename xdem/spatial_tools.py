@@ -396,3 +396,32 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     # Return the hillshade, scaled to uint8 ranges.
     # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
+
+
+def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
+    """
+    Generate indices for subdivision of an array.
+
+    :param dem_shape: The shape of a array to be subdivided.
+    :param count: The amount of subdivisions to make.
+
+    :examples:
+        >>> subdivide_dem((4, 4), 3)
+        array([[0, 0, 0, 0],
+               [0, 0, 1, 1],
+               [1, 1, 1, 2],
+               [2, 2, 2, 2]])
+
+    :raises ValueError: If the 'shape' size (`np.prod(shape)`) is smallern than 'count'
+
+    :returns: An array of shape 'shape' with 'count' unique indices.
+    """
+    if count > np.prod(shape):
+        raise ValueError(f"Shape '{shape}' size ({np.prod(shape)}) is smaller than 'count' ({count}).")
+    indices = np.zeros(shape=shape, dtype="int64") - 1
+
+    for i, view in enumerate(np.array_split(indices.ravel(), count)):
+        view[:] = i
+
+    return indices
+

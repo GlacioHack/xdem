@@ -519,3 +519,28 @@ class TestCoregClass:
         unscaled_dem = zcorr_nonlinear.apply(scaled_dem, None)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
+
+    def test_piecewise_coreg(self):
+        warnings.simplefilter("error")
+
+        subdivision = 4
+        piecewise = coreg.PiecewiseCoreg(coreg=coreg.BiasCorr(), subdivision=subdivision)
+
+        piecewise.fit(**self.fit_params)
+
+
+        points = piecewise.to_points()
+
+        # Validate that the number of points is equal to the amount of subdivisions.
+        assert points.shape[0] == subdivision
+
+        z_diff = points[:, 2, 1] - points[:, 2, 0]
+
+        # Validate that all values are different
+        assert np.unique(z_diff).size == z_diff.size
+
+
+        # Validate that the PiecewiseCoreg doesn't accept uninstantiated Coreg classes
+        with pytest.raises(ValueError, match="instantiated Coreg subclass"):
+            coreg.PiecewiseCoreg(coreg=coreg.BiasCorr, subdivision=1)  # type: ignore
+

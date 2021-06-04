@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import pytest
 import warnings
 
 import geoutils as gu
@@ -176,3 +177,19 @@ def test_hillshade():
 
     # Make sure that this doesn't create weird division warnings.
     xdem.spatial_tools.hillshade(dem.data, dem.res)
+
+
+def test_subdivide_dem():
+
+    test_shape = (6, 4)
+    test_count = 4
+    subdivision_grid = xdem.spatial_tools.subdivide_array(test_shape, test_count)
+
+
+    assert subdivision_grid.shape == test_shape
+    assert np.unique(subdivision_grid).size == test_count
+
+    assert np.unique(xdem.spatial_tools.subdivide_array((10,), 3)).size == 3
+
+    with pytest.raises(ValueError, match=r"Shape.*smaller than.*"):
+        xdem.spatial_tools.subdivide_array((5,), 15)
