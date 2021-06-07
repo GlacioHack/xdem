@@ -24,7 +24,10 @@ class TestDocs:
                 # Run everything except plt.show() calls.
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread")
-                    exec(infile.read().replace("plt.show()", "plt.close()"))
+                    try:
+                        exec(infile.read().replace("plt.show()", "plt.close()"))
+                    except Exception as exception:
+                        raise RuntimeError(f"Failed on {filename}") from exception
 
         filenames = [os.path.join("code", filename) for filename in os.listdir("code/") if filename.endswith(".py")]
 
