@@ -22,7 +22,9 @@ class TestDocs:
             """Run a python script in one thread."""
             with open(filename) as infile:
                 # Run everything except plt.show() calls.
-                exec(infile.read().replace("plt.show()", ""))
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread")
+                    exec(infile.read().replace("plt.show()", "plt.close()"))
 
         filenames = [os.path.join("code", filename) for filename in os.listdir("code/") if filename.endswith(".py")]
 
@@ -39,7 +41,7 @@ class TestDocs:
         if os.path.isdir(os.path.join(self.docs_dir, "build/")):
             shutil.rmtree(os.path.join(self.docs_dir, "build/"))
 
-        sphinx.cmd.build.main(
+        return_code = sphinx.cmd.build.main(
             [
                 "-j",
                 str(self.n_threads or "auto"),
@@ -47,3 +49,5 @@ class TestDocs:
                 os.path.join(self.docs_dir, "build/html"),
             ]
         )
+
+        assert return_code == 0

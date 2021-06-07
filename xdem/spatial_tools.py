@@ -406,7 +406,7 @@ def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
     :param count: The amount of subdivisions to make.
 
     :examples:
-        >>> subdivide_dem((4, 4), 3)
+        >>> subdivide_array((4, 4), 3)
         array([[0, 0, 0, 0],
                [0, 0, 1, 1],
                [1, 1, 1, 2],

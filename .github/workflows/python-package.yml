@@ -28,6 +28,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+
+    - uses: conda-incubator/setup-miniconda@v2
+      with:
+        miniconda-vesrion: "latest"
+        auto-activate-base: true
+        activate-environment: ""
+
     # Set up the conda-forge environment with mamba
     - name: Set up Python ${{ matrix.python-version }} and dependencies
       uses: conda-incubator/setup-miniconda@v2
@@ -52,4 +59,4 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest -rA
+        pytest -rA -n=auto
