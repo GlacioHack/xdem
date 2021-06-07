@@ -42,7 +42,7 @@ jobs:
 
     - name: Install project
       run: |
-        pip install . --no-dependencies
+        pip install . --no-dependencies --editable
 
     - name: Lint with flake8
       run: |
