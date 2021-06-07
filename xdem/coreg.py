@@ -255,7 +255,7 @@ def calculate_slope_and_aspect(dem: np.ndarray) -> tuple[np.ndarray, np.ndarray]
     gradient_y, gradient_x = np.gradient(dem)
 
     slope_px = np.sqrt(gradient_x ** 2 + gradient_y ** 2)
-    aspect = np.arctan(-gradient_x, gradient_y)
+    aspect = np.arctan2(-gradient_x, gradient_y)
     aspect += np.pi
 
     return slope_px, aspect
@@ -892,13 +892,17 @@ class Deramp(Coreg):
     Estimates an n-D polynomial between the difference of two DEMs.
     """
 
-    def __init__(self, degree: int = 1):
+    def __init__(self, degree: int = 1, subsample: Union[int, float] = 5e5):
         """
         Instantiate a deramping correction object.
 
         :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
+        :param subsample: Factor for subsampling the input raster for speed-up.
+        If <= 1, will be considered a fraction of valid pixels to extract.
+        If > 1 will be considered the number of pixels to extract.
         """
         self.degree = degree
+        self.subsample = subsample
 
         super().__init__()
 
@@ -943,6 +947,24 @@ class Deramp(Coreg):
 
         if verbose:
             print("Estimating deramp function...")
+
+        # reduce number of elements for speed
+        # Get number of points to extract
+        max_points = np.size(x_coords)
+        if (self.subsample <= 1) & (self.subsample >= 0):
+            npoints = int(self.subsample * max_points)
+        elif self.subsample > 1:
+            npoints = int(self.subsample)
+        else:
+            raise ValueError("`subsample` must be >= 0")
+
+        if max_points > npoints:
+            indices = np.random.choice(max_points, npoints, replace=False)
+            x_coords = x_coords[indices]
+            y_coords = y_coords[indices]
+            ddem = ddem[indices]
+
+        # Optimize polynomial parameters
         coefs = scipy.optimize.fmin(
             func=residuals,
             x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
@@ -1074,26 +1096,31 @@ class NuthKaab(Coreg):
     https://doi.org/10.5194/tc-5-271-2011
     """
 
-    def __init__(self, max_iterations: int = 50, error_threshold: float = 0.05):
+    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05):
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param max_iterations: The maximum allowed iterations before stopping.
-        :param error_threshold: The residual change threshold after which to stop the iterations.
+        :param offset_threshold: The residual offset threshold after which to stop the iterations.
         """
         self.max_iterations = max_iterations
-        self.error_threshold = error_threshold
+        self.offset_threshold = offset_threshold
 
         super().__init__()
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
         """Estimate the x/y/z offset between two DEMs."""
+        if verbose:
+            print("Running Nuth and Kääb (2011) coregistration")
+
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
 
         # Calculate slope and aspect maps from the reference DEM
+        if verbose:
+            print("   Calculate slope and aspect")
         slope, aspect = calculate_slope_and_aspect(ref_dem)
 
         # Make index grids for the east and north dimensions
@@ -1101,17 +1128,34 @@ class NuthKaab(Coreg):
         north_grid = np.arange(ref_dem.shape[0])
 
         # Make a function to estimate the aligned DEM (used to construct an offset DEM)
-        elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid,
-                                                                   z=np.where(np.isnan(aligned_dem), -9999, aligned_dem))
+        elevation_function = scipy.interpolate.RectBivariateSpline(
+            x=north_grid, y=east_grid, z=np.where(np.isnan(aligned_dem), -9999, aligned_dem), kx=1, ky=1
+        )
+
         # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
-        nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(aligned_dem))
+        # Use spline degree 1, as higher degrees will create instabilities around 1 and mess up the nodata mask
+        nodata_function = scipy.interpolate.RectBivariateSpline(
+            x=north_grid, y=east_grid, z=np.isnan(aligned_dem), kx=1, ky=1
+        )
+
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, bias = 0.0, 0.0, 0.0
 
+        # Calculate initial dDEM statistics
+        elevation_difference = ref_dem - aligned_dem
+        bias = np.nanmedian(elevation_difference)
+        nmad_old = xdem.spatial_tools.nmad(elevation_difference)
         if verbose:
-            print("Running Nuth and Kääb (2011) coregistration")
+            print("   Statistics on initial dh:")
+            print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_old))
+
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-        for i in trange(self.max_iterations, disable=not verbose, desc="Iteratively correcting dataset"):
+        if verbose:
+            print("   Iteratively estimating horizontal shit:")
+
+        # If verbose is True, will use progressbar and print additional statements
+        pbar = trange(self.max_iterations, disable=not verbose, desc="   Progress")
+        for i in pbar:
 
             # Calculate the elevation difference and the residual (NMAD) between them.
             elevation_difference = ref_dem - aligned_dem
@@ -1119,22 +1163,15 @@ class NuthKaab(Coreg):
             # Correct potential biases
             elevation_difference -= bias
 
-            nmad = xdem.spatial_tools.nmad(elevation_difference)
-
-            assert ~np.isnan(nmad), (offset_east, offset_north)
-
-            # Stop if the NMAD is low and a few iterations have been made
-            if i > 5 and nmad < self.error_threshold:
-                if verbose:
-                    print(f"NMAD went below the error threshold of {self.error_threshold}")
-                break
-
             # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
             east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
                 elevation_difference=elevation_difference,
                 slope=slope,
                 aspect=aspect
             )
+            if verbose:
+                pbar.write("      #{:d} - Offset in pixels : ({:.2f}, {:.2f})".format(i + 1, east_diff, north_diff))
+
             # Increment the offsets with the overall offset
             offset_east += east_diff
             offset_north += north_diff
@@ -1148,6 +1185,32 @@ class NuthKaab(Coreg):
 
             # Assign the newly calculated elevations to the aligned_dem
             aligned_dem = new_elevation
+
+            # Update statistics
+            elevation_difference = ref_dem - aligned_dem
+            bias = np.nanmedian(elevation_difference)
+            nmad_new = xdem.spatial_tools.nmad(elevation_difference)
+            nmad_gain = (nmad_new - nmad_old) / nmad_old*100
+
+            if verbose:
+                pbar.write("      Median = {:.2f} - NMAD = {:.2f}  ==>  Gain = {:.2f}%".format(bias, nmad_new, nmad_gain))
+
+            # Stop if the NMAD is low and a few iterations have been made
+            assert ~np.isnan(nmad_new), (offset_east, offset_north)
+
+            offset = np.sqrt(east_diff**2 + north_diff**2)
+            if i > 1 and offset < self.offset_threshold:
+                if verbose:
+                    pbar.write(f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping")
+                break
+
+            nmad_old = nmad_new
+
+        # Print final results
+        if verbose:
+            print("\n   Final offset in pixels (east, north) : ({:f}, {:f})".format(offset_east, offset_north))
+            print("   Statistics on coregistered dh:")
+            print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_new))
 
         self._meta["offset_east_px"] = offset_east
         self._meta["offset_north_px"] = offset_north
