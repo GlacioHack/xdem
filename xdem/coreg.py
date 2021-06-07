@@ -1545,6 +1545,75 @@ class PiecewiseCoreg(Coreg):
         return points
 
 
+def interpolate_and_extrapolate(coords: np.ndarray, z_values: np.ndarray, grid: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+    nn  = scipy.interpolate.NearestNDInterpolator(coords[:, :2], z_values)
+
+    new_xs = scipy.interpolate.griddata(
+            points=coords[:, :2],
+            values=z_values,
+            xi=grid,
+            method="linear",
+            fill_value=np.nan
+    )
+    new_xs[np.isnan(new_xs)] = nn(np.transpose([grid[0][np.isnan(new_xs)], grid[1][np.isnan(new_xs)]]))
+
+    return new_xs
+
+
+
+def warp_dem(dem: np.ndarray, transform: rio.transform.Affine, source_coords: np.ndarray, destination_coords: np.ndarray, resampling_order: int = 1) -> np.ndarray:
+    dem_arr, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+
+    x_coords, y_coords = _get_x_and_y_coords(dem_arr.shape, transform)
+    _, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
+
+    xmax = x_coords.max()
+    xmin = x_coords.min()
+    ymax = y_coords.max()
+    ymin = y_coords.min()
+
+    def scale_x(xcoords: np.ndarray) -> np.ndarray:
+        return dem_arr.shape[1] * (xcoords - xmin) / (xmax - xmin)
+    def scale_y(ycoords: np.ndarray) -> np.ndarray:
+        return dem_arr.shape[0] * (1 - (ycoords - ymin) / (ymax - ymin))
+
+    x_coords_scaled = scale_x(x_coords)
+    y_coords_scaled = scale_y(y_coords)
+
+    source_coords_scaled = source_coords.copy()
+    destination_coords_scaled = destination_coords.copy()
+    
+    for coords in (source_coords_scaled, destination_coords_scaled):
+        coords[:, 0] = scale_x(coords[:, 0])
+        coords[:, 1] = scale_y(coords[:, 1])
+
+
+    new_xs = x_coords_scaled + interpolate_and_extrapolate(coords=source_coords_scaled[:, :2], z_values=destination_coords_scaled[:, 0] - source_coords_scaled[:, 0], grid=(x_coords, y_coords))
+    new_ys = y_coords_scaled + interpolate_and_extrapolate(coords=source_coords_scaled[:, :2], z_values=destination_coords_scaled[:, 1] - source_coords_scaled[:, 1], grid=(x_coords, y_coords))
+
+    new_indices = np.vstack((new_ys.reshape((1,) + new_ys.shape), new_xs.reshape((1,) + new_xs.shape)))
+
+
+    # Warp the DEM
+    transformed_dem = skimage.transform.warp(
+        dem_arr,
+        new_indices,
+        order=resampling_order,
+        mode="constant",
+        cval=np.nan,
+        preserve_range=True
+    )
+
+
+    import matplotlib.pyplot as plt
+
+    plt.subplot(121)
+    plt.imshow(dem_arr)
+
+    plt.subplot(122)
+    plt.imshow(transformed_dem)
+    plt.show()
+
 
 
 

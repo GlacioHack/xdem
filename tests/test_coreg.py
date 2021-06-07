@@ -544,3 +544,56 @@ def test_apply_matrix():
     # Check that the NMAD is low
     assert spatial_tools.nmad(diff) < 5
     print(np.nanmedian(diff), spatial_tools.nmad(diff))
+
+
+def test_warp_dem():
+
+    source_coords = np.array(
+            [
+                [1000, 1000, 200],
+                [1200, 1200, 200],
+                [1300, 1300, 200],
+                [1250, 1450, 200]
+            ]
+    )
+
+    dest_coords = source_coords.copy()
+    dest_coords[0, 0] += 1
+    dest_coords[1, 0] += 2
+    dest_coords[2, 0] += 3
+    dest_coords[3, 0] += 2.5
+
+
+    transform = rio.transform.from_origin(1000, 1500, 1, 1)
+
+    shape = (500, 500)
+    corr_size = int(shape[1] / 30)
+    dem = cv2.resize(
+        cv2.GaussianBlur(
+            np.repeat(np.repeat(
+                np.random.randint(0, 255, (shape[0]//corr_size,
+                                           shape[1]//corr_size), dtype='uint8'),
+                corr_size, axis=0), corr_size, axis=1),
+            ksize=(2*corr_size + 1, 2*corr_size + 1),
+            sigmaX=corr_size) / 255,
+        dsize=(shape[1], shape[0])
+    ) * 200
+
+    
+    transformed_dem = coreg.warp_dem(
+            dem=dem,
+            transform=transform,
+            source_coords=source_coords,
+            destination_coords=dest_coords,
+            resampling_order=1
+    )
+
+    return
+
+    import matplotlib.pyplot as plt
+
+    plt.imshow(dem)
+    plt.show()
+
+    assert source_coords.shape == (2, 3)
+
