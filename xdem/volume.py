@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
+from tqdm import tqdm
 
 import xdem
 
@@ -518,13 +519,15 @@ for areas filling the min_coverage criterion.
 def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
                                     ref_dem: Union[np.ndarray, np.ma.masked_array],
                                     glacier_index_map: np.ndarray, n_bins: int = 20,
-                                    min_coverage: float = 0.05) -> pd.DataFrame:
+                                    verbose: bool = False, min_coverage: float = 0.05) -> pd.DataFrame:
     """
     Get the normalized regional hypsometric elevation change signal, read "the general shape of it".
 
     :param ddem: The dDEM to analyse.
     :param ref_dem: A void-free reference DEM.
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
+    :param verbose: Show progress bar.
+    n_bins = 20  # TODO: This should be an argument.
     :param n_bins: The number of elevation bins to subdivide each glacier in.
 
     :returns: A DataFrame of bin statistics, scaled by elevation and elevation change.
@@ -546,7 +549,7 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
     # Start a counter of glaciers that are actually processed.
     count = 0
     # Loop over each unique glacier.
-    for i in np.unique(glacier_index_map):
+    for i in tqdm(np.unique(glacier_index_map), desc="Finding regional signal", disable=(not verbose)):
         # If i ==0, it's assumed to be periglacial.
         if i == 0:
             continue
@@ -572,13 +575,19 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         elevations = ref_arr[inlier_mask]
 
         # Run the hypsometric binning.
-        bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
+        try:
+            bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
+        except ValueError:  # ValueError: zero-size array to reduction operation minimum which has no identity on "zbins=" call
+            continue
+        # At this point, invalid glaciers have been skipped and the counter should be incremented.
+        count += 1
 
         # Min-max scale by elevation.
         bins.index = (bins.index.mid - bins.index.left.min()) / (bins.index.right.max() - bins.index.left.min())
 
         # Scale by difference.
-        bins["value"] = (bins["value"] - np.nanmin(bins["value"])) / (np.nanmax(bins["value"]) - np.nanmin(bins["value"]))
+        bins["value"] = (bins["value"] - np.nanmin(bins["value"])) / \
+            (np.nanmax(bins["value"]) - np.nanmin(bins["value"]))
 
         # Assign the values and counts to the output array.
         values[:, count] = bins["value"]
@@ -606,6 +615,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
                                             glacier_index_map: np.ndarray,
                                             min_coverage: float = 0.1,
                                             regional_signal: Optional[pd.DataFrame] = None,
+                                            verbose: bool = False,
                                             min_bin_count: int = 4,
                                             idealized_ddem: bool = False) -> np.ndarray:
     """
@@ -618,6 +628,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
+    :param verbose: Show progress bars.
     :param min_bin_count: The minimum allowed bin count to scale a signal from. The theoretical minimum is 2.
     :param idealized_ddem: Replace observed glacier values with the hypsometric signal. Good for error assessments.
 
@@ -637,7 +648,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         regional_signal = get_regional_hypsometric_signal(
             ddem=ddem_arr,
             ref_dem=ref_arr,
-            glacier_index_map=glacier_index_map
+            glacier_index_map=glacier_index_map,
+            verbose=verbose
         )
 
     # The unique indices are the unique glaciers.
@@ -646,7 +658,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     # Make a copy of the dDEM which will be filled iteratively.
     ddem_filled = ddem_arr.copy()
     # Loop over all glaciers and fill the dDEM accordingly.
-    for i in unique_indices:
+    for i in tqdm(unique_indices, desc="Interpolating dDEM", disable=(not verbose)):
         if i == 0:  # i==0 is assumed to mean stable ground.
             continue
         # Create a mask representing a particular glacier.
@@ -698,16 +710,16 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         if np.count_nonzero(non_empty_bins) < min_bin_count:
             continue
 
-        
         # The weights are the squared inverse of the standard deviation of each bin.
-        bin_weights = bin_stds["value"].values[non_empty_bins] / np.sqrt(hypsometric_bins["count"].values[non_empty_bins])
+        bin_weights = bin_stds["value"].values[non_empty_bins] / \
+            np.sqrt(hypsometric_bins["count"].values[non_empty_bins])
         bin_weights[bin_weights == 0.0] = 1e-8  # Avoid divide by zero problems.
 
         # Fit linear coefficients to scale the regional signal to the hypsometric bins properly.
         # The inverse of the pixel counts are used as weights, to properly disregard poorly constrained bins.
         with warnings.catch_warnings():
             # curve_fit will sometimes say "can't estimate covariance". This is okay.
-            warnings.filterwarnings("ignore", message="covariance")  
+            warnings.filterwarnings("ignore", message="covariance")
             coeffs = scipy.optimize.curve_fit(
                 f=lambda x, a, b: a * x + b,  # Estimate a linear function "f(x) = ax + b".
                 xdata=signal.values[non_empty_bins],  # The xdata is the normalized regional signal
