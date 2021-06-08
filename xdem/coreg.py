@@ -1544,21 +1544,54 @@ class PiecewiseCoreg(Coreg):
 
         return points
 
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
 
-def interpolate_and_extrapolate(coords: np.ndarray, z_values: np.ndarray, grid: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
-    nn  = scipy.interpolate.NearestNDInterpolator(coords[:, :2], z_values)
+        points = self.to_points()
 
-    new_xs = scipy.interpolate.griddata(
-            points=coords[:, :2],
-            values=z_values,
-            xi=grid,
-            method="linear",
-            fill_value=np.nan
-    )
-    new_xs[np.isnan(new_xs)] = nn(np.transpose([grid[0][np.isnan(new_xs)], grid[1][np.isnan(new_xs)]]))
+        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
+        
+        representative_height = np.nanmean(dem)
+        edges_source = np.array([
+            [bounds.left + resolution / 2, bounds.top - resolution / 2, representative_height],
+            [bounds.right - resolution / 2, bounds.top - resolution / 2, representative_height],
+            [bounds.left + resolution / 2, bounds.bottom + resolution / 2, representative_height],
+            [bounds.right - resolution / 2, bounds.bottom + resolution / 2, representative_height]
+        ])
+        edges_dest = self.apply_pts(edges_source)
+        edges = np.vstack((edges_source.reshape((1,) + edges_source.shape), edges_dest.reshape((1,) + edges_dest.shape)))
 
-    return new_xs
+        all_points = np.append(points, edges, axis=0)
 
+        warped_dem = warp_dem(
+            dem=dem,
+            transform=transform,
+            source_coords=all_points[:, :, 0],
+            destination_coords=all_points[:, :, 1],
+            resampling="linear"
+        )
+
+        return warped_dem
+
+
+
+    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        """Apply the scaling model to a set of points."""
+        points = self.to_points()
+
+        new_coords = coords.copy()
+        for dim in range(0, 3):
+            offset_model = scipy.interpolate.interp2d(
+                x=points[:, 0, 0],
+                y=points[:, 1, 0],
+                z=points[:, dim, 0] - points[:, dim, 1],
+                bounds_error=True
+            )
+            try:
+                new_coords[:, dim] += offset_model(coords[:, 0], coords[:, 1])
+            except ValueError as exception:
+                raise ValueError(f"Out of bounds error for coords (minx: {coords[:, 0].min()}, maxx: {coords[:, 0].max()}, miny: {coords[:, 1].min()}, maxy: {coords[:, 1].max()}") from exception
+
+        return new_coords
 
 
 def warp_dem(
@@ -1575,10 +1608,12 @@ def warp_dem(
     :param dem: The DEM to warp. Allowed shapes are (1, row, col) or (row, col)
     :param transform: The Affine transform of the DEM.
     :param source_coords: The source 2D or 3D points. must be X/Y/(Z) coords of shape (N, 2) or (N, 3).
-    :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords' 
+    :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords'
     :param resampling: The resampling order to use. Choices: ['nearest', 'linear', 'cubic'].
+    :param trim_border: Remove values outside of the interpolation regime (True) or leave them unmodified (False).
 
     :raises ValueError: If the inputs are poorly formatted.
+    :raises AssertionError: For unexpected outputs.
 
     :examples:
         >>> dem = np.ones((5, 5), dtype=float)
@@ -1678,21 +1713,10 @@ def warp_dem(
             new_indices[:, :, 0][missing_ys] = grid_y[missing_ys]
             new_indices[:, :, 1][missing_xs] = grid_x[missing_xs]
 
-
-        # Get the associated cv2 version of the interpolation.
-        #resampling_cv2 = {"nearest": cv2.INTER_NEAREST, "linear": cv2.INTER_LINEAR, "cubic": cv2.INTER_CUBIC}
-
         order = {"nearest": 0, "linear": 1, "cubic": 3}
 
-        # Warp the DEM
-        #warped = cv2.remap(
-        #    src=dem_arr,
-        #    map1=new_indices[:, :, 1],  # The new x-indices of the pixels
-        #    map2=new_indices[:, :, 0],  # The new y-indices of the pixels
-        #    interpolation=resampling_cv2[resampling],
-        #    borderValue=np.nan
-        #)
         with warnings.catch_warnings():
+            # An skimage warning that will hopefully be fixed soon. (2021-06-08)
             warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
             warped = skimage.transform.warp(
                 image=np.where(dem_mask, -9999.12345, dem_arr),
@@ -1702,7 +1726,6 @@ def warp_dem(
                 order=order[resampling],
                 cval=-9999.12345
             )
-
             new_mask = skimage.transform.warp(
                 image=dem_mask,
                 inverse_map=np.moveaxis(new_indices, 2, 0),
@@ -1721,6 +1744,9 @@ def warp_dem(
             method=resampling,
             fill_value=np.nan
         )
+        if not trim_border:
+            grid_offsets[np.isnan(grid_offsets)] = np.nanmean(grid_offsets)
+
         warped += grid_offsets
 
     assert not np.all(np.isnan(warped)), "All-NaN output."

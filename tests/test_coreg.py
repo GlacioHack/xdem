@@ -418,10 +418,12 @@ class TestCoregClass:
         # Validate that all values are different
         assert np.unique(z_diff).size == z_diff.size
 
-
         # Validate that the PiecewiseCoreg doesn't accept uninstantiated Coreg classes
         with pytest.raises(ValueError, match="instantiated Coreg subclass"):
             coreg.PiecewiseCoreg(coreg=coreg.BiasCorr, subdivision=1)  # type: ignore
+
+
+        transformed_dem = piecewise.apply(self.tba.data, self.tba.transform)
 
 def test_apply_matrix():
     warnings.simplefilter("error")
