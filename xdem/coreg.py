@@ -1561,61 +1561,168 @@ def interpolate_and_extrapolate(coords: np.ndarray, z_values: np.ndarray, grid: 
 
 
 
-def warp_dem(dem: np.ndarray, transform: rio.transform.Affine, source_coords: np.ndarray, destination_coords: np.ndarray, resampling_order: int = 1) -> np.ndarray:
+def warp_dem(
+        dem: np.ndarray,
+        transform: rio.transform.Affine,
+        source_coords: np.ndarray,
+        destination_coords: np.ndarray,
+        resampling: str = "cubic",
+        trim_border: bool = True
+    ) -> np.ndarray:
+    """
+    Warp a DEM using a set of source-destination 2D or 3D coordinates.
+
+    :param dem: The DEM to warp. Allowed shapes are (1, row, col) or (row, col)
+    :param transform: The Affine transform of the DEM.
+    :param source_coords: The source 2D or 3D points. must be X/Y/(Z) coords of shape (N, 2) or (N, 3).
+    :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords' 
+    :param resampling: The resampling order to use. Choices: ['nearest', 'linear', 'cubic'].
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :examples:
+        >>> dem = np.ones((5, 5), dtype=float)
+        >>> dem
+        array([[1., 1., 1., 1., 1.],
+               [1., 1., 1., 1., 1.],
+               [1., 1., 1., 1., 1.],
+               [1., 1., 1., 1., 1.],
+               [1., 1., 1., 1., 1.]])
+        >>> transform = rio.transform.from_origin(0, 5, 1, 1)
+        >>> source_coords = np.array([
+        ...     [0, 0, 0],
+        ...     [5, 0, 0],
+        ...     [5, 5, 0],
+        ...     [0, 5, 0]
+        ... ]).astype("float32")
+        >>> destination_coords = source_coords.copy()
+        >>> destination_coords[3, 2] = 4
+        >>> warped_dem = warp_dem(
+        ...     dem=dem,
+        ...     transform=transform,
+        ...     source_coords=source_coords,
+        ...     destination_coords=destination_coords,
+        ...     resampling="nearest"
+        ... )
+        >>> warped_dem
+        array([[5., 5., 5., 1., 1.],
+               [5., 5., 5., 1., 1.],
+               [5., 5., 5., 1., 1.],
+               [1., 1., 1., 1., 1.],
+               [1., 1., 1., 1., 1.]])
+
+    :returns: A warped DEM with the same shape as the input.
+    """
+    if source_coords.shape != destination_coords.shape:
+        raise ValueError(
+            f"Incompatible shapes: source_coords '({source_coords.shape})' and "
+            f"destination_coords '({destination_coords.shape})' shapes must be the same"
+        )
+    if (len(source_coords.shape) > 2) or (source_coords.shape[1] < 2) or (source_coords.shape[1] > 3):
+        raise ValueError(
+                "Invalid coordinate shape. Expected 2D or 3D coordinates of shape (N, 2) or (N, 3). "
+                f"Got '{source_coords.shape}'"
+        )
+    allowed_resampling_strs = ["nearest", "linear", "cubic"]
+    if resampling not in allowed_resampling_strs:
+        raise ValueError(f"Resampling type '{resampling}' not understood. Choices: {allowed_resampling_strs}")
+
     dem_arr, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
 
-    x_coords, y_coords = _get_x_and_y_coords(dem_arr.shape, transform)
-    _, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
+    bounds, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
 
-    xmax = x_coords.max()
-    xmin = x_coords.min()
-    ymax = y_coords.max()
-    ymin = y_coords.min()
+    no_horizontal =  np.sum(np.linalg.norm(destination_coords[:, :2] - source_coords[:, :2], axis=1)) < 1e-6
+    no_vertical = source_coords.shape[1] > 2 and np.sum(np.abs(destination_coords[:, 2] - source_coords[:, 2])) < 1e-6
 
-    def scale_x(xcoords: np.ndarray) -> np.ndarray:
-        return dem_arr.shape[1] * (xcoords - xmin) / (xmax - xmin)
-    def scale_y(ycoords: np.ndarray) -> np.ndarray:
-        return dem_arr.shape[0] * (1 - (ycoords - ymin) / (ymax - ymin))
-
-    x_coords_scaled = scale_x(x_coords)
-    y_coords_scaled = scale_y(y_coords)
+    if no_horizontal and no_vertical:
+        warnings.warn("No difference between source and destination coordinates. Returning self.")
+        return dem
 
     source_coords_scaled = source_coords.copy()
     destination_coords_scaled = destination_coords.copy()
-    
+    # Scale the coordinates to index-space
     for coords in (source_coords_scaled, destination_coords_scaled):
-        coords[:, 0] = scale_x(coords[:, 0])
-        coords[:, 1] = scale_y(coords[:, 1])
+        coords[:, 0] = (
+            dem_arr.shape[1] *
+            (coords[:, 0] - bounds.left) /
+            (bounds.right - bounds.left)
+        )
+        coords[:, 1] = (
+            dem_arr.shape[0] *
+            (1 - (
+                coords[:, 1] - bounds.bottom) /
+                (bounds.top - bounds.bottom)
+            )
+        )
+
+    # Generate a grid of x and y index coordinates.
+    grid_y, grid_x = np.mgrid[0:dem_arr.shape[0], 0:dem_arr.shape[1]]
+
+    if no_horizontal:
+        warped = dem_arr.copy()
+    else:
+        # Interpolate the sparse source-destination points to a grid.
+        # (row, col, 0) represents the destination y-coordinates of the pixels.
+        # (row, col, 1) represents the destination x-coordinates of the pixels.
+        new_indices = scipy.interpolate.griddata(
+            destination_coords_scaled[:, [1, 0]],  # Coordinates should be in y/x (not x/y) for some reason..
+            source_coords_scaled[:, [1, 0]],
+            (grid_y, grid_x),
+            method="linear"
+        )
+
+        # If the border should not be trimmed, just assign the original indices to the missing values.
+        if not trim_border:
+            missing_ys = np.isnan(new_indices[:, :, 0])
+            missing_xs = np.isnan(new_indices[:, :, 1])
+            new_indices[:, :, 0][missing_ys] = grid_y[missing_ys]
+            new_indices[:, :, 1][missing_xs] = grid_x[missing_xs]
 
 
-    new_xs = x_coords_scaled + interpolate_and_extrapolate(coords=source_coords_scaled[:, :2], z_values=destination_coords_scaled[:, 0] - source_coords_scaled[:, 0], grid=(x_coords, y_coords))
-    new_ys = y_coords_scaled + interpolate_and_extrapolate(coords=source_coords_scaled[:, :2], z_values=destination_coords_scaled[:, 1] - source_coords_scaled[:, 1], grid=(x_coords, y_coords))
+        # Get the associated cv2 version of the interpolation.
+        #resampling_cv2 = {"nearest": cv2.INTER_NEAREST, "linear": cv2.INTER_LINEAR, "cubic": cv2.INTER_CUBIC}
 
-    new_indices = np.vstack((new_ys.reshape((1,) + new_ys.shape), new_xs.reshape((1,) + new_xs.shape)))
+        order = {"nearest": 0, "linear": 1, "cubic": 3}
+
+        # Warp the DEM
+        #warped = cv2.remap(
+        #    src=dem_arr,
+        #    map1=new_indices[:, :, 1],  # The new x-indices of the pixels
+        #    map2=new_indices[:, :, 0],  # The new y-indices of the pixels
+        #    interpolation=resampling_cv2[resampling],
+        #    borderValue=np.nan
+        #)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
+            warped = skimage.transform.warp(
+                image=np.where(dem_mask, -9999.12345, dem_arr),
+                inverse_map=np.moveaxis(new_indices, 2, 0),
+                output_shape=dem_arr.shape,
+                preserve_range=True,
+                order=order[resampling],
+                cval=-9999.12345
+            )
+
+            new_mask = skimage.transform.warp(
+                image=dem_mask,
+                inverse_map=np.moveaxis(new_indices, 2, 0),
+                output_shape=dem_arr.shape,
+                cval=False
+            ) == 1
+            warped[new_mask | (warped == -9999.12345)] = np.nan
 
 
-    # Warp the DEM
-    transformed_dem = skimage.transform.warp(
-        dem_arr,
-        new_indices,
-        order=resampling_order,
-        mode="constant",
-        cval=np.nan,
-        preserve_range=True
-    )
+    # If the coordinates are 3D (N, 3), apply a Z correction as well.
+    if not no_vertical:
+        grid_offsets = scipy.interpolate.griddata(
+            points=destination_coords_scaled[:, :2],
+            values=destination_coords_scaled[:, 2] - source_coords_scaled[:, 2],
+            xi=(grid_x, grid_y),
+            method=resampling,
+            fill_value=np.nan
+        )
+        warped += grid_offsets
 
+    assert not np.all(np.isnan(warped)), "All-NaN output."
 
-    import matplotlib.pyplot as plt
-
-    plt.subplot(121)
-    plt.imshow(dem_arr)
-
-    plt.subplot(122)
-    plt.imshow(transformed_dem)
-    plt.show()
-
-
-
-
-
-
+    return warped.reshape(dem.shape)

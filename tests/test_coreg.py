@@ -546,29 +546,16 @@ def test_apply_matrix():
     print(np.nanmedian(diff), spatial_tools.nmad(diff))
 
 
-def test_warp_dem():
+def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
+    """
+    Generate a semi-random gaussian field (to simulate a DEM or DEM error)
 
-    source_coords = np.array(
-            [
-                [1000, 1000, 200],
-                [1200, 1200, 200],
-                [1300, 1300, 200],
-                [1250, 1450, 200]
-            ]
-    )
+    :param shape: The output shape of the field.
+    :param corr_size: The correlation size of the field.
 
-    dest_coords = source_coords.copy()
-    dest_coords[0, 0] += 1
-    dest_coords[1, 0] += 2
-    dest_coords[2, 0] += 3
-    dest_coords[3, 0] += 2.5
-
-
-    transform = rio.transform.from_origin(1000, 1500, 1, 1)
-
-    shape = (500, 500)
-    corr_size = int(shape[1] / 30)
-    dem = cv2.resize(
+    :returns: A numpy array of semi-random values from 0 to 1
+    """
+    field = cv2.resize(
         cv2.GaussianBlur(
             np.repeat(np.repeat(
                 np.random.randint(0, 255, (shape[0]//corr_size,
@@ -577,23 +564,128 @@ def test_warp_dem():
             ksize=(2*corr_size + 1, 2*corr_size + 1),
             sigmaX=corr_size) / 255,
         dsize=(shape[1], shape[0])
-    ) * 200
+    )
+    return field
 
-    
-    transformed_dem = coreg.warp_dem(
-            dem=dem,
-            transform=transform,
-            source_coords=source_coords,
-            destination_coords=dest_coords,
-            resampling_order=1
+
+def test_warp_dem():
+    """Test that the warp_dem function works expectedly."""
+    warnings.simplefilter("error")
+
+    small_dem = np.zeros((5, 10), dtype="float32")
+    small_transform = rio.transform.from_origin(0, 5, 1, 1)
+
+    source_coords = np.array(
+        [
+            [0, 0, 0],
+            [0, 5, 0],
+            [10, 0, 0],
+            [10, 5, 0]
+        ]
+    ).astype(small_dem.dtype)
+
+    dest_coords = source_coords.copy()
+    dest_coords[0, 0] = -1e-5
+
+    warped_dem = coreg.warp_dem(
+        dem=small_dem,
+        transform=small_transform,
+        source_coords=source_coords,
+        destination_coords=dest_coords,
+        resampling="linear",
+        trim_border=False
+    )
+    assert np.array_equal(small_dem, warped_dem)
+
+    elev_shift = 5.0
+    dest_coords[1, 2] = elev_shift
+    warped_dem = coreg.warp_dem(
+        dem=small_dem,
+        transform=small_transform,
+        source_coords=source_coords,
+        destination_coords=dest_coords,
+        resampling="linear",
     )
 
-    return
+    # The warped DEM should have
+    assert warped_dem[0, 0] == elev_shift
+    # The corner should be zero, so the corner pixel (represents the corner minus resolution / 2) should be close.
+    assert warped_dem[-1, -1] < 1.0
 
-    import matplotlib.pyplot as plt
+    # Synthesise some X/Y/Z coordinates on the DEM.
+    source_coords = np.array(
+        [
+            [0, 0, 200],
+            [480, 20, 200],
+            [460, 480, 200],
+            [10, 460, 200],
+            [250, 250, 200],
+        ]
+    )
 
-    plt.imshow(dem)
-    plt.show()
+    # Copy the source coordinates and apply some shifts
+    dest_coords = source_coords.copy()
+    # Apply in the X direction
+    dest_coords[0, 0] += 20
+    dest_coords[1, 0] += 7
+    dest_coords[2, 0] += 10
+    dest_coords[3, 0] += 5
 
-    assert source_coords.shape == (2, 3)
+    # Apply in the Y direction
+    dest_coords[4, 1] += 5
+
+    # Apply in the Z direction
+    dest_coords[3, 2] += 5
+    test_shift = 6   # This shift will be validated below
+    dest_coords[4, 2] += test_shift
+
+    # Generate a semi-random DEM
+    transform = rio.transform.from_origin(0, 500, 1, 1)
+    shape = (500, 550)
+    dem = generate_random_field(shape, 100) * 200 + generate_random_field(shape, 10) * 50
+
+    # Warp the DEM using the source-destination coordinates.
+    transformed_dem = coreg.warp_dem(
+        dem=dem,
+        transform=transform,
+        source_coords=source_coords,
+        destination_coords=dest_coords,
+        resampling="linear"
+    )
+
+    # Validate that the difference of a pixel near the center of the image to the "same" pixel in the ...
+    # transformed image is approximately equal to the synthetic shift.
+    assert (
+            transformed_dem[dem.shape[0] - dest_coords[4, 1], dest_coords[4, 0]] -\
+            dem[dem.shape[0] - source_coords[4, 1], source_coords[4, 0]]
+            ) == pytest.approx(test_shift, rel=0.5)
+
+    # Try to undo the warp by reversing the source-destination coordinates.
+    untransformed_dem = coreg.warp_dem(
+        dem=transformed_dem,
+        transform=transform,
+        source_coords=dest_coords,
+        destination_coords=source_coords,
+        resampling="linear"
+    )
+    # Validate that the DEM is now more or less the same as the original.
+    # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
+    assert spatial_tools.nmad(dem - untransformed_dem) < 0.5
+
+    if False:
+        import matplotlib.pyplot as plt
+
+        plt.figure(dpi=200)
+        plt.subplot(141)
+
+        plt.imshow(dem, vmin=0, vmax=300)
+        plt.subplot(142)
+        plt.imshow(transformed_dem, vmin=0, vmax=300)
+        plt.subplot(143)
+        plt.imshow(untransformed_dem, vmin=0, vmax=300)
+
+        plt.subplot(144)
+        plt.imshow(dem - untransformed_dem, cmap="coolwarm_r", vmin=-10, vmax=10)
+        plt.show()
+
 
