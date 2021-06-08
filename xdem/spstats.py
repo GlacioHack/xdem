@@ -2,19 +2,26 @@
 xdem.spstats provides tools to use spatial statistics for elevation change data
 """
 from __future__ import annotations
-from typing import Callable, Union, Optional, Tuple, Any
+
+import math as m
+import multiprocessing as mp
 import os
 import random
-from scipy.optimize import curve_fit
-import numpy as np
-import math as m
-import skgstat as skg
-from scipy import integrate
-import multiprocessing as mp
-import pandas as pd
+import warnings
 from functools import partial
-from skgstat import models
+from typing import Callable, Union, Optional, Tuple, Any
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy import integrate
+from scipy.optimize import curve_fit
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    import skgstat as skg
+    from skgstat import models
+
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
@@ -25,7 +32,6 @@ def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.
     :return: empirical variogram (variance, lags, counts)
 
     """
-
     # deriving empirical variogram variance, bin, and count
     try:
         V = skg.Variogram(coordinates=coords, values=dh, normalize=False, **kwargs)
@@ -47,8 +53,8 @@ def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.
 
     return df
 
-def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
 
+def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
     """
     Multiprocessing wrapper for get_empirical_variogram
 
@@ -57,13 +63,14 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
     :return: empirical variogram (variance, lags, counts)
 
     """
-    print('Working on subsample '+str(argdict['i'])+ ' out of '+str(argdict['max_i']))
+    print('Working on subsample '+str(argdict['i']) + ' out of '+str(argdict['max_i']))
 
-    return get_empirical_variogram(dh=argdict['dh'],coords=argdict['coords'],**kwargs)
+    return get_empirical_variogram(dh=argdict['dh'], coords=argdict['coords'], **kwargs)
+
 
 def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> Tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
 
-    #TODO: add methods that might be more relevant with the multi-distance sampling?
+    # TODO: add methods that might be more relevant with the multi-distance sampling?
     """
     Subsampling of elevation differences with random coordinates
 
@@ -73,7 +80,6 @@ def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> Tuple[Union
 
     :return: subsets of dh and coords
     """
-
     if len(coords) > nsamp:
         # TODO: maybe we can also introduce something to sample without replacement between all samples?
         subset = np.random.choice(len(coords), nsamp, replace=False)
@@ -154,17 +160,16 @@ def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, ou
 
 
 def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coords: np.ndarray = None,
-                                          nsamp: int = 10000, range_list: list= None, nrun: int=1, nproc: int=1,
+                                          nsamp: int = 10000, range_list: list = None, nrun: int = 1, nproc: int = 1,
                                           **kwargs) -> pd.DataFrame:
-
     """
     Wrapper to sample multi-range empirical variograms from the data.
+
     If no option is passed, a varying binning is used with adapted ranges and data subsampling
 
     :param dh: elevation differences
     :param gsd: ground sampling distance (if array is 2D on structured grid)
-    :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of
-    the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
+    :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of \the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
     :param range_list: successive ranges with even binning
     :param nsamp: number of samples to randomly draw from the elevation differences
     :param nrun: number of samplings
@@ -172,7 +177,6 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     :return: empirical variogram (variance, lags, counts)
     """
-
     # checks
     dh = dh.squeeze()
     if coords is None and gsd is None:
@@ -221,9 +225,9 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     # default value we want to use (kmeans is failing)
     if 'bin_func' not in kwargs.keys():
-        kwargs.update({'bin_func':'even'})
+        kwargs.update({'bin_func': 'even'})
     if 'n_lags' not in kwargs.keys():
-        kwargs.update({'n_lags':100})
+        kwargs.update({'n_lags': 100})
 
     # estimate variogram
     if nrun == 1:
@@ -242,7 +246,8 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
             raise ValueError('Binning function must be "even" when doing multiple runs.')
 
         # define max range as half the maximum distance between coordinates
-        max_range = np.sqrt((np.max(coords[:,0])-np.min(coords[:,0]))**2+(np.max(coords[:,1])-np.min(coords[:,1]))**2)/2
+        max_range = np.sqrt((np.max(coords[:, 0])-np.min(coords[:, 0]))**2 +
+                            (np.max(coords[:, 1])-np.min(coords[:, 1]))**2)/2
         # also need a cutoff value to get the exact same bins
         if 'maxlag' not in kwargs.keys():
             kwargs.update({'maxlag': max_range})
@@ -252,12 +257,12 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
             print('Using 1 core...')
             list_df_nb = []
             for i in range(nrun):
-                dh_sub, coords_sub = random_subset(dh,coords,nsamp)
+                dh_sub, coords_sub = random_subset(dh, coords, nsamp)
                 df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
                 df['run'] = i
                 list_df_nb.append(df)
         else:
-            print('Using '+str(nproc)+ ' cores...')
+            print('Using '+str(nproc) + ' cores...')
             list_dh_sub = []
             list_coords_sub = []
             for i in range(nrun):
@@ -266,8 +271,8 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 list_coords_sub.append(coords_sub)
 
             pool = mp.Pool(nproc, maxtasksperchild=1)
-            argsin = [{'dh': list_dh_sub[i], 'coords': list_coords_sub[i],'i':i,'max_i':nrun} for i in range(nrun)]
-            list_df = pool.map(partial(wrapper_get_empirical_variogram,**kwargs), argsin, chunksize=1)
+            argsin = [{'dh': list_dh_sub[i], 'coords': list_coords_sub[i], 'i':i, 'max_i':nrun} for i in range(nrun)]
+            list_df = pool.map(partial(wrapper_get_empirical_variogram, **kwargs), argsin, chunksize=1)
             pool.close()
             pool.join()
 
@@ -280,7 +285,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         df = pd.concat(list_df_nb)
 
         # group results, use mean as empirical variogram, estimate sigma, and sum the counts
-        df_grouped = df.groupby('bins',dropna=False)
+        df_grouped = df.groupby('bins', dropna=False)
         df_mean = df_grouped[['exp']].mean()
         df_sig = df_grouped[['exp']].std()
         df_count = df_grouped[['count']].sum()
@@ -291,8 +296,8 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
 
     return df
 
-def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
 
+def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
     """
     Fit a multi-range variogram model to an empirical variogram, weighted based on sampling and elevation errors
 
@@ -301,23 +306,21 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
 
     :return: modelled variogram
     """
-
     # TODO: expand to other models than spherical, exponential, gaussian (more than 2 arguments)
     def vgm_sum(h, *args):
         fn = 0
         i = 0
         for model in list_model:
-            fn += skg.models.spherical(h,args[i],args[i+1])
+            fn += skg.models.spherical(h, args[i], args[i+1])
             # fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
             i += 2
 
         return fn
 
-
     # use shape of empirical variogram to assess rough boundaries/first estimates
     n_average = np.ceil(len(emp_vgm_df.exp.values) / 10)
     exp_movaverage = np.convolve(emp_vgm_df.exp.values, np.ones(int(n_average))/n_average, mode='valid')
-    grad = np.gradient(exp_movaverage,2)
+    grad = np.gradient(exp_movaverage, 2)
     # maximum variance
     max_var = np.max(exp_movaverage)
 
@@ -327,8 +330,8 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
     for i in range(len(list_model)):
 
         # use largest boundaries possible for our problem
-        psill_bound = [0,max_var]
-        range_bound = [0,emp_vgm_df.bins.values[-1]]
+        psill_bound = [0, max_var]
+        range_bound = [0, emp_vgm_df.bins.values[-1]]
 
         # use psill evenly distributed
         psill_p0 = ((i+1)/len(list_model))*max_var
@@ -339,7 +342,7 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
         # range_p0 = emp_vgm_df.bins.values[ind]
         range_p0 = ((i+1)/len(list_model))*emp_vgm_df.bins.values[-1]
 
-        #TODO: if adding other variogram models, add condition here
+        # TODO: if adding other variogram models, add condition here
 
         # add bounds and guesses with same order as function arguments
         bounds.append(range_bound)
@@ -352,11 +355,12 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
 
     if np.all(np.isnan(emp_vgm_df.exp_sigma.values)):
         valid = ~np.isnan(emp_vgm_df.exp.values)
-        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid], emp_vgm_df.exp.values[valid], method='trf', p0=p0, bounds=bounds)
+        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid],
+                             emp_vgm_df.exp.values[valid], method='trf', p0=p0, bounds=bounds)
     else:
         valid = np.logical_and(~np.isnan(emp_vgm_df.exp.values), ~np.isnan(emp_vgm_df.exp_sigma.values))
-        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid], emp_vgm_df.exp.values[valid], method='trf', p0=p0, bounds=bounds
-                             ,sigma=emp_vgm_df.exp_sigma.values[valid])
+        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid], emp_vgm_df.exp.values[valid],
+                             method='trf', p0=p0, bounds=bounds, sigma=emp_vgm_df.exp_sigma.values[valid])
 
     # rewriting the output function: couldn't find a way to pass this with functool.partial because arguments are unordered
     def vgm_sum_fit(h):
@@ -391,28 +395,29 @@ def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crang
 
     :return: number of effective samples
     """
-
-    #short range variogram
-    c1 = psill1 # partial sill
+    # short range variogram
+    c1 = psill1  # partial sill
     a1 = crange1  # short correlation range
 
-    #long range variogram
+    # long range variogram
     c1_2 = psill2
-    a1_2 = crange2 # long correlation range
+    a1_2 = crange2  # long correlation range
 
     h_equiv = np.sqrt(area / np.pi)
 
-    #hypothesis of a circular shape to integrate variogram model
+    # hypothesis of a circular shape to integrate variogram model
     if h_equiv > a1_2:
         std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c1_2 * a1_2 ** 2 / (5 * h_equiv ** 2))
     elif (h_equiv < a1_2) and (h_equiv > a1):
         std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c1_2 * (1-h_equiv / a1_2+1 / 5 * (h_equiv / a1_2) ** 3))
     else:
-        std_err = np.sqrt(c1 * (1-h_equiv / a1+1 / 5 * (h_equiv / a1) ** 3) + c1_2 * (1-h_equiv / a1_2+1 / 5 * (h_equiv / a1_2) ** 3))
+        std_err = np.sqrt(c1 * (1-h_equiv / a1+1 / 5 * (h_equiv / a1) ** 3) +
+                          c1_2 * (1-h_equiv / a1_2+1 / 5 * (h_equiv / a1_2) ** 3))
 
     return (psill1 + psill2)/std_err**2
 
 def neff_circ(area: float, list_vgm: list[Tuple[float,str,float]]) -> float:
+
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
@@ -424,7 +429,6 @@ def neff_circ(area: float, list_vgm: list[Tuple[float,str,float]]) -> float:
 
     :returns: number of effective samples
     """
-
     psill_tot = 0
     for vario in list_vgm:
         psill_tot += vario[2]
@@ -433,13 +437,13 @@ def neff_circ(area: float, list_vgm: list[Tuple[float,str,float]]) -> float:
         fn = 0
         for vario in list_vgm:
             crange, model, psill = vario
-            fn += h*(cov(h,crange,model=model,psill=psill))
+            fn += h*(cov(h, crange, model=model, psill=psill))
 
         return fn
 
     h_equiv = np.sqrt(area / np.pi)
 
-    full_int = integrate_fun(hcov_sum,0,h_equiv)
+    full_int = integrate_fun(hcov_sum, 0, h_equiv)
     std_err = np.sqrt(2*np.pi*full_int / area)
 
     return psill_tot/std_err**2
@@ -461,22 +465,21 @@ def neff_rect(area: float, width: float, crange1: float, psill1: float, model1: 
 
     :returns: number of effective samples
     """
-
-    def hcov_sum(h,crange1=crange1,psill1=psill1,model1=model1,crange2=crange2,psill2=psill2,model2=model2):
+    def hcov_sum(h, crange1=crange1, psill1=psill1, model1=model1, crange2=crange2, psill2=psill2, model2=model2):
 
         if crange2 is None or psill2 is None or model2 is None:
-            return h*(cov(h,crange1,model=model1,psill=psill1))
+            return h*(cov(h, crange1, model=model1, psill=psill1))
         else:
-            return h*(cov(h,crange1,model=model1,psill=psill1)+cov(h,crange2,model=model2,psill=psill2))
+            return h*(cov(h, crange1, model=model1, psill=psill1)+cov(h, crange2, model=model2, psill=psill2))
 
-    width = min(width,area/width)
+    width = min(width, area/width)
 
-    full_int = integrate_fun(hcov_sum,0,width/2)
-    bin_int = np.linspace(width/2,area/width,100)
+    full_int = integrate_fun(hcov_sum, 0, width/2)
+    bin_int = np.linspace(width/2, area/width, 100)
     for i in range(len(bin_int)-1):
         low = bin_int[i]
         upp = bin_int[i+1]
-        mid = bin_int[i] + (bin_int[i+1]- bin_int[i])/2
+        mid = bin_int[i] + (bin_int[i+1] - bin_int[i])/2
         piec_int = integrate_fun(hcov_sum, low, upp)
         full_int += piec_int * 2/np.pi*np.arctan(width/(2*mid))
 
@@ -497,10 +500,10 @@ def integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
 
     :return: integral
     """
+    return integrate.quad(fun, low_b, upp_b)[0]
 
-    return integrate.quad(fun,low_b,upp_b)[0]
 
-def cov(h: float,crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0) -> Callable:
+def cov(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0) -> Callable:
     """
     Covariance function based on variogram function (COV = STD - VGM)
 
@@ -513,8 +516,8 @@ def cov(h: float,crange: float, model: str = 'Sph', psill: float = 1., kappa: fl
 
     :returns: covariance function
     """
+    return (nugget + psill) - vgm(h, crange, model=model, psill=psill, kappa=kappa)
 
-    return (nugget + psill) - vgm(h,crange,model=model,psill=psill,kappa=kappa)
 
 def vgm(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0):
     """
@@ -529,11 +532,10 @@ def vgm(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: f
 
     :returns: variogram function
     """
-
-    c0 = nugget #nugget
-    c1 = psill #partial sill
-    a1 = crange #correlation range
-    s = kappa #smoothness parameter for Matern class
+    c0 = nugget  # nugget
+    c1 = psill  # partial sill
+    a1 = crange  # correlation range
+    s = kappa  # smoothness parameter for Matern class
 
     if model == 'Sph':  # spherical model
         if h < a1:
@@ -545,9 +547,10 @@ def vgm(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: f
     elif model == 'Gau':  # gaussian model
         vgm = c0 + c1 * (1-np.exp(- (h / a1) ** 2))
     elif model == 'Exc':  # stable exponential model
-        vgm = c0 + c1 * (1-np.exp(-(h/ a1)**s))
+        vgm = c0 + c1 * (1-np.exp(-(h / a1)**s))
 
     return vgm
+
 
 def std_err_finite(std: float, neff_tot: float, neff: float) -> float:
     """
@@ -561,6 +564,7 @@ def std_err_finite(std: float, neff_tot: float, neff: float) -> float:
     """
     return std * np.sqrt(1 / neff_tot * (neff_tot - neff) / neff_tot)
 
+
 def std_err(std: float, neff: float) -> float:
     """
     Standard error
@@ -572,6 +576,7 @@ def std_err(std: float, neff: float) -> float:
     """
     return std * np.sqrt(1 / neff)
 
+
 def distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> float:
     """
     Distance between two lat/lon coordinates projected on a spheroid
@@ -582,7 +587,6 @@ def distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> flo
 
     :return: distance
     """
-
     lat1 = m.radians(abs(tup1[1]))
     lon1 = m.radians(abs(tup1[0]))
     lat2 = m.radians(abs(tup2[1]))
@@ -598,8 +602,9 @@ def distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> flo
 
     return distance
 
+
 def kernel_sph(xi: float, x0: float, a1: float) -> float:
-    #TODO: homogenize kernel/variogram use
+    # TODO: homogenize kernel/variogram use
     """
     Spherical kernel
     :param xi: position of first point
@@ -630,13 +635,13 @@ def part_covar_sum(argsin: tuple) -> float:
             d = distance_latlon((list_lon[i], list_lat[i]), (list_lon[j], list_lat[j]))
             for k in range(len(corr_ranges)):
                 part_var_err += kernel_sph(0, d, corr_ranges[k]) * list_tuple_errs[i][k] * list_tuple_errs[j][k] * \
-                           list_area_tot[i] * list_area_tot[j]
+                    list_area_tot[i] * list_area_tot[j]
 
     return part_var_err
 
-def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], list_area_tot: list[float],
-                     list_lat: list[float], list_lon: list[float], nproc: int=1) -> float:
 
+def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], list_area_tot: list[float],
+                     list_lat: list[float], list_lon: list[float], nproc: int = 1) -> float:
     """
     Double sum of covariances for propagating multi-range correlated errors between disconnected spatial ensembles
 
@@ -649,10 +654,9 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
 
     :returns: sum of covariances
     """
-
     n = len(list_tuple_errs)
 
-    if nproc==1:
+    if nproc == 1:
         print('Deriving double covariance sum with 1 core...')
         var_err = 0
         for i in range(n):
@@ -660,11 +664,12 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
                 d = distance_latlon((list_lon[i], list_lat[i]), (list_lon[j], list_lat[j]))
                 for k in range(len(corr_ranges)):
                     var_err += kernel_sph(0, d, corr_ranges[k]) * list_tuple_errs[i][k] * list_tuple_errs[j][k] * \
-                               list_area_tot[i] * list_area_tot[j]
+                        list_area_tot[i] * list_area_tot[j]
     else:
         print('Deriving double covariance sum with '+str(nproc)+' cores...')
         pack_size = int(np.ceil(n/nproc))
-        argsin = [(list_tuple_errs,corr_ranges,list_area_tot,list_lon,list_lat,np.arange(i,min(i+pack_size,n))) for k, i in enumerate(np.arange(0,n,pack_size))]
+        argsin = [(list_tuple_errs, corr_ranges, list_area_tot, list_lon, list_lat, np.arange(
+            i, min(i+pack_size, n))) for k, i in enumerate(np.arange(0, n, pack_size))]
         pool = mp.Pool(nproc, maxtasksperchild=1)
         outputs = pool.map(part_covar_sum, argsin, chunksize=1)
         pool.close()
@@ -702,27 +707,27 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
     # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
     dh = dh.squeeze()
-    valid_mask = np.logical_and(np.isfinite(dh),mask)
+    valid_mask = np.logical_and(np.isfinite(dh), mask)
     dh[~valid_mask] = np.nan
 
     # divide raster in cadrants where we can sample
     nx, ny = np.shape(dh)
     count = len(dh[~np.isnan(dh)])
-    print('Number of valid pixels: ' +str(count))
-    nb_cadrant = int(np.floor(np.sqrt((count * gsd **2) / area_size) + 1))
+    print('Number of valid pixels: ' + str(count))
+    nb_cadrant = int(np.floor(np.sqrt((count * gsd ** 2) / area_size) + 1))
     # rectangular
     nx_sub = int(np.floor((nx - 1) / nb_cadrant))
     ny_sub = int(np.floor((ny - 1) / nb_cadrant))
     # radius size for a circular patch
-    rad = int(np.floor(np.sqrt(area_size/np.pi * gsd **2)))
+    rad = int(np.floor(np.sqrt(area_size/np.pi * gsd ** 2)))
 
     tile, mean_patch, med_patch, std_patch, nb_patch = ([] for i in range(5))
 
     # create list of all possible cadrants
-    list_cadrant = [[i,j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
-    u=0
+    list_cadrant = [[i, j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
+    u = 0
     # keep sampling while there is cadrants left and below maximum number of patch to sample
-    while len(list_cadrant)>0 and u<nmax:
+    while len(list_cadrant) > 0 and u < nmax:
 
         check = 0
         while check == 0:
@@ -733,18 +738,18 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
             check_x = int(np.floor(nx_sub*(i+1/2)))
             check_y = int(np.floor(ny_sub*(j+1/2)))
-            if mask[check_x,check_y]:
+            if mask[check_x, check_y]:
                 check = 1
 
         list_cadrant.remove(list_cadrant[rand_cadrant])
 
-        tile.append(str(i) + '_'+ str(j))
+        tile.append(str(i) + '_' + str(j))
         if patch_shape == 'rectangular':
             patch = dh[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
         elif patch_shape == 'circular':
             center_x = np.floor(nx_sub*(i+1/2))
             center_y = np.floor(ny_sub*(j+1/2))
-            mask = create_circular_mask(nx,ny,center=[center_x,center_y],radius=rad)
+            mask = create_circular_mask(nx, ny, center=[center_x, center_y], radius=rad)
             patch = dh[mask]
         else:
             raise ValueError('Patch method must be rectangular or circular.')
@@ -755,8 +760,9 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
             u=u+1
             if verbose:
                 print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
+
             mean_patch.append(np.nanmean(patch))
-            med_patch.append(np.nanmedian(patch))
+            med_patch.append(np.nanmedian(patch.filled(np.nan) if isinstance(patch, np.ma.masked_array) else patch))
             std_patch.append(np.nanstd(patch))
             nb_patch.append(nb_pixel_valid)
 
@@ -765,22 +771,23 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
     return df
 
-def plot_vgm(df: pd.DataFrame, fit_fun : Callable = None):
+
+def plot_vgm(df: pd.DataFrame, fit_fun: Callable = None):
 
     fig, ax = plt.subplots(1)
     if np.all(np.isnan(df.exp_sigma)):
         ax.scatter(df.bins, df.exp, label='Empirical variogram', color='blue')
     else:
-        ax.errorbar(df.bins,df.exp,yerr=df.exp_sigma, label='Empirical variogram (1-sigma s.d)')
+        ax.errorbar(df.bins, df.exp, yerr=df.exp_sigma, label='Empirical variogram (1-sigma s.d)')
 
     if fit_fun is not None:
-        x = np.linspace(0,np.max(df.bins),10000)
+        x = np.linspace(0, np.max(df.bins), 10000)
         y = fit_fun(x)
 
-        ax.plot(x,y,linestyle='dashed',color='black',label='Model fit',zorder=30)
+        ax.plot(x, y, linestyle='dashed', color='black', label='Model fit', zorder=30)
 
     ax.set_xlabel('Lag (m)')
-    ax.set_ylabel('Variance [$\mu$ $\pm \sigma$]')
+    ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
     ax.legend(loc='best')
     ax.grid()
     plt.show()

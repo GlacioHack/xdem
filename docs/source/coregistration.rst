@@ -2,17 +2,23 @@
 
 DEM Coregistration
 ==================
+
+.. contents:: Contents 
+   :local:
+
+Introduction
+^^^^^^^^^^^^
+
 Coregistration of a DEM is performed when it needs to be compared to a reference, but the DEM does not align with the reference perfectly.
 There are many reasons for why this might be, for example: poor georeferencing, unknown coordinate system transforms or vertical datums, and instrument- or processing-induced distortion.
 
 A main principle of all coregistration approaches is the assumption that all or parts of the portrayed terrain are unchanged between the reference and the DEM to be aligned.
 This *stable ground* can be extracted by masking out features that are assumed to be unstable.
 Then, the DEM to be aligned is translated, rotated and/or bent to fit the stable surfaces of the reference DEM as well as possible.
-In mountainous environments, unstable areas could be: glaciers, landslides, vegetation, dead-ice terrain and human settlements.
+In mountainous environments, unstable areas could be: glaciers, landslides, vegetation, dead-ice terrain and human structures.
 Unless the entire terrain is assumed to be stable, a mask layer is required.
-``xdem`` supports either shapefiles or rasters to specify the masked (unstable) areas.
 
-There are multiple methods for coregistration, and each have their own strengths and weaknesses.
+There are multiple approaches for coregistration, and each have their own strengths and weaknesses.
 Below is a summary of how each method works, and when it should (and should not) be used.
 
 **Example data**
@@ -20,26 +26,31 @@ Below is a summary of how each method works, and when it should (and should not)
 Examples are given using data close to Longyearbyen on Svalbard. These can be loaded as:
 
 
-.. code-block:: python
+.. literalinclude:: code/coregistration.py
+        :lines: 5-27
 
-        import geoutils as gu
-        import xdem
+The Coreg object
+^^^^^^^^^^^^^^^^^^^^
+:class:`xdem.coreg.Coreg`
 
-        # Download the necessary data. This may take a few minutes.
-        xdem.examples.download_longyearbyen_examples(overwrite=False)
+Each of the coregistration approaches in ``xdem`` inherit their interface from the ``Coreg`` class.
+It is written in a style that should resemble that of ``scikit-learn`` (see their `LinearRegression <https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression>`_ class for example).
+Each coregistration approach has the methods:
 
-        # Load a reference DEM from 2009
-        reference_dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-        # Load a moderately well aligned DEM from 1990
-        dem_to_be_aligned = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
-        # Load glacier outlines from 1990. This will act as the unstable ground.
-        glacier_outlines = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+* ``.fit()`` for estimating the transform.
+* ``.apply()`` for applying the transform to a DEM.
+* ``.apply_pts()`` for applying the transform to a set of 3D points.
+* ``.to_matrix()`` to convert the transform to a 4x4 transformation matrix, if possible.
 
-.. contents:: Contents 
-   :local:
+First, ``.fit()`` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
+
+.. inheritance-diagram:: xdem.coreg
+        :top-classes: xdem.coreg.Coreg
 
 Nuth and Kääb (2011)
 ^^^^^^^^^^^^^^^^^^^^
+:class:`xdem.coreg.NuthKaab`
+
 - **Performs:** translation and bias corrections.
 - **Supports weights** (soon)
 - **Recommended for:** Noisy data with low rotational differences.
@@ -52,26 +63,27 @@ A cosine function is solved using these products to find the most probable offse
 This is an iterative process, and cosine functions with suggested shifts are applied in a loop, continuously refining the total offset.
 The loop is stopped either when the maximum iteration limit is reached, or when the :ref:`spatial_stats_nmad` between the two products stops improving significantly.
 
+.. plot:: code/coregistration_plot_nuth_kaab.py
+
+*Caption: Demonstration of the Nuth and Kääb (2011) approach from Svalbard. Note that large improvements are seen, but nonlinear offsets still exist. The NMAD is calculated from the off-glacier surfaces.*
+
 Limitations
 ***********
-The Nuth and Kääb (2011) coregistation approach does not take rotation into account.
+The Nuth and Kääb (2011) coregistration approach does not take rotation into account.
 Rotational corrections are often needed on for example satellite derived DEMs, so a complementary tool is required for a perfect fit.
 1st or higher degree `Deramping`_ can be used for small rotational corrections.
 For large rotations, the Nuth and Kääb (2011) approach will not work properly, and `ICP`_ is recommended instead.
 
 Example
 *******
-.. code-block:: python
 
-        aligned_dem, error = xdem.coreg.coregister(
-                reference_dem,
-                dem_to_be_aligned,
-                method="nuth_kaab",
-                mask=glacier_outlines
-        )
+.. literalinclude:: code/coregistration.py
+        :lines: 33-38
 
 Deramping
 ^^^^^^^^^
+:class:`xdem.coreg.Deramp`
+
 - **Performs:** Bias, linear or nonlinear height corrections.
 - **Supports weights** (soon)
 - **Recommended for:** Data with no horizontal offset and low to moderate rotational differences.
@@ -89,19 +101,36 @@ For large rotational corrections, `ICP`_ is recommended.
 
 Example
 *******
-.. code-block:: python
 
-        # Apply a 1st order deramping correction.
-        deramped_dem, error = xdem.coreg.coregister(
-                reference_dem,
-                dem_to_be_aligned,
-                method="deramp",
-                deramp_degree=1,
-                mask=glacier_outlines
-        )
+.. literalinclude:: code/coregistration.py
+        :lines: 44-50
+
+
+Bias correction
+^^^^^^^^^^^^^^^
+:class:`xdem.coreg.BiasCorr`
+
+- **Performs:** (Weighted) bias correction using the mean, median or anything else
+- **Supports weights** (soon)
+- **Recommended for:** A precursor step to e.g. ICP.
+
+``BiasCorr`` has very similar functionality to ``Deramp(degree=0)`` or the z-component of `Nuth and Kääb (2011)`_.
+This function is more customizable, for example allowing changing of the bias algorithm (from weighted average to e.g. median).
+It should also be faster, since it is a single function call.
+
+Limitations
+***********
+Only performs vertical corrections, so it should be combined with another approach.
+
+Example
+*******
+.. literalinclude:: code/coregistration.py
+        :lines: 56-66
 
 ICP
 ^^^
+:class:`xdem.coreg.ICP`
+
 - **Performs:** Rigid transform correction (translation + rotation).
 - **Does not support weights**
 - **Recommended for:** Data with low noise and a high relative rotation.
@@ -117,8 +146,7 @@ This may improve results on noisy data significantly, but care should still be t
 
 Limitations
 ***********
-ICP is notoriously bad on noisy data.
-TODO: Add references for ICP being bad on noisy data.
+ICP often works poorly on noisy data.
 The outlier removal functionality of the opencv implementation is a step in the right direction, but it still does not compete with other coregistration approaches when the relative rotation is small.
 In cases of high rotation, ICP is the only approach that can account for this properly, but results may need refinement, for example with the `Nuth and Kääb (2011)`_ approach.
 
@@ -126,14 +154,51 @@ Due to the repeated nearest neighbour calculations, ICP is often the slowest cor
 
 Example
 *******
+.. literalinclude:: code/coregistration.py
+        :lines: 72-78
+
+The CoregPipeline object
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+:class:`xdem.coreg.CoregPipeline`
+
+Often, more than one coregistration approach is necessary to obtain the best results.
+For example, ICP works poorly with large initial biases, so a ``CoregPipeline`` can be constructed to perform both sequentially:
+
+.. literalinclude:: code/coregistration.py
+        :lines: 84-89
+
+The ``CoregPipeline`` object exposes the same interface as the ``Coreg`` object.
+The results of a pipeline can be used in other programs by exporting the combined transformation matrix:
+
 .. code-block:: python
 
-        # Use the opencv ICP implementation. For PDAL, use "icp_pdal")
-        aligned_dem, error = xdem.coreg.coregister(
-                reference_dem,
-                dem_to_be_aligned,
-                method="icp",
-                mask=glacier_outlines
-        )
+        pipeline.to_matrix()
 
+
+This class is heavily inspired by the `Pipeline <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn-pipeline-pipeline>`_ and `make_pipeline() <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.make_pipeline.html#sklearn.pipeline.make_pipeline>`_ functionalities in ``scikit-learn``.
+
+Suggested pipelines
+*******************
+
+For sub-pixel accuracy, the `Nuth and Kääb (2011)`_ approach should almost always be used.
+The approach does not account for rotations in the dataset, however, so a combination is often necessary.
+For small rotations, a 1st degree deramp could be used:
+
+.. code-block:: python
+
+        coreg.NuthKaab() + coreg.Deramp(degree=1)
+
+For larger rotations, ICP is the only reliable approach (but does not outperform in sub-pixel accuracy):
+
+.. code-block:: python
+
+        coreg.ICP() + coreg.NuthKaab()
+
+
+For large biases, rotations and high amounts of noise:
+
+.. code-block:: python
+
+        coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()
+        
 

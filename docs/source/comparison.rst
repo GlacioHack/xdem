@@ -4,6 +4,15 @@ DEM subtraction and volume change
 .. contents:: Contents 
    :local:
 
+**Example data**
+
+
+Example data in this chapter are loaded as follows:
+
+.. literalinclude:: code/comparison.py
+        :lines: 5-33
+
+
 Subtracting rasters
 ^^^^^^^^^^^^^^^^^^^
 Calculating the difference of DEMs (dDEMs) is theoretically simple, but can in practice often be time consuming.
@@ -12,17 +21,15 @@ In ``xdem``, the aim is to minimize or completely remove potential pitfalls in t
 Let's assume we have two perfectly aligned DEMs, with the same shape, extent, resolution and coordinate referencesystem (CRS) as each other.
 Calculating a dDEM would then be as simple as:
 
-.. code-block:: python
-
-        ddem_data = dem1.data - dem2.data
-        # If we want to inherit the georeferencing information:
-        ddem_raster = xdem.DEM.from_array(ddem_data, dem1.transform, dem1.crs)
+.. literalinclude:: code/comparison.py
+        :lines: 39-43
 
 But in practice, our two DEMs are most often not perfectly aligned, which is why we might need a helper function for this:
+:func:`xdem.spatial_tools.subtract_rasters`
 
-.. code-block:: python
+.. literalinclude:: code/comparison.py
+        :lines: 47
         
-        ddem_raster = xdem.spatial_tools.subtract_rasters(dem1, dem2)
 
 So what does this magical function do?
 First, the nonreference; ``dem2``, will be reprojected to fit the shape, extent, resolution and CRS of ``dem1``.
@@ -32,75 +39,89 @@ This can be changed with the ``resampling_method=`` keyword, for example to ``"b
 Most often, ``xdem`` works with Masked Arrays, where the mask signifies cells to exclude (presumably areas of no data).
 The ``subtract_rasters()`` function makes sure that the outgoing mask is the union of the two ingoing masks.
 
+dDEM interpolation
+^^^^^^^^^^^^^^^^^^
+There are many approaches to interpolate a dDEM.
+A good comparison study for glaciers is McNabb et al., (`2019 <https://doi.org/10.5194/tc-13-895-2019>`_).
+So far, ``xdem`` has three types of interpolation:
+
+- Linear spatial interpolation
+- Local hypsometric interpolation
+- Regional hypsometric interpolation
+
+Let's first create a :class:`xdem.ddem.dDEM` object to experiment on:
+
+.. literalinclude:: code/comparison.py
+        :lines: 53-62
+
+
+Linear spatial interpolation
+****************************
+Linear spatial interpolation (also often called bilinear interpolation) of dDEMs is arguably the simplest approach: voids are filled by a an average of the surrounding pixels values, weighted by their distance to the void pixel.
+
+
+.. literalinclude:: code/comparison.py
+        :lines: 66
+
+.. plot:: code/comparison_plot_spatial_interpolation.py
+        
+
+Local hypsometric interpolation
+*******************************
+This approach assumes that there is a relationship between the elevation and the elevation change in the dDEM, which is often the case for glaciers.
+Elevation change gradients in late 1900s and 2000s on glaciers often have the signature of large melt in the lower parts, while the upper parts might be less negative, or even positive.
+This relationship is strongly correlated for a specific glacier, and weakly correlated on regional scales (see `Regional hypsometric interpolation`_).
+With the local (glacier specific) hypsometric approach, elevation change gradients are estimated for each glacier separately.
+This is simply a linear or polynomial model estimated with the dDEM and a reference DEM.
+Then, voids are interpolated by replacing them with what "should be there" at that elevation, according to the model.
+
+
+.. literalinclude:: code/comparison.py
+        :lines: 70
+
+.. plot:: code/comparison_plot_local_hypsometric_interpolation.py
+        
+
+*Caption: The elevation dependent elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard devation of the bin. The light blue background bars show the area distribution with elevation.*
+
+
+Regional hypsometric interpolation
+**********************************
+Similarly to `Local hypsometric interpolation`_, the elevation change is assumed to be largely elevation-dependent.
+With the regional approach (often also called "global"), elevation change gradients are estimated for all glaciers in an entire region, instead of estimating one by one.
+This is advantageous in respect to areas where voids are frequent, as not even a single dDEM value has to exist on a glacier in order to reconstruct it.
+Of course, the accuracy of such an averaging is much lower than if the local hypsometric approach is used (assuming it is possible).
+
+.. literalinclude:: code/comparison.py
+        :lines: 74
+
+.. plot:: code/comparison_plot_regional_hypsometric_interpolation.py
+        
+
+*Caption: The regional elevation dependent elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard devation of the bin. The light blue background bars show the area distribution with elevation.*
+
 The DEMCollection object
 ^^^^^^^^^^^^^^^^^^^^^^^^
-Keeping track of multiple DEMs can be difficult when many different extents, resolutions and CRSs are involved, and the ``DEMCollection`` is ``xdem``'s answer to make this simple.
-Let's first load some example data:
-
-
-.. code-block:: python
-
-        import geoutils as gu
-        import xdem
-
-        # Download the necessary data. This may take a few minutes.
-        xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-        # Load a reference DEM from 2009
-        dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-        # Load a DEM from 1990
-        dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
-        # Load glacier outlines from 1990.
-        glaciers_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-        glaciers_2010 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines_2010"])
-
-        # Fake a future DEM to have a time-series of three DEMs
-        dem_2060 = dem_2009.copy()
-        # Assume that all glacier values will be 30 m lower than in 2009
-        dem_2060.data[glaciers_2010.create_mask(dem_2060) == 255] -= 30
-
-We also need some metadata on the timing of these products.
+Keeping track of multiple DEMs can be difficult when many different extents, resolutions and CRSs are involved, and :class:`xdem.demcollection.DEMCollection` is ``xdem``'s answer to make this simple.
+We need metadata on the timing of these products.
 The DEMs can be provided with the ``datetime=`` argument upon instantiation, or the attribute could be set later.
 Multiple outlines are provided as a dictionary in the shape of ``{datetime: outline}``:
 
 
-.. code-block:: python
+In the examples, we have three DEMs and glacier outlines with known dates, so we can create a collection from them:
 
-        from datetime import datetime
 
-        dem_1990.datetime = datetime(1990, 8, 1)
-        dem_2009.datetime = datetime(2009, 8, 1)
-        dem_2060.datetime = datetime(2060, 8, 1)
-
-        outlines = {
-                datetime(1990, 8, 1): glaciers_1990,
-                datetime(2009, 8, 1): glaciers_2010
-        }
-
-        
-Now that we have three DEMs and glacier outlines with known dates, we can create a collection from them:
-
-.. code-block:: python
-
-        dems = xdem.DEMCollection(
-                [dem_1990, dem_2009, dem_2060],
-                outlines=outlines,
-                reference_dem=dem_2009
-        )
+.. literalinclude:: code/comparison.py
+        :lines: 80-84
 
 Now, we can easily calculate the elevation or volume change between the DEMs, for example on the glacier Scott Turnerbreen:
 
-.. code-block:: python
-
-        dems.get_cumulative_series(kind="dh", outline_filter="NAME == 'Scott Turnerbreen'")
+.. literalinclude:: code/comparison.py
+        :lines: 88-89
 
 which will return a Pandas Series:
 
-.. code-block:: python
-
-        1990-08-01     0.000000
-        2009-08-01   -13.379259
-        2060-08-01   -43.379259       
-        dtype: float64
+.. program-output:: $PYTHON code/comparison_print_cumulative_dh.py 
+        :shell:
 
 `See here for the outline filtering syntax <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.query.html>`_.

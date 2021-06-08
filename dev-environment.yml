@@ -1,4 +1,4 @@
-name: xdem
+name: xdem-dev
 channels:
   - conda-forge
 dependencies:
@@ -17,3 +17,13 @@ dependencies:
   - scikit-gstat
   - pytransform3d
   - geoutils
+
+  # Development-specific
+  - pytest
+  - pytest-xdist
+  - sphinx
+  - sphinx_rtd_theme
+  - numpydoc
+  - sphinxcontrib-programoutput
+  - flake8
+  - sphinx-autodoc-typehints

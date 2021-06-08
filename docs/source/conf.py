@@ -14,7 +14,9 @@ import os
 import sys
 
 # Allow conf.py to find the xdem module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
+sys.path.insert(0, os.path.abspath("../xdem/'"))
+import xdem.version
+
 # -- Project information -----------------------------------------------------
 
 project = 'xdem'
@@ -23,7 +25,10 @@ copyright = '2021, xdem contributors'
 author = 'xdem contributors'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = xdem.version.version
+
+
+os.environ["PYTHON"] = sys.executable
 
 
 # -- General configuration ---------------------------------------------------
@@ -32,13 +37,16 @@ release = '0.0.1'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx.ext.viewcode",
-    "numpydoc",
-    "sphinx.ext.autosummary",
-    "sphinx.ext.doctest",
-    "sphinx.ext.inheritance_diagram"
+    "sphinx.ext.autodoc",  # Create the API documentation automatically
+    "sphinx.ext.viewcode",  # Create the "[source]" button in the API to show the source code.
+    'matplotlib.sphinxext.plot_directive',  # Render matplotlib figures from code.
+    "sphinx.ext.autosummary",  # Create API doc summary texts from the docstrings.
+    "sphinx.ext.inheritance_diagram",  # For class inheritance diagrams (see coregistration.rst).
+    "sphinx_autodoc_typehints",  # Include type hints in the API documentation.
+    "sphinxcontrib.programoutput"
 ]
+
+autosummary_generate = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -46,7 +54,9 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = []
+exclude_patterns = [
+    "api/modules.rst"  # This is not really needed, but is created automatically by autodoc
+]
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -58,10 +68,15 @@ html_theme = 'sphinx_rtd_theme'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# html_static_path = ['_static']  # Commented out as we have no custom static data
 
 
 def run_apidoc(_):
+    """
+    Make sure readthedocs finds the module.
+
+    Maybe this is not needed?
+    """
     from sphinx.ext.apidoc import main
     import os
     import sys
