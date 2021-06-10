@@ -8,6 +8,8 @@ import numpy as np
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
+import numba
+import skimage.transform
 
 import geoutils as gu
 
@@ -49,7 +51,7 @@ def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape
         array = array.astype('float32')
 
     # Convert into a regular ndarray and convert invalid values to NaN
-    array_data = np.asarray(array).squeeze()
+    array_data = np.array(array).squeeze()
     array_data[invalid_mask] = np.nan
 
     return array_data, invalid_mask
@@ -398,32 +400,100 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
 
 
+@numba.njit
+def _get_closest_rectangle(size: int) -> tuple[int, int]:
+    """
+    Given a 1D array size, return a rectangular shape that is closest to a cube which the size fits in.
+
+    If 'size' does not have an integer root, a rectangle is returned that is slightly larger than 'size'.
+    
+    :examples:
+        >>> _get_closest_rectangle(4)  # size will be 4
+        (2, 2)
+        >>> _get_closest_rectangle(9)  # size will be 9
+        (3, 3)
+        >>> _get_closest_rectangle(3)  # size will be 4; needs padding afterward.
+        (2, 2)
+        >>> _get_closest_rectangle(55) # size will be 56; needs padding afterward.
+        (8, 7)
+        >>> _get_closest_rectangle(24)  # size will be 25; needs padding afterward
+        (5, 5)
+        >>> _get_closest_rectangle(85620)  # size will be 85849; needs padding afterward
+        (293, 293)
+        >>> _get_closest_rectangle(52011)  # size will be 52212; needs padding afterward
+        (229, 228)
+    """
+    close_cube = int(np.sqrt(size))
+
+    if close_cube ** 2 == size:
+        return (close_cube, close_cube)
+
+    height = close_cube
+    width = close_cube
+    # Iteratively increase height, then width, until the size is larger or equal to the input size
+    for i in range(int(1e8)):
+        if i % 2 == 0:
+            height += 1
+        else:
+            width += 1
+
+        if (height * width) >= size:
+            return (height, width)
+
+    else:
+        raise ValueError("Close rectangle could not be found after 1e8 iterations.")
+
+
+
+
 def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
     """
-    Generate indices for subdivision of an array.
+    Create indices for subdivison of an array in a number of blocks.
 
-    :param dem_shape: The shape of a array to be subdivided.
+    If 'count' is divisible by the product of 'shape', the amount of cells in each block will be equal.
+    If 'count' is not divisible, the amount of cells in each block will be very close to equal.
+
+    :param shape: The shape of a array to be subdivided.
     :param count: The amount of subdivisions to make.
 
     :examples:
-        >>> subdivide_array((4, 4), 3)
-        array([[0, 0, 0, 0],
+        >>> subdivide_array((4, 4), 4)
+        array([[0, 0, 1, 1],
                [0, 0, 1, 1],
-               [1, 1, 1, 2],
-               [2, 2, 2, 2]])
+               [2, 2, 3, 3],
+               [2, 2, 3, 3]])
+
+        >>> subdivide_array((6, 4), 4)
+        array([[0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3]])
+
+        >>> subdivide_array((5, 4), 3)
+        array([[0, 0, 0, 0],
+               [0, 0, 0, 0],
+               [1, 1, 2, 2],
+               [1, 1, 2, 2],
+               [1, 1, 2, 2]])
 
     :raises ValueError: If the 'shape' size (`np.prod(shape)`) is smallern than 'count'
+                        If the shape is not a 2D shape.
 
     :returns: An array of shape 'shape' with 'count' unique indices.
     """
     if count > np.prod(shape):
         raise ValueError(f"Shape '{shape}' size ({np.prod(shape)}) is smaller than 'count' ({count}).")
-    indices = np.zeros(shape=shape, dtype="int64") - 1
 
-    for i, view in enumerate(np.array_split(indices.ravel(), count)):
-        view[:] = i
+    if len(shape) != 2:
+        raise ValueError(f"Expected a 2D shape, got {len(shape)}D shape: {shape}")
 
-    return indices
+    # Generate a small grid of indices, with the same unique count as 'count'
+    rect = _get_closest_rectangle(count)
+    small_indices = np.pad(np.arange(count), np.prod(rect) - count, mode="edge")[:np.prod(rect)].reshape(rect)
 
+    # Upscale the grid to fit the output shape using nearest neighbour scaling.
+    indices = skimage.transform.resize(small_indices, shape, order=0, preserve_range=True).astype(int)
 
-
+    return indices.reshape(shape)

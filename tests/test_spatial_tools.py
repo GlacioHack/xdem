@@ -179,17 +179,19 @@ def test_hillshade():
     xdem.spatial_tools.hillshade(dem.data, dem.res)
 
 
-def test_subdivide_dem():
+def test_subdivide_array():
 
     test_shape = (6, 4)
     test_count = 4
     subdivision_grid = xdem.spatial_tools.subdivide_array(test_shape, test_count)
 
-
     assert subdivision_grid.shape == test_shape
     assert np.unique(subdivision_grid).size == test_count
 
-    assert np.unique(xdem.spatial_tools.subdivide_array((10,), 3)).size == 3
+    assert np.unique(xdem.spatial_tools.subdivide_array((3, 3), 3)).size == 3
+
+    with pytest.raises(ValueError, match=r"Expected a 2D shape, got 1D shape.*"):
+        xdem.spatial_tools.subdivide_array((5,), 2)
 
     with pytest.raises(ValueError, match=r"Shape.*smaller than.*"):
-        xdem.spatial_tools.subdivide_array((5,), 15)
+        xdem.spatial_tools.subdivide_array((5, 2), 15)

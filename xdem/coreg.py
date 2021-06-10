@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import warnings
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, Sequence
 
 import fiona
 import geoutils as gu
@@ -31,7 +31,8 @@ import scipy.ndimage
 import scipy.optimize
 import skimage.transform
 from rasterio import Affine
-from tqdm import trange
+from tqdm import trange, tqdm
+import pandas as pd
 
 import xdem
 
@@ -554,12 +555,16 @@ class Coreg:
         """
         Apply the estimated transform to a set of 3D points.
 
-        :param coords: A (N, 3) array of X/Y/Z coordinates.
+        :param coords: A (N, 3) array of X/Y/Z coordinates or one coordinate of shape (3,).
 
         :returns: The transformed coordinates.
         """
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
+        # If the coordinates represent just one coordinate
+        if np.shape(coords) == (3,):
+            coords = np.reshape(coords, (1, 3))
+
         assert len(np.shape(coords)) == 2 and np.shape(coords)[1] == 3, f"'coords' shape must be (N, 3). Given shape: {np.shape(coords)}"
 
         coords_c = coords.copy()
@@ -644,9 +649,9 @@ class Coreg:
 
     def error(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
               dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
-              error_type: str = "nmad",
+              error_type: str | list[str] = "nmad",
               inlier_mask: Optional[np.ndarray] = None,
-              transform: Optional[rio.transform.Affine] = None) -> float:
+              transform: Optional[rio.transform.Affine] = None) -> float | list[float]:
         """
         Calculate the error of a coregistration approach.
 
@@ -661,37 +666,38 @@ class Coreg:
 
         :param reference_dem: 2D array of elevation values acting reference. 
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-        :param error_type: The type of error meaure to calculate.
+        :param error_type: The type of error meaure to calculate. May be a list of error types.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
 
         :returns: The error measure of choice for the residuals.
         """
+        if isinstance(error_type, str):
+            error_type = [error_type]
 
         residuals = self.residuals(reference_dem=reference_dem, dem_to_be_aligned=dem_to_be_aligned,
                                    inlier_mask=inlier_mask, transform=transform)
 
-        if error_type == "nmad":
-            error = xdem.spatial_tools.nmad(residuals)
-        elif error_type == "median":
-            error = np.median(residuals)
-        elif error_type == "mean":
-            error = np.mean(residuals)
-        elif error_type == "std":
-            error = np.std(residuals)
-        elif error_type == "rms":
-            error = np.sqrt(np.mean(np.square(residuals)))
-        elif error_type == "mae":
-            error = np.mean(np.abs(residuals))
-        elif error_type == "count":
-            error = residuals.size
-        else:
-            raise ValueError(
-                    f"Invalid 'error_type': '{error_type}'."
-                    "Choices: ['nmad', 'median', 'mean', 'std', 'rms', 'mae', 'count']"
-            )
+        error_functions = {
+            "nmad": xdem.spatial_tools.nmad,
+            "median": np.median,
+            "mean": np.mean,
+            "std": np.std,
+            "rms": lambda residuals: np.sqrt(np.mean(np.square(residuals))),
+            "mae": lambda residuals: np.mean(np.abs(residuals)),
+            "count": lambda residuals: residuals.size
+        }
 
-        return error
+        try:
+            errors = [error_functions[err_type](residuals) for err_type in error_type]
+        except KeyError as exception:
+            raise ValueError(
+                    f"Invalid 'error_type'{'s' if len(error_type) > 1 else ''}: "
+                    f"'{error_type}'. Choices: {list(error_functions.keys())}"
+                    ) from exception
+
+
+        return errors if len(errors) > 1 else errors[0]
 
     @classmethod
     def from_matrix(cls, matrix: np.ndarray):
@@ -1033,6 +1039,9 @@ class CoregPipeline(Coreg):
 
         super().__init__()
 
+    def __repr__(self):
+        return f"CoregPipeline: {self.pipeline}"
+
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
         """Fit each coregistration step with the previously transformed DEM."""
@@ -1060,7 +1069,7 @@ class CoregPipeline(Coreg):
         coords_mod = coords.copy()
 
         for coreg in self.pipeline:
-            coords_mod = coreg.apply_pts(coords_mod)
+            coords_mod = coreg.apply_pts(coords_mod).reshape(coords_mod.shape)
 
         return coords_mod
 
@@ -1456,16 +1465,23 @@ class ZScaleCorr(Coreg):
 class PiecewiseCoreg(Coreg):
     """
     Piece-wise coreg class for nonlinear estimations.
+
+    A coreg class of choice is run on an arbitrary subdivision of the raster. When later applying the coregistration,\
+        the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
+
+    E.g. a subdivision of 4 means to divide the DEM in four equally sized parts. These parts are then coregistered\
+        separately, creating four Coreg.fit results. If the subdivision is not divisible by the raster shape,\
+        subdivision is made as best as possible to have approximately equal pixel counts.
     """
 
-    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int):
+    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8):
         """
         Instantiate a piecewise coreg object.
 
         :param coreg: An instantiated coreg object to fit in the subdivided DEMs.
-        :param subdivision: The number of grids to divide the DEMs in. E.g. 4 means four different transforms.
+        :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
+        :param success_threshold: Raise an error if fewer chunks than the fraction failed for any reason.
         """
-
         if isinstance(coreg, type):
             raise ValueError(
                     "The 'coreg' argument must be an instantiated Coreg subclass. "
@@ -1473,6 +1489,7 @@ class PiecewiseCoreg(Coreg):
             )
         self.coreg = coreg
         self.subdivision = subdivision
+        self.success_threshold = success_threshold
 
         super().__init__()
 
@@ -1485,11 +1502,26 @@ class PiecewiseCoreg(Coreg):
 
         groups = xdem.spatial_tools.subdivide_array(tba_dem.shape, count=self.subdivision)
 
-        for i in np.unique(groups):
+        exceptions: list[BaseException] = []
+
+        # TODO: Potentially make this concurrent to increase performance?
+        for i in tqdm(np.unique(groups), desc="Coregistering chunks", disable=(not verbose)):
             inlier_mask = groups == i
             inlier_positions = np.argwhere(inlier_mask)
 
-            self.coreg.fit(reference_dem=ref_dem.copy(), dem_to_be_aligned=tba_dem.copy(), transform=transform, inlier_mask=inlier_mask)
+            total_inliers = np.count_nonzero(inlier_mask & np.isfinite(ref_dem) & np.isfinite(tba_dem))
+
+            ref_copy = ref_dem.copy()
+            tba_copy = tba_dem.copy()
+
+            # Try to run the coregistration. If it fails for any reason, skip it and raise it as a warning later.
+            try:
+                self.coreg.fit(reference_dem=ref_copy, dem_to_be_aligned=tba_copy, transform=transform, inlier_mask=inlier_mask)
+            except Exception as exception:
+                exceptions.append(exception)
+                continue
+
+            nmad, median = self.coreg.error(reference_dem=ref_copy, dem_to_be_aligned=tba_copy, error_type=["nmad", "median"], inlier_mask=inlier_mask, transform=transform)
 
             meta: dict[str, Any] = {
                     "i": i,
@@ -1497,7 +1529,10 @@ class PiecewiseCoreg(Coreg):
                     "max_row": inlier_positions[:, 0].max(),
                     "min_col": inlier_positions[:, 1].min(),
                     "max_col": inlier_positions[:, 1].max(),
-                    "transform": transform
+                    "transform": transform,
+                    "inlier_count": total_inliers,
+                    "nmad": nmad,
+                    "median": median
             }
             mid_row = np.mean([meta["min_row"], meta["max_row"]]).astype(int)
             mid_col = np.mean([meta["min_col"], meta["max_col"]]).astype(int)
@@ -1512,9 +1547,30 @@ class PiecewiseCoreg(Coreg):
             # Assign the closest finite value as the representative point
             meta["representative_row"], meta["representative_col"] = finites[closest][0][0]
             meta["representative_val"] = ref_dem[meta["representative_row"], meta["representative_col"]]
-            meta.update(self.coreg._meta)
 
-            self._meta["coreg_meta"].append(meta)
+            if hasattr(self.coreg, "pipeline"):
+                meta["pipeline"] = [step._meta.copy() for step in self.coreg.pipeline]
+
+            # Copy all current metadata (except for the alreay existing keys like "i", "min_row", etc, and the "coreg_meta" key)
+            # This can then be iteratively restored when the apply function should be called.
+            meta.update({key: value for key, value in self.coreg._meta.items() if key not in ["coreg_meta"] + list(meta.keys())})
+
+            self._meta["coreg_meta"].append(meta.copy())
+
+        # Stop if the success rate was below the threshold
+        if (len(self._meta["coreg_meta"]) / self.subdivision) <= self.success_threshold:
+            raise ValueError(
+                f"Fitting failed for {len(exceptions)} chunks:\n" +
+                "\n".join(map(str, exceptions[:5])) +
+                f"\n... and {len(exceptions) - 5} more" if len(exceptions) > 5 else ""
+            )
+
+    def _restore_metadata(self, meta: dict[str, Any]) -> None:
+        self.coreg._meta.update(meta)
+
+        if hasattr(self.coreg, "pipeline") and "pipeline" in meta:
+            for i, step in enumerate(self.coreg.pipeline):
+                step._meta.update(meta["pipeline"][i])
 
     def to_points(self) -> np.ndarray:
         """
@@ -1531,18 +1587,61 @@ class PiecewiseCoreg(Coreg):
 
         :returns: An array of 3D source -> destionation points.
         """
+        if len(self._meta["coreg_meta"]) == 0:
+            raise AssertionError("No coreg results exist. Has '.fit()' been called?")
         points = np.empty(shape=(0, 3, 2))
         for meta in self._meta["coreg_meta"]:
-            self.coreg._meta = meta
+            self._restore_metadata(meta)
 
             x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"], meta["representative_col"])
 
-            old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (-1, 3))
+            old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))
             new_position = self.coreg.apply_pts(old_position)
         
             points = np.append(points, np.dstack((old_position, new_position)), axis=0)
 
         return points
+
+    def stats(self) -> pd.DataFrame:
+        """
+        Return statistics for each chunk in the piecewise coregistration.
+
+            * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
+            * {x,y,z}_off: The calculated offset in georeferenced units.
+            * inlier_count: The number of pixels that were inliers in the chunk.
+            * nmad: The NMAD after coregistration.
+            * median: The bias after coregistration.
+
+        :raises ValueError: If no coregistration results exist yet.
+
+        :returns: A dataframe of statistics for each chunk.
+        """
+        points = self.to_points()
+
+        chunk_meta = {meta["i"]: meta for meta in self._meta["coreg_meta"]}
+
+        statistics: list[dict[str, Any]] = []
+        for i in range(points.shape[0]):
+            statistics.append(
+                {
+                    "center_x": points[i, 0, 0],
+                    "center_y": points[i, 1, 0],
+                    "center_z": points[i, 2, 0],
+                    "x_off": points[i, 0, 1] - points[i, 0, 0],
+                    "y_off": points[i, 1, 1] - points[i, 1, 0],
+                    "z_off": points[i, 2, 1] - points[i, 2, 0],
+                    "inlier_count": chunk_meta[i]["inlier_count"],
+                    "nmad": chunk_meta[i]["nmad"],
+                    "median": chunk_meta[i]["median"]
+                }
+            )
+
+        stats_df = pd.DataFrame(statistics)
+        stats_df.index.name = "chunk"
+
+        return stats_df
+            
+
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
 
@@ -1558,7 +1657,7 @@ class PiecewiseCoreg(Coreg):
             [bounds.right - resolution / 2, bounds.bottom + resolution / 2, representative_height]
         ])
         edges_dest = self.apply_pts(edges_source)
-        edges = np.vstack((edges_source.reshape((1,) + edges_source.shape), edges_dest.reshape((1,) + edges_dest.shape)))
+        edges = np.dstack((edges_source, edges_dest))
 
         all_points = np.append(points, edges, axis=0)
 
@@ -1579,17 +1678,19 @@ class PiecewiseCoreg(Coreg):
         points = self.to_points()
 
         new_coords = coords.copy()
+
         for dim in range(0, 3):
-            offset_model = scipy.interpolate.interp2d(
-                x=points[:, 0, 0],
-                y=points[:, 1, 0],
-                z=points[:, dim, 0] - points[:, dim, 1],
-                bounds_error=True
-            )
-            try:
-                new_coords[:, dim] += offset_model(coords[:, 0], coords[:, 1])
-            except ValueError as exception:
-                raise ValueError(f"Out of bounds error for coords (minx: {coords[:, 0].min()}, maxx: {coords[:, 0].max()}, miny: {coords[:, 1].min()}, maxy: {coords[:, 1].max()}") from exception
+            with warnings.catch_warnings():
+                # ZeroDivisionErrors may happen when the transformation is empty (which is fine)
+                warnings.filterwarnings("ignore", message="ZeroDivisionError")
+                model = scipy.interpolate.Rbf(
+                    points[:, 0, 0],
+                    points[:, 1, 0],
+                    points[:, dim, 1] - points[:, dim, 0],
+                    function="linear",
+                )
+
+            new_coords[:, dim] += model(coords[:, 0], coords[:, 1])
 
         return new_coords
 
@@ -1700,8 +1801,8 @@ def warp_dem(
         # (row, col, 0) represents the destination y-coordinates of the pixels.
         # (row, col, 1) represents the destination x-coordinates of the pixels.
         new_indices = scipy.interpolate.griddata(
-            destination_coords_scaled[:, [1, 0]],  # Coordinates should be in y/x (not x/y) for some reason..
             source_coords_scaled[:, [1, 0]],
+            destination_coords_scaled[:, [1, 0]],  # Coordinates should be in y/x (not x/y) for some reason..
             (grid_y, grid_x),
             method="linear"
         )
