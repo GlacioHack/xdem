@@ -31,10 +31,14 @@ class TestDocs:
 
         filenames = [os.path.join("code", filename) for filename in os.listdir("code/") if filename.endswith(".py")]
 
+        for filename in filenames:
+            run_code(filename)
+        """
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=int(self.n_threads) if self.n_threads is not None else None
         ) as executor:
             list(executor.map(run_code, filenames))
+        """
 
         os.chdir(current_dir)
 
