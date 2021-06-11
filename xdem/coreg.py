@@ -11,13 +11,15 @@ Date: 13 November 2020.
 """
 from __future__ import annotations
 
+import copy
+import concurrent.futures
 import json
 import os
 import subprocess
 import tempfile
 import warnings
 from enum import Enum
-from typing import Any, Callable, Optional, Union, Sequence
+from typing import Any, Callable, Optional, Union, Sequence, TypeVar
 
 import fiona
 import geoutils as gu
@@ -431,6 +433,8 @@ def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine)
     return x_coords, y_coords
 
 
+CoregType = TypeVar("CoregType", bound="Coreg")
+
 class Coreg:
     """
     Generic Coreg class.
@@ -738,6 +742,14 @@ class Coreg:
 
         return cls.from_matrix(matrix)
 
+    def copy(self: CoregType) -> CoregType:
+        """Return an identical copy of the class."""
+        new_coreg = self.__new__(type(self))
+
+        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items()}
+
+        return new_coreg
+
     def __add__(self, other: Coreg) -> CoregPipeline:
         """Return a pipeline consisting of self and the other coreg function."""
         if not isinstance(other, Coreg):
@@ -1041,6 +1053,15 @@ class CoregPipeline(Coreg):
 
     def __repr__(self):
         return f"CoregPipeline: {self.pipeline}"
+
+    def copy(self: CoregType) -> CoregType:
+        """Return an identical copy of the class."""
+        new_coreg = self.__new__(type(self))
+
+        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items() if key != "pipeline"}
+        new_coreg.pipeline = [step.copy() for step in self.pipeline]
+
+        return new_coreg
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
@@ -1474,13 +1495,14 @@ class PiecewiseCoreg(Coreg):
         subdivision is made as best as possible to have approximately equal pixel counts.
     """
 
-    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8):
+    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None):
         """
         Instantiate a piecewise coreg object.
 
         :param coreg: An instantiated coreg object to fit in the subdivided DEMs.
         :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
         :param success_threshold: Raise an error if fewer chunks than the fraction failed for any reason.
+        :param n_threads: The maximum amount of threads to use. Default=auto
         """
         if isinstance(coreg, type):
             raise ValueError(
@@ -1490,72 +1512,108 @@ class PiecewiseCoreg(Coreg):
         self.coreg = coreg
         self.subdivision = subdivision
         self.success_threshold = success_threshold
+        self.n_threads = n_threads
 
         super().__init__()
 
         self._meta["coreg_meta"] = []
 
 
+
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: rio.transform.Affine | None,
                   weights: np.ndarray | None, verbose: bool = False):
         """Fit the coreg approach for each subdivision."""
 
-        groups = xdem.spatial_tools.subdivide_array(tba_dem.shape, count=self.subdivision)
+        groups = self.subdivide_array(tba_dem.shape)
 
-        exceptions: list[BaseException] = []
+        indices = np.unique(groups)
 
-        # TODO: Potentially make this concurrent to increase performance?
-        for i in tqdm(np.unique(groups), desc="Coregistering chunks", disable=(not verbose)):
+        progress_bar = tqdm(total=indices.size, desc="Coregistering chunks", disable=(not verbose))
+
+        def coregister(i: int) -> dict[str, Any] | BaseException:
+            """Coregister a chunk in a thread-safe way."""
             inlier_mask = groups == i
-            inlier_positions = np.argwhere(inlier_mask)
 
-            total_inliers = np.count_nonzero(inlier_mask & np.isfinite(ref_dem) & np.isfinite(tba_dem))
+            # Find the corresponding slice of the inlier_mask to subset the data
+            rows, cols = np.where(inlier_mask)
+            arrayslice = np.s_[rows.min():rows.max() + 1, cols.min(): cols.max() + 1]
 
-            ref_copy = ref_dem.copy()
-            tba_copy = tba_dem.copy()
+            # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
+            ref_subset = ref_dem[arrayslice].copy()
+            tba_subset = tba_dem[arrayslice].copy()
+            mask_subset = inlier_mask[arrayslice].copy()
+            west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
+            transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)
+            coreg = self.coreg.copy()
 
-            # Try to run the coregistration. If it fails for any reason, skip it and raise it as a warning later.
+
+            # Try to run the coregistration. If it fails for any reason, skip it and save the exception.
             try:
-                self.coreg.fit(reference_dem=ref_copy, dem_to_be_aligned=tba_copy, transform=transform, inlier_mask=inlier_mask)
+                coreg.fit(
+                    reference_dem=ref_subset,
+                    dem_to_be_aligned=tba_subset,
+                    transform=transform_subset,
+                    inlier_mask=mask_subset
+                )
             except Exception as exception:
-                exceptions.append(exception)
-                continue
+                return exception
 
-            nmad, median = self.coreg.error(reference_dem=ref_copy, dem_to_be_aligned=tba_copy, error_type=["nmad", "median"], inlier_mask=inlier_mask, transform=transform)
+            nmad, median = coreg.error(
+                reference_dem=ref_subset,
+                dem_to_be_aligned=tba_subset,
+                error_type=["nmad", "median"],
+                inlier_mask=mask_subset,
+                transform=transform_subset
+            )
 
             meta: dict[str, Any] = {
-                    "i": i,
-                    "min_row": inlier_positions[:, 0].min(),
-                    "max_row": inlier_positions[:, 0].max(),
-                    "min_col": inlier_positions[:, 1].min(),
-                    "max_col": inlier_positions[:, 1].max(),
-                    "transform": transform,
-                    "inlier_count": total_inliers,
-                    "nmad": nmad,
-                    "median": median
+                "i": i,
+                "transform": transform_subset,
+                "inlier_count": np.count_nonzero(mask_subset & np.isfinite(ref_subset) & np.isfinite(tba_subset)),
+                "nmad": nmad,
+                "median": median
             }
-            mid_row = np.mean([meta["min_row"], meta["max_row"]]).astype(int)
-            mid_col = np.mean([meta["min_col"], meta["max_col"]]).astype(int)
+            # Find the center of the inliers.
+            inlier_positions = np.argwhere(mask_subset)
+            mid_row = np.mean(inlier_positions[:, 0]).astype(int)
+            mid_col = np.mean(inlier_positions[:, 1]).astype(int)
 
             # Find the indices of all finites within the mask
-            finites = np.argwhere(np.isfinite(tba_dem) & inlier_mask)
+            finites = np.argwhere(np.isfinite(tba_subset) & mask_subset)
             # Calculate the distance between the approximate center and all finite indices
             distances = np.linalg.norm(finites - np.array([mid_row, mid_col]), axis=1)
             # Find the index representing the closest finite value to the center.
             closest = np.argwhere(distances == distances.min())
 
             # Assign the closest finite value as the representative point
-            meta["representative_row"], meta["representative_col"] = finites[closest][0][0]
-            meta["representative_val"] = ref_dem[meta["representative_row"], meta["representative_col"]]
+            representative_row, representative_col = finites[closest][0][0]
+            meta["representative_x"], meta["representative_y"] = rio.transform.xy(transform_subset, representative_row, representative_col)
+            meta["representative_val"] = ref_subset[representative_row, representative_col]
 
-            if hasattr(self.coreg, "pipeline"):
-                meta["pipeline"] = [step._meta.copy() for step in self.coreg.pipeline]
+            # If the coreg is a pipeline, copy its metadatas to the output meta
+            if hasattr(coreg, "pipeline"):
+                meta["pipeline"] = [step._meta.copy() for step in coreg.pipeline]
 
             # Copy all current metadata (except for the alreay existing keys like "i", "min_row", etc, and the "coreg_meta" key)
             # This can then be iteratively restored when the apply function should be called.
-            meta.update({key: value for key, value in self.coreg._meta.items() if key not in ["coreg_meta"] + list(meta.keys())})
+            meta.update({key: value for key, value in coreg._meta.items() if key not in ["coreg_meta"] + list(meta.keys())})
 
-            self._meta["coreg_meta"].append(meta.copy())
+            progress_bar.update()
+
+            return meta.copy()
+
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+            results = executor.map(coregister, indices)
+
+        exceptions: list[BaseException] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                exceptions.append(result)
+            else:
+                self._meta["coreg_meta"].append(result)
+
+        progress_bar.close()
 
         # Stop if the success rate was below the threshold
         if (len(self._meta["coreg_meta"]) / self.subdivision) <= self.success_threshold:
@@ -1565,7 +1623,18 @@ class PiecewiseCoreg(Coreg):
                 f"\n... and {len(exceptions) - 5} more" if len(exceptions) > 5 else ""
             )
 
+        # Set the _fit_called parameters (only identical copies of self.coreg have actually been called)
+        self.coreg._fit_called = True
+        if hasattr(self.coreg, "pipeline"):
+            for step in self.coreg.pipeline:
+                step._fit_called = True
+
     def _restore_metadata(self, meta: dict[str, Any]) -> None:
+        """
+        Given some metadata, set it in the right place.
+
+        :param meta: A metadata file to update self._meta
+        """
         self.coreg._meta.update(meta)
 
         if hasattr(self.coreg, "pipeline") and "pipeline" in meta:
@@ -1593,7 +1662,9 @@ class PiecewiseCoreg(Coreg):
         for meta in self._meta["coreg_meta"]:
             self._restore_metadata(meta)
 
-            x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"], meta["representative_col"])
+            #x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"], meta["representative_col"])
+            x_coord, y_coord = meta["representative_x"], meta["representative_y"]
+
 
             old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))
             new_position = self.coreg.apply_pts(old_position)
@@ -1641,6 +1712,18 @@ class PiecewiseCoreg(Coreg):
 
         return stats_df
             
+
+    def subdivide_array(self, shape: tuple[int, ...]) -> np.ndarray:
+        """
+        Return the grid subdivision for a given DEM shape.
+
+        :param shape: The shape of the input DEM.
+        
+        :returns: An array of shape 'shape' with 'self.subdivision' unique indices.
+        """
+        if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
+            shape = (shape[1], shape[2])
+        return xdem.spatial_tools.subdivide_array(shape, count=self.subdivision)
 
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:

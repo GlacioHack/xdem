@@ -73,6 +73,37 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
+    @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab])
+    def test_copy(self, coreg_class: coreg.Coreg):
+        """Test that copying work expectedly (that no attributes still share references)."""
+        warnings.simplefilter("error")
+
+        # Create a coreg instance and copy it.
+        corr = coreg_class()
+        corr_copy = corr.copy()
+
+        # Assign some attributes and metadata after copying
+        corr.foo = "bar"
+        corr._meta["hello"] = "there"
+        # Make sure these don't appear in the copy
+        assert corr_copy._meta != corr._meta
+        assert not hasattr(corr_copy, "foo")
+
+        # Create a pipeline, add some metadata, and copy it
+        pipeline = coreg_class() + coreg_class()
+        pipeline.pipeline[0]._meta["shouldexist"] = True
+
+        pipeline_copy = pipeline.copy()
+
+        # Add some more metadata after copying (this should not be transferred)
+        pipeline._meta["hello"] = "there"
+        pipeline_copy.pipeline[0]._meta["foo"] = "bar"
+
+        assert pipeline._meta != pipeline_copy._meta
+        assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
+        assert pipeline_copy.pipeline[0]._meta["shouldexist"]
+
+
     def test_bias(self):
         warnings.simplefilter("error")
 
@@ -151,8 +182,6 @@ class TestCoregClass:
         # Create random noise and see if the standard deviation is equal (it should)
         dem3 = dem1 + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
-
-
 
 
     def test_nuth_kaab(self):
