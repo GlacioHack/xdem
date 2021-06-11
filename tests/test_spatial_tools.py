@@ -142,7 +142,9 @@ def test_hillshade():
         return data
 
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-    dem = xdem.DEM(filepath, silent=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        dem = xdem.DEM(filepath)
 
     xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
     gdal_hillshade = make_gdal_hillshade(filepath)
