@@ -457,7 +457,7 @@ class TestCoregClass:
         # Validate that the number of points is equal to the amount of subdivisions.
         assert points.shape[0] == subdivision
 
-        # Validate that the points to not represent only the same location.
+        # Validate that the points do not represent only the same location.
         assert np.sum(np.linalg.norm(points[:, :, 0] - points[:, :, 1], axis=1)) != 0.0
 
         z_diff = points[:, 2, 1] - points[:, 2, 0]
@@ -673,7 +673,7 @@ def test_warp_dem():
         resampling="linear",
     )
 
-    # The warped DEM should have
+    # The warped DEM should have the value 'elev_shift' in the upper left corner.
     assert warped_dem[0, 0] == elev_shift
     # The corner should be zero, so the corner pixel (represents the corner minus resolution / 2) should be close.
     assert warped_dem[-1, -1] < 1.0
