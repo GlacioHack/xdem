@@ -1799,37 +1799,6 @@ def warp_dem(
     :raises ValueError: If the inputs are poorly formatted.
     :raises AssertionError: For unexpected outputs.
 
-    :examples:
-        >>> dem = np.ones((5, 5), dtype=float)
-        >>> dem
-        array([[1., 1., 1., 1., 1.],
-               [1., 1., 1., 1., 1.],
-               [1., 1., 1., 1., 1.],
-               [1., 1., 1., 1., 1.],
-               [1., 1., 1., 1., 1.]])
-        >>> transform = rio.transform.from_origin(0, 5, 1, 1)
-        >>> source_coords = np.array([
-        ...     [0, 0, 0],
-        ...     [5, 0, 0],
-        ...     [5, 5, 0],
-        ...     [0, 5, 0]
-        ... ]).astype("float32")
-        >>> destination_coords = source_coords.copy()
-        >>> destination_coords[3, 2] = 4
-        >>> warped_dem = warp_dem(
-        ...     dem=dem,
-        ...     transform=transform,
-        ...     source_coords=source_coords,
-        ...     destination_coords=destination_coords,
-        ...     resampling="nearest"
-        ... )
-        >>> warped_dem
-        array([[5., 5., 5., 1., 1.],
-               [5., 5., 5., 1., 1.],
-               [5., 5., 5., 1., 1.],
-               [1., 1., 1., 1., 1.],
-               [1., 1., 1., 1., 1.]])
-
     :returns: A warped DEM with the same shape as the input.
     """
     if source_coords.shape != destination_coords.shape:
