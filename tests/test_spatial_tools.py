@@ -139,7 +139,9 @@ def test_hillshade():
     warnings.simplefilter("error")
 
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-    dem = xdem.DEM(filepath)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Parse metadata")
+        dem = xdem.DEM(filepath)
 
     xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
     gdal_hillshade = run_gdaldem(filepath, "hillshade")
@@ -181,7 +183,9 @@ def test_slope():
     warnings.simplefilter("error")
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
 
-    dem = xdem.DEM(filepath, silent=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Parse metadata")
+        dem = xdem.DEM(filepath, silent=True)
 
     slope_xdem = xdem.spatial_tools.slope(dem.data, dem.res, degrees=True)
     slope_gdal = run_gdaldem(filepath, "slope")
@@ -201,7 +205,9 @@ def test_aspect():
     warnings.simplefilter("error")
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
 
-    dem = xdem.DEM(filepath, silent=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Parse metadata")
+        dem = xdem.DEM(filepath, silent=True)
 
     aspect_xdem = xdem.spatial_tools.aspect(dem.data, degrees=True).squeeze()
     aspect_gdal = run_gdaldem(filepath, "aspect")
