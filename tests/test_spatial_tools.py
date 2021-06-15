@@ -116,35 +116,33 @@ class TestMerging:
         assert merged_dem2 == merged_dem
 
 
+def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
+    """Run GDAL's DEMProcessing and return the read numpy array."""
+    # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
+    from osgeo import gdal
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_path = os.path.join(temp_dir.name, "output.tif")
+    gdal.DEMProcessing(
+        destName=temp_path,
+        srcDS=filepath,
+        processing=processing,
+        options=gdal.DEMProcessingOptions(azimuth=315, altitude=45)
+    )
+
+    data = gu.Raster(temp_path).data
+    temp_dir.cleanup()
+    return data
+
+
 def test_hillshade():
     """Test the hillshade algorithm, partly by comparing it to the GDAL hillshade function."""
     warnings.simplefilter("error")
-
-    def make_gdal_hillshade(filepath) -> np.ndarray:
-        # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
-        from osgeo import gdal
-        temp_dir = tempfile.TemporaryDirectory()
-        temp_hillshade_path = os.path.join(temp_dir.name, "hillshade.tif")
-        # gdal_commands = ["gdaldem", "hillshade",
-        #                 filepath, temp_hillshade_path,
-        #                 "-az", "315", "-alt", "45"]
-        #subprocess.run(gdal_commands, check=True, stdout=subprocess.PIPE)
-        gdal.DEMProcessing(
-            destName=temp_hillshade_path,
-            srcDS=filepath,
-            processing="hillshade",
-            options=gdal.DEMProcessingOptions(azimuth=315, altitude=45)
-        )
-
-        data = gu.Raster(temp_hillshade_path).data
-        temp_dir.cleanup()
-        return data
 
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
     dem = xdem.DEM(filepath)
 
     xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
-    gdal_hillshade = make_gdal_hillshade(filepath)
+    gdal_hillshade = run_gdaldem(filepath, "hillshade")
     diff = gdal_hillshade - xdem_hillshade
 
     # Check that the xdem and gdal hillshades are relatively similar.
@@ -176,3 +174,44 @@ def test_hillshade():
 
     # Make sure that this doesn't create weird division warnings.
     xdem.spatial_tools.hillshade(dem.data, dem.res)
+
+
+def test_slope():
+    """Test that xdem's slope function is close to GDAL's slope."""
+    warnings.simplefilter("error")
+    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+
+    dem = xdem.DEM(filepath, silent=True)
+
+    slope_xdem = xdem.spatial_tools.slope(dem.data, dem.res, degrees=True)
+    slope_gdal = run_gdaldem(filepath, "slope")
+
+    assert np.mean(np.abs(slope_xdem - slope_gdal)) < 2
+
+    # Introduce some nans
+    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+    dem.data.mask.ravel()[np.random.choice(
+        dem.data.size, 50000, replace=False)] = True
+
+    # Validate that this doesn't raise weird warnings.
+    xdem.spatial_tools.slope(dem.data, dem.res)
+
+def test_aspect():
+    """Test that xdem's aspect function is close to GDAL's aspect."""
+    warnings.simplefilter("error")
+    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+
+    dem = xdem.DEM(filepath, silent=True)
+
+    aspect_xdem = xdem.spatial_tools.aspect(dem.data, degrees=True).squeeze()
+    aspect_gdal = run_gdaldem(filepath, "aspect")
+
+    assert np.mean(np.abs(aspect_xdem - aspect_gdal)) < 10
+
+    # Introduce some nans
+    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+    dem.data.mask.ravel()[np.random.choice(
+        dem.data.size, 50000, replace=False)] = True
+
+    # Validate that this doesn't raise weird warnings.
+    xdem.spatial_tools.aspect(dem.data, dem.res)

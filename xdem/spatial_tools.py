@@ -2,7 +2,7 @@
 
 """
 from __future__ import annotations
-from typing import Callable, Union
+from typing import Callable, Union, Sized
 
 import numpy as np
 import rasterio as rio
@@ -396,3 +396,79 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     # Return the hillshade, scaled to uint8 ranges.
     # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
+
+
+def slope(dem: np.ndarray | np.ma.masked_array, resolution: float | tuple[float, float], degrees: bool = True) -> np.ndarray:
+    """
+    Generate a slope map for a DEM.
+
+    :param dem: The DEM to generate a slope map for.
+    :param resolution: The X/Y or (X, Y) resolution of the DEM.
+    :param degrees: Return a slope map in degrees (False means radians)
+    
+    :returns: A slope map of the same shape as 'dem' in degrees or radians.
+    """
+    if not isinstance(resolution, Sized):
+        resolution = (float(resolution), float(resolution))
+
+    dem_arr = get_array_and_mask(dem)[0]
+
+    # Calculate the gradient of each pixel.
+    x_gradient, y_gradient = np.gradient(dem_arr)
+
+    # Normalize by the radius of the resolution to make it resolution variant.
+    x_gradient /= resolution[0]
+    y_gradient /= resolution[1]
+
+    # Calculate slope
+    slope = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
+
+    # Convert the unit if wanted.
+    if degrees:
+        slope = 90 - np.rad2deg(slope)
+
+    return slope.reshape(dem.shape)
+
+
+def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.ndarray:
+    """
+    Calculate the aspect of each cell in a DEM.
+
+    0=N, 90=E, 180=S, 270=W
+
+    :param dem: The DEM to calculate the aspect from.
+    :param degrees: Return an aspect map in degrees (if False, returns radians)
+
+    :examples:
+        >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
+        >>> dem
+        array([[0, 0, 0],
+               [1, 1, 1],
+               [2, 2, 2]])
+        >>> aspect(dem, degrees=True)
+        array([[0., 0., 0.],
+               [0., 0., 0.],
+               [0., 0., 0.]], dtype=float32)
+        >>> dem.T
+        array([[0, 1, 2],
+               [0, 1, 2],
+               [0, 1, 2]])
+        >>> aspect(dem.T, degrees=True)
+        array([[270., 270., 270.],
+               [270., 270., 270.],
+               [270., 270., 270.]], dtype=float32)
+
+    """
+    dem_arr = get_array_and_mask(dem)[0]
+
+    # Calculate the gradient of each pixel.
+    x_gradient, y_gradient = np.gradient(dem_arr)
+
+    aspect = np.arctan2(-x_gradient, y_gradient)
+
+    # Convert the unit if wanted.
+    if degrees:
+        with np.errstate(invalid="ignore"):  # It may warn for nans (which is okay)
+            aspect = (270 - np.rad2deg(aspect)) % 360
+
+    return aspect.reshape(dem.shape)
