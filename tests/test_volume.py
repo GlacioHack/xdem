@@ -4,6 +4,7 @@ import geoutils as gu
 import numpy as np
 import scipy.ndimage
 import pandas as pd
+import pytest
 
 import xdem
 
@@ -167,19 +168,90 @@ class TestLocalHypsometric:
 
         assert custom_bins.shape[0] == quantile_bins.shape[0]
 
-    def test_regional_hypsometric_signal(self):
+
+class TestNormHypsometric:
+    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
+    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+
+    glacier_index_map = outlines.rasterize(dem_2009)
+    ddem = dem_2009.data - dem_1990.data
+
+    @pytest.mark.parametrize("n_bins", [5, 10, 20])
+    def test_regional_signal(self, n_bins: int) -> None:
+        warnings.simplefilter("error")
+
+        signal = xdem.volume.get_regional_hypsometric_signal(
+            ddem=self.ddem,
+            ref_dem=self.dem_2009.data,
+            glacier_index_map=self.glacier_index_map,
+            n_bins=n_bins
+        )
+
+        assert signal["w_mean"].min() >= 0.0
+        assert signal["w_mean"].max() <= 1.0
+        assert signal.index.right.max() <= 1.0
+        assert signal.index.left.min() >= 0.0
+
+        assert np.all(np.isfinite(signal.values))
+
+
+    def test_interpolate_small(self):
+
+        dem = np.arange(16, dtype="float32").reshape(4, 4)
+        ddem = dem / 10
+        glacier_index_map = np.ones_like(dem)
+
+        signal = xdem.volume.get_regional_hypsometric_signal(
+            ddem=ddem,
+            ref_dem=dem,
+            glacier_index_map=glacier_index_map,
+            n_bins=10
+        )
+
+        # Make it so that only 1/4 of the values exist.
+        ddem_orig = ddem.copy()
+        ddem.ravel()[4:] = np.nan
+
+        interpolated_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
+            voided_ddem=ddem,
+            ref_dem=dem,
+            glacier_index_map=glacier_index_map,
+            regional_signal=signal,
+            min_elevation_range=0.3  # At least ~1/3 of the range need to exist.
+        )
+
+        # Validate that no interpolation was done, as the coverage was too small
+        assert np.nansum(np.abs(ddem - interpolated_ddem)) == 0.0
+
+        # Now try with a dDEM that has about 3/4 of the range.
+        ddem = ddem_orig.copy()
+        ddem.ravel()[12:] = np.nan
+
+        interpolated_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
+            voided_ddem=ddem,
+            ref_dem=dem,
+            glacier_index_map=glacier_index_map,
+            regional_signal=signal,
+            min_elevation_range=0.3
+        )
+
+        # Validate that values were interpolated within the measurement step-size
+        assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1 
+
+    def test_regional_hypsometric_interp(self):
 
         warnings.simplefilter("error")
 
         # Extract a normalized regional hypsometric signal.
         ddem = self.dem_2009.data - self.dem_1990.data
         ddem_full = ddem.copy().filled(np.nan)
-        glacier_index_map = self.all_outlines.rasterize(self.dem_2009)
-        signal = xdem.volume.get_regional_hypsometric_signal(
-            ddem=ddem, ref_dem=self.dem_2009.data, glacier_index_map=glacier_index_map)
 
-        assert signal["w_mean"].min() >= 0
-        assert signal["w_mean"].max() <= 1
+        signal = xdem.volume.get_regional_hypsometric_signal(
+            ddem=self.ddem,
+            ref_dem=self.dem_2009.data,
+            glacier_index_map=self.glacier_index_map
+        )
 
         if False:
             import matplotlib.pyplot as plt
@@ -201,13 +273,13 @@ class TestLocalHypsometric:
         filled_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
             voided_ddem=ddem,
             ref_dem=self.dem_2009.data,
-            glacier_index_map=glacier_index_map
+            glacier_index_map=self.glacier_index_map
         )
         # Fill the dDEM using the de-normalized signal and create an idealized dDEM
         idealized_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
             voided_ddem=ddem,
             ref_dem=self.dem_2009.data,
-            glacier_index_map=glacier_index_map,
+            glacier_index_map=self.glacier_index_map,
             idealized_ddem=True
         )
         assert not np.array_equal(filled_ddem, idealized_ddem)
@@ -228,9 +300,9 @@ class TestLocalHypsometric:
             plt.show()
 
         # Extract the finite glacier values.
-        changes = ddem.data.squeeze()[glacier_index_map > 0]
+        changes = ddem.data.squeeze()[self.glacier_index_map > 0]
         changes = changes[np.isfinite(changes)]
-        interp_changes = filled_ddem[glacier_index_map > 0]
+        interp_changes = filled_ddem[self.glacier_index_map > 0]
         interp_changes = interp_changes[np.isfinite(interp_changes)]
 
         # Validate that the interpolated (20% data) means and stds are similar to the original (100% data)
@@ -238,3 +310,4 @@ class TestLocalHypsometric:
         # values on normal computers...
         #assert abs(changes.mean() - interp_changes.mean()) < 2
         #assert abs(changes.std() - interp_changes.std()) < 2
+

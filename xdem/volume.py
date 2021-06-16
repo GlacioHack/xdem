@@ -567,9 +567,6 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         if (np.count_nonzero(inlier_mask) / np.count_nonzero(glacier_values)) < min_coverage:
             continue
 
-        # At this point, invalid glaciers have been skipped and the counter should be incremented.
-        count += 1
-
         # Extract only the difference and elevation values that correspond to the glacier.
         differences = ddem_arr[inlier_mask]
         elevations = ref_arr[inlier_mask]
@@ -579,8 +576,6 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
             bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
         except ValueError:  # ValueError: zero-size array to reduction operation minimum which has no identity on "zbins=" call
             continue
-        # At this point, invalid glaciers have been skipped and the counter should be incremented.
-        count += 1
 
         # Min-max scale by elevation.
         bins.index = (bins.index.mid - bins.index.left.min()) / (bins.index.right.max() - bins.index.left.min())
@@ -593,6 +588,8 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
         values[:, count] = bins["value"]
         counts[:, count] = bins["count"]
 
+        count += 1
+
     output = pd.DataFrame(
         data={
             "w_mean": np.nansum(values * counts, axis=1) / np.nansum(counts, axis=1),
@@ -604,7 +601,7 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
             "sigma-2-upper": np.nanpercentile(values, 97.5, axis=1),
             "count": np.nansum(counts, axis=1).astype(int),
         },
-        index=pd.IntervalIndex.from_breaks(np.linspace(0, 1, n_bins + 1)),
+        index=pd.IntervalIndex.from_breaks(np.linspace(0, 1, n_bins + 1, dtype="float64")),
     )
 
     return output
@@ -616,7 +613,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
                                             min_coverage: float = 0.1,
                                             regional_signal: Optional[pd.DataFrame] = None,
                                             verbose: bool = False,
-                                            min_bin_count: int = 4,
+                                            min_elevation_range: float = 0.33,
                                             idealized_ddem: bool = False) -> np.ndarray:
     """
     Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
@@ -629,7 +626,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
     :param verbose: Show progress bars.
-    :param min_bin_count: The minimum allowed bin count to scale a signal from. The theoretical minimum is 2.
+    :param min_elevation_range: The minimum allowed min/max bin range to scale a signal from.\
+            Default: 1/3 of the elevation range needs to be present.
     :param idealized_ddem: Replace observed glacier values with the hypsometric signal. Good for error assessments.
 
     :raises AssertionError: If `ref_dem` has voids.
@@ -706,8 +704,14 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         # Check which of the bins were non-empty.
         non_empty_bins = np.isfinite(hypsometric_bins["value"])
 
-        # A theoretical minimum of 2 bins are needed for the curve fit, but the threshold should be a bit higher.
-        if np.count_nonzero(non_empty_bins) < min_bin_count:
+        non_empty_range = np.sum(non_empty_bins[non_empty_bins].index.length)
+        full_range = np.sum(hypsometric_bins.index.length)
+
+        if (non_empty_range / full_range) < min_elevation_range:
+            continue
+
+        # A theoretical minimum of 2 bins are needed for the curve fit.
+        if np.count_nonzero(non_empty_bins) < 2:
             continue
 
         # The weights are the squared inverse of the standard deviation of each bin.
