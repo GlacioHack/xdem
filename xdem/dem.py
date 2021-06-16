@@ -6,6 +6,7 @@ import pyproj
 import warnings
 from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
+import geoutils as gu
 from pyproj import Transformer
 import json
 import subprocess
@@ -67,9 +68,11 @@ class DEM(SatelliteImage):
             for key in filename_or_dataset.__dict__:
                 setattr(self, key, filename_or_dataset.__dict__[key])
             return
-        # Else rely on parent Raster class options (including raised errors)
+        # Else rely on parent SatelliteImage class options (including raised errors)
         else:
-            super().__init__(filename_or_dataset, silent=silent, **kwargs)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
+                super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
         if self.nbands > 1:
             raise ValueError('DEM rasters should be composed of one band only')

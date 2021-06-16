@@ -33,7 +33,7 @@ plt.title(f"After coregistration. NMAD={nmad_post:.1f} m")
 img = plt.imshow(ddem_post, cmap="coolwarm_r", vmin=-vlim, vmax=vlim)
 plt.axis("off")
 plt.subplot2grid((1, 15), (0, 14), colspan=1)
-cbar = plt.colorbar(img, fraction=0.4)
+cbar = plt.colorbar(img, fraction=0.4, ax=plt.gca())
 cbar.set_label("Elevation change (m)")
 plt.axis("off")
 
