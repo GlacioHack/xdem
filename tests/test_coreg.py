@@ -500,7 +500,7 @@ def test_apply_matrix():
     transformed_dem = coreg.apply_matrix(ref.data.squeeze(), ref.transform, matrix)
     reverted_dem = transformed_dem - bias
 
-    # Check that the revered DEM has the exact same values as the initial one
+    # Check that the reverted DEM has the exact same values as the initial one
     # (resampling is not an exact science, so this will only apply for bias corrections)
     assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(ref.data))
 
