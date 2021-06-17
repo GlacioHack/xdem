@@ -1483,9 +1483,9 @@ class ZScaleCorr(Coreg):
         else:
             raise ValueError("A 2nd degree or higher ZScaleCorr cannot be described as a 4x4 matrix!")
 
-class PiecewiseCoreg(Coreg):
+class BlockwiseCoreg(Coreg):
     """
-    Piece-wise coreg class for nonlinear estimations.
+    Block-wise coreg class for nonlinear estimations.
 
     A coreg class of choice is run on an arbitrary subdivision of the raster. When later applying the coregistration,\
         the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
@@ -1497,7 +1497,7 @@ class PiecewiseCoreg(Coreg):
 
     def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None):
         """
-        Instantiate a piecewise coreg object.
+        Instantiate a blockwise coreg object.
 
         :param coreg: An instantiated coreg object to fit in the subdivided DEMs.
         :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
@@ -1643,7 +1643,7 @@ class PiecewiseCoreg(Coreg):
 
     def to_points(self) -> np.ndarray:
         """
-        Convert the piecewise coregistration matrices to 3D (source -> destination) points.
+        Convert the blockwise coregistration matrices to 3D (source -> destination) points.
 
         The returned shape is (N, 3, 2) where the dimensions represent:
             0. The point index where N is equal to the amount of subdivisions.
@@ -1675,7 +1675,7 @@ class PiecewiseCoreg(Coreg):
 
     def stats(self) -> pd.DataFrame:
         """
-        Return statistics for each chunk in the piecewise coregistration.
+        Return statistics for each chunk in the blockwise coregistration.
 
             * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
             * {x,y,z}_off: The calculated offset in georeferenced units.

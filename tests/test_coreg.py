@@ -442,17 +442,17 @@ class TestCoregClass:
             10,
         ]
     )
-    def test_piecewise_coreg(self, pipeline, subdivision):
+    def test_blockwise_coreg(self, pipeline, subdivision):
         warnings.simplefilter("error")
 
-        piecewise = coreg.PiecewiseCoreg(coreg=pipeline, subdivision=subdivision)
+        blockwise = coreg.BlockwiseCoreg(coreg=pipeline, subdivision=subdivision)
 
         # Results can not yet be extracted (since fit has not been called) and should raise an error
         with pytest.raises(AssertionError, match="No coreg results exist.*"):
-            piecewise.to_points()
+            blockwise.to_points()
     
-        piecewise.fit(**self.fit_params)
-        points = piecewise.to_points()
+        blockwise.fit(**self.fit_params)
+        points = blockwise.to_points()
 
         # Validate that the number of points is equal to the amount of subdivisions.
         assert points.shape[0] == subdivision
@@ -465,15 +465,15 @@ class TestCoregClass:
         # Validate that all values are different
         assert np.unique(z_diff).size == z_diff.size, "Each coreg cell should have different results."
 
-        # Validate that the PiecewiseCoreg doesn't accept uninstantiated Coreg classes
+        # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
         with pytest.raises(ValueError, match="instantiated Coreg subclass"):
-            coreg.PiecewiseCoreg(coreg=coreg.BiasCorr, subdivision=1)  # type: ignore
+            coreg.BlockwiseCoreg(coreg=coreg.BiasCorr, subdivision=1)  # type: ignore
 
         # Metadata copying has been an issue. Validate that all chunks have unique ids
-        chunk_numbers = [m["i"] for m in piecewise._meta["coreg_meta"]]
+        chunk_numbers = [m["i"] for m in blockwise._meta["coreg_meta"]]
         assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
 
-        transformed_dem = piecewise.apply(self.tba.data, self.tba.transform)
+        transformed_dem = blockwise.apply(self.tba.data, self.tba.transform)
 
         ddem_pre = (self.ref.data - self.tba.data)[~self.inlier_mask].squeeze().filled(np.nan)
         ddem_post = (self.ref.data.squeeze() - transformed_dem)[~self.inlier_mask.squeeze()].filled(np.nan)
@@ -481,7 +481,7 @@ class TestCoregClass:
         # Check that the periglacial difference is lower after coregistration.
         assert abs(np.nanmedian(ddem_post)) < abs(np.nanmedian(ddem_pre))
 
-        stats = piecewise.stats()
+        stats = blockwise.stats()
 
         # Check that nans don't exist (if they do, something has gone very wrong)
         assert np.all(np.isfinite(stats["nmad"]))
