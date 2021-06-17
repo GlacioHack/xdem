@@ -413,7 +413,6 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
 
 
-@numba.njit
 def _get_closest_rectangle(size: int) -> tuple[int, int]:
     """
     Given a 1D array size, return a rectangular shape that is closest to a cube which the size fits in.
@@ -428,34 +427,31 @@ def _get_closest_rectangle(size: int) -> tuple[int, int]:
         >>> _get_closest_rectangle(3)  # size will be 4; needs padding afterward.
         (2, 2)
         >>> _get_closest_rectangle(55) # size will be 56; needs padding afterward.
-        (8, 7)
+        (7, 8)
         >>> _get_closest_rectangle(24)  # size will be 25; needs padding afterward
         (5, 5)
         >>> _get_closest_rectangle(85620)  # size will be 85849; needs padding afterward
         (293, 293)
         >>> _get_closest_rectangle(52011)  # size will be 52212; needs padding afterward
-        (229, 228)
+        (228, 229)
     """
     close_cube = int(np.sqrt(size))
 
+    # If size has an integer root, return the respective cube.
     if close_cube ** 2 == size:
         return (close_cube, close_cube)
+    
+    # One of these rectangles/cubes will cover all cells, so return the first that does.
+    potential_rectangles = [
+        (close_cube, close_cube + 1),
+        (close_cube + 1, close_cube + 1)
+    ]
 
-    height = close_cube
-    width = close_cube
-    # Iteratively increase height, then width, until the size is larger or equal to the input size
-    for i in range(int(1e8)):
-        if i % 2 == 0:
-            height += 1
-        else:
-            width += 1
+    for rectangle in potential_rectangles:
+        if np.prod(rectangle) >= size:
+            return rectangle
 
-        if (height * width) >= size:
-            return (height, width)
-
-    else:
-        raise ValueError("Close rectangle could not be found after 1e8 iterations.")
-
+    raise NotImplementedError(f"Function criteria not met for rectangle of size: {size}")
 
 
 
