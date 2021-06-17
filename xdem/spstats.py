@@ -70,7 +70,6 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
 
 def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> Tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
 
-    # TODO: add methods that might be more relevant with the multi-distance sampling?
     """
     Subsampling of elevation differences with random coordinates
 
@@ -295,6 +294,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         df = df_mean
 
     return df
+
 
 
 def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
