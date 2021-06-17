@@ -9,18 +9,98 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union
+from typing import Callable, Union, Iterable, List, Optional, Sequence
 
+import itertools
 import matplotlib.pyplot as plt
+from numba import njit
 import numpy as np
 import pandas as pd
 from scipy import integrate
 from scipy.optimize import curve_fit
+from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
+from xdem.spatial_tools import nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
     from skgstat import models
+
+def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=List[str], list_var_bins: Optional[List[Iterable]] = None,
+                     statistics: list[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[List[Sequence]] = None) \
+        -> tuple[list[pd.DataFrame],list[pd.DataFrame],pd.DataFrame]:
+    """
+    FUNCTION USING SCIPY:
+    Quantify non-stationarities in elevation measurement errors with one or several, terrain or instrument-related,
+    explanatory variables. See documentation of scipy.stats.binned_statistic_dd for more details.
+
+    :param dh: elevation differences
+    :param list_var: list of explanatory variables
+    :param list_var_names: list of names of the explanatory variables
+    :param list_var_bins: list of bins for the explanatory variables
+    :param statistics: list of statistics to be computed
+    :param list_ranges: list of minimum and maximum ranges to bin the explanatory variables
+    :return:
+    """
+
+    # we separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
+    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
+    if list_var_bins is None:
+        list_var_bins = (10,) * len(list_var_names)
+    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
+
+    # get binned statistics in 1d: a simple loop is sufficient
+    list_df_1d = []
+    for i, var in enumerate(list_var):
+        df_stats_1d = pd.DataFrame()
+        # get statistics
+        for j, statistic in enumerate(statistics):
+            stats_binned_1d, bedges_1d = binned_statistic(var,dh,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
+            # save in a dataframe
+            df_stats_1d[statistics_name[j]+'_'+list_var_names[i]] = stats_binned_1d
+        # we need to get the middle of the bins from the edges, to get the same dimension length
+        df_stats_1d['binmid_'+list_var_names[i]] = (bedges_1d[1:] + bedges_1d[:-1]) / 2
+
+        list_df_1d.append(df_stats_1d)
+
+    # get binned statistics in 2d: all possible 2d combinations
+    list_df_2d = []
+    if len(list_var)>1:
+        combs = list(itertools.combinations(list_var_names, 2))
+        for i, comb in enumerate(combs):
+            var1_name, var2_name = comb
+            # corresponding variables indexes
+            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
+            df_stats_2d = pd.DataFrame()
+            for j, statistic in enumerate(statistics):
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],dh,statistic=statistic
+                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
+                                                             ,range=list_ranges)[:3]
+                # get statistics
+                df_stats_2d[statistics_name[j]+'_'+'-'.join(comb)] = stats_binned_2d.flatten()
+            bin_mid_var1 = (bedges_var1[1:] + bedges_var1[:-1]) / 2
+            bin_mid_var2 = (bedges_var2[1:] + bedges_var2[:-1]) / 2
+            df_stats_2d['binmid_'+var1_name] = [b1 for b1 in bin_mid_var1 for b2 in bin_mid_var2]
+            df_stats_2d['binmid_'+var2_name] = [b2 for b1 in bin_mid_var1 for b2 in bin_mid_var2]
+
+            list_df_2d.append(df_stats_2d)
+
+
+    # get binned statistics in nd, without redoing the same stats
+    df_stats_nd = pd.DataFrame()
+    if len(list_var)>2:
+        for j, statistic in enumerate(statistics):
+            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,dh,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
+            df_stats_nd[statistics_name[j]+'_'+'-'.join(list_var_names)] = stats_binned_2d.flatten()
+        list_bedge_mid = []
+        for bedges in list_bedges:
+            bedge_mid = (bedges[1:] + bedges[:-1]) / 2
+            list_bedge_mid.append(bedge_mid)
+        list_ind = np.meshgrid(*list_bedge_mid)
+        for i, var_name in enumerate(list_var_names):
+            df_stats_nd['binmid_'+var_name] = list_ind[i].flatten()
+
+    return list_df_1d, list_df_2d, df_stats_nd
 
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
