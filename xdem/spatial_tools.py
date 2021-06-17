@@ -3,6 +3,7 @@
 """
 from __future__ import annotations
 from typing import Callable, Union
+import warnings
 
 import numpy as np
 import rasterio as rio
@@ -26,13 +27,18 @@ def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
     return mask.squeeze()
 
 
-def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape: bool = True) -> (np.ndarray, np.ndarray):
+def get_array_and_mask(
+        array: Union[np.ndarray, np.ma.masked_array],
+        check_shape: bool = True,
+        copy: bool = True
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
     Return array with masked values set to NaN and the associated mask.
     Works whether array is a ndarray with NaNs or a np.ma.masked_array.
-    WARNING, if array is of dtype float, will return a view only, if integer dtype, will return a copy.
 
     :param array: Input array.
+    :param check_shape: Validate that the array is either a 1D array, a 2D array or a 3D array of shape (1, rows, cols).
+    :param copy: Return a copy of 'array'. If False, a view will be attempted (and warn if not possible)
 
     :returns array_data, invalid_mask: a tuple of ndarrays. First is array with invalid pixels converted to NaN, \
     second is mask of invalid pixels (True if invalid).
@@ -43,16 +49,23 @@ def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape
                     f"Invalid array shape given: {array.shape}."
                     "Expected 2D array or 3D array where arr.shape[0] == 1"
             )
-    # Get mask of invalid pixels
-    invalid_mask = get_mask(array)
 
-    # If array is of type integer, need to be converted to float, forcing not duplicate
-    if np.issubdtype(array.dtype, np.integer):
+    # If an occupied mask exists and a view was requested, trigger a warning.
+    if not copy and np.any(getattr(array, "mask", False)):
+        warnings.warn("Copying is required to respect the mask. Returning copy. Set 'copy=True' to hide this message.")
+        copy = True
+
+    # If array is of type integer and has a mask, it needs to be converted to float (to assign nans)
+    if np.any(getattr(array, "mask", False)) and np.issubdtype(array.dtype, np.integer):
         array = array.astype('float32')
 
-    # Convert into a regular ndarray and convert invalid values to NaN
-    array_data = np.array(array).squeeze()
-    array_data[invalid_mask] = np.nan
+    # Convert into a regular ndarray (a view or copy depending on the 'copy' argument)
+    array_data = np.array(array).squeeze() if copy else np.asarray(array).squeeze()
+
+    # Get the mask of invalid pixels and set nans if it is occupied.
+    invalid_mask = get_mask(array)
+    if np.any(invalid_mask):
+        array_data[invalid_mask] = np.nan
 
     return array_data, invalid_mask
 
