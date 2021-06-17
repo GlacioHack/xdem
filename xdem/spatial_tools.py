@@ -94,7 +94,7 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     # If no match was found, raise an error.
     else:
         raise ValueError(
-            f"'{resampling_method}' is not a valid rasterio.warp.Resampling method. "
+            f"'{method_str}' is not a valid rasterio.warp.Resampling method. "
             f"Valid methods: {[str(method).replace('Resampling.', '') for method in rio.warp.Resampling]}"
         )
     return resampling_method
