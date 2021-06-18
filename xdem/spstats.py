@@ -62,7 +62,7 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
         df_stats_1d['bin_low_var1'] = bedges_1d[:-1]
         df_stats_1d['bin_upp_var1'] = bedges_1d[1:]
         df_stats_1d['name_var1'] = list_var_names[i]
-        df_stats_1d['ndim'] = 1
+        df_stats_1d['nd'] = 1
 
         list_df_1d.append(df_stats_1d)
 
@@ -91,7 +91,7 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
             df_stats_2d['bin_low_var2'] = [b2 for b1 in bin_mid_var1 for b2 in bedges_var2[:-1]]
             df_stats_2d['bin_upp_var2'] = [b2 for b1 in bin_mid_var1 for b2 in bedges_var2[1:]]
             df_stats_2d['name_var2'] = var2_name
-            df_stats_2d['ndim'] = 2
+            df_stats_2d['nd'] = 2
 
             list_df_2d.append(df_stats_2d)
 
@@ -114,11 +114,11 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
         nd_bin_upp = np.meshgrid(*list_bin_upp)
 
         for i, var_name in enumerate(list_var_names):
-            df_stats_nd['bin_mid_var'+str(list_var_names.index(var_name))] = nd_bin_mid[i].flatten()
-            df_stats_nd['bin_low_var'+str(list_var_names.index(var_name))] = nd_bin_low[i].flatten()
-            df_stats_nd['bin_upp_var'+str(list_var_names.index(var_name))] = nd_bin_upp[i].flatten()
-            df_stats_nd['name_var'+str(list_var_names.index(var_name))] = var_name
-            df_stats_nd['ndim'] = len(list_var_names)
+            df_stats_nd['bin_mid_var'+str(list_var_names.index(var_name)+1)] = nd_bin_mid[i].flatten()
+            df_stats_nd['bin_low_var'+str(list_var_names.index(var_name)+1)] = nd_bin_low[i].flatten()
+            df_stats_nd['bin_upp_var'+str(list_var_names.index(var_name)+1)] = nd_bin_upp[i].flatten()
+            df_stats_nd['name_var'+str(list_var_names.index(var_name)+1)] = var_name
+            df_stats_nd['nd'] = len(list_var_names)
 
     # concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
