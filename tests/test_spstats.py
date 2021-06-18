@@ -204,10 +204,10 @@ class TestBinning:
         slp, asp = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
 
         # 1d binning
-        output = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten()],list_var_names=['slope'])
+        df = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten()],list_var_names=['slope'])
 
         # nmad goes up quite a bit with slope, we can expect a 10 m measurement error difference
-        assert output[0][0].nmad_slope.values[-1] - output[0][0].nmad_slope.values[0] > 10
+        assert df.nmad.values[-1] - df.nmad.values[0] > 10
 
         # try custom stat
         def percentile_80(a):
@@ -216,8 +216,8 @@ class TestBinning:
         xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten()],list_var_names=['slope'], statistics=['count',percentile_80])
 
         # 2d binning
-        output_2d = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
+        df = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
 
         # nd binning
-        output_3d = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten(),ref.data.flatten(),asp.flatten()],list_var_names=['slope','elevation','aspect'])
+        df = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(),list_var=[slp.flatten(),ref.data.flatten(),asp.flatten()],list_var_names=['slope','elevation','aspect'])
 
