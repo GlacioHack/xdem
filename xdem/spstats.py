@@ -9,7 +9,7 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union, Iterable, Optional, Sequence
+from typing import Callable, Union, Iterable, Optional, Sequence, Any
 
 import itertools
 import matplotlib.pyplot as plt
