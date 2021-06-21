@@ -21,30 +21,6 @@ with warnings.catch_warnings():
 
 PLOT = False
 
-
-def load_diff() -> tuple[gu.georaster.Raster, np.ndarray]:
-    """Load example files to try coregistration methods with."""
-    examples.download_longyearbyen_examples(overwrite=False)
-
-    reference_raster = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_ref_dem"])
-    to_be_aligned_raster = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_tba_dem"])
-    glacier_mask = gu.geovector.Vector(examples.FILEPATHS["longyearbyen_glacier_outlines"])
-    inlier_mask = ~glacier_mask.create_mask(reference_raster)
-
-    metadata = {}
-    # aligned_raster, _ = xdem.coreg.coregister(reference_raster, to_be_aligned_raster, method="amaury", mask=glacier_mask,
-    #                                          metadata=metadata)
-    nuth_kaab = xdem.coreg.NuthKaab()
-    nuth_kaab.fit(reference_raster.data, to_be_aligned_raster.data,
-                  inlier_mask=inlier_mask, transform=reference_raster.transform)
-    aligned_raster = nuth_kaab.apply(to_be_aligned_raster.data, transform=reference_raster.transform)
-
-    diff = gu.Raster.from_array((reference_raster.data - aligned_raster),
-                                transform=reference_raster.transform, crs=reference_raster.crs)
-    mask = glacier_mask.create_mask(diff)
-
-    return diff, mask
-
 def load_ref_and_diff() -> tuple[gu.georaster.Raster, gu.georaster.Raster, np.ndarray]:
     """Load example files to try coregistration methods with."""
     examples.download_longyearbyen_examples(overwrite=False)
@@ -76,7 +52,7 @@ class TestVariogram:
     def test_empirical_fit_variogram_running(self):
 
         # get some data
-        diff, mask = load_diff()
+        diff, mask = load_ref_and_diff()[1:3]
 
         x, y = diff.coords(offset='center')
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
@@ -184,7 +160,7 @@ class TestPatchesMethod:
 
     def test_patches_method(self):
 
-        diff, mask = load_diff()
+        diff, mask = load_ref_and_diff()[1:3]
 
         warnings.filterwarnings("error")
         # check the patches method runs
