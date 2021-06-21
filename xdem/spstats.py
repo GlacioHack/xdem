@@ -9,13 +9,14 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union, Optional, Tuple, Any
+from typing import Callable, Union, Optional, Tuple, Any, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import integrate
 from scipy.optimize import curve_fit
+from skimage.draw import disk
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -90,43 +91,54 @@ def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> Tuple[Union
 
     return dh_sub, coords_sub
 
-def create_circular_mask(h: float, w: float, center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
+def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
     """
-    Create circular mask on a raster
+    Create circular mask on a raster, defaults to the center of the array and it's half width
 
-    :param h: height of array
-    :param w: width of array
+    :param shape: shape of array
     :param center: center
     :param radius: radius
     :return:
     """
 
+    w, h = shape
+
     if center is None:  # use the middle of the image
-        center = [int(w / 2), int(h / 2)]
+        center = (int(w / 2), int(h / 2))
     if radius is None:  # use the smallest distance between the center and image walls
         radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    Y, X = np.ogrid[:h, :w]
-    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    # skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
+    mask = np.zeros(shape, dtype=bool)
+    rr, cc = disk(center=center,radius=radius,shape=shape)
+    mask[rr, cc] = True
 
-    mask = dist_from_center <= radius
+    # manual solution
+    # Y, X = np.ogrid[:h, :w]
+    # dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    # mask = dist_from_center < radius
 
     return mask
 
-def create_ring_mask(h: float, w: float, center: Optional[list[float]] = None, in_radius: float = 0., out_radius: float = 0.) -> np.ndarray:
+def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, in_radius: float = 0., out_radius: Optional[float] = None) -> np.ndarray:
     """
-    Create ring mask on a raster
+    Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
 
-    :param h: height of array
-    :param w: width of array
+    :param shape: shape of array
     :param center: center
     :param in_radius: inside radius
     :param out_radius: outside radius
     :return:
     """
 
-    mask_inside = create_circular_mask(h,w,center=center,radius=in_radius)
-    mask_outside = create_circular_mask(h,w,center=center,radius=out_radius)
+    w, h = shape
+
+    if out_radius is None:
+        center = (int(w / 2), int(h / 2))
+        out_radius = min(center[0], center[1], w - center[0], h - center[1])
+
+    mask_inside = create_circular_mask((w,h),center=center,radius=in_radius)
+    mask_outside = create_circular_mask((w,h),center=center,radius=out_radius)
 
     mask_ring = np.logical_and(~mask_inside,mask_outside)
 
@@ -150,7 +162,7 @@ def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, ou
     center_x = np.random.choice(nx, 1)
     center_y = np.random.choice(ny, 1)
 
-    mask_ring = create_ring_mask(nx,ny,center=[center_x,center_y],in_radius=inside_radius,out_radius=outside_radius)
+    mask_ring = create_ring_mask((nx,ny),center=(center_x,center_y),in_radius=inside_radius,out_radius=outside_radius)
 
     dh_ring = dh[mask_ring]
     coords_ring = coords[mask_ring]
@@ -749,7 +761,7 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
         elif patch_shape == 'circular':
             center_x = np.floor(nx_sub*(i+1/2))
             center_y = np.floor(ny_sub*(j+1/2))
-            mask = create_circular_mask(nx, ny, center=[center_x, center_y], radius=rad)
+            mask = create_circular_mask((nx, ny), center=(center_x, center_y), radius=rad)
             patch = dh[mask]
         else:
             raise ValueError('Patch method must be rectangular or circular.')

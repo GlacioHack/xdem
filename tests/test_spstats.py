@@ -162,39 +162,53 @@ class TestSubSampling:
         """Test that the circular masking works as intended"""
 
         # using default (center should be [2,2], radius 2)
-        circ = xdem.spstats.create_circular_mask(5,5)
-        circ2 = xdem.spstats.create_circular_mask(5,5,center=[2,2],radius=2)
+        circ = xdem.spstats.create_circular_mask((5,5))
+        circ2 = xdem.spstats.create_circular_mask((5,5),center=[2,2],radius=2)
 
+        # check default center and radius are derived properly
         assert np.array_equal(circ,circ2)
 
+        # check mask
+        # masking is not inclusive, i.e. exactly radius=2 won't include the 2nd pixel from the center, but radius>2 will
+        eq_circ = np.zeros((5,5), dtype=bool)
+        eq_circ[1:4,1:4]=True
+        assert np.array_equal(circ,eq_circ)
+
         # check distance is not a multiple of pixels (more accurate subsampling)
-
         # will create a 1-pixel mask around the center
-        circ3 = xdem.spstats.create_circular_mask(5,5,center=[1,1],radius=1)
-        # will create a square mask (<1.5 pixel) around the center
-        circ4 = xdem.spstats.create_circular_mask(5,5,center=[1,1],radius=1.5)
+        circ3 = xdem.spstats.create_circular_mask((5,5),center=[1,1],radius=1)
 
+        eq_circ3 = np.zeros((5,5), dtype=bool)
+        eq_circ3[1,1] = True
+        assert np.array_equal(circ3, eq_circ3)
+
+        # will create a square mask (<1.5 pixel) around the center
+        circ4 = xdem.spstats.create_circular_mask((5,5),center=[1,1],radius=1.5)
+        # should not be the same as radius = 1
         assert not np.array_equal(circ3,circ4)
 
 
     def test_ring_masking(self):
         """Test that the ring masking works as intended"""
 
-        # by default, the mask is only False (ring of size 0)
-        ring1 = xdem.spstats.create_ring_mask(5,5)
+        # by default, the mask is only an outside circle (ring of size 0)
+        ring1 = xdem.spstats.create_ring_mask((5,5))
+        circ1 = xdem.spstats.create_circular_mask((5,5))
 
-        assert np.array_equal(ring1,np.zeros((5,5)))
+        assert np.array_equal(ring1,circ1)
 
         # test rings with different inner radius
-        ring2 = xdem.spstats.create_ring_mask(5,5,in_radius=1,out_radius=2)
-        ring3 = xdem.spstats.create_ring_mask(5,5,in_radius=0,out_radius=2)
-        ring4 = xdem.spstats.create_ring_mask(5,5,in_radius=1.5,out_radius=2)
+        ring2 = xdem.spstats.create_ring_mask((5,5),in_radius=1,out_radius=2)
+        ring3 = xdem.spstats.create_ring_mask((5,5),in_radius=0,out_radius=2)
+        ring4 = xdem.spstats.create_ring_mask((5,5),in_radius=1.5,out_radius=2)
 
         assert np.logical_and(~np.array_equal(ring2,ring3),~np.array_equal(ring3,ring4))
 
-        eq_ring3 = xdem.spstats.create_circular_mask(5,5)
-        eq_ring3[2,2] = 0
-        assert np.array_equal(ring3,eq_ring3)
+        # check default
+        eq_ring2 = np.zeros((5,5), dtype=bool)
+        eq_ring2[1:4,1:4] = True
+        eq_ring2[2,2] = False
+        assert np.array_equal(ring2,eq_ring2)
 
 
 class TestPatchesMethod:
