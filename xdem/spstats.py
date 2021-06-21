@@ -31,14 +31,16 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
         -> tuple[list[pd.DataFrame],list[pd.DataFrame],pd.DataFrame]:
     """
     Quantify non-stationarities in elevation measurement errors with one or several, terrain or instrument-related,
-    explanatory variables. See documentation of scipy.stats.binned_statistic_dd for more details.
+    explanatory variables.
+    Input are flattened arrays (or lists of flattened arrays), with all arrays of similar dimension (N,).
+    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
 
-    :param dh: elevation differences
-    :param list_var: list of explanatory variables
-    :param list_var_names: list of names of the explanatory variables
-    :param list_var_bins: list of bins for the explanatory variables
-    :param statistics: list of statistics to be computed
-    :param list_ranges: list of minimum and maximum ranges to bin the explanatory variables
+    :param dh: elevation differences array (N,)
+    :param list_var: list (L) of explanatory variables array (N,)
+    :param list_var_names: list (L) of names of the explanatory variables
+    :param list_var_bins: list (L) of count (integer) or custom bins (Y) for the explanatory variables; defaults to 10 bins
+    :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
+    :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
     :return:
     """
 
@@ -58,10 +60,7 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
             # save in a dataframe
             df_stats_1d[statistics_name[j]] = stats_binned_1d
         # we need to get the middle of the bins from the edges, to get the same dimension length
-        df_stats_1d['bin_mid_var1'] = (bedges_1d[1:] + bedges_1d[:-1]) / 2
-        df_stats_1d['bin_low_var1'] = bedges_1d[:-1]
-        df_stats_1d['bin_upp_var1'] = bedges_1d[1:]
-        df_stats_1d['name_var1'] = list_var_names[i]
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d)
         df_stats_1d['nd'] = 1
 
         list_df_1d.append(df_stats_1d)
@@ -81,16 +80,10 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
                                                              ,range=list_ranges)[:3]
                 # get statistics
                 df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
-            bin_mid_var1 = (bedges_var1[1:] + bedges_var1[:-1]) / 2
-            bin_mid_var2 = (bedges_var2[1:] + bedges_var2[:-1]) / 2
-            df_stats_2d['bin_mid_var1'] = [b1 for b1 in bin_mid_var1 for b2 in bin_mid_var2]
-            df_stats_2d['bin_low_var1'] = [b1 for b1 in bedges_var1[:-1] for b2 in bin_mid_var2]
-            df_stats_2d['bin_upp_var1'] = [b1 for b1 in bedges_var1[1:] for b2 in bin_mid_var2]
-            df_stats_2d['name_var1'] = var1_name
-            df_stats_2d['bin_mid_var2'] = [b2 for b1 in bin_mid_var1 for b2 in bin_mid_var2]
-            df_stats_2d['bin_low_var2'] = [b2 for b1 in bin_mid_var1 for b2 in bedges_var2[:-1]]
-            df_stats_2d['bin_upp_var2'] = [b2 for b1 in bin_mid_var1 for b2 in bedges_var2[1:]]
-            df_stats_2d['name_var2'] = var2_name
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1)
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2)
+            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
+            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
             df_stats_2d['nd'] = 2
 
             list_df_2d.append(df_stats_2d)
@@ -102,27 +95,20 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
         for j, statistic in enumerate(statistics):
             stats_binned_2d, list_bedges = binned_statistic_dd(list_var,dh,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
             df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
-        list_bin_mid, list_bin_low, list_bin_upp = ([] for i in range(3))
+        list_ii = []
         for bedges in list_bedges:
-            bedge_mid = (bedges[1:] + bedges[:-1]) / 2
-            list_bin_mid.append(bedge_mid)
-            list_bin_low.append(bedges[:-1])
-            list_bin_upp.append(bedges[1:])
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges))
 
-        nd_bin_mid = np.meshgrid(*list_bin_mid)
-        nd_bin_low = np.meshgrid(*list_bin_low)
-        nd_bin_upp = np.meshgrid(*list_bin_upp)
+        iind = np.meshgrid(*list_ii)
 
         for i, var_name in enumerate(list_var_names):
-            df_stats_nd['bin_mid_var'+str(list_var_names.index(var_name)+1)] = nd_bin_mid[i].flatten()
-            df_stats_nd['bin_low_var'+str(list_var_names.index(var_name)+1)] = nd_bin_low[i].flatten()
-            df_stats_nd['bin_upp_var'+str(list_var_names.index(var_name)+1)] = nd_bin_upp[i].flatten()
-            df_stats_nd['name_var'+str(list_var_names.index(var_name)+1)] = var_name
+            df_stats_nd[var_name] = iind[i].flatten()
             df_stats_nd['nd'] = len(list_var_names)
 
     # concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
     df_concat = pd.concat(list_all_dfs)
+    # df_concat = df_concat.set_index(list_var_names)
 
     return df_concat
 

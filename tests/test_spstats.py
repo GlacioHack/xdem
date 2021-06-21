@@ -185,8 +185,8 @@ class TestBinning:
         # check length matches
         assert df.shape[0] == 10
         # check bin edges match the minimum and maximum of binning variable
-        assert np.nanmin(slope) == np.min(df.bin_low_var1)
-        assert np.nanmax(slope) == np.max(df.bin_upp_var1)
+        assert np.nanmin(slope) == np.min(df.slope)
+        assert np.nanmax(slope) == np.max(df.slope)
 
         # 1d binning with 20 bins
         df = xdem.spstats.nd_binning_scipy(dh=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
