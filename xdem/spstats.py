@@ -9,7 +9,7 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union, Optional, Tuple, Any, Sequence
+from typing import Callable, Union, Optional, Any, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -69,7 +69,7 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
     return get_empirical_variogram(dh=argdict['dh'], coords=argdict['coords'], **kwargs)
 
 
-def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> Tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
+def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
 
     """
     Subsampling of elevation differences with random coordinates
@@ -145,7 +145,7 @@ def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[flo
     return mask_ring
 
 
-def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, outside_radius: float = 0) -> Tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
+def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, outside_radius: float = 0) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
     """
     Subsampling of elevation differences within a ring/disk (to sample points at similar pairwise distances)
 
@@ -428,7 +428,7 @@ def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crang
 
     return (psill1 + psill2)/std_err**2
 
-def neff_circ(area: float, list_vgm: list[Tuple[float,str,float]]) -> float:
+def neff_circ(area: float, list_vgm: list[tuple[float,str,float]]) -> float:
 
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
