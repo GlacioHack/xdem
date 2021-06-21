@@ -49,6 +49,11 @@ def nd_binning(values: np.ndarray, list_var: list[np.ndarray], list_var_names=li
         list_var_bins = (10,) * len(list_var_names)
     elif isinstance(list_var_bins,int):
         list_var_bins = (list_var_bins,) * len(list_var_names)
+
+    # flatten the arrays if this has not been done by the user
+    values = values.ravel()
+    list_var = [var.ravel() for var in list_var]
+
     statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
 
     # get binned statistics in 1d: a simple loop is sufficient
