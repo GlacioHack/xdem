@@ -9,7 +9,7 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union, Iterable, List, Optional, Sequence
+from typing import Callable, Union, Iterable, Optional, Sequence
 
 import itertools
 import matplotlib.pyplot as plt
@@ -26,8 +26,8 @@ with warnings.catch_warnings():
     import skgstat as skg
     from skgstat import models
 
-def nd_binning(values: np.ndarray, list_var: List[np.ndarray], list_var_names=List[str], list_var_bins: Optional[Union[int,List[Iterable]]] = None,
-                     statistics: list[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[List[Sequence]] = None) \
+def nd_binning(values: np.ndarray, list_var: list[np.ndarray], list_var_names=list[str], list_var_bins: Optional[Union[int,list[Iterable]]] = None,
+                     statistics: list[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[list[Sequence]] = None) \
         -> tuple[list[pd.DataFrame],list[pd.DataFrame],pd.DataFrame]:
     """
     N-dimensional binning of values according to one or several explanatory variables.
