@@ -26,9 +26,9 @@ with warnings.catch_warnings():
     import skgstat as skg
     from skgstat import models
 
-def nd_binning(values: np.ndarray, list_var: list[np.ndarray], list_var_names=list[str], list_var_bins: Optional[Union[int,list[Iterable]]] = None,
-                     statistics: list[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[list[Sequence]] = None) \
-        -> tuple[list[pd.DataFrame],list[pd.DataFrame],pd.DataFrame]:
+def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
+        -> pd.DataFrame:
     """
     N-dimensional binning of values according to one or several explanatory variables.
     Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
