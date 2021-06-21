@@ -26,19 +26,18 @@ with warnings.catch_warnings():
     import skgstat as skg
     from skgstat import models
 
-def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=List[str], list_var_bins: Optional[List[Iterable]] = None,
+def nd_binning(values: np.ndarray, list_var: List[np.ndarray], list_var_names=List[str], list_var_bins: Optional[Union[int,List[Iterable]]] = None,
                      statistics: list[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[List[Sequence]] = None) \
         -> tuple[list[pd.DataFrame],list[pd.DataFrame],pd.DataFrame]:
     """
-    Quantify non-stationarities in elevation measurement errors with one or several, terrain or instrument-related,
-    explanatory variables.
-    Input are flattened arrays (or lists of flattened arrays), with all arrays of similar dimension (N,).
+    N-dimensional binning of values according to one or several explanatory variables.
+    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
     For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
 
-    :param dh: elevation differences array (N,)
+    :param values: values array (N,)
     :param list_var: list (L) of explanatory variables array (N,)
     :param list_var_names: list (L) of names of the explanatory variables
-    :param list_var_bins: list (L) of count (integer) or custom bins (Y) for the explanatory variables; defaults to 10 bins
+    :param list_var_bins: count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
     :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
     :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
     :return:
@@ -48,6 +47,8 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
     # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
     if list_var_bins is None:
         list_var_bins = (10,) * len(list_var_names)
+    elif isinstance(list_var_bins,int):
+        list_var_bins = (list_var_bins,) * len(list_var_names)
     statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
 
     # get binned statistics in 1d: a simple loop is sufficient
@@ -56,11 +57,12 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
         df_stats_1d = pd.DataFrame()
         # get statistics
         for j, statistic in enumerate(statistics):
-            stats_binned_1d, bedges_1d = binned_statistic(var,dh,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
+            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
             # save in a dataframe
             df_stats_1d[statistics_name[j]] = stats_binned_1d
         # we need to get the middle of the bins from the edges, to get the same dimension length
-        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d)
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
+        # report number of dimensions used
         df_stats_1d['nd'] = 1
 
         list_df_1d.append(df_stats_1d)
@@ -75,15 +77,17 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
             i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
             df_stats_2d = pd.DataFrame()
             for j, statistic in enumerate(statistics):
-                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],dh,statistic=statistic
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
                                                              ,bins=[list_var_bins[i1],list_var_bins[i2]]
                                                              ,range=list_ranges)[:3]
                 # get statistics
                 df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
-            ii1 = pd.IntervalIndex.from_breaks(bedges_var1)
-            ii2 = pd.IntervalIndex.from_breaks(bedges_var2)
+            # derive interval indexes and convert bins into 2d indexes
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
             df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
             df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
+            # report number of dimensions used
             df_stats_2d['nd'] = 2
 
             list_df_2d.append(df_stats_2d)
@@ -93,21 +97,25 @@ def nd_binning_scipy(dh: np.ndarray, list_var: List[np.ndarray], list_var_names=
     df_stats_nd = pd.DataFrame()
     if len(list_var)>2:
         for j, statistic in enumerate(statistics):
-            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,dh,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
+            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
             df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
         list_ii = []
+        # loop through the bin edges and create IntervalIndexes from them (to get both
         for bedges in list_bedges:
-            list_ii.append(pd.IntervalIndex.from_breaks(bedges))
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
 
+        # create nd indexes in nd-array and flatten for each variable
         iind = np.meshgrid(*list_ii)
-
         for i, var_name in enumerate(list_var_names):
             df_stats_nd[var_name] = iind[i].flatten()
-            df_stats_nd['nd'] = len(list_var_names)
+
+        # report number of dimensions used
+        df_stats_nd['nd'] = len(list_var_names)
 
     # concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
     df_concat = pd.concat(list_all_dfs)
+    # commenting for now: pd.MultiIndex can be hard to use
     # df_concat = df_concat.set_index(list_var_names)
 
     return df_concat
