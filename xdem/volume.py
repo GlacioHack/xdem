@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
+from tqdm import tqdm
 
 import xdem
 
@@ -41,8 +42,9 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     ddem = np.array(ddem[valid_mask])
     ref_dem = np.array(ref_dem.squeeze()[valid_mask])
 
-    # If the bin size should be seen as a percentage.
-    if kind == "fixed":
+    if isinstance(bins, np.ndarray):
+        zbins = bins
+    elif kind == "fixed":
         zbins = np.arange(ref_dem.min(), ref_dem.max() + bins + 1e-6, step=bins)  # +1e-6 in case min=max (1 point)
     elif kind == "count":
         # Make bins between mean_dem.min() and a little bit above mean_dem.max().
@@ -58,7 +60,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
         # The uppermost bin needs to be a tiny amount larger than the highest value to include it.
         zbins[-1] += 1e-6
     elif kind == "custom":
-        zbins = bins
+        zbins = bins  # type: ignore
     else:
         raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom']")
 
@@ -80,8 +82,14 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
         if values_in_bin.shape[0] == 0:
             continue
 
-        values[i - 1] = aggregation_function(values_in_bin)
-        counts[i - 1] = values_in_bin.shape[0]
+        try:
+            values[i - 1] = aggregation_function(values_in_bin)
+            counts[i - 1] = values_in_bin.shape[0]
+        except IndexError as exception:
+            # If custom bins were added, i may exceed the bin range, which will be silently ignored.
+            if kind == "custom" and "out of bounds" in str(exception):
+                continue
+            raise exception
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
@@ -506,3 +514,234 @@ for areas filling the min_coverage criterion.
     assert output is not None
 
     return output
+
+
+def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
+                                    ref_dem: Union[np.ndarray, np.ma.masked_array],
+                                    glacier_index_map: np.ndarray, n_bins: int = 20,
+                                    verbose: bool = False, min_coverage: float = 0.05) -> pd.DataFrame:
+    """
+    Get the normalized regional hypsometric elevation change signal, read "the general shape of it".
+
+    :param ddem: The dDEM to analyse.
+    :param ref_dem: A void-free reference DEM.
+    :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
+    :param verbose: Show progress bar.
+    n_bins = 20  # TODO: This should be an argument.
+    :param n_bins: The number of elevation bins to subdivide each glacier in.
+
+    :returns: A DataFrame of bin statistics, scaled by elevation and elevation change.
+    """
+    # Extract the array and mask representations of the arrays.
+    ddem_arr, ddem_mask = xdem.spatial_tools.get_array_and_mask(ddem.squeeze())
+    ref_arr, ref_mask = xdem.spatial_tools.get_array_and_mask(ref_dem.squeeze())
+
+    # The reference DEM should be void free
+    assert np.count_nonzero(ref_mask) == 0, "Reference DEM has voids"
+
+    # The unique indices are the unique glaciers.
+    unique_indices = np.unique(glacier_index_map)
+
+    # Create empty (ddem) value and (pixel) count arrays which will be filled iteratively.
+    values = np.empty((n_bins, unique_indices.shape[0]), dtype=float) + np.nan
+    counts = np.empty((n_bins, unique_indices.shape[0]), dtype=float) + np.nan
+
+    # Start a counter of glaciers that are actually processed.
+    count = 0
+    # Loop over each unique glacier.
+    for i in tqdm(np.unique(glacier_index_map), desc="Finding regional signal", disable=(not verbose)):
+        # If i ==0, it's assumed to be periglacial.
+        if i == 0:
+            continue
+        # Create a mask representing a particular glacier.
+        glacier_values = (glacier_index_map == i)
+
+        # Stop if the "glacier" is tiny. It might be a cropped glacier outline for example.
+        if np.count_nonzero(glacier_values) < 10:
+            continue
+
+        # The inlier mask is where that particular glacier is and where nans don't exist.
+        inlier_mask = glacier_values & ~ddem_mask
+
+        # Skip if the coverage is below the threshold
+        if (np.count_nonzero(inlier_mask) / np.count_nonzero(glacier_values)) < min_coverage:
+            continue
+
+        # Extract only the difference and elevation values that correspond to the glacier.
+        differences = ddem_arr[inlier_mask]
+        elevations = ref_arr[inlier_mask]
+
+        # Run the hypsometric binning.
+        try:
+            bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
+        except ValueError:  # ValueError: zero-size array to reduction operation minimum which has no identity on "zbins=" call
+            continue
+
+        # Min-max scale by elevation.
+        bins.index = (bins.index.mid - bins.index.left.min()) / (bins.index.right.max() - bins.index.left.min())
+
+        # Scale by difference.
+        bins["value"] = (bins["value"] - np.nanmin(bins["value"])) / \
+            (np.nanmax(bins["value"]) - np.nanmin(bins["value"]))
+
+        # Assign the values and counts to the output array.
+        values[:, count] = bins["value"]
+        counts[:, count] = bins["count"]
+
+        count += 1
+
+    output = pd.DataFrame(
+        data={
+            "w_mean": np.nansum(values * counts, axis=1) / np.nansum(counts, axis=1),
+            "median": np.nanmedian(values, axis=1),
+            "std": np.nanstd(values, axis=1),
+            "sigma-1-lower": np.nanpercentile(values, 16, axis=1),
+            "sigma-1-upper": np.nanpercentile(values, 84, axis=1),
+            "sigma-2-lower": np.nanpercentile(values, 2.5, axis=1),
+            "sigma-2-upper": np.nanpercentile(values, 97.5, axis=1),
+            "count": np.nansum(counts, axis=1).astype(int),
+        },
+        index=pd.IntervalIndex.from_breaks(np.linspace(0, 1, n_bins + 1, dtype="float64")),
+    )
+
+    return output
+
+
+def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
+                                            ref_dem: Union[np.ndarray, np.ma.masked_array],
+                                            glacier_index_map: np.ndarray,
+                                            min_coverage: float = 0.1,
+                                            regional_signal: Optional[pd.DataFrame] = None,
+                                            verbose: bool = False,
+                                            min_elevation_range: float = 0.33,
+                                            idealized_ddem: bool = False) -> np.ndarray:
+    """
+    Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
+
+    Only missing values are interpolated. The rest of the glacier's values are fixed.
+
+    :param voided_ddem: The voided dDEM to fill NaNs in.
+    :param ref_dem: A void-free reference DEM.
+    :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
+    :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
+    :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
+    :param verbose: Show progress bars.
+    :param min_elevation_range: The minimum allowed min/max bin range to scale a signal from.\
+            Default: 1/3 of the elevation range needs to be present.
+    :param idealized_ddem: Replace observed glacier values with the hypsometric signal. Good for error assessments.
+
+    :raises AssertionError: If `ref_dem` has voids.
+
+    :returns: A dDEM where glacier's that fit the min_coverage criterion are interpolated.
+    """
+    # Extract the array and nan parts of the inputs.
+    ddem_arr, ddem_nans = xdem.spatial_tools.get_array_and_mask(voided_ddem)
+    ref_arr, ref_nans = xdem.spatial_tools.get_array_and_mask(ref_dem)
+
+    # The reference DEM should be void free
+    assert np.count_nonzero(ref_nans) == 0, "Reference DEM has voids"
+
+    # If the regional signal was not given as an argument, find it from the dDEM.
+    if regional_signal is None:
+        regional_signal = get_regional_hypsometric_signal(
+            ddem=ddem_arr,
+            ref_dem=ref_arr,
+            glacier_index_map=glacier_index_map,
+            verbose=verbose
+        )
+
+    # The unique indices are the unique glaciers.
+    unique_indices = np.unique(glacier_index_map)
+
+    # Make a copy of the dDEM which will be filled iteratively.
+    ddem_filled = ddem_arr.copy()
+    # Loop over all glaciers and fill the dDEM accordingly.
+    for i in tqdm(unique_indices, desc="Interpolating dDEM", disable=(not verbose)):
+        if i == 0:  # i==0 is assumed to mean stable ground.
+            continue
+        # Create a mask representing a particular glacier.
+        glacier_values = (glacier_index_map == i)
+
+        # The inlier mask is where that particular glacier is and where nans don't exist.
+        inlier_mask = glacier_values & ~ddem_nans
+
+        # If the fractional coverage is smaller than the given threshold, skip the glacier.
+        if (np.count_nonzero(inlier_mask) / np.count_nonzero(glacier_values)) < min_coverage:
+            continue
+
+        # Extract only the finite difference and elevation values that correspond to the glacier.
+        differences = ddem_arr[inlier_mask]
+        elevations = ref_arr[inlier_mask]
+
+        # Get the reference elevation min and max
+        elev_min = ref_arr[glacier_values].min()
+        elev_max = ref_arr[glacier_values].max()
+
+        # Copy the signal
+        signal = regional_signal["w_mean"].copy()
+        # Scale the signal elevation midpoints to the glacier elevation range.
+        midpoints = signal.index.mid
+        midpoints *= elev_max - elev_min
+        midpoints += elev_min
+        step = midpoints[1] - midpoints[0]
+        # Create an interval structure from the midpoints and the step size.
+        signal.index = pd.IntervalIndex.from_arrays(left=midpoints - step / 2, right=midpoints + step / 2)
+
+        # Find the hypsometric bins of the glacier.
+        hypsometric_bins = hypsometric_binning(
+            ddem=differences,
+            ref_dem=elevations,
+            bins=np.r_[[signal.index.left[0]], signal.index.right],  # This will generate the same steps as the signal.
+            kind="custom"
+        )
+        bin_stds = hypsometric_binning(
+            ddem=differences,
+            ref_dem=elevations,
+            bins=np.r_[[signal.index.left[0]], signal.index.right],
+            kind="custom",
+            aggregation_function=np.nanstd
+        )
+        # Check which of the bins were non-empty.
+        non_empty_bins = np.isfinite(hypsometric_bins["value"])
+
+        non_empty_range = np.sum(non_empty_bins[non_empty_bins].index.length)
+        full_range = np.sum(hypsometric_bins.index.length)
+
+        if (non_empty_range / full_range) < min_elevation_range:
+            continue
+
+        # A theoretical minimum of 2 bins are needed for the curve fit.
+        if np.count_nonzero(non_empty_bins) < 2:
+            continue
+
+        # The weights are the squared inverse of the standard deviation of each bin.
+        bin_weights = bin_stds["value"].values[non_empty_bins] / \
+            np.sqrt(hypsometric_bins["count"].values[non_empty_bins])
+        bin_weights[bin_weights == 0.0] = 1e-8  # Avoid divide by zero problems.
+
+        # Fit linear coefficients to scale the regional signal to the hypsometric bins properly.
+        # The inverse of the pixel counts are used as weights, to properly disregard poorly constrained bins.
+        with warnings.catch_warnings():
+            # curve_fit will sometimes say "can't estimate covariance". This is okay.
+            warnings.filterwarnings("ignore", message="covariance")
+            coeffs = scipy.optimize.curve_fit(
+                f=lambda x, a, b: a * x + b,  # Estimate a linear function "f(x) = ax + b".
+                xdata=signal.values[non_empty_bins],  # The xdata is the normalized regional signal
+                ydata=hypsometric_bins["value"].values[non_empty_bins],  # The ydata is the actual values.
+                p0=[1, 0],  # The initial guess of a and b (doesn't matter too much)
+                sigma=bin_weights,
+            )[0]
+
+        # Create a linear model from the elevations and the scaled regional signal.
+        model = scipy.interpolate.interp1d(signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False)
+
+        # Find which values to fill using the model (all nans within the glacier extent)
+        if not idealized_ddem:
+            values_to_fill = glacier_values & ddem_nans
+        # If it should be idealized, replace all glacier values with the model
+        else:
+            values_to_fill = glacier_values
+        # Fill the nans using the scaled regional signal.
+        ddem_filled[values_to_fill] = model(ref_arr[values_to_fill])
+
+    return ddem_filled
