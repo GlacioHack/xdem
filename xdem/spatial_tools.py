@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import Callable, Union
 
 import numpy as np
+import scipy
+from sklearn.metrics import mean_squared_error, median_absolute_error
+from sklearn.linear_model import (
+    LinearRegression, TheilSenRegressor, RANSACRegressor, HuberRegressor)
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import PolynomialFeatures
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
@@ -94,7 +100,7 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     # If no match was found, raise an error.
     else:
         raise ValueError(
-            f"'{resampling_method}' is not a valid rasterio.warp.Resampling method. "
+            f"'{method_str}' is not a valid rasterio.warp.Resampling method. "
             f"Valid methods: {[str(method).replace('Resampling.', '') for method in rio.warp.Resampling]}"
         )
     return resampling_method
@@ -396,3 +402,147 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     # Return the hillshade, scaled to uint8 ranges.
     # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
+
+def get_xy_rotated(raster: gu.georaster.Raster, myang: float) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Rotate x, y axes of image to get along- and cross-track distances.
+    :param raster: raster to get x,y positions from.
+    :param myang: angle by which to rotate axes (degrees)
+    :returns xxr, yyr: arrays corresponding to along (x) and cross (y) track distances.
+    """
+    # creates matrices for along and across track distances from a reference dem and a raster angle map (in radians)
+
+    myang = np.deg2rad(myang)
+
+    # get grid coordinates
+    xx, yy = raster.coords(grid=True)
+    xx = xx - np.min(xx)
+    yy = yy - np.min(yy)
+
+    # get rotated coordinates
+    xxr = np.multiply(xx, np.cos(myang)) + np.multiply(-1 * yy, np.sin(myang))
+    yyr = np.multiply(xx, np.sin(myang)) + np.multiply(yy, np.cos(myang))
+
+    # re-initialize coordinate at zero
+    xxr = xxr - np.nanmin(xxr)
+    yyr = yyr - np.nanmin(yyr)
+
+    return xxr, yyr
+
+def choice_best_polynomial(cost: np.ndarray, margin_improvement : float = 20., verbose: bool = False) -> int:
+    """
+    Choice of the best polynomial fit based on its cost (residuals), the best cost value does not necessarily mean the best
+    predictive fit because high-degree polynomials tend to overfit. to mitigate this issue, we should choose the
+    polynomial of lesser degree from which improvement becomes negligible.
+    :param cost: cost function residuals to the polynomial
+    :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
+    :param verbose: if text should be printed
+
+    :return: degree: degree for the best-fit polynomial
+    """
+
+    # get percentage of spread from the minimal cost
+    ind_min = cost.argmin()
+    min_cost = cost[ind_min]
+    perc_cost_improv = (cost - min_cost) / min_cost
+
+    # costs below threshold and lesser degrees
+    below_margin = np.logical_and(perc_cost_improv < margin_improvement / 100., np.arange(len(cost))<=ind_min)
+    costs_below_thresh = cost[below_margin]
+    # minimal costs
+    subindex = costs_below_thresh.argmin()
+    # corresponding index (degree)
+    ind = np.arange(len(cost))[below_margin][subindex]
+
+    if verbose:
+        print('Polynomial of degree '+str(ind_min+1)+ ' has the minimum cost value of '+str(min_cost))
+        print('Polynomial of lesser degree '+str(ind+1)+ ' is selected within a '+str(margin_improvement)+' % margin of'
+            ' the minimum cost, with a cost value of '+str(min_cost))
+
+    return ind
+
+
+def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, estimator: str  = 'Theil-Sen',
+                          cost_func: Callable = median_absolute_error, margin_improvement : float = 20.,
+                          linear_pkg = 'sklearn', verbose: bool = False, random_state = None, **kwargs) -> tuple[np.ndarray,int]:
+    """
+    Given sample data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
+    residuals for multiple fit orders of a given estimator.
+    :param x: input x data
+    :param y: input y data
+    :param max_order: maximum polynomial order tried for the fit
+    :param estimator: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
+    :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
+    :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
+    :param linear_pkg: package to use for Linear estimator, one of 'scipy' and 'sklearn'
+    :param random_state: random seed for testing purposes
+    :param verbose: if text should be printed
+
+    :returns coefs, degree: polynomial coefficients and degree for the best-fit polynomial
+    """
+    if not isinstance(estimator, str) or estimator not in ['Linear','Theil-Sen','RANSAC','Huber']:
+        raise ValueError('Attribute estimator must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
+    if not isinstance(linear_pkg, str) or linear_pkg not in ['sklearn','scipy']:
+        raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
+
+    # select sklearn estimator
+    dict_estimators = {'Linear': LinearRegression(), 'Theil-Sen':TheilSenRegressor(random_state=random_state)
+        , 'RANSAC': RANSACRegressor(random_state=random_state), 'Huber': HuberRegressor()}
+    est = dict_estimators[estimator]
+
+    # TODO: this should be a function outside (waiting for Amaury's PR)
+    # remote NaNs and subsample
+    mykeep = np.logical_and.reduce((np.isfinite(y), np.isfinite(x)))
+    x = x[mykeep]
+    y = y[mykeep]
+    sampsize = min(x.size, 25000)  # np.int(np.floor(xx.size*0.25))
+    if x.size > sampsize:
+        mysamp = np.random.randint(0, x.size, sampsize)
+    else:
+        mysamp = np.arange(0, x.size)
+    x = x[mysamp]
+    y = y[mysamp]
+
+    # initialize cost function and output coefficients
+    mycost = np.empty(max_order)
+    coeffs = np.zeros((max_order, max_order + 1))
+    # loop on polynomial degrees
+    for deg in np.arange(1, max_order + 1):
+        # if method is linear, and package is scipy
+        if estimator == 'Linear' and linear_pkg == 'scipy':
+            # define the residual function to optimize
+            def fitfun_polynomial(xx, params):
+                return sum([p * (xx ** i) for i, p in enumerate(params)])
+            def errfun(p, xx, yy):
+                return fitfun_polynomial(xx, p) - yy
+            p0 = np.polyfit(x, y, deg)
+            myresults = scipy.optimize.least_squares(errfun, p0, args=(x, y), **kwargs)
+            if verbose:
+                print("Initial Parameters: ", p0)
+                print("Polynomial degree - ", deg, " --> Status: ", myresults.success, " - ", myresults.status)
+                print(myresults.message)
+                print("Lowest cost:", myresults.cost)
+                print("Parameters:", myresults.x)
+            mycost[deg - 1] = myresults.cost
+            coeffs[deg - 1, 0:myresults.x.size] = myresults.x
+        # otherwise, it's from sklearn
+        else:
+            p = PolynomialFeatures(degree=deg)
+            model = make_pipeline(p, est)
+            model.fit(x.reshape(-1,1), y)
+            mad = cost_func(model.predict(x.reshape(-1,1)), y)
+            mycost[deg - 1] = mad
+            # get polynomial estimated with the estimator
+            if estimator in ['Linear','Theil-Sen','Huber']:
+                c = est.coef_
+            # for some reason RANSAC doesn't store coef at the same plac
+            elif estimator == 'RANSAC':
+                c = est.estimator_.coef_
+            coeffs[deg - 1, 0:deg+1] = c
+
+    # selecting the minimum (not robust)
+    # fidx = mycost.argmin()
+    # choosing the best polynomial with a margin of improvement on the cost
+    fidx = choice_best_polynomial(cost=mycost, margin_improvement=margin_improvement, verbose=verbose)
+
+    return np.trim_zeros(coeffs[fidx], 'b'), fidx+1

@@ -2,6 +2,7 @@
 
 Author(s):
     Erik S. Holmlund
+    Romain Hugonnet
 
 """
 import os
@@ -13,6 +14,7 @@ import warnings
 import geoutils as gu
 import numpy as np
 import rasterio as rio
+from sklearn.metrics import mean_squared_error, median_absolute_error
 
 import xdem
 from xdem import examples
@@ -176,3 +178,63 @@ def test_hillshade():
 
     # Make sure that this doesn't create weird division warnings.
     xdem.spatial_tools.hillshade(dem.data, dem.res)
+
+class TestRobustFitting:
+
+    def test_robust_polynomial_fit(self):
+
+        np.random.seed(42)
+
+        # x vector
+        x = np.linspace(1,10,1000)
+        # exact polynomial
+        true_coefs = [-100, 5, 3, 2]
+        y = true_coefs[0] + true_coefs[1] * x + true_coefs[2] * x**2 + true_coefs[3] * x**3
+        # add some noise on top
+        y += np.random.normal(loc=0,scale=3,size=1000)
+        # and some outliers
+        y[50:75] = 0
+        y[900:925] = 1000
+
+        # test linear estimators
+        coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='scipy', loss='soft_l1', f_scale=0.5)
+
+        # scipy solution should be quite robust to outliers/noise (with the soft_l1 method and f_scale parameter)
+        assert deg == 3
+        assert np.abs(coefs[0] - true_coefs[0]) < 1
+        assert np.abs(coefs[1] - true_coefs[1]) < 1
+        assert np.abs(coefs[2] - true_coefs[2]) < 1
+        assert np.abs(coefs[3] - true_coefs[3]) < 1
+
+        # the sklearn Linear solution with MSE cost function will not be robust
+        coefs2, deg2 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn', cost_func=mean_squared_error, margin_improvement=50)
+        assert deg2 != 6
+        # using the median absolute error should improve the fit, but the parameters will still be hard to constrain
+        coefs3, deg3 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn', cost_func=median_absolute_error, margin_improvement=50)
+        assert deg3 == 3
+        assert np.abs(coefs3[0] - true_coefs[0]) > 50
+        assert np.abs(coefs3[1] - true_coefs[1]) > 10
+        assert np.abs(coefs3[2] - true_coefs[2]) > 5
+        assert np.abs(coefs3[3] - true_coefs[3]) > 0.5
+
+        # test robust estimator
+
+        # Theil-Sen should have better coefficients
+        coefs4, deg4 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Theil-Sen', linear_pkg='sklearn', random_state=42)
+        assert deg4 == 3
+        # high degree coefficients should be well constrained
+        assert np.abs(coefs4[2] - true_coefs[2]) < 1
+        assert np.abs(coefs4[3] - true_coefs[3]) < 1
+
+        # RANSAC is not always optimal, here it does not work well
+        coefs5, deg5 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='RANSAC', linear_pkg='sklearn',
+                                                                random_state=42)
+        assert deg5 != 3
+
+        # Huber should perform well, close to the scipy robust solution
+        coefs6, deg6 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Huber', linear_pkg='sklearn')
+        assert deg6 == 3
+        assert np.abs(coefs4[1] - true_coefs[1]) < 1
+        assert np.abs(coefs4[2] - true_coefs[2]) < 1
+        assert np.abs(coefs4[3] - true_coefs[3]) < 1
+
