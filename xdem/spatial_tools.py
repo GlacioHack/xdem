@@ -406,9 +406,9 @@ def subsample_raster(array: Union[np.ndarray, np.ma.masked_array], subsample: Un
 
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
     If > 1 will be considered the number of pixels to extract.
-    :param return_indices: If set to True, will also return the extracted indices.
+    :param return_indices: If set to True, will return the extracted indices only.
 
-    :returns: The subsampled array (1D)
+    :returns: The subsampled array (1D) or the indices to extract (same shape as input array)
     """
     # Get number of points to extract
     if (subsample <= 1) & (subsample > 0):
@@ -419,7 +419,7 @@ def subsample_raster(array: Union[np.ndarray, np.ma.masked_array], subsample: Un
         raise ValueError("`subsample` must be > 0")
 
     # Remove invalid values and flatten array
-    mask = get_mask(array) #-> need to remove .squeeze in get_mask
+    mask = get_mask(array)  # -> need to remove .squeeze in get_mask
     valids = np.argwhere(~mask.flatten()).squeeze()
 
     # Checks that array and npoints are correct
@@ -432,7 +432,7 @@ def subsample_raster(array: Union[np.ndarray, np.ma.masked_array], subsample: Un
     unraveled_indices = np.unravel_index(indices, array.shape)
 
     if return_indices:
-        return array[unraveled_indices], unraveled_indices
+        return unraveled_indices
 
     else:
         return array[unraveled_indices]
