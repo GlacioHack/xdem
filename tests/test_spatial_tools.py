@@ -201,7 +201,8 @@ class TestRobustFitting:
         coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='scipy', loss='soft_l1', f_scale=0.5)
 
         # scipy solution should be quite robust to outliers/noise (with the soft_l1 method and f_scale parameter)
-        assert deg == 3 or deg == 4
+        # however, it is subject to random processes inside the scipy function (couldn't find how to fix those...)
+        assert deg == 3 or deg == 4 # can find degree 3, or 4 with coefficient close to 0
         assert np.abs(coefs[0] - true_coefs[0]) < 3
         assert np.abs(coefs[1] - true_coefs[1]) < 3
         assert np.abs(coefs[2] - true_coefs[2]) < 1
