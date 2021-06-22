@@ -466,10 +466,10 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
                           cost_func: Callable = median_absolute_error, margin_improvement : float = 20.,
                           linear_pkg = 'sklearn', verbose: bool = False, random_state = None, **kwargs) -> tuple[np.ndarray,int]:
     """
-    Given sample data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
+    Given sample 1D data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
-    :param x: input x data
-    :param y: input y data
+    :param x: input x data (N,)
+    :param y: input y data (N,)
     :param max_order: maximum polynomial order tried for the fit
     :param estimator: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
     :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
