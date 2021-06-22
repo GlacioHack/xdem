@@ -220,19 +220,18 @@ class TestRobustFitting:
         # test robust estimator
 
         # Theil-Sen should have better coefficients
-        coefs4, deg4 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Theil-Sen', linear_pkg='sklearn', random_state=42)
+        coefs4, deg4 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Theil-Sen', random_state=42)
         assert deg4 == 3
         # high degree coefficients should be well constrained
         assert np.abs(coefs4[2] - true_coefs[2]) < 1
         assert np.abs(coefs4[3] - true_coefs[3]) < 1
 
         # RANSAC is not always optimal, here it does not work well
-        coefs5, deg5 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='RANSAC', linear_pkg='sklearn',
-                                                                random_state=42)
+        coefs5, deg5 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='RANSAC', random_state=42)
         assert deg5 != 3
 
         # Huber should perform well, close to the scipy robust solution
-        coefs6, deg6 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Huber', linear_pkg='sklearn')
+        coefs6, deg6 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Huber')
         assert deg6 == 3
         assert np.abs(coefs4[1] - true_coefs[1]) < 1
         assert np.abs(coefs4[2] - true_coefs[2]) < 1
