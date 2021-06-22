@@ -1,6 +1,7 @@
 """
-
+A set of basic operations to be run on 2D arrays and DEMs.
 """
+
 from __future__ import annotations
 from typing import Callable, Union
 
@@ -403,8 +404,8 @@ def subsample_raster(array: Union[np.ndarray, np.ma.masked_array], subsample: Un
     """
     Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
 
-    :param subsample: If < 1, will be considered a fraction of valid pixels to extract.
-If > 1 will be considered the number of pixels to extract.
+    :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
+    If > 1 will be considered the number of pixels to extract.
     :param return_indices: If set to True, will also return the extracted indices.
 
     :returns: The subsampled array (1D)
@@ -422,7 +423,7 @@ If > 1 will be considered the number of pixels to extract.
     valids = np.argwhere(~mask.flatten()).squeeze()
 
     # Checks that array and npoints are correct
-    assert np.ndim(valids) == 1
+    assert np.ndim(valids) == 1, "Something is wrong with array dimension, check input data and shape"
     if npoints > np.size(valids):
         npoints = np.size(valids)
 
