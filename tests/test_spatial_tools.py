@@ -208,7 +208,7 @@ class TestRobustFitting:
 
         # the sklearn Linear solution with MSE cost function will not be robust
         coefs2, deg2 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn', cost_func=mean_squared_error, margin_improvement=50)
-        assert deg2 != 6
+        assert deg2 != 3
         # using the median absolute error should improve the fit, but the parameters will still be hard to constrain
         coefs3, deg3 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn', cost_func=median_absolute_error, margin_improvement=50)
         assert deg3 == 3
@@ -233,7 +233,7 @@ class TestRobustFitting:
         # Huber should perform well, close to the scipy robust solution
         coefs6, deg6 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Huber')
         assert deg6 == 3
-        assert np.abs(coefs4[1] - true_coefs[1]) < 1
-        assert np.abs(coefs4[2] - true_coefs[2]) < 1
-        assert np.abs(coefs4[3] - true_coefs[3]) < 1
+        assert np.abs(coefs6[1] - true_coefs[1]) < 1
+        assert np.abs(coefs6[2] - true_coefs[2]) < 1
+        assert np.abs(coefs6[3] - true_coefs[3]) < 1
 
