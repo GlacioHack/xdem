@@ -496,17 +496,15 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
     est = dict_estimators[estimator]
 
     # TODO: this should be a function outside (waiting for Amaury's PR)
-    # remote NaNs and subsample
+    # remove NaNs
     mykeep = np.logical_and.reduce((np.isfinite(y), np.isfinite(x)))
     x = x[mykeep]
     y = y[mykeep]
-    sampsize = min(x.size, 25000)  # np.int(np.floor(xx.size*0.25))
-    if x.size > sampsize:
-        mysamp = np.random.randint(0, x.size, sampsize)
-    else:
-        mysamp = np.arange(0, x.size)
-    x = x[mysamp]
-    y = y[mysamp]
+
+    # subsample
+    index_sub = subsample_raster(x, 25000, return_indices=True)
+    x = x[index_sub]
+    y = y[index_sub]
 
     # initialize cost function and output coefficients
     mycost = np.empty(max_order)
@@ -542,7 +540,7 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
             # get polynomial estimated with the estimator
             if estimator in ['Linear','Theil-Sen','Huber']:
                 c = est.coef_
-            # for some reason RANSAC doesn't store coef at the same plac
+            # for some reason RANSAC doesn't store coef at the same place
             elif estimator == 'RANSAC':
                 c = est.estimator_.coef_
             coeffs[deg - 1, 0:deg+1] = c
