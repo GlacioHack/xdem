@@ -1,8 +1,9 @@
 """
-Functions to test the spatial statistics.
+Routines to test the spatial statistics functions.
 
 """
 from __future__ import annotations
+from typing import Tuple
 
 import warnings
 
@@ -18,11 +19,10 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     from skgstat import models
 
-
 PLOT = False
 
 
-def load_diff() -> tuple[gu.georaster.Raster, np.ndarray]:
+def load_ref_and_diff() -> tuple[gu.georaster.Raster, gu.georaster.Raster, np.ndarray]:
     """Load example files to try coregistration methods with."""
     examples.download_longyearbyen_examples(overwrite=False)
 
@@ -43,7 +43,7 @@ def load_diff() -> tuple[gu.georaster.Raster, np.ndarray]:
                                 transform=reference_raster.transform, crs=reference_raster.crs)
     mask = glacier_mask.create_mask(diff)
 
-    return diff, mask
+    return reference_raster, diff, mask
 
 
 class TestVariogram:
@@ -53,7 +53,7 @@ class TestVariogram:
     def test_empirical_fit_variogram_running(self):
 
         # get some data
-        diff, mask = load_diff()
+        diff, mask = load_ref_and_diff()[1:3]
 
         x, y = diff.coords(offset='center')
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
@@ -156,12 +156,66 @@ class TestVariogram:
 
                 assert np.abs(neff_circ_exact-neff_circ_numer) < 0.001
 
+class TestSubSampling:
+
+    def test_circular_masking(self):
+        """Test that the circular masking works as intended"""
+
+        # using default (center should be [2,2], radius 2)
+        circ = xdem.spstats.create_circular_mask((5,5))
+        circ2 = xdem.spstats.create_circular_mask((5,5),center=[2,2],radius=2)
+
+        # check default center and radius are derived properly
+        assert np.array_equal(circ,circ2)
+
+        # check mask
+        # masking is not inclusive, i.e. exactly radius=2 won't include the 2nd pixel from the center, but radius>2 will
+        eq_circ = np.zeros((5,5), dtype=bool)
+        eq_circ[1:4,1:4]=True
+        assert np.array_equal(circ,eq_circ)
+
+        # check distance is not a multiple of pixels (more accurate subsampling)
+        # will create a 1-pixel mask around the center
+        circ3 = xdem.spstats.create_circular_mask((5,5),center=[1,1],radius=1)
+
+        eq_circ3 = np.zeros((5,5), dtype=bool)
+        eq_circ3[1,1] = True
+        assert np.array_equal(circ3, eq_circ3)
+
+        # will create a square mask (<1.5 pixel) around the center
+        circ4 = xdem.spstats.create_circular_mask((5,5),center=[1,1],radius=1.5)
+        # should not be the same as radius = 1
+        assert not np.array_equal(circ3,circ4)
+
+
+    def test_ring_masking(self):
+        """Test that the ring masking works as intended"""
+
+        # by default, the mask is only an outside circle (ring of size 0)
+        ring1 = xdem.spstats.create_ring_mask((5,5))
+        circ1 = xdem.spstats.create_circular_mask((5,5))
+
+        assert np.array_equal(ring1,circ1)
+
+        # test rings with different inner radius
+        ring2 = xdem.spstats.create_ring_mask((5,5),in_radius=1,out_radius=2)
+        ring3 = xdem.spstats.create_ring_mask((5,5),in_radius=0,out_radius=2)
+        ring4 = xdem.spstats.create_ring_mask((5,5),in_radius=1.5,out_radius=2)
+
+        assert np.logical_and(~np.array_equal(ring2,ring3),~np.array_equal(ring3,ring4))
+
+        # check default
+        eq_ring2 = np.zeros((5,5), dtype=bool)
+        eq_ring2[1:4,1:4] = True
+        eq_ring2[2,2] = False
+        assert np.array_equal(ring2,eq_ring2)
+
 
 class TestPatchesMethod:
 
     def test_patches_method(self):
 
-        diff, mask = load_diff()
+        diff, mask = load_ref_and_diff()[1:3]
 
         warnings.filterwarnings("error")
         # check the patches method runs
@@ -171,3 +225,49 @@ class TestPatchesMethod:
             gsd=diff.res[0],
             area_size=10000
         )
+
+class TestBinning:
+
+    def test_nd_binning(self):
+
+        ref, diff, mask = load_ref_and_diff()
+
+        slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
+
+        # 1d binning, by default will create 10 bins
+        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'])
+
+        # check length matches
+        assert df.shape[0] == 10
+        # check bin edges match the minimum and maximum of binning variable
+        assert np.nanmin(slope) == np.min(pd.IntervalIndex(df.slope).left)
+        assert np.nanmax(slope) == np.max(pd.IntervalIndex(df.slope).right)
+
+        # 1d binning with 20 bins
+        df = xdem.spstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
+                                           list_var_bins=[[20]])
+        # check length matches
+        assert df.shape[0] == 20
+
+        # nmad goes up quite a bit with slope, we can expect a 10 m measurement error difference
+        assert df.nmad.values[-1] - df.nmad.values[0] > 10
+
+        # try custom stat
+        def percentile_80(a):
+            return np.nanpercentile(a, 80)
+
+        # check the function runs with custom functions
+        xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'], statistics=['count',percentile_80])
+
+        # 2d binning
+        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
+
+        # dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
+        assert df.shape[0] == (10 + 10 + 100)
+
+        # nd binning
+        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
+
+        # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
+        assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
+
