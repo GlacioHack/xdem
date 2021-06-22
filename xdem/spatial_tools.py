@@ -3,14 +3,14 @@ A set of basic operations to be run on 2D arrays and DEMs.
 """
 
 from __future__ import annotations
+
 from typing import Callable, Union
 
+import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
-
-import geoutils as gu
 
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
@@ -399,8 +399,9 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
 
 
-def subsample_raster(array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int],
-                     return_indices: bool = False) -> np.ndarray:
+def subsample_raster(
+    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
+) -> np.ndarray:
     """
     Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
 
