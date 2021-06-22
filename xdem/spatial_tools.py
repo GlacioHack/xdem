@@ -6,16 +6,22 @@ from typing import Callable, Union
 
 import numpy as np
 import scipy
-from sklearn.metrics import mean_squared_error, median_absolute_error
-from sklearn.linear_model import (
-    LinearRegression, TheilSenRegressor, RANSACRegressor, HuberRegressor)
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import PolynomialFeatures
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
 
 import geoutils as gu
+
+try:
+    from sklearn.metrics import mean_squared_error, median_absolute_error
+    from sklearn.linear_model import (
+        LinearRegression, TheilSenRegressor, RANSACRegressor, HuberRegressor)
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import PolynomialFeatures
+    _has_sklearn = True
+except ImportError:
+    _has_sklearn = False
+
 
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
@@ -527,6 +533,8 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
             coeffs[deg - 1, 0:myresults.x.size] = myresults.x
         # otherwise, it's from sklearn
         else:
+            if not _has_sklearn:
+                raise ValueError("Optional dependency needed. Install 'scikit-learn'")
             p = PolynomialFeatures(degree=deg)
             model = make_pipeline(p, est)
             model.fit(x.reshape(-1,1), y)
