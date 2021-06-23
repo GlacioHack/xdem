@@ -1,28 +1,35 @@
-import warnings
-import xdem
-import tempfile
 import os
-import numpy as np
+import tempfile
+import warnings
+
 import geoutils as gu
+import numpy as np
 import pytest
 import rasterio as rio
+
+import xdem
+
+xdem.examples.download_longyearbyen_examples()
+
 
 def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
     """Run GDAL's DEMProcessing and return the read numpy array."""
     # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
+
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "output.tif")
     gdal.DEMProcessing(
         destName=temp_path,
         srcDS=filepath,
         processing=processing,
-        options=gdal.DEMProcessingOptions(azimuth=315, altitude=45)
+        options=gdal.DEMProcessingOptions(azimuth=315, altitude=45),
     )
 
     data = gu.Raster(temp_path).data
     temp_dir.cleanup()
     return data
+
 
 class TestTerrainAttribute:
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
@@ -43,7 +50,7 @@ class TestTerrainAttribute:
         functions = {
             "slope": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
             "aspect": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade": lambda dem: xdem.terrain.hillshade(dem.data, dem.res)
+            "hillshade": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -53,7 +60,6 @@ class TestTerrainAttribute:
         attr_xdem = functions[attribute](dem).squeeze()
         attr_gdal = run_gdaldem(self.filepath, attribute)
 
-
         # Check that the xdem and gdal hillshades are relatively similar.
         diff = (attr_xdem - attr_gdal).filled(np.nan)
         assert np.nanmean(diff) < 5
@@ -61,8 +67,7 @@ class TestTerrainAttribute:
 
         # Introduce some nans
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(
-            dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
@@ -81,7 +86,6 @@ class TestTerrainAttribute:
         with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
             xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=np.inf)
 
-
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
         warnings.simplefilter("error")
@@ -97,7 +101,6 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.mean(low_altitude) < np.mean(high_altitude)
 
-
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
         warnings.simplefilter("error")
@@ -106,7 +109,9 @@ class TestTerrainAttribute:
         assert isinstance(slope, np.ndarray)
 
         # Create three products at the same time
-        slope2, _, hillshade = xdem.terrain.get_terrain_attribute(self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res)
+        slope2, _, hillshade = xdem.terrain.get_terrain_attribute(
+            self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res
+        )
 
         # Create a hillshade using its own function
         hillshade2 = xdem.terrain.hillshade(self.dem.data, self.dem.res)
@@ -115,8 +120,6 @@ class TestTerrainAttribute:
         assert np.array_equal(hillshade, hillshade2)
         assert np.array_equal(slope, slope2)
 
-
         # A slope map with a lower resolution (higher value) should have gentler slopes.
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.mean(slope) > np.mean(slope_lowres)
-
