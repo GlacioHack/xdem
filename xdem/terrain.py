@@ -44,11 +44,40 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
 ) -> np.ndarray | list[np.ndarray]:
     """
+    Derive one or multiple terrain attributes from a DEM.
 
-    :param attribute: The terrain attribute(s) to calculate:
+    Attributes:
         * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical).
         * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W)
         * 'hillshade': The shaded slope in relation to its aspect.
+
+    :param dem: The DEM to analyze.
+    :param attribute: The terrain attribute(s) to calculate.
+    :param resolution: The X/Y or (X, Y) resolution of the DEM.
+    :param degrees: Convert radians to degrees?
+    :param hillshade_altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
+    :param hillshade_azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
+    :param hillshade_z_factor: Vertical exaggeration factor.
+
+    :raises ValueError: If the inputs are poorly formatted or are invalid.
+
+    :examples:
+        >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
+        >>> dem
+        array([[0, 0, 0],
+               [1, 1, 1],
+               [2, 2, 2]])
+        >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1)
+        >>> slope
+        array([[45., 45., 45.],
+               [45., 45., 45.],
+               [45., 45., 45.]], dtype=float32)
+        >>> aspect
+        array([[0., 0., 0.],
+               [0., 0., 0.],
+               [0., 0., 0.]], dtype=float32)
+
+    :returns: One or multiple arrays of the requested attribute(s)
     """
     if isinstance(attribute, str):
         attribute = [attribute]
@@ -177,8 +206,8 @@ def hillshade(
 
     :param dem: The input DEM to calculate the hillshade from.
     :param resolution: One or two values specifying the resolution of the DEM.
-    :param azimuth: The azimuth in degrees (0-360°) going clockwise, starting from north.
-    :param altitude: The altitude in degrees (0-90°). 90° is straight from above.
+    :param azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
+    :param altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param z_factor: Vertical exaggeration factor.
 
     :raises AssertionError: If the given DEM is not a 2D array.
