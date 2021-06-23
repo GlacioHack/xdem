@@ -79,6 +79,7 @@ def get_terrain_attribute(
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
+    # Validate and format the inputs
     if isinstance(attribute, str):
         attribute = [attribute]
 
@@ -98,13 +99,19 @@ def get_terrain_attribute(
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
     dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+
+    # Calculate the gradient, from which all products are derived.
     x_gradient, y_gradient = np.gradient(dem_arr)
 
     # Normalize by the radius of the resolution to make it resolution variant.
     x_gradient /= resolution[0]
     y_gradient /= resolution[1]
 
+    # Initialize the terrain_attributes as tiny empty ndarrays
+    # This is to make the syntax below easier. They won't be used if they are not filled with something else.
     terrain_attributes = {"hillshade": np.array([np.nan]), "aspect": np.array([np.nan]), "slope": np.array([np.nan])}
+
+    # Check which products should be made
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
     make_slope = any(attr in attribute for attr in ["slope", "hillshade"])
     make_hillshade = "hillshade" in attribute
@@ -113,10 +120,10 @@ def get_terrain_attribute(
         terrain_attributes["aspect"] = np.arctan2(-x_gradient, y_gradient)
 
     if make_slope:
-        # Calculate slope
         terrain_attributes["slope"] = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
 
     if make_hillshade:
+        # If a different z-factor was given, recaculate the slopemap with exaggerated gradients.
         if hillshade_z_factor != 1.0:
             slopemap = np.pi / 2.0 - np.arctan(np.sqrt((x_gradient * hillshade_z_factor) ** 2 + (y_gradient * hillshade_z_factor) ** 2))
         else:
