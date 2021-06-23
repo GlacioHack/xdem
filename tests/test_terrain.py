@@ -25,7 +25,6 @@ def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
     return data
 
 class TestTerrainAttribute:
-    warnings.simplefilter("error")
     filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
 
     with warnings.catch_warnings():
@@ -39,6 +38,7 @@ class TestTerrainAttribute:
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
+        warnings.simplefilter("error")
 
         functions = {
             "slope": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
@@ -70,6 +70,7 @@ class TestTerrainAttribute:
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""
         # Try giving the hillshade invalid arguments.
+        warnings.simplefilter("error")
 
         with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
             xdem.terrain.hillshade(self.dem.data, self.dem.res, azimuth=361)
@@ -83,6 +84,7 @@ class TestTerrainAttribute:
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
+        warnings.simplefilter("error")
         zfactor_1 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=1.0)
         zfactor_10 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=10.0)
 
@@ -98,6 +100,7 @@ class TestTerrainAttribute:
 
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
+        warnings.simplefilter("error")
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
         assert isinstance(slope, np.ndarray)
