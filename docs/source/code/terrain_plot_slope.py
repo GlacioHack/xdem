@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import xdem
 
+xdem.examples.download_longyearbyen_examples()
+
 dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
 
 slope = xdem.terrain.slope(dem.data, resolution=dem.res)

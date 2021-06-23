@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import xdem
 
+xdem.examples.download_longyearbyen_examples()
+
 dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
 
 hillshade = xdem.terrain.hillshade(dem.data, resolution=dem.res, azimuth=315., altitude=45.)
