@@ -31,6 +31,7 @@ Simple usage
    coregistration
    comparison
    spatial_stats
+   terrain
    api/xdem.rst
 
 Indices and tables
