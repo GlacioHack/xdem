@@ -12,6 +12,7 @@ import warnings
 
 import geoutils as gu
 import numpy as np
+import pytest
 import rasterio as rio
 
 import xdem
@@ -116,108 +117,57 @@ class TestMerging:
         assert merged_dem2 == merged_dem
 
 
-def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
-    """Run GDAL's DEMProcessing and return the read numpy array."""
-    # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
-    from osgeo import gdal
-    temp_dir = tempfile.TemporaryDirectory()
-    temp_path = os.path.join(temp_dir.name, "output.tif")
-    gdal.DEMProcessing(
-        destName=temp_path,
-        srcDS=filepath,
-        processing=processing,
-        options=gdal.DEMProcessingOptions(azimuth=315, altitude=45)
-    )
+class TestSubsample:
+    """
+    Different examples of 1D to 3D arrays with masked values for testing.
+    """
 
-    data = gu.Raster(temp_path).data
-    temp_dir.cleanup()
-    return data
+    # Case 1 - 1D array, 1 masked value
+    array1D = np.ma.masked_array(np.arange(10), mask=np.zeros(10))
+    array1D.mask[3] = True
+    assert np.ndim(array1D) == 1
+    assert np.count_nonzero(array1D.mask) > 0
 
+    # Case 2 - 2D array, 1 masked value
+    array2D = np.ma.masked_array(np.arange(9).reshape((3, 3)), mask=np.zeros((3, 3)))
+    array2D.mask[0, 1] = True
+    assert np.ndim(array2D) == 2
+    assert np.count_nonzero(array2D.mask) > 0
 
-def test_hillshade():
-    """Test the hillshade algorithm, partly by comparing it to the GDAL hillshade function."""
-    warnings.simplefilter("error")
+    # Case 3 - 3D array, 1 masked value
+    array3D = np.ma.masked_array(np.arange(9).reshape((1, 3, 3)), mask=np.zeros((1, 3, 3)))
+    array3D = np.ma.vstack((array3D, array3D + 10))
+    array3D.mask[0, 0, 1] = True
+    assert np.ndim(array3D) == 3
+    assert np.count_nonzero(array3D.mask) > 0
 
-    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath)
+    @pytest.mark.parametrize("array", [array1D, array2D, array3D])
+    def test_subsample(self, array):
+        """
+        Test xdem.spatial_tools.subsample_raster.
+        """
+        # Test that subsample > 1 works as expected, i.e. output 1D array, with no masked values, or selected size
+        for npts in np.arange(2, np.size(array)):
+            random_values = xdem.spatial_tools.subsample_raster(array, subsample=npts)
+            assert np.ndim(random_values) == 1
+            assert np.size(random_values) == npts
+            assert np.count_nonzero(random_values.mask) == 0
 
-    xdem_hillshade = xdem.spatial_tools.hillshade(dem.data, resolution=dem.res)
-    gdal_hillshade = run_gdaldem(filepath, "hillshade")
-    diff = gdal_hillshade - xdem_hillshade
+        # Test if subsample > number of valid values => return all
+        random_values = xdem.spatial_tools.subsample_raster(array, subsample=np.size(array) + 3)
+        assert np.all(np.sort(random_values) == array[~array.mask])
 
-    # Check that the xdem and gdal hillshades are relatively similar.
-    assert np.mean(diff) < 5
-    assert xdem.spatial_tools.nmad(diff.filled(np.nan)) < 5
+        # Test if subsample = 1 => return all valid values
+        random_values = xdem.spatial_tools.subsample_raster(array, subsample=1)
+        assert np.all(np.sort(random_values) == array[~array.mask])
 
-    # Try giving the hillshade invalid arguments.
-    try:
-        xdem.spatial_tools.hillshade(dem.data, dem.res, azimuth=361)
-    except ValueError as exception:
-        if "Azimuth must be a value between 0 and 360" not in str(exception):
-            raise exception
-    try:
-        xdem.spatial_tools.hillshade(dem.data, dem.res, altitude=91)
-    except ValueError as exception:
-        if "Altitude must be a value between 0 and 90" not in str(exception):
-            raise exception
+        # Test if subsample < 1
+        random_values = xdem.spatial_tools.subsample_raster(array, subsample=0.5)
+        assert np.size(random_values) == int(np.size(array) * 0.5)
 
-    try:
-        xdem.spatial_tools.hillshade(dem.data, dem.res, z_factor=np.inf)
-    except ValueError as exception:
-        if "z_factor must be a non-negative finite value" not in str(exception):
-            raise exception
-
-    # Introduce some nans
-    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-    dem.data.mask.ravel()[np.random.choice(
-        dem.data.size, 50000, replace=False)] = True
-
-    # Make sure that this doesn't create weird division warnings.
-    xdem.spatial_tools.hillshade(dem.data, dem.res)
-
-
-def test_slope():
-    """Test that xdem's slope function is close to GDAL's slope."""
-    warnings.simplefilter("error")
-    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
-
-    slope_xdem = xdem.spatial_tools.slope(dem.data, dem.res, degrees=True)
-    slope_gdal = run_gdaldem(filepath, "slope")
-
-    assert np.mean(np.abs(slope_xdem - slope_gdal)) < 2
-
-    # Introduce some nans
-    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-    dem.data.mask.ravel()[np.random.choice(
-        dem.data.size, 50000, replace=False)] = True
-
-    # Validate that this doesn't raise weird warnings.
-    xdem.spatial_tools.slope(dem.data, dem.res)
-
-def test_aspect():
-    """Test that xdem's aspect function is close to GDAL's aspect."""
-    warnings.simplefilter("error")
-    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
-
-    aspect_xdem = xdem.spatial_tools.aspect(dem.data, degrees=True).squeeze()
-    aspect_gdal = run_gdaldem(filepath, "aspect")
-
-    assert np.mean(np.abs(aspect_xdem - aspect_gdal)) < 10
-
-    # Introduce some nans
-    dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-    dem.data.mask.ravel()[np.random.choice(
-        dem.data.size, 50000, replace=False)] = True
-
-    # Validate that this doesn't raise weird warnings.
-    xdem.spatial_tools.aspect(dem.data, dem.res)
+        # Test with optional argument return_indices
+        indices = xdem.spatial_tools.subsample_raster(array, subsample=0.3, return_indices=True)
+        assert np.ndim(indices) == 2
+        assert len(indices) == np.ndim(array)
+        assert np.ndim(array[indices]) == 1
+        assert np.size(array[indices]) == int(np.size(array) * 0.3)

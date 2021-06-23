@@ -1,15 +1,16 @@
 """
-
+A set of basic operations to be run on 2D arrays and DEMs.
 """
+
 from __future__ import annotations
 from typing import Callable, Union, Sized
 
+
+import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
-
-import geoutils as gu
 
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
@@ -94,7 +95,7 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     # If no match was found, raise an error.
     else:
         raise ValueError(
-            f"'{resampling_method}' is not a valid rasterio.warp.Resampling method. "
+            f"'{method_str}' is not a valid rasterio.warp.Resampling method. "
             f"Valid methods: {[str(method).replace('Resampling.', '') for method in rio.warp.Resampling]}"
         )
     return resampling_method
@@ -175,7 +176,7 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
     If use_ref_bounds is True, output will have the shape (N, height, width) where N is len(rasters) and \
 height and width is equal to reference's shape.
     If use_ref_bounds is False, output will have the shape (N, height2, width2) where N is len(rasters) and \
-height2 and width2 are set based on reference's resolution and the maximum extent of all rasters.
+height2 anp.gradient(dem_copy)nd width2 are set based on reference's resolution and the maximum extent of all rasters.
 
     Use diff=True to return directly the difference to the reference raster.
 
@@ -328,147 +329,41 @@ If several algorithms are provided, each result is returned as a separate band.
     return merged_raster
 
 
-def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[float, tuple[float, float]],
-              azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0) -> np.ndarray:
+def subsample_raster(
+    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
+) -> np.ndarray:
     """
-    Generate a hillshade from the given DEM.
+    Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
 
-    :param dem: The input DEM to calculate the hillshade from.
-    :param resolution: One or two values specifying the resolution of the DEM.
-    :param azimuth: The azimuth in degrees (0-360°) going clockwise, starting from north.
-    :param altitude: The altitude in degrees (0-90°). 90° is straight from above.
-    :param z_factor: Vertical exaggeration factor.
+    :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
+    If > 1 will be considered the number of pixels to extract.
+    :param return_indices: If set to True, will return the extracted indices only.
 
-    :raises AssertionError: If the given DEM is not a 2D array.
-    :raises ValueError: If invalid argument types or ranges were given.
-
-    :returns: A hillshade with the dtype "float32" with value ranges of 0-255.
+    :returns: The subsampled array (1D) or the indices to extract (same shape as input array)
     """
-    # Extract the DEM and mask
-    dem_values, mask = get_array_and_mask(dem.squeeze())
-    # The above is not guaranteed to copy the data, so this needs to be done first.
-    demc = dem_values.copy()
+    # Get number of points to extract
+    if (subsample <= 1) & (subsample > 0):
+        npoints = int(subsample * np.size(array))
+    elif subsample > 1:
+        npoints = int(subsample)
+    else:
+        raise ValueError("`subsample` must be > 0")
 
-    # Validate the inputs.
-    assert len(demc.shape) == 2, f"Expected a 2D array. Got shape: {dem.shape}"
-    if (azimuth < 0.0) or (azimuth > 360.0):
-        raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {azimuth})")
-    if (altitude < 0.0) or (altitude > 90):
-        raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
-    if (z_factor < 0.0) or not np.isfinite(z_factor):
-        raise ValueError(f"z_factor must be a non-negative finite value (given value: {z_factor})")
+    # Remove invalid values and flatten array
+    mask = get_mask(array)  # -> need to remove .squeeze in get_mask
+    valids = np.argwhere(~mask.flatten()).squeeze()
 
-    # Fill the nonfinite values with the median (or maybe just 0?) to not interfere with the gradient analysis.
-    demc[~np.isfinite(demc)] = np.nanmedian(demc)
+    # Checks that array and npoints are correct
+    assert np.ndim(valids) == 1, "Something is wrong with array dimension, check input data and shape"
+    if npoints > np.size(valids):
+        npoints = np.size(valids)
 
-    # Multiply the DEM with the z_factor to increase the apparent height.
-    demc *= z_factor
+    # Randomly extract npoints without replacement
+    indices = np.random.choice(valids, npoints, replace=False)
+    unraveled_indices = np.unravel_index(indices, array.shape)
 
-    # Parse the resolution argument. If it's subscriptable, it's assumed to be [X, Y] resolution.
-    try:
-        resolution[0]  # type: ignore
-    # If that fails, it's assumed to be the X&Y resolution.
-    except TypeError as exception:
-        if "not subscriptable" not in str(exception):
-            raise exception
-        resolution = (resolution,) * 2  # type: ignore
+    if return_indices:
+        return unraveled_indices
 
-    # Calculate the gradient of each pixel.
-    x_gradient, y_gradient = np.gradient(demc)
-    # Normalize by the radius of the resolution to make it resolution variant.
-    x_gradient /= resolution[0] * 0.5  # type: ignore
-    y_gradient /= resolution[1] * 0.5  # type: ignore
-
-    azimuth_rad = np.deg2rad(360 - azimuth)
-    altitude_rad = np.deg2rad(altitude)
-
-    # Calculate slope and aspect maps.
-    slope = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
-    aspect = np.arctan2(-x_gradient, y_gradient)
-
-    # Create a hillshade from these products.
-    shaded = np.sin(altitude_rad) * np.sin(slope) + np.cos(altitude_rad) * \
-        np.cos(slope) * np.cos((azimuth_rad - np.pi / 2.0) - aspect)
-
-    # Set (potential) masked out values to nan
-    shaded[mask] = np.nan
-
-    # Return the hillshade, scaled to uint8 ranges.
-    # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
-    return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
-
-
-def slope(dem: np.ndarray | np.ma.masked_array, resolution: float | tuple[float, float], degrees: bool = True) -> np.ndarray:
-    """
-    Generate a slope map for a DEM.
-
-    :param dem: The DEM to generate a slope map for.
-    :param resolution: The X/Y or (X, Y) resolution of the DEM.
-    :param degrees: Return a slope map in degrees (False means radians)
-    
-    :returns: A slope map of the same shape as 'dem' in degrees or radians.
-    """
-    if not isinstance(resolution, Sized):
-        resolution = (float(resolution), float(resolution))
-
-    dem_arr = get_array_and_mask(dem)[0]
-
-    # Calculate the gradient of each pixel.
-    x_gradient, y_gradient = np.gradient(dem_arr)
-
-    # Normalize by the radius of the resolution to make it resolution variant.
-    x_gradient /= resolution[0]
-    y_gradient /= resolution[1]
-
-    # Calculate slope
-    slope = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
-
-    # Convert the unit if wanted.
-    if degrees:
-        slope = 90 - np.rad2deg(slope)
-
-    return slope.reshape(dem.shape)
-
-
-def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.ndarray:
-    """
-    Calculate the aspect of each cell in a DEM.
-
-    0=N, 90=E, 180=S, 270=W
-
-    :param dem: The DEM to calculate the aspect from.
-    :param degrees: Return an aspect map in degrees (if False, returns radians)
-
-    :examples:
-        >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
-        >>> dem
-        array([[0, 0, 0],
-               [1, 1, 1],
-               [2, 2, 2]])
-        >>> aspect(dem, degrees=True)
-        array([[0., 0., 0.],
-               [0., 0., 0.],
-               [0., 0., 0.]], dtype=float32)
-        >>> dem.T
-        array([[0, 1, 2],
-               [0, 1, 2],
-               [0, 1, 2]])
-        >>> aspect(dem.T, degrees=True)
-        array([[270., 270., 270.],
-               [270., 270., 270.],
-               [270., 270., 270.]], dtype=float32)
-
-    """
-    dem_arr = get_array_and_mask(dem)[0]
-
-    # Calculate the gradient of each pixel.
-    x_gradient, y_gradient = np.gradient(dem_arr)
-
-    aspect = np.arctan2(-x_gradient, y_gradient)
-
-    # Convert the unit if wanted.
-    if degrees:
-        with np.errstate(invalid="ignore"):  # It may warn for nans (which is okay)
-            aspect = (270 - np.rad2deg(aspect)) % 360
-
-    return aspect.reshape(dem.shape)
+    else:
+        return array[unraveled_indices]
