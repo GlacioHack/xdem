@@ -196,7 +196,7 @@ class TestRobustFitting:
 
         coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
 
-        assert deg == 3
+        assert deg == 3 or deg == 4
         assert np.abs(coefs[0] - true_coefs[0]) <= 100
         assert np.abs(coefs[1] - true_coefs[1]) < 5
         assert np.abs(coefs[2] - true_coefs[2]) < 2
