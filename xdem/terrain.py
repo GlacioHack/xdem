@@ -228,6 +228,7 @@ def get_terrain_attribute(
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
 
+    # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
     attributes_requiring_surface_fit = [
         attr
         for attr in attribute
@@ -262,10 +263,10 @@ def get_terrain_attribute(
 
     if make_aspect:
         # ASPECT = ARCTAN(-H/-G)  # This did not work
-        # ASPECT = ARCTAN2(-G, H)  did work.
-        terrain_attributes["aspect"] = np.arctan2(
+        # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
+        terrain_attributes["aspect"] = (np.arctan2(
             -terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :]
-        )
+        ) + np.pi / 2) % (2 * np.pi)
 
     if make_hillshade:
         # If a different z-factor was given, slopemap with exaggerated gradients.
@@ -280,7 +281,7 @@ def get_terrain_attribute(
             255
             * (
                 np.sin(altitude_rad) * np.cos(slopemap)
-                + np.cos(altitude_rad) * np.sin(slopemap) * np.cos(azimuth_rad - terrain_attributes["aspect"] - np.pi)
+                + np.cos(altitude_rad) * np.sin(slopemap) * np.sin(azimuth_rad - terrain_attributes["aspect"])
             ),
             0,
             255,
@@ -307,7 +308,7 @@ def get_terrain_attribute(
                     * terrain_attributes["surface_fit"][6, :, :]
                     * terrain_attributes["surface_fit"][7, :, :]
                 )
-                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2) * 100
             )
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
@@ -326,7 +327,7 @@ def get_terrain_attribute(
                     * terrain_attributes["surface_fit"][6, :, :]
                     * terrain_attributes["surface_fit"][7, :, :]
                 )
-                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)* 100
             )
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
@@ -424,7 +425,7 @@ def hillshade(
 
 def curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float,
+    resolution: float | tuple[float, float],
 ) -> np.ndarray:
     """
     Get the terrain curvature (second derivative of elevation).
@@ -454,3 +455,35 @@ def curvature(
     :returns: The curvature array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="curvature", resolution=resolution)
+
+def planform_curvature(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float],
+) -> np.ndarray:
+    """
+    Get the terrain curvature perpendicular to the direction of the slope.
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The planform curvature array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution)
+
+def profile_curvature(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float],
+) -> np.ndarray:
+    """
+    Get the terrain curvature parallel to the direction of the slope.
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The profile curvature array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution)

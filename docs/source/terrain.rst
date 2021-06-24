@@ -81,6 +81,30 @@ For analytic purposes, it may therefore be worth considering dividing the output
 
 .. plot:: code/terrain_plot_curvature.py
 
+
+Planform curvature
+******************
+:func:`xdem.terrain.planform_curvature`
+
+TODO: Add text.
+
+.. literalinclude:: code/terrain.py
+        :lines: 14
+
+.. plot:: code/terrain_plot_planform_curvature.py
+
+Profile curvature
+*****************
+:func:`xdem.terrain.planform_curvature`
+
+TODO: Add text.
+
+.. literalinclude:: code/terrain.py
+        :lines: 16
+
+.. plot:: code/terrain_plot_profile_curvature.py
+
+
 Generating multiple attributes at once
 **************************************
 
@@ -89,6 +113,6 @@ Since both are dependent on the gradient of the DEM, calculating them separately
 Multiple terrain attributes can be calculated from the same gradient using the :func:`xdem.terrain.get_terrain_attribute` function:
 
 .. literalinclude:: code/terrain.py
-        :lines: 14-18
+        :lines: 18-22
 
 
