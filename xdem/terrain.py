@@ -14,6 +14,7 @@ import xdem.spatial_tools
 def _get_quadric_coefficients(
     dem: np.ndarray,
     resolution: float,
+    fill_method: str = "median",
 ) -> np.ndarray:
     """
     Run the pixel-wise analysis in parallel.
@@ -25,6 +26,14 @@ def _get_quadric_coefficients(
 
     # Allocate the output.
     output = np.empty((9,) + dem.shape, dtype=dem.dtype) + np.nan
+
+    # Convert the string to a number (fewer bytes to compare each iteration)
+    if fill_method == "median":
+        fill_method_n = numba.uint8(0)
+    elif fill_method == "mean":
+        fill_method_n = numba.uint8(1)
+    elif fill_method == "none":
+        fill_method_n = numba.uint8(2)
 
     # Loop over every pixel concurrently.
     for i in numba.prange(dem.size):
@@ -45,13 +54,25 @@ def _get_quadric_coefficients(
 
         # Get a mask of all invalid (nan or inf) values.
         invalids = ~np.isfinite(Z)
+        n_invalid = np.count_nonzero(invalids)
 
         # Skip the pixel if it and all of its neighbours are invalid
         if np.all(invalids):
             continue
 
-        # Fill all non-finite values with the most common value.
-        Z[invalids] = np.nanmedian(Z)
+        if np.count_nonzero(invalids) > 0:
+            if fill_method_n == 0:
+                # Fill all non-finite values with the most common value.
+                Z[invalids] = np.nanmedian(Z)
+            elif fill_method_n == 1:
+                # Fill all non-finite values with the mean.
+                Z[invalids] = np.nanmean(Z)
+            elif fill_method_n == 2:
+                # Skip the pixel if any of its neighbours are nan.
+                continue
+            else:
+                # This should not occur.
+                pass
 
         # Assign the A, B, C, D etc., factors to the output. This ugly syntax is needed to make parallel numba happy.
         output[0, row, col] = ((Z[0] + Z[2] + Z[6] + Z[8]) / 4 - (Z[1] + Z[3] + Z[5] + Z[7]) / 2 + Z[4]) / (L ** 4)  # A
@@ -67,7 +88,7 @@ def _get_quadric_coefficients(
     return output
 
 
-def get_quadric_coefficients(dem: np.ndarray, resolution: float) -> np.ndarray:
+def get_quadric_coefficients(dem: np.ndarray, resolution: float, fill_method: str = "median") -> np.ndarray:
     """
     Return the 9 coefficients of a quadric surface fit to every pixel in the raster.
 
@@ -120,13 +141,18 @@ def get_quadric_coefficients(dem: np.ndarray, resolution: float) -> np.ndarray:
     if isinstance(resolution, Sized):
         raise ValueError("Resolution must be the same for X and Y directions")
 
+    allowed_fill_methods = ["median", "mean", "none"]
+
+    if fill_method.lower() not in allowed_fill_methods:
+        raise ValueError(f"Invalid fill method: '{fill_method}'. Choices: {allowed_fill_methods}")
+
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
-        coeffs = _get_quadric_coefficients(dem_arr, resolution)
+        coeffs = _get_quadric_coefficients(dem_arr, resolution, fill_method=fill_method.lower())
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
 
-    return _get_quadric_coefficients(dem_arr, resolution)
+    return coeffs
 
 
 @overload

@@ -11,9 +11,9 @@ hillshade = xdem.terrain.hillshade(dem.data, resolution=dem.res, azimuth=315., a
 
 curvature = xdem.terrain.curvature(dem.data, resolution=dem.res)
 
-planform_curvature = xdem.terrain.planform_curvature(dem, resolution=dem.res)
+planform_curvature = xdem.terrain.planform_curvature(dem.data, resolution=dem.res)
 
-profile_curvature = xdem.terrain.profile_curvature(dem, resolution=dem.res)
+profile_curvature = xdem.terrain.profile_curvature(dem.data, resolution=dem.res)
 
 slope, aspect, hillshade = xdem.terrain.get_terrain_attribute(
     dem.data,
