@@ -101,6 +101,29 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.mean(low_altitude) < np.mean(high_altitude)
 
+    def test_curvature(self) -> None:
+        """Test the curvature function (which has no GDAL equivalent)"""
+        warnings.simplefilter("error")
+
+        # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
+        dem = self.dem.copy()
+
+        curvature = xdem.terrain.curvature(dem.data, dem.res)
+
+        # Validate that the array has the same shape as the input and that all values are finite.
+        assert curvature.shape == dem.data.shape
+        assert np.all(np.isfinite(curvature))
+
+        with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
+            xdem.terrain.curvature(dem.data, [1, 2])  # type: ignore
+
+        # Introduce some nans
+        dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        # Validate that this doesn't raise weird warnings after introducing nans.
+        xdem.terrain.curvature(dem.data, dem.res)
+
+
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
         warnings.simplefilter("error")
@@ -123,3 +146,31 @@ class TestTerrainAttribute:
         # A slope map with a lower resolution (higher value) should have gentler slopes.
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.mean(slope) > np.mean(slope_lowres)
+
+
+def test_get_quadric_coefficients() -> None:
+    """Test the outputs and exceptions of the get_quadric_coefficients() function."""
+    warnings.simplefilter("error")
+
+    dem = np.array([[1, 1, 1],
+                    [1, 2, 1],
+                    [1, 1, 1]], dtype="float32")
+
+    coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0)
+
+    assert np.all(np.isfinite(coefficients))
+
+    # The last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
+    assert np.array_equal(coefficients[-1, :, :], dem)
+
+    # The middle pixel (index 1, 1) should be concave in the x-direction
+    assert coefficients[3, 1, 1] < 0
+
+    # The middle pixel (index 1, 1) should be concave in the y-direction
+    assert coefficients[4, 1, 1] < 0
+
+    with pytest.raises(ValueError, match="Invalid input array shape"):
+        xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
+
+
+

@@ -64,6 +64,23 @@ It therefore has little analytic purpose, but it still a great tool for visualiz
 .. plot:: code/terrain_plot_hillshade.py
 
 
+Curvature
+*********
+:func:`xdem.terrain.curvature`
+
+The curvature map is the second derivative of elevation.
+It highlights the convexity or convavity of the terrain, and has many both analytic and visual purposes.
+If a surface is convex (like a mountain peak), it will have positive curvature.
+If a surface is concave (like a trough or a valley bottom), it will have negative curvature.
+
+Usually, the curvature values are quite small, so they are by convention multiplied by 100.
+For analytic purposes, it may therefore be worth considering dividing the output by 100.
+
+.. literalinclude:: code/terrain.py
+        :lines: 12
+
+.. plot:: code/terrain_plot_curvature.py
+
 Generating multiple attributes at once
 **************************************
 
@@ -72,6 +89,6 @@ Since both are dependent on the gradient of the DEM, calculating them separately
 Multiple terrain attributes can be calculated from the same gradient using the :func:`xdem.terrain.get_terrain_attribute` function:
 
 .. literalinclude:: code/terrain.py
-        :lines: 12-16
+        :lines: 14-18
 
 
