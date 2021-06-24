@@ -31,7 +31,7 @@ Recommended: Use conda for depencency solving.
 ```
 $ git clone https://github.com/GlacioHack/xdem.git
 $ cd ./xdem
-$ conda env create -f environment.yml
+$ conda env create -f dev-environment.yml
 $ conda activate xdem
 $ pip install -e .
 ```
