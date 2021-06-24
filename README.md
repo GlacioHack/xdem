@@ -13,19 +13,12 @@ To cite this package: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.480
 
 ## Installation
 
-Recommended: Use conda for depencency solving.
+### With conda (recommended)
+```bash
+conda install --c conda-forge --strict-channel-priority xdem
 ```
-$ git clone https://github.com/GlacioHack/xdem.git
-$ cd ./xdem
-$ conda env create -f environment.yml
-$ conda activate xdem
-$ pip install .
-```
-After installing, we recommend to check that everything is working by running the tests:
+The `--strict-channel-priority` flag seems essential for Windows installs to function correctly, and is recommended for UNIX-based systems as well.
 
-```
-$ pytest -rA
-```
 
 ### Installing with pip
 **NOTE**: Setting up GDAL and PROJ may need some extra steps, depending on your operating system and configuration.
@@ -33,6 +26,20 @@ $ pytest -rA
 pip install xdem
 ```
 
+### Installing for contributors
+Recommended: Use conda for depencency solving.
+```
+$ git clone https://github.com/GlacioHack/xdem.git
+$ cd ./xdem
+$ conda env create -f environment.yml
+$ conda activate xdem
+$ pip install -e .
+```
+After installing, we recommend to check that everything is working by running the tests:
+
+```
+$ pytest -rA
+```
 
 ## Structure 
 
