@@ -18,7 +18,7 @@ try:
     from sklearn.linear_model import (
         LinearRegression, TheilSenRegressor, RANSACRegressor, HuberRegressor)
     from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import PolynomialFeatures
+    from sklearn.preprocessing import PolynomialFeatures, RobustScaler
     _has_sklearn = True
 except ImportError:
     _has_sklearn = False
@@ -536,10 +536,25 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
         else:
             if not _has_sklearn:
                 raise ValueError("Optional dependency needed. Install 'scikit-learn'")
+
+            # create polynomial + linear estimator pipeline
             p = PolynomialFeatures(degree=deg)
             model = make_pipeline(p, est)
+
+            # TODO: find out how to re-scale polynomial coefficient + doc on what is the best scaling for polynomials
+            # # scale output data (important for ML algorithms):
+            # robust_scaler = RobustScaler().fit(x.reshape(-1,1))
+            # x_scaled = robust_scaler.transform(x.reshape(-1,1))
+            # # fit scaled data
+            # model.fit(x_scaled, y)
+            # y_pred = model.predict(x_scaled)
+
+            # fit scaled data
             model.fit(x.reshape(-1,1), y)
-            cost = cost_func(model.predict(x.reshape(-1,1)), y)
+            y_pred = model.predict(x.reshape(-1,1))
+
+            # calculate cost
+            cost = cost_func(y_pred, y)
             costs[deg - 1] = cost
             # get polynomial estimated with the estimator
             if estimator in ['Linear','Theil-Sen','Huber']:
