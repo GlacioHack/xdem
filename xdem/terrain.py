@@ -1,6 +1,7 @@
 """Terrain attribute calculations, such as the slope, aspect etc."""
 from __future__ import annotations
 
+import warnings
 from typing import Sized, overload
 
 import numba
@@ -52,6 +53,8 @@ def get_terrain_attribute(
         * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W)
         * 'hillshade': The shaded slope in relation to its aspect.
         * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
+        * 'planform_curvature': The curvature perpendicular to the direction of the slope.
+        * 'profile_curvature': The curvature parallel to the direction of the slope.
         * 'surface_fit': A quadric surface fit for each individual pixel. For more info, see get_quadric_coefficients()
 
     :param dem: The DEM to analyze.
@@ -86,7 +89,7 @@ def get_terrain_attribute(
     if isinstance(attribute, str):
         attribute = [attribute]
 
-    choices = ["slope", "aspect", "hillshade", "curvature", "surface_fit"]
+    choices = ["slope", "aspect", "hillshade", "curvature", "planform_curvature", "profile_curvature", "surface_fit"]
     for attr in attribute:
         if attr not in choices:
             raise ValueError(f"Attribute '{attr}' is not supported. Choices: {choices}")
@@ -103,59 +106,19 @@ def get_terrain_attribute(
 
     dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
 
-    # Calculate the gradient, from which all products are derived.
-    x_gradient, y_gradient = np.gradient(dem_arr)
+    # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
+    terrain_attributes: dict[str, np.ndarray] = {}
 
-    # Normalize by the radius of the resolution to make it resolution variant.
-    x_gradient /= resolution[0]
-    y_gradient /= resolution[1]
+    attributes_requiring_surface_fit = [attr for attr in attribute if attr in ["curvature", "planform_curvature", "profile_curvature", "slope", "hillshade", "aspect"]]
 
-    # Initialize the terrain_attributes as tiny empty ndarrays
-    # This is to make the syntax below easier. They won't be used if they are not filled with something else.
-    terrain_attributes = {
-        "hillshade": np.array([np.nan]),
-        "aspect": np.array([np.nan]),
-        "slope": np.array([np.nan]),
-        "coefficients": np.array([np.nan]),
-        "curvature": np.array([np.nan]),
-    }
-
-    attributes_requiring_surface_fit = [attr for attr in attribute if attr in ["curvature"]]
     # Check which products should be made
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
-    make_slope = any(attr in attribute for attr in ["slope", "hillshade"])
+    make_slope = any(attr in attribute for attr in ["slope", "hillshade", "planform_curvature", "aspect", "profile_curvature"])
     make_hillshade = "hillshade" in attribute
     make_surface_fit = len(attributes_requiring_surface_fit) > 0
     make_curvature = "curvature" in attribute
-
-    if make_aspect:
-        terrain_attributes["aspect"] = np.arctan2(-x_gradient, y_gradient)
-
-    if make_slope:
-        terrain_attributes["slope"] = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
-
-    if make_hillshade:
-        # If a different z-factor was given, recaculate the slopemap with exaggerated gradients.
-        if hillshade_z_factor != 1.0:
-            slopemap = np.pi / 2.0 - np.arctan(
-                np.sqrt((x_gradient * hillshade_z_factor) ** 2 + (y_gradient * hillshade_z_factor) ** 2)
-            )
-        else:
-            slopemap = terrain_attributes["slope"]
-
-        azimuth_rad = np.deg2rad(360 - hillshade_azimuth)
-        altitude_rad = np.deg2rad(hillshade_altitude)
-        terrain_attributes["hillshade"] = np.clip(
-            255
-            * (
-                np.sin(altitude_rad) * np.sin(slopemap)
-                + np.cos(altitude_rad)
-                * np.cos(terrain_attributes["slope"])
-                * np.cos((azimuth_rad - np.pi / 2.0) - terrain_attributes["aspect"])
-            ),
-            0,
-            255,
-        ).astype("float32")
+    make_planform_curvature = "planform_curvature" in attribute
+    make_profile_curvature = "profile_curvature" in attribute
 
     if make_surface_fit:
         if resolution[0] != resolution[1]:
@@ -165,18 +128,70 @@ def get_terrain_attribute(
             )
         terrain_attributes["surface_fit"] = get_quadric_coefficients(dem_arr, resolution[0])
 
+    if make_slope:
+        # This calculation is based on (p18, left side): https://ieeexplore.ieee.org/document/1456186
+        # SLOPE = -(G²+H²)**(1/2)
+        terrain_attributes["slope"] = np.arctan((terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 ) ** 0.5)
+
+    if make_aspect:
+        # ASPECT = ARCTAN(-H/-G)  # This did not work
+        # ASPECT = ARCTAN2(-G, H)  did work.
+        terrain_attributes["aspect"] = np.arctan2(-terrain_attributes["surface_fit"][6, :, :],  terrain_attributes["surface_fit"][7, :, :])
+
+    if make_hillshade:
+        # If a different z-factor was given, slopemap with exaggerated gradients.
+        if hillshade_z_factor != 1.0:
+            slopemap = np.arctan(np.tan(terrain_attributes["slope"]) * hillshade_z_factor) 
+        else:
+            slopemap = terrain_attributes["slope"]
+
+        azimuth_rad = np.deg2rad(360 - hillshade_azimuth)
+        altitude_rad = np.deg2rad(hillshade_altitude)
+        terrain_attributes["hillshade"] = np.clip(
+            255
+            * (
+                np.sin(altitude_rad) * np.cos(slopemap)
+                + np.cos(altitude_rad)
+                * np.sin(slopemap)
+                * np.cos(azimuth_rad - terrain_attributes["aspect"] - np.pi)
+            ),
+            0,
+            255,
+        ).astype("float32")
+
     if make_curvature:
         # Curvature is the second derivative of the surface fit equation. See the ArcGIS documentation.
         # (URL in get_quadric_coefficients() docstring)
+        # Curvature = -2(D + E) * 100
         terrain_attributes["curvature"] = (
             -2 * (terrain_attributes["surface_fit"][3, :, :] + terrain_attributes["surface_fit"][4, :, :]) * 100
         )
+    
+    if make_planform_curvature:
+        # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+            terrain_attributes["planform_curvature"] = 2 * (terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2 + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2 - terrain_attributes["surface_fit"][5, :, :] * terrain_attributes["surface_fit"][6, :, :] * terrain_attributes["surface_fit"][7, :, :]) / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+
+        # Completely flat surfaces trigger the warning above. These need to be set to zero
+        terrain_attributes["planform_curvature"][terrain_attributes["slope"] == 0.0] = 0.0
+
+    if make_profile_curvature:
+       # PROFC = -2(DH² + EG² + FGH)/(G²+H²)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+            terrain_attributes["profile_curvature"] = -2 * (terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2 + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][5, :, :] * terrain_attributes["surface_fit"][6, :, :] * terrain_attributes["surface_fit"][7, :, :]) / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+
+        # Completely flat surfaces trigger the warning above. These need to be set to zero
+        terrain_attributes["profile_curvature"][terrain_attributes["slope"] == 0.0] = 0.0
+
 
     # Convert the unit if wanted.
     if degrees:
-        terrain_attributes["slope"] = 90 - np.rad2deg(terrain_attributes["slope"])
-        with np.errstate(invalid="ignore"):  # It may warn for nans (which is okay)
-            terrain_attributes["aspect"] = (270 - np.rad2deg(terrain_attributes["aspect"])) % 360
+        for attr in ["slope", "aspect"]:
+            if attr not in terrain_attributes:
+                continue
+            terrain_attributes[attr] = np.rad2deg(terrain_attributes[attr])
 
     output_attributes = [terrain_attributes[key].reshape(dem.shape) for key in attribute]
 

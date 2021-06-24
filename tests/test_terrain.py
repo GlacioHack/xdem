@@ -11,6 +11,8 @@ import xdem
 
 xdem.examples.download_longyearbyen_examples()
 
+PLOT = True
+
 
 def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
     """Run GDAL's DEMProcessing and return the read numpy array."""
@@ -62,8 +64,23 @@ class TestTerrainAttribute:
 
         # Check that the xdem and gdal hillshades are relatively similar.
         diff = (attr_xdem - attr_gdal).filled(np.nan)
-        assert np.nanmean(diff) < 5
-        assert xdem.spatial_tools.nmad(diff) < 5
+        try:
+            assert np.nanmean(diff) < 5
+            assert xdem.spatial_tools.nmad(diff) < 5
+        except Exception as exception:
+
+            if PLOT:
+                import matplotlib.pyplot as plt
+
+                plt.subplot(121)
+                plt.imshow(attr_gdal.squeeze())
+                plt.subplot(122)
+                plt.imshow(attr_xdem.squeeze())
+                plt.show()
+
+            
+            raise exception
+
 
         # Introduce some nans
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
@@ -101,27 +118,34 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.mean(low_altitude) < np.mean(high_altitude)
 
-    def test_curvature(self) -> None:
+    @pytest.mark.parametrize("name", ["curvature", "planform_curvature", "profile_curvature"])
+    def test_curvatures(self, name: str) -> None:
         """Test the curvature function (which has no GDAL equivalent)"""
         warnings.simplefilter("error")
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
-        curvature = xdem.terrain.curvature(dem.data, dem.res)
+        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
         # Validate that the array has the same shape as the input and that all values are finite.
         assert curvature.shape == dem.data.shape
-        assert np.all(np.isfinite(curvature))
+        try:
+            assert np.all(np.isfinite(curvature))
+        except:
+            import matplotlib.pyplot as plt
+
+            plt.imshow(curvature.squeeze())
+            plt.show()
 
         with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
-            xdem.terrain.curvature(dem.data, [1, 2])  # type: ignore
+            xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1., 2.))
 
         # Introduce some nans
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
         dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
-        xdem.terrain.curvature(dem.data, dem.res)
+        xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
 
     def test_get_terrain_attribute(self) -> None:
