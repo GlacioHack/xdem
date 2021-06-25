@@ -7,7 +7,9 @@ from __future__ import annotations
 from typing import Callable, Union
 
 import geoutils as gu
+from xdem.spstats import nd_binning
 import numpy as np
+import pandas as pd
 import scipy
 import rasterio as rio
 import rasterio.warp
@@ -436,6 +438,41 @@ def get_xy_rotated(raster: gu.georaster.Raster, along_track_angle: float) -> tup
 
     return xxr, yyr
 
+def rmse(z: np.ndarray) -> float:
+    """
+    Return root mean square error
+    :param z: Residuals between predicted and true value
+    :return: Root Mean Square Error
+    """
+    return np.sqrt(np.nanmean(np.square(np.asarray(z))))
+
+def huber_loss(z: np.ndarray) -> float:
+    """
+    Huber loss cost (reduces the weight of outliers)
+    :param z: Residuals between predicted and true values
+    :return: Huber cost
+    """
+    out = np.asarray(np.square(z) * 1.000)
+    out[np.where(z > 1)] = 2 * np.sqrt(z[np.where(z > 1)]) - 1
+    return out.sum()
+
+def soft_loss(z: np.ndarray, scale = 0.5) -> float:
+    """
+    Soft loss cost (reduces the weight of outliers)
+    :param z: Residuals between predicted and true values
+    :param scale: Scale factor
+    :return: Soft loss cost
+    """
+    return np.sum(np.square(scale)) * 2 * (np.sqrt(1 + np.square(z/scale)) - 1)
+
+def _costfun_sumofsin(p, x, y, cost_func):
+    """
+    Calculate robust cost function for sum of sinusoids
+    """
+    z = y -_fitfun_sumofsin(x, p)
+    return cost_func(z)
+
+
 def _choice_best_polynomial(cost: np.ndarray, margin_improvement : float = 20., verbose: bool = False) -> int:
     """
     Choice of the best polynomial fit based on its cost (residuals), the best cost value does not necessarily mean the best
@@ -571,6 +608,95 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
 
     # the degree of the polynom correspond to the index plus one
     return np.trim_zeros(coeffs[final_index], 'b'), final_index + 1
+
+
+
+def _fitfun_sumofsin(x: np.array, params: list[tuple[float,float,float]]):
+    """
+    Function for a sum of N frequency sinusoids
+    :param x: array of coordinates (N,)
+    :param p: list of tuples with amplitude, frequency and phase parameters
+    """
+    p = np.asarray(params)
+    aix = np.arange(0, p.size, 3)
+    bix = np.arange(1, p.size, 3)
+    cix = np.arange(2, p.size, 3)
+
+    val = np.sum(p[aix] * np.sin(np.divide(2 * np.pi, p[bix]) * x[:, np.newaxis] + p[cix]), axis=1)
+
+    return val
+
+def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
+                      bounds_amp_freq_phase: list[tuple[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
+                      optimization = 'global', estimator: str  = 'Theil-Sen', cost_func: Callable = median_absolute_error,
+                      margin_improvement : float = 20., subsample: Union[float,int] = 25000, linear_pkg = 'sklearn',
+                      verbose: bool = False, random_state = None, **kwargs) -> tuple[np.ndarray,int]:
+    """
+    Given sample 1D data x, y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
+    automatically by comparing residuals for multiple fit orders of a given estimator.
+    :param x: input x data (N,)
+    :param y: input y data (N,)
+    :param nb_frequency_max: maximum number of phases
+    :param bounds_amp_freq_phase: bounds for amplitude, frequency and phase (L, 3, 2) and
+    with mean value used for initialization
+    :param optimization: optimization method: linear estimator (see estimator) or global optimization (basinhopping)
+    :param estimator: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
+    :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
+    :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
+    :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
+    If > 1 will be considered the number of pixels to extract.
+    :param linear_pkg: package to use for Linear estimator, one of 'scipy' and 'sklearn'
+    :param random_state: random seed for testing purposes
+    :param verbose: if text should be printed
+
+    :returns coefs, degree: polynomial coefficients and degree for the best-fit polynomial
+    """
+
+    # remove NaNs
+    valid_data = np.logical_and(np.isfinite(y), np.isfinite(x))
+    x = x[valid_data]
+    y = y[valid_data]
+
+    # binned statistics for first guess
+    df = nd_binning(x, [y], ['var'], list_var_bins=1000, statistics=[np.nanmedian])
+    # first guess for x and y
+    x_fg = pd.IntervalIndex(df['var']).mid
+    y_fg = df['nanmedian']
+
+    # loop on all frequencies
+    for freq in range(nb_frequency_max):
+        # format bounds
+        b = bounds_amp_freq_phase
+        if b is not None:
+            lbb = np.concatenate.reduce((np.tile(b[i][0], 2) for i in range(freq+1)))
+            ubb = np.concatenate.reduce((np.tile(b[i][1], 2) for i in range(freq+1)))
+            p0 = np.divide(lbb + ubb, 2)
+
+        # initialize with a first guess
+        init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B",
+                         bounds=scipy.optimize.Bounds(lbb, ubb), options={"ftol": 1E-4})
+        init_results = scipy.optimize.basinhopping(_costfun_sumofsin, p0, disp=True,
+                                             T=200,  minimizer_kwargs=init_args)
+        init_results = init_results.lowest_optimization_result
+
+        # subsample
+        subsamp = subsample_raster(x, subsample=subsample, return_indices=True)
+        x = x[subsamp]
+        y = y[subsamp]
+
+        # minimize the globalization with a larger number of points
+        minimizer_kwargs = dict(args=(x, y),
+                                method="L-BFGS-B",
+                                bounds=scipy.optimize.Bounds(lbb, ubb),
+                                options={"ftol": 1E-4})
+        myresults = scipy.optimize.basinhopping(_costfun_sumofsin, init_results.x, disp=True,
+                                          T=1000, niter_success=40,
+                                          minimizer_kwargs=minimizer_kwargs)
+        myresults = myresults.lowest_optimization_result
+
+        x_pred = np.linspace(np.min(x), np.max(x), 1000)
+        y_pred = _fitfun_sumofsin(x_pred, myresults.x)
+
 
 def subsample_raster(
     array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
