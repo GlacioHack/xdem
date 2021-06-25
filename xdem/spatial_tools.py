@@ -4,13 +4,14 @@ A set of basic operations to be run on 2D arrays and DEMs.
 
 from __future__ import annotations
 
-from typing import Callable, Union
+from typing import Callable, Union, Iterable, Optional, Sequence
 
+import itertools
 import geoutils as gu
-from xdem.spstats import nd_binning
 import numpy as np
 import pandas as pd
 import scipy
+from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
@@ -96,6 +97,104 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
         data_arr = np.asarray(data)
     return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
+def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
+        -> pd.DataFrame:
+    """
+    N-dimensional binning of values according to one or several explanatory variables.
+    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
+    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
+
+    :param values: values array (N,)
+    :param list_var: list (L) of explanatory variables array (N,)
+    :param list_var_names: list (L) of names of the explanatory variables
+    :param list_var_bins: count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
+    :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
+    :return:
+    """
+
+    # we separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
+    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
+    if list_var_bins is None:
+        list_var_bins = (10,) * len(list_var_names)
+    elif isinstance(list_var_bins,int):
+        list_var_bins = (list_var_bins,) * len(list_var_names)
+
+    # flatten the arrays if this has not been done by the user
+    values = values.ravel()
+    list_var = [var.ravel() for var in list_var]
+
+    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
+
+    # get binned statistics in 1d: a simple loop is sufficient
+    list_df_1d = []
+    for i, var in enumerate(list_var):
+        df_stats_1d = pd.DataFrame()
+        # get statistics
+        for j, statistic in enumerate(statistics):
+            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
+            # save in a dataframe
+            df_stats_1d[statistics_name[j]] = stats_binned_1d
+        # we need to get the middle of the bins from the edges, to get the same dimension length
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
+        # report number of dimensions used
+        df_stats_1d['nd'] = 1
+
+        list_df_1d.append(df_stats_1d)
+
+    # get binned statistics in 2d: all possible 2d combinations
+    list_df_2d = []
+    if len(list_var)>1:
+        combs = list(itertools.combinations(list_var_names, 2))
+        for i, comb in enumerate(combs):
+            var1_name, var2_name = comb
+            # corresponding variables indexes
+            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
+            df_stats_2d = pd.DataFrame()
+            for j, statistic in enumerate(statistics):
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
+                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
+                                                             ,range=list_ranges)[:3]
+                # get statistics
+                df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
+            # derive interval indexes and convert bins into 2d indexes
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
+            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
+            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
+            # report number of dimensions used
+            df_stats_2d['nd'] = 2
+
+            list_df_2d.append(df_stats_2d)
+
+
+    # get binned statistics in nd, without redoing the same stats
+    df_stats_nd = pd.DataFrame()
+    if len(list_var)>2:
+        for j, statistic in enumerate(statistics):
+            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
+            df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
+        list_ii = []
+        # loop through the bin edges and create IntervalIndexes from them (to get both
+        for bedges in list_bedges:
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
+
+        # create nd indexes in nd-array and flatten for each variable
+        iind = np.meshgrid(*list_ii)
+        for i, var_name in enumerate(list_var_names):
+            df_stats_nd[var_name] = iind[i].flatten()
+
+        # report number of dimensions used
+        df_stats_nd['nd'] = len(list_var_names)
+
+    # concatenate everything
+    list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
+    df_concat = pd.concat(list_all_dfs)
+    # commenting for now: pd.MultiIndex can be hard to use
+    # df_concat = df_concat.set_index(list_var_names)
+
+    return df_concat
 
 def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     """Get a rasterio resampling method from a string representation, e.g. "cubic_spline"."""
@@ -463,7 +562,7 @@ def soft_loss(z: np.ndarray, scale = 0.5) -> float:
     :param scale: Scale factor
     :return: Soft loss cost
     """
-    return np.sum(np.square(scale)) * 2 * (np.sqrt(1 + np.square(z/scale)) - 1)
+    return np.sum(np.square(scale) * 2 * (np.sqrt(1 + np.square(z/scale)) - 1))
 
 def _costfun_sumofsin(p, x, y, cost_func):
     """
@@ -473,11 +572,11 @@ def _costfun_sumofsin(p, x, y, cost_func):
     return cost_func(z)
 
 
-def _choice_best_polynomial(cost: np.ndarray, margin_improvement : float = 20., verbose: bool = False) -> int:
+def _choice_best_order(cost: np.ndarray, margin_improvement : float = 20., verbose: bool = False) -> int:
     """
-    Choice of the best polynomial fit based on its cost (residuals), the best cost value does not necessarily mean the best
-    predictive fit because high-degree polynomials tend to overfit. to mitigate this issue, we should choose the
-    polynomial of lesser degree from which improvement becomes negligible.
+    Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
+    not necessarily mean the best predictive fit because high-degree polynomials tend to overfit, and sum of sinusoids
+    as well. To mitigate this issue, we should choose the lesser order from which improvement becomes negligible.
     :param cost: cost function residuals to the polynomial
     :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
     :param verbose: if text should be printed
@@ -499,8 +598,8 @@ def _choice_best_polynomial(cost: np.ndarray, margin_improvement : float = 20., 
     ind = np.arange(len(cost))[below_margin][subindex]
 
     if verbose:
-        print('Polynomial of degree '+str(ind_min+1)+ ' has the minimum cost value of '+str(min_cost))
-        print('Polynomial of lesser degree '+str(ind+1)+ ' is selected within a '+str(margin_improvement)+' % margin of'
+        print('Order '+str(ind_min+1)+ ' has the minimum cost value of '+str(min_cost))
+        print('Order '+str(ind+1)+ ' is selected within a '+str(margin_improvement)+' % margin of'
             ' the minimum cost, with a cost value of '+str(min_cost))
 
     return ind
@@ -511,7 +610,7 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
                           subsample: Union[float,int] = 25000, linear_pkg = 'sklearn', verbose: bool = False,
                           random_state = None, **kwargs) -> tuple[np.ndarray,int]:
     """
-    Given sample 1D data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
+    Given 1D data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
     :param x: input x data (N,)
     :param y: input y data (N,)
@@ -604,79 +703,107 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
     # selecting the minimum (not robust)
     # final_index = mycost.argmin()
     # choosing the best polynomial with a margin of improvement on the cost
-    final_index = _choice_best_polynomial(cost=costs, margin_improvement=margin_improvement, verbose=verbose)
+    final_index = _choice_best_order(cost=costs, margin_improvement=margin_improvement, verbose=verbose)
 
     # the degree of the polynom correspond to the index plus one
     return np.trim_zeros(coeffs[final_index], 'b'), final_index + 1
 
 
-
-def _fitfun_sumofsin(x: np.array, params: list[tuple[float,float,float]]):
+def _fitfun_sumofsin(x: np.array, params: np.ndarray) -> np.ndarray:
     """
     Function for a sum of N frequency sinusoids
     :param x: array of coordinates (N,)
     :param p: list of tuples with amplitude, frequency and phase parameters
     """
-    p = np.asarray(params)
-    aix = np.arange(0, p.size, 3)
-    bix = np.arange(1, p.size, 3)
-    cix = np.arange(2, p.size, 3)
+    aix = np.arange(0, params.size, 3)
+    bix = np.arange(1, params.size, 3)
+    cix = np.arange(2, params.size, 3)
 
-    val = np.sum(p[aix] * np.sin(np.divide(2 * np.pi, p[bix]) * x[:, np.newaxis] + p[cix]), axis=1)
+    val = np.sum(params[aix] * np.sin(np.divide(2 * np.pi, params[bix]) * x[:, np.newaxis] + params[cix]), axis=1)
 
     return val
 
 def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
-                      bounds_amp_freq_phase: list[tuple[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
-                      optimization = 'global', estimator: str  = 'Theil-Sen', cost_func: Callable = median_absolute_error,
-                      margin_improvement : float = 20., subsample: Union[float,int] = 25000, linear_pkg = 'sklearn',
-                      verbose: bool = False, random_state = None, **kwargs) -> tuple[np.ndarray,int]:
+                      bounds_amp_freq_phase: Optional[list[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
+                      significant_res : Optional[float] = None, cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000,
+                      random_state: Optional[Union[int,np.random.Generator,np.random.RandomState]] = None, verbose: bool = False) -> tuple[np.ndarray,int]:
     """
-    Given sample 1D data x, y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
+    Given 1D data x, y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
     :param x: input x data (N,)
     :param y: input y data (N,)
     :param nb_frequency_max: maximum number of phases
     :param bounds_amp_freq_phase: bounds for amplitude, frequency and phase (L, 3, 2) and
     with mean value used for initialization
-    :param optimization: optimization method: linear estimator (see estimator) or global optimization (basinhopping)
-    :param estimator: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
+    :param significant_res: significant resolution of X data to optimize algorithm search
     :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
-    :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
     If > 1 will be considered the number of pixels to extract.
-    :param linear_pkg: package to use for Linear estimator, one of 'scipy' and 'sklearn'
     :param random_state: random seed for testing purposes
     :param verbose: if text should be printed
 
     :returns coefs, degree: polynomial coefficients and degree for the best-fit polynomial
     """
 
+    def wrapper_costfun_sumofsin(p,x,y):
+        return _costfun_sumofsin(p,x,y,cost_func=cost_func)
+
     # remove NaNs
     valid_data = np.logical_and(np.isfinite(y), np.isfinite(x))
     x = x[valid_data]
     y = y[valid_data]
 
+    # if no significant resolution is provided, assume that it is the mean difference between sampled X values
+    if significant_res is None:
+        x_sorted = np.sort(x)
+        significant_res = np.mean(np.diff(x_sorted))
+
     # binned statistics for first guess
-    df = nd_binning(x, [y], ['var'], list_var_bins=1000, statistics=[np.nanmedian])
+    nb_bin = int((x.max() - x.min())/(5*significant_res))
+    df = nd_binning(y, [x], ['var'], list_var_bins=nb_bin, statistics=[np.nanmedian])
     # first guess for x and y
-    x_fg = pd.IntervalIndex(df['var']).mid
+    x_fg = pd.IntervalIndex(df['var']).mid.values
     y_fg = df['nanmedian']
+    valid_fg = np.logical_and(np.isfinite(x_fg),np.isfinite(y_fg))
+    x_fg = x_fg[valid_fg]
+    y_fg = y_fg[valid_fg]
 
     # loop on all frequencies
-    for freq in range(nb_frequency_max):
-        # format bounds
+    costs = np.empty(nb_frequency_max)
+    amp_freq_phase = np.zeros((nb_frequency_max, 3*nb_frequency_max))*np.nan
+
+    for nb_freq in np.arange(1,nb_frequency_max+1):
+
         b = bounds_amp_freq_phase
-        if b is not None:
-            lbb = np.concatenate.reduce((np.tile(b[i][0], 2) for i in range(freq+1)))
-            ubb = np.concatenate.reduce((np.tile(b[i][1], 2) for i in range(freq+1)))
-            p0 = np.divide(lbb + ubb, 2)
+        # if bounds are not provided, define as the largest possible bounds
+        if b is None:
+            lb_amp = 0
+            ub_amp = (y_fg.max() - y_fg.min()) / 2
+            # for the phase
+            lb_phase = 0
+            ub_phase = 2 * np.pi
+            # for the frequency, we need at least 5 points to see any kind of periodic signal
+            lb_frequency = 1 / (5 * (x.max() - x.min()))
+            ub_frequency = 1 / (5 * significant_res)
+
+            b = []
+            for i in range(nb_freq):
+                b += [(lb_amp,ub_amp),(lb_frequency,ub_frequency),(lb_phase,ub_phase)]
+
+        # format lower bounds for scipy
+        lb = np.asarray(([b[i][0] for i in range(3*nb_freq)]))
+        # format upper bounds
+        ub = np.asarray(([b[i][1] for i in range(3*nb_freq)]))
+        # final bounds
+        scipy_bounds = scipy.optimize.Bounds(lb, ub)
+        # first guess for the mean parameters
+        p0 = np.divide(lb + ub, 2)
 
         # initialize with a first guess
         init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B",
-                         bounds=scipy.optimize.Bounds(lbb, ubb), options={"ftol": 1E-4})
-        init_results = scipy.optimize.basinhopping(_costfun_sumofsin, p0, disp=True,
-                                             T=200,  minimizer_kwargs=init_args)
+                         bounds=scipy_bounds, options={"ftol": 1E-6})
+        init_results = scipy.optimize.basinhopping(wrapper_costfun_sumofsin, p0, disp=verbose,
+                                             T=significant_res,  minimizer_kwargs=init_args, seed = random_state)
         init_results = init_results.lowest_optimization_result
 
         # subsample
@@ -687,15 +814,30 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
         # minimize the globalization with a larger number of points
         minimizer_kwargs = dict(args=(x, y),
                                 method="L-BFGS-B",
-                                bounds=scipy.optimize.Bounds(lbb, ubb),
-                                options={"ftol": 1E-4})
-        myresults = scipy.optimize.basinhopping(_costfun_sumofsin, init_results.x, disp=True,
-                                          T=1000, niter_success=40,
-                                          minimizer_kwargs=minimizer_kwargs)
+                                bounds=scipy_bounds,
+                                options={"ftol": 1E-6})
+        myresults = scipy.optimize.basinhopping(wrapper_costfun_sumofsin, init_results.x, disp=verbose,
+                                          T=5*significant_res, niter_success=40,
+                                          minimizer_kwargs=minimizer_kwargs, seed=random_state)
         myresults = myresults.lowest_optimization_result
+        # write results for this number of frequency
+        costs[nb_freq-1] = wrapper_costfun_sumofsin(myresults.x,x,y)
+        amp_freq_phase[nb_freq -1, 0:3*nb_freq] = myresults.x
 
-        x_pred = np.linspace(np.min(x), np.max(x), 1000)
-        y_pred = _fitfun_sumofsin(x_pred, myresults.x)
+    # final_index = costs.argmin()
+    final_index = _choice_best_order(cost=costs)
+
+    final_coefs =  amp_freq_phase[final_index][~np.isnan(amp_freq_phase[final_index])]
+
+    # check if an amplitude coefficient is almost 0: remove the coefs of that frequency and lower the degree
+    final_degree = final_index + 1
+    for i in range(final_index+1):
+        if final_coefs[3*i] < (y_fg.max() - y_fg.min())/1000:
+            final_coefs = np.delete(final_coefs,slice(3*i,3*i+2))
+            final_degree -= 1
+
+    # the number of frequency corresponds to the index plus one
+    return final_coefs, final_degree
 
 
 def subsample_raster(
