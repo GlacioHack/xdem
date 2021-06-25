@@ -3,8 +3,6 @@ Routines to test the spatial statistics functions.
 
 """
 from __future__ import annotations
-from typing import Tuple
-
 import warnings
 
 import geoutils as gu
@@ -225,49 +223,3 @@ class TestPatchesMethod:
             gsd=diff.res[0],
             area_size=10000
         )
-
-class TestBinning:
-
-    def test_nd_binning(self):
-
-        ref, diff, mask = load_ref_and_diff()
-
-        slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
-
-        # 1d binning, by default will create 10 bins
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'])
-
-        # check length matches
-        assert df.shape[0] == 10
-        # check bin edges match the minimum and maximum of binning variable
-        assert np.nanmin(slope) == np.min(pd.IntervalIndex(df.slope).left)
-        assert np.nanmax(slope) == np.max(pd.IntervalIndex(df.slope).right)
-
-        # 1d binning with 20 bins
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
-                                           list_var_bins=[[20]])
-        # check length matches
-        assert df.shape[0] == 20
-
-        # nmad goes up quite a bit with slope, we can expect a 10 m measurement error difference
-        assert df.nmad.values[-1] - df.nmad.values[0] > 10
-
-        # try custom stat
-        def percentile_80(a):
-            return np.nanpercentile(a, 80)
-
-        # check the function runs with custom functions
-        xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'], statistics=['count',percentile_80])
-
-        # 2d binning
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
-
-        # dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
-        assert df.shape[0] == (10 + 10 + 100)
-
-        # nd binning
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
-
-        # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
-        assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
-
