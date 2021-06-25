@@ -328,8 +328,16 @@ class TestRobustFitting:
         coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y, random_state=42, bounds_amp_freq_phase=bounds)
 
         # should be less precise, but still on point
-        for i in range(6):
-            assert (coefs[i] - true_coefs[i]) < 0.2
+        # re-order output coefficient to match input
+        if coefs[3] > coefs[0]:
+            coefs = np.concatenate((coefs[3:],coefs[0:3]))
+
+        # check values
+        for i in range(2):
+            assert (coefs[3*i] - true_coefs[3*i]) < 0.2
+            assert (coefs[3 * i +1] - true_coefs[3 * i +1]) < 0.2
+            error_phase = min(np.abs(coefs[3 * i + 2] - true_coefs[ 3* i + 2]), np.abs(2* np.pi - (coefs[3 * i + 2] - true_coefs[ 3* i + 2])))
+            assert error_phase < 0.2
 
 class TestSubsample:
     """
@@ -396,7 +404,7 @@ class TestBinning:
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
 
         # 1d binning, by default will create 10 bins
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'])
+        df = xdem.spatial_tools.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'])
 
         # check length matches
         assert df.shape[0] == 10
@@ -405,7 +413,7 @@ class TestBinning:
         assert np.nanmax(slope) == np.max(pd.IntervalIndex(df.slope).right)
 
         # 1d binning with 20 bins
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
+        df = xdem.spatial_tools.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
                                            list_var_bins=[[20]])
         # check length matches
         assert df.shape[0] == 20
@@ -418,16 +426,16 @@ class TestBinning:
             return np.nanpercentile(a, 80)
 
         # check the function runs with custom functions
-        xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'], statistics=['count',percentile_80])
+        xdem.spatial_tools.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'], statistics=['count',percentile_80])
 
         # 2d binning
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
+        df = xdem.spatial_tools.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
 
         # dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
         assert df.shape[0] == (10 + 10 + 100)
 
         # nd binning
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
+        df = xdem.spatial_tools.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
 
         # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
         assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
