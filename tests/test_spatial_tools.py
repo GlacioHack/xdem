@@ -259,6 +259,50 @@ class TestRobustFitting:
         assert np.abs(coefs6[2] - true_coefs[2]) < 1
         assert np.abs(coefs6[3] - true_coefs[3]) < 1
 
+    def test_robust_sumsin_fit(self) -> None:
+
+        # x vector
+        x = np.linspace(0, 10, 1000)
+        # exact polynomial
+        true_coefs = np.array([(5, 1, np.pi),(3, 0.3, 0)]).flatten()
+        y = xdem.spatial_tools._fitfun_sumofsin(x,params=true_coefs)
+
+        # check that the function runs
+        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y, random_state=42)
+
+        # check that the estimated sum of sinusoid correspond to the input
+        for i in range(2):
+            assert (coefs[3*i] - true_coefs[3*i]) < 0.01
+
+        # test that using custom arguments does not create an error
+        bounds = [(3,7),(0.1,3),(0,2*np.pi),(1,7),(0.1,1),(0,2*np.pi),(0,1),(0.1,1),(0,2*np.pi)]
+        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y,bounds_amp_freq_phase=bounds, nb_frequency_max=2
+                                                          , significant_res=0.01, random_state=42)
+
+    def test_robust_simsin_fit_noise_and_outliers(self):
+
+        # test the robustness to outliers
+
+        np.random.seed(42)
+        # x vector
+        x = np.linspace(0, 10, 1000)
+        # exact polynomial
+        true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
+        y = xdem.spatial_tools._fitfun_sumofsin(x, params=true_coefs)
+
+        # adding some noise
+        y += np.random.normal(loc=0, scale=0.25, size=1000)
+        # and some outliers
+        y[50:75] = -10
+        y[900:925] = 10
+
+        bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
+        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y, random_state=42, bounds_amp_freq_phase=bounds)
+
+        # should be less precise, but still on point
+        for i in range(6):
+            assert (coefs[i] - true_coefs[i]) < 0.2
+
 class TestSubsample:
     """
     Different examples of 1D to 3D arrays with masked values for testing.
