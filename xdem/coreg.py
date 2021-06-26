@@ -1,14 +1,4 @@
-"""
-DEM coregistration functions.
-
-"Amaury's" functions are adapted from Amaury Dehecq.
-Source: https://github.com/GeoUtils/geoutils/blob/master/geoutils/dem_coregistration.py
-
-Author(s):
-    Erik Schytt Holmlund (holmlund@vaw.baug.ethz.ch)
-
-Date: 13 November 2020.
-"""
+"""DEM coregistration classes and functions."""
 from __future__ import annotations
 
 import json

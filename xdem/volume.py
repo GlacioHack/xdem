@@ -1,4 +1,4 @@
-"""Functions to calculate changes in volume (aimed for glaciers)."""
+"""Volume change calculation tools (aimed for glaciers)."""
 from __future__ import annotations
 
 import warnings

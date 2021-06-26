@@ -1,9 +1,4 @@
-"""Functions to test the spatial tools.
-
-Author(s):
-    Erik S. Holmlund
-
-"""
+"""Functions to test the spatial tools."""
 import os
 import shutil
 import subprocess

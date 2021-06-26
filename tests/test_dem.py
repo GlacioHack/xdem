@@ -1,6 +1,4 @@
-"""
-Test functions for DEM class
-"""
+""" Functions to test the DEM tools."""
 import inspect
 import os
 import warnings

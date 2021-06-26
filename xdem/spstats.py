@@ -1,6 +1,4 @@
-"""
-xdem.spstats provides tools to use spatial statistics for elevation change data
-"""
+"""Spatial statistical tools to estimate uncertainties related to DEMs"""
 from __future__ import annotations
 
 import math as m
