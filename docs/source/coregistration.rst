@@ -114,8 +114,8 @@ Vertical shift
 - **Supports weights** (soon)
 - **Recommended for:** A precursor step to e.g. ICP.
 
-``BiasCorr`` has very similar functionality to ``Deramp(degree=0)`` or the z-component of `Nuth and Kääb (2011)`_.
-This function is more customizable, for example allowing changing of the bias algorithm (from weighted average to e.g. median).
+``VerticalShift`` has very similar functionality to ``Deramp(degree=0)`` or the z-component of `Nuth and Kääb (2011)`_.
+This function is more customizable, for example allowing changing of the vertical shift algorithm (from weighted average to e.g. median).
 It should also be faster, since it is a single function call.
 
 Limitations
@@ -199,6 +199,6 @@ For large biases, rotations and high amounts of noise:
 
 .. code-block:: python
 
-        coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()
+        coreg.VerticalShift() + coreg.ICP() + coreg.NuthKaab()
         
 

@@ -763,33 +763,33 @@ class VerticalShift(Coreg):
     Estimates the mean (or median, weighted avg., etc.) offset between two DEMs.
     """
 
-    def __init__(self, bias_func=np.average):  # pylint: disable=super-init-not-called
+    def __init__(self, vshift_func=np.average):  # pylint: disable=super-init-not-called
         """
         Instantiate a vertical shift correction object.
 
-        :param bias_func: The function to use for calculating the vertical shift. Default: (weighted) average.
+        :param vshift_func: The function to use for calculating the vertical shift. Default: (weighted) average.
         """
-        super().__init__(meta={"vshift_func": bias_func})
+        super().__init__(meta={"vshift_func": vshift_func})
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
-        """Estimate the vertical shift using the bias_func."""
+        """Estimate the vertical shift using the vshift_func."""
         if verbose:
             print("Estimating the vertical shift...")
         diff = ref_dem - tba_dem
         diff = diff[np.isfinite(diff)]
 
         # Use weights if those were provided.
-        bias = self._meta["vshift_func"](diff) if weights is None \
+        vshift = self._meta["vshift_func"](diff) if weights is None \
             else self._meta["vshift_func"](diff, weights=weights)
 
         if verbose:
             print("Vertical shift estimated")
 
-        self._meta["vshift"] = bias
+        self._meta["vshift"] = vshift
 
     def _to_matrix_func(self) -> np.ndarray:
-        """Convert the bias to a transform matrix."""
+        """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
         empty_matrix[2, 3] += self._meta["vshift"]
@@ -1139,15 +1139,15 @@ class NuthKaab(Coreg):
         )
 
         # Initialise east and north pixel offset variables (these will be incremented up and down)
-        offset_east, offset_north, bias = 0.0, 0.0, 0.0
+        offset_east, offset_north, vshift = 0.0, 0.0, 0.0
 
         # Calculate initial dDEM statistics
         elevation_difference = ref_dem - aligned_dem
-        bias = np.nanmedian(elevation_difference)
+        vshift = np.nanmedian(elevation_difference)
         nmad_old = xdem.spatial_tools.nmad(elevation_difference)
         if verbose:
             print("   Statistics on initial dh:")
-            print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_old))
+            print("      Median = {:.2f} - NMAD = {:.2f}".format(vshift, nmad_old))
 
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
         if verbose:
@@ -1159,9 +1159,9 @@ class NuthKaab(Coreg):
 
             # Calculate the elevation difference and the residual (NMAD) between them.
             elevation_difference = ref_dem - aligned_dem
-            bias = np.nanmedian(elevation_difference)
+            vshift = np.nanmedian(elevation_difference)
             # Correct potential biases
-            elevation_difference -= bias
+            elevation_difference -= vshift
 
             # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
             east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
@@ -1188,12 +1188,12 @@ class NuthKaab(Coreg):
 
             # Update statistics
             elevation_difference = ref_dem - aligned_dem
-            bias = np.nanmedian(elevation_difference)
+            vshift = np.nanmedian(elevation_difference)
             nmad_new = xdem.spatial_tools.nmad(elevation_difference)
             nmad_gain = (nmad_new - nmad_old) / nmad_old*100
 
             if verbose:
-                pbar.write("      Median = {:.2f} - NMAD = {:.2f}  ==>  Gain = {:.2f}%".format(bias, nmad_new, nmad_gain))
+                pbar.write("      Median = {:.2f} - NMAD = {:.2f}  ==>  Gain = {:.2f}%".format(vshift, nmad_new, nmad_gain))
 
             # Stop if the NMAD is low and a few iterations have been made
             assert ~np.isnan(nmad_new), (offset_east, offset_north)
@@ -1210,11 +1210,11 @@ class NuthKaab(Coreg):
         if verbose:
             print("\n   Final offset in pixels (east, north) : ({:f}, {:f})".format(offset_east, offset_north))
             print("   Statistics on coregistered dh:")
-            print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_new))
+            print("      Median = {:.2f} - NMAD = {:.2f}".format(vshift, nmad_new))
 
         self._meta["offset_east_px"] = offset_east
         self._meta["offset_north_px"] = offset_north
-        self._meta["bias"] = bias
+        self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
 
     def _to_matrix_func(self) -> np.ndarray:
@@ -1225,7 +1225,7 @@ class NuthKaab(Coreg):
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[0, 3] += offset_east
         matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["bias"]
+        matrix[2, 3] += self._meta["vshift"]
 
         return matrix
 

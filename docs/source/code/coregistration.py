@@ -53,15 +53,15 @@ deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.
 # SECTION: Bias correction
 ##########################
 
-bias_corr = coreg.BiasCorr()
+vshift_corr = coreg.VerticalShift()
 # Note that the transform argument is not needed, since it is a simple vertical correction.
-bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
+vshift_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
 
-# Apply the bias to a DEM
-corrected_dem = bias_corr.apply(tba_data, transform=None)  # The transform does not need to be given for bias
+# Apply the vertical shift to a DEM
+corrected_dem = vshift_corr.apply(tba_data, transform=None)  # The transform does not need to be given for bias
 
-# Use median bias instead
-bias_median = coreg.BiasCorr(bias_func=np.median)
+# Use median vertical shift instead
+vshift_median = coreg.VerticalShift(vshift_func=np.median)
 
 # bias_median.fit(... # etc.
 
@@ -81,9 +81,9 @@ aligned_dem = icp.apply(tba_data, transform=transform)
 # SECTION: Pipeline
 ###################
 
-pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP()])
+pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.ICP()])
 
 # pipeline.fit(...  # etc.
 
 # This works identically to the syntax above
-pipeline2 = coreg.BiasCorr() + coreg.ICP()
+pipeline2 = coreg.VerticalShift() + coreg.ICP()
