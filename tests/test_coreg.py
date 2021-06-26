@@ -53,12 +53,12 @@ class TestCoregClass:
         warnings.simplefilter("error")
 
         # Check that the from_matrix function works as expected.
-        bias = 5
+        vshift = 5
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[2, 3] = bias
+        matrix[2, 3] = vshift
         coreg_obj = coreg.Coreg.from_matrix(matrix)
         transformed_points = coreg_obj.apply_pts(self.points)
-        assert transformed_points[0, 2] == bias
+        assert transformed_points[0, 2] == vshift
 
         # Check that the from_translation function works as expected.
         x_offset = 5
@@ -73,42 +73,42 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
-    def test_bias(self):
+    def test_vertical_shift(self):
         warnings.simplefilter("error")
 
-        # Create a bias correction instance
-        biascorr = coreg.BiasCorr()
-        # Fit the bias model to the data
-        biascorr.fit(**self.fit_params)
+        # Create a vertical shift correction instance
+        vshiftcorr = coreg.VerticalShift()
+        # Fit the vertical shift model to the data
+        vshiftcorr.fit(**self.fit_params)
 
-        # Check that a bias was found.
-        assert biascorr._meta.get("bias") is not None
-        assert biascorr._meta["bias"] != 0.0
+        # Check that a vertical shift was found.
+        assert vshiftcorr._meta.get("vshift") is not None
+        assert vshiftcorr._meta["vshift"] != 0.0
 
-        # Copy the bias to see if it changes in the test (it shouldn't)
-        bias = copy.copy(biascorr._meta["bias"])
+        # Copy the vertical shift to see if it changes in the test (it shouldn't)
+        vshift = copy.copy(vshiftcorr._meta["vshift"])
 
         # Check that the to_matrix function works as it should
-        matrix = biascorr.to_matrix()
-        assert matrix[2, 3] == bias, matrix
+        matrix = vshiftcorr.to_matrix()
+        assert matrix[2, 3] == vshift, matrix
 
-        # Check that the first z coordinate is now the bias
-        assert biascorr.apply_pts(self.points)[0, 2] == biascorr._meta["bias"]
+        # Check that the first z coordinate is now the vertical shift
+        assert vshiftcorr.apply_pts(self.points)[0, 2] == vshiftcorr._meta["vshift"]
 
         # Apply the model to correct the DEM
-        tba_unbiased = biascorr.apply(self.tba.data, self.ref.transform)
+        tba_unbiased = vshiftcorr.apply(self.tba.data, self.ref.transform)
 
-        # Create a new bias correction model
-        biascorr2 = coreg.BiasCorr()
+        # Create a new vertical shift correction model
+        vshiftcorr2 = coreg.VerticalShift()
         # Check that this is indeed a new object
-        assert biascorr is not biascorr2
-        # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, inlier_mask=self.inlier_mask)
-        # Test the bias
-        assert abs(biascorr2._meta.get("bias")) < 0.01
+        assert vshiftcorr is not vshiftcorr2
+        # Fit the corrected DEM to see if the vertical shift will be close to or at zero
+        vshiftcorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, inlier_mask=self.inlier_mask)
+        # Test the vertical shift
+        assert abs(vshiftcorr2._meta.get("vshift")) < 0.01
 
-        # Check that the original model's bias has not changed (that the _meta dicts are two different objects)
-        assert biascorr._meta["bias"] == bias
+        # Check that the original model's vertical shift has not changed (that the _meta dicts are two different objects)
+        assert vshiftcorr._meta["vshift"] == vshift
 
     def test_all_nans(self):
         """Check that the coregistration approaches fail gracefully when given only nans."""
@@ -116,15 +116,15 @@ class TestCoregClass:
         dem2 = dem1.copy() + np.nan
         affine = rio.transform.from_origin(0, 0, 1, 1)
 
-        biascorr = coreg.BiasCorr()
+        vshiftcorr = coreg.VerticalShift()
         icp = coreg.ICP()
         
-        pytest.raises(ValueError, biascorr.fit, dem1, dem2, transform=affine)
+        pytest.raises(ValueError, vshiftcorr.fit, dem1, dem2, transform=affine)
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
         dem2[[3, 20, 40], [2, 21, 41]] = 1.2
 
-        biascorr.fit(dem1, dem2, transform=affine)
+        vshiftcorr.fit(dem1, dem2, transform=affine)
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
     
@@ -132,25 +132,25 @@ class TestCoregClass:
     def test_error_method(self):
         """Test different error measures."""
         dem1 = np.ones((50, 50), dtype=float)
-        # Create a biased dem
+        # Create a vertically shifted dem
         dem2 = dem1 + 2
         affine = rio.transform.from_origin(0, 0, 1, 1)
 
-        biascorr = coreg.BiasCorr()
-        # Fit the bias
-        biascorr.fit(dem1, dem2, transform=affine)
+        vshiftcorr = coreg.VerticalShift()
+        # Fit the vertical shift
+        vshiftcorr.fit(dem1, dem2, transform=affine)
 
-        # Check that the bias after coregistration is zero
-        assert biascorr.error(dem1, dem2, transform=affine, error_type="median") == 0
+        # Check that the vertical shift after coregistration is zero
+        assert vshiftcorr.error(dem1, dem2, transform=affine, error_type="median") == 0
 
-        # Remove the bias fit and see what happens.
-        biascorr._meta["bias"] = 0
+        # Remove the vertical shift fit and see what happens.
+        vshiftcorr._meta["vshift"] = 0
         # Now it should be equal to dem1 - dem2
-        assert biascorr.error(dem1, dem2, transform=affine, error_type="median") == -2
+        assert vshiftcorr.error(dem1, dem2, transform=affine, error_type="median") == -2
 
         # Create random noise and see if the standard deviation is equal (it should)
         dem3 = dem1 + np.random.random(size=dem1.size).reshape(dem1.shape)
-        assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
+        assert abs(vshiftcorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
 
 
@@ -162,11 +162,11 @@ class TestCoregClass:
 
         # Synthesize a shifted and vertically offset DEM
         pixel_shift = 2
-        bias = 5
+        vshift = 5
         shifted_dem = self.ref.data.squeeze().copy()
         shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
         shifted_dem[:, :pixel_shift] = np.nan
-        shifted_dem += bias
+        shifted_dem += vshift
 
         # Fit the synthesized shifted DEM to the original
         nuth_kaab.fit(self.ref.data.squeeze(), shifted_dem,
@@ -175,7 +175,7 @@ class TestCoregClass:
         # Make sure that the estimated offsets are similar to what was synthesized.
         assert abs(nuth_kaab._meta["offset_east_px"] - pixel_shift) < 0.03
         assert abs(nuth_kaab._meta["offset_north_px"]) < 0.03
-        assert abs(nuth_kaab._meta["bias"] + bias) < 0.03
+        assert abs(nuth_kaab._meta["vshift"] + vshift) < 0.03
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
@@ -192,8 +192,8 @@ class TestCoregClass:
 
         # Check that the x shift is close to the pixel_shift * image resolution
         assert abs((transformed_points[0, 0] - self.points[0, 0]) - pixel_shift * self.ref.res[0]) < 0.1
-        # Check that the z shift is close to the original bias.
-        assert abs((transformed_points[0, 2] - self.points[0, 2]) + bias) < 0.1
+        # Check that the z shift is close to the original vertical shift.
+        assert abs((transformed_points[0, 2] - self.points[0, 2]) + vshift) < 0.1
 
     def test_deramping(self):
         warnings.simplefilter("error")
@@ -218,20 +218,20 @@ class TestCoregClass:
         # Check that the mean periglacial offset is low
         assert np.abs(np.mean(periglacial_offset)) < 1
 
-        # Try a 0 degree deramp (basically bias correction)
+        # Try a 0 degree deramp (basically vertical shift correction)
         deramp0 = coreg.Deramp(degree=0)
         deramp0.fit(**self.fit_params)
 
         # Check that only one coefficient exists (y = x + a => coefficients=["a"])
         assert len(deramp0._meta["coefficients"]) == 1
-        # Extract said bias
-        bias = deramp0._meta["coefficients"][0]
+        # Extract said vertical shift
+        vshift = deramp0._meta["coefficients"][0]
 
         # Make sure to_matrix does not throw an error. It will for higher degree deramps
         deramp0.to_matrix()
 
-        # Check that the apply_pts would apply a z shift equal to the bias
-        assert deramp0.apply_pts(self.points)[0, 2] == bias
+        # Check that the apply_pts would apply a z shift equal to the vertical shift
+        assert deramp0.apply_pts(self.points)[0, 2] == vshift
 
     def test_icp_opencv(self):
         warnings.simplefilter("error")
@@ -248,72 +248,72 @@ class TestCoregClass:
         warnings.simplefilter("error")
 
         # Create a pipeline from two coreg methods.
-        pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP(max_iterations=3)])
+        pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.ICP(max_iterations=3)])
         pipeline.fit(**self.fit_params)
 
         aligned_dem = pipeline.apply(self.tba.data, self.ref.transform)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
-        # Make a new pipeline with two bias correction approaches.
-        pipeline2 = coreg.CoregPipeline([coreg.BiasCorr(), coreg.BiasCorr()])
-        # Set both "estimated" biases to be 1
-        pipeline2.pipeline[0]._meta["bias"] = 1
-        pipeline2.pipeline[1]._meta["bias"] = 1
+        # Make a new pipeline with two vertical shift correction approaches.
+        pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
+        # Set both "estimated" vertical shifts to be 1
+        pipeline2.pipeline[0]._meta["vshift"] = 1
+        pipeline2.pipeline[1]._meta["vshift"] = 1
 
-        # Assert that the combined bias is 2
+        # Assert that the combined vertical shift is 2
         pipeline2.to_matrix()[2, 3] == 2.0
 
     def test_coreg_add(self):
         warnings.simplefilter("error")
-        # Test with a bias of 4
-        bias = 4
+        # Test with a vertical shift of 4
+        vshift = 4
 
-        bias1 = coreg.BiasCorr()
-        bias2 = coreg.BiasCorr()
+        vshift1 = coreg.VerticalShift()
+        vshift2 = coreg.VerticalShift()
 
-        # Set the bias attribute
-        for bias_corr in (bias1, bias2):
-            bias_corr._meta["bias"] = bias
+        # Set the vertical shift attribute
+        for vshift_corr in (vshift1, vshift2):
+            vshift_corr._meta["vshift"] = vshift
 
-        # Add the two coregs and check that the resulting bias is 2* bias
-        bias3 = bias1 + bias2
-        assert bias3.to_matrix()[2, 3] == bias * 2
+        # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
+        vshift3 = vshift1 + vshift2
+        assert vshift3.to_matrix()[2, 3] == vshift * 2
 
         # Make sure the correct exception is raised on incorrect additions
         try:
-            bias1 + 1
+            vshift1 + 1
         except ValueError as exception:
             if "Incompatible add type" not in str(exception):
                 raise exception
 
         # Try to add a Coreg step to an already existing CoregPipeline
-        bias4 = bias3 + bias1
-        assert bias4.to_matrix()[2, 3] == bias * 3
+        vshift4 = vshift3 + vshift1
+        assert vshift4.to_matrix()[2, 3] == vshift * 3
 
         # Try to add two CoregPipelines
-        bias5 = bias3 + bias3
-        assert bias5.to_matrix()[2, 3] == bias * 4
+        vshift5 = vshift3 + vshift3
+        assert vshift5.to_matrix()[2, 3] == vshift * 4
 
     def test_subsample(self):
         warnings.simplefilter("error")
 
-        # Test subsampled bias correction
-        bias_sub = coreg.BiasCorr()
+        # Test subsampled vertical shift correction
+        vshift_sub = coreg.VerticalShift()
 
-        # Fit the bias using 50% of the unmasked data using a fraction
-        bias_sub.fit(**self.fit_params, subsample=0.5)
+        # Fit the vertical shift using 50% of the unmasked data using a fraction
+        vshift_sub.fit(**self.fit_params, subsample=0.5)
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        bias_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+        vshift_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
 
-        # Do full bias corr to compare
-        bias_full = coreg.BiasCorr()
-        bias_full.fit(**self.fit_params)
+        # Do full vertical shift corr to compare
+        vshift_full = coreg.VerticalShift()
+        vshift_full.fit(**self.fit_params)
 
-        # Check that the estimated biases are similar
-        assert abs(bias_sub._meta["bias"] - bias_full._meta["bias"]) < 0.1
+        # Check that the estimated vertical shifts are similar
+        assert abs(vshift_sub._meta["vshift"] - vshift_full._meta["vshift"]) < 0.1
 
         # Test ICP with subsampling
         icp_full = coreg.ICP(max_iterations=20)
@@ -343,28 +343,28 @@ class TestCoregClass:
         warnings.simplefilter("error")
         # This should maybe be its own function, but would just repeat the data loading procedure..
 
-        # Test only bias (it should just apply the bias and not make anything else)
-        bias = 5
+        # Test only vertical shift (it should just apply the vertical shift and not make anything else)
+        vshift = 5
         matrix = np.diag(np.ones(4, float))
-        matrix[2, 3] = bias
+        matrix[2, 3] = vshift
         transformed_dem = coreg.apply_matrix(self.ref.data.squeeze(), self.ref.transform, matrix)
-        reverted_dem = transformed_dem - bias
+        reverted_dem = transformed_dem - vshift
 
         # Check that the revered DEM has the exact same values as the initial one
-        # (resampling is not an exact science, so this will only apply for bias corrections)
+        # (resampling is not an exact science, so this will only apply for vshift corrections)
         assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(self.ref.data))
 
         # Synthesize a shifted and vertically offset DEM
         pixel_shift = 11
-        bias = 5
+        vshift = 5
         shifted_dem = self.ref.data.squeeze().copy()
         shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
         shifted_dem[:, :pixel_shift] = np.nan
-        shifted_dem += bias
+        shifted_dem += vshift
 
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[0, 3] = pixel_shift * self.tba.res[0]
-        matrix[2, 3] = -bias
+        matrix[2, 3] = -vshift
 
         transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(),
                                              self.ref.transform, matrix, resampling="bilinear")

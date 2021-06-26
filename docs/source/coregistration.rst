@@ -106,9 +106,9 @@ Example
         :lines: 44-50
 
 
-Bias correction
+Vertical shift
 ^^^^^^^^^^^^^^^
-:class:`xdem.coreg.BiasCorr`
+:class:`xdem.coreg.VerticalShift`
 
 - **Performs:** (Weighted) bias correction using the mean, median or anything else
 - **Supports weights** (soon)

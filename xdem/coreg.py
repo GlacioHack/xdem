@@ -756,43 +756,43 @@ class Coreg:
         raise NotImplementedError("This should have been implemented by subclassing")
 
 
-class BiasCorr(Coreg):
+class VerticalShift(Coreg):
     """
-    DEM bias correction.
+    DEM vertical shift correction.
 
     Estimates the mean (or median, weighted avg., etc.) offset between two DEMs.
     """
 
     def __init__(self, bias_func=np.average):  # pylint: disable=super-init-not-called
         """
-        Instantiate a bias correction object.
+        Instantiate a vertical shift correction object.
 
-        :param bias_func: The function to use for calculating the bias. Default: (weighted) average.
+        :param bias_func: The function to use for calculating the vertical shift. Default: (weighted) average.
         """
-        super().__init__(meta={"bias_func": bias_func})
+        super().__init__(meta={"vshift_func": bias_func})
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
-        """Estimate the bias using the bias_func."""
+        """Estimate the vertical shift using the bias_func."""
         if verbose:
-            print("Estimating bias...")
+            print("Estimating the vertical shift...")
         diff = ref_dem - tba_dem
         diff = diff[np.isfinite(diff)]
 
         # Use weights if those were provided.
-        bias = self._meta["bias_func"](diff) if weights is None \
-            else self._meta["bias_func"](diff, weights=weights)
+        bias = self._meta["vshift_func"](diff) if weights is None \
+            else self._meta["vshift_func"](diff, weights=weights)
 
         if verbose:
-            print("Bias estimated")
+            print("Vertical shift estimated")
 
-        self._meta["bias"] = bias
+        self._meta["vshift"] = bias
 
     def _to_matrix_func(self) -> np.ndarray:
         """Convert the bias to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["bias"]
+        empty_matrix[2, 3] += self._meta["vshift"]
 
         return empty_matrix
 
