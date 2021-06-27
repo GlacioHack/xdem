@@ -96,13 +96,13 @@ class TestVariogram:
         # single model fit
         fun, _ = xdem.spstats.fit_model_sum_vgm(['Sph'], df_sig)
         if PLOT:
-            xdem.spstats.plot_vgm(df_sig, fit_fun=fun)
+            xdem.spstats.plot_vgm(df_sig, list_fit_fun=[fun])
 
         try:
             # triple model fit
             fun2, _ = xdem.spstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df_sig)
             if PLOT:
-                xdem.spstats.plot_vgm(df_sig, fit_fun=fun2)
+                xdem.spstats.plot_vgm(df_sig, list_fit_fun=[fun2])
         except RuntimeError as exception:
             if "The maximum number of function evaluations is exceeded." not in str(exception):
                 raise exception

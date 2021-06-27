@@ -9,7 +9,7 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union
+from typing import Callable, Union, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -236,7 +236,7 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
     :param list_model: list of variogram models to sum for the fit: from short-range to long-ranges
     :param emp_vgm_df: empirical variogram
 
-    :return: modelled variogram
+    :return: modelled variogram function, coefficients
     """
     # TODO: expand to other models than spherical, exponential, gaussian (more than 2 arguments)
     def vgm_sum(h, *args):
@@ -310,7 +310,7 @@ def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
 
 def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crange2: float, psill2: float) -> float:
     """
-    Number of effective samples derived from exact integration of sum of spherical variogram models over a circular area.
+    Number of effective samples derived from exact integration of sum of 2 spherical variogram models over a circular area.
     The number of effective samples serves to convert between standard deviation/partial sills and standard error
     over the area.
     If SE is the standard error, SD the standard deviation and N_eff the number of effective samples, we have:
@@ -349,7 +349,7 @@ def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crang
     return (psill1 + psill2)/std_err**2
 
 
-def neff_circ(area: float, list_vgm: list[Union[float, str, float]]) -> float:
+def neff_circ(area: float, list_vgm: list[tuple[float, str, float]]) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
@@ -357,7 +357,7 @@ def neff_circ(area: float, list_vgm: list[Union[float, str, float]]) -> float:
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
 
     :param area: area
-    :param list_vgm: variogram functions to sum
+    :param list_vgm: variogram functions to sum (range, model name, partial sill)
 
     :returns: number of effective samples
     """
@@ -723,7 +723,7 @@ def patches_method(dh: np.ndarray, mask: np.ndarray[bool], gsd: float, area_size
     return df
 
 
-def plot_vgm(df: pd.DataFrame, fit_fun: Callable = None):
+def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable]] = None, list_fit_fun_label: Optional[list[str]] = None):
 
     fig, ax = plt.subplots(1)
     if np.all(np.isnan(df.exp_sigma)):
@@ -731,11 +731,18 @@ def plot_vgm(df: pd.DataFrame, fit_fun: Callable = None):
     else:
         ax.errorbar(df.bins, df.exp, yerr=df.exp_sigma, label='Empirical variogram (1-sigma s.d)')
 
-    if fit_fun is not None:
-        x = np.linspace(0, np.max(df.bins), 10000)
-        y = fit_fun(x)
+    if list_fit_fun is not None:
+        for i, fit_fun in enumerate(list_fit_fun):
+            x = np.linspace(0, np.max(df.bins), 10000)
+            y = fit_fun(x)
 
-        ax.plot(x, y, linestyle='dashed', color='black', label='Model fit', zorder=30)
+            if list_fit_fun_label is not None:
+                ax.plot(x, y, linestyle='dashed', label=list_fit_fun_label[i], zorder=30)
+            else:
+                ax.plot(x, y, linestyle='dashed', color='black', zorder=30)
+
+        if list_fit_fun_label is None:
+            ax.plot([],[],linestyle='dashed',color='black',label='Model fit')
 
     ax.set_xlabel('Lag (m)')
     ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
