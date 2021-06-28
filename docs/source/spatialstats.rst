@@ -4,7 +4,7 @@ Spatial statistics
 ==================
 
 Spatial statistics, also referred to as geostatistics, are essential for the analysis of observations distributed in space.
-To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs based on recent literature, and with routines partly relying on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
+To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs described in recent literature, in particular `Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_, `Dehecq et al. (2020) <https://doi.org/10.3389/feart.2020.566802>`_ and `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_. The implementation of these methods relies partly on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
 
 The spatial statistics tools can be used to assess the precision of DEMs (see the definition of precision in :ref:`intro`). In particular, these tools help to:
     - account for non-stationarities of elevation measurement errors (e.g., varying precision of DEMs with terrain slope),
@@ -12,15 +12,13 @@ The spatial statistics tools can be used to assess the precision of DEMs (see th
     - estimate robust errors for observations integrated in space (e.g., average or sum of samples),
     - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
-More details below.
-
 .. contents:: Contents 
    :local:
 
 Assumptions for statistical inference in spatial statistics
 ***********************************************************
 
-Spatial statistics are valid if the variable of interest verifies the assumption of stationarity of the 1:sup:`st` and 2:sup:`nd` orders.
+Spatial statistics are valid if the variable of interest verifies the assumption of stationarity of the 1\ :sup:`st` and 2\ :sup:`nd` orders.
 That is, if the two following assumptions are verified:
     1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,
     2. The variance of the variable of interest is stationary in space, i.e. constant over sufficiently large areas.
@@ -28,11 +26,11 @@ That is, if the two following assumptions are verified:
 A sufficiently large averaging area is an area expected to fit within the spatial domain studied.
 
 In other words, for a reliable analysis, the DEM should:
-    1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain large-scale pseudo-periodic biases (e.g., along-track undulations),
-    2. Not contain measurement errors that vary significantly.
+    1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
+    2. Not contain measurement errors that vary significantly in space.
 
-Precision of a single DEM, or a difference of elevation data
-************************************************************
+Precision of a single DEM, or of a difference of elevation data
+***************************************************************
 
 To infer the precision of a DEM, it is compared against other elevation data.
 If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent the precision of the rougher DEM.
@@ -45,7 +43,7 @@ Stable terrain: proxy for infering DEM precision
 
 To infer the precision of a DEM over all terrain, the proxy typically utilized is the stable terrain (i.e. terrain that has not moved such as bare rock).
 
-However 
+However
 
 Metrics for DEM precision
 *************************
