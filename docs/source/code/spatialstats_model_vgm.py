@@ -37,6 +37,6 @@ xdem.spstats.plot_vgm(df, list_fit_fun=[fun,fun2],list_fit_fun_label=['Spherical
 
 # plot empirical variogram
 xdem.spstats.plot_vgm(df)
-plt.show()
 
+plt.show()
 

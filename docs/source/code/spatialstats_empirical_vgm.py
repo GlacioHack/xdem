@@ -33,6 +33,6 @@ df = xdem.spstats.sample_multirange_empirical_variogram(dh=ddem.data, nsamp=1000
 
 # plot empirical variogram
 xdem.spstats.plot_vgm(df)
-plt.show()
 
+plt.show()
 
