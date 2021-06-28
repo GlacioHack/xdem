@@ -65,7 +65,9 @@ TODO: Add this section based Rolstad et al. (2009), Dehecq et al. (2020), Hugonn
 .. literalinclude:: code/spatialstats.py
         :lines: 26-27
 
-.. plot:: code/spatialstats_empiricalvgm.py
+
+.. plot:: code/spatialstats_empirical_vgm.py
+
 
 .. plot:: code/spatialstats_model_vgm.py
 
