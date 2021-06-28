@@ -16,31 +16,8 @@ More details below.
    :local:
 
 
-Introduction: why is it complex to assess DEM accuracy and precision?
-*********************************************************************
-
-Digital Elevation Models are a numerical representations of elevation. They are generated from different instruments (radiometer, radar, lidar), acquired in different conditions (ground, airborne, satellite), and using different post-processing techniques (stereophotogrammetry, interferometry, etc.).
-
-While some complexities are specific to certain instruments, all DEMs generally have:
-    - an **arbitrary Ground Sampling Distance (GSD)** that does not necessarily represent their underlying spatial resolution,
-    - an **georeferenced positioning subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated post-processing schemes,
-    - a **large number of outliers** that can originate from various sources (e.g., photogrammetric blunders, clouds).
-
-DEM accuracy or DEM precision
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Both DEM accuracy and precision can be of interest when analyzing DEMs:
-    - the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
-    - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
-
-Absolute or relative accuracy
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The measure of accuracy can be further split into two:
-    - the **absolute accuracy** of a DEM is the average shift to the true positioning. Studies interested in analyzing features of a single DEM might give great importance to this potential bias, which can be easily removed through a DEM co-registration with accurate, georeferenced point elevation data such as ICESat and ICESat-2 (:ref:`coregistration`).
-    - the **relative accuracy** of a DEM is the potential shifts, tilts, and deformations in relation to other elevation data, not necessarily with true absolute referencing. Studies interested in comparing several DEMs in between them can focus only on this accuracy relative to the DEMs, by performed co-registration in between the DEMs and correcting for possible biases (:ref:`coregistration`, TODO: ref bias corrections).
-
-As the **absolute accuracy** can be easily corrected a posteriori with an reference elevation dataset, we here only focus on **relative accuracy**, i.e. the biases between to DEMs co-registered relative one to another.
+Metrics for DEM precision
+*************************
 
 Pixel-wise elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

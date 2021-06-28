@@ -5,7 +5,7 @@
 
 Welcome to xdem's documentation!
 ================================
-xdem aims to make Digital Elevation Model (DEM) comparisons easy.
+xdem aims to make Digital Elevation Model (DEM) analysis easy.
 Coregistration, subtraction (and volume measurements), and error statistics should be available to anyone with the correct input data.
 
 
@@ -28,9 +28,10 @@ Simple usage
    :caption: Contents:
 
    tutorials
+   intro
    coregistration
    comparison
-   spatial_stats
+   spatialstats
    api/xdem.rst
 
 Indices and tables
