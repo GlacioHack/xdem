@@ -23,6 +23,8 @@ Both accuracy and precision are important factors to account for when analyzing 
 - the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
 - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
 
+TODO: Add a little schematic!
+
 Absolute or relative accuracy
 *****************************
 
@@ -31,6 +33,7 @@ The measure of accuracy can be further divided into two aspects:
 - the **absolute accuracy** of a DEM describes the average shift to the true positioning. Studies interested in analyzing features of a single DEM in relation to other georeferenced data might give great importance to this potential bias.
 - the **relative accuracy** of a DEM is the potential shifts, tilts, and deformations in relation to other elevation data that does not necessarily matches a given referencing. Studies interested in comparing DEMs between themselves might be only interested in this accuracy.
 
+TODO: Add another little schematic!
 
 Optimizing DEM absolute accuracy
 **********************************
@@ -38,7 +41,9 @@ Optimizing DEM absolute accuracy
 Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM co-registration to precise and accurate, quality-controlled elevation data such as ICESat and ICESat-2.
 Quality-controlled DEMs aligned on high-accuracy data also exists, such as TanDEM-X global DEM (see `Rizzoli et al. (2017) <https://doi.org/10.1016/j.isprsjprs.2017.08.008>`_)
 
-Those biases can be corrected using the methods described in see :ref:`coregistration`.
+Those biases can be corrected using the methods described in :ref:`coregistration`.
+
+TODO: Add a point data - DEM co-registration plot
 
 Optimizing DEM relative accuracy
 **********************************
@@ -51,6 +56,8 @@ By harnessing the denser, nearly continuous sampling of raster DEMs (in oppositi
 
 Those biases can be tackled by iteratively combining co-registration and bias-correction methods described in :ref:`coregistration` and :ref:`biascorr`.
 
+TODO: Add a plot on co-registration + bias correction between two DEMs
+
 Quantifying DEM precision
 **************************
 
@@ -62,3 +69,4 @@ The lack of implementations of these methods in a modern programming language ma
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
+TODO: Add a plot summarizing a DEM precision quantification
