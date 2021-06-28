@@ -1,3 +1,5 @@
+.. _intro:
+
 Introduction: why is it complex to assess DEM accuracy and precision?
 =====================================================================
 
@@ -42,7 +44,7 @@ By harnessing the denser, nearly continuous sampling of raster DEMs (in oppositi
     - Terrain-related biases that can originate from the difference of resolution of DEMs, or instrument processing deformations.
     - Directional biases that can be linked to instrument noise, such as along-track oscillations observed in many widepsread DEM products (SRTM, ASTER, SPOT, Pléiades, etc).
 
-Those biases can be tackled by iteratively combining co-registration and bias-correction methods (:ref:`biascorr`).
+Those biases can be tackled by iteratively combining co-registration and bias-correction methods (:ref:`coregistration`, :ref:`biascorr`).
 
 Quantifying DEM precision
 **************************

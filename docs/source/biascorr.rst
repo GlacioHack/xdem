@@ -1,3 +1,5 @@
+.. _biascorr:
+
 Bias corrections
 ================
 

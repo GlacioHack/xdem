@@ -1,3 +1,5 @@
+.. _spatialstats:
+
 Spatial statistics
 ==================
 
