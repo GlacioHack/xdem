@@ -32,7 +32,7 @@ np.random.seed(42)
 df = xdem.spstats.sample_multirange_empirical_variogram(dh=ddem.data, nsamp=1000, nrun=20, maxlag=10000)
 
 # plot empirical variogram
-xdem.spstats.plot_vgm(df)
+ax = xdem.spstats.plot_vgm(df)
 
 plt.show()
 

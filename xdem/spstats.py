@@ -747,4 +747,5 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable]] = None, li
     ax.set_xlabel('Lag (m)')
     ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
     ax.legend(loc='best')
-    ax.grid()
+
+    return ax
