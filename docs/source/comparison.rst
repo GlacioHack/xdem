@@ -1,4 +1,4 @@
-DEM subtraction and volume change
+Differencing and volume change
 =================================
 
 .. contents:: Contents 

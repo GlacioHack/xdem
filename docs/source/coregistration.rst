@@ -1,7 +1,16 @@
 .. _coregistration:
 
-DEM Coregistration
-==================
+Coregistration
+===============
+
+Coregistration between DEMs correspond to aligning the digital elevation models in three dimension.
+
+Transformations that can be described by a 3-dimensional affine function are included in coregistration methods.
+Those transformations include :
+
+- vertical and horizontal shifts,
+- rotations,
+- stretching and squeezing.
 
 .. contents:: Contents 
    :local:

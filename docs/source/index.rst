@@ -29,9 +29,10 @@ Simple usage
 
    intro
    coregistration
-   bias corr
+   biascorr
    comparison
    spatialstats
+   robuststats
    tutorials
    api/xdem.rst
 
