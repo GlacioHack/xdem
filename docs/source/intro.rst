@@ -1,14 +1,14 @@
 Introduction: why is it complex to assess DEM accuracy and precision?
 =====================================================================
 
-Digital Elevation Models are a numerical representations of elevation, essentially maps of topography. They are generated from different instruments (e.g., radiometer, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite), and using different post-processing techniques (e.g., stereophotogrammetry, interferometry).
+Digital Elevation Models are numerical representations of elevation. They are generated from different instruments (e.g., radiometer, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite), and using different post-processing techniques (e.g., stereophotogrammetry, interferometry).
 
 While some complexities are specific to certain instruments and methods, all DEMs generally have:
     - an **arbitrary Ground Sampling Distance (GSD)** that does not necessarily represent their underlying spatial resolution,
     - an **georeferenced positioning subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated post-processing schemes,
     - a **large number of outliers** that can originate from various sources (e.g., photogrammetric blunders, clouds).
 
-These factors lead to difficulties in assessing the accuracy and precision of DEMs, which is necessary for further analysis.
+These factors lead to difficulties in assessing the accuracy and precision of DEMs, necessary to perform further analysis.
 
 Accuracy and precision
 **********************
@@ -45,6 +45,12 @@ Those biases can be tackled by iteratively combining co-registration and bias-co
 Dealing with DEM precision
 **************************
 
-While dealing with **accuracy** is quite straightforward, as it consists of minimizing the difference corresponding to possible biases between several datasets, assessing the **precision** of DEMs can be much more complex.
-The measurement error of a DEM is usually described by a single metric: 
+While dealing with **accuracy** is quite straightforward as it consists of minimizing the differences (biases) between several datasets, assessing the **precision** of DEMs can be much more complex.
+Measurement errors of a DEM cannot be quantified by a simple difference and require statistical inference.
+
+The **precision** of DEMs has generally been reported by a single metric, for example: :math:`\pm` 2 m, but recent studies have shown the limitations of simplified metrics and provide more statistically advanced methods.
+However, the lack of a simple implementation in a modern programming language makes these methods hard to reproduce and validate.
+One of the goals of ``xdem`` is to simplify state-of-the-art statistical measures, to allow accurate DEM uncertainty estimation for everyone, regardless of one's statistical talent.
+
+The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
