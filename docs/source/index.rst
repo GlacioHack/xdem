@@ -27,12 +27,12 @@ Simple usage
    :maxdepth: 2
    :caption: Contents:
 
-   tutorials
    intro
    coregistration
    bias corr
    comparison
    spatialstats
+   tutorials
    api/xdem.rst
 
 Indices and tables
