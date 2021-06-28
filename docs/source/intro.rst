@@ -33,8 +33,9 @@ Optimizing DEM absolute accuracy
 **********************************
 
 Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM co-registration to precise and accurate, quality-controlled elevation data such as ICESat and ICESat-2.
+Quality-controlled DEMs aligned on high-accuracy data also exists, such as TanDEM-X global DEM (see `Rizzoli et al. (2017) <https://doi.org/10.1016/j.isprsjprs.2017.08.008>`_)
 
-For more details, see :ref:`coregistration` with point data.
+Those biases can be corrected using the methods described in see :ref:`coregistration`.
 
 Optimizing DEM relative accuracy
 **********************************
@@ -44,7 +45,7 @@ By harnessing the denser, nearly continuous sampling of raster DEMs (in oppositi
     - Terrain-related biases that can originate from the difference of resolution of DEMs, or instrument processing deformations.
     - Directional biases that can be linked to instrument noise, such as along-track oscillations observed in many widepsread DEM products (SRTM, ASTER, SPOT, Pléiades, etc).
 
-Those biases can be tackled by iteratively combining co-registration and bias-correction methods (:ref:`coregistration`, :ref:`biascorr`).
+Those biases can be tackled by iteratively combining co-registration and bias-correction methods described in :ref:`coregistration` and :ref:`biascorr`.
 
 Quantifying DEM precision
 **************************
@@ -52,9 +53,8 @@ Quantifying DEM precision
 While dealing with **accuracy** is quite straightforward as it consists of minimizing the differences (biases) between several datasets, assessing the **precision** of DEMs can be much more complex.
 Measurement errors of a DEM cannot be quantified by a simple difference and require statistical inference.
 
-The **precision** of DEMs has historically been reported by a single metric, for example: :math:`\pm` 2 m, but recent studies have shown the limitations of such simplified metrics and provide more statistically-advanced methods.
-However, the lack of a simple implementation in a modern programming language makes these methods hard to reproduce and validate.
-One of the goals of ``xdem`` is to simplify state-of-the-art statistical measures, to allow accurate DEM uncertainty estimation for everyone, regardless of one's statistical talent.
+The **precision** of DEMs has historically been reported by a single metric (e.g., precision of :math:`\pm` 2 m), but recent studies have shown the limitations simple metrics and provide more statistically-advanced methods to account for potential variabilities and correlations in space.
+The lack of implementations of these methods in a modern programming language makes them hard to reproduce and validate, and be applied consistently. This is why one of the main goals of ``xdem`` is to simplify state-of-the-art statistical measures, to allow accurate DEM uncertainty estimation for everyone, regardless of one's statistical talent.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 

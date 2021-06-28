@@ -4,7 +4,7 @@ Spatial statistics
 ==================
 
 Spatial statistics, also referred to as geostatistics, are essential for the analysis of observations distributed in space.
-To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs described in recent literature, in particular `Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_, `Dehecq et al. (2020) <https://doi.org/10.3389/feart.2020.566802>`_ and `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_. The implementation of these methods relies partly on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
+To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs described in recent literature, in particular in `Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_, `Dehecq et al. (2020) <https://doi.org/10.3389/feart.2020.566802>`_ and `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_. The implementation of these methods relies partly on the package `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
 
 The spatial statistics tools can be used to assess the precision of DEMs (see the definition of precision in :ref:`intro`). In particular, these tools help to:
     - account for non-stationarities of elevation measurement errors (e.g., varying precision of DEMs with terrain slope),
@@ -36,14 +36,12 @@ To infer the precision of a DEM, it is compared against other elevation data.
 If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent the precision of the rougher DEM.
 Otherwise, the difference will describe the precision with significant measurement errors originating from both the DEM and the other dataset.
 
-TO DO: complete with Hugonnet et al. (in prep)
+TODO: complete with Hugonnet et al. (in prep)
 
 Stable terrain: proxy for infering DEM precision
 ************************************************
 
-To infer the precision of a DEM over all terrain, the proxy typically utilized is the stable terrain (i.e. terrain that has not moved such as bare rock).
-
-However
+TODO
 
 Metrics for DEM precision
 *************************
@@ -51,7 +49,7 @@ Metrics for DEM precision
 Pixel-wise elevation measurement error
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The
+TODO
 
 
 Spatially-integrated elevation measurement error
@@ -94,11 +92,6 @@ TODO: Add this section based Rolstad et al. (2009), Dehecq et al. (2020), Hugonn
         :lines: 26-27
 
 
-.. plot:: code/spatialstats_empirical_vgm.py
-
-
-.. plot:: code/spatialstats_model_vgm.py
-
 Spatially integrated measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -107,4 +100,4 @@ TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 Propagation of correlated errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-TODO: Add this section based on Krige's relation (Webster & Oliver, 2007
+TODO: Add this section based on Krige's relation (Webster & Oliver, 2007)
