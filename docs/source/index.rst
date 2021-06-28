@@ -30,6 +30,7 @@ Simple usage
    tutorials
    intro
    coregistration
+   bias corr
    comparison
    spatialstats
    api/xdem.rst
