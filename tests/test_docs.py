@@ -1,3 +1,4 @@
+"""Functions to test the documentation."""
 import os
 import shutil
 import subprocess

@@ -1,7 +1,4 @@
-"""
-Routines to test the spatial statistics functions.
-
-"""
+"""Functions to test the spatial statistics."""
 from __future__ import annotations
 from typing import Tuple
 

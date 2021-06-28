@@ -1,3 +1,4 @@
+"""Difference of DEMs classes and functions."""
 from __future__ import annotations
 
 import copy

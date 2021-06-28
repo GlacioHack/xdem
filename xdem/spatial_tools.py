@@ -1,7 +1,4 @@
-"""
-A set of basic operations to be run on 2D arrays and DEMs.
-"""
-
+"""Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
 
 from typing import Callable, Union
