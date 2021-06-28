@@ -6,9 +6,9 @@ Spatial statistics
 Spatial statistics, also referred to as geostatistics, are essential for the analysis of observations distributed in space.
 To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs based on recent literature, and with routines partly relying on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
 
-The spatial statistics tools can be used to:
+The spatial statistics tools can be used to assess the precision of DEMs (see the definition of precision in :ref:`intro`), and in particular:
     - account for non-stationarities of elevation measurement errors (e.g., varying precision of DEMs with terrain slope),
-    - quantify the spatial correlation in DEMs (e.g., native spatial resolution, instrument noise),
+    - quantify the spatial correlation of measurement errors in DEMs (e.g., native spatial resolution, instrument noise),
     - estimate robust errors for observations integrated in space (e.g., average or sum of samples),
     - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
@@ -17,13 +17,46 @@ More details below.
 .. contents:: Contents 
    :local:
 
+Assumptions for statistical inference in spatial statistics
+***********************************************************
+
+Spatial statistics are valid if the variable of interest verifies the assumption of stationarity of the 1:superscript:`st` and 2:superscript:`nd` orders.
+That is, if the two following assumptions are verified:
+    1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,
+    2. The variance of the variable of interest is stationary in space, i.e. constant over sufficiently large areas.
+
+A sufficiently large averaging area is an area expected to fit within the spatial domain studied.
+
+In other words, for a reliable analysis, the DEM should:
+    1. Not contain systematic biases that do not average to zero over sufficiently large distances (e.g., shifts, tilts), but can contain large-scale pseudo-periodic biases (e.g., along-track undulations),
+    2. Not contain measurement errors that vary significantly.
+
+Precision of a single DEM, or a difference of elevation data
+************************************************************
+
+TO COMPLETE LATER IN MORE DETAILS WITH: Hugonnet et al. (in prep)
+
+To infer the precision of a DEM, it is compared against other elevation data.
+If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent the precision of the rougher DEM.
+Otherwise, the difference will describe the precision with significant measurement errors originating from both the DEM and the other dataset.
+
+Stable terrain: proxy for infering DEM precision
+************************************************
+
+To infer the precision of a DEM over all terrain, the proxy typically utilized is the stable terrain (i.e. terrain that has not moved such as bare rock).
+
+and after the removal of systematic biases to ensure an optimalaccuracy (see :ref:`intro`).
+
+
+
 
 Metrics for DEM precision
 *************************
 
-Pixel-wise elevation measurement errors
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Pixel-wise elevation measurement error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+The
 
 
 Spatially-integrated elevation measurement error
@@ -48,8 +81,8 @@ However, several issues arise to estimate the standard error of a mean of elevat
 Note that the SE represents completely stochastic (random) errors, and is therefore not accounting for possible remaining systematic errors have been accounted for, e.g. using one or multiple :ref:`coregistration` approaches.
 
 
-Relative spatial accuracy of a DEM
-**********************************
+Methods for DEM precision estimation
+************************************
 
 
 Non-stationarity in elevation measurement errors
