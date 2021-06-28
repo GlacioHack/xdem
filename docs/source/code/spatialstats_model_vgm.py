@@ -29,14 +29,10 @@ coords = np.dstack((x.flatten(), y.flatten())).squeeze()
 np.random.seed(42)
 
 # sample empirical variogram
-df = xdem.spstats.sample_multirange_empirical_variogram(dh=ddem.data, nsamp=1000, nrun=20, maxlag=10000)
+df = xdem.spstats.sample_multirange_empirical_variogram(dh=ddem.data, gsd=ddem.res[0], nsamp=1000, nrun=20, maxlag=4000)
 
 fun, _ = xdem.spstats.fit_model_sum_vgm(['Sph'], df)
 fun2, _ = xdem.spstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
 xdem.spstats.plot_vgm(df, list_fit_fun=[fun,fun2],list_fit_fun_label=['Spherical model','Sum of three spherical models'])
 
-# plot empirical variogram
-xdem.spstats.plot_vgm(df)
-
 plt.show()
-

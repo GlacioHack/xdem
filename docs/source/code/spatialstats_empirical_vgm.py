@@ -29,10 +29,10 @@ coords = np.dstack((x.flatten(), y.flatten())).squeeze()
 np.random.seed(42)
 
 # sample empirical variogram
-df = xdem.spstats.sample_multirange_empirical_variogram(dh=ddem.data, nsamp=1000, nrun=20, maxlag=10000)
+df = xdem.spstats.sample_multirange_empirical_variogram(dh=ddem.data, gsd=ddem.res[0], nsamp=1000, nrun=20, maxlag=4000)
 
 # plot empirical variogram
-ax = xdem.spstats.plot_vgm(df)
+xdem.spstats.plot_vgm(df)
 
 plt.show()
 
