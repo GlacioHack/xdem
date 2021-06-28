@@ -64,8 +64,8 @@ Quantifying DEM precision
 While dealing with **accuracy** is quite straightforward as it consists of minimizing the differences (biases) between several datasets, assessing the **precision** of DEMs can be much more complex.
 Measurement errors of a DEM cannot be quantified by a simple difference and require statistical inference.
 
-The **precision** of DEMs has historically been reported by a single metric (e.g., precision of :math:`\pm` 2 m), but recent studies have shown the limitations simple metrics and provide more statistically-advanced methods to account for potential variabilities and correlations in space.
-The lack of implementations of these methods in a modern programming language makes them hard to reproduce and validate, and be applied consistently. This is why one of the main goals of ``xdem`` is to simplify state-of-the-art statistical measures, to allow accurate DEM uncertainty estimation for everyone, regardless of one's statistical talent.
+The **precision** of DEMs has historically been reported by a single metric (e.g., precision of :math:`\pm` 2 m), but recent studies have shown the limitations of such simple metrics and provide more statistically-advanced methods to account for potential variabilities in precision and related correlations in space.
+However, the lack of implementations of these methods in a modern programming language makes them hard to reproduce, validate, and apply consistently. This is why one of the main goals of ``xdem`` is to simplify state-of-the-art statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
