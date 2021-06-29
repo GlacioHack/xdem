@@ -203,11 +203,10 @@ For larger rotations, ICP is the only reliable approach (but does not outperform
 
         coreg.ICP() + coreg.NuthKaab()
 
-
 For large biases, rotations and high amounts of noise:
 
 .. code-block:: python
 
-        coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()
+        coreg.VerticalShift() + coreg.ICP() + coreg.NuthKaab()
         
 
