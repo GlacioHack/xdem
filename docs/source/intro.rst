@@ -18,12 +18,13 @@ In ``xdem``, we provide a framework with state-of-the-art methods published in t
 Accuracy and precision
 **********************
 
-Both accuracy and precision are important factors to account for when analyzing DEMs:
+Both `accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precision>`_ are important factors to account for when analyzing DEMs:
 
 - the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
 - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
 
-TODO: Add a little schematic!
+.. image:: http://cdn.antarcticglaciers.org/wp-content/uploads/2013/11/precision_accuracy.png
+    :width: 600
 
 Absolute or relative accuracy
 *****************************
