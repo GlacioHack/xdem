@@ -197,4 +197,12 @@ def test_get_quadric_coefficients() -> None:
         xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
 
 
+    # Validate that when using the edge_method="none", only the one non-edge value is kept.
+    coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="none")
+    assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 1
+    # When using edge wrapping, all coefficients should be finite.
+    coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
+    assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+
+
 

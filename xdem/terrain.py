@@ -12,9 +12,7 @@ import xdem.spatial_tools
 
 @numba.njit(parallel=True)
 def _get_quadric_coefficients(
-    dem: np.ndarray,
-    resolution: float,
-    fill_method: str = "median",
+    dem: np.ndarray, resolution: float, fill_method: str = "median", edge_method: str = "nearest"
 ) -> np.ndarray:
     """
     Run the pixel-wise analysis in parallel.
@@ -35,6 +33,13 @@ def _get_quadric_coefficients(
     elif fill_method == "none":
         fill_method_n = numba.uint8(2)
 
+    if edge_method == "nearest":
+        edge_method_n = numba.uint8(0)
+    elif edge_method == "wrap":
+        edge_method_n = numba.uint8(1)
+    elif edge_method == "none":
+        edge_method_n = numba.uint8(2)
+
     # Loop over every pixel concurrently.
     for i in numba.prange(dem.size):
         # Derive its associated row and column index.
@@ -45,10 +50,21 @@ def _get_quadric_coefficients(
         # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
         Z = np.empty((9,), dtype=dem.dtype)
         count = 0
+
+        # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
+        if edge_method_n == 2:
+            if (row < 1) or (row > (dem.shape[0] - 2)) or (col < 1) or (col > (dem.shape[1] - 2)):
+                continue
+
         for j in range(-1, 2):
             for k in range(-1, 2):
-                row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
-                col_indexer = min(max(col + j, 0), dem.shape[1] - 1)
+                # Here the "nearest" edge_method is performed.
+                if edge_method_n == 0:
+                    row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
+                    col_indexer = min(max(col + j, 0), dem.shape[1] - 1)
+                elif edge_method_n == 1:
+                    row_indexer = (row + k) % dem.shape[0]
+                    col_indexer = (col + j) % dem.shape[1]
                 Z[count] = dem[row_indexer, col_indexer]
                 count += 1
 
@@ -88,7 +104,9 @@ def _get_quadric_coefficients(
     return output
 
 
-def get_quadric_coefficients(dem: np.ndarray, resolution: float, fill_method: str = "median") -> np.ndarray:
+def get_quadric_coefficients(
+    dem: np.ndarray, resolution: float, fill_method: str = "median", edge_method: str = "nearest"
+) -> np.ndarray:
     """
     Return the 9 coefficients of a quadric surface fit to every pixel in the raster.
 
@@ -101,6 +119,18 @@ def get_quadric_coefficients(dem: np.ndarray, resolution: float, fill_method: st
     Each pixel's fit can be accessed by coefficients[:, row, col], returning an array of shape 9.
     The 9 coefficients correspond to those in the equation above.
 
+    Fill methods
+        If the 3x3 matrix to fit the quadric function on has NaNs, these need to be handled:
+        * 'median': NaNs are filled with the median value of the matrix.
+        * 'mean': NaNs are filled with the mean value of the matrix.
+        * 'none': If NaNs are encountered, skip the entire cell (default for GDAL and SAGA).
+
+    Edge methods
+        Each iteration requires a 3x3 matrix, so special edge cases have to be made.
+        * 'nearest': Pixels outside the range are filled using the closest pixel value.
+        * 'wrap': The array is wrapped so pixels near the right edge will be sampled from the left, etc.
+        * 'none': Edges will not be analyzed, leaving a 1 pixel edge of NaNs.
+
     Quirks:
         * Edges are naively treated by filling the closest value, so that a 3x3 matrix is always calculated.\
                 It may therefore be slightly off in the edges.
@@ -109,6 +139,8 @@ def get_quadric_coefficients(dem: np.ndarray, resolution: float, fill_method: st
 
     :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported)
     :param resolution: The X/Y resolution of the DEM.
+    :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
+    :param edge_method: The method to use near the array edge.
 
     :raises ValueError: If the inputs are poorly formatted.
     :raises RuntimeError: If unexpected backend errors occurred.
@@ -142,13 +174,18 @@ def get_quadric_coefficients(dem: np.ndarray, resolution: float, fill_method: st
         raise ValueError("Resolution must be the same for X and Y directions")
 
     allowed_fill_methods = ["median", "mean", "none"]
-
-    if fill_method.lower() not in allowed_fill_methods:
-        raise ValueError(f"Invalid fill method: '{fill_method}'. Choices: {allowed_fill_methods}")
+    allowed_edge_methods = ["nearest", "wrap", "none"]
+    for value, name, allowed in zip(
+        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
+    ):
+        if value.lower() not in allowed:
+            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
 
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
-        coeffs = _get_quadric_coefficients(dem_arr, resolution, fill_method=fill_method.lower())
+        coeffs = _get_quadric_coefficients(
+            dem_arr, resolution, fill_method=fill_method.lower(), edge_method=edge_method.lower()
+        )
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
 
@@ -189,6 +226,8 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
+    fill_method: str = "median",
+    edge_method: str = "nearest",
 ) -> np.ndarray | list[np.ndarray]:
     """
     Derive one or multiple terrain attributes from a DEM.
@@ -209,6 +248,8 @@ def get_terrain_attribute(
     :param hillshade_altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param hillshade_azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param hillshade_z_factor: Vertical exaggeration factor.
+    :param fill_method: See the 'get_quadric_coefficients()' docstring for information.
+    :param edge_method: see the 'get_quadric_coefficients()' docstring for information.
 
     :raises ValueError: If the inputs are poorly formatted or are invalid.
 
@@ -278,7 +319,9 @@ def get_terrain_attribute(
                 f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "
                 f"This was required by: {attributes_requiring_surface_fit}"
             )
-        terrain_attributes["surface_fit"] = get_quadric_coefficients(dem_arr, resolution[0])
+        terrain_attributes["surface_fit"] = get_quadric_coefficients(
+            dem=dem_arr, resolution=resolution[0], fill_method=fill_method, edge_method=edge_method
+        )
 
     if make_slope:
         # This calculation is based on (p18, left side): https://ieeexplore.ieee.org/document/1456186
@@ -290,9 +333,10 @@ def get_terrain_attribute(
     if make_aspect:
         # ASPECT = ARCTAN(-H/-G)  # This did not work
         # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
-        terrain_attributes["aspect"] = (np.arctan2(
-            -terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :]
-        ) + np.pi / 2) % (2 * np.pi)
+        terrain_attributes["aspect"] = (
+            np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
+            + np.pi / 2
+        ) % (2 * np.pi)
 
     if make_hillshade:
         # If a different z-factor was given, slopemap with exaggerated gradients.
@@ -334,7 +378,8 @@ def get_terrain_attribute(
                     * terrain_attributes["surface_fit"][6, :, :]
                     * terrain_attributes["surface_fit"][7, :, :]
                 )
-                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2) * 100
+                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                * 100
             )
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
@@ -353,7 +398,8 @@ def get_terrain_attribute(
                     * terrain_attributes["surface_fit"][6, :, :]
                     * terrain_attributes["surface_fit"][7, :, :]
                 )
-                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)* 100
+                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                * 100
             )
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
@@ -482,6 +528,7 @@ def curvature(
     """
     return get_terrain_attribute(dem=dem, attribute="curvature", resolution=resolution)
 
+
 def planform_curvature(
     dem: np.ndarray | np.ma.masked_array,
     resolution: float | tuple[float, float],
@@ -497,6 +544,7 @@ def planform_curvature(
     :returns: The planform curvature array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution)
+
 
 def profile_curvature(
     dem: np.ndarray | np.ma.masked_array,
