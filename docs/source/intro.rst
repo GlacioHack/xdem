@@ -23,9 +23,7 @@ Both `accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precisi
 - the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
 - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
 
-.. figure:: ../images/precision_accuracy.png
-    :alt: precision_accuracy_schematic
-    :width: 600
+.. figure:: imgs/precision_accuracy.png
 
 Source: http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-and-accuracy-glacial-geology/
 
