@@ -1,6 +1,4 @@
-"""
-Test functions for DEM class
-"""
+""" Functions to test the DEM tools."""
 import inspect
 import os
 import warnings
@@ -25,7 +23,6 @@ class TestDEM:
         """
         Test that inputs work properly in DEM class init
         """
-
         fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
 
         # from filename
@@ -42,7 +39,9 @@ class TestDEM:
         assert isinstance(dem3, DEM)
 
         # from SatelliteImage
-        img = si.SatelliteImage(fn_img)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Parse metadata from file not implemented")
+            img = si.SatelliteImage(fn_img)
         dem4 = DEM(img)
         assert isinstance(dem4, DEM)
 

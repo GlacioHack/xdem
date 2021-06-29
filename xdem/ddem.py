@@ -1,3 +1,4 @@
+"""Difference of DEMs classes and functions."""
 from __future__ import annotations
 
 import copy
@@ -147,13 +148,15 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
                 if np.count_nonzero(feature_mask) == 0:
                     continue
                 try:
-                    interpolated_ddem = np.asarray(
-                        xdem.volume.hypsometric_interpolation(
-                            interpolated_ddem,
-                            reference_elevation.data,
-                            mask=feature_mask
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", "Not enough valid bins")
+                        interpolated_ddem = np.asarray(
+                            xdem.volume.hypsometric_interpolation(
+                                interpolated_ddem,
+                                reference_elevation.data,
+                                mask=feature_mask
+                            )
                         )
-                    )
                 except ValueError as exception:
                     # Skip the feature if too few glacier values exist.
                     if "x and y arrays must have at least 2 entries" in str(exception):

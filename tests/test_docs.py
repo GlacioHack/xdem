@@ -1,3 +1,4 @@
+"""Functions to test the documentation."""
 import os
 import concurrent.futures
 import shutil

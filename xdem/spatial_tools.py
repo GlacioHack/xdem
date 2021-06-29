@@ -1,18 +1,16 @@
-"""
-
-"""
+"""Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
+
 from typing import Callable, Union
 import warnings
 
+import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
 import numba
 import skimage.transform
-
-import geoutils as gu
 
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
@@ -109,7 +107,7 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     # If no match was found, raise an error.
     else:
         raise ValueError(
-            f"'{resampling_method}' is not a valid rasterio.warp.Resampling method. "
+            f"'{method_str}' is not a valid rasterio.warp.Resampling method. "
             f"Valid methods: {[str(method).replace('Resampling.', '') for method in rio.warp.Resampling]}"
         )
     return resampling_method
@@ -506,3 +504,42 @@ def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
     indices = skimage.transform.resize(small_indices, shape, order=0, preserve_range=True).astype(int)
 
     return indices.reshape(shape)
+
+def subsample_raster(
+    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
+) -> np.ndarray:
+    """
+    Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
+
+    :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
+    If > 1 will be considered the number of pixels to extract.
+    :param return_indices: If set to True, will return the extracted indices only.
+
+    :returns: The subsampled array (1D) or the indices to extract (same shape as input array)
+    """
+    # Get number of points to extract
+    if (subsample <= 1) & (subsample > 0):
+        npoints = int(subsample * np.size(array))
+    elif subsample > 1:
+        npoints = int(subsample)
+    else:
+        raise ValueError("`subsample` must be > 0")
+
+    # Remove invalid values and flatten array
+    mask = get_mask(array)  # -> need to remove .squeeze in get_mask
+    valids = np.argwhere(~mask.flatten()).squeeze()
+
+    # Checks that array and npoints are correct
+    assert np.ndim(valids) == 1, "Something is wrong with array dimension, check input data and shape"
+    if npoints > np.size(valids):
+        npoints = np.size(valids)
+
+    # Randomly extract npoints without replacement
+    indices = np.random.choice(valids, npoints, replace=False)
+    unraveled_indices = np.unravel_index(indices, array.shape)
+
+    if return_indices:
+        return unraveled_indices
+
+    else:
+        return array[unraveled_indices]

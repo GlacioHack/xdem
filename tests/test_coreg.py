@@ -1,9 +1,4 @@
-"""Functions to test the coregistration approaches.
-
-Author(s):
-    Erik S. Holmlund
-
-"""
+"""Functions to test the coregistration tools."""
 from __future__ import annotations
 
 import copy
