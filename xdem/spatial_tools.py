@@ -176,7 +176,7 @@ def stack_rasters(rasters: list[gu.georaster.Raster], reference: Union[int, gu.R
     If use_ref_bounds is True, output will have the shape (N, height, width) where N is len(rasters) and \
 height and width is equal to reference's shape.
     If use_ref_bounds is False, output will have the shape (N, height2, width2) where N is len(rasters) and \
-height2 anp.gradient(dem_copy)nd width2 are set based on reference's resolution and the maximum extent of all rasters.
+height2 and width2 are set based on reference's resolution and the maximum extent of all rasters.
 
     Use diff=True to return directly the difference to the reference raster.
 
