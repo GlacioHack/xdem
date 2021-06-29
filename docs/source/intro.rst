@@ -5,11 +5,11 @@ Introduction: why is it complex to assess DEM accuracy and precision?
 
 Digital Elevation Models are numerical, gridded representations of elevation. They are generated from different instruments (e.g., optical sensors, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite), and using different post-processing techniques (e.g., photogrammetry, interferometry).
 
-While some complexities are specific to certain instruments and methods, all DEMs generally have:
+While some complexities are specific to certain instruments and methods, all DEMs generally possess:
 
-- a **ground sampling distance** (`GSD <https://en.wikipedia.org/wiki/Ground_sample_distance>`_), or pixel size, that does not necessarily represent the underlying spatial resolution of the observations,
-- a **georeferenced positioning that can subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated post-processing schemes,
-- a **large number of outliers** that can originate from various sources (e.g., photogrammetric blunders, clouds).
+- a `ground sampling distance <https://en.wikipedia.org/wiki/Ground_sample_distance>`_ (GSD), or pixel size, **that does not necessarily represent the underlying spatial resolution of the observations**,
+- a `georeferencing <https://en.wikipedia.org/wiki/Georeferencing>`_ **that can subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated post-processing schemes,
+- a large number of `outliers <https://en.wikipedia.org/wiki/Outlier>`_ **that remain difficult to filter** as they can originate from various sources (e.g., photogrammetric blunders, clouds).
 
 These factors lead to difficulties in assessing the accuracy and precision of DEMs, which are necessary to perform further analysis.
 
@@ -24,6 +24,7 @@ Both `accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precisi
 - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
 
 .. figure:: http://cdn.antarcticglaciers.org/wp-content/uploads/2013/11/precision_accuracy.png
+    :alt: precision_accuracy_schematic
     :width: 600
 
 Absolute or relative accuracy
