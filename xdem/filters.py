@@ -1,6 +1,4 @@
-"""
-A set of 2D filters that can be used to filter outliers or reduce noise in DEMs.
-"""
+"""Filters to remove outliers and reduce noise in DEMs."""
 from __future__ import annotations
 
 import cv2 as cv
