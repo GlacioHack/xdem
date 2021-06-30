@@ -22,13 +22,12 @@ with warnings.catch_warnings():
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
     """Load example files to try coregistration methods with."""
-    examples.download_longyearbyen_examples(overwrite=False)
-
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        reference_raster = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_ref_dem"])
-        to_be_aligned_raster = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_tba_dem"])
-        glacier_mask = gu.geovector.Vector(examples.FILEPATHS["longyearbyen_glacier_outlines"])
+        reference_raster = gu.georaster.Raster(examples.get_path("longyearbyen_ref_dem"))
+        to_be_aligned_raster = gu.georaster.Raster(examples.get_path("longyearbyen_tba_dem"))
+        glacier_mask = gu.geovector.Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
