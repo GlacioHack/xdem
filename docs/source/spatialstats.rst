@@ -60,9 +60,7 @@ Metrics for DEM precision
 
 The precision of DEMs has generally been reported as a single value indicating the random error at the scale of a single pixel, for example :math:`\pm 2` meters.
 
-However, the significant variability of elevation measurement errors has been noted
-In Hugonnet et al. (in prep),
-
+However, the significant variability of elevation measurement errors
 
 Pixel-wise elevation measurement error
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -99,16 +97,40 @@ Workflow for DEM precision estimation
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Quantify and model non-stationarites
+""""""""""""""""""""""""""""""""""""
+
 TODO: Add this section based on Hugonnet et al. (in prep)
 
-Multi-range spatial correlations
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. literalinclude:: code/spatialstats.py
+        :lines: 16-17
+
+Standardize elevation differences for further analysis
+""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+
+Spatial correlation of elevation measurement errors
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 TODO: Add this section based Rolstad et al. (2009), Dehecq et al. (2020), Hugonnet et al. (in prep)
 
-.. literalinclude:: code/spatialstats.py
-        :lines: 26-27
+Quantify and model spatial correlations
+"""""""""""""""""""""""""""""""""""""""
 
+.. literalinclude:: code/spatialstats.py
+        :lines: 19-20
+
+For a single range model:
+
+.. literalinclude:: code/spatialstats.py
+        :lines: 22-23
+
+For multiple range model:
+
+.. literalinclude:: code/spatialstats.py
+        :lines: 25-26
+
+.. plot:: code/spatialstats_plot_vgm.py
 
 Spatially integrated measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
