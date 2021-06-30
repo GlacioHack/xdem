@@ -27,9 +27,9 @@ import xdem
 
 xdem.examples.download_longyearbyen_examples()
 
-reference_dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"], silent=True)
-dem_to_be_aligned = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"], silent=True)
-glacier_outlines = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), silent=True)
+dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), silent=True)
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(reference_dem)

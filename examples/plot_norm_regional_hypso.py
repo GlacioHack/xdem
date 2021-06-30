@@ -18,19 +18,14 @@ import geoutils as gu
 
 xdem.examples.download_longyearbyen_examples()
 
-dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"], silent=True)
-dem_1990_non_coreg = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"], silent=True)
-glacier_outlines = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), silent=True)
+dem_1990 = dem_2009 - xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
+
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # Rasterize the glacier outlines to create an index map.
 # Stable ground is 0, the first glacier is 1, the second is 2, etc.
 glacier_index_map = glacier_outlines.rasterize(dem_2009)
-
-# Coregister the DEM. TODO: This should be fetched from @rhugonnet's new function.
-coreg = xdem.coreg.NuthKaab()
-coreg.fit(dem_2009.data, dem_1990_non_coreg.data, transform=dem_1990_non_coreg.transform, inlier_mask=glacier_index_map == 0)
-
-dem_1990_data = coreg.apply(dem_1990_non_coreg.data, transform=dem_1990_non_coreg.transform)
 
 plt_extent = [
     dem_2009.bounds.left,
@@ -44,7 +39,7 @@ plt_extent = [
 # To test the method, we can generate a semi-random mask to assign nans to glacierized areas.
 # Let's remove 30% of the data.
 np.random.seed(42)
-random_nans = (xdem.misc.generate_random_field(dem_1990_data.shape, corr_size=5) > 0.7) & (glacier_index_map > 0)
+random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5) > 0.7) & (glacier_index_map > 0)
 
 plt.imshow(random_nans)
 plt.show()
@@ -56,7 +51,7 @@ plt.show()
 # **NOTE**: The hypsometric signal does not need to be generated separately; it will be created by :func:`xdem.volume.norm_regional_hypsometric_interpolation`.
 # Generating it first, however, allows us to visualize and validate it.
 
-ddem = dem_2009.data - dem_1990_data
+ddem = (dem_2009 - dem_1990).data
 ddem_voided = np.where(random_nans, np.nan, ddem)
 
 signal = xdem.volume.get_regional_hypsometric_signal(
