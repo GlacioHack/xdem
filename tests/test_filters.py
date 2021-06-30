@@ -1,6 +1,4 @@
-"""
-Functions to test the filters.py submodule.
-"""
+"""Functions to test the filtering tools."""
 from __future__ import annotations
 
 import numpy as np
