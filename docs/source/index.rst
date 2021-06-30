@@ -31,7 +31,8 @@ Simple usage
    coregistration
    comparison
    spatial_stats
-   api/xdem.rst
+   auto_examples/index.rst
+   api.rst
 
 Indices and tables
 ==================

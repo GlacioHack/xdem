@@ -51,6 +51,8 @@ Nuth and Kääb (2011)
 ^^^^^^^^^^^^^^^^^^^^
 :class:`xdem.coreg.NuthKaab`
 
+.. _coregistration_nuthkaab:
+
 - **Performs:** translation and bias corrections.
 - **Supports weights** (soon)
 - **Recommended for:** Noisy data with low rotational differences.
@@ -79,6 +81,10 @@ Example
 
 .. literalinclude:: code/coregistration.py
         :lines: 33-38
+
+
+.. minigallery:: xdem.coreg.NuthKaab
+        :add-heading:
 
 Deramping
 ^^^^^^^^^

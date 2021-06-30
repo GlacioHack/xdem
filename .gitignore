@@ -138,3 +138,5 @@ dmypy.json
 xdem/version.py
 
 examples/*/data/
+auto_examples/
+gen_modules/
