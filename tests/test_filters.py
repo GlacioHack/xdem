@@ -7,15 +7,13 @@ import pytest
 import geoutils as gu
 import xdem
 
-xdem.examples.download_longyearbyen_examples(overwrite=False)
-
 
 class TestFilters:
     """Test cases for the filter functions."""
 
     # Load example data.
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS_DATA["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
+    dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
 
     def test_gauss(self):
         """Test applying the various Gaussian filters on DEMs with/without NaNs"""

@@ -34,7 +34,7 @@ def download_longyearbyen_examples(overwrite: bool = False):
     :param overwrite: Do not download the files again if they already exist.
     """
     if not overwrite and all(map(os.path.isfile, list(FILEPATHS_DATA.values()))):
-        print("Datasets exist")
+        # print("Datasets exist")
         return
 
     # Static commit hash to be bumped every time it needs to be.
@@ -68,7 +68,7 @@ def download_longyearbyen_examples(overwrite: bool = False):
     # Copy the data to the examples directory.
     copy_tree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","data"))
 
-def process_coregistered_example(overwrite=False):
+def process_coregistered_examples(overwrite: bool =False):
     """
        Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
 
@@ -90,7 +90,7 @@ def process_coregistered_example(overwrite=False):
                 raise
 
     if not overwrite and all(map(os.path.isfile, list(FILEPATHS_PROCESSED.values()))):
-        print("Processed data exists")
+        # print("Processed data exists")
         return
 
     download_longyearbyen_examples(overwrite=False)
@@ -112,3 +112,19 @@ def process_coregistered_example(overwrite=False):
     # Save it so that future calls won't need to recreate the file
     mkdir_p(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']))
     diff.save(FILEPATHS_PROCESSED['longyearbyen_ddem'])
+
+def get_path(name: str) -> str:
+    """
+    Get path of example data
+    :param name: Name of test data (listed in xdem/examples.py)
+    :return:
+    """
+    if name in list(FILEPATHS_DATA.keys()):
+        download_longyearbyen_examples()
+        return FILEPATHS_DATA[name]
+    elif name in list(FILEPATHS_PROCESSED.keys()):
+        process_coregistered_examples()
+        return FILEPATHS_PROCESSED[name]
+    else:
+        raise ValueError('Data name should be one of "'+'" , "'.join(list(FILEPATHS_DATA.keys())+list(FILEPATHS_PROCESSED.keys()))+'".')
+

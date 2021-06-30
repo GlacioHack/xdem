@@ -7,14 +7,11 @@ import numpy as np
 
 import xdem
 
-xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-
 class TestDEMCollection:
-    dem_2009 = xdem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
-    dem_1990 = xdem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_tba_dem"])
-    outlines_1990 = gu.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines"])
-    outlines_2010 = gu.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines_2010"])
+    dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+    outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    outlines_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
 
     def test_init(self):
 

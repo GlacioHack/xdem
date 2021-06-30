@@ -5,11 +5,9 @@ import numpy as np
 
 import xdem
 
-xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-dem_2009 = xdem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
-dem_1990 = xdem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_tba_dem"])
-outlines_1990 = gu.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines"])
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 inlier_mask = ~outlines_1990.create_mask(dem_2009)
 
 nuth_kaab = xdem.coreg.NuthKaab()

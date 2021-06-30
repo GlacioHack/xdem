@@ -20,14 +20,11 @@ PLOT = False
 
 def load_ref_and_diff() -> tuple[gu.georaster.Raster, gu.georaster.Raster, np.ndarray]:
     """Load example files to try coregistration methods with."""
-    examples.download_longyearbyen_examples(overwrite=False)
 
-    reference_raster = gu.georaster.Raster(examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
-    to_be_aligned_raster = gu.georaster.Raster(examples.FILEPATHS_DATA["longyearbyen_tba_dem"])
-    glacier_mask = gu.geovector.Vector(examples.FILEPATHS_DATA["longyearbyen_glacier_outlines"])
+    reference_raster = gu.georaster.Raster(examples.get_path("longyearbyen_ref_dem"))
+    glacier_mask = gu.geovector.Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    examples.process_coregistered_example(overwrite=False)
-    ddem = gu.georaster.Raster(examples.FILEPATHS_PROCESSED['longyearbyen_ddem'])
+    ddem = gu.georaster.Raster(examples.get_path('longyearbyen_ddem'))
     mask = glacier_mask.create_mask(ddem)
 
     return reference_raster, ddem, mask
