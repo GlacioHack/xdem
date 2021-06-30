@@ -172,9 +172,9 @@ class TestLocalHypsometric:
 
 
 class TestNormHypsometric:
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
+    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS_DATA["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
+    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines"])
 
     glacier_index_map = outlines.rasterize(dem_2009)
     ddem = dem_2009.data - dem_1990.data
