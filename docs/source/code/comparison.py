@@ -13,12 +13,12 @@ import xdem
 xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 # Load a reference DEM from 2009
-dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"], datetime=datetime(2009, 8, 1))
+dem_2009 = xdem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"], datetime=datetime(2009, 8, 1))
 # Load a DEM from 1990
-dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"], datetime=datetime(1990, 8, 1))
+dem_1990 = xdem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_tba_dem"], datetime=datetime(1990, 8, 1))
 # Load glacier outlines from 1990.
-glaciers_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-glaciers_2010 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines_2010"])
+glaciers_1990 = gu.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines"])
+glaciers_2010 = gu.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines_2010"])
 
 # Make a dictionary of glacier outlines where the key represents the associated date.
 outlines = {

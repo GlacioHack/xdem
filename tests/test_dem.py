@@ -25,7 +25,7 @@ class TestDEM:
         """
         Test that inputs work properly in DEM class init
         """
-        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+        fn_img = xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"]
 
         # from filename
         dem = DEM(fn_img)
@@ -71,7 +71,7 @@ class TestDEM:
               - if r is copied, r.data changed, r2.data should be unchanged
               """
         # Open dataset, update data and make a copy
-        r = xdem.dem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+        r = xdem.dem.DEM(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
         r.data += 5
         r2 = r.copy()
 
@@ -104,7 +104,7 @@ class TestDEM:
 
     def test_set_vref(self):
 
-        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+        fn_img = xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"]
         img = DEM(fn_img)
 
         # check for WGS84
@@ -197,7 +197,7 @@ class TestDEM:
         assert np.logical_and.reduce((np.isfinite(z_out), np.less(z_out, z), np.less(np.abs(z_out-z), 100)))
 
         # checking that the function does not run without a reference set
-        fn_img = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+        fn_img = xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"]
         img = DEM(fn_img)
         with pytest.raises(ValueError):
             img.to_vref(vref_name='EGM96')

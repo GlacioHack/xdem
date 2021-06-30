@@ -11,9 +11,9 @@ class TestLocalHypsometric:
     """Test cases for the local hypsometric method."""
 
     # Load example data.
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS_DATA["longyearbyen_ref_dem"])
+    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS_DATA["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
+    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS_DATA["longyearbyen_glacier_outlines"])
     # Filter to only look at the Scott Turnerbreen glacier
     outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
     # Create a mask where glacier areas are True
