@@ -34,7 +34,7 @@ Absolute or relative accuracy
 The measure of accuracy can be further divided into two aspects:
 
 - the **absolute accuracy** of a DEM describes the average shift to the true positioning. Studies interested in analyzing features of a single DEM in relation to other georeferenced data might give great importance to this potential bias.
-- the **relative accuracy** of a DEM is related to the potential shifts, tilts, and deformations with reference to other elevation data that does not necessarily matches a given referencing. Studies interested in comparing DEMs between themselves might be only interested in this accuracy.
+- the **relative accuracy** of a DEM is related to the potential shifts, tilts, and deformations with reference to other elevation data that does not necessarily matches the true positioning. Studies interested in comparing DEMs between themselves might be only interested in this accuracy.
 
 TODO: Add another little schematic!
 
