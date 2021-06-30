@@ -1,4 +1,4 @@
-
+"""Functions to test the difference of DEMs tools."""
 import warnings
 
 import geoutils as gu
@@ -10,9 +10,9 @@ with warnings.catch_warnings():
 
 
 class TestdDEM:
-    dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
-    outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+    outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
     ddem = xdem.dDEM(
         xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest"),

@@ -20,9 +20,9 @@ import xdem.version
 # -- Project information -----------------------------------------------------
 
 project = 'xdem'
-copyright = '2021, xdem contributors'
+copyright = '2021, Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others'
 
-author = 'xdem contributors'
+author = 'Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others'
 
 # The full version, including alpha/beta/rc tags
 release = xdem.version.version
