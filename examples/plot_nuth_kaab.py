@@ -68,3 +68,8 @@ plt.show()
 
 print(f"Error before: {xdem.spatial_tools.nmad(diff_before):.2f} m")
 print(f"Error after: {xdem.spatial_tools.nmad(diff_after):.2f} m")
+
+# %%
+# In the plot above, one may notice a positive (blue) tendency toward the east.
+# The 1990 DEM is a mosaic, and likely has a "seam" near there.
+# :ref:`sphx_glr_auto_examples_plot_blockwise_coreg.py` tackles this issue, using a nonlinear coregistration approach.
