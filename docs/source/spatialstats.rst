@@ -38,7 +38,7 @@ In other words, for a reliable analysis, the DEM should:
 
 1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
 2. Not contain measurement errors that vary significantly in space.
-3. Not contain factors that significantly affect the spatial distribution of measurement errors, except for the spatial distance.
+3. Not contain factors that significantly affect the distribution of measurement errors, except for the spatial distance.
 
 Quantifying the precision of a single DEM, or of a difference of DEMs
 *********************************************************************
