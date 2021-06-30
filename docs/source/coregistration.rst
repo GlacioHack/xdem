@@ -47,17 +47,18 @@ First, ``.fit()`` is called to estimate the transform, and then this transform c
 .. inheritance-diagram:: xdem.coreg
         :top-classes: xdem.coreg.Coreg
 
+.. _coregistration_nuthkaab:
+
+
 Nuth and Kääb (2011)
 ^^^^^^^^^^^^^^^^^^^^
 :class:`xdem.coreg.NuthKaab`
-
-.. _coregistration_nuthkaab:
 
 - **Performs:** translation and bias corrections.
 - **Supports weights** (soon)
 - **Recommended for:** Noisy data with low rotational differences.
 
-The Nuth and Kääb (`2011 <https:https://doi.org/10.5194/tc-5-271-2011>`_) coregistration approach is named after the paper that first implemented it.
+The Nuth and Kääb (`2011 <https://doi.org/10.5194/tc-5-271-2011>`_) coregistration approach is named after the paper that first implemented it.
 It estimates translation and bias corrections iteratively by solving a cosine equation to model the direction at which the DEM is most likely offset.
 First, the DEMs are compared to get a dDEM, and slope/aspect maps are created from the reference DEM.
 Together, these three products contain the information about in which direction the offset is.
