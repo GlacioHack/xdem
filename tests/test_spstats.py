@@ -18,30 +18,16 @@ with warnings.catch_warnings():
 
 PLOT = False
 
-
 def load_ref_and_diff() -> tuple[gu.georaster.Raster, gu.georaster.Raster, np.ndarray]:
     """Load example files to try coregistration methods with."""
-    examples.download_longyearbyen_examples(overwrite=False)
 
-    reference_raster = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_ref_dem"])
-    to_be_aligned_raster = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_tba_dem"])
-    glacier_mask = gu.geovector.Vector(examples.FILEPATHS["longyearbyen_glacier_outlines"])
-    inlier_mask = ~glacier_mask.create_mask(reference_raster)
+    reference_raster = gu.georaster.Raster(examples.get_path("longyearbyen_ref_dem"))
+    glacier_mask = gu.geovector.Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    metadata = {}
-    # aligned_raster, _ = xdem.coreg.coregister(reference_raster, to_be_aligned_raster, method="amaury", mask=glacier_mask,
-    #                                          metadata=metadata)
-    nuth_kaab = xdem.coreg.NuthKaab()
-    nuth_kaab.fit(reference_raster.data, to_be_aligned_raster.data,
-                  inlier_mask=inlier_mask, transform=reference_raster.transform)
-    aligned_raster = nuth_kaab.apply(to_be_aligned_raster.data, transform=reference_raster.transform)
+    ddem = gu.georaster.Raster(examples.get_path('longyearbyen_ddem'))
+    mask = glacier_mask.create_mask(ddem)
 
-    diff = gu.Raster.from_array((reference_raster.data - aligned_raster),
-                                transform=reference_raster.transform, crs=reference_raster.crs)
-    mask = glacier_mask.create_mask(diff)
-
-    return reference_raster, diff, mask
-
+    return reference_raster, ddem, mask
 
 class TestVariogram:
 

@@ -72,6 +72,8 @@ instance/
 docs/_build/
 docs/build/
 docs/source/api/
+docs/.buildinfo
+docs/.doctrees
 
 # PyBuilder
 target/
@@ -138,3 +140,4 @@ dmypy.json
 xdem/version.py
 
 examples/*/data/
+examples/*/processed
