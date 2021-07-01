@@ -2,7 +2,28 @@
 Normalized regional hypsometric interpolation
 =============================================
 
+There are many ways of interpolating gaps in a dDEM.
+In the case of glaciers, one very useful fact is that elevation change is generally varies with elevation.
+This means that if valid pixels exist in a certain elevation bin, their values can be used to fill other pixels in the same approximate elevation.
+Filling gaps by elevation is the main basis of "hypsometric interpolation approaches", of which there are many variations of.
 
+One problem with simple hypsometric approaches is that they may not work glaciers with different elevation ranges and scales.
+Let's say we have two glaciers: one gigantic reaching from 0-1000 m, and one small from 900-1100 m.
+Usually in the 2000s, glaciers thin rapidly at the bottom, while they may be neutral or only thin slightly in the top.
+If we extrapolate the hypsometric signal of the gigantic glacier to use on the small one, it may seem like the smaller glacier has almost no change whatsoever.
+This may be right, or it may be catastrophically wrong!
+
+Normalized regional hypsometric interpolation solves the scale and elevation range problems in one go. It:
+
+    1. Calculates a regional signal using the weighted average of each glacier's normalized signal:
+
+        a. The glacier's elevation range is scaled from 0-1 to be elevation-independent.
+        b. The glaciers elevation change is scaled from 0-1 to be magnitude-independent.
+        c. A weight is assigned by the amount of valid pixels (well-covered large glaciers gain a higher weight)
+
+    2. Re-scales that signal to fit each glacier once determined.
+
+The consequence is a much more accurate interpolation approach that can be used in a multitude of glacierized settings.
 
 """
 # sphinx_gallery_thumbnail_number = 2
