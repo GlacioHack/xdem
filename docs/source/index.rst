@@ -19,7 +19,7 @@ Simple usage
         dem1 = xdem.DEM("path/to/first_dem.tif")
         dem2 = xdem.DEM("path/to/second_dem.tif")
 
-        difference = xdem.spatial_tools.subtract_rasters(dem1, dem2)
+        difference = dem1 - dem2
 
 
 
@@ -27,11 +27,11 @@ Simple usage
    :maxdepth: 2
    :caption: Contents:
 
-   tutorials
    coregistration
    comparison
    spatial_stats
-   api/xdem.rst
+   auto_examples/index.rst
+   api.rst
 
 Indices and tables
 ==================

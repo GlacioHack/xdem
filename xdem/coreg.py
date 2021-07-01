@@ -537,8 +537,13 @@ class Coreg:
         except NotImplementedError:
             if self.is_affine:  # This only works on it's affine, however.
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
-                applied_dem = apply_matrix(dem_array, transform=transform,
-                                           matrix=self.to_matrix(), centroid=self._meta.get("centroid"))
+                applied_dem = apply_matrix(
+                    dem_array,
+                    transform=transform,
+                    matrix=self.to_matrix(),
+                    centroid=self._meta.get("centroid"),
+                    dilate_mask=True
+                )
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
@@ -1400,7 +1405,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         mode="constant",
         cval=1,
         preserve_range=True
-    ) > 0.5  # Due to different interpolation approaches, everything above 0.5 is assumed to be 1 (True)
+    ) > 0.25  # Due to different interpolation approaches, everything above 0.25 is assumed to be 1 (True)
 
     if dilate_mask:
         tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)

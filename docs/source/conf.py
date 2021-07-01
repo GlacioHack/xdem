@@ -14,7 +14,10 @@ import os
 import sys
 
 # Allow conf.py to find the xdem module
-sys.path.insert(0, os.path.abspath("../xdem/'"))
+sys.path.append(os.path.abspath("../.."))
+sys.path.append(os.path.abspath("../../xdem/"))
+sys.path.append(os.path.abspath(".."))
+
 import xdem.version
 
 # -- Project information -----------------------------------------------------
@@ -43,20 +46,36 @@ extensions = [
     "sphinx.ext.autosummary",  # Create API doc summary texts from the docstrings.
     "sphinx.ext.inheritance_diagram",  # For class inheritance diagrams (see coregistration.rst).
     "sphinx_autodoc_typehints",  # Include type hints in the API documentation.
-    "sphinxcontrib.programoutput"
+    "sphinxcontrib.programoutput",
+    "sphinx_gallery.gen_gallery",  # Examples gallery
+    "sphinx.ext.intersphinx",
 ]
 
-autosummary_generate = True
+#autosummary_generate = True
+
+intersphinx_mapping = {
+    "geoutils": ("https://geoutils.readthedocs.io/en/latest", None),
+    "rasterio": ("https://rasterio.readthedocs.io/en/latest", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "matplotlib": ("https://matplotlib.org/stable", None),
+}
+
+sphinx_gallery_conf = {
+     "examples_dirs": os.path.join(os.path.dirname(__file__), "../", "../", "examples"),   # path to your example scripts
+     "gallery_dirs": "auto_examples",  # path to where to save gallery generated output
+     "inspect_global_variables": True,  # Make links to the class/function definitions.
+     "reference_url": {
+         # The module you locally document uses None
+        "xdem": None,
+    },
+     # directory where function/class granular galleries are stored
+    "backreferences_dir"  : "gen_modules/backreferences",
+    "doc_module": ("xdem", "geoutils")  # I honestly don't know what this is.
+}
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = [os.path.join(os.path.dirname(__file__), '_templates')]
 
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-# This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = [
-    "api/modules.rst"  # This is not really needed, but is created automatically by autodoc
-]
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -71,21 +90,6 @@ html_theme = 'sphinx_rtd_theme'
 # html_static_path = ['_static']  # Commented out as we have no custom static data
 
 
-def run_apidoc(_):
-    """
-    Make sure readthedocs finds the module.
-
-    Maybe this is not needed?
-    """
-    from sphinx.ext.apidoc import main
-    import os
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    cur_dir = os.path.abspath(os.path.dirname(__file__))
-    module = os.path.join(cur_dir, "../../", "xdem")
-    output_path = os.path.join(cur_dir, 'api/')
-    main(['-e', '-o', output_path, module, os.path.join(module, "version.py"), "--force"])
-
-
-def setup(app):
-    app.connect('builder-inited', run_apidoc)
+exclude_patterns = [
+    "_templates"
+]
