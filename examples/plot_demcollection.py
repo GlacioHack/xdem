@@ -49,7 +49,7 @@ dem_2060.datetime = datetime(2060, 8, 1)
 # 2. Two glacier outline timestamps from 1990 and 2009
 #
 
-demcollection = xdem.DEMCollection(dems=[dem_1990, dem_2009, dem_2060], outlines=outlines, reference_dem=dem_2009)
+demcollection = xdem.DEMCollection(dems=[dem_1990, dem_2009, dem_2060], outlines=outlines, reference_dem=1)
 
 
 # %%
