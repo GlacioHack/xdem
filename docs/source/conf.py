@@ -55,6 +55,7 @@ extensions = [
 
 intersphinx_mapping = {
     "geoutils": ("https://geoutils.readthedocs.io/en/latest", None),
+    "rasterio": ("https://rasterio.readthedocs.io/en/latest", None),
     "numpy": ("https://numpy.org/doc/stable", None),
     "matplotlib": ("https://matplotlib.org/stable", None),
 }
@@ -69,7 +70,7 @@ sphinx_gallery_conf = {
     },
      # directory where function/class granular galleries are stored
     "backreferences_dir"  : "gen_modules/backreferences",
-    "doc_module": ("xdem", "geoutils")
+    "doc_module": ("xdem", "geoutils")  # I honestly don't know what this is.
 }
 
 # Add any paths that contain templates here, relative to this directory.
