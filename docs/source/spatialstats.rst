@@ -21,8 +21,11 @@ In particular, these tools help to:
 .. contents:: Contents 
    :local:
 
+Spatial statistics for DEM precision estimation
+***********************************************
+
 Assumptions for statistical inference in spatial statistics
-***********************************************************
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Spatial statistics are valid if the variable of interest verifies `the assumption of second-order stationarity
 <https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/>`_.
@@ -41,55 +44,28 @@ In other words, for a reliable analysis, the DEM should:
 3. Not contain factors that significantly affect the distribution of measurement errors, except for the spatial distance.
 
 Quantifying the precision of a single DEM, or of a difference of DEMs
-*********************************************************************
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To statistically infer the precision of a DEM, the DEM has to be compared against independent elevation observations.
 
 If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent the precision of the rougher DEM.
+
+.. math::
+        \sigma_{dh} = \sigma_{h_{\textrm{higher precision}} - h_{\textrm{lower precision}}} \approx \sigma_{h_{\textrm{lower precision}}}
+
 Otherwise, significant measurement errors can originate from both sets of elevation observations, and the analysis of differences will represent the mixed precision of the two.
+As there is no reason a priori for a depedency between the elevation data sets, the analysis will yield:
+
+.. math::
+        \sigma_{dh} = \sigma_{h_{\textrm{precision1}} - h_{\textrm{precision2}}} = \sqrt{\sigma_{h_{\textrm{precision1}}}^{2} + \sigma_{h_{\textrm{precision2}}}^{2}}
+
 
 TODO: complete with Hugonnet et al. (in prep)
 
-Stable terrain: proxy for infering DEM precision
-************************************************
+Using stable terrain as a proxy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When comparing elevation datasets, stable terrain is usually used a proxy
-
-Metrics for DEM precision
-*************************
-
-The precision of DEMs has generally been reported as a single value indicating the random error at the scale of a single pixel, for example :math:`\pm 2` meters.
-
-However, the significant variability of elevation measurement errors
-
-Pixel-wise elevation measurement error
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-TODO
-
-
-Spatially-integrated elevation measurement error
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The standard error (SE) of a statistic is the standard deviation of the distribution of this statistic.
-For spatially distributed samples, the standard error of the mean (SEM) is of great interest as it allows quantification of the error of a mean (or sum) of samples in space.
-
-The standard error  :math:`\sigma_{\overline{dh}}` of the mean :math:`\overline{dh}` of elevation changes samples :math:`dh` is typically derived as:
-
-.. math::
-
-        \sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
-
-where :math:`\sigma_{dh}` is the dispersion of the samples, and :math:`N` is the number of **independent** observations.
-
-However, several issues arise to estimate the standard error of a mean of elevation observations samples:
-
-1. The dispersion :math:`\sigma_{dh}` cannot be estimated directly on changing terrain that we are usually interested in measuring (e.g., glacier, snow, forest).
-2. The dispersion :math:`\sigma_{dh}` typically shows important non-stationarities (e.g., an error 10 times as large on steep slopes than flat slopes).
-3. The number of samples :math:`N` is generally not equal to the number of sampled DEM pixels, as those are not independent in space and the Ground Sampling Distance of the DEM does not necessarily correspond to its effective resolution.
-
-Note that the SE represents completely stochastic (random) errors, and is therefore not accounting for possible remaining systematic errors have been accounted for, e.g. using one or multiple :ref:`coregistration` approaches.
-
 
 Workflow for DEM precision estimation
 *************************************
@@ -141,3 +117,41 @@ Propagation of correlated errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 TODO: Add this section based on Krige's relation (Webster & Oliver, 2007), Hugonnet et al. (in prep)
+
+
+Metrics for DEM precision
+*************************
+
+Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a single pixel, for example :math:`\pm 2` meters.
+
+However, there is several limitations to this metric:
+- studies have shown significant variability of elevation measurement errors with terrain attributes, such as the slope, but also with the type of terrain
+
+
+Pixel-wise elevation measurement error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+TODO
+
+
+Spatially-integrated elevation measurement error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The standard error (SE) of a statistic is the standard deviation of the distribution of this statistic.
+For spatially distributed samples, the standard error of the mean (SEM) is of great interest as it allows quantification of the error of a mean (or sum) of samples in space.
+
+The standard error  :math:`\sigma_{\overline{dh}}` of the mean :math:`\overline{dh}` of elevation changes samples :math:`dh` is typically derived as:
+
+.. math::
+
+        \sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
+
+where :math:`\sigma_{dh}` is the dispersion of the samples, and :math:`N` is the number of **independent** observations.
+
+However, several issues arise to estimate the standard error of a mean of elevation observations samples:
+
+1. The dispersion :math:`\sigma_{dh}` cannot be estimated directly on changing terrain that we are usually interested in measuring (e.g., glacier, snow, forest).
+2. The dispersion :math:`\sigma_{dh}` typically shows important non-stationarities (e.g., an error 10 times as large on steep slopes than flat slopes).
+3. The number of samples :math:`N` is generally not equal to the number of sampled DEM pixels, as those are not independent in space and the Ground Sampling Distance of the DEM does not necessarily correspond to its effective resolution.
+
+Note that the SE represents completely stochastic (random) errors, and is therefore not accounting for possible remaining systematic errors have been accounted for, e.g. using one or multiple :ref:`coregistration` approaches.
