@@ -3,25 +3,199 @@ xdem.spstats provides tools to use spatial statistics for elevation change data
 """
 from __future__ import annotations
 
+import itertools
 import math as m
 import multiprocessing as mp
 import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union
+from typing import Callable, Union, Iterable, Optional, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import integrate
 from scipy.optimize import curve_fit
+from skimage.draw import disk
+from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
+from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
+from xdem.spatial_tools import nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
     from skgstat import models
 
+def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
+        -> pd.DataFrame:
+    """
+    N-dimensional binning of values according to one or several explanatory variables.
+    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
+    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
+
+    :param values: values array (N,)
+    :param list_var: list (L) of explanatory variables array (N,)
+    :param list_var_names: list (L) of names of the explanatory variables
+    :param list_var_bins: count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
+    :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
+    :return: dataframe of binned values according to explanatory variables for all possibles combinations in 1d, 2d and nd
+    """
+
+    # we separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
+    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
+    if list_var_bins is None:
+        list_var_bins = (10,) * len(list_var_names)
+    elif isinstance(list_var_bins,int):
+        list_var_bins = (list_var_bins,) * len(list_var_names)
+
+    # flatten the arrays if this has not been done by the user
+    values = values.ravel()
+    list_var = [var.ravel() for var in list_var]
+
+    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
+
+    # get binned statistics in 1d: a simple loop is sufficient
+    list_df_1d = []
+    for i, var in enumerate(list_var):
+        df_stats_1d = pd.DataFrame()
+        # get statistics
+        for j, statistic in enumerate(statistics):
+            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
+            # save in a dataframe
+            df_stats_1d[statistics_name[j]] = stats_binned_1d
+        # we need to get the middle of the bins from the edges, to get the same dimension length
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
+        # report number of dimensions used
+        df_stats_1d['nd'] = 1
+
+        list_df_1d.append(df_stats_1d)
+
+    # get binned statistics in 2d: all possible 2d combinations
+    list_df_2d = []
+    if len(list_var)>1:
+        combs = list(itertools.combinations(list_var_names, 2))
+        for i, comb in enumerate(combs):
+            var1_name, var2_name = comb
+            # corresponding variables indexes
+            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
+            df_stats_2d = pd.DataFrame()
+            for j, statistic in enumerate(statistics):
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
+                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
+                                                             ,range=list_ranges)[:3]
+                # get statistics
+                df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
+            # derive interval indexes and convert bins into 2d indexes
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
+            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
+            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
+            # report number of dimensions used
+            df_stats_2d['nd'] = 2
+
+            list_df_2d.append(df_stats_2d)
+
+
+    # get binned statistics in nd, without redoing the same stats
+    df_stats_nd = pd.DataFrame()
+    if len(list_var)>2:
+        for j, statistic in enumerate(statistics):
+            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
+            df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
+        list_ii = []
+        # loop through the bin edges and create IntervalIndexes from them (to get both
+        for bedges in list_bedges:
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
+
+        # create nd indexes in nd-array and flatten for each variable
+        iind = np.meshgrid(*list_ii)
+        for i, var_name in enumerate(list_var_names):
+            df_stats_nd[var_name] = iind[i].flatten()
+
+        # report number of dimensions used
+        df_stats_nd['nd'] = len(list_var_names)
+
+    # concatenate everything
+    list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
+    df_concat = pd.concat(list_all_dfs)
+    # commenting for now: pd.MultiIndex can be hard to use
+    # df_concat = df_concat.set_index(list_var_names)
+
+    return df_concat
+
+def robust_interp_nd_binning(df: pd.DataFrame, var_names: list[str], statistic : Union[str, Callable, None] = nmad, min_count: Optional[int] = 100) -> Callable:
+    """
+    Estimate an interpolated function for an N-dimensional binning.
+    Relies on scipy.ndimage.map_coordinates: see for more information on input arguments.
+
+    :param df: dataframe of binned values according to explanatory variables
+    :param var_names: list of variable names to use
+    :param statistic: statistic to use
+    :param min_count: filter binned values with a sample count of less than this minimum count
+    :return:
+    """
+
+    # check that the dataframe contains what we need
+    for var in var_names:
+        if var not in df.columns:
+            raise ValueError('Variable "'+var+'" does not exist in the provided dataframe.')
+    statistic_name = statistic if isinstance(statistic,str) else statistic.__name__
+    if statistic_name not in df.columns:
+        raise ValueError('Statistic "' + statistic_name + '" does not exist in the provided dataframe.')
+    if min_count is not None and 'count' not in df.columns:
+        raise ValueError('Statistic "count" is not in the provided dataframe, necessary to use the min_count argument.')
+    if df.empty:
+        raise ValueError('Dataframe is empty.')
+
+    # keep only the binning in the number of dimensions corresponding to the length of the variables
+    df_sub = df[df.nd == len(var_names)]
+    if df_sub.empty:
+        raise ValueError('Dataframe does not contain the number of binned dimensions' + str(len(var_names))+' corresponding to the list of variables.')
+
+    # compute the middle values instead of bin interval
+    for var in var_names:
+        df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
+    # keep only rows where the binning data exists for those variables (meaning they were used)
+    df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in var_names])]
+    if df_sub.empty:
+        raise ValueError('Dataframe does not contain a nd binning with the variables corresponding to the list of variables.')
+
+    # remove statistic values calculated with a sample count under the minimum count
+    if min_count is not None:
+        df_sub.loc[df_sub['count'] < min_count,statistic_name] = np.nan
+
+    # valid values
+    vals = df_sub[statistic_name].values
+    ind_valid = np.isfinite(vals)
+
+    # get a list of middle values for the binning coordinates, to define a nd grid
+    list_bmid = []
+    shape = []
+    for var in var_names:
+        bmid = sorted(np.unique(df_sub[var][ind_valid]))
+        list_bmid.append(bmid)
+        shape.append(len(bmid))
+
+    # griddata first to perform nearest interpolation with NaNs (irregular grid)
+    # valid values
+    vals = vals[ind_valid]
+    # coordinates of valid values
+    points_valid = tuple([df_sub[var].values[ind_valid] for var in var_names])
+    # grid coordinates
+    points_grid = tuple([df_sub[var].values for var in var_names])
+    vals_grid = griddata(points_valid, vals, points_grid, method='nearest')
+    vals_grid = vals_grid.reshape(tuple(shape))
+
+    # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
+    # (will extrapolate only outside of boundaries not filled with the nearest of griddata)
+
+    # get interpolant on the regular grid, with linear extrapolation at the sides (fill_value = None)
+    interp_fun = RegularGridInterpolator(tuple(list_bmid),vals_grid,method='linear',bounds_error=False,fill_value=None)
+
+    return interp_fun
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
