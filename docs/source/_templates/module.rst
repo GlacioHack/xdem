@@ -10,9 +10,12 @@
    {% if functions %}
 
    Functions
-   ---------
+   =========
 
    {% for item in functions %}
+
+   {{item}}
+   {{ "-" * (item | length) }}
 
    .. autofunction:: {{ item }}
 
@@ -29,10 +32,16 @@
    {% if classes %}
 
    Classes
-   -------
+   =======
 
    {% for item in classes %}
+
+   {{item}}
+   {{ "-" * (item | length) }}
+
    .. autoclass:: {{ item }}
+      :show-inheritance:
+      :special-members: __init__
       :members:
 
    .. _sphx_glr_backref_{{fullname}}.{{item}}:
@@ -48,7 +57,7 @@
    {% if exceptions %}
 
    Exceptions
-   ----------
+   ==========
 
    .. autosummary::
    {% for item in exceptions %}
