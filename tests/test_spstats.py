@@ -254,10 +254,9 @@ class TestBinning:
         # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
         assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
 
-
     def test_interp_nd_binning(self):
 
-        # check the function works with a classic input (see example
+        # check the function works with a classic input (see example)
         df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3],
                                 "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
