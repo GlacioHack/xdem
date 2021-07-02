@@ -24,7 +24,7 @@ Both `accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precisi
 - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
 
 .. figure:: imgs/precision_accuracy.png
-    :width: 80
+    :width: 80%
 
 Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-and-accuracy-glacial-geology/>`_, accessed 29.06.21.
 
