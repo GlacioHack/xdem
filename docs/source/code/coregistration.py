@@ -13,7 +13,7 @@ from xdem import coreg
 # Load a reference DEM from 2009
 reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 # Load a moderately well aligned DEM from 1990
-dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(reference_dem, silent=True)
+dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(reference_dem)
 # Load glacier outlines from 1990. This will act as the unstable ground.
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 

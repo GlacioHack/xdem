@@ -21,8 +21,8 @@ import xdem
 # We can load the DEMs as usual, but with the addition that the ``datetime`` argument should be filled.
 # Since multiple DEMs are in question, the "time dimension" is what keeps them apart.
 
-dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1), silent=True)
-dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), datetime=datetime(1990, 8, 1), silent=True)
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), datetime=datetime(1990, 8, 1))
 
 
 # %%
