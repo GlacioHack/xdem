@@ -88,13 +88,17 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     df_sub = df.copy()
 
+    # if the dataframe is an output of nd_binning, keep only the dimension of interest
+    if 'nd' in df_sub.columns:
+        df_sub = df_sub[df_sub.nd == len(list_var_names)]
+
     # compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
-        if isinstance(df_sub[var].dtype,pd.IntervalDtype):
+        if isinstance(df_sub[var].values[0],pd.Interval):
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
         # otherwise, leave as is
 
-    # keep only rows where the binning data exists for those variables (meaning they were used)
+    # keep only rows where the binning data exists for those variables
     df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in list_var_names])]
     if df_sub.empty:
         raise ValueError('Dataframe does not contain a nd binning with the variables corresponding to the list of variables.')
@@ -121,15 +125,15 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     # coordinates of valid values
     points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
     # grid coordinates
-    points_grid = tuple([df_sub[var].values for var in list_var_names])
+    bmid_grid = np.meshgrid(*list_bmid)
+    points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
+    # fill grid no data with nearest neighbour
     vals_grid = griddata(points_valid, vals, points_grid, method='nearest')
     vals_grid = vals_grid.reshape(tuple(shape))
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
-    # (will extrapolate only outside of boundaries not filled with the nearest of griddata)
-
-    # get interpolant on the regular grid, with linear extrapolation at the sides (fill_value = None)
-    interp_fun = RegularGridInterpolator(tuple(list_bmid),vals_grid,method='linear',bounds_error=False,fill_value=None)
+    # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
+    interp_fun = RegularGridInterpolator(tuple(list_bmid), vals_grid, method='linear', bounds_error=False, fill_value=None)
 
     return interp_fun
 
