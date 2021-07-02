@@ -8,16 +8,14 @@ import numpy as np
 import xdem
 from xdem import coreg
 
-# Download the necessary data. This may take a few minutes.
-xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 # Load the data using xdem and geoutils (could be with rasterio and geopandas instead)
 # Load a reference DEM from 2009
-reference_dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 # Load a moderately well aligned DEM from 1990
-dem_to_be_aligned = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(reference_dem)
+dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(reference_dem)
 # Load glacier outlines from 1990. This will act as the unstable ground.
-glacier_outlines = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # Prepare the inputs for coregistration.
 ref_data = reference_dem.data.squeeze()  # This is a numpy 2D array/masked_array

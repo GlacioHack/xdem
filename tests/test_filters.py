@@ -1,6 +1,4 @@
-"""
-Functions to test the filters.py submodule.
-"""
+"""Functions to test the filtering tools."""
 from __future__ import annotations
 
 import numpy as np
@@ -9,15 +7,13 @@ import pytest
 import geoutils as gu
 import xdem
 
-xdem.examples.download_longyearbyen_examples(overwrite=False)
-
 
 class TestFilters:
     """Test cases for the filter functions."""
 
     # Load example data.
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009)
+    dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009)
 
     def test_gauss(self):
         """Test applying the various Gaussian filters on DEMs with/without NaNs"""

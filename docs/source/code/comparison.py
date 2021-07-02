@@ -9,16 +9,14 @@ import numpy as np
 
 import xdem
 
-# Download the necessary data. This may take a few minutes.
-xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 # Load a reference DEM from 2009
-dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"], datetime=datetime(2009, 8, 1))
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
 # Load a DEM from 1990
-dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"], datetime=datetime(1990, 8, 1))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), datetime=datetime(1990, 8, 1))
 # Load glacier outlines from 1990.
-glaciers_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
-glaciers_2010 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines_2010"])
+glaciers_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+glaciers_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
 
 # Make a dictionary of glacier outlines where the key represents the associated date.
 outlines = {
@@ -72,21 +70,3 @@ ddem.interpolate(method="local_hypsometric", reference_elevation=dem_2009, mask=
 # SUBSECTION: Regional hypsometric interpolation
 
 ddem.interpolate(method="regional_hypsometric", reference_elevation=dem_2009, mask=glaciers_1990)
-
-###################################
-# SECTION: The DEMCollection object
-###################################
-
-dems = xdem.DEMCollection(
-    [dem_1990, dem_2009, dem_2060],
-    outlines=outlines,
-    reference_dem=dem_2009
-)
-
-# TEXT HERE
-
-dems.subtract_dems()
-dems.get_cumulative_series(kind="dh", outlines_filter="NAME == 'Scott Turnerbreen'")
-
-# Create an object that can be printed in the documentation.
-scott_series = dems.get_cumulative_series(kind="dh", outlines_filter="NAME == 'Scott Turnerbreen'")

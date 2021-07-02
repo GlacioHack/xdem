@@ -1,6 +1,4 @@
-"""
-dem.py provides a class for working with digital elevation models (DEMs)
-"""
+"""DEM class and functions."""
 import os
 import pyproj
 import warnings
