@@ -1,8 +1,6 @@
 """Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
 from typing import Callable, Union, Sized
-
-from typing import Callable, Union
 import warnings
 
 import geoutils as gu

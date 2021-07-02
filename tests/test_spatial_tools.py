@@ -20,8 +20,8 @@ from xdem import examples
 def test_dem_subtraction():
     """Test that the DEM subtraction script gives reasonable numbers."""
     diff = xdem.spatial_tools.subtract_rasters(
-        examples.FILEPATHS["longyearbyen_ref_dem"], examples.FILEPATHS["longyearbyen_tba_dem"]
-    )
+        examples.get_path("longyearbyen_ref_dem"),
+        examples.get_path("longyearbyen_tba_dem"))
 
     assert np.nanmean(np.abs(diff.data)) < 100
 
@@ -31,8 +31,7 @@ class TestMerging:
     Test cases for stacking and merging DEMs
     Split a DEM with some overlap, then stack/merge it, and validate bounds and shape.
     """
-
-    dem = gu.georaster.Raster(examples.FILEPATHS["longyearbyen_ref_dem"])
+    dem = gu.georaster.Raster(examples.get_path("longyearbyen_ref_dem"))
 
     # Find the easting midpoint of the DEM
     x_midpoint = np.mean([dem.bounds.right, dem.bounds.left])
@@ -209,6 +208,7 @@ def test_get_array_and_mask(
         assert np.shares_memory(array, arr_view)
     else:
         assert not np.shares_memory(array, arr_view)
+
 
 class TestSubsample:
     """
