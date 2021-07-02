@@ -26,7 +26,7 @@ dem.crop(subset_extent)
 # Let's plot a hillshade of the mountain for context.
 plt_extent = [subset_extent[0], subset_extent[2], subset_extent[1], subset_extent[3]]
 
-plt.imshow(xdem.spatial_tools.hillshade(dem.data, resolution=dem.res), cmap="Greys_r", extent=plt_extent)
+plt.imshow(xdem.terrain.hillshade(dem.data, resolution=dem.res).squeeze(), cmap="Greys_r", extent=plt_extent)
 plt.show()
 
 # %%

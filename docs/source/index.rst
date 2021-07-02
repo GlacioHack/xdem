@@ -30,6 +30,7 @@ Simple usage
    coregistration
    comparison
    spatial_stats
+   terrain
    auto_examples/index.rst
    api.rst
 
