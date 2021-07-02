@@ -25,7 +25,7 @@ with warnings.catch_warnings():
     import skgstat as skg
     from skgstat import models
 
-def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], statistic : Union[str, Callable[[np.ndarray],float], None] = nmad,
+def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
                       min_count: Optional[int] = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
@@ -67,7 +67,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     # if list of variable input is simply a string
     if isinstance(list_var_names,str):
         list_var_names = [list_var_names]
-        
+
     # check that the dataframe contains what we need
     for var in list_var_names:
         if var not in df.columns:
