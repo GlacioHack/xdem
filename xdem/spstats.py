@@ -54,15 +54,15 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
             [7, 8, 9]
             ])
     >>> fun = interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
+    Right on point.
     >>> fun((2, 2))
         array(5.)
-        Right on point.
+    Interpolated linearly inside the 2D frame.
     >>> fun((1.5, 1.5))
         array(3.)
-        Interpolated linearly inside the 2D frame.
+    Extrapolated linearly outside the 2D frame.
     >>> fun((-1, 1))
         array(-5.)
-        Extrapolated linearly outside the 2D frame.
     """
     # if list of variable input is simply a string
     if isinstance(list_var_names,str):
