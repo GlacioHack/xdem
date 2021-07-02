@@ -34,7 +34,7 @@ def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
 
 
 class TestTerrainAttribute:
-    filepath = xdem.examples.FILEPATHS["longyearbyen_ref_dem"]
+    filepath = xdem.examples.get_path("longyearbyen_ref_dem")
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Parse metadata")

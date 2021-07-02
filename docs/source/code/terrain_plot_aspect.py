@@ -1,9 +1,7 @@
 import matplotlib.pyplot as plt
 import xdem
 
-xdem.examples.download_longyearbyen_examples()
-
-dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 aspect = xdem.terrain.aspect(dem.data)
 
