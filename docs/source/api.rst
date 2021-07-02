@@ -16,6 +16,7 @@ Full information about xdem's functionality is provided on this page.
         filters
         spatial_tools
         spstats
+        terrain
         volume
 
 .. automodule:: xdem

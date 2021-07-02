@@ -1,3 +1,5 @@
+.. _terrain_attributes:
+
 Terrain attributes
 ==================
 
@@ -7,44 +9,29 @@ Some are useful for direct analysis, such as a slope map to differentiate featur
 .. contents:: Contents
         :local:
 
-**Example data**
-
-.. literalinclude:: code/terrain.py
-        :lines: 2-4
-
-Attribute types
-^^^^^^^^^^^^^^^
-
-
 Slope
-*****
+-----
 :func:`xdem.terrain.slope`
 
 The slope map of a DEM describes the tilt (or gradient) of each pixel in relation to its neighbours.
 It is most often described in degrees, where a flat surface is 0° and a vertical cliff is 90°.
 No tilt direction is stored in the slope map; a 45° tilt westward is identical to a 45° tilt eastward.
 
-.. literalinclude:: code/terrain.py
-        :lines: 6
-
-.. plot:: code/terrain_plot_slope.py
-
+.. minigallery:: xdem.terrain.slope
+        :add-heading:
 
 Aspect
-******
+------
 :func:`xdem.terrain.aspect`
 
 The aspect map of a DEM describes which direction the slope is tilting of each pixel in relation to its neighbours.
 It is most often described in degrees, where a slope tilting straight north would have an aspect of 0°, an eastern aspect is 90°, south is 180° and west is 270°.
 
-.. literalinclude:: code/terrain.py
-        :lines: 8
-
-.. plot:: code/terrain_plot_aspect.py
-
+.. minigallery:: xdem.terrain.aspect
+        :add-heading:
 
 Hillshade
-*********
+---------
 :func:`xdem.terrain.hillshade`
 
 The hillshade is a slope map, shaded by the aspect of the slope.
@@ -57,15 +44,11 @@ This mode of shading the slopes often generates a map that is much more easily i
 Note, however, that the hillshade is not a shadow map; no occlusion is taken into account so it does not represent "true" shading.
 It therefore has little analytic purpose, but it still a great tool for visualization.
 
-
-.. literalinclude:: code/terrain.py
-        :lines: 10
-
-.. plot:: code/terrain_plot_hillshade.py
-
+.. minigallery:: xdem.terrain.hillshade
+        :add-heading:
 
 Curvature
-*********
+---------
 :func:`xdem.terrain.curvature`
 
 The curvature map is the second derivative of elevation.
@@ -76,43 +59,33 @@ If a surface is concave (like a trough or a valley bottom), it will have negativ
 Usually, the curvature values are quite small, so they are by convention multiplied by 100.
 For analytic purposes, it may therefore be worth considering dividing the output by 100.
 
-.. literalinclude:: code/terrain.py
-        :lines: 12
-
-.. plot:: code/terrain_plot_curvature.py
-
+.. minigallery:: xdem.terrain.curvature
+        :add-heading:
 
 Planform curvature
-******************
+------------------
 :func:`xdem.terrain.planform_curvature`
 
 TODO: Add text.
 
-.. literalinclude:: code/terrain.py
-        :lines: 14
-
-.. plot:: code/terrain_plot_planform_curvature.py
+.. minigallery:: xdem.terrain.planform_curvature
+        :add-heading:
 
 Profile curvature
-*****************
-:func:`xdem.terrain.planform_curvature`
+-----------------
+:func:`xdem.terrain.profile_curvature`
 
 TODO: Add text.
 
-.. literalinclude:: code/terrain.py
-        :lines: 16
-
-.. plot:: code/terrain_plot_profile_curvature.py
-
+.. minigallery:: xdem.terrain.profile_curvature
+        :add-heading:
 
 Generating multiple attributes at once
-**************************************
+--------------------------------------
 
 Often, one may seek more terrain attributes than one, e.g. both the slope and the aspect.
 Since both are dependent on the gradient of the DEM, calculating them separately is unneccesarily repetitive.
-Multiple terrain attributes can be calculated from the same gradient using the :func:`xdem.terrain.get_terrain_attribute` function:
+Multiple terrain attributes can be calculated from the same gradient using the :func:`xdem.terrain.get_terrain_attribute` function.
 
-.. literalinclude:: code/terrain.py
-        :lines: 18-22
-
-
+.. minigallery:: xdem.terrain.get_terrain_attribute
+        :add-heading:
