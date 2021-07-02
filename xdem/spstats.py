@@ -47,24 +47,28 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     :return: N-dimensional interpolant function
 
     :examples
-    Using a dataframe created from scratch
+    # Using a dataframe created from scratch
     >>> df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
-        In 2 dimensions, the statistic array looks like this
-        array([
-            [1, 2, 3],
-            [4, 5, 6],
-            [7, 8, 9]
-            ])
+
+    # In 2 dimensions, the statistic array looks like this
+    # array([
+    #     [1, 2, 3],
+    #     [4, 5, 6],
+    #     [7, 8, 9]
+    #     ])
     >>> fun = interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
-    Right on point.
+
+    # Right on point.
     >>> fun((2, 2))
-        array(5.)
-    Interpolated linearly inside the 2D frame.
+    array(5.)
+
+    # Interpolated linearly inside the 2D frame.
     >>> fun((1.5, 1.5))
-        array(3.)
-    Extrapolated linearly outside the 2D frame.
+    array(3.)
+
+    # Extrapolated linearly outside the 2D frame.
     >>> fun((-1, 1))
-        array(-5.)
+    array(-5.)
     """
     # if list of variable input is simply a string
     if isinstance(list_var_names,str):
