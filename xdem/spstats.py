@@ -98,18 +98,24 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
         # otherwise, leave as is
 
-    # keep only rows where the binning data exists for those variables
+    # check that explanatory variables have valid binning values which coincide along the dataframe
     df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in list_var_names])]
     if df_sub.empty:
         raise ValueError('Dataframe does not contain a nd binning with the variables corresponding to the list of variables.')
+    # check that the statistic data series contain valid data
+    if all(~np.isfinite(df_sub[statistic_name].values)):
+        raise ValueError('Dataframe does not contain any valid statistic values.')
 
     # remove statistic values calculated with a sample count under the minimum count
     if min_count is not None:
         df_sub.loc[df_sub['count'] < min_count,statistic_name] = np.nan
 
-    # valid values
     vals = df_sub[statistic_name].values
     ind_valid = np.isfinite(vals)
+
+    # re-check that the statistic data series contain valid data after filtering with min_count
+    if all(~ind_valid):
+        raise ValueError("Dataframe does not contain any valid statistic values after filtering with min_count = "+str(min_count)+".")
 
     # get a list of middle values for the binning coordinates, to define a nd grid
     list_bmid = []
