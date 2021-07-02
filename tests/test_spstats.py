@@ -254,3 +254,95 @@ class TestBinning:
         # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
         assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
 
+    def test_interp_nd_binning(self):
+
+        # check the function works with a classic input (see example)
+        df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+                                "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+        arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
+        fun = xdem.spstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
+
+        # check interpolation falls right on values for points (1, 1), (1, 2) etc...
+        for i in range(3):
+            for j in range(3):
+                x = df['var1'][3 * i + j]
+                y = df['var2'][3 * i + j]
+                stat = df['statistic'][3 * i + j]
+                assert fun((y, x)) == stat
+
+        # check bilinear interpolation inside the grid
+        points_in = [(1.5, 1.5), (1.5, 2.5), (2.5, 1.5), (2.5, 2.5)]
+        for point in points_in:
+            # the values are 1 off from Python indexes
+            x = point[0] - 1
+            y = point[1] - 1
+            # get four closest points on the grid
+            xlow = int(x - 0.5)
+            xupp = int(x + 0.5)
+            ylow = int(y - 0.5)
+            yupp = int(y + 0.5)
+            # check the bilinear interpolation matches the mean value of those 4 points (equivalent as its the middle)
+            assert fun((y + 1, x + 1)) == np.mean([arr[xlow, ylow], arr[xupp, ylow], arr[xupp, yupp], arr[xlow, yupp]])
+
+        # check bilinear extrapolation for points at 1 spacing outside from the input grid
+        points_out = [(0, i) for i in np.arange(1, 4)] + [(i, 0) for i in np.arange(1, 4)] \
+                     + [(4, i) for i in np.arange(1, 4)] + [(i, 4) for i in np.arange(4, 1)]
+        for point in points_out:
+            x = point[0] - 1
+            y = point[1] - 1
+            val_extra = fun((y + 1, x + 1))
+            # the difference between the points extrapolated outside should be linear with the grid edges,
+            # i.e. the same as the difference as the first points inside the grid along the same axis
+            if point[0] == 0:
+                diff_in = arr[x + 2, y] - arr[x + 1, y]
+                diff_out = arr[x + 1, y] - val_extra
+            elif point[0] == 4:
+                diff_in = arr[x - 2, y] - arr[x - 1, y]
+                diff_out = arr[x - 1, y] - val_extra
+            elif point[1] == 0:
+                diff_in = arr[x, y + 2] - arr[x, y + 1]
+                diff_out = arr[x, y + 1] - val_extra
+            # has to be y == 4
+            else:
+                diff_in = arr[x, y - 2] - arr[x, y - 1]
+                diff_out = arr[x, y - 1] - val_extra
+            assert diff_in == diff_out
+
+        # check if it works with nd_binning output
+        ref, diff, mask = load_ref_and_diff()
+        slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
+
+        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
+
+        # in 1d
+        fun = xdem.spstats.interp_nd_binning(df, list_var_names='slope')
+
+        # check a value is returned inside the grid
+        assert np.isfinite(fun([15]))
+        # check the nmad increases with slope
+        assert fun([20]) > fun([0])
+        # check a value is returned outside the grid
+        assert all(np.isfinite(fun([-5,50])))
+
+        # in 2d
+        fun = xdem.spstats.interp_nd_binning(df, list_var_names=['slope','elevation'])
+
+        # check a value is returned inside the grid
+        assert np.isfinite(fun([15, 1000]))
+        # check the nmad increases with slope
+        assert fun([20, 1000]) > fun([0, 1000])
+        # check a value is returned outside the grid
+        assert all(np.isfinite(fun(([-5, 50],[-500,3000]))))
+
+        # in 3d, let's decrease the number of bins to get something with enough samples
+        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'], list_var_bins=3)
+        fun = xdem.spstats.interp_nd_binning(df, list_var_names=['slope','elevation','aspect'])
+
+        # check a value is returned inside the grid
+        assert np.isfinite(fun([15,1000, np.pi]))
+        # check the nmad increases with slope
+        assert fun([20, 1000, np.pi]) > fun([0, 1000, np.pi])
+        # check a value is returned outside the grid
+        assert all(np.isfinite(fun(([-5, 50],[-500,3000],[-2*np.pi,4*np.pi]))))
+
+
