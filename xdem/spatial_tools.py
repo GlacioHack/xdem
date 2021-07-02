@@ -1,7 +1,6 @@
 """Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
-
-from typing import Callable, Union
+from typing import Callable, Union, Sized
 import warnings
 
 import geoutils as gu
@@ -341,76 +340,6 @@ If several algorithms are provided, each result is returned as a separate band.
     return merged_raster
 
 
-def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[float, tuple[float, float]],
-              azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0) -> np.ndarray:
-    """
-    Generate a hillshade from the given DEM.
-
-    :param dem: The input DEM to calculate the hillshade from.
-    :param resolution: One or two values specifying the resolution of the DEM.
-    :param azimuth: The azimuth in degrees (0-360°) going clockwise, starting from north.
-    :param altitude: The altitude in degrees (0-90°). 90° is straight from above.
-    :param z_factor: Vertical exaggeration factor.
-
-    :raises AssertionError: If the given DEM is not a 2D array.
-    :raises ValueError: If invalid argument types or ranges were given.
-
-    :returns: A hillshade with the dtype "float32" with value ranges of 0-255.
-    """
-    # Extract the DEM and mask
-    dem_values, mask = get_array_and_mask(dem.squeeze())
-    # The above is not guaranteed to copy the data, so this needs to be done first.
-    demc = dem_values.copy()
-
-    # Validate the inputs.
-    assert len(demc.shape) == 2, f"Expected a 2D array. Got shape: {dem.shape}"
-    if (azimuth < 0.0) or (azimuth > 360.0):
-        raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {azimuth})")
-    if (altitude < 0.0) or (altitude > 90):
-        raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
-    if (z_factor < 0.0) or not np.isfinite(z_factor):
-        raise ValueError(f"z_factor must be a non-negative finite value (given value: {z_factor})")
-
-    # Fill the nonfinite values with the median (or maybe just 0?) to not interfere with the gradient analysis.
-    demc[~np.isfinite(demc)] = np.nanmedian(demc)
-
-    # Multiply the DEM with the z_factor to increase the apparent height.
-    demc *= z_factor
-
-    # Parse the resolution argument. If it's subscriptable, it's assumed to be [X, Y] resolution.
-    try:
-        resolution[0]  # type: ignore
-    # If that fails, it's assumed to be the X&Y resolution.
-    except TypeError as exception:
-        if "not subscriptable" not in str(exception):
-            raise exception
-        resolution = (resolution,) * 2  # type: ignore
-
-    # Calculate the gradient of each pixel.
-    x_gradient, y_gradient = np.gradient(demc)
-    # Normalize by the radius of the resolution to make it resolution variant.
-    x_gradient /= resolution[0] * 0.5  # type: ignore
-    y_gradient /= resolution[1] * 0.5  # type: ignore
-
-    azimuth_rad = np.deg2rad(360 - azimuth)
-    altitude_rad = np.deg2rad(altitude)
-
-    # Calculate slope and aspect maps.
-    slope = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
-    aspect = np.arctan2(-x_gradient, y_gradient)
-
-    # Create a hillshade from these products.
-    shaded = np.sin(altitude_rad) * np.sin(slope) + np.cos(altitude_rad) * \
-        np.cos(slope) * np.cos((azimuth_rad - np.pi / 2.0) - aspect)
-
-    # Set (potential) masked out values to nan
-    shaded[mask] = np.nan
-
-    # Return the hillshade, scaled to uint8 ranges.
-    # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
-    return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
-
-
 def _get_closest_rectangle(size: int) -> tuple[int, int]:
     """
     Given a 1D array size, return a rectangular shape that is closest to a cube which the size fits in.
@@ -504,6 +433,7 @@ def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
     indices = skimage.transform.resize(small_indices, shape, order=0, preserve_range=True).astype(int)
 
     return indices.reshape(shape)
+
 
 def subsample_raster(
     array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False

@@ -70,21 +70,3 @@ ddem.interpolate(method="local_hypsometric", reference_elevation=dem_2009, mask=
 # SUBSECTION: Regional hypsometric interpolation
 
 ddem.interpolate(method="regional_hypsometric", reference_elevation=dem_2009, mask=glaciers_1990)
-
-###################################
-# SECTION: The DEMCollection object
-###################################
-
-dems = xdem.DEMCollection(
-    [dem_1990, dem_2009, dem_2060],
-    outlines=outlines,
-    reference_dem=dem_2009
-)
-
-# TEXT HERE
-
-dems.subtract_dems()
-dems.get_cumulative_series(kind="dh", outlines_filter="NAME == 'Scott Turnerbreen'")
-
-# Create an object that can be printed in the documentation.
-scott_series = dems.get_cumulative_series(kind="dh", outlines_filter="NAME == 'Scott Turnerbreen'")

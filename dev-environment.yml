@@ -27,3 +27,4 @@ dependencies:
   - sphinxcontrib-programoutput
   - flake8
   - sphinx-autodoc-typehints
+  - sphinx-gallery
