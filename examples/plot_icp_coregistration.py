@@ -17,7 +17,7 @@ import xdem
 # %%
 # Let's load a DEM and crop it to a single mountain on Svalbard, called Battfjellet.
 # Its aspects vary in every direction, and is therefore a good candidate for coregistration exercises.
-dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), silent=True)
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 subset_extent = [523000, 8660000, 529000, 8665000]
 dem.crop(subset_extent)

@@ -14,8 +14,8 @@ import xdem
 
 # %%
 # **Example files**
-reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), silent=True)
-dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), silent=True)
+reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # Create a stable ground mask (not glacierized) to mark "inlier data"

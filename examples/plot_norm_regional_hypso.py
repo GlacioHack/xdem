@@ -39,8 +39,8 @@ import geoutils as gu
 
 xdem.examples.download_longyearbyen_examples()
 
-dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), silent=True)
-dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem_coreg"), silent=True)
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem_coreg"))
 
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
