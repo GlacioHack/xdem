@@ -1,3 +1,4 @@
+"""Functions to test the volume estimation tools."""
 import warnings
 
 import geoutils as gu
@@ -8,17 +9,15 @@ import pytest
 
 import xdem
 
-xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-
 class TestLocalHypsometric:
     """Test cases for the local hypsometric method."""
 
     # Load example data.
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
+    outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     all_outlines = outlines.copy()
+    
     # Filter to only look at the Scott Turnerbreen glacier
     outlines.ds = outlines.ds.loc[outlines.ds["NAME"] == "Scott Turnerbreen"]
     # Create a mask where glacier areas are True
@@ -170,9 +169,9 @@ class TestLocalHypsometric:
 
 
 class TestNormHypsometric:
-    dem_2009 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-    dem_1990 = gu.georaster.Raster(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+    dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
+    outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
     glacier_index_map = outlines.rasterize(dem_2009)
     ddem = dem_2009.data - dem_1990.data
