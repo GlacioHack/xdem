@@ -1,15 +1,16 @@
-"""
-
-"""
+"""Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
-from typing import Callable, Union
 
+from typing import Callable, Union
+import warnings
+
+import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
-
-import geoutils as gu
+import numba
+import skimage.transform
 
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
@@ -24,13 +25,18 @@ def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
     return mask.squeeze()
 
 
-def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape: bool = True) -> (np.ndarray, np.ndarray):
+def get_array_and_mask(
+        array: Union[np.ndarray, np.ma.masked_array],
+        check_shape: bool = True,
+        copy: bool = True
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
     Return array with masked values set to NaN and the associated mask.
     Works whether array is a ndarray with NaNs or a np.ma.masked_array.
-    WARNING, if array is of dtype float, will return a view only, if integer dtype, will return a copy.
 
     :param array: Input array.
+    :param check_shape: Validate that the array is either a 1D array, a 2D array or a 3D array of shape (1, rows, cols).
+    :param copy: Return a copy of 'array'. If False, a view will be attempted (and warn if not possible)
 
     :returns array_data, invalid_mask: a tuple of ndarrays. First is array with invalid pixels converted to NaN, \
     second is mask of invalid pixels (True if invalid).
@@ -41,16 +47,23 @@ def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape
                     f"Invalid array shape given: {array.shape}."
                     "Expected 2D array or 3D array where arr.shape[0] == 1"
             )
-    # Get mask of invalid pixels
-    invalid_mask = get_mask(array)
 
-    # If array is of type integer, need to be converted to float, forcing not duplicate
-    if np.issubdtype(array.dtype, np.integer):
+    # If an occupied mask exists and a view was requested, trigger a warning.
+    if not copy and np.any(getattr(array, "mask", False)):
+        warnings.warn("Copying is required to respect the mask. Returning copy. Set 'copy=True' to hide this message.")
+        copy = True
+
+    # If array is of type integer and has a mask, it needs to be converted to float (to assign nans)
+    if np.any(getattr(array, "mask", False)) and np.issubdtype(array.dtype, np.integer):
         array = array.astype('float32')
 
-    # Convert into a regular ndarray and convert invalid values to NaN
-    array_data = np.asarray(array).squeeze()
-    array_data[invalid_mask] = np.nan
+    # Convert into a regular ndarray (a view or copy depending on the 'copy' argument)
+    array_data = np.array(array).squeeze() if copy else np.asarray(array).squeeze()
+
+    # Get the mask of invalid pixels and set nans if it is occupied.
+    invalid_mask = get_mask(array)
+    if np.any(invalid_mask):
+        array_data[invalid_mask] = np.nan
 
     return array_data, invalid_mask
 
@@ -94,7 +107,7 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     # If no match was found, raise an error.
     else:
         raise ValueError(
-            f"'{resampling_method}' is not a valid rasterio.warp.Resampling method. "
+            f"'{method_str}' is not a valid rasterio.warp.Resampling method. "
             f"Valid methods: {[str(method).replace('Resampling.', '') for method in rio.warp.Resampling]}"
         )
     return resampling_method
@@ -396,3 +409,137 @@ def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[floa
     # Return the hillshade, scaled to uint8 ranges.
     # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
     return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
+
+
+def _get_closest_rectangle(size: int) -> tuple[int, int]:
+    """
+    Given a 1D array size, return a rectangular shape that is closest to a cube which the size fits in.
+
+    If 'size' does not have an integer root, a rectangle is returned that is slightly larger than 'size'.
+    
+    :examples:
+        >>> _get_closest_rectangle(4)  # size will be 4
+        (2, 2)
+        >>> _get_closest_rectangle(9)  # size will be 9
+        (3, 3)
+        >>> _get_closest_rectangle(3)  # size will be 4; needs padding afterward.
+        (2, 2)
+        >>> _get_closest_rectangle(55) # size will be 56; needs padding afterward.
+        (7, 8)
+        >>> _get_closest_rectangle(24)  # size will be 25; needs padding afterward
+        (5, 5)
+        >>> _get_closest_rectangle(85620)  # size will be 85849; needs padding afterward
+        (293, 293)
+        >>> _get_closest_rectangle(52011)  # size will be 52212; needs padding afterward
+        (228, 229)
+    """
+    close_cube = int(np.sqrt(size))
+
+    # If size has an integer root, return the respective cube.
+    if close_cube ** 2 == size:
+        return (close_cube, close_cube)
+    
+    # One of these rectangles/cubes will cover all cells, so return the first that does.
+    potential_rectangles = [
+        (close_cube, close_cube + 1),
+        (close_cube + 1, close_cube + 1)
+    ]
+
+    for rectangle in potential_rectangles:
+        if np.prod(rectangle) >= size:
+            return rectangle
+
+    raise NotImplementedError(f"Function criteria not met for rectangle of size: {size}")
+
+
+
+def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
+    """
+    Create indices for subdivison of an array in a number of blocks.
+
+    If 'count' is divisible by the product of 'shape', the amount of cells in each block will be equal.
+    If 'count' is not divisible, the amount of cells in each block will be very close to equal.
+
+    :param shape: The shape of a array to be subdivided.
+    :param count: The amount of subdivisions to make.
+
+    :examples:
+        >>> subdivide_array((4, 4), 4)
+        array([[0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3]])
+
+        >>> subdivide_array((6, 4), 4)
+        array([[0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3]])
+
+        >>> subdivide_array((5, 4), 3)
+        array([[0, 0, 0, 0],
+               [0, 0, 0, 0],
+               [1, 1, 2, 2],
+               [1, 1, 2, 2],
+               [1, 1, 2, 2]])
+
+    :raises ValueError: If the 'shape' size (`np.prod(shape)`) is smallern than 'count'
+                        If the shape is not a 2D shape.
+
+    :returns: An array of shape 'shape' with 'count' unique indices.
+    """
+    if count > np.prod(shape):
+        raise ValueError(f"Shape '{shape}' size ({np.prod(shape)}) is smaller than 'count' ({count}).")
+
+    if len(shape) != 2:
+        raise ValueError(f"Expected a 2D shape, got {len(shape)}D shape: {shape}")
+
+    # Generate a small grid of indices, with the same unique count as 'count'
+    rect = _get_closest_rectangle(count)
+    small_indices = np.pad(np.arange(count), np.prod(rect) - count, mode="edge")[:np.prod(rect)].reshape(rect)
+
+    # Upscale the grid to fit the output shape using nearest neighbour scaling.
+    indices = skimage.transform.resize(small_indices, shape, order=0, preserve_range=True).astype(int)
+
+    return indices.reshape(shape)
+
+def subsample_raster(
+    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
+) -> np.ndarray:
+    """
+    Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
+
+    :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
+    If > 1 will be considered the number of pixels to extract.
+    :param return_indices: If set to True, will return the extracted indices only.
+
+    :returns: The subsampled array (1D) or the indices to extract (same shape as input array)
+    """
+    # Get number of points to extract
+    if (subsample <= 1) & (subsample > 0):
+        npoints = int(subsample * np.size(array))
+    elif subsample > 1:
+        npoints = int(subsample)
+    else:
+        raise ValueError("`subsample` must be > 0")
+
+    # Remove invalid values and flatten array
+    mask = get_mask(array)  # -> need to remove .squeeze in get_mask
+    valids = np.argwhere(~mask.flatten()).squeeze()
+
+    # Checks that array and npoints are correct
+    assert np.ndim(valids) == 1, "Something is wrong with array dimension, check input data and shape"
+    if npoints > np.size(valids):
+        npoints = np.size(valids)
+
+    # Randomly extract npoints without replacement
+    indices = np.random.choice(valids, npoints, replace=False)
+    unraveled_indices = np.unravel_index(indices, array.shape)
+
+    if return_indices:
+        return unraveled_indices
+
+    else:
+        return array[unraveled_indices]

@@ -5,11 +5,9 @@ import numpy as np
 
 import xdem
 
-xdem.examples.download_longyearbyen_examples(overwrite=False)
-
-dem_2009 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
-dem_1990 = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"])
-outlines_1990 = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 ddem = xdem.dDEM(
     xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest"),
