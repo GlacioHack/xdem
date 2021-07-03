@@ -12,6 +12,7 @@ from typing import Callable, Union, Iterable, Optional, Sequence, Any
 
 import itertools
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 from numba import njit
 import numpy as np
 import pandas as pd
@@ -68,7 +69,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # Extrapolated linearly outside the 2D frame.
     >>> fun((-1, 1))
-    array(-5.)
+    array(-1.)
     """
     # if list of variable input is simply a string
     if isinstance(list_var_names,str):
@@ -1003,8 +1004,16 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
     return df
 
 
-def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable]] = None, list_fit_fun_label: Optional[list[str]] = None):
-
+def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
+             list_fit_fun_label: Optional[list[str]] = None):
+    """
+    Plot empirical variogram, with optionally one or several model fits
+    :param df: dataframe of empirical variogram
+    :param list_fit_fun: list of function fits
+    :param list_fit_fun_label: list of function fits labels
+    :param
+    :return:
+    """
     fig, ax = plt.subplots(1)
     if np.all(np.isnan(df.exp_sigma)):
         ax.scatter(df.bins, df.exp, label='Empirical variogram', color='blue')
@@ -1029,3 +1038,228 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable]] = None, li
     ax.legend(loc='best')
 
     return ax
+
+def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
+                    label_statistic: Optional[str] = None, min_count: int = 30):
+    """
+    Plot one statistic and its count along a single binning variable.
+    Input is expected to be formatted as the output of the nd_binning function.
+
+    :param df: output dataframe of nd_binning
+    :param var_name: name of binning variable to plot
+    :param statistic_name: name of statistic of interest to plot
+    :param label_var: label of binning variable
+    :param label_statistic: label of statistic of interest
+    :param min_count: removes statistic values computed with a count inferior to this minimum value
+    """
+
+    if label_var is None:
+        label_var = var_name
+    if label_statistic is None:
+        label_statistic = statistic_name
+
+    # Subsample to 1D and for the variable of interest
+    df_sub = df[np.logical_and(df.nd == 1, np.isfinite(pd.IntervalIndex(df[var_name]).mid))]
+    # Remove statistic calculated in bins with too low count
+    df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
+
+    # Need a grid plot to show the sample count and the statistic
+    fig = plt.figure()
+    grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
+
+    # First, an axe to plot the sample histogram
+    ax0 = fig.add_subplot(grid[:3, :])
+    ax0.set_xticks([])
+
+    # Plot the histogram manually with fill_between
+    interval_var = pd.IntervalIndex(df_sub[var_name])
+    for i in range(len(df_sub) ):
+        count = df_sub['count'].values[i]
+        ax0.fill_between([interval_var[i].left, interval_var[i].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
+                         edgecolor='white',linewidth=0.1)
+    ax0.set_ylabel('Sample count')
+    # Scientific format to avoid undesired additional space on the label side
+    ax0.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
+
+    # Try to identify if the count is always the same
+    # (np.quantile can have a couple undesired effet, so leave an error margin of 2 wrong bins and 5 count difference)
+    if np.sum(~(np.abs(df_sub['count'].values[0] - df_sub['count'].values) < 5)) <= 2:
+        ax0.text(0.5, 0.5, "Fixed number of\n samples: "+'{:,}'.format(int(df_sub['count'].values[0])), ha='center', va='center',
+                 fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
+
+    ax0.set_ylim((0,1.1*np.max(df_sub['count'].values)))
+    ax0.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
+
+    # Now, plot the statistic of the data
+    ax = fig.add_subplot(grid[3:, :])
+
+    ax.scatter(interval_var.mid, df_sub[statistic_name],marker='x')
+    ax.set_xlabel(label_var)
+    ax.set_ylabel(label_statistic)
+    ax.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
+
+
+def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statistic_name: str,
+                    label_var_name_1: Optional[str] = None, label_var_name_2: Optional[str] = None,
+                    label_statistic: Optional[str] = None, cmap: colors.LinearSegmentedColormap = plt.cm.Reds, min_count: int = 30,
+                    scale_var_1: str = 'linear', scale_var_2: str = 'linear', vmin: float = None, vmax: float = None,
+                    nodata_color: Union[str,tuple[float,float,float,float]] ='yellow'):
+    """
+    Plot one statistic and its count along two binning variables.
+    Input is expected to be formatted as the output of the nd_binning function.
+
+    :param df: output dataframe of nd_binning
+    :param var_name_1: name of first binning variable to plot
+    :param var_name_2: name of second binning variable to plot
+    :param statistic_name: name of statistic of interest to plot
+    :param label_var_name_1: label of first binning variable
+    :param label_var_name_2: label of second binning variable
+    :param label_statistic: label of statistic of interest
+    :param cmap: colormap
+    :param min_count: removes statistic values computed with a count inferior to this minimum value
+    :param scale_var_1: scale along the axis of the first variable
+    :param scale_var_2: scale along the axis of the second variable
+    :param vmin: minimum statistic value in colormap range
+    :param vmax: maximum statistic value in colormap range
+    :param nodata_color: color for no data bins
+    """
+
+
+    # Subsample to 2D and for the variables of interest
+    df_sub = df[np.logical_and.reduce((df.nd == 2, np.isfinite(pd.IntervalIndex(df[var_name_1]).mid),
+                                       np.isfinite(pd.IntervalIndex(df[var_name_2]).mid)))]
+    # Remove statistic calculated in bins with too low count
+    df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
+
+    # Let's do a 4 panel figure:
+    # two histograms for the binning variables
+    # + a colored grid to display the statistic calculated on the value of interest
+    # + a legend panel with statistic colormap and nodata color
+    fig = plt.figure()
+    grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
+
+    # First, an horizontal axe on top to plot the sample histogram of the first variable
+    ax0 = fig.add_subplot(grid[:3, :-3])
+    ax0.set_xscale(scale_var_1)
+    ax0.set_xticklabels([])
+
+    # Plot the histogram manually with fill_between
+    interval_var_1 = pd.IntervalIndex(df_sub[var_name_1])
+    df_sub['var1_mid'] = interval_var_1.mid.values
+    unique_var_1 = np.unique(df_sub.var1_mid)
+    list_counts = []
+    for i in range(len(unique_var_1)):
+        df_var1 = df_sub[df_sub.var1_mid == unique_var_1[i]]
+        count = np.nansum(df_var1['count'].values)
+        list_counts.append(count)
+        ax0.fill_between([df_var1[var_name_1].values[0].left, df_var1[var_name_1].values[0].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
+                         edgecolor='white')
+    ax0.set_ylabel('Sample count')
+    ax0.set_ylim((0,1.1*np.max(list_counts)))
+    ax0.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
+    ax0.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
+    ax0.spines['top'].set_visible(False)
+    ax0.spines['right'].set_visible(False)
+    # Try to identify if the count is always the same
+    if np.sum(~(np.abs(list_counts[0] - np.array(list_counts)) < 5)) <= 2:
+        ax0.text(0.5, 0.5, "Fixed number of\nsamples: " + '{:,}'.format(int(list_counts[0])), ha='center', va='center',
+                 fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
+
+    # Second, a vertical axe on the right to plot the sample histogram of the second variable
+    ax1 = fig.add_subplot(grid[3:, -3:])
+    ax1.set_yscale(scale_var_2)
+    ax1.set_yticklabels([])
+
+    # Plot the histogram manually with fill_between
+    interval_var_2 = pd.IntervalIndex(df_sub[var_name_2])
+    df_sub['var2_mid'] = interval_var_2.mid.values
+    unique_var_2 = np.unique(df_sub.var2_mid)
+    list_counts = []
+    for i in range(len(unique_var_2)):
+        df_var2 = df_sub[df_sub.var2_mid == unique_var_2[i]]
+        count = np.nansum(df_var2['count'].values)
+        list_counts.append(count)
+        ax1.fill_between([0, count], [df_var2[var_name_2].values[0].left] * 2, [df_var2[var_name_2].values[0].right] * 2, facecolor=plt.cm.Greys(0.75),
+                         alpha=1, edgecolor='white')
+    ax1.set_xlabel('Sample count')
+    ax1.set_xlim((0,1.1*np.max(list_counts)))
+    ax1.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
+    ax1.ticklabel_format(axis='x',style='sci',scilimits=(0,0))
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+    # Try to identify if the count is always the same
+    if np.sum(~(np.abs(list_counts[0] - np.array(list_counts)) < 5)) <= 2:
+        ax1.text(0.5, 0.5, "Fixed number of\nsamples: " + '{:,}'.format(int(list_counts[0])), ha='center', va='center',
+                 fontweight='bold', transform=ax1.transAxes, rotation=90, bbox=dict(facecolor='white', alpha=0.8))
+
+    # Third, an axe to plot the data as a colored grid
+    ax = fig.add_subplot(grid[3:, :-3])
+
+    # Define limits of colormap is none are provided, robust max and min using percentiles
+    if vmin is None and vmax is None:
+        vmax = np.nanpercentile(df_sub[statistic_name].values, 99)
+        vmin = np.nanpercentile(df_sub[statistic_name].values, 1)
+
+    # Create custom colormap
+    col_bounds = np.array([vmin, np.mean([vmin,vmax]), vmax])
+    cb = []
+    cb_val = np.linspace(0, 1, len(col_bounds))
+    for j in range(len(cb_val)):
+        cb.append(cmap(cb_val[j]))
+    cmap_cus = colors.LinearSegmentedColormap.from_list('my_cb', list(
+        zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000)
+
+    # Plot a 2D colored grid using fill_between
+    for i in range(len(unique_var_1)):
+        for j in range(len(unique_var_2)):
+            df_both = df_sub[np.logical_and(df_sub.var1_mid == unique_var_1[i], df_sub.var2_mid == unique_var_2[j])]
+
+            stat = df_both[statistic_name].values[0]
+            if np.isfinite(stat):
+                stat_col = max(0.0001,min(0.9999,(stat - min(col_bounds))/(max(col_bounds)-min(col_bounds))))
+                col = cmap_cus(stat_col)
+            else:
+                col = nodata_color
+
+            ax.fill_between([df_both[var_name_1].values[0].left, df_both[var_name_1].values[0].right], [df_both[var_name_2].values[0].left] * 2,
+                            [df_both[var_name_2].values[0].right] * 2, facecolor=col, alpha=1, edgecolor='white')
+
+    ax.set_xlabel(label_var_name_1)
+    ax.set_ylabel(label_var_name_2)
+    ax.set_xscale(scale_var_1)
+    ax.set_yscale(scale_var_2)
+    ax.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
+    ax.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
+
+    # Fourth and finally, add a colormap and nodata color to the legend
+    axcmap = fig.add_subplot(grid[:3, -3:])
+
+    # Remove ticks, labels, frame
+    axcmap.set_xticks([])
+    axcmap.set_yticks([])
+    axcmap.spines['top'].set_visible(False)
+    axcmap.spines['left'].set_visible(False)
+    axcmap.spines['right'].set_visible(False)
+    axcmap.spines['bottom'].set_visible(False)
+
+    # Create an inset axe to manage the scale of the colormap
+    cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label='cmap')
+
+    # Create colormap object and plot
+    norm = colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
+    sm = plt.cm.ScalarMappable(cmap=cmap_cus, norm=norm)
+    sm.set_array([])
+    cb = plt.colorbar(sm, cax=cbaxes, orientation='horizontal', extend='both', shrink=0.8)
+    cb.ax.tick_params(width=0.5, length=2)
+    cb.set_label(label_statistic)
+
+    # Create an inset axe to manage the scale of the nodata legend
+    nodata = axcmap.inset_axes([0.4, 0.1, 0.2, 0.2], label='nodata')
+
+    # Plot a nodata legend
+    nodata.fill_between([0, 1], [0, 0], [1, 1], facecolor=nodata_color)
+    nodata.set_xlim((0, 1))
+    nodata.set_ylim((0, 1))
+    nodata.set_xticks([])
+    nodata.set_yticks([])
+    nodata.text(0.5, -0.25, 'No data', ha='center',va='top')
