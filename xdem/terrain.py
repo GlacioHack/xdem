@@ -260,14 +260,14 @@ def get_terrain_attribute(
                [1, 1, 1],
                [2, 2, 2]])
         >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1)
-        >>> slope
-        array([[45., 45., 45.],
-               [45., 45., 45.],
-               [45., 45., 45.]], dtype=float32)
+        >>> slope  # Note the flattening edge effect; see 'get_quadric_coefficients()' for more.
+        array([[26.56505118, 26.56505118, 26.56505118],
+               [45.        , 45.        , 45.        ],
+               [26.56505118, 26.56505118, 26.56505118]])
         >>> aspect
         array([[0., 0., 0.],
                [0., 0., 0.],
-               [0., 0., 0.]], dtype=float32)
+               [0., 0., 0.]])
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
@@ -450,7 +450,7 @@ def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.nda
         >>> aspect(dem, degrees=True)
         array([[0., 0., 0.],
                [0., 0., 0.],
-               [0., 0., 0.]], dtype=float32)
+               [0., 0., 0.]])
         >>> dem.T
         array([[0, 1, 2],
                [0, 1, 2],
@@ -458,7 +458,7 @@ def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.nda
         >>> aspect(dem.T, degrees=True)
         array([[270., 270., 270.],
                [270., 270., 270.],
-               [270., 270., 270.]], dtype=float32)
+               [270., 270., 270.]])
 
     """
     return get_terrain_attribute(dem, attribute="aspect", resolution=1.0, degrees=degrees)
