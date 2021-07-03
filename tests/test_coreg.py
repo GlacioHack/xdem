@@ -380,7 +380,7 @@ class TestCoregClass:
         zcorr.fit(self.ref.data, scaled_dem)
 
         # Apply the correction
-        unscaled_dem = zcorr.apply(scaled_dem, None)
+        unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
 
         # Make sure the difference is now minimal
         diff = (self.ref.data - unscaled_dem).filled(np.nan)
@@ -409,7 +409,7 @@ class TestCoregClass:
 
         # Try the fit now with the messed up DEM as reference.
         zcorr.fit(dem_with_nans, scaled_dem)
-        unscaled_dem = zcorr.apply(scaled_dem, None)
+        unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
@@ -421,7 +421,7 @@ class TestCoregClass:
         zcorr_nonlinear.fit(dem_with_nans, scaled_dem)
 
         # Make sure the difference is minimal
-        unscaled_dem = zcorr_nonlinear.apply(scaled_dem, None)
+        unscaled_dem = zcorr_nonlinear.apply(scaled_dem, self.ref.transform)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 

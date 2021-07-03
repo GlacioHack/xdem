@@ -56,7 +56,7 @@ bias_corr = coreg.BiasCorr()
 bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
 
 # Apply the bias to a DEM
-corrected_dem = bias_corr.apply(tba_data, transform=None)  # The transform does not need to be given for bias
+corrected_dem = bias_corr.apply(tba_data, transform=dem_to_be_aligned.transform)
 
 # Use median bias instead
 bias_median = coreg.BiasCorr(bias_func=np.median)
