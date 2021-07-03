@@ -18,6 +18,7 @@ import pytransform3d.transformations
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from xdem import coreg, examples, spatial_tools, misc
+    import xdem
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
@@ -483,6 +484,57 @@ class TestCoregClass:
         assert np.all(np.isfinite(stats["nmad"]))
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
+
+    def test_coreg_raster_and_ndarray_args(_) -> None:
+
+        # Create a small sample-DEM
+        dem1 = xdem.DEM.from_array(
+            np.arange(25, dtype="int32").reshape(5, 5),
+            transform=rio.transform.from_origin(0, 5, 1, 1),
+            crs=4326,
+            nodata=-9999
+        )
+        # Assign a funny value to one particular pixel. This is to validate that reprojection works perfectly.
+        dem1.data[0, 1, 1] = 100
+
+        # Translate the DEM 1 "meter" right and add a bias
+        dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5))
+        dem2 += 1
+
+        # Create a biascorr for Rasters ("_r") and for arrays ("_a")
+        biascorr_r = coreg.BiasCorr()
+        biascorr_a = biascorr_r.copy()
+
+        # Fit the data
+        biascorr_r.fit(
+            reference_dem=dem1,
+            dem_to_be_aligned=dem2
+        )
+        biascorr_a.fit(
+            reference_dem=dem1.data,
+            dem_to_be_aligned=dem2.reproject(dem1).data,
+            transform=dem1.transform
+        )
+
+        # Validate that they ended up giving the same result.
+        assert biascorr_r._meta["bias"] == biascorr_a._meta["bias"]
+
+        # De-shift dem2
+        dem2_r = biascorr_r.apply(dem2)
+        dem2_a = biascorr_a.apply(dem2.data, dem2.transform)
+
+        # Validate that the return formats were the expected ones, and that they are equal.
+        assert isinstance(dem2_r, xdem.DEM)
+        assert isinstance(dem2_a, np.ma.masked_array)
+        assert np.array_equal(dem2_r, dem2_r)
+
+        # If apply on a masked_array was given without a transform, it should fail.
+        with pytest.raises(ValueError, match="'transform' must be given"):
+            biascorr_a.apply(dem2.data)
+
+
+
+
 
 
 def test_apply_matrix():
