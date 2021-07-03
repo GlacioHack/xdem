@@ -1,5 +1,7 @@
 """
 Non-stationarities in measurement errors
+========================================
+Test
 """
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
