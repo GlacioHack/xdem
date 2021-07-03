@@ -484,6 +484,17 @@ class TestCoregClass:
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
 
+    def test_coreg_oneliner(_) -> None:
+        """Test that a DEM can be coregistered in one line by chaining calls."""
+        dem_arr = np.ones((5, 5), dtype="int32")
+        dem_arr2 = dem_arr + 1
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+
+        dem_arr2_fixed = coreg.BiasCorr().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
+
+        assert np.array_equal(dem_arr, dem_arr2_fixed)
+
+
 
 def test_apply_matrix():
     warnings.simplefilter("error")
