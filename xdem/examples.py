@@ -78,20 +78,6 @@ def process_coregistered_examples(overwrite: bool =False):
        :param overwrite: Do not download the files again if they already exist.
        """
 
-    def mkdir_p(out_dir):
-        """
-        Add bash mkdir -p functionality to os.makedirs.
-
-        :param out_dir: directory to create.
-        """
-        try:
-            os.makedirs(out_dir)
-        except OSError as exc:  # Python >2.5
-            if exc.errno == errno.EEXIST and os.path.isdir(out_dir):
-                pass
-            else:
-                raise
-
     if not overwrite and all(map(os.path.isfile, list(FILEPATHS_PROCESSED.values()))):
         # print("Processed data exists")
         return
@@ -113,7 +99,7 @@ def process_coregistered_examples(overwrite: bool =False):
                                 transform=reference_raster.transform, crs=reference_raster.crs)
 
     # Save it so that future calls won't need to recreate the file
-    mkdir_p(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']))
+    os.makedirs(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']), exist_ok=True)
     diff.save(FILEPATHS_PROCESSED['longyearbyen_ddem'])
 
 
