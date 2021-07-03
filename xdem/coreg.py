@@ -446,13 +446,13 @@ class Coreg:
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
             self._meta["matrix"] = valid_matrix
 
-    def fit(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
+    def fit(self: CoregType, reference_dem: Union[np.ndarray, np.ma.masked_array],
             dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
             inlier_mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False):
+            verbose: bool = False) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -510,6 +510,8 @@ class Coreg:
 
         # Flag that the fitting function has been called.
         self._fit_called = True
+
+        return self
 
     def apply(self, dem: Union[np.ndarray, np.ma.masked_array],
               transform: rio.transform.Affine) -> Union[np.ndarray, np.ma.masked_array]:
