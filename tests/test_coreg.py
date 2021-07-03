@@ -131,7 +131,7 @@ class TestCoregClass:
         # Check that this is indeed a new object
         assert biascorr is not biascorr2
         # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, inlier_mask=self.inlier_mask)
+        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, transform=self.ref.transform, inlier_mask=self.inlier_mask)
         # Test the bias
         assert abs(biascorr2._meta.get("bias")) < 0.01
 
@@ -377,7 +377,7 @@ class TestCoregClass:
         scaled_dem = self.ref.data * factor
 
         # Fit the correction
-        zcorr.fit(self.ref.data, scaled_dem)
+        zcorr.fit(self.ref.data, scaled_dem, transform=self.ref.transform)
 
         # Apply the correction
         unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
@@ -408,7 +408,7 @@ class TestCoregClass:
         dem_with_nans += error_field * 3
 
         # Try the fit now with the messed up DEM as reference.
-        zcorr.fit(dem_with_nans, scaled_dem)
+        zcorr.fit(dem_with_nans, scaled_dem, transform=self.ref.transform)
         unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
@@ -418,7 +418,7 @@ class TestCoregClass:
 
         # Try to correct using a nonlinear correction.
         zcorr_nonlinear = coreg.ZScaleCorr(degree=2)
-        zcorr_nonlinear.fit(dem_with_nans, scaled_dem)
+        zcorr_nonlinear.fit(dem_with_nans, scaled_dem, transform=self.ref.transform)
 
         # Make sure the difference is minimal
         unscaled_dem = zcorr_nonlinear.apply(scaled_dem, self.ref.transform)
@@ -532,8 +532,85 @@ class TestCoregClass:
         with pytest.raises(ValueError, match="'transform' must be given"):
             biascorr_a.apply(dem2.data)
 
+        with pytest.warns(UserWarning, match="DEM .* overrides the given 'transform'"):
+            biascorr_a.apply(dem2, transform=dem2.transform)
 
 
+    @pytest.mark.parametrize("combination", [
+        ("dem1", "dem2", "None", "fit", "passes", ""),
+        ("dem1", "dem2", "None", "apply", "passes", ""),
+        ("dem1.data", "dem2.data", "dem1.transform", "fit", "passes", ""),
+        ("dem1.data", "dem2.data", "dem1.transform", "apply", "passes", ""),
+        ("dem1", "dem2.data", "dem1.transform", "fit", "warns", "'reference_dem' .* overrides the given 'transform'"),
+        ("dem1.data", "dem2", "dem1.transform", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
+        ("dem1.data", "dem2.data", "None", "fit", "error", "'transform' must be given if both DEMs are array-like."),
+        ("dem1", "dem2.data", "None", "apply", "error", "'transform' must be given if DEM is array-like."),
+        ("dem1", "dem2", "dem2.transform", "apply", "warns", "DEM .* overrides the given 'transform'"),
+        ("None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+        ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
+        ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
+    ])
+    def test_coreg_raises(_, combination: tuple[str, str, str, str, str, str]) -> None:
+        """
+        Assert that the expected warnings/errors are triggered under different circumstances.
+
+        The 'combination' param contains this in order:
+            1. The reference_dem (will be eval'd)
+            2. The dem to be aligned (will be eval'd)
+            3. The transform to use (will be eval'd)
+            4. Which coreg method to assess
+            5. The expected outcome of the test.
+            6. The error/warning message (if applicable)
+        """
+        warnings.simplefilter("error")
+
+        ref_dem, tba_dem, transform, testing_step, result, text = combination
+        # Create a small sample-DEM
+        dem1 = xdem.DEM.from_array(
+            np.arange(25, dtype="int32").reshape(5, 5),
+            transform=rio.transform.from_origin(0, 5, 1, 1),
+            crs=4326,
+            nodata=-9999
+        )
+        dem2 = dem1.copy()
+
+        # Evaluate the parametrization (e.g. 'dem2.transform')
+        ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
+        
+        # Use BiasCorr as a representative example.
+        biascorr = xdem.coreg.BiasCorr()
+
+        fit_func = lambda: biascorr.fit(ref_dem, tba_dem, transform=transform)
+        apply_func = lambda: biascorr.apply(tba_dem, transform=transform)
+
+        # Try running the methods in order and validate the result.
+        for method, method_call in [("fit", fit_func), ("apply", apply_func)]:
+            with warnings.catch_warnings():
+                if method != testing_step:  # E.g. skip warnings for 'fit' if 'apply' is being tested.
+                    warnings.simplefilter("ignore")
+
+                if result == "warns" and testing_step == method:
+                    with pytest.warns(UserWarning, match=text):
+                        method_call()
+                elif result == "error" and testing_step == method:
+                    with pytest.raises(ValueError, match=text):
+                        method_call()
+                else:
+                    method_call()
+
+                if testing_step == "fit":   # If we're testing 'fit', 'apply' does not have to be run.
+                    return
+
+
+    def test_coreg_oneliner(_) -> None:
+        """Test that a DEM can be coregistered in one line by chaining calls."""
+        dem_arr = np.ones((5, 5), dtype="int32")
+        dem_arr2 = dem_arr + 1
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+
+        dem_arr2_fixed = coreg.BiasCorr().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
+
+        assert np.array_equal(dem_arr, dem_arr2_fixed)
 
 
 

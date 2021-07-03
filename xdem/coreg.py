@@ -447,13 +447,13 @@ class Coreg:
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
             self._meta["matrix"] = valid_matrix
 
-    def fit(self, reference_dem: np.ndarray | np.ma.masked_array | RasterType,
+    def fit(self: CoregType, reference_dem: np.ndarray | np.ma.masked_array | RasterType,
             dem_to_be_aligned: np.ndarray | np.ma.masked_array | RasterType,
             inlier_mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False):
+            verbose: bool = False) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -469,20 +469,36 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
+        # Validate that both inputs are valid array-like (or Raster) types.
+        if not all(hasattr(dem, "__array_interface__") for dem in (reference_dem, dem_to_be_aligned)):
+            raise ValueError(
+                "Both DEMs need to be array-like (implement a numpy array interface)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
+
         # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
         if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
             dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True).data
-        # If 'reference_dem' is not a Raster, just extract the data (shape validation comes later)
-        elif isinstance(dem_to_be_aligned, gu.Raster):
-            dem_to_be_aligned = dem_to_be_aligned.data
 
-        # If 'reference_dem' is a Raster, use its transform (if not given) and then extract its data.
-        if isinstance(reference_dem, gu.Raster):
+        # If any input is a Raster, use its transform if 'transform is None'.
+        # If 'transform' was given and any input is a Raster, trigger a warning.
+        # Finally, extract only the data of the raster.
+        for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
+            if hasattr(dem, "transform"):
+                if transform is None:
+                    transform = getattr(dem, "transform")
+                elif transform is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
 
-            if transform is None:
-                transform = reference_dem.transform
-            reference_dem = reference_dem.data
+                """
+                if name == "reference_dem":
+                    reference_dem = dem.data
+                else:
+                    dem_to_be_aligned = dem.data
+                """
 
+        if transform is None:
+            raise ValueError("'transform' must be given if both DEMs are array-like.")
 
         ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
         tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
@@ -526,6 +542,8 @@ class Coreg:
         # Flag that the fitting function has been called.
         self._fit_called = True
 
+        return self
+
     @overload
     def apply(self, dem: RasterType, transform: rio.transform.Affine | None) -> RasterType: ...
 
@@ -537,12 +555,12 @@ class Coreg:
 
 
     def apply(self, dem: np.ndarray | np.ma.masked_array | RasterType,
-              transform: rio.transform.Affine | None = None) -> Union[np.ndarray, np.ma.masked_array]:
+              transform: rio.transform.Affine | None = None) -> RasterType | np.ndarray | np.ma.masked_array:
         """
         Apply the estimated transform to a DEM.
 
-        :param dem: A DEM to apply the transform on.
-        :param transform: The transform object of the DEM. TODO: Remove??
+        :param dem: A DEM array or Raster to apply the transform on.
+        :param transform: The transform object of the DEM. Required if 'dem' is an array and not a Raster.
 
         :returns: The transformed DEM.
         """
@@ -552,9 +570,11 @@ class Coreg:
         if isinstance(dem, gu.Raster):
             if transform is None:
                 transform = dem.transform
+            else:
+                warnings.warn(f"DEM of type {type(dem)} overrides the given 'transform'")
         else:
             if transform is None:
-                raise ValueError("'transform' must be given if DEM is array-like")
+                raise ValueError("'transform' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)

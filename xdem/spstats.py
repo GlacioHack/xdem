@@ -68,7 +68,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # Extrapolated linearly outside the 2D frame.
     >>> fun((-1, 1))
-    array(-5.)
+    array(-1.)
     """
     # if list of variable input is simply a string
     if isinstance(list_var_names,str):
