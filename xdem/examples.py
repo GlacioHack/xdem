@@ -100,7 +100,7 @@ def process_coregistered_examples(overwrite: bool =False):
                                 transform=reference_raster.transform, crs=reference_raster.crs)
 
     # Save it so that future calls won't need to recreate the file
-    pathlib.Path.mkdir(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']), parents=True, exist_ok=True)
+    pathlib.Path(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem'])).mkdir(parents=True, exist_ok=True)
     diff.save(FILEPATHS_PROCESSED['longyearbyen_ddem'])
 
 
