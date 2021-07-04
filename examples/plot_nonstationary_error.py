@@ -4,7 +4,7 @@ Non-stationarity of elevation measurement errors
 
 Digital elevation models have a precision that can vary with terrain and instrument-related variables. However, quantifying
 this precision is complex and non-stationarities, i.e. variability of the measurement error, has rarely been
-accounted for continuously with some studies using arbitrary thresholds on the slope or other variables (see :ref:`intro`).
+accounted for, with only some studies that used arbitrary filtering thresholds on the slope or other variables (see :ref:`intro`).
 
 Quantifying the non-stationarities in elevation measurement errors is essential to use stable terrain as a proxy for
 assessing the precision on other types of terrain (Hugonnet et al., in prep) and allows to standardize the measurement
