@@ -1059,7 +1059,7 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
         label_statistic = statistic_name
 
     # Subsample to 1D and for the variable of interest
-    df_sub = df[np.logical_and(df.nd == 1, np.isfinite(pd.IntervalIndex(df[var_name]).mid))]
+    df_sub = df[np.logical_and(df.nd == 1, np.isfinite(pd.IntervalIndex(df[var_name]).mid))].copy()
     # Remove statistic calculated in bins with too low count
     df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
 
@@ -1127,7 +1127,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
 
     # Subsample to 2D and for the variables of interest
     df_sub = df[np.logical_and.reduce((df.nd == 2, np.isfinite(pd.IntervalIndex(df[var_name_1]).mid),
-                                       np.isfinite(pd.IntervalIndex(df[var_name_2]).mid)))]
+                                       np.isfinite(pd.IntervalIndex(df[var_name_2]).mid)))].copy()
     # Remove statistic calculated in bins with too low count
     df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
 
