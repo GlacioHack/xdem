@@ -31,20 +31,20 @@ import geoutils as gu
 # Prior to differencing, the DEMs were aligned using :class:`xdem.coreg.NuthKaab` as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
 
-# We load the data
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 ddem = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-# Rasterize a glacier mask
 mask_glacier = glacier_outlines.create_mask(ddem)
-# Remove values on unstable terrain
+
+# %%
+# We remove values on unstable terrain
 ddem.data[mask_glacier] = np.nan
 
 # %%
-# We use the reference DEM to derive terrain variables such as slope, aspect, curvature that we'll use to explore potential
-# non-stationarities in elevation measurement error.
+# We use the reference DEM to derive terrain variables such as slope, aspect, curvature (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes`)
+# that we'll use to explore potential non-stationarities in elevation measurement error
 
-# We compute the slope, aspect, and both plan and profile curvatures
+# We compute the slope, aspect, and both plan and profile curvatures:
 slope, aspect, planc, profc = \
     xdem.terrain.get_terrain_attribute(dem=ref_dem.data,
                                        attribute=['slope','aspect', 'planform_curvature', 'profile_curvature'],
@@ -177,7 +177,7 @@ slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope'
 # The output is an interpolant function of slope and curvature that we can use to estimate the elevation measurement
 # error at any point.
 #
-# For instance, estimate the elevation measurement error for different points:
+# For instance:
 
 for s, c in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
     print('Elevation measurement error for slope of {0:.0f} degrees, '
