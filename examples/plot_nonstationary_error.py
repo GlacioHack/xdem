@@ -93,21 +93,21 @@ xdem.spstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 m$^{-
 # Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. Thus, as
 # with many dimensions the N dimensional bin size increases exponentially, we avoid binning all variables at the same
 # time and instead bin one at a time.
-# We define 200 quantile bins of size 0.005 (equivalent to 0.5% percentile bins) for the profile curvature:
+# We define 1000 quantile bins of size 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
 
 df = xdem.spstats.nd_binning(values=ddem.data,list_var=[profc], list_var_names=['profc'],
                              statistics=['count',np.nanmedian,xdem.spstats.nmad],
-                             list_var_bins=[[np.nanquantile(profc,0.005*i) for i in range(201)]])
+                             list_var_bins=[[np.nanquantile(profc,0.001*i) for i in range(1001)]])
 xdem.spstats.plot_1d_binning(df, 'profc', 'nmad', 'Profile curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
-# We now clearly identify the variability with the profile curvature, from 2 meters for low curvatures to above 6 meters
+# We now clearly identify the variability with the profile curvature, from 2 meters for low curvatures to above 4 meters
 # for higher positive or negative curvature.
 # What about the role of the plan curvature?
 
 df = xdem.spstats.nd_binning(values=ddem.data,list_var=[planc], list_var_names=['planc'],
                              statistics=['count',np.nanmedian,xdem.spstats.nmad],
-                             list_var_bins=[[np.nanquantile(planc,0.005*i) for i in range(201)]])
+                             list_var_bins=[[np.nanquantile(planc,0.001*i) for i in range(1001)]])
 xdem.spstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
@@ -177,12 +177,7 @@ slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope'
 # The output is an interpolant function of slope and curvature that we can use to estimate the elevation measurement
 # error at any point.
 #
-# For instance, estimate the elevation measurement error for
-#
-# - a slope of 0 degrees and a maximum absolute curvature of 0 m\ :sup:`-1`\ ,
-# - a slope of 40 degrees and a maximum absolute curvature of 0 m\ :sup:`-1`\ ,
-# - a slope of 0 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ ,
-# - a slope of 40 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ .
+# For instance, estimate the elevation measurement error for different points:
 
 for s, c in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
     print('Elevation measurement error for slope of {0:.0f} degrees, '
