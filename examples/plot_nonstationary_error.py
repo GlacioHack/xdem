@@ -123,8 +123,9 @@ xdem.spstats.plot_1d_binning(df, 'maxc', 'nmad', 'Maximum absolute curvature (10
 # Here's our simplified relation! We now have both slope and maximum absolute curvature with clear variability of
 # the elevation measurement error.
 #
-# **But, one might rightfully wonder: high curvatures might occur more often around steep slopes than flat slope,
+# **But, one might wonder: high curvatures might occur more often around steep slopes than flat slope,
 # so what if those two dependencies are actually one and the same?**
+#
 # We need to explore the variability with both slope and curvature at the same time:
 
 df = xdem.spstats.nd_binning(values=ddem.data,list_var=[slope, maxc], list_var_names=['slope','maxc'],
@@ -134,9 +135,10 @@ df = xdem.spstats.nd_binning(values=ddem.data,list_var=[slope, maxc], list_var_n
 xdem.spstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)', 'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
-# We can see that part of the variability seems to be independent, but with uniform bins the distribution across the range
-# is not well represented.
-# If we use quantiles for both binning variables, and adjust the plot scale:
+# We can see that part of the variability seems to be independent, but with the uniform bins it is hard to tell much
+# more.
+#
+# If we use custom quantiles for both binning variables, and adjust the plot scale:
 
 custom_bin_slope = np.unique([np.quantile(slope,0.05*i) for i in range(20)]
                              + [np.quantile(slope,0.95+0.02*i) for i in range(2)]
@@ -155,18 +157,22 @@ xdem.spstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)', 'Ma
 
 
 # %%
-# We identify that the two variables have an independent effect on the precision:
+# We identify clearly that the two variables have an independent effect on the precision, with
 #
-# - *high curvatures and flat slopes* have larger errors than *low curvatures and flat slopes*
-# - *steep slopes and low curvatures* have larger errors than *low curvatures and flat slopes* as well
+# - *high curvatures and flat slopes* that have larger errors than *low curvatures and flat slopes*
+# - *steep slopes and low curvatures* that have larger errors than *low curvatures and flat slopes* as well
 #
-# To later account for the non-stationarities identified, the simplest approach is a numerical approximation i.e. a piecewise
-# linear interpolation/extrapolation of the binning results.
+# We also identify that, steep slopes (> 40°) only correspond to high curvature, while the opposite is not true, hence
+# the importance of mapping the variability in two dimensions.
+#
+# Now we need to account for the non-stationarities identified. For this, the simplest approach is a numerical
+# approximation i.e. a piecewise linear interpolation/extrapolation based on the binning results.
 # To ensure that only robust statistic values are used in the interpolation, we set a ``min_count`` value at 100 samples.
 
 slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope','maxc'],statistic='nmad',min_count=100)
 
-# %% The output is an interpolant function of slope and curvature that we can use to estimate the elevation measurement
+# %%
+# The output is an interpolant function of slope and curvature that we can use to estimate the elevation measurement
 # error at any point.
 #
 # For instance, estimate the elevation measurement error for
@@ -176,10 +182,8 @@ slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope'
 # - a slope of 0 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ ,
 # - a slope of 40 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ .
 
-print(slope_curv_to_dh_err((0,0)))
-print(slope_curv_to_dh_err((40,0)))
-print(slope_curv_to_dh_err((0,5)))
-print(slope_curv_to_dh_err((40,5)))
+for slope, curv in [(0.,1), (40.,1), (0.,10.), (40.,10.)]:
+    print('Elevation measurement error for slope of {0:.0f} degrees, curvature of {1:.2f} m-1: {2:.1f}'.format(slope,curv/100,slope_curv_to_dh_err((slope,curv)))+ ' meters.')
 
 # %%
 # The same function can be used to estimate the spatial distribution of the elevation measurement error over the area:

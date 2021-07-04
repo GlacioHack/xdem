@@ -173,6 +173,11 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     values = values.ravel()
     list_var = [var.ravel() for var in list_var]
 
+    # remove no data values
+    valid_data = np.logical_and.reduce([np.isfinite(values)]+[np.isfinite(var) for var in list_var])
+    values = values[valid_data]
+    list_var = [var[valid_data] for var in list_var]
+
     statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
 
     # get binned statistics in 1d: a simple loop is sufficient
@@ -1067,7 +1072,7 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     fig = plt.figure()
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
-    # First, an axe to plot the sample histogram
+    # First, an axis to plot the sample histogram
     ax0 = fig.add_subplot(grid[:3, :])
     ax0.set_xticks([])
 
@@ -1135,10 +1140,12 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     # two histograms for the binning variables
     # + a colored grid to display the statistic calculated on the value of interest
     # + a legend panel with statistic colormap and nodata color
-    fig = plt.figure()
+
+    # For some reason the scientific notation displays weirdly for default figure size
+    fig = plt.figure(figsize=(10,7.5))
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
-    # First, an horizontal axe on top to plot the sample histogram of the first variable
+    # First, an horizontal axis on top to plot the sample histogram of the first variable
     ax0 = fig.add_subplot(grid[:3, :-3])
     ax0.set_xscale(scale_var_1)
     ax0.set_xticklabels([])
@@ -1155,8 +1162,11 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         ax0.fill_between([df_var1[var_name_1].values[0].left, df_var1[var_name_1].values[0].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
                          edgecolor='white')
     ax0.set_ylabel('Sample count')
-    ax0.set_ylim((0,1.1*np.max(list_counts)))
-    ax0.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
+    # In case the axis value does not agree with the scale (e.g., 0 for log scale)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ax0.set_ylim((0,1.1*np.max(list_counts)))
+        ax0.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
     ax0.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
     ax0.spines['top'].set_visible(False)
     ax0.spines['right'].set_visible(False)
@@ -1165,7 +1175,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         ax0.text(0.5, 0.5, "Fixed number of\nsamples: " + '{:,}'.format(int(list_counts[0])), ha='center', va='center',
                  fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
 
-    # Second, a vertical axe on the right to plot the sample histogram of the second variable
+    # Second, a vertical axis on the right to plot the sample histogram of the second variable
     ax1 = fig.add_subplot(grid[3:, -3:])
     ax1.set_yscale(scale_var_2)
     ax1.set_yticklabels([])
@@ -1182,8 +1192,11 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         ax1.fill_between([0, count], [df_var2[var_name_2].values[0].left] * 2, [df_var2[var_name_2].values[0].right] * 2, facecolor=plt.cm.Greys(0.75),
                          alpha=1, edgecolor='white')
     ax1.set_xlabel('Sample count')
-    ax1.set_xlim((0,1.1*np.max(list_counts)))
-    ax1.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
+    # In case the axis value does not agree with the scale (e.g., 0 for log scale)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ax1.set_xlim((0,1.1*np.max(list_counts)))
+        ax1.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
     ax1.ticklabel_format(axis='x',style='sci',scilimits=(0,0))
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
@@ -1192,7 +1205,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         ax1.text(0.5, 0.5, "Fixed number of\nsamples: " + '{:,}'.format(int(list_counts[0])), ha='center', va='center',
                  fontweight='bold', transform=ax1.transAxes, rotation=90, bbox=dict(facecolor='white', alpha=0.8))
 
-    # Third, an axe to plot the data as a colored grid
+    # Third, an axis to plot the data as a colored grid
     ax = fig.add_subplot(grid[3:, :-3])
 
     # Define limits of colormap is none are provided, robust max and min using percentiles
@@ -1228,8 +1241,11 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     ax.set_ylabel(label_var_name_2)
     ax.set_xscale(scale_var_1)
     ax.set_yscale(scale_var_2)
-    ax.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
-    ax.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
+    # In case the axis value does not agree with the scale (e.g., 0 for log scale)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ax.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
+        ax.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
 
     # Fourth and finally, add a colormap and nodata color to the legend
     axcmap = fig.add_subplot(grid[:3, -3:])
@@ -1242,7 +1258,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     axcmap.spines['right'].set_visible(False)
     axcmap.spines['bottom'].set_visible(False)
 
-    # Create an inset axe to manage the scale of the colormap
+    # Create an inset axis to manage the scale of the colormap
     cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label='cmap')
 
     # Create colormap object and plot
@@ -1253,7 +1269,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     cb.ax.tick_params(width=0.5, length=2)
     cb.set_label(label_statistic)
 
-    # Create an inset axe to manage the scale of the nodata legend
+    # Create an inset axis to manage the scale of the nodata legend
     nodata = axcmap.inset_axes([0.4, 0.1, 0.2, 0.2], label='nodata')
 
     # Plot a nodata legend
