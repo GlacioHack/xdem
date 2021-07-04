@@ -1142,7 +1142,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     # + a legend panel with statistic colormap and nodata color
 
     # For some reason the scientific notation displays weirdly for default figure size
-    fig = plt.figure(figsize=(10,7.5))
+    fig = plt.figure(figsize=(8,6))
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
     # First, an horizontal axis on top to plot the sample histogram of the first variable

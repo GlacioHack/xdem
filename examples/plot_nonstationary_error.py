@@ -19,7 +19,7 @@ distribution of elevation measurement errors of the difference of DEMs.
 **Reference**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, applied to the terrain slope
 and quality of stereo-correlation (Equation 1, Extended Data Fig. 3a).
 """
-# sphinx_gallery_thumbnail_number = 10
+# sphinx_gallery_thumbnail_number = 8
 import matplotlib.pyplot as plt
 import numpy as np
 import xdem
@@ -182,13 +182,13 @@ slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope'
 # - a slope of 0 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ ,
 # - a slope of 40 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ .
 
-for slope, curv in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
+for s, c in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
     print('Elevation measurement error for slope of {0:.0f} degrees, '
-          'curvature of {1:.2f} m-1: {2:.1f}'.format(slope,curv/100,slope_curv_to_dh_err((slope,curv)))+ ' meters.')
+          'curvature of {1:.2f} m-1: {2:.1f}'.format(s, c/100, slope_curv_to_dh_err((s,c)))+ ' meters.')
 
 # %%
 # The same function can be used to estimate the spatial distribution of the elevation measurement error over the area:
-dh_err = slope_curv_to_dh_err((slope,maxc))
+dh_err = slope_curv_to_dh_err((slope, maxc))
 
 plt.figure(figsize=(8, 5))
 plt_extent = [
