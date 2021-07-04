@@ -26,8 +26,8 @@ import xdem
 import geoutils as gu
 
 # %%
-# We start by loading example files of a difference of DEMs at Longyearbyen glacier, the reference DEM to later derive
-# terrain attribute, and the outlines to rasterize a glacier mask.
+# We start by loading example files including a difference of DEMs at Longyearbyen glacier, the reference DEM later used to derive
+# several terrain attributes, and the outlines to rasterize a glacier mask.
 # Prior to differencing, the DEMs were aligned using :class:`xdem.coreg.NuthKaab` as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
 
@@ -74,18 +74,20 @@ xdem.spstats.plot_1d_binning(df, 'slope', 'nmad', 'Slope (degrees)', 'NMAD of dh
 # In statistical terms, such a variability of `variance <https://en.wikipedia.org/wiki/Variance>`_ is referred as
 # `heteroscedasticity <https://en.wikipedia.org/wiki/Heteroscedasticity>`_. Here we observe heteroscedastic elevation
 # differences due to a non-stationarity of variance with the terrain slope.
+#
 # What about the aspect?
 
 xdem.spstats.plot_1d_binning(df, 'aspect', 'nmad', 'Aspect (degrees)', 'NMAD of dh (m)')
 
 # %%
 # There is no variability with the aspect which shows a dispersion averaging 2-3 meters, i.e. that of the complete sample.
-# And what about the profile curvature?
+#
+# What about the plan curvature?
 
 xdem.spstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
-# The relation with the profile curvature remains ambiguous.
+# The relation with the plan curvature remains ambiguous.
 # We should better define our bins to avoid sampling bins with too many or too few samples. For this, we can partition
 # the data in quantiles in :func:`xdem.spstats.nd_binning`.
 # Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. Thus, as
