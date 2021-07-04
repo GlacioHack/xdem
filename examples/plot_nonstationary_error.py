@@ -182,8 +182,9 @@ slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope'
 # - a slope of 0 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ ,
 # - a slope of 40 degrees and a maximum absolute curvature of 0.05 m\ :sup:`-1`\ .
 
-for slope, curv in [(0.,1), (40.,1), (0.,10.), (40.,10.)]:
-    print('Elevation measurement error for slope of {0:.0f} degrees, curvature of {1:.2f} m-1: {2:.1f}'.format(slope,curv/100,slope_curv_to_dh_err((slope,curv)))+ ' meters.')
+for slope, curv in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
+    print('Elevation measurement error for slope of {0:.0f} degrees, '
+          'curvature of {1:.2f} m-1: {2:.1f}'.format(slope,curv/100,slope_curv_to_dh_err((slope,curv)))+ ' meters.')
 
 # %%
 # The same function can be used to estimate the spatial distribution of the elevation measurement error over the area:
