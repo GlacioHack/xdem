@@ -167,9 +167,9 @@ xdem.spstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)', 'Ma
 #
 # Now we need to account for the non-stationarities identified. For this, the simplest approach is a numerical
 # approximation i.e. a piecewise linear interpolation/extrapolation based on the binning results.
-# To ensure that only robust statistic values are used in the interpolation, we set a ``min_count`` value at 100 samples.
+# To ensure that only robust statistic values are used in the interpolation, we set a ``min_count`` value at 30 samples.
 
-slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope','maxc'],statistic='nmad',min_count=100)
+slope_curv_to_dh_err = xdem.spstats.interp_nd_binning(df,list_var_names=['slope','maxc'],statistic='nmad',min_count=30)
 
 # %%
 # The output is an interpolant function of slope and curvature that we can use to estimate the elevation measurement
@@ -197,7 +197,7 @@ plt_extent = [
     ref_dem.bounds.bottom,
     ref_dem.bounds.top,
 ]
-plt.imshow(dh_err.squeeze(), cmap="Reds", vmin=2, vmax=6, extent=plt_extent)
+plt.imshow(dh_err.squeeze(), cmap="Reds", vmin=2, vmax=8, extent=plt_extent)
 cbar = plt.colorbar()
 cbar.set_label('Elevation measurement error (m)')
 plt.show()
