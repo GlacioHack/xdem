@@ -14,7 +14,7 @@ class TestLocalHypsometric:
 
     # Load example data.
     dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009)
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
     outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     all_outlines = outlines.copy()
 
@@ -170,7 +170,7 @@ class TestLocalHypsometric:
 
 class TestNormHypsometric:
     dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009)
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
     outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
     glacier_index_map = outlines.rasterize(dem_2009)
