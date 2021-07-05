@@ -682,8 +682,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
         # Scale the signal elevation midpoints to the glacier elevation range.
         midpoints = signal.index.mid
         midpoints *= elev_max - elev_min
+        midpoints += elev_min
         step = midpoints[1] - midpoints[0]
-        midpoints += elev_min + step / 2
         # Create an interval structure from the midpoints and the step size.
         signal.index = pd.IntervalIndex.from_arrays(left=midpoints - step / 2, right=midpoints + step / 2)
 
