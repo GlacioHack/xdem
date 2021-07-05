@@ -25,6 +25,7 @@ class TestDocs:
                 # Run everything except plt.show() calls.
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread")
+                    warnings.simplefilter("error")
                     try:
                         exec(infile.read().replace("plt.show()", "plt.close()"))
                     except Exception as exception:
