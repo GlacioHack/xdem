@@ -53,10 +53,10 @@ deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.
 
 bias_corr = coreg.BiasCorr()
 # Note that the transform argument is not needed, since it is a simple vertical correction.
-bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
+bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask, transform=reference_dem.transform)
 
 # Apply the bias to a DEM
-corrected_dem = bias_corr.apply(tba_data, transform=None)  # The transform does not need to be given for bias
+corrected_dem = bias_corr.apply(tba_data, transform=dem_to_be_aligned.transform)
 
 # Use median bias instead
 bias_median = coreg.BiasCorr(bias_func=np.median)

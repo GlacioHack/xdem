@@ -18,6 +18,7 @@ import pytransform3d.transformations
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from xdem import coreg, examples, spatial_tools, misc
+    import xdem
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
@@ -130,7 +131,7 @@ class TestCoregClass:
         # Check that this is indeed a new object
         assert biascorr is not biascorr2
         # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, inlier_mask=self.inlier_mask)
+        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, transform=self.ref.transform, inlier_mask=self.inlier_mask)
         # Test the bias
         assert abs(biascorr2._meta.get("bias")) < 0.01
 
@@ -376,10 +377,10 @@ class TestCoregClass:
         scaled_dem = self.ref.data * factor
 
         # Fit the correction
-        zcorr.fit(self.ref.data, scaled_dem)
+        zcorr.fit(self.ref.data, scaled_dem, transform=self.ref.transform)
 
         # Apply the correction
-        unscaled_dem = zcorr.apply(scaled_dem, None)
+        unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
 
         # Make sure the difference is now minimal
         diff = (self.ref.data - unscaled_dem).filled(np.nan)
@@ -407,8 +408,8 @@ class TestCoregClass:
         dem_with_nans += error_field * 3
 
         # Try the fit now with the messed up DEM as reference.
-        zcorr.fit(dem_with_nans, scaled_dem)
-        unscaled_dem = zcorr.apply(scaled_dem, None)
+        zcorr.fit(dem_with_nans, scaled_dem, transform=self.ref.transform)
+        unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
@@ -417,10 +418,10 @@ class TestCoregClass:
 
         # Try to correct using a nonlinear correction.
         zcorr_nonlinear = coreg.ZScaleCorr(degree=2)
-        zcorr_nonlinear.fit(dem_with_nans, scaled_dem)
+        zcorr_nonlinear.fit(dem_with_nans, scaled_dem, transform=self.ref.transform)
 
         # Make sure the difference is minimal
-        unscaled_dem = zcorr_nonlinear.apply(scaled_dem, None)
+        unscaled_dem = zcorr_nonlinear.apply(scaled_dem, self.ref.transform)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
@@ -483,6 +484,123 @@ class TestCoregClass:
         assert np.all(np.isfinite(stats["nmad"]))
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
+
+    def test_coreg_raster_and_ndarray_args(_) -> None:
+
+        # Create a small sample-DEM
+        dem1 = xdem.DEM.from_array(
+            np.arange(25, dtype="int32").reshape(5, 5),
+            transform=rio.transform.from_origin(0, 5, 1, 1),
+            crs=4326,
+            nodata=-9999
+        )
+        # Assign a funny value to one particular pixel. This is to validate that reprojection works perfectly.
+        dem1.data[0, 1, 1] = 100
+
+        # Translate the DEM 1 "meter" right and add a bias
+        dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5))
+        dem2 += 1
+
+        # Create a biascorr for Rasters ("_r") and for arrays ("_a")
+        biascorr_r = coreg.BiasCorr()
+        biascorr_a = biascorr_r.copy()
+
+        # Fit the data
+        biascorr_r.fit(
+            reference_dem=dem1,
+            dem_to_be_aligned=dem2
+        )
+        biascorr_a.fit(
+            reference_dem=dem1.data,
+            dem_to_be_aligned=dem2.reproject(dem1).data,
+            transform=dem1.transform
+        )
+
+        # Validate that they ended up giving the same result.
+        assert biascorr_r._meta["bias"] == biascorr_a._meta["bias"]
+
+        # De-shift dem2
+        dem2_r = biascorr_r.apply(dem2)
+        dem2_a = biascorr_a.apply(dem2.data, dem2.transform)
+
+        # Validate that the return formats were the expected ones, and that they are equal.
+        assert isinstance(dem2_r, xdem.DEM)
+        assert isinstance(dem2_a, np.ma.masked_array)
+        assert np.array_equal(dem2_r, dem2_r)
+
+        # If apply on a masked_array was given without a transform, it should fail.
+        with pytest.raises(ValueError, match="'transform' must be given"):
+            biascorr_a.apply(dem2.data)
+
+        with pytest.warns(UserWarning, match="DEM .* overrides the given 'transform'"):
+            biascorr_a.apply(dem2, transform=dem2.transform)
+
+
+    @pytest.mark.parametrize("combination", [
+        ("dem1", "dem2", "None", "fit", "passes", ""),
+        ("dem1", "dem2", "None", "apply", "passes", ""),
+        ("dem1.data", "dem2.data", "dem1.transform", "fit", "passes", ""),
+        ("dem1.data", "dem2.data", "dem1.transform", "apply", "passes", ""),
+        ("dem1", "dem2.data", "dem1.transform", "fit", "warns", "'reference_dem' .* overrides the given 'transform'"),
+        ("dem1.data", "dem2", "dem1.transform", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
+        ("dem1.data", "dem2.data", "None", "fit", "error", "'transform' must be given if both DEMs are array-like."),
+        ("dem1", "dem2.data", "None", "apply", "error", "'transform' must be given if DEM is array-like."),
+        ("dem1", "dem2", "dem2.transform", "apply", "warns", "DEM .* overrides the given 'transform'"),
+        ("None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+        ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
+        ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
+    ])
+    def test_coreg_raises(_, combination: tuple[str, str, str, str, str, str]) -> None:
+        """
+        Assert that the expected warnings/errors are triggered under different circumstances.
+
+        The 'combination' param contains this in order:
+            1. The reference_dem (will be eval'd)
+            2. The dem to be aligned (will be eval'd)
+            3. The transform to use (will be eval'd)
+            4. Which coreg method to assess
+            5. The expected outcome of the test.
+            6. The error/warning message (if applicable)
+        """
+        warnings.simplefilter("error")
+
+        ref_dem, tba_dem, transform, testing_step, result, text = combination
+        # Create a small sample-DEM
+        dem1 = xdem.DEM.from_array(
+            np.arange(25, dtype="int32").reshape(5, 5),
+            transform=rio.transform.from_origin(0, 5, 1, 1),
+            crs=4326,
+            nodata=-9999
+        )
+        dem2 = dem1.copy()
+
+        # Evaluate the parametrization (e.g. 'dem2.transform')
+        ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
+        
+        # Use BiasCorr as a representative example.
+        biascorr = xdem.coreg.BiasCorr()
+
+        fit_func = lambda: biascorr.fit(ref_dem, tba_dem, transform=transform)
+        apply_func = lambda: biascorr.apply(tba_dem, transform=transform)
+
+        # Try running the methods in order and validate the result.
+        for method, method_call in [("fit", fit_func), ("apply", apply_func)]:
+            with warnings.catch_warnings():
+                if method != testing_step:  # E.g. skip warnings for 'fit' if 'apply' is being tested.
+                    warnings.simplefilter("ignore")
+
+                if result == "warns" and testing_step == method:
+                    with pytest.warns(UserWarning, match=text):
+                        method_call()
+                elif result == "error" and testing_step == method:
+                    with pytest.raises(ValueError, match=text):
+                        method_call()
+                else:
+                    method_call()
+
+                if testing_step == "fit":   # If we're testing 'fit', 'apply' does not have to be run.
+                    return
+
 
     def test_coreg_oneliner(_) -> None:
         """Test that a DEM can be coregistered in one line by chaining calls."""
