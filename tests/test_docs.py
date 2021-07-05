@@ -27,8 +27,7 @@ class TestDocs:
                     # When running the code asynchronously, matplotlib complains a bit
                     ignored_warnings = [
                         "Starting a Matplotlib GUI outside of the main thread",
-                        "An exception was ignored while fetching the attribute `__array_interface__` from an object of type 'MultiPolygon'",
-                        "attribute `__array_interface__` from an object of type 'Polygon'",
+                        "fetching the attribute.*Polygon",
                     ]
                     # This is a GeoPandas issue
                     warnings.simplefilter("error")
