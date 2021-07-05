@@ -27,7 +27,7 @@ class TestDocs:
                     # When running the code asynchronously, matplotlib complains a bit
                     warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread")
                     # This is a GeoPandas issue
-                    warnings.filterwarnings("ignore", message="A polygon does not itself provide the array interface")
+                    warnings.filterwarnings("ignore", message="attribute `__array_interface__` from an object of type 'Polygon'")
                     warnings.simplefilter("error")
                     try:
                         exec(infile.read().replace("plt.show()", "plt.close()"))
