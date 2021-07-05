@@ -25,10 +25,16 @@ class TestDocs:
                 # Run everything except plt.show() calls.
                 with warnings.catch_warnings():
                     # When running the code asynchronously, matplotlib complains a bit
-                    warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread")
+                    ignored_warnings = [
+                        "Starting a Matplotlib GUI outside of the main thread",
+                        "An exception was ignored while fetching the attribute `__array_interface__` from an object of type 'MultiPolygon'",
+                        "attribute `__array_interface__` from an object of type 'Polygon'",
+                    ]
                     # This is a GeoPandas issue
-                    warnings.filterwarnings("ignore", message="attribute `__array_interface__` from an object of type 'Polygon'")
                     warnings.simplefilter("error")
+
+                    for warning_text in ignored_warnings:
+                        warnings.filterwarnings("ignore", warning_text)
                     try:
                         exec(infile.read().replace("plt.show()", "plt.close()"))
                     except Exception as exception:
