@@ -283,6 +283,8 @@ class TestNormHypsometric:
         )
         assert not np.array_equal(filled_ddem, idealized_ddem)
 
+        # Check that all glacier-values are finite
+        assert np.count_nonzero(np.isnan(idealized_ddem)[self.glacier_index_map > 0]) == 0
         # Validate that the un-idealized dDEM has a higher gradient variance (more ups and downs)
         filled_gradient = np.linalg.norm(np.gradient(filled_ddem), axis=0)
         ideal_gradient = np.linalg.norm(np.gradient(idealized_ddem), axis=0)

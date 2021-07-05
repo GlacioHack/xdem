@@ -733,7 +733,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
             )[0]
 
         # Create a linear model from the elevations and the scaled regional signal.
-        model = scipy.interpolate.interp1d(signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False)
+        model = scipy.interpolate.interp1d(signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False, fill_value="extrapolate")
 
         # Find which values to fill using the model (all nans within the glacier extent)
         if not idealized_ddem:
