@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from xdem.spatial_tools import nmad
+from xdem.spatial_tools import nmad, subsample_raster
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -258,24 +258,10 @@ def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.
     :return: empirical variogram (variance, lags, counts)
 
     """
-    # deriving empirical variogram variance, bin, and count
-    try:
-        V = skg.Variogram(coordinates=coords, values=dh, normalize=False, **kwargs)
-        # return V.to_DataFrame()
-
-        exp = V.experimental
-        bins = V.bins
-        count = np.zeros(V.n_lags)
-        tmp_count = np.fromiter((g.size for g in V.lag_classes()), dtype=int)
-        count[0:len(tmp_count)] = tmp_count
-
-    # there are still some exceptions not well handled by skgstat
-    except ZeroDivisionError:
-        n_lags = kwargs.get('n_lags') or 10
-        exp, bins, count = (np.zeros(n_lags)*np.nan for i in range(3))
+    V = skg.Variogram(coordinates=coords, values=dh, normalize=False, **kwargs)
 
     df = pd.DataFrame()
-    df = df.assign(exp=exp, bins=bins, count=count)
+    df = df.assign(exp=V.experimental, bins=V.bins, count=V.count)
 
     return df
 
@@ -293,28 +279,6 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
 
     return get_empirical_variogram(dh=argdict['dh'], coords=argdict['coords'], **kwargs)
 
-
-def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
-
-    """
-    Subsampling of elevation differences with random coordinates
-
-    :param dh: elevation differences
-    :param coords: coordinates
-    :param nsamp: number of sammples for subsampling
-
-    :return: subsets of dh and coords
-    """
-    if len(coords) > nsamp:
-        # TODO: maybe we can also introduce something to sample without replacement between all samples?
-        subset = np.random.choice(len(coords), nsamp, replace=False)
-        coords_sub = coords[subset]
-        dh_sub = dh[subset]
-    else:
-        coords_sub = coords
-        dh_sub = dh
-
-    return dh_sub, coords_sub
 
 def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
     """
@@ -396,7 +360,7 @@ def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, ou
 
 
 def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coords: np.ndarray = None,
-                                          nsamp: int = 10000, range_list: list = None, nrun: int = 1, nproc: int = 1,
+                                          subsample: int = 10000, range_list: list = None, nrun: int = 1, nproc: int = 1,
                                           **kwargs) -> pd.DataFrame:
     """
     Wrapper to sample multi-range empirical variograms from the data.
@@ -407,7 +371,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
     :param gsd: ground sampling distance (if array is 2D on structured grid)
     :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of \the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
     :param range_list: successive ranges with even binning
-    :param nsamp: number of samples to randomly draw from the elevation differences
+    :param subsample: number of samples to randomly draw from the elevation differences
     :param nrun: number of samplings
     :param nproc: number of processing cores
 
@@ -432,6 +396,10 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         x, y = np.meshgrid(np.arange(0, dh.shape[0] * gsd, gsd), np.arange(0, dh.shape[1] * gsd, gsd))
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
         dh = dh.flatten()
+
+    valid_data = np.isfinite(dh)
+    dh = dh[valid_data]
+    coords = coords[valid_data, :]
 
     # COMMENTING: custom binning is not supported by skgstat yet...
     # if no range list is specified, define a default one based on the spatial extent of the data and its resolution
@@ -465,13 +433,13 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
     if 'n_lags' not in kwargs.keys():
         kwargs.update({'n_lags': 100})
 
-    # estimate variogram
+    # estimate variogram for multiple runs
     if nrun == 1:
         # subsetting
-        dh_sub, coords_sub = random_subset(dh, coords, nsamp)
+        index = subsample_raster(dh, subsample=subsample, return_indices=True)
+        dh_sub = dh[index]
+        coords_sub = coords[index, :]
         # getting empirical variogram
-        print(dh_sub.shape)
-        print(coords_sub.shape)
         df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
         df['exp_sigma'] = np.nan
 
@@ -488,12 +456,13 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         if 'maxlag' not in kwargs.keys():
             kwargs.update({'maxlag': max_range})
 
-        # TODO: somewhere here we could think of adding random sampling without replacement
         if nproc == 1:
             print('Using 1 core...')
             list_df_nb = []
             for i in range(nrun):
-                dh_sub, coords_sub = random_subset(dh, coords, nsamp)
+                index = subsample_raster(dh, subsample=subsample, return_indices=True)
+                dh_sub = dh[index]
+                coords_sub = coords[index, :]
                 df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
                 df['run'] = i
                 list_df_nb.append(df)
@@ -502,7 +471,9 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
             list_dh_sub = []
             list_coords_sub = []
             for i in range(nrun):
-                dh_sub, coords_sub = random_subset(dh, coords, nsamp)
+                index = subsample_raster(dh, subsample=subsample, return_indices=True)
+                dh_sub = dh[index]
+                coords_sub = coords[index, :]
                 list_dh_sub.append(dh_sub)
                 list_coords_sub.append(coords_sub)
 
