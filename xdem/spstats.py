@@ -21,7 +21,8 @@ from scipy.optimize import curve_fit
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from xdem.spatial_tools import nmad, subsample_raster
+from xdem.spatial_tools import nmad, subsample_raster, get_array_and_mask
+from geoutils.georaster import RasterType, Raster
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -111,8 +112,8 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     if min_count is not None:
         df_sub.loc[df_sub['count'] < min_count,statistic_name] = np.nan
 
-    vals = df_sub[statistic_name].values
-    ind_valid = np.isfinite(vals)
+    values = df_sub[statistic_name].values
+    ind_valid = np.isfinite(values)
 
     # re-check that the statistic data series contain valid data after filtering with min_count
     if all(~ind_valid):
@@ -128,19 +129,19 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # griddata first to perform nearest interpolation with NaNs (irregular grid)
     # valid values
-    vals = vals[ind_valid]
+    values = values[ind_valid]
     # coordinates of valid values
     points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
     # grid coordinates
     bmid_grid = np.meshgrid(*list_bmid)
     points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
     # fill grid no data with nearest neighbour
-    vals_grid = griddata(points_valid, vals, points_grid, method='nearest')
-    vals_grid = vals_grid.reshape(tuple(shape))
+    values_grid = griddata(points_valid, values, points_grid, method='nearest')
+    values_grid = values_grid.reshape(tuple(shape))
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
-    interp_fun = RegularGridInterpolator(tuple(list_bmid), vals_grid, method='linear', bounds_error=False, fill_value=None)
+    interp_fun = RegularGridInterpolator(tuple(list_bmid), values_grid, method='linear', bounds_error=False, fill_value=None)
 
     return interp_fun
 
@@ -249,16 +250,16 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
 
     return df_concat
 
-def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
+def get_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
     Get empirical variogram from skgstat.Variogram object
 
-    :param dh: elevation differences
+    :param values: values
     :param coords: coordinates
     :return: empirical variogram (variance, lags, counts)
 
     """
-    V = skg.Variogram(coordinates=coords, values=dh, normalize=False, **kwargs)
+    V = skg.Variogram(coordinates=coords, values=values, normalize=False, **kwargs)
 
     df = pd.DataFrame()
     df = df.assign(exp=V.experimental, bins=V.bins, count=V.count)
@@ -277,7 +278,7 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
     """
     print('Working on subsample '+str(argdict['i']) + ' out of '+str(argdict['max_i']))
 
-    return get_empirical_variogram(dh=argdict['dh'], coords=argdict['coords'], **kwargs)
+    return get_empirical_variogram(values=argdict['values'], coords=argdict['coords'], **kwargs)
 
 
 def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
@@ -334,118 +335,128 @@ def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[flo
     return mask_ring
 
 
-def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, outside_radius: float = 0) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
+def ring_subset(values: np.ndarray, coords: np.ndarray, inside_radius: float = 0, outside_radius: float = 0) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
     """
-    Subsampling of elevation differences within a ring/disk (to sample points at similar pairwise distances)
+    Subsampling of values within a ring/disk (to sample points at similar pairwise distances)
 
-    :param dh: elevation differences
+    :param values: values
     :param coords: coordinates
     :param inside_radius: radius of inside ring disk in pixels
     :param outside_radius: radius of outside ring disk in pixels
 
-    :return: subsets of dh and coords
+    :return: subsets of values and coords
     """
 
     # select random center coordinates
-    nx, ny = np.shape(dh)
+    nx, ny = np.shape(values)
     center_x = np.random.choice(nx, 1)
     center_y = np.random.choice(ny, 1)
 
     mask_ring = create_ring_mask((nx,ny),center=(center_x,center_y),in_radius=inside_radius,out_radius=outside_radius)
 
-    dh_ring = dh[mask_ring]
+    values_ring = values[mask_ring]
     coords_ring = coords[mask_ring]
 
-    return dh_ring, coords_ring
+    return values_ring, coords_ring
 
 
-def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coords: np.ndarray = None,
-                                          subsample: int = 10000, range_list: list = None, nrun: int = 1, nproc: int = 1,
-                                          **kwargs) -> pd.DataFrame:
+def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float = None, coords: np.ndarray = None,
+                                subsample: int = 10000, multi_ranges: list[float] = None, nrun: int = 1, nproc: int = 1,
+                                **kwargs) -> pd.DataFrame:
     """
-    Wrapper to sample multi-range empirical variograms from the data.
+    Sample empirical variograms with binning adaptable to multiple ranges and subsampling adapted for raster data. 
+    By default, subsamples into rings of varying radius between the pixel size and the extent of the provided raster.
+    Variograms are derived independently for several runs and ranges, and later aggregated, to more effectively sample 
+    spatial lags at different order of magnitudes with the millions of samples of raster data.
 
-    If no option is passed, a varying binning is used with adapted ranges and data subsampling
+    If values are provided as a Raster subclass, nothing else is required.
+    If values are provided as a 2D array (M,N), a ground sampling distance is sufficient to derive the distances.
+    If values are provided as a 1D array (N), an array of coordinates (N,2) or (2,N) is expected.
 
-    :param dh: elevation differences
-    :param gsd: ground sampling distance (if array is 2D on structured grid)
-    :param coords: coordinates, to be used only with a flattened elevation differences array and passed as an array of \the pairs of coordinates: one dimension equal to two and the other to that of the flattened elevation differences
-    :param range_list: successive ranges with even binning
-    :param subsample: number of samples to randomly draw from the elevation differences
-    :param nrun: number of samplings
+    :param values: values
+    :param gsd: ground sampling distance
+    :param coords: coordinates
+    :param multi_ranges: list of ranges with successive subsampling and binning
+    :param subsample: number of samples to randomly draw from the values
+    :param nrun: number of runs
     :param nproc: number of processing cores
 
     :return: empirical variogram (variance, lags, counts)
     """
-    # checks
-    dh = dh.squeeze()
-    if coords is None and gsd is None:
-        raise TypeError('Must provide either coordinates or ground sampling distance.')
-    elif gsd is not None and dh.ndim == 1:
-        raise TypeError('Array must be 2-dimensional when providing only ground sampling distance')
-    elif coords is not None and dh.ndim != 1:
-        raise TypeError('Coordinate array must be provided with 1-dimensional input array')
-    elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
-        raise TypeError('One dimension of the coordinates array must be of length equal to 2')
+    # First, check all that the values provided are OK
+    if isinstance(values, Raster):
+        coords = values.coords()
+        values, mask = get_array_and_mask(values.data)
+    elif isinstance(values, np.ndarray | np.ma.masked_array):
+        values, mask = get_array_and_mask(values)
+    else:
+        raise TypeError('Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.')
 
-    # defaulting to xx and yy if those are provided
+    values = values.squeeze()
+
+    # Then, check if the logic between values, coords and gsd is respected
+    if gsd is not None and values.ndim == 1:
+        raise TypeError('Values array must be 2D when providing ground sampling distance.')
+    elif coords is not None and values.ndim != 1:
+        raise TypeError('Values array must be 1D when providing coordinates.')
+    elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
+        raise TypeError('The coordinates array must have one dimension with length equal to 2')
+
+    # Defaulting to coordinates if those are provided
     if coords is not None:
         if coords.shape[0] == 2 and coords.shape[1] != 2:
             coords = np.transpose(coords)
+    # Otherwise, we use the ground sampling distance
     else:
-        x, y = np.meshgrid(np.arange(0, dh.shape[0] * gsd, gsd), np.arange(0, dh.shape[1] * gsd, gsd))
+        x, y = np.meshgrid(np.arange(0, values.shape[0] * gsd, gsd), np.arange(0, values.shape[1] * gsd, gsd))
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
-        dh = dh.flatten()
+        values = values.flatten()
 
-    valid_data = np.isfinite(dh)
-    dh = dh[valid_data]
-    coords = coords[valid_data, :]
+    # Remove no data once the arrays are flattened
+    values = values[mask]
+    coords = coords[mask, :]
 
-    # COMMENTING: custom binning is not supported by skgstat yet...
-    # if no range list is specified, define a default one based on the spatial extent of the data and its resolution
-    # if 'bin_func' not in kwargs.keys():
-    #     if range_list is None:
-    #
-    #         # define max range as half the maximum distance between coordinates
-    #         max_range = np.sqrt((np.max(coords[:,0])-np.min(coords[:,0]))**2+(np.max(coords[:,1])-np.min(coords[:,1]))**2)/2
-    #
-    #         # get the ground sampling distance
-    #         if gsd is None:
-    #             est_gsd = np.abs(coords[0,0] - coords[0,1])
-    #         else:
-    #             est_gsd = gsd
-    #
-    #         # define ranges as multiple of the resolution until they get close to the maximum range
-    #         range_list = []
-    #         new_range = gsd
-    #         while new_range < max_range/10:
-    #             range_list.append(new_range)
-    #             new_range *= 10
-    #         range_list.append(max_range)
-    #
-    # else:
-    #     if range_list is not None:
-    #         print('Both range_list and bin_func are defined for binning: defaulting to bin_func')
+    # If no range list is specified, define a default one based on the spatial extent of the data and its resolution
+    if 'bin_func' not in kwargs.keys():
 
-    # default value we want to use (kmeans is failing)
+        # If no multi_ranges are provided, define default behaviour
+        if multi_ranges is None:
+
+            # Define the max range as the maximum distance between coordinates
+            max_range = np.sqrt((np.max(coords[:,0])-np.min(coords[:,0]))**2+(np.max(coords[:,1])-np.min(coords[:,1]))**2)
+
+            # Get the ground sampling distance
+            if gsd is None:
+                gsd = np.sqrt((coords[0,0] - coords[0,1])**2 + (coords[0,0]-coords[1,0])**2)
+
+            # Define list of ranges as exponent 2 of the resolution until the maximum range
+            multi_ranges = []
+            # We start at 10 times the ground sampling distance
+            new_range = gsd*10
+            while new_range < max_range/2:
+                multi_ranges.append(new_range)
+                new_range *= 2
+            multi_ranges.append(max_range)
+
+    # Default value we want to use if no binning function is defined
     if 'bin_func' not in kwargs.keys():
         kwargs.update({'bin_func': 'even'})
     if 'n_lags' not in kwargs.keys():
-        kwargs.update({'n_lags': 100})
+        kwargs.update({'n_lags': 10})
 
-    # estimate variogram for multiple runs
+    # Estimate variogram for multiple runs
     if nrun == 1:
-        # subsetting
-        index = subsample_raster(dh, subsample=subsample, return_indices=True)
-        dh_sub = dh[index]
+        # Subset
+        index = subsample_raster(values, subsample=subsample, return_indices=True)
+        values_sub = values[index]
         coords_sub = coords[index, :]
-        # getting empirical variogram
-        df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
+        # Get empirical variogram
+        df = get_empirical_variogram(values=values_sub, coords=coords_sub, **kwargs)
         df['exp_sigma'] = np.nan
 
     else:
 
-        # multiple run only work for an even binning function for now (would need a customized binning not supported by skgstat)
+        # Multiple run only work for an even binning function for now (would need a customized binning not supported by skgstat)
         if kwargs.get('bin_func') is None:
             raise ValueError('Binning function must be "even" when doing multiple runs.')
 
@@ -460,25 +471,25 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
             print('Using 1 core...')
             list_df_nb = []
             for i in range(nrun):
-                index = subsample_raster(dh, subsample=subsample, return_indices=True)
-                dh_sub = dh[index]
+                index = subsample_raster(values, subsample=subsample, return_indices=True)
+                values_sub = values[index]
                 coords_sub = coords[index, :]
-                df = get_empirical_variogram(dh=dh_sub, coords=coords_sub, **kwargs)
+                df = get_empirical_variogram(values=values_sub, coords=coords_sub, **kwargs)
                 df['run'] = i
                 list_df_nb.append(df)
         else:
             print('Using '+str(nproc) + ' cores...')
-            list_dh_sub = []
+            list_values_sub = []
             list_coords_sub = []
             for i in range(nrun):
-                index = subsample_raster(dh, subsample=subsample, return_indices=True)
-                dh_sub = dh[index]
+                index = subsample_raster(values, subsample=subsample, return_indices=True)
+                values_sub = values[index]
                 coords_sub = coords[index, :]
-                list_dh_sub.append(dh_sub)
+                list_values_sub.append(values_sub)
                 list_coords_sub.append(coords_sub)
 
             pool = mp.Pool(nproc, maxtasksperchild=1)
-            argsin = [{'dh': list_dh_sub[i], 'coords': list_coords_sub[i], 'i':i, 'max_i':nrun} for i in range(nrun)]
+            argsin = [{'values': list_values_sub[i], 'coords': list_coords_sub[i], 'i':i, 'max_i':nrun} for i in range(nrun)]
             list_df = pool.map(partial(wrapper_get_empirical_variogram, **kwargs), argsin, chunksize=1)
             pool.close()
             pool.join()
@@ -894,13 +905,13 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
     return np.sqrt(var_err)
 
 
-def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_size : float, perc_min_valid: float = 80.,
+def patches_method(values : np.ndarray, mask: np.ndarray[bool], gsd : float, area_size : float, perc_min_valid: float = 80.,
                    patch_shape: str = 'circular',nmax : int = 1000, verbose: bool = False) -> pd.DataFrame:
 
     """
     Patches method for empirical estimation of the standard error over an integration area
 
-    :param dh: elevation differences
+    :param values: values
     :param mask: mask of sampled terrain
     :param gsd: ground sampling distance
     :param area_size: size of integration area
@@ -914,13 +925,13 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
     """
 
     # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
-    dh = dh.squeeze()
-    valid_mask = np.logical_and(np.isfinite(dh), mask)
-    dh[~valid_mask] = np.nan
+    values = values.squeeze()
+    valid_mask = np.logical_and(np.isfinite(values), mask)
+    values[~valid_mask] = np.nan
 
     # divide raster in cadrants where we can sample
-    nx, ny = np.shape(dh)
-    count = len(dh[~np.isnan(dh)])
+    nx, ny = np.shape(values)
+    count = len(values[~np.isnan(values)])
     print('Number of valid pixels: ' + str(count))
     nb_cadrant = int(np.floor(np.sqrt((count * gsd ** 2) / area_size) + 1))
     # rectangular
@@ -953,12 +964,12 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
 
         tile.append(str(i) + '_' + str(j))
         if patch_shape == 'rectangular':
-            patch = dh[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
+            patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
         elif patch_shape == 'circular':
             center_x = np.floor(nx_sub*(i+1/2))
             center_y = np.floor(ny_sub*(j+1/2))
             mask = create_circular_mask((nx, ny), center=(center_x, center_y), radius=rad)
-            patch = dh[mask]
+            patch = values[mask]
         else:
             raise ValueError('Patch method must be rectangular or circular.')
 
