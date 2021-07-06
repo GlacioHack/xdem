@@ -11,6 +11,8 @@ from tqdm import tqdm
 import numba
 import skimage.transform
 
+from xdem.misc import deprecate
+
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
     """
@@ -112,6 +114,13 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     return resampling_method
 
 
+@deprecate(
+        removal_version="0.0.5",
+        details=(
+            "This function is redundant after the '-' operator for rasters was introduced."
+            "Use 'dem1 - dem2.reproject(dem1, resampling_method='cubic_spline')' instead."
+        )
+)
 def subtract_rasters(first_raster: Union[str, gu.georaster.Raster], second_raster: Union[str, gu.georaster.Raster],
                      reference: str = "first",
                      resampling_method: Union[str, rio.warp.Resampling] = "cubic_spline") -> gu.georaster.Raster:
