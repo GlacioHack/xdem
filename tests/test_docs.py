@@ -27,7 +27,7 @@ class TestDocs:
                     # When running the code asynchronously, matplotlib complains a bit
                     ignored_warnings = [
                         "Starting a Matplotlib GUI outside of the main thread",
-                        "fetching the attribute.*Polygon",
+                        ".*fetching the attribute.*Polygon.*",
                     ]
                     # This is a GeoPandas issue
                     warnings.simplefilter("error")
