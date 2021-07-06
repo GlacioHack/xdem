@@ -73,6 +73,9 @@ Workflow for DEM precision estimation
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. minigallery:: xdem.spstats.nd_binning
+        :add-heading:
+
 Quantify and model non-stationarites
 """"""""""""""""""""""""""""""""""""
 

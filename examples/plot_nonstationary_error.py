@@ -8,7 +8,7 @@ accounted for, with only some studies that used arbitrary filtering thresholds o
 
 Quantifying the non-stationarities in elevation measurement errors is essential to use stable terrain as a proxy for
 assessing the precision on other types of terrain (Hugonnet et al., in prep) and allows to standardize the measurement
-errors to reach a stationary variance, an assumption necessary for spatial statistics (see :ref`spatialstats`).
+errors to reach a stationary variance, an assumption necessary for spatial statistics (see :ref:`spatialstats`).
 
 Here, we show an example in which we identify terrain-related non-stationarities for a DEM difference of Longyearbyen glacier.
 We quantify those non-stationarities by `binning <https://en.wikipedia.org/wiki/Data_binning>`_ robustly
@@ -41,7 +41,7 @@ mask_glacier = glacier_outlines.create_mask(ddem)
 ddem.data[mask_glacier] = np.nan
 
 # %%
-# We use the reference DEM to derive terrain variables such as slope, aspect, curvature (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes`)
+# We use the reference DEM to derive terrain variables such as slope, aspect, curvature (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`)
 # that we'll use to explore potential non-stationarities in elevation measurement error
 
 # We compute the slope, aspect, and both plan and profile curvatures:
