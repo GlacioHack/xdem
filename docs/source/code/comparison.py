@@ -42,14 +42,14 @@ ddem_raster = xdem.DEM.from_array(ddem_data, dem1.transform, dem2.crs)
 
 # TEXT HERE
 
-ddem_raster = xdem.spatial_tools.subtract_rasters(dem1, dem2)
+ddem_raster = dem1 - dem2
 
 #############################
 # SECTION: dDEM interpolation
 #############################
 
 ddem = xdem.dDEM(
-    raster=xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990),
+    raster=dem_2009 - dem_1990,
     start_time=dem_1990.datetime,
     end_time=dem_2009.datetime
 )

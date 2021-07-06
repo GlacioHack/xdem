@@ -100,12 +100,7 @@ class DEMCollection:
                 )
             else:
                 ddem = xdem.dDEM(
-                    raster=xdem.spatial_tools.subtract_rasters(
-                        self.reference_dem,
-                        dem,
-                        reference="first",
-                        resampling_method=resampling_method
-                    ),
+                    self.reference_dem - dem.reproject(resampling=resampling_method, silent=True),
                     start_time=min(self.reference_timestamp, self.timestamps[i]),
                     end_time=max(self.reference_timestamp, self.timestamps[i]),
                     error=None
