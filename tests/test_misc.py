@@ -15,32 +15,36 @@ def test_deprecate(deprecation_increment: int | None, details: str | None) -> No
     """
     Test the deprecation warnings/errors.
 
-    If the version is larger than the current, it should warn.
-    If the version is smaller or equal, it should raise an error.
+    If the removal_version is larger than the current, it should warn.
+    If the removal_version is smaller or equal, it should raise an error.
 
     :param deprecation_increment: The version number relative to the current version.
+    :param details: An optional explanation for the description.
     """
     warnings.simplefilter("error")
 
     current_version = xdem.version.version
 
-    # Set the deprecation_version to be the current version plus the increment (e.g. 0.0.5 + 1 -> 0.0.6)
-    deprecation_version = (
+    # Set the removal version to be the current version plus the increment (e.g. 0.0.5 + 1 -> 0.0.6)
+    removal_version = (
         current_version[:-1] + str(int(current_version.rsplit(".", 1)[1]) + deprecation_increment)
         if deprecation_increment is not None
         else None
     )
 
-    @xdem.misc.deprecate(deprecation_version, details=details)
+    # Define a function with no use that is marked as deprecated.
+    @xdem.misc.deprecate(removal_version, details=details)
     def useless_func() -> int:
         return 1
 
-    should_warn = deprecation_version is None or deprecation_version > current_version
+    # If True, a warning is expected. If False, a ValueError is expected.
+    should_warn = removal_version is None or removal_version > current_version
 
+    # Add the expected text depending on the parametrization.
     text = (
         "Call to deprecated function 'useless_func'."
         if should_warn
-        else f"Function 'useless_func' was deprecated in {deprecation_version}."
+        else f"Deprecated function 'useless_func' was removed in {removal_version}."
     )
 
     if details is not None:
@@ -49,16 +53,15 @@ def test_deprecate(deprecation_increment: int | None, details: str | None) -> No
         if not any(text.endswith(c) for c in ".!?"):
             text += "."
 
-    
-    if should_warn and deprecation_version is not None:
-        text += f" This functionality will be removed in version {deprecation_version}."
+    if should_warn and removal_version is not None:
+        text += f" This functionality will be removed in version {removal_version}."
     elif not should_warn:
         text += f" Current version: {current_version}."
 
-
+    # Expect either a warning or an exception with the right text.
     if should_warn:
-        with pytest.warns(DeprecationWarning, match=text):
+        with pytest.warns(DeprecationWarning, match="^" + text + "$"):
             useless_func()
     else:
-        with pytest.raises(ValueError, match=text):
+        with pytest.raises(ValueError, match="^" + text + "$"):
             useless_func()

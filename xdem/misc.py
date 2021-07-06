@@ -67,28 +67,33 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
 
         @functools.wraps(func)
         def new_func(*args, **kwargs):
-            warning_text = f"Call to deprecated function '{func.__name__}'."
+            # True if it should warn, False if it should raise an error
+            should_warn = removal_version is None or removal_version > xdem.version.version
+
+            # Add text depending on the given arguments and 'should_warn'.
+            text = (
+                f"Call to deprecated function '{func.__name__}'."
+                if should_warn
+                else f"Deprecated function '{func.__name__}' was removed in {removal_version}."
+            )
+
+            # Add the details explanation if it was given, and make sure the sentence is ended.
             if details is not None:
-                formatted_details = " " + details.strip().capitalize()
-                if not any(formatted_details.endswith(c) for c in ".!?"):
-                    formatted_details += "."
-                warning_text += formatted_details
+                text += " " + details.strip().capitalize()
+
+                if not any(text.endswith(c) for c in ".!?"):
+                    text += "."
+
+            if should_warn and removal_version is not None:
+                text += f" This functionality will be removed in version {removal_version}."
+            elif not should_warn:
+                text += f" Current version: {xdem.version.version}."
+
+            if should_warn:
+                warnings.warn(text, category=DeprecationWarning, stacklevel=2)
             else:
-                formatted_details = ""
-            if removal_version is not None:
-                warning_text = warning_text.strip()
-                if not any(warning_text.endswith(c) for c in ".!?"):
-                    warning_text += "."
-                warning_text += f" This functionality will be removed in version {removal_version}."
-
-                if xdem.version.version >= removal_version:
-                    raise ValueError(
-                        f"Function '{func.__name__}' was deprecated in {removal_version}."
-                        + formatted_details + 
-                        f" Current version: {xdem.version.version}."
-                    )
-            warnings.warn(warning_text, category=DeprecationWarning, stacklevel=2)
-
+                raise ValueError(text)
+            
             return func(*args, **kwargs)
 
         return new_func
