@@ -118,7 +118,7 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
         removal_version="0.0.6",
         details=(
             "This function is redundant after the '-' operator for rasters was introduced."
-            "Use 'dem1 - dem2.reproject(dem1, resampling_method='cubic_spline')' instead."
+            " Use 'dem1 - dem2.reproject(dem1, resampling_method='cubic_spline')' instead."
         )
 )
 def subtract_rasters(first_raster: Union[str, gu.georaster.Raster], second_raster: Union[str, gu.georaster.Raster],

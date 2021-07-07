@@ -79,7 +79,11 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
 
             # Add the details explanation if it was given, and make sure the sentence is ended.
             if details is not None:
-                text += " " + details.strip().capitalize()
+                details_frm = details.strip()
+                if details_frm[0].islower():
+                    details_frm = details_frm[0].upper() + details_frm[1:]
+
+                text += " " + details_frm
 
                 if not any(text.endswith(c) for c in ".!?"):
                     text += "."
