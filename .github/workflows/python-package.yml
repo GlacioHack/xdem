@@ -56,4 +56,4 @@ jobs:
         python -c "from xdem.examples import *; download_longyearbyen_examples(overwrite=False)"
     - name: Test with pytest
       run: |
-        pytest -rA -n=auto
+        pytest -ra -n=auto

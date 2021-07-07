@@ -356,8 +356,10 @@ def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[flo
         center = (int(w / 2), int(h / 2))
         out_radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    mask_inside = create_circular_mask((w,h),center=center,radius=in_radius)
-    mask_outside = create_circular_mask((w,h),center=center,radius=out_radius)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        mask_inside = create_circular_mask((w,h),center=center,radius=in_radius)
+        mask_outside = create_circular_mask((w,h),center=center,radius=out_radius)
 
     mask_ring = np.logical_and(~mask_inside,mask_outside)
 
@@ -980,7 +982,9 @@ def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_si
         elif patch_shape == 'circular':
             center_x = np.floor(nx_sub*(i+1/2))
             center_y = np.floor(ny_sub*(j+1/2))
-            mask = create_circular_mask((nx, ny), center=(center_x, center_y), radius=rad)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                mask = create_circular_mask((nx, ny), center=(center_x, center_y), radius=rad)
             patch = dh[mask]
         else:
             raise ValueError('Patch method must be rectangular or circular.')

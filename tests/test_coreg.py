@@ -498,7 +498,7 @@ class TestCoregClass:
         dem1.data[0, 1, 1] = 100
 
         # Translate the DEM 1 "meter" right and add a bias
-        dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5))
+        dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5), silent=True)
         dem2 += 1
 
         # Create a biascorr for Rasters ("_r") and for arrays ("_a")
@@ -512,7 +512,7 @@ class TestCoregClass:
         )
         biascorr_a.fit(
             reference_dem=dem1.data,
-            dem_to_be_aligned=dem2.reproject(dem1).data,
+            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
             transform=dem1.transform
         )
 
