@@ -19,9 +19,11 @@ from xdem import examples
 
 def test_dem_subtraction():
     """Test that the DEM subtraction script gives reasonable numbers."""
-    diff = xdem.spatial_tools.subtract_rasters(
-        examples.get_path("longyearbyen_ref_dem"),
-        examples.get_path("longyearbyen_tba_dem"))
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        diff = xdem.spatial_tools.subtract_rasters(
+            examples.get_path("longyearbyen_ref_dem"),
+            examples.get_path("longyearbyen_tba_dem"))
 
     assert np.nanmean(np.abs(diff.data)) < 100
 
