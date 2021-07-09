@@ -1,7 +1,6 @@
 """DEM class and functions."""
 import os
 import pyproj
-from typing import Union
 import warnings
 from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
