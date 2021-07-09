@@ -8,6 +8,8 @@ import numba
 import numpy as np
 
 import xdem.spatial_tools
+from xdem.dem import DEMLike
+import geoutils as gu
 
 
 @numba.njit(parallel=True)
@@ -196,11 +198,13 @@ def get_quadric_coefficients(
 def get_terrain_attribute(
     dem: np.ndarray | np.ma.masked_array,
     attribute: str,
-    resolution: tuple[float, float] | float,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
 ) -> np.ndarray:
     ...
 
@@ -209,26 +213,56 @@ def get_terrain_attribute(
 def get_terrain_attribute(
     dem: np.ndarray | np.ma.masked_array,
     attribute: list[str],
-    resolution: tuple[float, float] | float,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
 ) -> list[np.ndarray]:
+    ...
+
+@overload
+def get_terrain_attribute(
+    dem: DEMLike,
+    attribute: str,
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
+) -> DEMLike:
+    ...
+
+@overload
+def get_terrain_attribute(
+    dem: DEMLike,
+    attribute: list[str],
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
+) -> list[DEMLike]:
     ...
 
 
 def get_terrain_attribute(
-    dem: np.ndarray | np.ma.masked_array,
+    dem: np.ndarray | np.ma.masked_array | DEMLike,
     attribute: str | list[str],
-    resolution: tuple[float, float] | float,
+    resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     fill_method: str = "median",
     edge_method: str = "nearest",
-) -> np.ndarray | list[np.ndarray]:
+) -> np.ndarray | list[np.ndarray] | DEMLike | list[DEMLike]:
     """
     Derive one or multiple terrain attributes from a DEM.
 
@@ -271,6 +305,12 @@ def get_terrain_attribute(
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
+    if isinstance(dem, gu.Raster):
+        if resolution is None:
+            resolution = dem.res
+
+    if resolution is None:
+        raise ValueError("'resolution' must be provided as an argument.")
     # Validate and format the inputs
     if isinstance(attribute, str):
         attribute = [attribute]
@@ -413,6 +453,9 @@ def get_terrain_attribute(
             terrain_attributes[attr] = np.rad2deg(terrain_attributes[attr])
 
     output_attributes = [terrain_attributes[key].reshape(dem.shape) for key in attribute]
+
+    if isinstance(dem, gu.Raster):
+        output_attributes = [dem.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=None) for attr in output_attributes]
 
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
 
