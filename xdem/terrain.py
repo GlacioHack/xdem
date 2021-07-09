@@ -459,10 +459,23 @@ def get_terrain_attribute(
 
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
 
+@overload
+def slope(
+    dem: DEMLike,
+    resolution: float | tuple[float, float] | None,
+    degrees: bool
+) -> DEMLike: ...
+
+@overload
+def slope(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float] | None,
+    degrees: bool
+) -> np.ndarray: ...
 
 def slope(
-    dem: np.ndarray | np.ma.masked_array, resolution: float | tuple[float, float], degrees: bool = True
-) -> np.ndarray:
+    dem: np.ndarray | np.ma.masked_array | DEMLike, resolution: float | tuple[float, float] | None = None, degrees: bool = True
+) -> np.ndarray | DEMLike:
     """
     Generate a slope map for a DEM.
 
@@ -474,6 +487,17 @@ def slope(
     """
     return get_terrain_attribute(dem, attribute="slope", resolution=resolution, degrees=degrees)
 
+@overload
+def slope(
+    aspect: DEMLike,
+    degrees: bool
+) -> DEMLike: ...
+
+@overload
+def aspect(
+    dem: np.ndarray | np.ma.masked_array,
+    degrees: bool
+) -> np.ndarray: ...
 
 def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.ndarray:
     """
@@ -506,14 +530,31 @@ def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.nda
     """
     return get_terrain_attribute(dem, attribute="aspect", resolution=1.0, degrees=degrees)
 
+@overload
+def hillshade(
+    dem: DEMLike,
+    resolution: float | tuple[float, float],
+    azimuth: float,
+    altitude: float,
+    z_factor: float,
+) -> DEMLike: ...
 
+@overload
 def hillshade(
     dem: np.ndarray | np.ma.masked_array,
     resolution: float | tuple[float, float],
+    azimuth: float,
+    altitude: float,
+    z_factor: float,
+) -> np.ndarray: ...
+
+def hillshade(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float] | None = None,
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
-) -> np.ndarray:
+) -> np.ndarray | DEMLike:
     """
     Generate a hillshade from the given DEM.
 
@@ -537,11 +578,22 @@ def hillshade(
         hillshade_z_factor=z_factor,
     )
 
+@overload
+def curvature(
+    dem: DEMLike,
+    resolution: float | tuple[float, float] | None,
+) -> DEMLike: ...
 
+@overload
 def curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-) -> np.ndarray:
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def curvature(
+    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | DEMLike:
     """
     Get the terrain curvature (second derivative of elevation).
 
@@ -572,10 +624,22 @@ def curvature(
     return get_terrain_attribute(dem=dem, attribute="curvature", resolution=resolution)
 
 
+@overload
+def planform_curvature(
+    dem: DEMLike,
+    resolution: float | tuple[float, float] | None,
+) -> DEMLike: ...
+
+@overload
 def planform_curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-) -> np.ndarray:
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def planform_curvature(
+    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | DEMLike:
     """
     Get the terrain curvature perpendicular to the direction of the slope.
 
@@ -589,10 +653,22 @@ def planform_curvature(
     return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution)
 
 
+@overload
+def profile_curvature(
+    dem: DEMLike,
+    resolution: float | tuple[float, float] | None,
+) -> DEMLike: ...
+
+@overload
 def profile_curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-) -> np.ndarray:
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def profile_curvature(
+    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | DEMLike:
     """
     Get the terrain curvature parallel to the direction of the slope.
 
