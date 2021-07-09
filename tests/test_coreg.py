@@ -485,6 +485,21 @@ class TestCoregClass:
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
 
+
+    def test_blockwise_coreg_large_gaps(self):
+        """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
+        warnings.simplefilter("error")
+        reference_dem = self.ref.reproject(dst_crs='EPSG:3413', dst_res=self.ref.res, resampling='bilinear')
+        dem_to_be_aligned = self.tba.reproject(dst_ref=reference_dem, resampling='bilinear')
+
+        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
+
+        # This should not fail or trigger warnings as warn_failures is False
+        blockwise.fit(reference_dem, dem_to_be_aligned)
+
+
+
+
     def test_coreg_raster_and_ndarray_args(_) -> None:
 
         # Create a small sample-DEM

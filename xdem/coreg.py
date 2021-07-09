@@ -1552,7 +1552,7 @@ class BlockwiseCoreg(Coreg):
         subdivision is made as best as possible to have approximately equal pixel counts.
     """
 
-    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None):
+    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None, warn_failures: bool = False):
         """
         Instantiate a blockwise coreg object.
 
@@ -1560,6 +1560,7 @@ class BlockwiseCoreg(Coreg):
         :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
         :param success_threshold: Raise an error if fewer chunks than the fraction failed for any reason.
         :param n_threads: The maximum amount of threads to use. Default=auto
+        :param warn_failures: Trigger or ignore warnings for each exception/warning in each block.
         """
         if isinstance(coreg, type):
             raise ValueError(
@@ -1570,6 +1571,7 @@ class BlockwiseCoreg(Coreg):
         self.subdivision = subdivision
         self.success_threshold = success_threshold
         self.n_threads = n_threads
+        self.warn_failures = warn_failures
 
         super().__init__()
 
@@ -1587,8 +1589,15 @@ class BlockwiseCoreg(Coreg):
 
         progress_bar = tqdm(total=indices.size, desc="Coregistering chunks", disable=(not verbose))
 
-        def coregister(i: int) -> dict[str, Any] | BaseException:
-            """Coregister a chunk in a thread-safe way."""
+        def coregister(i: int) -> dict[str, Any] | BaseException | None:
+            """
+            Coregister a chunk in a thread-safe way.
+
+            :returns:
+                * If it succeeds: A dictionary of the fitting metadata.
+                * If it fails: The associated exception.
+                * If the block is empty: None
+            """
             inlier_mask = groups == i
 
             # Find the corresponding slice of the inlier_mask to subset the data
@@ -1598,6 +1607,9 @@ class BlockwiseCoreg(Coreg):
             # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
             ref_subset = ref_dem[arrayslice].copy()
             tba_subset = tba_dem[arrayslice].copy()
+
+            if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
+                return None
             mask_subset = inlier_mask[arrayslice].copy()
             west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
             transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)
@@ -1659,26 +1671,38 @@ class BlockwiseCoreg(Coreg):
 
             return meta.copy()
 
+        # Catch warnings; only show them if
+        exceptions: list[BaseException | warnings.WarningMessage] = []
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("default")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+                results = executor.map(coregister, indices)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-            results = executor.map(coregister, indices)
+            exceptions += list(caught_warnings)
 
-        exceptions: list[BaseException] = []
+        empty_blocks = 0
         for result in results:
             if isinstance(result, BaseException):
                 exceptions.append(result)
+            elif result is None:
+                empty_blocks += 1
+                continue
             else:
                 self._meta["coreg_meta"].append(result)
 
         progress_bar.close()
 
         # Stop if the success rate was below the threshold
-        if (len(self._meta["coreg_meta"]) / self.subdivision) <= self.success_threshold:
+        if ((len(self._meta["coreg_meta"]) + empty_blocks) / self.subdivision) <= self.success_threshold:
             raise ValueError(
                 f"Fitting failed for {len(exceptions)} chunks:\n" +
                 "\n".join(map(str, exceptions[:5])) +
                 f"\n... and {len(exceptions) - 5} more" if len(exceptions) > 5 else ""
             )
+
+        if self.warn_failures:
+            for exception in exceptions:
+                warnings.warn(str(exception))
 
         # Set the _fit_called parameters (only identical copies of self.coreg have actually been called)
         self.coreg._fit_called = True
