@@ -8,8 +8,8 @@ import numba
 import numpy as np
 
 import xdem.spatial_tools
-from xdem.dem import DEMLike
 import geoutils as gu
+from geoutils.georaster import RasterType
 
 
 @numba.njit(parallel=True)
@@ -225,7 +225,7 @@ def get_terrain_attribute(
 
 @overload
 def get_terrain_attribute(
-    dem: DEMLike,
+    dem: RasterType,
     attribute: str,
     resolution: tuple[float, float] | float | None,
     degrees: bool,
@@ -234,12 +234,12 @@ def get_terrain_attribute(
     hillshade_z_factor: float,
     fill_method: str,
     edge_method: str
-) -> DEMLike:
+) -> RasterType:
     ...
 
 @overload
 def get_terrain_attribute(
-    dem: DEMLike,
+    dem: RasterType,
     attribute: list[str],
     resolution: tuple[float, float] | float | None,
     degrees: bool,
@@ -248,12 +248,12 @@ def get_terrain_attribute(
     hillshade_z_factor: float,
     fill_method: str,
     edge_method: str
-) -> list[DEMLike]:
+) -> list[RasterType]:
     ...
 
 
 def get_terrain_attribute(
-    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    dem: np.ndarray | np.ma.masked_array | RasterType,
     attribute: str | list[str],
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -262,7 +262,7 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     fill_method: str = "median",
     edge_method: str = "nearest",
-) -> np.ndarray | list[np.ndarray] | DEMLike | list[DEMLike]:
+) -> np.ndarray | list[np.ndarray] | RasterType | list[RasterType]:
     """
     Derive one or multiple terrain attributes from a DEM.
 
@@ -461,10 +461,10 @@ def get_terrain_attribute(
 
 @overload
 def slope(
-    dem: DEMLike,
+    dem: RasterType,
     resolution: float | tuple[float, float] | None,
     degrees: bool
-) -> DEMLike: ...
+) -> RasterType: ...
 
 @overload
 def slope(
@@ -474,8 +474,8 @@ def slope(
 ) -> np.ndarray: ...
 
 def slope(
-    dem: np.ndarray | np.ma.masked_array | DEMLike, resolution: float | tuple[float, float] | None = None, degrees: bool = True
-) -> np.ndarray | DEMLike:
+    dem: np.ndarray | np.ma.masked_array | RasterType, resolution: float | tuple[float, float] | None = None, degrees: bool = True
+) -> np.ndarray | RasterType:
     """
     Generate a slope map for a DEM.
 
@@ -486,12 +486,6 @@ def slope(
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
     return get_terrain_attribute(dem, attribute="slope", resolution=resolution, degrees=degrees)
-
-@overload
-def slope(
-    aspect: DEMLike,
-    degrees: bool
-) -> DEMLike: ...
 
 @overload
 def aspect(
@@ -532,12 +526,12 @@ def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.nda
 
 @overload
 def hillshade(
-    dem: DEMLike,
+    dem: RasterType,
     resolution: float | tuple[float, float],
     azimuth: float,
     altitude: float,
     z_factor: float,
-) -> DEMLike: ...
+) -> RasterType: ...
 
 @overload
 def hillshade(
@@ -554,7 +548,7 @@ def hillshade(
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
-) -> np.ndarray | DEMLike:
+) -> np.ndarray | RasterType:
     """
     Generate a hillshade from the given DEM.
 
@@ -580,9 +574,9 @@ def hillshade(
 
 @overload
 def curvature(
-    dem: DEMLike,
+    dem: RasterType,
     resolution: float | tuple[float, float] | None,
-) -> DEMLike: ...
+) -> RasterType: ...
 
 @overload
 def curvature(
@@ -591,9 +585,9 @@ def curvature(
 ) -> np.ndarray: ...
 
 def curvature(
-    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    dem: np.ndarray | np.ma.masked_array | RasterType,
     resolution: float | tuple[float, float] | None = None,
-) -> np.ndarray | DEMLike:
+) -> np.ndarray | RasterType:
     """
     Get the terrain curvature (second derivative of elevation).
 
@@ -626,9 +620,9 @@ def curvature(
 
 @overload
 def planform_curvature(
-    dem: DEMLike,
+    dem: RasterType,
     resolution: float | tuple[float, float] | None,
-) -> DEMLike: ...
+) -> RasterType: ...
 
 @overload
 def planform_curvature(
@@ -637,9 +631,9 @@ def planform_curvature(
 ) -> np.ndarray: ...
 
 def planform_curvature(
-    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    dem: np.ndarray | np.ma.masked_array | RasterType,
     resolution: float | tuple[float, float] | None = None,
-) -> np.ndarray | DEMLike:
+) -> np.ndarray | RasterType:
     """
     Get the terrain curvature perpendicular to the direction of the slope.
 
@@ -655,9 +649,9 @@ def planform_curvature(
 
 @overload
 def profile_curvature(
-    dem: DEMLike,
+    dem: RasterType,
     resolution: float | tuple[float, float] | None,
-) -> DEMLike: ...
+) -> RasterType: ...
 
 @overload
 def profile_curvature(
@@ -666,9 +660,9 @@ def profile_curvature(
 ) -> np.ndarray: ...
 
 def profile_curvature(
-    dem: np.ndarray | np.ma.masked_array | DEMLike,
+    dem: np.ndarray | np.ma.masked_array | RasterType,
     resolution: float | tuple[float, float] | None = None,
-) -> np.ndarray | DEMLike:
+) -> np.ndarray | RasterType:
     """
     Get the terrain curvature parallel to the direction of the slope.
 

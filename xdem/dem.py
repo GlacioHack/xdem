@@ -241,5 +241,3 @@ class DEM(SatelliteImage):
         # update raster
         self._update(metadata=meta,imgdata=zz)
 
-
-DEMLike = Union[DEM, Raster, SatelliteImage]
