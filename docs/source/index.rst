@@ -30,6 +30,7 @@ Simple usage
    intro
    coregistration
    biascorr
+   filters
    comparison
    spatialstats
    robuststats

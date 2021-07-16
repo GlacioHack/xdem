@@ -1,16 +1,18 @@
+.. _robuststats:
+
 Robust statistics
 ==================
 
 Digital Elevation Models often contain outliers that hamper further analysis.
 In order to deal with outliers, ``xdem`` integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
 methods at different levels.
-For instance, those can be used robustly fit functions necessary to perform alignment (:ref:`coreg`, :ref:`biascorr`), or to provide
+For instance, those can be used robustly fit functions necessary to perform alignment (see :ref:`coregistration`, :ref:`biascorr`), or to provide
 robust statistical measures equivalent to the mean, the standard deviation or the covariance of a sample when dealing with
 :ref:`spatialstats`.
 
 The downside of robust statistical measures is that those can yield less precise estimates for small samples sizes and,
 in some cases, hide patterns inherent to the data by smoothing.
-As a consequence, when outliers exhibit idenfiable patterns, it is better to first resort to outlier filtering (:ref:`filters`)
+As a consequence, when outliers exhibit idenfiable patterns, it is better to first resort to outlier filtering (see :ref:`filters`)
 and perform analysis using traditional statistical measures.
 
 .. contents:: Contents 
@@ -23,7 +25,7 @@ Central tendency
 ^^^^^^^^^^^^^^^^
 
 The `central tendency <https://en.wikipedia.org/wiki/Central_tendency>`_ represents the central value of a sample,
-typically described by measures such as the `mean <https://en.wikipedia.org/wiki/Mean>`, and is mostly useful during
+typically described by measures such as the `mean <https://en.wikipedia.org/wiki/Mean>`_, and is mostly useful during
 analysis of sample accuracy (see :ref:`intro`).
 However, the mean is a measure sensitive to outliers. In many cases, for example when working on unfiltered DEMs, using
 the `median <https://en.wikipedia.org/wiki/Median>`_ is therefore preferable.
@@ -32,7 +34,7 @@ When working with weighted data, the `weighted median <https://en.wikipedia.org/
 to the 50\ :sup:`th` `weighted percentile <https://en.wikipedia.org/wiki/Percentile#Weighted_percentile>`_, can also be
 used as a robust measure of central tendency.
 
-The median is used by default alignment routines in :ref:`coreg` and :ref:`biascorr`.
+The median is used by default alignment routines in :ref:`coregistration` and :ref:`biascorr`.
 
 Dispersion
 ^^^^^^^^^^
@@ -44,13 +46,20 @@ However, the standard deviation is a measure sensitive to outliers. The normaliz
 corresponds to the `median absolute deviation <https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor
 of ~1.4826 to match the dispersion of a normal distribution, is the median equivalent of a standard deviation and has been shown to
 provide more robust when working with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
+It is thus defined as:
+
+.. math::
+        NMAD_{x} = 1.4826 \cdot \textrm{median}_{i} \left ( \mid x_{i} - \textrm{median}(x) \mid \right )
+
+where :math:`x` is the sample.
+
 The half difference between 84\ :sup:`th` and 16\ :sup:`th` percentiles, or the absolute 68\ :sup:`th` percentile
 can also be used as a robust dispersion measure equivalent to the standard deviation.
 
 .. code-block:: python
-        nmad = xdem.spatial_tools.nmad(ddem.data)
+        nmad = xdem.spatial_tools.nmad()
 
-When working with weighted data, the difference between the 84th and 16th `weighted percentile <https://en.wikipedia.org
+When working with weighted data, the difference between the 84\ :sup:`th` and 16\ :sup:`th` `weighted percentile <https://en.wikipedia.org
 /wiki/Percentile#Weighted_percentile>`_, or the absolute 68\ :sup:`th` weighted percentile can be used as a robust measure of dispersion.
 
 Measures of correlation
@@ -72,12 +81,16 @@ Spatial auto-correlation of a sample
 `Variogram <https://en.wikipedia.org/wiki/Variogram>`_ analysis exploits statistical measures equivalent to the covariance,
 and is therefore also subject to outliers.
 Based on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, ``xdem`` allows to specify robust variogram
-estimators such as Dowd's variogram based on medians (`Dowd (1984) <https://en.wikipedia.org/wiki/Variogram>`_).
+estimators such as Dowd's variogram based on medians, see `Dowd (1984) <https://en.wikipedia.org/wiki/Variogram>`_.
+It is defined as:
+
+.. math::
+        2\gamma (h) = 2.198 \cdot \textrm{median}_{i} \left ( Z_{x_{i}} - Z_{x_{i+h}} \right )
+
+where :math:`h` is the spatial lag and :math:`Z_{x_{i}}` is the value of the sample at the location :math:`x_{i}`.
 
 Regression analysis
 -------------------
-
-``xdem`` encapsulates methods from scipy and sklearn to perform robust regression for :ref:`coreg` and :ref:`biascorr`.
 
 Robust loss functions
 ^^^^^^^^^^^^^^^^^^^^^
