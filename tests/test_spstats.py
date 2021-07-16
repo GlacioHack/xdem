@@ -43,33 +43,33 @@ class TestVariogram:
 
         # check the base script runs with right input shape
         df = xdem.spstats.get_empirical_variogram(
-            dh=diff.data.flatten()[0:1000],
-            coords=coords[0:1000, :],
+            values=diff.data.flatten(),
+            coords=coords,
             nsamp=1000)
 
         # check the wrapper script runs with various inputs
         # with gsd as input
-        df_gsd = xdem.spstats.sample_multirange_empirical_variogram(
-            dh=diff.data,
+        df_gsd = xdem.spstats.sample_multirange_variogram(
+            values=diff.data,
             gsd=diff.res[0],
-            nsamp=1000)
+            nsamp=10)
 
         # with coords as input, and "uniform" bin_func
-        df_coords = xdem.spstats.sample_multirange_empirical_variogram(
-            dh=diff.data.flatten(),
+        df_coords = xdem.spstats.sample_multirange_variogram(
+            values=diff.data.flatten(),
             coords=coords,
             bin_func='uniform',
             nsamp=1000)
 
         # using more bins
-        df_1000_bins = xdem.spstats.sample_multirange_empirical_variogram(
-            dh=diff.data,
+        df_1000_bins = xdem.spstats.sample_multirange_variogram(
+            values=diff.data,
             gsd=diff.res[0],
             n_lags=1000,
             nsamp=1000)
 
         # using multiple runs with parallelized function
-        df_sig = xdem.spstats.sample_multirange_empirical_variogram(dh=diff.data, gsd=diff.res[0], nsamp=1000,
+        df_sig = xdem.spstats.sample_multirange_variogram(values=diff.data, gsd=diff.res[0], nsamp=1000,
                                                                     nrun=20, nproc=10, maxlag=10000)
 
         # test plotting
