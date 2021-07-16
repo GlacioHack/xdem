@@ -42,50 +42,50 @@ class TestVariogram:
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
 
         # check the base script runs with right input shape
-        df = xdem.spstats.get_empirical_variogram(
+        df = xdem.spatialstats.get_empirical_variogram(
             values=diff.data.flatten(),
             coords=coords,
             nsamp=1000)
 
         # check the wrapper script runs with various inputs
         # with gsd as input
-        df_gsd = xdem.spstats.sample_multirange_variogram(
+        df_gsd = xdem.spatialstats.sample_multirange_variogram(
             values=diff.data,
             gsd=diff.res[0],
             nsamp=10)
 
         # with coords as input, and "uniform" bin_func
-        df_coords = xdem.spstats.sample_multirange_variogram(
+        df_coords = xdem.spatialstats.sample_multirange_variogram(
             values=diff.data.flatten(),
             coords=coords,
             bin_func='uniform',
             nsamp=1000)
 
         # using more bins
-        df_1000_bins = xdem.spstats.sample_multirange_variogram(
+        df_1000_bins = xdem.spatialstats.sample_multirange_variogram(
             values=diff.data,
             gsd=diff.res[0],
             n_lags=1000,
             nsamp=1000)
 
         # using multiple runs with parallelized function
-        df_sig = xdem.spstats.sample_multirange_variogram(values=diff.data, gsd=diff.res[0], nsamp=1000,
-                                                                    nrun=20, nproc=10, maxlag=10000)
+        df_sig = xdem.spatialstats.sample_multirange_variogram(values=diff.data, gsd=diff.res[0], nsamp=1000,
+                                                               nrun=20, nproc=10, maxlag=10000)
 
         # test plotting
         if PLOT:
-            xdem.spstats.plot_vgm(df_sig)
+            xdem.spatialstats.plot_vgm(df_sig)
 
         # single model fit
-        fun, _ = xdem.spstats.fit_model_sum_vgm(['Sph'], df_sig)
+        fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df_sig)
         if PLOT:
-            xdem.spstats.plot_vgm(df_sig, list_fit_fun=[fun])
+            xdem.spatialstats.plot_vgm(df_sig, list_fit_fun=[fun])
 
         try:
             # triple model fit
-            fun2, _ = xdem.spstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df_sig)
+            fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df_sig)
             if PLOT:
-                xdem.spstats.plot_vgm(df_sig, list_fit_fun=[fun2])
+                xdem.spatialstats.plot_vgm(df_sig, list_fit_fun=[fun2])
         except RuntimeError as exception:
             if "The maximum number of function evaluations is exceeded." not in str(exception):
                 raise exception
@@ -110,10 +110,10 @@ class TestVariogram:
         df = df.assign(bins=x, exp=y_simu, exp_sigma=sig)
 
         # then, run the fitting
-        fun, params = xdem.spstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], df)
+        fun, params = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], df)
 
         if PLOT:
-            xdem.spstats.plot_vgm(df, fit_fun=fun)
+            xdem.spatialstats.plot_vgm(df, fit_fun=fun)
 
     def test_neff_estimation(self):
 
@@ -133,9 +133,9 @@ class TestVariogram:
             # and for any glacier area
             for area in [10**i for i in range(10)]:
 
-                neff_circ_exact = xdem.spstats.exact_neff_sphsum_circular(
+                neff_circ_exact = xdem.spatialstats.exact_neff_sphsum_circular(
                     area=area, crange1=r1, psill1=p1, crange2=r2, psill2=p2)
-                neff_circ_numer = xdem.spstats.neff_circ(area, [(r1, 'Sph', p1), (r2, 'Sph', p2)])
+                neff_circ_numer = xdem.spatialstats.neff_circ(area, [(r1, 'Sph', p1), (r2, 'Sph', p2)])
 
                 assert np.abs(neff_circ_exact-neff_circ_numer) < 0.001
 
@@ -145,8 +145,8 @@ class TestSubSampling:
         """Test that the circular masking works as intended"""
 
         # using default (center should be [2,2], radius 2)
-        circ = xdem.spstats.create_circular_mask((5,5))
-        circ2 = xdem.spstats.create_circular_mask((5,5),center=[2,2],radius=2)
+        circ = xdem.spatialstats.create_circular_mask((5, 5))
+        circ2 = xdem.spatialstats.create_circular_mask((5, 5), center=[2, 2], radius=2)
 
         # check default center and radius are derived properly
         assert np.array_equal(circ,circ2)
@@ -159,14 +159,14 @@ class TestSubSampling:
 
         # check distance is not a multiple of pixels (more accurate subsampling)
         # will create a 1-pixel mask around the center
-        circ3 = xdem.spstats.create_circular_mask((5,5),center=[1,1],radius=1)
+        circ3 = xdem.spatialstats.create_circular_mask((5, 5), center=[1, 1], radius=1)
 
         eq_circ3 = np.zeros((5,5), dtype=bool)
         eq_circ3[1,1] = True
         assert np.array_equal(circ3, eq_circ3)
 
         # will create a square mask (<1.5 pixel) around the center
-        circ4 = xdem.spstats.create_circular_mask((5,5),center=[1,1],radius=1.5)
+        circ4 = xdem.spatialstats.create_circular_mask((5, 5), center=[1, 1], radius=1.5)
         # should not be the same as radius = 1
         assert not np.array_equal(circ3,circ4)
 
@@ -175,15 +175,15 @@ class TestSubSampling:
         """Test that the ring masking works as intended"""
 
         # by default, the mask is only an outside circle (ring of size 0)
-        ring1 = xdem.spstats.create_ring_mask((5,5))
-        circ1 = xdem.spstats.create_circular_mask((5,5))
+        ring1 = xdem.spatialstats.create_ring_mask((5, 5))
+        circ1 = xdem.spatialstats.create_circular_mask((5, 5))
 
         assert np.array_equal(ring1,circ1)
 
         # test rings with different inner radius
-        ring2 = xdem.spstats.create_ring_mask((5,5),in_radius=1,out_radius=2)
-        ring3 = xdem.spstats.create_ring_mask((5,5),in_radius=0,out_radius=2)
-        ring4 = xdem.spstats.create_ring_mask((5,5),in_radius=1.5,out_radius=2)
+        ring2 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=1, out_radius=2)
+        ring3 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=0, out_radius=2)
+        ring4 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=1.5, out_radius=2)
 
         assert np.logical_and(~np.array_equal(ring2,ring3),~np.array_equal(ring3,ring4))
 
@@ -202,7 +202,7 @@ class TestPatchesMethod:
 
         warnings.filterwarnings("error")
         # check the patches method runs
-        df_patches = xdem.spstats.patches_method(
+        df_patches = xdem.spatialstats.patches_method(
             diff.data.squeeze(),
             mask=~mask.astype(bool).squeeze(),
             gsd=diff.res[0],
@@ -218,7 +218,7 @@ class TestBinning:
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
 
         # 1d binning, by default will create 10 bins
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'])
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'])
 
         # check length matches
         assert df.shape[0] == 10
@@ -227,8 +227,8 @@ class TestBinning:
         assert np.nanmax(slope) == np.max(pd.IntervalIndex(df.slope).right)
 
         # 1d binning with 20 bins
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
-                                           list_var_bins=[[20]])
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
+                                          list_var_bins=[[20]])
         # check length matches
         assert df.shape[0] == 20
 
@@ -240,16 +240,16 @@ class TestBinning:
             return np.nanpercentile(a, 80)
 
         # check the function runs with custom functions
-        xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten()],list_var_names=['slope'], statistics=['count',percentile_80])
+        xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'], statistics=['count', percentile_80])
 
         # 2d binning
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten()],list_var_names=['slope','elevation'])
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten()], list_var_names=['slope', 'elevation'])
 
         # dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
         assert df.shape[0] == (10 + 10 + 100)
 
         # nd binning
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'])
 
         # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
         assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
@@ -260,7 +260,7 @@ class TestBinning:
         df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3],
                                 "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
-        fun = xdem.spstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
 
         # check interpolation falls right on values for points (1, 1), (1, 2) etc...
         for i in range(3):
@@ -312,10 +312,10 @@ class TestBinning:
         ref, diff, mask = load_ref_and_diff()
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
 
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'])
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'])
 
         # in 1d
-        fun = xdem.spstats.interp_nd_binning(df, list_var_names='slope')
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names='slope')
 
         # check a value is returned inside the grid
         assert np.isfinite(fun([15]))
@@ -325,7 +325,7 @@ class TestBinning:
         assert all(np.isfinite(fun([-5,50])))
 
         # in 2d
-        fun = xdem.spstats.interp_nd_binning(df, list_var_names=['slope','elevation'])
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'elevation'])
 
         # check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
@@ -335,8 +335,8 @@ class TestBinning:
         assert all(np.isfinite(fun(([-5, 50],[-500,3000]))))
 
         # in 3d, let's decrease the number of bins to get something with enough samples
-        df = xdem.spstats.nd_binning(values=diff.data.flatten(),list_var=[slope.flatten(),ref.data.flatten(),aspect.flatten()],list_var_names=['slope','elevation','aspect'], list_var_bins=3)
-        fun = xdem.spstats.interp_nd_binning(df, list_var_names=['slope','elevation','aspect'])
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'], list_var_bins=3)
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'elevation', 'aspect'])
 
         # check a value is returned inside the grid
         assert np.isfinite(fun([15,1000, np.pi]))

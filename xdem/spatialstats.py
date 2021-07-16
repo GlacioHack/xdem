@@ -1036,10 +1036,13 @@ def patches_method(values : np.ndarray, mask: np.ndarray[bool], gsd : float, are
 def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
              list_fit_fun_label: Optional[list[str]] = None):
     """
-    Plot empirical variogram, with optionally one or several model fits
+    Plot empirical variogram, with optionally one or several model fits.
+    Input dataframe is expected to be the output of xdem.spatialstats.sample_multirange_variogram.
+    Input function model is expected to be the output of xdem.spatialstats.fit_model_sum_vgm.
+
     :param df: dataframe of empirical variogram
-    :param list_fit_fun: list of function fits
-    :param list_fit_fun_label: list of function fits labels
+    :param list_fit_fun: list of model function fits
+    :param list_fit_fun_label: list of model function fits labels
     :param
     :return:
     """
@@ -1071,8 +1074,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
 def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
                     label_statistic: Optional[str] = None, min_count: int = 30):
     """
-    Plot one statistic and its count along a single binning variable.
-    Input is expected to be formatted as the output of the nd_binning function.
+    Plot a statistic and its count along a single binning variable.
+    Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
 
     :param df: output dataframe of nd_binning
     :param var_name: name of binning variable to plot
@@ -1135,7 +1138,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
                     nodata_color: Union[str,tuple[float,float,float,float]] ='yellow'):
     """
     Plot one statistic and its count along two binning variables.
-    Input is expected to be formatted as the output of the nd_binning function.
+    Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
 
     :param df: output dataframe of nd_binning
     :param var_name_1: name of first binning variable to plot
