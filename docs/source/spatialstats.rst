@@ -48,16 +48,16 @@ Quantifying the precision of a single DEM, or of a difference of DEMs
 
 To statistically infer the precision of a DEM, the DEM has to be compared against independent elevation observations.
 
-If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent the precision of the rougher DEM.
-
-.. math::
-        \sigma_{dh} = \sigma_{h_{\textrm{higher precision}} - h_{\textrm{lower precision}}} \approx \sigma_{h_{\textrm{lower precision}}}
-
-Otherwise, significant measurement errors can originate from both sets of elevation observations, and the analysis of differences will represent the mixed precision of the two.
-As there is no reason a priori for a depedency between the elevation data sets, the analysis will yield:
+Significant measurement errors can originate from both sets of elevation observations, and the analysis of differences will represent the mixed precision of the two.
+As there is no reason for a dependency between the elevation data sets, the analysis of elevation differences yields:
 
 .. math::
         \sigma_{dh} = \sigma_{h_{\textrm{precision1}} - h_{\textrm{precision2}}} = \sqrt{\sigma_{h_{\textrm{precision1}}}^{2} + \sigma_{h_{\textrm{precision2}}}^{2}}
+
+If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent only the precision of the rougher DEM.
+
+.. math::
+        \sigma_{dh} = \sigma_{h_{\textrm{higher precision}} - h_{\textrm{lower precision}}} \approx \sigma_{h_{\textrm{lower precision}}}
 
 
 TODO: complete with Hugonnet et al. (in prep)
@@ -128,6 +128,7 @@ Metrics for DEM precision
 Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a single pixel, for example :math:`\pm 2` meters.
 
 However, there is several limitations to this metric:
+
 - studies have shown significant variability of elevation measurement errors with terrain attributes, such as the slope, but also with the type of terrain
 
 

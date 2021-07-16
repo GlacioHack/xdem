@@ -8,7 +8,7 @@ Digital Elevation Models are numerical, gridded representations of elevation. Th
 While some complexities are specific to certain instruments and methods, all DEMs generally possess:
 
 - a `ground sampling distance <https://en.wikipedia.org/wiki/Ground_sample_distance>`_ (GSD), or pixel size, **that does not necessarily represent the underlying spatial resolution of the observations**,
-- a `georeferencing <https://en.wikipedia.org/wiki/Georeferencing>`_ **that can subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated post-processing schemes,
+- a `georeferencing <https://en.wikipedia.org/wiki/Georeferencing>`_ **that can be subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated processing schemes,
 - a large number of `outliers <https://en.wikipedia.org/wiki/Outlier>`_ **that remain difficult to filter** as they can originate from various sources (e.g., photogrammetric blunders, clouds).
 
 These factors lead to difficulties in assessing the accuracy and precision of DEMs, which are necessary to perform further analysis.
@@ -41,12 +41,15 @@ TODO: Add another little schematic!
 Optimizing DEM absolute accuracy
 **********************************
 
-Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM co-registration to precise and accurate, quality-controlled elevation data such as ICESat and ICESat-2.
+Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM
+co-registration to precise and accurate, quality-controlled elevation data such as `ICESat <https://icesat.gsfc.nasa.gov/icesat/>`_
+and `ICESat-2 <https://icesat-2.gsfc.nasa.gov/>`_.
 Quality-controlled DEMs aligned on high-accuracy data also exists, such as TanDEM-X global DEM (see `Rizzoli et al. (2017) <https://doi.org/10.1016/j.isprsjprs.2017.08.008>`_)
 
 Those biases can be corrected using the methods described in :ref:`coregistration`.
 
-TODO: Add a point data - DEM co-registration plot
+.. minigallery:: xdem.coreg.NuthKaab
+        :add-heading:
 
 Optimizing DEM relative accuracy
 **********************************
@@ -72,4 +75,5 @@ However, the lack of implementations of these methods in a modern programming la
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
-TODO: Add a plot summarizing a DEM precision quantification
+.. minigallery:: xdem.spatialstats.nd_binning
+        :add-heading:
