@@ -24,14 +24,14 @@ Measures of central tendency and dispersion of a sample
 Central tendency
 ^^^^^^^^^^^^^^^^
 
-The `central tendency <https://en.wikipedia.org/wiki/Central_tendency>`_ represents the central value of a sample,
-typically described by measures such as the `mean <https://en.wikipedia.org/wiki/Mean>`_, and is mostly useful during
+The `central tendency <https://en.wikipedia.org/wiki/Central_tendency>`_ represents the central value of a sample, and is
+typically described by the `mean <https://en.wikipedia.org/wiki/Mean>`_. Estimating central tendency is core to the
 analysis of sample accuracy (see :ref:`intro`).
-However, the mean is a measure sensitive to outliers. In many cases, for example when working on unfiltered DEMs, using
-the `median <https://en.wikipedia.org/wiki/Median>`_ is therefore preferable.
+However, the mean is a measure sensitive to outliers. Therefore, in many cases, for example when working with unfiltered
+DEMs, using the `median <https://en.wikipedia.org/wiki/Median>`_ as measure of central tendency is preferred.
 
 When working with weighted data, the `weighted median <https://en.wikipedia.org/wiki/Weighted_median>`_ which corresponds
-to the 50\ :sup:`th` `weighted percentile <https://en.wikipedia.org/wiki/Percentile#Weighted_percentile>`_, can also be
+to the 50\ :sup:`th` `weighted percentile <https://en.wikipedia.org/wiki/Percentile#Weighted_percentile>`_, can be
 used as a robust measure of central tendency.
 
 The median is used by default alignment routines in :ref:`coregistration` and :ref:`biascorr`.
@@ -45,11 +45,11 @@ is a useful metric in the analysis of sample precision (see :ref:`intro`).
 However, the standard deviation is a measure sensitive to outliers. The normalized median absolute deviation (NMAD), which
 corresponds to the `median absolute deviation <https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor
 of ~1.4826 to match the dispersion of a normal distribution, is the median equivalent of a standard deviation and has been shown to
-provide more robust when working with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
+provide more robust measures when working with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
 It is thus defined as:
 
 .. math::
-        NMAD_{x} = 1.4826 \cdot \textrm{median}_{i} \left ( \mid x_{i} - \textrm{median}(x) \mid \right )
+        \textrm{NMAD}(x) = 1.4826 \cdot \textrm{median}_{i} \left ( \mid x_{i} - \textrm{median}(x) \mid \right )
 
 where :math:`x` is the sample.
 
@@ -61,6 +61,8 @@ can also be used as a robust dispersion measure equivalent to the standard devia
 
 When working with weighted data, the difference between the 84\ :sup:`th` and 16\ :sup:`th` `weighted percentile <https://en.wikipedia.org
 /wiki/Percentile#Weighted_percentile>`_, or the absolute 68\ :sup:`th` weighted percentile can be used as a robust measure of dispersion.
+
+The NMAD is used by default for estimating elevation measurement errors in :ref:`spatialstats`.
 
 Measures of correlation
 -----------------------
@@ -89,20 +91,28 @@ It is defined as:
 
 where :math:`h` is the spatial lag and :math:`Z_{x_{i}}` is the value of the sample at the location :math:`x_{i}`.
 
+Dowd's variogram is used by default to estimate spatial auto-correlation of elevation measurement errors in :ref:`spatialstats`.
+
 Regression analysis
 -------------------
 
-Robust loss functions
-^^^^^^^^^^^^^^^^^^^^^
+Least-square loss functions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Based on `scipy.optimize <https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_ and specific `loss functions
-<https://en.wikipedia.org/wiki/Loss_function>`_, robust least-squares can be performed.
+When performing least-squares linear regression, the traditional `loss functions <https://en.wikipedia.org/wiki/Loss_
+function>`_ that are used are not robust to outliers.
+
+By default, in :ref:`coregistration` and :ref:`biascorr`, ``xdem`` uses a robust soft L1 loss function with least-squares
+of `scipy.optimize <https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_.
 
 Robust estimators
 ^^^^^^^^^^^^^^^^^
 
-Based on `sklearn.linear_models <https://scikit-learn.org/stable/modules/linear_model.html#robustness-regression-outlier
-s-and-modeling-errors>`_, robust estimator such as `RANSAC <https://en.wikipedia.org/wiki/Random_sample_consensus>`_,
-`Theil-Sen <https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator>`_, or the `Huber loss function <https://en.wikipedia.org/wiki/Huber_loss>`_
-are available for robust function fitting.
+Other estimators than ordinary least-squares can be used for linear estimations.
+The :ref:`coregistration` and :ref:`biascorr` methods encapsulate some of those methods provided by `sklearn.linear_models
+<https://scikit-learn.org/stable/modules/linear_model.html#robustness-regression-outliers-and-modeling-errors>`_:
+
+- The Random sample consensus estimator `RANSAC <https://en.wikipedia.org/wiki/Random_sample_consensus>`_,
+- The `Theil-Sen <https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator>`_ estimator,
+- The `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`_ estimator.
 
