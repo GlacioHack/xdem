@@ -2,69 +2,93 @@ Robust statistics
 ==================
 
 Digital Elevation Models often contain outliers that hamper further analysis.
-In order to deal with outliers, ``xdem`` integrates statistical measures robust to outliers to be used for estimation of the
-mean or dispersion of a sample, or more complex function fitting.
+In order to deal with outliers, ``xdem`` integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
+methods at different levels.
+For instance, those can be used robustly fit functions necessary to perform alignment (:ref:`coreg`, :ref:`biascorr`), or to provide
+robust statistical measures equivalent to the mean or standard deviation or the covariance of a sample when dealing with
+:ref:`spatialstats`.
+
+The downside of robust statistical measures is that those can yield less precise estimates for small samples sizes and,
+in some cases, hide patterns inherent to the data by smoothing.
+As a consequence, when outliers exhibit idenfiable patterns, it is better to first resort to outlier filtering (:ref:`filters`)
+and perform analysis using traditional statistical measures.
 
 .. contents:: Contents 
    :local:
 
-Common statistical measures
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Measures of central tendency and dispersion of a sample
+--------------------------------------------------------
 
-Mean
-****
-The mean of a dDEM is most often used to calculate the elevation change of terrain, for example of a glacier.
-The mean elevation change can then be used to calculate the change in volume by multiplying with the associated area.
-A considerable limitation of the mean of unfiltered data is that outliers may severely affect the result.
-If you have 100 pixels that generally signify an elevation change of --30 m, but one pixel is a rogue NoData value of -9999, the mean elevation change will be --129.69 m!
-If the mean is used, extreme outliers should first be accounted for.
+``xdem``
 
-.. code-block:: python
+Central tendency
+^^^^^^^^^^^^^^^^
 
-        mean = ddem.data.mean()
+The `central tendency <https://en.wikipedia.org/wiki/Central_tendency>`_ represents the central value of a sample,
+typically described by measures such as the `mean <https://en.wikipedia.org/wiki/Mean>`, and is mostly useful during
+analysis of sample accuracy (see :ref:`intro`).
+However, the mean is a measure sensitive to outliers. In many cases, for example when working on unfiltered DEMs, using
+the `median <https://en.wikipedia.org/wiki/Median>`_ is therefore preferable.
 
-Median
-******
-The median is the most common value in a distribution.
-If the values are normally distributed (as a bell-curve), the median lies exactly on top of the curve.
-Medians are often used as a more robust value to represent the centre of a distribution than the mean, as it is less affected by outliers.
-Going with the same example as above, the median of the 100 pixels with one oulier would be --30 m.
-The median is however not always suitable for e.g. volume change, as the value may not be perfectly representative at all times.
-For example, the median of a DEM with integer elevations [100, 130, 140, 150, 160] would yield a median of 140 m, while an arguably better value for volume change would be the mean (136 m).
+When working with weighted data, the `weighted median <https://en.wikipedia.org/wiki/Weighted_median>`_ can be used as
+a robust measure of central tendency.
 
-.. code-block:: python
-        
-        median = np.median(ddem.data)
+The median is used by default alignment routines in :ref:`coreg` and :ref:`biascorr`.
 
-Standard deviation
-******************
-The standard deviation (STD) is often used to represent the spread of a distribution of values.
-It is theoretically made to represent the spread of a perfect bell-curve, where an STD of ±1 represents 68.2% of all values.
-Conversely ±2 STDs represent 95.2% of all values.
+Dispersion
+^^^^^^^^^^
 
-.. code-block:: python
-        
-        std = ddem.data.std()
+The `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_ represents the spread of a sample,
+typically described by measures such as the `standard deviation <https://en.wikipedia.org/wiki/Standard_deviation>`_, and
+is a useful metric in the analysis of sample precision (see :ref:`intro`).
+However, the standard deviation is a measure sensitive to outliers. The normalized median absolute deviation (NMAD), which
+corresponds to the `median absolute deviation <https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor
+of ~1.4826 to match the dispersion of a normal distribution, is the median equivalent of a standard deviation and has been shown to
+provide more robust when working with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
 
-
-RMSE
-****
-The Root Mean Squared Error (RMSE) is a measure of the agreement of the values in a distribution.
-It is highly sensitive to outliers, and is often used in photogrammetry where outliers can be detrimental to the relative, internal or external orientation of images.
-RMSE's are however unsuitable for e.g. volume change error, as the purposefully exaggerated outliers will not have the same exaggerated effect on the mean. 
-
-.. code-block:: python
-
-        rmse = np.sqrt(np.mean(np.square(ddem.data)))
-
-.. _spatial_stats_nmad:
-
-NMAD
-****
-The Normalized Median Absolute Deviation (NMAD) is another measure of the spread of a distribution, similar to the RMSE and standard deviation.
-
-TODO: Add a rationale for this approach.
+When working with weighted data, the difference between the 84th and 16th `weighted percentile <https://en.wikipedia.org
+/wiki/Percentile#Weighted_percentile>`_ can be used as a robust measure of dispersion.
 
 .. code-block:: python
 
         nmad = xdem.spatial_tools.nmad(ddem.data)
+
+
+Measures of correlation
+-----------------------
+
+Correlation between samples
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The `covariance <https://en.wikipedia.org/wiki/Covariance>`_ is the measure generally used to estimate the joint variability
+of samples, often normalized to a `correlation coefficient <https://en.wikipedia.org/wiki/Pearson_correlation_coefficient>`_.
+Again, the variance and covariance are sensitive measures to outliers. It is therefore preferable to compute such measures
+by filtering the data, or using robust estimators.
+
+Spatial auto-correlation of a sample
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+`Variogram <https://en.wikipedia.org/wiki/Variogram>`_ analysis exploits statistical measures equivalent to the covariance,
+and is therefore also subject to outliers.
+Based on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, ``xdem`` allows to specify robust variogram
+estimators such as Dowd's variogram based on medians (`Dowd (1984) <https://en.wikipedia.org/wiki/Variogram>`_).
+
+Regression analysis
+-------------------
+
+``xdem`` encapsulates methods from scipy and sklearn to perform robust regression for :ref:`coreg` and :ref:`biascorr`.
+
+Robust loss functions
+^^^^^^^^^^^^^^^^^^^^^
+
+Based on `scipy.optimize <https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_ and specific `loss functions
+<https://en.wikipedia.org/wiki/Loss_function>`_, robust least-squares can be performed.
+
+Robust estimators
+^^^^^^^^^^^^^^^^^
+
+Based on `sklearn.linear_models <https://scikit-learn.org/stable/modules/linear_model.html#robustness-regression-outlier
+s-and-modeling-errors>`_, robust estimator such as `RANSAC <https://en.wikipedia.org/wiki/Random_sample_consensus>`_,
+`Theil-Sen <https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator>`_, or the `Huber loss function <https://en.wikipedia.org/wiki/Huber_loss>`_
+are available for robust function fitting.
+

@@ -11,6 +11,7 @@ from functools import partial
 from typing import Callable, Union, Iterable, Optional, Sequence, Any
 
 import itertools
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from numba import njit
@@ -1034,7 +1035,7 @@ def patches_method(values : np.ndarray, mask: np.ndarray[bool], gsd : float, are
 
 
 def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
-             list_fit_fun_label: Optional[list[str]] = None):
+             list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None):
     """
     Plot empirical variogram, with optionally one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_multirange_variogram.
@@ -1043,10 +1044,19 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     :param df: dataframe of empirical variogram
     :param list_fit_fun: list of model function fits
     :param list_fit_fun_label: list of model function fits labels
-    :param
+    :param ax: plotting ax to use, creates a new one by default
     :return:
     """
-    fig, ax = plt.subplots(1)
+
+    # Create axes
+    if ax is None:
+        fig, ax = plt.subplots()
+    elif isinstance(ax, matplotlib.axes.Axes):
+        ax = ax
+        fig = ax.figure
+    else:
+        raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+
     if np.all(np.isnan(df.exp_sigma)):
         ax.scatter(df.bins, df.exp, label='Empirical variogram', color='blue')
     else:
@@ -1072,7 +1082,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     return ax
 
 def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
-                    label_statistic: Optional[str] = None, min_count: int = 30):
+                    label_statistic: Optional[str] = None, min_count: int = 30, ax: matplotlib.axes.Axes | None = None):
     """
     Plot a statistic and its count along a single binning variable.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
@@ -1083,7 +1093,17 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     :param label_var: label of binning variable
     :param label_statistic: label of statistic of interest
     :param min_count: removes statistic values computed with a count inferior to this minimum value
+    :param ax: plotting ax to use, creates a new one by default
     """
+
+    # Create axes
+    if ax is None:
+        fig = plt.figure()
+    elif isinstance(ax, matplotlib.axes.Axes):
+        ax = ax
+        fig = ax.figure
+    else:
+        raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
 
     if label_var is None:
         label_var = var_name
@@ -1096,7 +1116,6 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
 
     # Need a grid plot to show the sample count and the statistic
-    fig = plt.figure()
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
     # First, an axis to plot the sample histogram
@@ -1133,9 +1152,9 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
 
 def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statistic_name: str,
                     label_var_name_1: Optional[str] = None, label_var_name_2: Optional[str] = None,
-                    label_statistic: Optional[str] = None, cmap: colors.LinearSegmentedColormap = plt.cm.Reds, min_count: int = 30,
+                    label_statistic: Optional[str] = None, cmap: matplotlib.colors.Colormap = plt.cm.Reds, min_count: int = 30,
                     scale_var_1: str = 'linear', scale_var_2: str = 'linear', vmin: float = None, vmax: float = None,
-                    nodata_color: Union[str,tuple[float,float,float,float]] ='yellow'):
+                    nodata_color: Union[str,tuple[float,float,float,float]] = 'yellow', ax: matplotlib.axes.Axes | None = None):
     """
     Plot one statistic and its count along two binning variables.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
@@ -1154,8 +1173,17 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     :param vmin: minimum statistic value in colormap range
     :param vmax: maximum statistic value in colormap range
     :param nodata_color: color for no data bins
+    :param ax: plotting ax to use, creates a new one by default
     """
 
+    # Create axes
+    if ax is None:
+        fig = plt.figure(figsize=(8,6))
+    elif isinstance(ax, matplotlib.axes.Axes):
+        ax = ax
+        fig = ax.figure
+    else:
+        raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
 
     # Subsample to 2D and for the variables of interest
     df_sub = df[np.logical_and.reduce((df.nd == 2, np.isfinite(pd.IntervalIndex(df[var_name_1]).mid),
@@ -1169,7 +1197,6 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     # + a legend panel with statistic colormap and nodata color
 
     # For some reason the scientific notation displays weirdly for default figure size
-    fig = plt.figure(figsize=(8,6))
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
     # First, an horizontal axis on top to plot the sample histogram of the first variable

@@ -22,7 +22,7 @@ In particular, these tools help to:
    :local:
 
 Spatial statistics for DEM precision estimation
-***********************************************
+-----------------------------------------------
 
 Assumptions for statistical inference in spatial statistics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -68,12 +68,12 @@ Using stable terrain as a proxy
 When comparing elevation datasets, stable terrain is usually used a proxy
 
 Workflow for DEM precision estimation
-*************************************
+-------------------------------------
 
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. minigallery:: xdem.spstats.nd_binning
+.. minigallery:: xdem.spatialstats.nd_binning
         :add-heading:
 
 Quantify and model non-stationarites
@@ -123,7 +123,7 @@ TODO: Add this section based on Krige's relation (Webster & Oliver, 2007), Hugon
 
 
 Metrics for DEM precision
-*************************
+-------------------------
 
 Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a single pixel, for example :math:`\pm 2` meters.
 

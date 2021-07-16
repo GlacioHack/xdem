@@ -15,7 +15,7 @@ Full information about xdem's functionality is provided on this page.
         dem
         filters
         spatial_tools
-        spstats
+        spatialstats
         terrain
         volume
 

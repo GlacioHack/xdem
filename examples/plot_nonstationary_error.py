@@ -12,8 +12,8 @@ errors to reach a stationary variance, an assumption necessary for spatial stati
 
 Here, we show an example in which we identify terrain-related non-stationarities for a DEM difference of Longyearbyen glacier.
 We quantify those non-stationarities by `binning <https://en.wikipedia.org/wiki/Data_binning>`_ robustly
-in N-dimension using :func:`xdem.spstats.nd_binning` and applying a N-dimensional interpolation
-:func:`xdem.spstats.interp_nd_binning` to estimate a numerical function of the measurement error and derive the spatial
+in N-dimension using :func:`xdem.spatialstats.nd_binning` and applying a N-dimensional interpolation
+:func:`xdem.spatialstats.interp_nd_binning` to estimate a numerical function of the measurement error and derive the spatial
 distribution of elevation measurement errors of the difference of DEMs.
 
 **Reference**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, applied to the terrain slope
@@ -51,7 +51,7 @@ slope, aspect, planc, profc = \
                                        resolution=ref_dem.res)
 
 # %%
-# We use :func:`xdem.spstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
+# We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
 # bin length divided by 30. We use the :ref:`spatial_stats_nmad` as a robust measure of `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_.
 
 df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[slope, aspect, planc, profc],
@@ -59,12 +59,19 @@ df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[slope, aspect, planc
                                   statistics=['count', xdem.spatialstats.nmad],
                                   list_var_bins=30)
 
-df
 # %%
 # We obtain a dataframe with the 1D binning results for each variable, the 2D binning results for all combinations of
 # variables and the N-D (here 4D) binning with all variables.
+# Overview of the dataframe structure for the 1D binning:
+df[df.nd == 1]
+
+# %%
+# And for the 4D binning:
+df[df.nd == 4]
+
+# %%
 # We can now visualize the results of the 1D binning of the computed NMAD of elevation differences with each variable
-# using :func:`xdem.spstats.plot_1d_binning`.
+# using :func:`xdem.spatialstats.plot_1d_binning`.
 # We can start with the slope that has been long known to be related to the elevation measurement error (e.g.,
 # `Toutin (2002) <https://doi.org/10.1109/TGRS.2002.802878>`_).
 xdem.spatialstats.plot_1d_binning(df, 'slope', 'nmad', 'Slope (degrees)', 'NMAD of dh (m)')
@@ -90,7 +97,7 @@ xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 
 # %%
 # The relation with the plan curvature remains ambiguous.
 # We should better define our bins to avoid sampling bins with too many or too few samples. For this, we can partition
-# the data in quantiles in :func:`xdem.spstats.nd_binning`.
+# the data in quantiles in :func:`xdem.spatialstats.nd_binning`.
 # Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. Thus, as
 # with many dimensions the N dimensional bin size increases exponentially, we avoid binning all variables at the same
 # time and instead bin one at a time.
