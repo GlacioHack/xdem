@@ -101,14 +101,14 @@ Least-square loss functions
 When performing least-squares linear regression, the traditional `loss functions <https://en.wikipedia.org/wiki/Loss_
 function>`_ that are used are not robust to outliers.
 
-By default, in :ref:`coregistration` and :ref:`biascorr`, ``xdem`` uses a robust soft L1 loss function with least-squares
-of `scipy.optimize <https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_.
+A robust soft L1 loss default is used by default when ``xdem`` uses least-squares regression through `scipy.optimize
+<https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_.
 
 Robust estimators
 ^^^^^^^^^^^^^^^^^
 
 Other estimators than ordinary least-squares can be used for linear estimations.
-The :ref:`coregistration` and :ref:`biascorr` methods encapsulate some of those methods provided by `sklearn.linear_models
+The :ref:`coregistration` and :ref:`biascorr` methods encapsulate some of those robust methods provided by `sklearn.linear_models
 <https://scikit-learn.org/stable/modules/linear_model.html#robustness-regression-outliers-and-modeling-errors>`_:
 
 - The Random sample consensus estimator `RANSAC <https://en.wikipedia.org/wiki/Random_sample_consensus>`_,
