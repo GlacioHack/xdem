@@ -4,16 +4,15 @@ Robust statistics
 ==================
 
 Digital Elevation Models often contain outliers that hamper further analysis.
-In order to deal with outliers, ``xdem`` integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
+In order to mitigate their effect on DEM analysis, ``xdem`` integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
 methods at different levels.
-For instance, those can be used robustly fit functions necessary to perform alignment (see :ref:`coregistration`, :ref:`biascorr`), or to provide
-robust statistical measures equivalent to the mean, the standard deviation or the covariance of a sample when dealing with
+These methods can be used to robustly fit functions necessary to perform DEM alignment (see :ref:`coregistration`, :ref:`biascorr`), or to provide
+robust statistical measures equivalent to the mean, the standard deviation or the covariance of a sample when analyzing DEM precision with
 :ref:`spatialstats`.
 
-The downside of robust statistical measures is that those can yield less precise estimates for small samples sizes and,
-in some cases, hide patterns inherent to the data by smoothing.
-As a consequence, when outliers exhibit idenfiable patterns, it is better to first resort to outlier filtering (see :ref:`filters`)
-and perform analysis using traditional statistical measures.
+Yet, there is a downside to robust statistical measures. Those can yield less precise estimates for small samples sizes and,
+in some cases, hide patterns inherent to the data. This is why, when outliers exhibit idenfiable patterns, it is better
+to first resort to outlier filtering (see :ref:`filters`) and perform analysis using traditional statistical measures.
 
 .. contents:: Contents 
    :local:
@@ -25,28 +24,28 @@ Central tendency
 ^^^^^^^^^^^^^^^^
 
 The `central tendency <https://en.wikipedia.org/wiki/Central_tendency>`_ represents the central value of a sample, and is
-typically described by the `mean <https://en.wikipedia.org/wiki/Mean>`_. Estimating central tendency is core to the
-analysis of sample accuracy (see :ref:`intro`).
-However, the mean is a measure sensitive to outliers. Therefore, in many cases, for example when working with unfiltered
-DEMs, using the `median <https://en.wikipedia.org/wiki/Median>`_ as measure of central tendency is preferred.
+core to the analysis of sample accuracy (see :ref:`intro`). It is most often measured by the `mean <https://en.wikipedia.org/wiki/Mean>`_.
+However, the mean is a measure sensitive to outliers. Therefore, in many cases (e.g., when working with unfiltered
+DEMs) using the `median <https://en.wikipedia.org/wiki/Median>`_ as measure of central tendency is preferred.
 
 When working with weighted data, the `weighted median <https://en.wikipedia.org/wiki/Weighted_median>`_ which corresponds
 to the 50\ :sup:`th` `weighted percentile <https://en.wikipedia.org/wiki/Percentile#Weighted_percentile>`_, can be
 used as a robust measure of central tendency.
 
-The median is used by default alignment routines in :ref:`coregistration` and :ref:`biascorr`.
+The median is used by default in the alignment routines of :ref:`coregistration` and :ref:`biascorr`.
 
 Dispersion
 ^^^^^^^^^^
 
 The `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_ represents the spread of a sample,
-typically described by measures such as the `standard deviation <https://en.wikipedia.org/wiki/Standard_deviation>`_, and
-is a useful metric in the analysis of sample precision (see :ref:`intro`).
-However, the standard deviation is a measure sensitive to outliers. The normalized median absolute deviation (NMAD), which
-corresponds to the `median absolute deviation <https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor
-of ~1.4826 to match the dispersion of a normal distribution, is the median equivalent of a standard deviation and has been shown to
-provide more robust measures when working with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
-It is thus defined as:
+and is core to the analysis of sample precision (see :ref:`intro`). It is typically measured by the `standard deviation
+<https://en.wikipedia.org/wiki/Standard_deviation>`_.
+However, very much like the mean, the standard deviation is a measure sensitive to outliers. The median equivalent of a
+standard deviation is the normalized median absolute deviation (NMAD), which corresponds to the `median absolute deviation
+ <https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor of ~1.4826 to match the dispersion of a
+normal distribution. It has been shown to provide more robust measures of dispersion with outliers when working
+with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
+It is defined as:
 
 .. math::
         \textrm{NMAD}(x) = 1.4826 \cdot \textrm{median}_{i} \left ( \mid x_{i} - \textrm{median}(x) \mid \right )
