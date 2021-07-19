@@ -177,7 +177,8 @@ class TestTerrainAttribute:
 
         assert slope != aspect
 
-        assert type(slope) == type(self.dem) == type(aspect)
+        assert type(slope) == type(aspect)
+        assert all(isinstance(r, gu.Raster) for r in (aspect, slope, self.dem))
 
         assert slope.transform == self.dem.transform == aspect.transform
         assert slope.crs == self.dem.crs == aspect.crs
