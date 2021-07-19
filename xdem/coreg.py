@@ -705,6 +705,10 @@ class Coreg:
         # Calculate the DEM difference
         diff = ref_arr - aligned_dem
 
+        # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
+        if "float" in str(diff.dtype):
+            full_mask[(diff == np.finfo(diff.dtype).min) | np.isinf(diff)] = False
+
         # Return the difference values within the full inlier mask
         return diff[full_mask]
 
@@ -756,7 +760,6 @@ class Coreg:
                     f"Invalid 'error_type'{'s' if len(error_type) > 1 else ''}: "
                     f"'{error_type}'. Choices: {list(error_functions.keys())}"
                     ) from exception
-
 
         return errors if len(errors) > 1 else errors[0]
 
@@ -1774,6 +1777,8 @@ class BlockwiseCoreg(Coreg):
 
         statistics: list[dict[str, Any]] = []
         for i in range(points.shape[0]):
+            if i not in chunk_meta:
+                continue
             statistics.append(
                 {
                     "center_x": points[i, 0, 0],
