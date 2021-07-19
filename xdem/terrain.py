@@ -8,6 +8,8 @@ import numba
 import numpy as np
 
 import xdem.spatial_tools
+import geoutils as gu
+from geoutils.georaster import RasterType, Raster
 
 
 @numba.njit(parallel=True)
@@ -196,11 +198,13 @@ def get_quadric_coefficients(
 def get_terrain_attribute(
     dem: np.ndarray | np.ma.masked_array,
     attribute: str,
-    resolution: tuple[float, float] | float,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
 ) -> np.ndarray:
     ...
 
@@ -209,26 +213,56 @@ def get_terrain_attribute(
 def get_terrain_attribute(
     dem: np.ndarray | np.ma.masked_array,
     attribute: list[str],
-    resolution: tuple[float, float] | float,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
 ) -> list[np.ndarray]:
+    ...
+
+@overload
+def get_terrain_attribute(
+    dem: RasterType,
+    attribute: str,
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
+) -> Raster:
+    ...
+
+@overload
+def get_terrain_attribute(
+    dem: RasterType,
+    attribute: list[str],
+    resolution: tuple[float, float] | float | None,
+    degrees: bool,
+    hillshade_altitude: float,
+    hillshade_azimuth: float,
+    hillshade_z_factor: float,
+    fill_method: str,
+    edge_method: str
+) -> list[Raster]:
     ...
 
 
 def get_terrain_attribute(
-    dem: np.ndarray | np.ma.masked_array,
+    dem: np.ndarray | np.ma.masked_array | RasterType,
     attribute: str | list[str],
-    resolution: tuple[float, float] | float,
+    resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     fill_method: str = "median",
     edge_method: str = "nearest",
-) -> np.ndarray | list[np.ndarray]:
+) -> np.ndarray | list[np.ndarray] | Raster | list[Raster]:
     """
     Derive one or multiple terrain attributes from a DEM.
 
@@ -271,6 +305,12 @@ def get_terrain_attribute(
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
+    if isinstance(dem, gu.Raster):
+        if resolution is None:
+            resolution = dem.res
+
+    if resolution is None:
+        raise ValueError("'resolution' must be provided as an argument.")
     # Validate and format the inputs
     if isinstance(attribute, str):
         attribute = [attribute]
@@ -414,12 +454,28 @@ def get_terrain_attribute(
 
     output_attributes = [terrain_attributes[key].reshape(dem.shape) for key in attribute]
 
+    if isinstance(dem, gu.Raster):
+        output_attributes = [gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=None) for attr in output_attributes]
+
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
 
+@overload
+def slope(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None,
+    degrees: bool
+) -> Raster: ...
+
+@overload
+def slope(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float] | None,
+    degrees: bool
+) -> np.ndarray: ...
 
 def slope(
-    dem: np.ndarray | np.ma.masked_array, resolution: float | tuple[float, float], degrees: bool = True
-) -> np.ndarray:
+    dem: np.ndarray | np.ma.masked_array | RasterType, resolution: float | tuple[float, float] | None = None, degrees: bool = True
+) -> np.ndarray | Raster:
     """
     Generate a slope map for a DEM.
 
@@ -431,8 +487,19 @@ def slope(
     """
     return get_terrain_attribute(dem, attribute="slope", resolution=resolution, degrees=degrees)
 
+@overload
+def aspect(
+    dem: np.ndarray | np.ma.masked_array,
+    degrees: bool
+) -> np.ndarray: ...
 
-def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.ndarray:
+@overload
+def aspect(
+    dem: RasterType,
+    degrees: bool
+) -> Raster: ...
+
+def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = True) -> np.ndarray | Raster:
     """
     Calculate the aspect of each cell in a DEM.
 
@@ -463,14 +530,31 @@ def aspect(dem: np.ndarray | np.ma.masked_array, degrees: bool = True) -> np.nda
     """
     return get_terrain_attribute(dem, attribute="aspect", resolution=1.0, degrees=degrees)
 
+@overload
+def hillshade(
+    dem: RasterType,
+    resolution: float | tuple[float, float],
+    azimuth: float,
+    altitude: float,
+    z_factor: float,
+) -> Raster: ...
 
+@overload
 def hillshade(
     dem: np.ndarray | np.ma.masked_array,
     resolution: float | tuple[float, float],
+    azimuth: float,
+    altitude: float,
+    z_factor: float,
+) -> np.ndarray: ...
+
+def hillshade(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float] | None = None,
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
-) -> np.ndarray:
+) -> np.ndarray | Raster:
     """
     Generate a hillshade from the given DEM.
 
@@ -494,11 +578,22 @@ def hillshade(
         hillshade_z_factor=z_factor,
     )
 
+@overload
+def curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None,
+) -> Raster: ...
 
+@overload
 def curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-) -> np.ndarray:
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def curvature(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | Raster:
     """
     Get the terrain curvature (second derivative of elevation).
 
@@ -529,10 +624,22 @@ def curvature(
     return get_terrain_attribute(dem=dem, attribute="curvature", resolution=resolution)
 
 
+@overload
+def planform_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None,
+) -> Raster: ...
+
+@overload
 def planform_curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-) -> np.ndarray:
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def planform_curvature(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | Raster:
     """
     Get the terrain curvature perpendicular to the direction of the slope.
 
@@ -546,10 +653,22 @@ def planform_curvature(
     return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution)
 
 
+@overload
+def profile_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None,
+) -> Raster: ...
+
+@overload
 def profile_curvature(
     dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-) -> np.ndarray:
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def profile_curvature(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | Raster:
     """
     Get the terrain curvature parallel to the direction of the slope.
 
