@@ -497,6 +497,14 @@ class TestCoregClass:
         # This should not fail or trigger warnings as warn_failures is False
         blockwise.fit(reference_dem, dem_to_be_aligned)
 
+        stats = blockwise.stats()
+
+        # We expect holes in the blockwise coregistration, so there should not be 64 "successful" blocks.
+        assert stats.shape[0] < 64
+
+        # Statistics are only calculated on finite values, so all of these should be finite as well.
+        assert np.all(np.isfinite(stats))
+
 
 
 
