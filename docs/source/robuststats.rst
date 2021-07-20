@@ -29,7 +29,7 @@ However, the mean is a measure sensitive to outliers. Therefore, in many cases (
 DEMs) using the `median <https://en.wikipedia.org/wiki/Median>`_ as measure of central tendency is preferred.
 
 When working with weighted data, the `weighted median <https://en.wikipedia.org/wiki/Weighted_median>`_ which corresponds
-to the 50\ :sup:`th` `weighted percentile <https://en.wikipedia.org/wiki/Percentile#Weighted_percentile>`_, can be
+to the 50\ :sup:`th` `weighted percentile <https://en.wikipedia.org/wiki/Percentile#Weighted_percentile>`_ can be
 used as a robust measure of central tendency.
 
 The median is used by default in the alignment routines of :ref:`coregistration` and :ref:`biascorr`.
@@ -42,7 +42,7 @@ and is core to the analysis of sample precision (see :ref:`intro`). It is typica
 <https://en.wikipedia.org/wiki/Standard_deviation>`_.
 However, very much like the mean, the standard deviation is a measure sensitive to outliers. The median equivalent of a
 standard deviation is the normalized median absolute deviation (NMAD), which corresponds to the `median absolute deviation
- <https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor of ~1.4826 to match the dispersion of a
+<https://en.wikipedia.org/wiki/Median_absolute_deviation>`_ scaled by a factor of ~1.4826 to match the dispersion of a
 normal distribution. It has been shown to provide more robust measures of dispersion with outliers when working
 with DEMs (e.g., `Höhle and Höhle (2009) <https://doi.org/10.1016/j.isprsjprs.2009.02.003>`_).
 It is defined as:
@@ -82,8 +82,7 @@ Spatial auto-correlation of a sample
 `Variogram <https://en.wikipedia.org/wiki/Variogram>`_ analysis exploits statistical measures equivalent to the covariance,
 and is therefore also subject to outliers.
 Based on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, ``xdem`` allows to specify robust variogram
-estimators such as Dowd's variogram based on medians, see `Dowd (1984) <https://en.wikipedia.org/wiki/Variogram>`_.
-It is defined as:
+estimators such as Dowd's variogram based on medians (`Dowd (1984) <https://en.wikipedia.org/wiki/Variogram>`_) defined as:
 
 .. math::
         2\gamma (h) = 2.198 \cdot \textrm{median}_{i} \left ( Z_{x_{i}} - Z_{x_{i+h}} \right )
@@ -101,7 +100,7 @@ Least-square loss functions
 When performing least-squares linear regression, the traditional `loss functions <https://en.wikipedia.org/wiki/Loss_
 function>`_ that are used are not robust to outliers.
 
-A robust soft L1 loss default is used by default when ``xdem`` uses least-squares regression through `scipy.optimize
+A robust soft L1 loss default is used by default when ``xdem`` performs least-squares regression through `scipy.optimize
 <https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_.
 
 Robust estimators
