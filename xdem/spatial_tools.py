@@ -436,17 +436,26 @@ def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
 
 
 def subsample_raster(
-    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
-) -> np.ndarray:
+    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False,
+    random_state : None | np.random.RandomState | int = None) -> np.ndarray:
     """
     Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
 
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
     If > 1 will be considered the number of pixels to extract.
     :param return_indices: If set to True, will return the extracted indices only.
+    :param random_state: Random state, or seed number to use for random calculations (for testing)
 
     :returns: The subsampled array (1D) or the indices to extract (same shape as input array)
     """
+    # Define state for random subsampling (to fix results during testing)
+    if random_state is None:
+        rnd = np.random.default_rng()
+    elif isinstance(random_state, np.random.RandomState):
+        rnd = random_state
+    else:
+        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
+
     # Get number of points to extract
     if (subsample <= 1) & (subsample > 0):
         npoints = int(subsample * np.size(array))
@@ -465,7 +474,7 @@ def subsample_raster(
         npoints = np.size(valids)
 
     # Randomly extract npoints without replacement
-    indices = np.random.choice(valids, npoints, replace=False)
+    indices = rnd.choice(valids, npoints, replace=False)
     unraveled_indices = np.unravel_index(indices, array.shape)
 
     if return_indices:

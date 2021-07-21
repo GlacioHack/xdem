@@ -251,70 +251,8 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
 
     return df_concat
 
-def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
-    """
-    Get empirical variogram from skgstat.Variogram object calculating pairwise distances within the sample
-
-    :param values: values
-    :param coords: coordinates
-    :return: empirical variogram (variance, lags, counts)
-
-    """
-
-    V = skg.Variogram(coordinates=coords, values=values, normalize=False, fit_method = None, **kwargs)
-
-    # To derive the middle of the bins
-    bins, exp = V.get_empirical()
-    count = V.bin_count
-
-    df = pd.DataFrame()
-    df = df.assign(exp=exp, bins=bins, count=count)
-
-    return df
-
-
-def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, cdist_method: str, **kwargs) -> pd.DataFrame:
-    """
-    Get empirical variogram from skgstat.Variogram object calculating pairwise distances between two sample collections
-    of a MetricSpace (see scikit-gstat documentation for more details)
-
-    :param values: values
-    :param coords: coordinates
-    :return: empirical variogram (variance, lags, counts)
-
-    """
-    if cdist_method == 'cdist_point':
-        ms = skg.ProbabalisticMetricSpace(coords=coords, samples=samples)
-    elif cdist_method == 'cdist_equidistant':
-        ms = skg.RasterEquidistantMetricSpace(coords=coords, shape=shape, extent=extent)
-
-    V = skg.Variogram(ms, values=values, normalize=False, fit_method=None, **kwargs)
-
-    # To derive the middle of the bins
-    bins, exp = V.get_empirical()
-    count = V.bin_count
-
-    df = pd.DataFrame()
-    df = df.assign(exp=exp, bins=bins, count=count)
-
-    return df
-
-
-def _wrapper_get_pdist_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
-    """
-    Multiprocessing wrapper for get_pdist_empirical_variogram
-
-    :param argdict: Keyword argument to pass to get_empirical_variogram()
-
-    :return: empirical variogram (variance, lags, counts)
-
-    """
-    print('Working on subsample '+str(argdict['i']) + ' out of '+str(argdict['max_i']))
-
-    return _get_pdist_empirical_variogram(values=argdict['values'], coords=argdict['coords'], **kwargs)
-
-
-def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
+def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None,
+                         radius: Optional[float] = None) -> np.ndarray:
     """
     Create circular mask on a raster, defaults to the center of the array and it's half width
 
@@ -343,7 +281,8 @@ def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list
 
     return mask
 
-def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, in_radius: float = 0., out_radius: Optional[float] = None) -> np.ndarray:
+def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, in_radius: float = 0.,
+                     out_radius: Optional[float] = None) -> np.ndarray:
     """
     Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
 
@@ -369,69 +308,86 @@ def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[flo
 
 
 def _subsample_wrapper(values: np.ndarray, coords: np.ndarray, shape: tuple[int,int] = None, subsample: int = 10000,
-                       subsample_method: str = 'pdist_ring', inside_radius = None, outside_radius = None) -> tuple[np.ndarray, np.ndarray]:
+                       subsample_method: str = 'pdist_ring', random_state: None | np.random.RandomState | int = None,
+                       inside_radius = None, outside_radius = None) -> tuple[np.ndarray, np.ndarray]:
     """
     (Not used by default)
     Wrapper for subsampling pdist methods
     """
     nx, ny = shape
 
-    # subsample spatially for disk/ring methods
-    if subsample_method == 'pdist_disk':
-        # Select random center coordinates
-        center_x = np.random.choice(nx, 1)[0]
-        center_y = np.random.choice(ny, 1)[0]
-        index_ring = create_ring_mask((nx, ny), center=[center_x, center_y], in_radius=inside_radius,
-                                      out_radius=outside_radius)
-        index = index_ring.ravel()
+    # Define state for random subsampling (to fix results during testing)
+    if random_state is None:
+        rnd = np.random.default_rng()
+    elif isinstance(random_state, np.random.RandomState):
+        rnd = random_state
+    else:
+        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
 
-    elif subsample_method == 'pdist_ring':
-        # Select random center coordinates
-        center_x = np.random.choice(nx, 1)[0]
-        center_y = np.random.choice(ny, 1)[0]
-        index_disk = create_circular_mask((nx, ny), center=[center_x, center_y], radius=inside_radius)
-        index = index_disk.ravel()
-
+    # Subsample spatially for disk/ring methods
     if subsample_method in ['pdist_disk', 'pdist_ring']:
+        # Select random center coordinates
+        center_x = rnd.choice(nx, 1)[0]
+        center_y = rnd.choice(ny, 1)[0]
+        if subsample_method == 'pdist_disk':
+            index_ring = create_ring_mask((nx, ny), center=[center_x, center_y], in_radius=inside_radius,
+                                          out_radius=outside_radius)
+            index = index_ring.ravel()
+        else:
+            index_disk = create_circular_mask((nx, ny), center=[center_x, center_y], radius=inside_radius)
+            index = index_disk.ravel()
+
         values_sp = values[index]
         coords_sp = coords[index, :]
+
     else:
         values_sp = values
         coords_sp = coords
 
-    index = subsample_raster(values_sp, subsample=subsample, return_indices=True)
+    index = subsample_raster(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
     values_sub = values_sp[index]
     coords_sub = coords_sp[index, :]
 
     return values_sub, coords_sub
 
-def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, gsd: float, shape: tuple, maxlag: float,
-                             subsample_method: str, multi_ranges: list, nproc:int, nrun:int, subsample: int, **kwargs) -> pd.DataFrame:
+def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample: int, shape: tuple,
+                                         subsample_method: str, pdist_multi_ranges: Optional[list[float]] = None,
+                                         **kwargs) -> pd.DataFrame:
     """
     (Not used by default)
     Aggregating subfunction of sample_multirange_variogram for pdist methods.
     The pairwise differences are calculated within each subsample.
     """
+    # Get the ground sampling distance
+    gsd = np.mean([coords[0, 0] - coords[0, 1], coords[0, 0] - coords[1, 0]])
+
+    # Define maxlag automatically if not done
+    if 'maxlag' not in kwargs.keys():
+        # define maximum lag as the maximum distance between coordinates (needed to provide custom bins, otherwise
+        # skgstat rewrites the maxlag with the subsample of coordinates provided)
+        maxlag = np.sqrt((shape[0] * gsd) ** 2 + (shape[1] * gsd) ** 2)
+        # also need a cutoff value to get the exact same bins
+        kwargs.update({'maxlag': maxlag})
+    else:
+        maxlag = kwargs.get('maxlag')
+
     # If no multi_ranges are provided, define a logical default behaviour with the pixel size and grid size
     if subsample_method in ['random_disk', 'random_ring']:
 
-        if multi_ranges is None:
-            # Get the ground sampling distance
-            if gsd is None:
-                gsd = np.sqrt((coords[0, 0] - coords[0, 1]) ** 2 + (coords[0, 0] - coords[1, 0]) ** 2)
+        if pdist_multi_ranges is None:
 
             # Define list of ranges as exponent 2 of the resolution until the maximum range
-            multi_ranges = []
+            pdist_multi_ranges = []
             # We start at 10 times the ground sampling distance
             new_range = gsd * 10
             while new_range < maxlag / 2:
-                multi_ranges.append(new_range)
+                pdist_multi_ranges.append(new_range)
                 new_range *= 2
-            multi_ranges.append(maxlag)
+            pdist_multi_ranges.append(maxlag)
 
         # Define subsampling parameters
         list_inside_radius, list_outside_radius = ([] for i in range(2))
-        binned_ranges = [0] + multi_ranges
+        binned_ranges = [0] + pdist_multi_ranges
         for i in range(len(binned_ranges) - 1):
 
             outside_radius = binned_ranges[i + 1] + 5 * gsd
@@ -444,78 +400,145 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
             list_inside_radius.append(inside_radius)
     else:
         # For random point selection, no need for multi-range parameters
-        multi_ranges = [maxlag]
+        pdist_multi_ranges = [maxlag]
         list_outside_radius = [None]
         list_inside_radius = [None]
 
     # Estimate variogram with specific subsampling at multiple ranges
-    list_df_r = []
-    for r in multi_ranges:
+    list_df_range = []
+    for j in range(len(pdist_multi_ranges)):
 
-        # Differentiate between 1 core and several cores for multiple runs
-        if nproc == 1:
-            print('Using 1 core...')
-            list_df_nb = []
-            for i in range(nrun):
-                values_sub, coords_sub = _subsample_wrapper(values, coords, shape=shape, subsample=subsample,
-                                                            subsample_method=subsample_method,
-                                                            inside_radius=list_inside_radius[multi_ranges.index(r)],
-                                                            outside_radius=list_outside_radius[multi_ranges.index(r)])
-                if len(values_sub) == 0:
-                    continue
-                df = _get_pdist_empirical_variogram(values=values_sub, coords=coords_sub, **kwargs)
-                df['run'] = i
-                list_df_nb.append(df)
-        else:
-            print('Using ' + str(nproc) + ' cores...')
-            list_values_sub = []
-            list_coords_sub = []
-            for i in range(nrun):
-                index = subsample_raster(values, subsample=subsample, return_indices=True)
-                values_sub = values[index]
-                coords_sub = coords[index, :]
-                list_values_sub.append(values_sub)
-                list_coords_sub.append(coords_sub)
-
-            pool = mp.Pool(nproc, maxtasksperchild=1)
-            argsin = [{'values': list_values_sub[i], 'coords': list_coords_sub[i], 'i': i, 'max_i': nrun} for i in
-                      range(nrun)]
-            list_df = pool.map(partial(_wrapper_get_pdist_empirical_variogram, **kwargs), argsin, chunksize=1)
-            pool.close()
-            pool.join()
-
-            list_df_nb = []
-            for i in range(10):
-                df_nb = list_df[i]
-                df_nb['run'] = i
-                list_df_nb.append(df_nb)
+        values_sub, coords_sub = _subsample_wrapper(values, coords, shape = shape, subsample = subsample,
+                                                    subsample_method = subsample_method,
+                                                    inside_radius = list_inside_radius[j],
+                                                    outside_radius = list_outside_radius[j])
+        if len(values_sub) == 0:
+            continue
+        df_range = _get_pdist_empirical_variogram(values=values_sub, coords=coords_sub, **kwargs)
 
         # Aggregate runs
-        df_r = pd.concat(list_df_nb)
-        list_df_r.append(df_r)
+        list_df_range.append(df_range)
 
-    # Aggregate multiple ranges subsampling
-    df = pd.concat(list_df_r)
-
-    # For a single run, no multi-run sigma estimated
-    if nrun == 1:
-        df['exp_sigma'] = np.nan
-    # For several runs, group results, use mean as empirical variogram, estimate sigma, and sum the counts
-    else:
-        df_grouped = df.groupby('bins', dropna=False)
-        df_mean = df_grouped[['exp']].mean()
-        df_sig = df_grouped[['exp']].std()
-        df_count = df_grouped[['count']].sum()
-        df_mean['bins'] = df_mean.index.values
-        df_mean['exp_sigma'] = df_sig['exp']
-        df_mean['count'] = df_count['count']
-        df = df_mean
+    df = pd.concat(list_df_range)
 
     return df
 
+
+def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
+    """
+    Get empirical variogram from skgstat.Variogram object calculating pairwise distances within the sample
+
+    :param values: values
+    :param coords: coordinates
+    :return: empirical variogram (variance, lags, counts)
+
+    """
+    # Get arguments of Variogram class init function
+    vgm_args = skg.Variogram.__init__.__code__.co_varnames[:skg.Variogram.__init__.__code__.co_argcount]
+    # Check no other argument is left to be passed
+    remaining_kwargs = kwargs.copy()
+    for arg in vgm_args:
+        remaining_kwargs.pop(arg, None)
+    if len(remaining_kwargs) != 0:
+        warnings.warn('Keyword arguments: '+','.join(list(remaining_kwargs.keys()))+ ' were not used.')
+    # Filter corresponding arguments before passing
+    filtered_kwargs =  {k:kwargs[k] for k in vgm_args if k in kwargs}
+
+    # Derive variogram with default MetricSpace (equivalent to scipy.pdist)
+    V = skg.Variogram(coordinates=coords, values=values, normalize=False, fit_method=None, **filtered_kwargs)
+
+    # Get the middle value of the bins, empirical variogram values, and bin count
+    bins, exp = V.get_empirical()
+    count = V.bin_count
+
+    # Write to dataframe
+    df = pd.DataFrame()
+    df = df.assign(exp=exp, bins=bins, count=count)
+
+    return df
+
+
+def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample_method: str,
+                                   **kwargs) -> pd.DataFrame:
+    """
+    Get empirical variogram from skgstat.Variogram object calculating pairwise distances between two sample collections
+    of a MetricSpace (see scikit-gstat documentation for more details)
+
+    :param values: values
+    :param coords: coordinates
+    :return: empirical variogram (variance, lags, counts)
+
+    """
+    # Rename the "subsample" argument into "samples", which is used by skgstat Metric subclasses
+    kwargs['samples'] = kwargs.pop('subsample')
+    # Rename the "random_state" argument into "rnd", also used by skgstat Metric subclasses
+    kwargs['rnd'] = kwargs.pop('random_state')
+
+    # Define MetricSpace function to be used, fetch possible keywords arguments
+    if subsample_method == 'cdist_point':
+        # List keyword arguments of the Probabilistic class init function
+        ms_args = skg.ProbabalisticMetricSpace.__init__.__code__.co_varnames[:skg.ProbabalisticMetricSpace.__init__.__code__.co_argcount]
+        ms = skg.ProbabalisticMetricSpace
+    else:
+        # List keyword arguments of the RasterEquidistant class init function
+        ms_args = skg.RasterEquidistantMetricSpace.__init__.__code__.co_varnames[:skg.RasterEquidistantMetricSpace.__init__.__code__.co_argcount]
+        ms = skg.RasterEquidistantMetricSpace
+
+    # Get arguments of Variogram class init function
+    vgm_args = skg.Variogram.__init__.__code__.co_varnames[:skg.Variogram.__init__.__code__.co_argcount]
+    # Check no other argument is left to be passed, accounting for MetricSpace arguments
+    remaining_kwargs = kwargs.copy()
+    for arg in vgm_args + ms_args:
+        remaining_kwargs.pop(arg, None)
+    if len(remaining_kwargs) != 0:
+        warnings.warn('Keyword arguments: ' + ', '.join(list(remaining_kwargs.keys())) + ' were not used.')
+
+    # Filter corresponding arguments before passing to MetricSpace function
+    filtered_ms_kwargs = {k: kwargs[k] for k in ms_args if k in kwargs}
+    M = ms(coords=coords, **filtered_ms_kwargs)
+
+    # Filter corresponding arguments before passing to Variogram function
+    filtered_var_kwargs = {k: kwargs[k] for k in vgm_args if k in kwargs}
+    V = skg.Variogram(M, values=values, normalize=False, fit_method=None, **filtered_var_kwargs)
+
+    # Get the middle value of the bins, empirical variogram values, and bin count
+    bins, exp = V.get_empirical()
+    count = V.bin_count
+
+    # Write to dataframe
+    df = pd.DataFrame()
+    df = df.assign(exp=exp, bins=bins, count=count)
+
+    return df
+
+def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
+    """
+    Multiprocessing wrapper for get_pdist_empirical_variogram and get_cdist_empirical variogram
+
+    :param argdict: Keyword argument to pass to get_pdist/cdist_empirical_variogram
+
+    :return: empirical variogram (variance, lags, counts)
+
+    """
+    if argdict['verbose']:
+        print('Working on run '+str(argdict['i']) + ' out of '+str(argdict['imax']))
+    argdict.pop('i')
+    argdict.pop('imax')
+
+    if argdict['subsample_method'] in ['cdist_equidistant', 'cdist_point']:
+        # Simple wrapper for the skgstat Variogram function for cdist methods
+        get_variogram = _get_cdist_empirical_variogram
+    else:
+        # Aggregating several skgstat Variogram after iterative subsampling of specific points in the Raster
+        get_variogram = _aggregate_pdist_empirical_variogram
+
+    return get_variogram(**argdict)
+
+
 def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float = None, coords: np.ndarray = None,
-                                subsample: int = 10000, subsample_method: str = 'cdist_equidistant',
-                                pdist_multi_ranges: list[float] = None, nrun: int = 1, nproc: int = 1, **kwargs) -> pd.DataFrame:
+                                subsample: int = 10000, subsample_method: str = 'cdist_equidistant', nrun: int = 1,
+                                nproc: int = 1, verbose=False, random_state: None | np.random.RandomState | int = None,
+                                **kwargs) -> pd.DataFrame:
     """
     Sample empirical variograms with binning adaptable to multiple ranges and spatial subsampling adapted for raster data.
     By default, subsampling is based on RasterEquidistantMetricSpace implemented in scikit-gstat. This method samples more
@@ -532,7 +555,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
      "pdist_disk" and "pdist_ring".
     The cdist methods use MetricSpace classes of scikit-gstat and do pairwise comparison of two ensembles as in
     scipy.spatial.cdist.
-    The pdist methods use methods to subsample the Raster directly and do pairwise comparison within a single
+    The pdist methods use methods to subsample the Raster points directly and do pairwise comparison within a single
     ensemble as in scipy.spatial.pdist.
 
     For the cdist methods, the variogram is estimated in a single run from the MetricSpace.
@@ -542,14 +565,18 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
     If the subsampling method selected is "random_point", the multi-range argument is ignored as range has no effect on
     this subsampling method.
 
+    For pdist methods, additional keyword arguments are passed to skgstat.Variogram.
+    For cdist methods, keyword arguments are divided between skgstat.Variogram and skgstat.MetricSpace.
+
     :param values: values
     :param gsd: ground sampling distance
     :param coords: coordinates
-    :param subsample_method: spatial subsampling method
-    :param pdist_multi_ranges: list of ranges to use for pdist methods
     :param subsample: number of samples to randomly draw from the values
+    :param subsample_method: spatial subsampling method
     :param nrun: number of runs
     :param nproc: number of processing cores
+    :param verbose: print statements during processing
+    :param random_state: random state or seed number to use for calculations (to fix drawings during testing)
 
     :return: empirical variogram (variance, lags, counts)
     """
@@ -564,8 +591,9 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
-    if (gsd is not None or subsample_method in ['pdist_disk','pdist_ring']) and values.ndim == 1:
-        raise TypeError('Values array must be 2D when providing ground sampling distance, or random disk/ring method.')
+    if (gsd is not None or subsample_method in ['cdist_equidistant', 'pdist_disk','pdist_ring']) and values.ndim == 1:
+        raise TypeError('Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
+                        '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.')
     elif coords is not None and values.ndim != 1:
         raise TypeError('Values array must be 1D when providing coordinates.')
     elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
@@ -579,42 +607,79 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
     if coords is not None:
         nx = None
         ny = None
+        # Making the shape of coordinates consistent
         if coords.shape[0] == 2 and coords.shape[1] != 2:
             coords = np.transpose(coords)
-    # Otherwise, we use the ground sampling distance
+    # Otherwise, we use the shape of the array and ground sampling distance to infer relative coordinates (starting at zero)
     else:
         nx, ny = np.shape(values)
         x, y = np.meshgrid(np.arange(0, values.shape[0] * gsd, gsd), np.arange(0, values.shape[1] * gsd, gsd))
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
         values = values.flatten()
 
+    # Keep only valid data
+    ind_valid = np.isfinite(values)
+    values = values[ind_valid]
+    coords = coords[ind_valid, :]
+
+    # TODO: right now this is a bit useless, as it is the same as in skgstat: adapt for grid data
     # Default value we want to use if no binning function, number of lags, and maximum lags are defined
     if 'bin_func' not in kwargs.keys():
         kwargs.update({'bin_func': 'even'})
     if 'n_lags' not in kwargs.keys():
         kwargs.update({'n_lags': 10})
-    if 'maxlag' not in kwargs.keys():
-        # define maximum lag as the maximum distance between coordinates (needed to provide custom bins, otherwise
-        # skgstat rewrites the maxlag with the subsample of coordinates provided)
-        if coords is not None:
-            maxlag = np.sqrt((np.max(coords[:, 0]) - np.min(coords[:, 0])) ** 2 +
-                             (np.max(coords[:, 1]) - np.min(coords[:, 1])) ** 2) / 2
-        else:
-            maxlag = np.sqrt((nx*gsd)**2 + (ny*gsd)**2)
-        # also need a cutoff value to get the exact same bins
-        kwargs.update({'maxlag': maxlag})
-    else:
-        maxlag = kwargs.get('maxlag')
+
+    # Prepare necessary arguments to pass to variogram functions
+    args = {'values': values, 'coords': coords, 'subsample_method': subsample_method, 'subsample': subsample,
+            'verbose': verbose, 'random_state': random_state}
+    if subsample_method in ['cdist_equidistant','pdist_ring','pdist_disk']:
+        # The shape is needed for those three methods
+        args.update({'shape': (nx, ny)})
+        if subsample_method == 'cdist_equidistant':
+            # The coordinate extent is needed for this method
+            extent = (np.min(coords[:, 0]), np.max(coords[:, 0]), np.min(coords[:, 1]), np.max(coords[:, 1]))
+            args.update({'extent':extent})
 
     # Derive the variogram
-    if subsample_method in ['cdist_equidistant', 'cdist_point']:
-        # Simple wrapper for the skgstat Variogram function for cdist methods
-        df = _get_cdist_empirical_variogram(values=values, coords=coords, cdist_method=subsample_method, **kwargs)
+    # Differentiate between 1 core and several cores for multiple runs
+    # All runs have random sampling inherent to their subfunctions, so we provide the same input arguments
+    if nproc == 1:
+        if verbose:
+            print('Using 1 core...')
+
+        list_df_run = []
+        for i in range(nrun):
+
+            argdict = {'i': i, 'imax': nrun, **args, **kwargs}
+            df_run = _wrapper_get_empirical_variogram(argdict=argdict)
+
+            list_df_run.append(df_run)
     else:
-        # Aggregating several skgstat Variogram after iterative subsampling of specific points in the Raster
-        df = _aggregate_pdist_empirical_variogram(values=values, coords=coords, gsd=gsd, shape=(nx,ny), maxlag=maxlag,
-                                      subsample_method=subsample_method, multi_ranges=pdist_multi_ranges, nproc=nproc,
-                                      nrun=nrun, subsample=subsample, **kwargs)
+        if verbose:
+            print('Using ' + str(nproc) + ' cores...')
+
+        pool = mp.Pool(nproc, maxtasksperchild=1)
+        argdict = [{'i': i, 'imax': nrun, **args, **kwargs} for i in range(nrun)]
+        list_df_run = pool.map(_wrapper_get_empirical_variogram, argdict, chunksize=1)
+        pool.close()
+        pool.join()
+
+    # Aggregate multiple ranges subsampling
+    df = pd.concat(list_df_run)
+
+    # For a single run, no multi-run sigma estimated
+    if nrun == 1:
+        df['err_exp'] = np.nan
+    # For several runs, group results, use mean as empirical variogram, estimate sigma, and sum the counts
+    else:
+        df_grouped = df.groupby('bins', dropna=False)
+        df_mean = df_grouped[['exp']].mean()
+        df_std = df_grouped[['exp']].std()
+        df_count = df_grouped[['count']].sum()
+        df_mean['bins'] = df_mean.index.values
+        df_mean['err_exp'] = df_std['exp']
+        df_mean['count'] = df_count['count']
+        df = df_mean
 
     return df
 

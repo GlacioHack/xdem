@@ -31,21 +31,20 @@ def load_ref_and_diff() -> tuple[gu.georaster.Raster, gu.georaster.Raster, np.nd
 
 class TestVariogram:
 
-    # check that the scripts are running
     @pytest.mark.skip("This test fails randomly! It needs to be fixed.")
     def test_empirical_fit_variogram_running(self):
 
-        # get some data
+        # Load data
         diff, mask = load_ref_and_diff()[1:3]
 
         x, y = diff.coords(offset='center')
         coords = np.dstack((x.flatten(), y.flatten())).squeeze()
 
-        # check the base script runs with right input shape
-        df = xdem.spatialstats.get_empirical_variogram(
-            values=diff.data.flatten(),
-            coords=coords,
-            nsamp=1000)
+        # Check the base script runs with right input shape
+        df = xdem.spatialstats.sample_multirange_variogram(
+            values=diff.data,
+            gsd=diff.res[0],
+            subsample=100)
 
         # check the wrapper script runs with various inputs
         # with gsd as input
