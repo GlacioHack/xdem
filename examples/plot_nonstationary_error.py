@@ -37,10 +37,6 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
-# We remove values on unstable terrain
-dh.data[mask_glacier] = np.nan
-
-# %%
 # We use the reference DEM to derive terrain variables such as slope, aspect, curvature (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`)
 # that we'll use to explore potential non-stationarities in elevation measurement error
 
@@ -51,10 +47,18 @@ slope, aspect, planc, profc = \
                                        resolution=ref_dem.res)
 
 # %%
+# We remove values on unstable terrain
+dh_arr = dh.data[~mask_glacier]
+slope_arr = slope[~mask_glacier]
+aspect_arr = aspect[~mask_glacier]
+planc_arr = planc[~mask_glacier]
+profc_arr = profc[~mask_glacier]
+
+# %%
 # We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
 # bin length divided by 30. We use the :ref:`spatial_stats_nmad` as a robust measure of `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_.
 
-df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[slope, aspect, planc, profc],
+df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, aspect_arr, planc_arr, profc_arr],
                                   list_var_names=['slope','aspect','planc','profc'],
                                   statistics=['count', xdem.spatialstats.nmad],
                                   list_var_bins=30)
@@ -103,9 +107,9 @@ xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 
 # time and instead bin one at a time.
 # We define 1000 quantile bins of size 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
 
-df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[profc], list_var_names=['profc'],
+df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[profc_arr], list_var_names=['profc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
-                                  list_var_bins=[[np.nanquantile(profc,0.001*i) for i in range(1001)]])
+                                  list_var_bins=[np.nanquantile(profc_arr,np.linspace(0,1,1000))])
 xdem.spatialstats.plot_1d_binning(df, 'profc', 'nmad', 'Profile curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
@@ -113,9 +117,9 @@ xdem.spatialstats.plot_1d_binning(df, 'profc', 'nmad', 'Profile curvature (100 m
 # for higher positive or negative curvature.
 # What about the role of the plan curvature?
 
-df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[planc], list_var_names=['planc'],
+df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[planc_arr], list_var_names=['planc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
-                                  list_var_bins=[[np.nanquantile(planc,0.001*i) for i in range(1001)]])
+                                  list_var_bins=[np.nanquantile(planc_arr,np.linspace(0,1,1000))])
 xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
@@ -123,10 +127,10 @@ xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 
 # To simplify the analysis, we here combine those curvatures into the maximum absolute curvature:
 
 # Derive maximum absolute curvature
-maxc = np.maximum(np.abs(planc),np.abs(profc))
-df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[maxc], list_var_names=['maxc'],
+maxc_arr = np.maximum(np.abs(planc_arr),np.abs(profc_arr))
+df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[maxc_arr], list_var_names=['maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
-                                  list_var_bins=[[np.nanquantile(maxc,0.002*i) for i in range(501)]])
+                                  list_var_bins=[np.nanquantile(maxc_arr,np.linspace(0,1,1000))])
 xdem.spatialstats.plot_1d_binning(df, 'maxc', 'nmad', 'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
@@ -138,7 +142,7 @@ xdem.spatialstats.plot_1d_binning(df, 'maxc', 'nmad', 'Maximum absolute curvatur
 #
 # We need to explore the variability with both slope and curvature at the same time:
 
-df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[slope, maxc], list_var_names=['slope', 'maxc'],
+df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr], list_var_names=['slope', 'maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
                                   list_var_bins=30)
 
@@ -150,17 +154,15 @@ xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)'
 #
 # If we use custom quantiles for both binning variables, and adjust the plot scale:
 
-custom_bin_slope = np.unique([np.quantile(slope,0.05*i) for i in range(20)]
-                             + [np.quantile(slope,0.95+0.02*i) for i in range(2)]
-                             + [np.quantile(slope,0.98 + 0.005*i) for i in range(3)]
-                             + [np.quantile(slope,0.995 + 0.001*i) for i in range(6)])
+custom_bin_slope = np.unique(np.concatenate([np.quantile(slope_arr,np.linspace(0,0.95,20)),
+                                             np.quantile(slope_arr,np.linspace(0.96,0.99,5)),
+                                             np.quantile(slope_arr,np.linspace(0.991,1,10))]))
 
-custom_bin_curvature =  np.unique([np.quantile(maxc,0.05*i) for i in range(20)]
-                             + [np.quantile(maxc,0.95+0.02*i) for i in range(2)]
-                             + [np.quantile(maxc,0.98 + 0.005*i) for i in range(3)]
-                             + [np.quantile(maxc,0.995 + 0.001*i) for i in range(6)])
+custom_bin_curvature = np.unique(np.concatenate([np.quantile(maxc_arr,np.linspace(0,0.95,20)),
+                                             np.quantile(maxc_arr,np.linspace(0.96,0.99,5)),
+                                             np.quantile(maxc_arr,np.linspace(0.991,1,10))]))
 
-df = xdem.spatialstats.nd_binning(values=dh.data, list_var=[slope, maxc], list_var_names=['slope', 'maxc'],
+df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr], list_var_names=['slope', 'maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
                                   list_var_bins=[custom_bin_slope,custom_bin_curvature])
 xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)', 'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)', scale_var_2='log', vmin=2, vmax=10)
@@ -193,6 +195,7 @@ for s, c in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
 
 # %%
 # The same function can be used to estimate the spatial distribution of the elevation measurement error over the area:
+maxc = np.maximum(profc, planc)
 dh_err = slope_curv_to_dh_err((slope, maxc))
 
 plt.figure(figsize=(8, 5))
@@ -206,8 +209,3 @@ plt.imshow(dh_err.squeeze(), cmap="Reds", vmin=2, vmax=8, extent=plt_extent)
 cbar = plt.colorbar()
 cbar.set_label('Elevation measurement error (m)')
 plt.show()
-
-
-
-
-
