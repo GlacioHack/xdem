@@ -437,7 +437,7 @@ def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
 
 def subsample_raster(
     array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False,
-    random_state : None | np.random.RandomState | int = None) -> np.ndarray:
+    random_state : None | np.random.RandomState | np.random.Generator | int = None) -> np.ndarray:
     """
     Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
 
@@ -451,7 +451,7 @@ def subsample_raster(
     # Define state for random subsampling (to fix results during testing)
     if random_state is None:
         rnd = np.random.default_rng()
-    elif isinstance(random_state, np.random.RandomState):
+    elif isinstance(random_state, (np.random.RandomState, np.random.Generator)):
         rnd = random_state
     else:
         rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))

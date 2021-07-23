@@ -31,112 +31,170 @@ def load_ref_and_diff() -> tuple[gu.georaster.Raster, gu.georaster.Raster, np.nd
 
 class TestVariogram:
 
-    @pytest.mark.skip("This test fails randomly! It needs to be fixed.")
-    def test_empirical_fit_variogram_running(self):
+    def test_sample_multirange_variogram_default(self):
+        """Verify that the default function runs, and its basic output"""
 
         # Load data
         diff, mask = load_ref_and_diff()[1:3]
 
-        x, y = diff.coords(offset='center')
-        coords = np.dstack((x.flatten(), y.flatten())).squeeze()
-
-        # Check the base script runs with right input shape
+        # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_multirange_variogram(
-            values=diff.data,
-            gsd=diff.res[0],
-            subsample=100)
+            values=diff.data, gsd=diff.res[0], subsample=50,
+            random_state=42, runs=10)
 
-        # check the wrapper script runs with various inputs
-        # with gsd as input
-        df_gsd = xdem.spatialstats.sample_multirange_variogram(
-            values=diff.data,
-            gsd=diff.res[0],
-            nsamp=10)
+        # With random state, results should always be the same
+        assert df.exp[0] == pytest.approx(15.4, 0.01)
+        # With a single run, no error can be estimated
+        assert all(np.isnan(df.err_exp.values))
 
-        # with coords as input, and "uniform" bin_func
-        df_coords = xdem.spatialstats.sample_multirange_variogram(
-            values=diff.data.flatten(),
-            coords=coords,
-            bin_func='uniform',
-            nsamp=1000)
+        # Test multiple runs
+        df2 = xdem.spatialstats.sample_multirange_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=50,
+            random_state=42, runs=10, nrun=2)
 
-        # using more bins
-        df_1000_bins = xdem.spatialstats.sample_multirange_variogram(
-            values=diff.data,
-            gsd=diff.res[0],
-            n_lags=1000,
-            nsamp=1000)
+        # Check that an error is estimated
+        assert all(~np.isnan(df2.err_exp.values))
 
-        # using multiple runs with parallelized function
-        df_sig = xdem.spatialstats.sample_multirange_variogram(values=diff.data, gsd=diff.res[0], nsamp=1000,
-                                                               nrun=20, nproc=10, maxlag=10000)
-
-        # test plotting
+        # Test plotting of empirical variogram by itself
         if PLOT:
-            xdem.spatialstats.plot_vgm(df_sig)
+            xdem.spatialstats.plot_vgm(df2)
 
-        # single model fit
-        fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df_sig)
-        if PLOT:
-            xdem.spatialstats.plot_vgm(df_sig, list_fit_fun=[fun])
+    @pytest.mark.parametrize('subsample_method',['pdist_point','pdist_ring','pdist_disk','cdist_equidistant','cdist_point'])
+    def test_sample_multirange_variogram_methods(self, subsample_method):
+        """Verify that all methods run"""
 
-        try:
-            # triple model fit
-            fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df_sig)
-            if PLOT:
-                xdem.spatialstats.plot_vgm(df_sig, list_fit_fun=[fun2])
-        except RuntimeError as exception:
-            if "The maximum number of function evaluations is exceeded." not in str(exception):
-                raise exception
-            warnings.warn(str(exception))
+        # Load data
+        diff, mask = load_ref_and_diff()[1:3]
+
+        # Check the variogram estimation runs for several methods
+        df = xdem.spatialstats.sample_multirange_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            subsample_method=subsample_method)
+
+        assert not df.empty
+
+    def test_sample_multirange_variogram_args(self):
+        """Verify that optional parameters run only for their specific method, raise warning otherwise"""
+
+        # Load data
+        diff, mask = load_ref_and_diff()[1:3]
+
+        pdist_args = {'pdist_multi_ranges':[0, diff.res[0]*5, diff.res[0]*10]}
+        cdist_args = {'ratio_subsample': 0.5}
+        nonsense_args = {'thisarg': 'shouldnotexist'}
+
+        # Check the function raises a warning for optional arguments incorrect to the method
+        with pytest.warns(UserWarning):
+            # An argument only use by cdist with a pdist method
+            df = xdem.spatialstats.sample_multirange_variogram(
+                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                subsample_method='pdist_ring', **cdist_args)
+
+        with pytest.warns(UserWarning):
+            # Same here
+            df = xdem.spatialstats.sample_multirange_variogram(
+                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                subsample_method='cdist_equidistant', **pdist_args)
+
+        with pytest.warns(UserWarning):
+            # Should also raise a warning for a nonsense argument
+            df = xdem.spatialstats.sample_multirange_variogram(
+                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                subsample_method='cdist_equidistant', **nonsense_args)
+
+        # Check the function passes optional arguments specific to pdist methods without warning
+        df = xdem.spatialstats.sample_multirange_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            subsample_method='pdist_ring', **pdist_args)
+
+        # Check the function passes optional arguments specific to cdist methods without warning
+        df = xdem.spatialstats.sample_multirange_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            subsample_method='cdist_equidistant', **cdist_args)
 
     def test_multirange_fit_performance(self):
+        """Verify that the fitting works with artificial dataset"""
 
-        # first, generate a true sum of variograms with some added noise
-        r1, ps1, r2, ps2, r3, ps3 = (100, 0.7, 1000, 0.2, 10000, 0.1)
+        # First, generate a sum of modelled variograms: ranges and  partial sills for three models
+        params_real = (100, 0.7, 1000, 0.2, 10000, 0.1)
+        r1, ps1, r2, ps2, r3, ps3 = params_real
 
         x = np.linspace(10, 20000, 500)
         y = models.spherical(x, r=r1, c0=ps1) + models.spherical(x, r=r2, c0=ps2) \
             + models.spherical(x, r=r3, c0=ps3)
 
+        # Add some noise on top of it
         sig = 0.025
+        np.random.seed(42)
         y_noise = np.random.normal(0, sig, size=len(x))
 
         y_simu = y + y_noise
         sigma = np.ones(len(x))*sig
 
+        # Put all in a dataframe
         df = pd.DataFrame()
-        df = df.assign(bins=x, exp=y_simu, exp_sigma=sig)
+        df = df.assign(bins=x, exp=y_simu, err_exp=sigma)
 
-        # then, run the fitting
-        fun, params = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], df)
+        # Run the fitting
+        fun, params_est = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], df)
+
+        for i in range(len(params_est)):
+            # Assert all parameters were correctly estimated within a 30% relative margin
+            assert params_real[i] == pytest.approx(params_est[i],rel=0.3)
 
         if PLOT:
-            xdem.spatialstats.plot_vgm(df, fit_fun=fun)
+            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+
+    def test_empirical_fit_plotting(self):
+        """Verify that the shape of the empirical variogram output works with the fit and plotting"""
+
+        # Load data
+        diff, mask = load_ref_and_diff()[1:3]
+
+        # Check the variogram estimation runs for a random state
+        df = xdem.spatialstats.sample_multirange_variogram(
+            values=diff.data,
+            gsd=diff.res[0],
+            subsample=50, random_state=42, runs=10)
+
+        # Single model fit
+        fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df)
+        if PLOT:
+            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+
+        # Triple model fit
+        fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
+        if PLOT:
+            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
+
 
     def test_neff_estimation(self):
+        """ Test the precision of numerical integration for several spherical models at different scales """
 
-        # test the precision of numerical integration for several spherical models
-
-        # short range
+        # Short ranges
         crange1 = [10**i for i in range(8)]
-        # long range
+        # Long ranges
         crange2 = [100*sr for sr in crange1]
 
+        # Partial sills
         p1 = 0.8
         p2 = 0.2
 
+        # Run for all ranges
         for r1 in crange1:
             r2 = crange2[crange1.index(r1)]
 
-            # and for any glacier area
+            # And for a wide range of surface areas
             for area in [10**i for i in range(10)]:
 
+                # Exact integration
                 neff_circ_exact = xdem.spatialstats.exact_neff_sphsum_circular(
                     area=area, crange1=r1, psill1=p1, crange2=r2, psill2=p2)
+                # Numerical integration
                 neff_circ_numer = xdem.spatialstats.neff_circ(area, [(r1, 'Sph', p1), (r2, 'Sph', p2)])
 
-                assert np.abs(neff_circ_exact-neff_circ_numer) < 0.001
+                # Check results are the same
+                assert neff_circ_exact == pytest.approx(neff_circ_numer, 0.001)
 
 class TestSubSampling:
 
