@@ -1,6 +1,4 @@
-"""
-xdem.spstats provides tools to use spatial statistics for elevation change data
-"""
+"""Spatial statistical tools to estimate uncertainties related to DEMs"""
 from __future__ import annotations
 
 import math as m
@@ -9,19 +7,241 @@ import os
 import random
 import warnings
 from functools import partial
-from typing import Callable, Union
 
+from typing import Callable, Union, Iterable, Optional, Sequence, Any
+
+import itertools
 import matplotlib.pyplot as plt
+from numba import njit
 import numpy as np
 import pandas as pd
 from scipy import integrate
 from scipy.optimize import curve_fit
+from skimage.draw import disk
+from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
+from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
+from xdem.spatial_tools import nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
     from skgstat import models
 
+def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
+                      min_count: Optional[int] = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
+    """
+    Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
+    For more details on the input dataframe, and associated list of variable name and statistic, see nd_binning.
+
+    If the variable pd.DataSeries corresponds to an interval (as the output of nd_binning), uses the middle of the interval.
+    Otherwise, uses the variable as such.
+
+    Workflow of the function:
+    Fills the no-data present on the regular N-D binning grid with nearest neighbour from scipy.griddata, then provides an
+    interpolant function that linearly interpolates/extrapolates using scipy.RegularGridInterpolator.
+
+    :param df: dataframe with statistic of binned values according to explanatory variables (preferably output of nd_binning)
+    :param list_var_names: explanatory variable data series to select from the dataframe (containing interval or float dtype)
+    :param statistic: statistic to interpolate, stored as a data series in the dataframe
+    :param min_count: minimum number of samples to be used as a valid statistic (replaced by nodata)
+    :return: N-dimensional interpolant function
+
+    :examples
+    # Using a dataframe created from scratch
+    >>> df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+
+    # In 2 dimensions, the statistic array looks like this
+    # array([
+    #     [1, 2, 3],
+    #     [4, 5, 6],
+    #     [7, 8, 9]
+    #     ])
+    >>> fun = interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
+
+    # Right on point.
+    >>> fun((2, 2))
+    array(5.)
+
+    # Interpolated linearly inside the 2D frame.
+    >>> fun((1.5, 1.5))
+    array(3.)
+
+    # Extrapolated linearly outside the 2D frame.
+    >>> fun((-1, 1))
+    array(-1.)
+    """
+    # if list of variable input is simply a string
+    if isinstance(list_var_names,str):
+        list_var_names = [list_var_names]
+
+    # check that the dataframe contains what we need
+    for var in list_var_names:
+        if var not in df.columns:
+            raise ValueError('Variable "'+var+'" does not exist in the provided dataframe.')
+    statistic_name = statistic if isinstance(statistic,str) else statistic.__name__
+    if statistic_name not in df.columns:
+        raise ValueError('Statistic "' + statistic_name + '" does not exist in the provided dataframe.')
+    if min_count is not None and 'count' not in df.columns:
+        raise ValueError('Statistic "count" is not in the provided dataframe, necessary to use the min_count argument.')
+    if df.empty:
+        raise ValueError('Dataframe is empty.')
+
+    df_sub = df.copy()
+
+    # if the dataframe is an output of nd_binning, keep only the dimension of interest
+    if 'nd' in df_sub.columns:
+        df_sub = df_sub[df_sub.nd == len(list_var_names)]
+
+    # compute the middle values instead of bin interval if the variable is a pandas interval type
+    for var in list_var_names:
+        if isinstance(df_sub[var].values[0],pd.Interval):
+            df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
+        # otherwise, leave as is
+
+    # check that explanatory variables have valid binning values which coincide along the dataframe
+    df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in list_var_names])]
+    if df_sub.empty:
+        raise ValueError('Dataframe does not contain a nd binning with the variables corresponding to the list of variables.')
+    # check that the statistic data series contain valid data
+    if all(~np.isfinite(df_sub[statistic_name].values)):
+        raise ValueError('Dataframe does not contain any valid statistic values.')
+
+    # remove statistic values calculated with a sample count under the minimum count
+    if min_count is not None:
+        df_sub.loc[df_sub['count'] < min_count,statistic_name] = np.nan
+
+    vals = df_sub[statistic_name].values
+    ind_valid = np.isfinite(vals)
+
+    # re-check that the statistic data series contain valid data after filtering with min_count
+    if all(~ind_valid):
+        raise ValueError("Dataframe does not contain any valid statistic values after filtering with min_count = "+str(min_count)+".")
+
+    # get a list of middle values for the binning coordinates, to define a nd grid
+    list_bmid = []
+    shape = []
+    for var in list_var_names:
+        bmid = sorted(np.unique(df_sub[var][ind_valid]))
+        list_bmid.append(bmid)
+        shape.append(len(bmid))
+
+    # griddata first to perform nearest interpolation with NaNs (irregular grid)
+    # valid values
+    vals = vals[ind_valid]
+    # coordinates of valid values
+    points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
+    # grid coordinates
+    bmid_grid = np.meshgrid(*list_bmid)
+    points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
+    # fill grid no data with nearest neighbour
+    vals_grid = griddata(points_valid, vals, points_grid, method='nearest')
+    vals_grid = vals_grid.reshape(tuple(shape))
+
+    # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
+    # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
+    interp_fun = RegularGridInterpolator(tuple(list_bmid), vals_grid, method='linear', bounds_error=False, fill_value=None)
+
+    return interp_fun
+
+
+def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
+        -> pd.DataFrame:
+    """
+    N-dimensional binning of values according to one or several explanatory variables.
+    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
+    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
+
+    :param values: values array (N,)
+    :param list_var: list (L) of explanatory variables array (N,)
+    :param list_var_names: list (L) of names of the explanatory variables
+    :param list_var_bins: count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
+    :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
+    :return:
+    """
+
+    # we separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
+    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
+    if list_var_bins is None:
+        list_var_bins = (10,) * len(list_var_names)
+    elif isinstance(list_var_bins,int):
+        list_var_bins = (list_var_bins,) * len(list_var_names)
+
+    # flatten the arrays if this has not been done by the user
+    values = values.ravel()
+    list_var = [var.ravel() for var in list_var]
+
+    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
+
+    # get binned statistics in 1d: a simple loop is sufficient
+    list_df_1d = []
+    for i, var in enumerate(list_var):
+        df_stats_1d = pd.DataFrame()
+        # get statistics
+        for j, statistic in enumerate(statistics):
+            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
+            # save in a dataframe
+            df_stats_1d[statistics_name[j]] = stats_binned_1d
+        # we need to get the middle of the bins from the edges, to get the same dimension length
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
+        # report number of dimensions used
+        df_stats_1d['nd'] = 1
+
+        list_df_1d.append(df_stats_1d)
+
+    # get binned statistics in 2d: all possible 2d combinations
+    list_df_2d = []
+    if len(list_var)>1:
+        combs = list(itertools.combinations(list_var_names, 2))
+        for i, comb in enumerate(combs):
+            var1_name, var2_name = comb
+            # corresponding variables indexes
+            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
+            df_stats_2d = pd.DataFrame()
+            for j, statistic in enumerate(statistics):
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
+                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
+                                                             ,range=list_ranges)[:3]
+                # get statistics
+                df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
+            # derive interval indexes and convert bins into 2d indexes
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
+            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
+            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
+            # report number of dimensions used
+            df_stats_2d['nd'] = 2
+
+            list_df_2d.append(df_stats_2d)
+
+
+    # get binned statistics in nd, without redoing the same stats
+    df_stats_nd = pd.DataFrame()
+    if len(list_var)>2:
+        for j, statistic in enumerate(statistics):
+            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
+            df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
+        list_ii = []
+        # loop through the bin edges and create IntervalIndexes from them (to get both
+        for bedges in list_bedges:
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
+
+        # create nd indexes in nd-array and flatten for each variable
+        iind = np.meshgrid(*list_ii)
+        for i, var_name in enumerate(list_var_names):
+            df_stats_nd[var_name] = iind[i].flatten()
+
+        # report number of dimensions used
+        df_stats_nd['nd'] = len(list_var_names)
+
+    # concatenate everything
+    list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
+    df_concat = pd.concat(list_all_dfs)
+    # commenting for now: pd.MultiIndex can be hard to use
+    # df_concat = df_concat.set_index(list_var_names)
+
+    return df_concat
 
 def get_empirical_variogram(dh: np.ndarray, coords: np.ndarray, **kwargs) -> pd.DataFrame:
     """
@@ -68,11 +288,10 @@ def wrapper_get_empirical_variogram(argdict: dict, **kwargs) -> pd.DataFrame:
     return get_empirical_variogram(dh=argdict['dh'], coords=argdict['coords'], **kwargs)
 
 
-def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int):
+def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
 
-    # TODO: add methods that might be more relevant with the multi-distance sampling?
     """
-    Subsampling of elevation differences
+    Subsampling of elevation differences with random coordinates
 
     :param dh: elevation differences
     :param coords: coordinates
@@ -90,6 +309,86 @@ def random_subset(dh: np.ndarray, coords: np.ndarray, nsamp: int):
         dh_sub = dh
 
     return dh_sub, coords_sub
+
+def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, radius: Optional[float] = None) -> np.ndarray:
+    """
+    Create circular mask on a raster, defaults to the center of the array and it's half width
+
+    :param shape: shape of array
+    :param center: center
+    :param radius: radius
+    :return:
+    """
+
+    w, h = shape
+
+    if center is None:  # use the middle of the image
+        center = (int(w / 2), int(h / 2))
+    if radius is None:  # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w - center[0], h - center[1])
+
+    # skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
+    mask = np.zeros(shape, dtype=bool)
+    rr, cc = disk(center=center,radius=radius,shape=shape)
+    mask[rr, cc] = True
+
+    # manual solution
+    # Y, X = np.ogrid[:h, :w]
+    # dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    # mask = dist_from_center < radius
+
+    return mask
+
+def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, in_radius: float = 0., out_radius: Optional[float] = None) -> np.ndarray:
+    """
+    Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
+
+    :param shape: shape of array
+    :param center: center
+    :param in_radius: inside radius
+    :param out_radius: outside radius
+    :return:
+    """
+
+    w, h = shape
+
+    if out_radius is None:
+        center = (int(w / 2), int(h / 2))
+        out_radius = min(center[0], center[1], w - center[0], h - center[1])
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        mask_inside = create_circular_mask((w,h),center=center,radius=in_radius)
+        mask_outside = create_circular_mask((w,h),center=center,radius=out_radius)
+
+    mask_ring = np.logical_and(~mask_inside,mask_outside)
+
+    return mask_ring
+
+
+def ring_subset(dh: np.ndarray, coords: np.ndarray, inside_radius: float = 0, outside_radius: float = 0) -> tuple[Union[np.ndarray, Any], Union[np.ndarray, Any]]:
+    """
+    Subsampling of elevation differences within a ring/disk (to sample points at similar pairwise distances)
+
+    :param dh: elevation differences
+    :param coords: coordinates
+    :param inside_radius: radius of inside ring disk in pixels
+    :param outside_radius: radius of outside ring disk in pixels
+
+    :return: subsets of dh and coords
+    """
+
+    # select random center coordinates
+    nx, ny = np.shape(dh)
+    center_x = np.random.choice(nx, 1)
+    center_y = np.random.choice(ny, 1)
+
+    mask_ring = create_ring_mask((nx,ny),center=(center_x,center_y),in_radius=inside_radius,out_radius=outside_radius)
+
+    dh_ring = dh[mask_ring]
+    coords_ring = coords[mask_ring]
+
+    return dh_ring, coords_ring
 
 
 def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coords: np.ndarray = None,
@@ -214,6 +513,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
                 df_nb = list_df[i]
                 df_nb['run'] = i
                 list_df_nb.append(df_nb)
+
         df = pd.concat(list_df_nb)
 
         # group results, use mean as empirical variogram, estimate sigma, and sum the counts
@@ -227,6 +527,7 @@ def sample_multirange_empirical_variogram(dh: np.ndarray, gsd: float = None, coo
         df = df_mean
 
     return df
+
 
 
 def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
@@ -348,8 +649,8 @@ def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crang
 
     return (psill1 + psill2)/std_err**2
 
+def neff_circ(area: float, list_vgm: list[tuple[float,str,float]]) -> float:
 
-def neff_circ(area: float, list_vgm: list[Union[float, str, float]]) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
@@ -618,8 +919,9 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
     return np.sqrt(var_err)
 
 
-def patches_method(dh: np.ndarray, mask: np.ndarray[bool], gsd: float, area_size: float, perc_min_valid: float = 80.,
-                   patch_shape: str = 'circular', nmax: int = 1000) -> pd.DataFrame:
+def patches_method(dh : np.ndarray, mask: np.ndarray[bool], gsd : float, area_size : float, perc_min_valid: float = 80.,
+                   patch_shape: str = 'circular',nmax : int = 1000, verbose: bool = False) -> pd.DataFrame:
+
     """
     Patches method for empirical estimation of the standard error over an integration area
 
@@ -635,28 +937,6 @@ def patches_method(dh: np.ndarray, mask: np.ndarray[bool], gsd: float, area_size
 
     :return: tile, mean, median, std and count of each patch
     """
-    def create_circular_mask(h, w, center=None, radius=None):
-        """
-        Create circular mask on a raster
-
-        :param h: height position
-        :param w: width position
-        :param center: center
-        :param radius: radius
-        :return:
-        """
-
-        if center is None:  # use the middle of the image
-            center = [int(w / 2), int(h / 2)]
-        if radius is None:  # use the smallest distance between the center and image walls
-            radius = min(center[0], center[1], w - center[0], h - center[1])
-
-        Y, X = np.ogrid[:h, :w]
-        dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-
-        mask = dist_from_center <= radius
-
-        return mask
 
     # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
     dh = dh.squeeze()
@@ -702,7 +982,9 @@ def patches_method(dh: np.ndarray, mask: np.ndarray[bool], gsd: float, area_size
         elif patch_shape == 'circular':
             center_x = np.floor(nx_sub*(i+1/2))
             center_y = np.floor(ny_sub*(j+1/2))
-            mask = create_circular_mask(nx, ny, center=[center_x, center_y], radius=rad)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                mask = create_circular_mask((nx, ny), center=(center_x, center_y), radius=rad)
             patch = dh[mask]
         else:
             raise ValueError('Patch method must be rectangular or circular.')
@@ -710,8 +992,10 @@ def patches_method(dh: np.ndarray, mask: np.ndarray[bool], gsd: float, area_size
         nb_pixel_total = len(patch)
         nb_pixel_valid = len(patch[np.isfinite(patch)])
         if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
-            u = u+1
-            print('Found valid cadrant ' + str(u) + ' (maximum: '+str(nmax)+')')
+            u=u+1
+            if verbose:
+                print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
+
             mean_patch.append(np.nanmean(patch))
             med_patch.append(np.nanmedian(patch.filled(np.nan) if isinstance(patch, np.ma.masked_array) else patch))
             std_patch.append(np.nanstd(patch))

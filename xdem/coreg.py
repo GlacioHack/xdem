@@ -1,26 +1,19 @@
-"""
-DEM coregistration functions.
-
-"Amaury's" functions are adapted from Amaury Dehecq.
-Source: https://github.com/GeoUtils/geoutils/blob/master/geoutils/dem_coregistration.py
-
-Author(s):
-    Erik Schytt Holmlund (holmlund@vaw.baug.ethz.ch)
-
-Date: 13 November 2020.
-"""
+"""DEM coregistration classes and functions."""
 from __future__ import annotations
 
+import copy
+import concurrent.futures
 import json
 import os
 import subprocess
 import tempfile
 import warnings
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, overload, Union, Sequence, TypeVar
 
 import fiona
 import geoutils as gu
+from geoutils.georaster import RasterType
 import numpy as np
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
@@ -31,7 +24,8 @@ import scipy.ndimage
 import scipy.optimize
 import skimage.transform
 from rasterio import Affine
-from tqdm import trange
+from tqdm import trange, tqdm
+import pandas as pd
 
 import xdem
 
@@ -430,6 +424,8 @@ def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine)
     return x_coords, y_coords
 
 
+CoregType = TypeVar("CoregType", bound="Coreg")
+
 class Coreg:
     """
     Generic Coreg class.
@@ -451,13 +447,13 @@ class Coreg:
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
             self._meta["matrix"] = valid_matrix
 
-    def fit(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
-            dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+    def fit(self: CoregType, reference_dem: np.ndarray | np.ma.masked_array | RasterType,
+            dem_to_be_aligned: np.ndarray | np.ma.masked_array | RasterType,
             inlier_mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False):
+            verbose: bool = False) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -469,17 +465,54 @@ class Coreg:
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
         """
-        # Make sure that the mask has an expected format.
-        if inlier_mask is not None:
-            inlier_mask = np.asarray(inlier_mask)
-            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
 
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
+        # Validate that both inputs are valid array-like (or Raster) types.
+        if not all(hasattr(dem, "__array_interface__") for dem in (reference_dem, dem_to_be_aligned)):
+            raise ValueError(
+                "Both DEMs need to be array-like (implement a numpy array interface)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
+
+        # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
+        if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
+            dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True).data
+
+        # If any input is a Raster, use its transform if 'transform is None'.
+        # If 'transform' was given and any input is a Raster, trigger a warning.
+        # Finally, extract only the data of the raster.
+        for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
+            if hasattr(dem, "transform"):
+                if transform is None:
+                    transform = getattr(dem, "transform")
+                elif transform is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+
+                """
+                if name == "reference_dem":
+                    reference_dem = dem.data
+                else:
+                    dem_to_be_aligned = dem.data
+                """
+
+        if transform is None:
+            raise ValueError("'transform' must be given if both DEMs are array-like.")
 
         ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
         tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
+
+        # Make sure that the mask has an expected format.
+        if inlier_mask is not None:
+            inlier_mask = np.asarray(inlier_mask).squeeze()
+            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+
+            if np.all(~inlier_mask):
+                raise ValueError("'inlier_mask' had no inliers.")
+
+            ref_dem[~inlier_mask] = np.nan
+            tba_dem[~inlier_mask] = np.nan
 
         if np.all(ref_mask):
             raise ValueError("'reference_dem' had only NaNs")
@@ -509,18 +542,39 @@ class Coreg:
         # Flag that the fitting function has been called.
         self._fit_called = True
 
-    def apply(self, dem: Union[np.ndarray, np.ma.masked_array],
-              transform: rio.transform.Affine) -> Union[np.ndarray, np.ma.masked_array]:
+        return self
+
+    @overload
+    def apply(self, dem: RasterType, transform: rio.transform.Affine | None) -> RasterType: ...
+
+    @overload
+    def apply(self, dem: np.ndarray, transform: rio.transform.Affine | None) -> np.ndarray: ...
+
+    @overload
+    def apply(self, dem: np.ma.masked_array, transform: rio.transform.Affine | None) -> np.ma.masked_array: ...
+
+
+    def apply(self, dem: np.ndarray | np.ma.masked_array | RasterType,
+              transform: rio.transform.Affine | None = None) -> RasterType | np.ndarray | np.ma.masked_array:
         """
         Apply the estimated transform to a DEM.
 
-        :param dem: A DEM to apply the transform on.
-        :param transform: The transform object of the DEM. TODO: Remove??
+        :param dem: A DEM array or Raster to apply the transform on.
+        :param transform: The transform object of the DEM. Required if 'dem' is an array and not a Raster.
 
         :returns: The transformed DEM.
         """
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
+
+        if isinstance(dem, gu.Raster):
+            if transform is None:
+                transform = dem.transform
+            else:
+                warnings.warn(f"DEM of type {type(dem)} overrides the given 'transform'")
+        else:
+            if transform is None:
+                raise ValueError("'transform' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
@@ -535,25 +589,44 @@ class Coreg:
         except NotImplementedError:
             if self.is_affine:  # This only works on it's affine, however.
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
-                applied_dem = apply_matrix(dem_array, transform=transform,
-                                           matrix=self.to_matrix(), centroid=self._meta.get("centroid"))
+                applied_dem = apply_matrix(
+                    dem_array,
+                    transform=transform,
+                    matrix=self.to_matrix(),
+                    centroid=self._meta.get("centroid"),
+                    dilate_mask=True
+                )
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
-        # Return the array in the same format as it was given (ndarray or masked_array)
-        return np.ma.masked_array(applied_dem, mask=dem.mask) if isinstance(dem, np.ma.masked_array) else applied_dem
+        # If the DEM was a masked_array, copy the mask to the new DEM
+        if hasattr(dem, "mask"):
+            applied_dem = np.ma.masked_array(applied_dem, mask=dem.mask)  # type: ignore
+        # If the DEM was a Raster with a mask, copy the mask to the new DEM
+        elif hasattr(dem, "data") and hasattr(dem.data, "mask"):
+            applied_dem = np.ma.masked_array(applied_dem, mask=dem.data.mask)  # type: ignore
+
+        # If the input was a Raster, return a Raster as well.
+        if isinstance(dem, gu.Raster):
+            return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
+
+        return applied_dem
 
     def apply_pts(self, coords: np.ndarray) -> np.ndarray:
         """
         Apply the estimated transform to a set of 3D points.
 
-        :param coords: A (N, 3) array of X/Y/Z coordinates.
+        :param coords: A (N, 3) array of X/Y/Z coordinates or one coordinate of shape (3,).
 
         :returns: The transformed coordinates.
         """
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
-        assert coords.shape[1] == 3, f"'coords' shape must be (N, 3). Given shape: {coords.shape}"
+        # If the coordinates represent just one coordinate
+        if np.shape(coords) == (3,):
+            coords = np.reshape(coords, (1, 3))
+
+        assert len(np.shape(coords)) == 2 and np.shape(coords)[1] == 3, f"'coords' shape must be (N, 3). Given shape: {np.shape(coords)}"
 
         coords_c = coords.copy()
 
@@ -632,14 +705,18 @@ class Coreg:
         # Calculate the DEM difference
         diff = ref_arr - aligned_dem
 
+        # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
+        if "float" in str(diff.dtype):
+            full_mask[(diff == np.finfo(diff.dtype).min) | np.isinf(diff)] = False
+
         # Return the difference values within the full inlier mask
         return diff[full_mask]
 
     def error(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
               dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
-              error_type: str = "nmad",
+              error_type: str | list[str] = "nmad",
               inlier_mask: Optional[np.ndarray] = None,
-              transform: Optional[rio.transform.Affine] = None) -> float:
+              transform: Optional[rio.transform.Affine] = None) -> float | list[float]:
         """
         Calculate the error of a coregistration approach.
 
@@ -654,37 +731,37 @@ class Coreg:
 
         :param reference_dem: 2D array of elevation values acting reference. 
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-        :param error_type: The type of error meaure to calculate.
+        :param error_type: The type of error meaure to calculate. May be a list of error types.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
 
         :returns: The error measure of choice for the residuals.
         """
+        if isinstance(error_type, str):
+            error_type = [error_type]
 
         residuals = self.residuals(reference_dem=reference_dem, dem_to_be_aligned=dem_to_be_aligned,
                                    inlier_mask=inlier_mask, transform=transform)
 
-        if error_type == "nmad":
-            error = xdem.spatial_tools.nmad(residuals)
-        elif error_type == "median":
-            error = np.median(residuals)
-        elif error_type == "mean":
-            error = np.mean(residuals)
-        elif error_type == "std":
-            error = np.std(residuals)
-        elif error_type == "rms":
-            error = np.sqrt(np.mean(np.square(residuals)))
-        elif error_type == "mae":
-            error = np.mean(np.abs(residuals))
-        elif error_type == "count":
-            error = residuals.size
-        else:
-            raise ValueError(
-                    f"Invalid 'error_type': '{error_type}'."
-                    "Choices: ['nmad', 'median', 'mean', 'std', 'rms', 'mae', 'count']"
-            )
+        error_functions = {
+            "nmad": xdem.spatial_tools.nmad,
+            "median": np.median,
+            "mean": np.mean,
+            "std": np.std,
+            "rms": lambda residuals: np.sqrt(np.mean(np.square(residuals))),
+            "mae": lambda residuals: np.mean(np.abs(residuals)),
+            "count": lambda residuals: residuals.size
+        }
 
-        return error
+        try:
+            errors = [error_functions[err_type](residuals) for err_type in error_type]
+        except KeyError as exception:
+            raise ValueError(
+                    f"Invalid 'error_type'{'s' if len(error_type) > 1 else ''}: "
+                    f"'{error_type}'. Choices: {list(error_functions.keys())}"
+                    ) from exception
+
+        return errors if len(errors) > 1 else errors[0]
 
     @classmethod
     def from_matrix(cls, matrix: np.ndarray):
@@ -724,6 +801,14 @@ class Coreg:
         matrix[2, 3] = z_off
 
         return cls.from_matrix(matrix)
+
+    def copy(self: CoregType) -> CoregType:
+        """Return an identical copy of the class."""
+        new_coreg = self.__new__(type(self))
+
+        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items()}
+
+        return new_coreg
 
     def __add__(self, other: Coreg) -> CoregPipeline:
         """Return a pipeline consisting of self and the other coreg function."""
@@ -778,6 +863,9 @@ class BiasCorr(Coreg):
             print("Estimating bias...")
         diff = ref_dem - tba_dem
         diff = diff[np.isfinite(diff)]
+
+        if np.count_nonzero(np.isfinite(diff)) == 0:
+            raise ValueError("No finite values in bias comparison.")
 
         # Use weights if those were provided.
         bias = self._meta["bias_func"](diff) if weights is None \
@@ -1023,6 +1111,18 @@ class CoregPipeline(Coreg):
 
         super().__init__()
 
+    def __repr__(self):
+        return f"CoregPipeline: {self.pipeline}"
+
+    def copy(self: CoregType) -> CoregType:
+        """Return an identical copy of the class."""
+        new_coreg = self.__new__(type(self))
+
+        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items() if key != "pipeline"}
+        new_coreg.pipeline = [step.copy() for step in self.pipeline]
+
+        return new_coreg
+
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
         """Fit each coregistration step with the previously transformed DEM."""
@@ -1050,7 +1150,7 @@ class CoregPipeline(Coreg):
         coords_mod = coords.copy()
 
         for coreg in self.pipeline:
-            coords_mod = coreg.apply_pts(coords_mod)
+            coords_mod = coreg.apply_pts(coords_mod).reshape(coords_mod.shape)
 
         return coords_mod
 
@@ -1370,7 +1470,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         mode="constant",
         cval=1,
         preserve_range=True
-    ) > 0.5  # Due to different interpolation approaches, everything above 0.5 is assumed to be 1 (True)
+    ) > 0.25  # Due to different interpolation approaches, everything above 0.25 is assumed to be 1 (True)
 
     if dilate_mask:
         tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
@@ -1442,3 +1542,452 @@ class ZScaleCorr(Coreg):
             raise NotImplementedError
         else:
             raise ValueError("A 2nd degree or higher ZScaleCorr cannot be described as a 4x4 matrix!")
+
+class BlockwiseCoreg(Coreg):
+    """
+    Block-wise coreg class for nonlinear estimations.
+
+    A coreg class of choice is run on an arbitrary subdivision of the raster. When later applying the coregistration,\
+        the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
+
+    E.g. a subdivision of 4 means to divide the DEM in four equally sized parts. These parts are then coregistered\
+        separately, creating four Coreg.fit results. If the subdivision is not divisible by the raster shape,\
+        subdivision is made as best as possible to have approximately equal pixel counts.
+    """
+
+    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None, warn_failures: bool = False):
+        """
+        Instantiate a blockwise coreg object.
+
+        :param coreg: An instantiated coreg object to fit in the subdivided DEMs.
+        :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
+        :param success_threshold: Raise an error if fewer chunks than the fraction failed for any reason.
+        :param n_threads: The maximum amount of threads to use. Default=auto
+        :param warn_failures: Trigger or ignore warnings for each exception/warning in each block.
+        """
+        if isinstance(coreg, type):
+            raise ValueError(
+                    "The 'coreg' argument must be an instantiated Coreg subclass. "
+                    "Hint: write e.g. ICP() instead of ICP"
+            )
+        self.coreg = coreg
+        self.subdivision = subdivision
+        self.success_threshold = success_threshold
+        self.n_threads = n_threads
+        self.warn_failures = warn_failures
+
+        super().__init__()
+
+        self._meta["coreg_meta"] = []
+
+
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: rio.transform.Affine | None,
+                  weights: np.ndarray | None, verbose: bool = False):
+        """Fit the coreg approach for each subdivision."""
+
+        groups = self.subdivide_array(tba_dem.shape)
+
+        indices = np.unique(groups)
+
+        progress_bar = tqdm(total=indices.size, desc="Coregistering chunks", disable=(not verbose))
+
+        def coregister(i: int) -> dict[str, Any] | BaseException | None:
+            """
+            Coregister a chunk in a thread-safe way.
+
+            :returns:
+                * If it succeeds: A dictionary of the fitting metadata.
+                * If it fails: The associated exception.
+                * If the block is empty: None
+            """
+            inlier_mask = groups == i
+
+            # Find the corresponding slice of the inlier_mask to subset the data
+            rows, cols = np.where(inlier_mask)
+            arrayslice = np.s_[rows.min():rows.max() + 1, cols.min(): cols.max() + 1]
+
+            # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
+            ref_subset = ref_dem[arrayslice].copy()
+            tba_subset = tba_dem[arrayslice].copy()
+
+            if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
+                return None
+            mask_subset = inlier_mask[arrayslice].copy()
+            west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
+            transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)
+            coreg = self.coreg.copy()
+
+
+            # Try to run the coregistration. If it fails for any reason, skip it and save the exception.
+            try:
+                coreg.fit(
+                    reference_dem=ref_subset,
+                    dem_to_be_aligned=tba_subset,
+                    transform=transform_subset,
+                    inlier_mask=mask_subset
+                )
+            except Exception as exception:
+                return exception
+
+            nmad, median = coreg.error(
+                reference_dem=ref_subset,
+                dem_to_be_aligned=tba_subset,
+                error_type=["nmad", "median"],
+                inlier_mask=mask_subset,
+                transform=transform_subset
+            )
+
+            meta: dict[str, Any] = {
+                "i": i,
+                "transform": transform_subset,
+                "inlier_count": np.count_nonzero(mask_subset & np.isfinite(ref_subset) & np.isfinite(tba_subset)),
+                "nmad": nmad,
+                "median": median
+            }
+            # Find the center of the inliers.
+            inlier_positions = np.argwhere(mask_subset)
+            mid_row = np.mean(inlier_positions[:, 0]).astype(int)
+            mid_col = np.mean(inlier_positions[:, 1]).astype(int)
+
+            # Find the indices of all finites within the mask
+            finites = np.argwhere(np.isfinite(tba_subset) & mask_subset)
+            # Calculate the distance between the approximate center and all finite indices
+            distances = np.linalg.norm(finites - np.array([mid_row, mid_col]), axis=1)
+            # Find the index representing the closest finite value to the center.
+            closest = np.argwhere(distances == distances.min())
+
+            # Assign the closest finite value as the representative point
+            representative_row, representative_col = finites[closest][0][0]
+            meta["representative_x"], meta["representative_y"] = rio.transform.xy(transform_subset, representative_row, representative_col)
+            meta["representative_val"] = ref_subset[representative_row, representative_col]
+
+            # If the coreg is a pipeline, copy its metadatas to the output meta
+            if hasattr(coreg, "pipeline"):
+                meta["pipeline"] = [step._meta.copy() for step in coreg.pipeline]
+
+            # Copy all current metadata (except for the alreay existing keys like "i", "min_row", etc, and the "coreg_meta" key)
+            # This can then be iteratively restored when the apply function should be called.
+            meta.update({key: value for key, value in coreg._meta.items() if key not in ["coreg_meta"] + list(meta.keys())})
+
+            progress_bar.update()
+
+            return meta.copy()
+
+        # Catch warnings; only show them if
+        exceptions: list[BaseException | warnings.WarningMessage] = []
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("default")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+                results = executor.map(coregister, indices)
+
+            exceptions += list(caught_warnings)
+
+        empty_blocks = 0
+        for result in results:
+            if isinstance(result, BaseException):
+                exceptions.append(result)
+            elif result is None:
+                empty_blocks += 1
+                continue
+            else:
+                self._meta["coreg_meta"].append(result)
+
+        progress_bar.close()
+
+        # Stop if the success rate was below the threshold
+        if ((len(self._meta["coreg_meta"]) + empty_blocks) / self.subdivision) <= self.success_threshold:
+            raise ValueError(
+                f"Fitting failed for {len(exceptions)} chunks:\n" +
+                "\n".join(map(str, exceptions[:5])) +
+                f"\n... and {len(exceptions) - 5} more" if len(exceptions) > 5 else ""
+            )
+
+        if self.warn_failures:
+            for exception in exceptions:
+                warnings.warn(str(exception))
+
+        # Set the _fit_called parameters (only identical copies of self.coreg have actually been called)
+        self.coreg._fit_called = True
+        if hasattr(self.coreg, "pipeline"):
+            for step in self.coreg.pipeline:
+                step._fit_called = True
+
+    def _restore_metadata(self, meta: dict[str, Any]) -> None:
+        """
+        Given some metadata, set it in the right place.
+
+        :param meta: A metadata file to update self._meta
+        """
+        self.coreg._meta.update(meta)
+
+        if hasattr(self.coreg, "pipeline") and "pipeline" in meta:
+            for i, step in enumerate(self.coreg.pipeline):
+                step._meta.update(meta["pipeline"][i])
+
+    def to_points(self) -> np.ndarray:
+        """
+        Convert the blockwise coregistration matrices to 3D (source -> destination) points.
+
+        The returned shape is (N, 3, 2) where the dimensions represent:
+            0. The point index where N is equal to the amount of subdivisions.
+            1. The X/Y/Z coordinate of the point.
+            2. The old/new position of the point.
+
+        To acquire the first point's original position: points[0, :, 0]
+        To acquire the first point's new position: points[0, :, 1]
+        To acquire the first point's Z difference: points[0, 2, 1] - points[0, 2, 0]
+
+        :returns: An array of 3D source -> destionation points.
+        """
+        if len(self._meta["coreg_meta"]) == 0:
+            raise AssertionError("No coreg results exist. Has '.fit()' been called?")
+        points = np.empty(shape=(0, 3, 2))
+        for meta in self._meta["coreg_meta"]:
+            self._restore_metadata(meta)
+
+            #x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"], meta["representative_col"])
+            x_coord, y_coord = meta["representative_x"], meta["representative_y"]
+
+
+            old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))
+            new_position = self.coreg.apply_pts(old_position)
+        
+            points = np.append(points, np.dstack((old_position, new_position)), axis=0)
+
+        return points
+
+    def stats(self) -> pd.DataFrame:
+        """
+        Return statistics for each chunk in the blockwise coregistration.
+
+            * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
+            * {x,y,z}_off: The calculated offset in georeferenced units.
+            * inlier_count: The number of pixels that were inliers in the chunk.
+            * nmad: The NMAD after coregistration.
+            * median: The bias after coregistration.
+
+        :raises ValueError: If no coregistration results exist yet.
+
+        :returns: A dataframe of statistics for each chunk.
+        """
+        points = self.to_points()
+
+        chunk_meta = {meta["i"]: meta for meta in self._meta["coreg_meta"]}
+
+        statistics: list[dict[str, Any]] = []
+        for i in range(points.shape[0]):
+            if i not in chunk_meta:
+                continue
+            statistics.append(
+                {
+                    "center_x": points[i, 0, 0],
+                    "center_y": points[i, 1, 0],
+                    "center_z": points[i, 2, 0],
+                    "x_off": points[i, 0, 1] - points[i, 0, 0],
+                    "y_off": points[i, 1, 1] - points[i, 1, 0],
+                    "z_off": points[i, 2, 1] - points[i, 2, 0],
+                    "inlier_count": chunk_meta[i]["inlier_count"],
+                    "nmad": chunk_meta[i]["nmad"],
+                    "median": chunk_meta[i]["median"]
+                }
+            )
+
+        stats_df = pd.DataFrame(statistics)
+        stats_df.index.name = "chunk"
+
+        return stats_df
+            
+
+    def subdivide_array(self, shape: tuple[int, ...]) -> np.ndarray:
+        """
+        Return the grid subdivision for a given DEM shape.
+
+        :param shape: The shape of the input DEM.
+        
+        :returns: An array of shape 'shape' with 'self.subdivision' unique indices.
+        """
+        if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
+            shape = (shape[1], shape[2])
+        return xdem.spatial_tools.subdivide_array(shape, count=self.subdivision)
+
+
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+
+        points = self.to_points()
+
+        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
+        
+        representative_height = np.nanmean(dem)
+        edges_source = np.array([
+            [bounds.left + resolution / 2, bounds.top - resolution / 2, representative_height],
+            [bounds.right - resolution / 2, bounds.top - resolution / 2, representative_height],
+            [bounds.left + resolution / 2, bounds.bottom + resolution / 2, representative_height],
+            [bounds.right - resolution / 2, bounds.bottom + resolution / 2, representative_height]
+        ])
+        edges_dest = self.apply_pts(edges_source)
+        edges = np.dstack((edges_source, edges_dest))
+
+        all_points = np.append(points, edges, axis=0)
+
+        warped_dem = warp_dem(
+            dem=dem,
+            transform=transform,
+            source_coords=all_points[:, :, 0],
+            destination_coords=all_points[:, :, 1],
+            resampling="linear"
+        )
+
+        return warped_dem
+
+
+
+    def _apply_pts_func(self, coords: np.ndarray) -> np.ndarray:
+        """Apply the scaling model to a set of points."""
+        points = self.to_points()
+
+        new_coords = coords.copy()
+
+        for dim in range(0, 3):
+            with warnings.catch_warnings():
+                # ZeroDivisionErrors may happen when the transformation is empty (which is fine)
+                warnings.filterwarnings("ignore", message="ZeroDivisionError")
+                model = scipy.interpolate.Rbf(
+                    points[:, 0, 0],
+                    points[:, 1, 0],
+                    points[:, dim, 1] - points[:, dim, 0],
+                    function="linear",
+                )
+
+            new_coords[:, dim] += model(coords[:, 0], coords[:, 1])
+
+        return new_coords
+
+
+def warp_dem(
+        dem: np.ndarray,
+        transform: rio.transform.Affine,
+        source_coords: np.ndarray,
+        destination_coords: np.ndarray,
+        resampling: str = "cubic",
+        trim_border: bool = True
+    ) -> np.ndarray:
+    """
+    Warp a DEM using a set of source-destination 2D or 3D coordinates.
+
+    :param dem: The DEM to warp. Allowed shapes are (1, row, col) or (row, col)
+    :param transform: The Affine transform of the DEM.
+    :param source_coords: The source 2D or 3D points. must be X/Y/(Z) coords of shape (N, 2) or (N, 3).
+    :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords'
+    :param resampling: The resampling order to use. Choices: ['nearest', 'linear', 'cubic'].
+    :param trim_border: Remove values outside of the interpolation regime (True) or leave them unmodified (False).
+
+    :raises ValueError: If the inputs are poorly formatted.
+    :raises AssertionError: For unexpected outputs.
+
+    :returns: A warped DEM with the same shape as the input.
+    """
+    if source_coords.shape != destination_coords.shape:
+        raise ValueError(
+            f"Incompatible shapes: source_coords '({source_coords.shape})' and "
+            f"destination_coords '({destination_coords.shape})' shapes must be the same"
+        )
+    if (len(source_coords.shape) > 2) or (source_coords.shape[1] < 2) or (source_coords.shape[1] > 3):
+        raise ValueError(
+                "Invalid coordinate shape. Expected 2D or 3D coordinates of shape (N, 2) or (N, 3). "
+                f"Got '{source_coords.shape}'"
+        )
+    allowed_resampling_strs = ["nearest", "linear", "cubic"]
+    if resampling not in allowed_resampling_strs:
+        raise ValueError(f"Resampling type '{resampling}' not understood. Choices: {allowed_resampling_strs}")
+
+    dem_arr, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+
+    bounds, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
+
+    no_horizontal =  np.sum(np.linalg.norm(destination_coords[:, :2] - source_coords[:, :2], axis=1)) < 1e-6
+    no_vertical = source_coords.shape[1] > 2 and np.sum(np.abs(destination_coords[:, 2] - source_coords[:, 2])) < 1e-6
+
+    if no_horizontal and no_vertical:
+        warnings.warn("No difference between source and destination coordinates. Returning self.")
+        return dem
+
+    source_coords_scaled = source_coords.copy()
+    destination_coords_scaled = destination_coords.copy()
+    # Scale the coordinates to index-space
+    for coords in (source_coords_scaled, destination_coords_scaled):
+        coords[:, 0] = (
+            dem_arr.shape[1] *
+            (coords[:, 0] - bounds.left) /
+            (bounds.right - bounds.left)
+        )
+        coords[:, 1] = (
+            dem_arr.shape[0] *
+            (1 - (
+                coords[:, 1] - bounds.bottom) /
+                (bounds.top - bounds.bottom)
+            )
+        )
+
+    # Generate a grid of x and y index coordinates.
+    grid_y, grid_x = np.mgrid[0:dem_arr.shape[0], 0:dem_arr.shape[1]]
+
+    if no_horizontal:
+        warped = dem_arr.copy()
+    else:
+        # Interpolate the sparse source-destination points to a grid.
+        # (row, col, 0) represents the destination y-coordinates of the pixels.
+        # (row, col, 1) represents the destination x-coordinates of the pixels.
+        new_indices = scipy.interpolate.griddata(
+            source_coords_scaled[:, [1, 0]],
+            destination_coords_scaled[:, [1, 0]],  # Coordinates should be in y/x (not x/y) for some reason..
+            (grid_y, grid_x),
+            method="linear"
+        )
+
+        # If the border should not be trimmed, just assign the original indices to the missing values.
+        if not trim_border:
+            missing_ys = np.isnan(new_indices[:, :, 0])
+            missing_xs = np.isnan(new_indices[:, :, 1])
+            new_indices[:, :, 0][missing_ys] = grid_y[missing_ys]
+            new_indices[:, :, 1][missing_xs] = grid_x[missing_xs]
+
+        order = {"nearest": 0, "linear": 1, "cubic": 3}
+
+        with warnings.catch_warnings():
+            # An skimage warning that will hopefully be fixed soon. (2021-06-08)
+            warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
+            warped = skimage.transform.warp(
+                image=np.where(dem_mask, -9999.12345, dem_arr),
+                inverse_map=np.moveaxis(new_indices, 2, 0),
+                output_shape=dem_arr.shape,
+                preserve_range=True,
+                order=order[resampling],
+                cval=-9999.12345
+            )
+            new_mask = skimage.transform.warp(
+                image=dem_mask,
+                inverse_map=np.moveaxis(new_indices, 2, 0),
+                output_shape=dem_arr.shape,
+                cval=False
+            ) == 1
+            warped[new_mask | (warped == -9999.12345)] = np.nan
+
+
+    # If the coordinates are 3D (N, 3), apply a Z correction as well.
+    if not no_vertical:
+        grid_offsets = scipy.interpolate.griddata(
+            points=destination_coords_scaled[:, :2],
+            values=destination_coords_scaled[:, 2] - source_coords_scaled[:, 2],
+            xi=(grid_x, grid_y),
+            method=resampling,
+            fill_value=np.nan
+        )
+        if not trim_border:
+            grid_offsets[np.isnan(grid_offsets)] = np.nanmean(grid_offsets)
+
+        warped += grid_offsets
+
+    assert not np.all(np.isnan(warped)), "All-NaN output."
+
+    return warped.reshape(dem.shape)
