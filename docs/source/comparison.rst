@@ -13,32 +13,6 @@ Example data in this chapter are loaded as follows:
         :lines: 5-32
 
 
-Subtracting rasters
--------------------
-Calculating the difference of DEMs (dDEMs) is theoretically simple, but can in practice often be time consuming.
-In ``xdem``, the aim is to minimize or completely remove potential pitfalls in this analysis.
-
-Let's assume we have two perfectly aligned DEMs, with the same shape, extent, resolution and coordinate referencesystem (CRS) as each other.
-Calculating a dDEM would then be as simple as:
-
-.. literalinclude:: code/comparison.py
-        :lines: 37-41
-
-But in practice, our two DEMs are most often not perfectly aligned, which is why we might need a helper function for this:
-:func:`xdem.spatial_tools.subtract_rasters`
-
-.. literalinclude:: code/comparison.py
-        :lines: 45
-        
-
-So what does this magical function do?
-First, the nonreference; ``dem2``, will be reprojected to fit the shape, extent, resolution and CRS of ``dem1``.
-This behaviour can be switched by changing the default ``reference="first"`` to ``reference="second"``.
-Cubic spline interpolation is used by default to resample the data, which is sometimes slow, but provides the most accurate resampling results.
-This can be changed with the ``resampling_method=`` keyword, for example to ``"bilinear"`` or ``"nearest"`` (`see the rasterio docs for the full suite of options <https://rasterio.readthedocs.io/en/latest/api/rasterio.enums.html#rasterio.enums.Resampling>`_).
-Most often, ``xdem`` works with Masked Arrays, where the mask signifies cells to exclude (presumably areas of no data).
-The ``subtract_rasters()`` function makes sure that the outgoing mask is the union of the two ingoing masks.
-
 dDEM interpolation
 ------------------
 There are many approaches to interpolate a dDEM.

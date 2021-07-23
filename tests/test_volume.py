@@ -14,7 +14,7 @@ class TestLocalHypsometric:
 
     # Load example data.
     dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009)
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
     outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     all_outlines = outlines.copy()
 
@@ -170,7 +170,7 @@ class TestLocalHypsometric:
 
 class TestNormHypsometric:
     dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009)
+    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
     outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
     glacier_index_map = outlines.rasterize(dem_2009)
@@ -283,6 +283,8 @@ class TestNormHypsometric:
         )
         assert not np.array_equal(filled_ddem, idealized_ddem)
 
+        # Check that all glacier-values are finite
+        assert np.count_nonzero(np.isnan(idealized_ddem)[self.glacier_index_map > 0]) == 0
         # Validate that the un-idealized dDEM has a higher gradient variance (more ups and downs)
         filled_gradient = np.linalg.norm(np.gradient(filled_ddem), axis=0)
         ideal_gradient = np.linalg.norm(np.gradient(idealized_ddem), axis=0)

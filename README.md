@@ -93,10 +93,10 @@ This is an implementation of the [Nuth and Kääb (2011)](https://doi.org/10.519
 ```python
 import xdem
 
-first_dem = "path/to/first.tif"
-second_dem = "path/to/second.tif"
+first_dem = xdem.DEM("path/to/first.tif")
+second_dem = xdem.DEM("path/to/second.tif")
 
-difference = xdem.spatial_tools.subtract_rasters(first_dem, second_dem)
+difference = first_dem - second_dem
 
 difference.save("path/to/difference.tif")
 ```

@@ -171,6 +171,18 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.mean(slope) > np.mean(slope_lowres)
 
+    def test_raster_argument(self):
+
+        slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
+
+        assert slope != aspect
+
+        assert type(slope) == type(aspect)
+        assert all(isinstance(r, gu.Raster) for r in (aspect, slope, self.dem))
+
+        assert slope.transform == self.dem.transform == aspect.transform
+        assert slope.crs == self.dem.crs == aspect.crs
+
 
 def test_get_quadric_coefficients() -> None:
     """Test the outputs and exceptions of the get_quadric_coefficients() function."""

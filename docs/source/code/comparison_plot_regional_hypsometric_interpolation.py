@@ -10,7 +10,7 @@ dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 ddem = xdem.dDEM(
-    xdem.spatial_tools.subtract_rasters(dem_2009, dem_1990, resampling_method="nearest"),
+    dem_2009 - dem_1990,
     start_time=np.datetime64("1990-08-01"),
     end_time=np.datetime64("2009-08-01")
 )

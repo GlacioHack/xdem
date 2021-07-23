@@ -9,10 +9,11 @@ import subprocess
 import tempfile
 import warnings
 from enum import Enum
-from typing import Any, Callable, Optional, Union, Sequence, TypeVar
+from typing import Any, Callable, Optional, overload, Union, Sequence, TypeVar
 
 import fiona
 import geoutils as gu
+from geoutils.georaster import RasterType
 import numpy as np
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
@@ -446,13 +447,13 @@ class Coreg:
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
             self._meta["matrix"] = valid_matrix
 
-    def fit(self, reference_dem: Union[np.ndarray, np.ma.masked_array],
-            dem_to_be_aligned: Union[np.ndarray, np.ma.masked_array],
+    def fit(self: CoregType, reference_dem: np.ndarray | np.ma.masked_array | RasterType,
+            dem_to_be_aligned: np.ndarray | np.ma.masked_array | RasterType,
             inlier_mask: Optional[np.ndarray] = None,
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False):
+            verbose: bool = False) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -468,6 +469,36 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
+        # Validate that both inputs are valid array-like (or Raster) types.
+        if not all(hasattr(dem, "__array_interface__") for dem in (reference_dem, dem_to_be_aligned)):
+            raise ValueError(
+                "Both DEMs need to be array-like (implement a numpy array interface)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
+
+        # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
+        if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
+            dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True).data
+
+        # If any input is a Raster, use its transform if 'transform is None'.
+        # If 'transform' was given and any input is a Raster, trigger a warning.
+        # Finally, extract only the data of the raster.
+        for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
+            if hasattr(dem, "transform"):
+                if transform is None:
+                    transform = getattr(dem, "transform")
+                elif transform is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+
+                """
+                if name == "reference_dem":
+                    reference_dem = dem.data
+                else:
+                    dem_to_be_aligned = dem.data
+                """
+
+        if transform is None:
+            raise ValueError("'transform' must be given if both DEMs are array-like.")
 
         ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
         tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
@@ -511,18 +542,39 @@ class Coreg:
         # Flag that the fitting function has been called.
         self._fit_called = True
 
-    def apply(self, dem: Union[np.ndarray, np.ma.masked_array],
-              transform: rio.transform.Affine) -> Union[np.ndarray, np.ma.masked_array]:
+        return self
+
+    @overload
+    def apply(self, dem: RasterType, transform: rio.transform.Affine | None) -> RasterType: ...
+
+    @overload
+    def apply(self, dem: np.ndarray, transform: rio.transform.Affine | None) -> np.ndarray: ...
+
+    @overload
+    def apply(self, dem: np.ma.masked_array, transform: rio.transform.Affine | None) -> np.ma.masked_array: ...
+
+
+    def apply(self, dem: np.ndarray | np.ma.masked_array | RasterType,
+              transform: rio.transform.Affine | None = None) -> RasterType | np.ndarray | np.ma.masked_array:
         """
         Apply the estimated transform to a DEM.
 
-        :param dem: A DEM to apply the transform on.
-        :param transform: The transform object of the DEM. TODO: Remove??
+        :param dem: A DEM array or Raster to apply the transform on.
+        :param transform: The transform object of the DEM. Required if 'dem' is an array and not a Raster.
 
         :returns: The transformed DEM.
         """
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
+
+        if isinstance(dem, gu.Raster):
+            if transform is None:
+                transform = dem.transform
+            else:
+                warnings.warn(f"DEM of type {type(dem)} overrides the given 'transform'")
+        else:
+            if transform is None:
+                raise ValueError("'transform' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
@@ -547,8 +599,18 @@ class Coreg:
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
-        # Return the array in the same format as it was given (ndarray or masked_array)
-        return np.ma.masked_array(applied_dem, mask=dem.mask) if isinstance(dem, np.ma.masked_array) else applied_dem
+        # If the DEM was a masked_array, copy the mask to the new DEM
+        if hasattr(dem, "mask"):
+            applied_dem = np.ma.masked_array(applied_dem, mask=dem.mask)  # type: ignore
+        # If the DEM was a Raster with a mask, copy the mask to the new DEM
+        elif hasattr(dem, "data") and hasattr(dem.data, "mask"):
+            applied_dem = np.ma.masked_array(applied_dem, mask=dem.data.mask)  # type: ignore
+
+        # If the input was a Raster, return a Raster as well.
+        if isinstance(dem, gu.Raster):
+            return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
+
+        return applied_dem
 
     def apply_pts(self, coords: np.ndarray) -> np.ndarray:
         """
@@ -643,6 +705,10 @@ class Coreg:
         # Calculate the DEM difference
         diff = ref_arr - aligned_dem
 
+        # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
+        if "float" in str(diff.dtype):
+            full_mask[(diff == np.finfo(diff.dtype).min) | np.isinf(diff)] = False
+
         # Return the difference values within the full inlier mask
         return diff[full_mask]
 
@@ -694,7 +760,6 @@ class Coreg:
                     f"Invalid 'error_type'{'s' if len(error_type) > 1 else ''}: "
                     f"'{error_type}'. Choices: {list(error_functions.keys())}"
                     ) from exception
-
 
         return errors if len(errors) > 1 else errors[0]
 
@@ -1490,7 +1555,7 @@ class BlockwiseCoreg(Coreg):
         subdivision is made as best as possible to have approximately equal pixel counts.
     """
 
-    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None):
+    def __init__(self, coreg: Coreg | CoregPipeline, subdivision: int, success_threshold: float = 0.8, n_threads: int | None = None, warn_failures: bool = False):
         """
         Instantiate a blockwise coreg object.
 
@@ -1498,6 +1563,7 @@ class BlockwiseCoreg(Coreg):
         :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
         :param success_threshold: Raise an error if fewer chunks than the fraction failed for any reason.
         :param n_threads: The maximum amount of threads to use. Default=auto
+        :param warn_failures: Trigger or ignore warnings for each exception/warning in each block.
         """
         if isinstance(coreg, type):
             raise ValueError(
@@ -1508,6 +1574,7 @@ class BlockwiseCoreg(Coreg):
         self.subdivision = subdivision
         self.success_threshold = success_threshold
         self.n_threads = n_threads
+        self.warn_failures = warn_failures
 
         super().__init__()
 
@@ -1525,8 +1592,15 @@ class BlockwiseCoreg(Coreg):
 
         progress_bar = tqdm(total=indices.size, desc="Coregistering chunks", disable=(not verbose))
 
-        def coregister(i: int) -> dict[str, Any] | BaseException:
-            """Coregister a chunk in a thread-safe way."""
+        def coregister(i: int) -> dict[str, Any] | BaseException | None:
+            """
+            Coregister a chunk in a thread-safe way.
+
+            :returns:
+                * If it succeeds: A dictionary of the fitting metadata.
+                * If it fails: The associated exception.
+                * If the block is empty: None
+            """
             inlier_mask = groups == i
 
             # Find the corresponding slice of the inlier_mask to subset the data
@@ -1536,6 +1610,9 @@ class BlockwiseCoreg(Coreg):
             # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
             ref_subset = ref_dem[arrayslice].copy()
             tba_subset = tba_dem[arrayslice].copy()
+
+            if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
+                return None
             mask_subset = inlier_mask[arrayslice].copy()
             west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
             transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)
@@ -1597,26 +1674,38 @@ class BlockwiseCoreg(Coreg):
 
             return meta.copy()
 
+        # Catch warnings; only show them if
+        exceptions: list[BaseException | warnings.WarningMessage] = []
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("default")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+                results = executor.map(coregister, indices)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-            results = executor.map(coregister, indices)
+            exceptions += list(caught_warnings)
 
-        exceptions: list[BaseException] = []
+        empty_blocks = 0
         for result in results:
             if isinstance(result, BaseException):
                 exceptions.append(result)
+            elif result is None:
+                empty_blocks += 1
+                continue
             else:
                 self._meta["coreg_meta"].append(result)
 
         progress_bar.close()
 
         # Stop if the success rate was below the threshold
-        if (len(self._meta["coreg_meta"]) / self.subdivision) <= self.success_threshold:
+        if ((len(self._meta["coreg_meta"]) + empty_blocks) / self.subdivision) <= self.success_threshold:
             raise ValueError(
                 f"Fitting failed for {len(exceptions)} chunks:\n" +
                 "\n".join(map(str, exceptions[:5])) +
                 f"\n... and {len(exceptions) - 5} more" if len(exceptions) > 5 else ""
             )
+
+        if self.warn_failures:
+            for exception in exceptions:
+                warnings.warn(str(exception))
 
         # Set the _fit_called parameters (only identical copies of self.coreg have actually been called)
         self.coreg._fit_called = True
@@ -1688,6 +1777,8 @@ class BlockwiseCoreg(Coreg):
 
         statistics: list[dict[str, Any]] = []
         for i in range(points.shape[0]):
+            if i not in chunk_meta:
+                continue
             statistics.append(
                 {
                     "center_x": points[i, 0, 0],

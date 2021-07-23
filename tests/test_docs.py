@@ -24,7 +24,16 @@ class TestDocs:
             with open(filename) as infile:
                 # Run everything except plt.show() calls.
                 with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", message="Starting a Matplotlib GUI outside of the main thread")
+                    # When running the code asynchronously, matplotlib complains a bit
+                    ignored_warnings = [
+                        "Starting a Matplotlib GUI outside of the main thread",
+                        ".*fetching the attribute.*Polygon.*",
+                    ]
+                    # This is a GeoPandas issue
+                    warnings.simplefilter("error")
+
+                    for warning_text in ignored_warnings:
+                        warnings.filterwarnings("ignore", warning_text)
                     try:
                         exec(infile.read().replace("plt.show()", "plt.close()"))
                     except Exception as exception:

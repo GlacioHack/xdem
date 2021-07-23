@@ -230,6 +230,7 @@ class TestSubSampling:
 
     def test_ring_masking(self):
         """Test that the ring masking works as intended"""
+        warnings.simplefilter("error")
 
         # by default, the mask is only an outside circle (ring of size 0)
         ring1 = xdem.spatialstats.create_ring_mask((5, 5))
