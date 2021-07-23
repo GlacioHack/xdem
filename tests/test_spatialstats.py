@@ -43,7 +43,7 @@ class TestVariogram:
             random_state=42, runs=2)
 
         # With random state, results should always be the same
-        assert df.exp[0] == pytest.approx(12.76, 0.01)
+        assert df.exp[0] == pytest.approx(6.11, 0.01)
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
