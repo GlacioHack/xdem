@@ -445,7 +445,7 @@ def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwa
     # Derive variogram with default MetricSpace (equivalent to scipy.pdist)
     V = skg.Variogram(coordinates=coords, values=values, normalize=False, fit_method=None, **filtered_kwargs)
 
-    # Get the middle value of the bins, empirical variogram values, and bin count
+    # Get bins, empirical variogram values, and bin count
     bins, exp = V.get_empirical()
     count = V.bin_count
 
@@ -499,7 +499,7 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
     filtered_var_kwargs = {k: kwargs[k] for k in vgm_args if k in kwargs}
     V = skg.Variogram(M, values=values, normalize=False, fit_method=None, **filtered_var_kwargs)
 
-    # Get the middle value of the bins, empirical variogram values, and bin count
+    # Get bins, empirical variogram values, and bin count
     bins, exp = V.get_empirical()
     count = V.bin_count
 
@@ -649,7 +649,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
         # If no bin_func is provided, we provide an Iterable to provide a custom binning function to skgstat,
         # because otherwise bins might be unconsistent across runs
         bin_func = []
-        right_bin_edge = 2 * gsd
+        right_bin_edge = np.sqrt(2) * gsd
         while right_bin_edge < kwargs.get('maxlag'):
             bin_func.append(right_bin_edge)
             # We use the default exponential increasing factor of RasterEquidistantMetricSpace, adapted for grids
@@ -1188,9 +1188,10 @@ def patches_method(values : np.ndarray, mask: np.ndarray[bool], gsd : float, are
 
 
 def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
-             list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None):
+             list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None,
+             xscale='linear'):
     """
-    Plot empirical variogram, with optionally one or several model fits.
+    Plot empirical variogram, and optionally also plot one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_multirange_variogram.
     Input function model is expected to be the output of xdem.spatialstats.fit_model_sum_vgm.
 
@@ -1201,20 +1202,49 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     :return:
     """
 
-    # Create axes
+    # Create axes if they are not passed
     if ax is None:
-        fig, ax = plt.subplots()
+        fig = plt.figure()
     elif isinstance(ax, matplotlib.axes.Axes):
         ax = ax
         fig = ax.figure
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
 
-    if np.all(np.isnan(df.exp_sigma)):
-        ax.scatter(df.bins, df.exp, label='Empirical variogram', color='blue')
-    else:
-        ax.errorbar(df.bins, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)')
+    # Need a grid plot to show the sample count and the statistic
+    grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
+    # First, an axis to plot the sample histogram
+    ax0 = fig.add_subplot(grid[:3, :])
+    ax0.set_xscale(xscale)
+    ax0.set_xticks([])
+
+    # Plot the histogram manually with fill_between
+    interval_var = [0] + list(df.bins)
+    for i in range(len(df)):
+        count = df['count'].values[i]
+        ax0.fill_between([interval_var[i], interval_var[i+1]], [0] * 2, [count] * 2,
+                         facecolor=plt.cm.Greys(0.75), alpha=1,
+                         edgecolor='white', linewidth=0.1)
+    ax0.set_ylabel('Sample count')
+    # Scientific format to avoid undesired additional space on the label side
+    ax0.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+    ax0.set_xlim((0, np.max(df.bins)))
+
+    # Now, plot the statistic of the data
+    ax = fig.add_subplot(grid[3:, :])
+
+    # Get the bins center
+    bins_center = np.subtract(df.bins, np.diff([0] + df.bins.tolist()) / 2)
+
+    # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
+    if np.all(np.isnan(df.err_exp)):
+        ax.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
+    # Otherwise, plot the error estimates through multiple runs
+    else:
+        ax.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)', fmt='x')
+
+    # If a list of functions is passed, plot the modelled variograms
     if list_fit_fun is not None:
         for i, fit_fun in enumerate(list_fit_fun):
             x = np.linspace(0, np.max(df.bins), 10000)
@@ -1231,8 +1261,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     ax.set_xlabel('Lag (m)')
     ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
     ax.legend(loc='best')
-
-    return ax
+    ax.set_xscale(xscale)
+    ax.set_xlim((0, np.max(df.bins)))
 
 def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
                     label_statistic: Optional[str] = None, min_count: int = 30, ax: matplotlib.axes.Axes | None = None):

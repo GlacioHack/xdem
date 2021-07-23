@@ -36,55 +36,57 @@ import geoutils as gu
 # Prior to differencing, the DEMs were aligned using :class:`xdem.coreg.NuthKaab` as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
 
-ddem = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
+dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-mask_glacier = glacier_outlines.create_mask(ddem)
+mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
 # We remove values on glacier terrain
-ddem.data[mask_glacier] = np.nan
+dh.data[mask_glacier] = np.nan
 
 # %%
 # Let's plot the elevation differences
 plt.figure(figsize=(8, 5))
 plt_extent = [
-    ddem.bounds.left,
-    ddem.bounds.right,
-    ddem.bounds.bottom,
-    ddem.bounds.top,
+    dh.bounds.left,
+    dh.bounds.right,
+    dh.bounds.bottom,
+    dh.bounds.top,
 ]
-plt.imshow(ddem.data.squeeze(), cmap="RdYlBu", vmin=-4, vmax=4, extent=plt_extent)
+plt.imshow(dh.data.squeeze(), cmap="RdYlBu", vmin=-4, vmax=4, extent=plt_extent)
 cbar = plt.colorbar()
 cbar.set_label('Elevation differences (m)')
 plt.show()
 
 
 # %%
-# We can see that the elevation difference is still polluted by unmasked glaciers, let's filter large outliers outside 4 NMAD
-ddem.data[np.abs(ddem.data) > 4 * xdem.spatialstats.nmad(ddem.data)] = np.nan
+# We can see that the elevation differences are still polluted by unmasked glaciers: let's filter outliers outside 4 NMAD
+dh.data[np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data)] = np.nan
 
 # %%
 # Let's plot the elevation differences after filtering
 plt.figure(figsize=(8, 5))
 plt_extent = [
-    ddem.bounds.left,
-    ddem.bounds.right,
-    ddem.bounds.bottom,
-    ddem.bounds.top,
+    dh.bounds.left,
+    dh.bounds.right,
+    dh.bounds.bottom,
+    dh.bounds.top,
 ]
-plt.imshow(ddem.data.squeeze(), cmap="RdYlBu", vmin=-4, vmax=4, extent=plt_extent)
+plt.imshow(dh.data.squeeze(), cmap="RdYlBu", vmin=-4, vmax=4, extent=plt_extent)
 cbar = plt.colorbar()
 cbar.set_label('Elevation differences (m)')
 plt.show()
 
 # %%
 # Sample empirical variogram
-df = xdem.spatialstats.sample_multirange_variogram(dh=ddem.data, gsd=ddem.res[0], nsamp=2000, nrun=100, maxlag=20000)
+df = xdem.spatialstats.sample_multirange_variogram(
+    values=dh.data, gsd=dh.res[0], subsample=50, runs=100, nrun=10)
 
 # Plot empirical variogram
+# fig, ax = plt.subplots()
 xdem.spatialstats.plot_vgm(df)
-fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df)
-fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
+# fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df)
+# fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
 
 
 
