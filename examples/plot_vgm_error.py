@@ -24,7 +24,7 @@ Finally, we integrate the variogram models for varying surface areas to estimate
 measurement errors for this DEM difference.
 
 """
-# sphinx_gallery_thumbnail_number = 8
+# sphinx_gallery_thumbnail_number = 5
 import matplotlib.pyplot as plt
 import numpy as np
 import xdem
@@ -80,13 +80,55 @@ plt.show()
 # %%
 # Sample empirical variogram
 df = xdem.spatialstats.sample_multirange_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=50, runs=100, nrun=10)
+    values=dh.data, gsd=dh.res[0], subsample=50, runs=30, nrun=10)
 
 # Plot empirical variogram
-# fig, ax = plt.subplots()
 xdem.spatialstats.plot_vgm(df)
-# fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df)
-# fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
+
+# %%
+# A lot of things are happening at the
+
+
+# %%
+#
+fun, params1 = xdem.spatialstats.fit_model_sum_vgm(['Sph'], emp_vgm_df=df)
+
+
+fun2, params2 = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph'], emp_vgm_df=df)
+xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
+                           xscale='log')
+
+# %%
+# Let's see how this affect the precision of the DEM integrated over a certain surface area, from pixel size to grid size
+
+# Areas varying from pixel size squared to grid size squared, with same unit as the variogram parameters (meters)
+areas = [400*2**i for i in range(20)]
+
+# Derive the precision for each area
+list_stderr_singlerange, list_stderr_doublerange = ([] for i in range(2))
+for area in areas:
+
+    # Number of effective samples integrated over the area for a single-range model
+    neff_singlerange = xdem.spatialstats.neff_circ(area, [(params1[0], 'Sph', params1[1])])
+
+    # For a double-range model
+    neff_doublerange = xdem.spatialstats.neff_circ(area, [(params2[0], 'Sph', params2[1]),
+                                                   (params2[2], 'Sph', params2[3])])
+
+    # Convert into a standard error
+    stderr_singlerange = np.nanstd(dh.data)/np.sqrt(neff_singlerange)
+    stderr_doublerange = np.nanstd(dh.data)/np.sqrt(neff_doublerange)
+
+    list_stderr_singlerange.append(stderr_singlerange)
+    list_stderr_doublerange.append(stderr_doublerange)
+
+fig, ax = plt.subplots()
+plt.scatter(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
+plt.scatter(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
+plt.xlabel('Averaging area (km²)')
+plt.ylabel('Uncertainty in the mean elevation difference (m)')
+plt.xscale('log')
+plt.legend()
 
 
 
