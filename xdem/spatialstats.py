@@ -271,7 +271,9 @@ def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list
 
     # skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
     mask = np.zeros(shape, dtype=bool)
-    rr, cc = disk(center=center,radius=radius,shape=shape)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        rr, cc = disk(center=center,radius=radius,shape=shape)
     mask[rr, cc] = True
 
     # manual solution
@@ -299,8 +301,10 @@ def create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[flo
         center = (int(w / 2), int(h / 2))
         out_radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    mask_inside = create_circular_mask((w,h),center=center,radius=in_radius)
-    mask_outside = create_circular_mask((w,h),center=center,radius=out_radius)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        mask_inside = create_circular_mask((w,h),center=center,radius=in_radius)
+        mask_outside = create_circular_mask((w,h),center=center,radius=out_radius)
 
     mask_ring = np.logical_and(~mask_inside,mask_outside)
 
