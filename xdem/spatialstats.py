@@ -4,7 +4,6 @@ from __future__ import annotations
 import math as m
 import multiprocessing as mp
 import os
-import random
 import warnings
 from functools import partial
 
@@ -1101,85 +1100,100 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
     return np.sqrt(var_err)
 
 
-def patches_method(values : np.ndarray, mask: np.ndarray[bool], gsd : float, area_size : float, perc_min_valid: float = 80.,
-                   patch_shape: str = 'circular',nmax : int = 1000, verbose: bool = False) -> pd.DataFrame:
+def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[np.ndarray] = None,
+                   perc_min_valid: float = 80., patch_shape: str = 'circular', nmax: int = 1000, verbose: bool = False)\
+        -> pd.DataFrame:
 
     """
     Patches method for empirical estimation of the standard error over an integration area
 
     :param values: values
-    :param mask: mask of sampled terrain
     :param gsd: ground sampling distance
-    :param area_size: size of integration area
+    :param mask: mask of sampled terrain
+    :param area: size of integration area
     :param perc_min_valid: minimum valid area in the patch
     :param patch_shape: shape of patch ['circular' or 'rectangular']
     :param nmax: maximum number of patch to sample
-
-    #TODO: add overlap option?
+    :param verbose: print statement to console
 
     :return: tile, mean, median, std and count of each patch
     """
 
-    # first, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
+    # TODO: make robust to Raster inputs, masked arrays, etc...
     values = values.squeeze()
+
+    # Use all grid if no mask is provided
+    if mask is None:
+        mask = np.ones(np.shape(values),dtype=bool)
+
+    # First, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
     valid_mask = np.logical_and(np.isfinite(values), mask)
     values[~valid_mask] = np.nan
 
-    # divide raster in cadrants where we can sample
+    # Divide raster in cadrants where we can sample
     nx, ny = np.shape(values)
-    count = len(values[~np.isnan(values)])
-    print('Number of valid pixels: ' + str(count))
-    nb_cadrant = int(np.floor(np.sqrt((count * gsd ** 2) / area_size) + 1))
-    # rectangular
+    valid_count = len(values[~np.isnan(values)])
+    count = nx * ny
+    if verbose:
+        print('Number of valid pixels: ' + str(count))
+    nb_cadrant = int(np.floor(np.sqrt((count * gsd ** 2) / area) + 1))
+    # For rectangular quadrants
     nx_sub = int(np.floor((nx - 1) / nb_cadrant))
     ny_sub = int(np.floor((ny - 1) / nb_cadrant))
-    # radius size for a circular patch
-    rad = int(np.floor(np.sqrt(area_size/np.pi * gsd ** 2)))
+    # For circular patches
+    rad = np.sqrt(area/np.pi) / gsd
 
     tile, mean_patch, med_patch, std_patch, nb_patch = ([] for i in range(5))
 
-    # create list of all possible cadrants
+    # Create list of all possible cadrants
     list_cadrant = [[i, j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
     u = 0
-    # keep sampling while there is cadrants left and below maximum number of patch to sample
+    # Keep sampling while there is cadrants left and below maximum number of patch to sample
+    remaining_nsamp = nmax
     while len(list_cadrant) > 0 and u < nmax:
 
-        check = 0
-        while check == 0:
-            rand_cadrant = random.randint(0, len(list_cadrant)-1)
+        # Draw a random coordinate from the list of cadrants, select more than enough random points to avoid drawing
+        # randomly and differencing lists several times
+        list_idx_cadrant = np.random.choice(len(list_cadrant), size=min(len(list_cadrant), 10*remaining_nsamp))
 
-            i = list_cadrant[rand_cadrant][0]
-            j = list_cadrant[rand_cadrant][1]
+        for idx_cadrant in list_idx_cadrant:
 
-            check_x = int(np.floor(nx_sub*(i+1/2)))
-            check_y = int(np.floor(ny_sub*(j+1/2)))
-            if mask[check_x, check_y]:
-                check = 1
-
-        list_cadrant.remove(list_cadrant[rand_cadrant])
-
-        tile.append(str(i) + '_' + str(j))
-        if patch_shape == 'rectangular':
-            patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
-        elif patch_shape == 'circular':
-            center_x = np.floor(nx_sub*(i+1/2))
-            center_y = np.floor(ny_sub*(j+1/2))
-            mask = create_circular_mask((nx, ny), center=(center_x, center_y), radius=rad)
-            patch = values[mask]
-        else:
-            raise ValueError('Patch method must be rectangular or circular.')
-
-        nb_pixel_total = len(patch)
-        nb_pixel_valid = len(patch[np.isfinite(patch)])
-        if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
-            u=u+1
             if verbose:
-                print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
+                print('Working on a new cadrant')
 
-            mean_patch.append(np.nanmean(patch))
-            med_patch.append(np.nanmedian(patch.filled(np.nan) if isinstance(patch, np.ma.masked_array) else patch))
-            std_patch.append(np.nanstd(patch))
-            nb_patch.append(nb_pixel_valid)
+            # Select center coordinates
+            i = list_cadrant[idx_cadrant][0]
+            j = list_cadrant[idx_cadrant][1]
+
+            if patch_shape == 'rectangular':
+                patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
+            elif patch_shape == 'circular':
+                center_x = np.floor(nx_sub*(i+1/2))
+                center_y = np.floor(ny_sub*(j+1/2))
+                mask = create_circular_mask((nx, ny), center=[center_x, center_y], radius=rad)
+                patch = values[mask]
+            else:
+                raise ValueError('Patch method must be rectangular or circular.')
+
+            nb_pixel_total = len(patch)
+            nb_pixel_valid = len(patch[np.isfinite(patch)])
+            if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
+                u=u+1
+                if u > nmax:
+                    break
+                if verbose:
+                    print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
+
+                tile.append(str(i) + '_' + str(j))
+                mean_patch.append(np.nanmean(patch))
+                med_patch.append(np.nanmedian(patch.filled(np.nan) if isinstance(patch, np.ma.masked_array) else patch))
+                std_patch.append(np.nanstd(patch))
+                nb_patch.append(nb_pixel_valid)
+
+        # Get remaining samples to draw
+        remaining_nsamp = nmax - u
+        # Remove cadrants already sampled from list
+        list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
 
     df = pd.DataFrame()
     df = df.assign(tile=tile, mean=mean_patch, med=med_patch, std=std_patch, count=nb_patch)
@@ -1189,7 +1203,7 @@ def patches_method(values : np.ndarray, mask: np.ndarray[bool], gsd : float, are
 
 def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
              list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None,
-             xscale='linear'):
+             xscale='linear', xscale_range_split: Optional[list] = None):
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_multirange_variogram.
@@ -1199,6 +1213,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     :param list_fit_fun: list of model function fits
     :param list_fit_fun_label: list of model function fits labels
     :param ax: plotting ax to use, creates a new one by default
+    :param xscale: scale of x axis
+    :param xscale_range_split: list of ranges at which to split the figure
     :return:
     """
 
@@ -1211,58 +1227,111 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
 
-    # Need a grid plot to show the sample count and the statistic
-    grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
-
-    # First, an axis to plot the sample histogram
-    ax0 = fig.add_subplot(grid[:3, :])
-    ax0.set_xscale(xscale)
-    ax0.set_xticks([])
-
-    # Plot the histogram manually with fill_between
-    interval_var = [0] + list(df.bins)
-    for i in range(len(df)):
-        count = df['count'].values[i]
-        ax0.fill_between([interval_var[i], interval_var[i+1]], [0] * 2, [count] * 2,
-                         facecolor=plt.cm.Greys(0.75), alpha=1,
-                         edgecolor='white', linewidth=0.1)
-    ax0.set_ylabel('Sample count')
-    # Scientific format to avoid undesired additional space on the label side
-    ax0.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
-    ax0.set_xlim((0, np.max(df.bins)))
-
-    # Now, plot the statistic of the data
-    ax = fig.add_subplot(grid[3:, :])
-
-    # Get the bins center
-    bins_center = np.subtract(df.bins, np.diff([0] + df.bins.tolist()) / 2)
-
-    # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
-    if np.all(np.isnan(df.err_exp)):
-        ax.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
-    # Otherwise, plot the error estimates through multiple runs
+    init_gridsize = [10, 10]
+    # Create parameters to split x axis into different linear scales
+    # If there is no split, get parameters for a single subplot
+    if xscale_range_split is None:
+        nb_subpanels=1
+        xmin = [0]
+        xmax = [np.max(df.bins)]
+        xgridmin = [0]
+        xgridmax = [init_gridsize[0]]
+        gridsize = init_gridsize
+    # Otherwise, derive a list for each subplot
     else:
-        ax.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)', fmt='x')
+        # Add initial zero if not in input
+        if xscale_range_split[0] != 0:
+            xscale_range_split = [0] + xscale_range_split
+        # Add maximum distance if not in input
+        if xscale_range_split[-1] != np.max(df.bins):
+            xscale_range_split.append(np.max(df.bins))
 
-    # If a list of functions is passed, plot the modelled variograms
-    if list_fit_fun is not None:
-        for i, fit_fun in enumerate(list_fit_fun):
-            x = np.linspace(0, np.max(df.bins), 10000)
-            y = fit_fun(x)
+        # Scale grid size by the number of subpanels
+        nb_subpanels = len(xscale_range_split)-1
+        gridsize = init_gridsize.copy()
+        gridsize[0] *= nb_subpanels
+        # Create list of parameters to pass to ax/grid objects of subpanels
+        xmin, xmax, xgridmin, xgridmax = ([] for i in range(4))
+        for i in range(nb_subpanels):
+            xmin.append(xscale_range_split[i])
+            xmax.append(xscale_range_split[i+1])
+            xgridmin.append(init_gridsize[0]*i)
+            xgridmax.append(init_gridsize[0]*(i+1))
 
-            if list_fit_fun_label is not None:
-                ax.plot(x, y, linestyle='dashed', label=list_fit_fun_label[i], zorder=30)
-            else:
-                ax.plot(x, y, linestyle='dashed', color='black', zorder=30)
+    # Need a grid plot to show the sample count and the statistic
+    grid = plt.GridSpec(gridsize[1], gridsize[0], wspace=0.5, hspace=0.5)
 
-        if list_fit_fun_label is None:
-            ax.plot([],[],linestyle='dashed',color='black',label='Model fit')
+    # Loop over each subpanel
+    for k in range(nb_subpanels):
+        # First, an axis to plot the sample histogram
+        ax0 = fig.add_subplot(grid[:3, xgridmin[k]:xgridmax[k]])
+        ax0.set_xscale(xscale)
+        ax0.set_xticks([])
 
-    ax.set_xlabel('Lag (m)')
-    ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
-    ax.legend(loc='best')
-    ax.set_xscale(xscale)
-    ax.set_xlim((0, np.max(df.bins)))
+        # Plot the histogram manually with fill_between
+        interval_var = [0] + list(df.bins)
+        for i in range(len(df)):
+            count = df['count'].values[i]
+            ax0.fill_between([interval_var[i], interval_var[i+1]], [0] * 2, [count] * 2,
+                             facecolor=plt.cm.Greys(0.75), alpha=1,
+                             edgecolor='white', linewidth=0.5)
+        if k == 0:
+            ax0.set_ylabel('Sample count')
+        # Scientific format to avoid undesired additional space on the label side
+            ax0.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+        else:
+            ax0.set_yticks([])
+        # Ignore warnings for log scales
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ax0.set_xlim((xmin[k], xmax[k]))
+
+        # Now, plot the statistic of the data
+        ax = fig.add_subplot(grid[3:, xgridmin[k]:xgridmax[k]])
+
+        # Get the bins center
+        bins_center = np.subtract(df.bins, np.diff([0] + df.bins.tolist()) / 2)
+
+        # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
+        if np.all(np.isnan(df.err_exp)):
+            ax.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
+        # Otherwise, plot the error estimates through multiple runs
+        else:
+            ax.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)', fmt='x')
+
+        # If a list of functions is passed, plot the modelled variograms
+        if list_fit_fun is not None:
+            for i, fit_fun in enumerate(list_fit_fun):
+                x = np.linspace(0, np.max(df.bins), 10000)
+                y = fit_fun(x)
+
+                if list_fit_fun_label is not None:
+                    ax.plot(x, y, linestyle='dashed', label=list_fit_fun_label[i], zorder=30)
+                else:
+                    ax.plot(x, y, linestyle='dashed', color='black', zorder=30)
+
+            if list_fit_fun_label is None:
+                ax.plot([],[],linestyle='dashed',color='black',label='Model fit')
+
+        ax.set_xscale(xscale)
+        if nb_subpanels>1 and k == (nb_subpanels-1):
+            ax.xaxis.set_ticks(np.linspace(xmin[k], xmax[k], 3))
+        elif nb_subpanels>1:
+            ax.xaxis.set_ticks(np.linspace(xmin[k],xmax[k],3)[:-1])
+
+        # Ignore warning for log scales
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ax.set_xlim((xmin[k], xmax[k]))
+
+        if k == int(nb_subpanels/2):
+            ax.set_xlabel('Lag (m)')
+            ax.legend(loc='best')
+        if k == 0:
+            ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
+        else:
+            ax.set_yticks([])
+
 
 def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
                     label_statistic: Optional[str] = None, min_count: int = 30, ax: matplotlib.axes.Axes | None = None):
@@ -1310,7 +1379,7 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     for i in range(len(df_sub) ):
         count = df_sub['count'].values[i]
         ax0.fill_between([interval_var[i].left, interval_var[i].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
-                         edgecolor='white',linewidth=0.1)
+                         edgecolor='white',linewidth=0.5)
     ax0.set_ylabel('Sample count')
     # Scientific format to avoid undesired additional space on the label side
     ax0.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
@@ -1397,7 +1466,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         count = np.nansum(df_var1['count'].values)
         list_counts.append(count)
         ax0.fill_between([df_var1[var_name_1].values[0].left, df_var1[var_name_1].values[0].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
-                         edgecolor='white')
+                         edgecolor='white', linewidth=0.5)
     ax0.set_ylabel('Sample count')
     # In case the axis value does not agree with the scale (e.g., 0 for log scale)
     with warnings.catch_warnings():
@@ -1427,7 +1496,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         count = np.nansum(df_var2['count'].values)
         list_counts.append(count)
         ax1.fill_between([0, count], [df_var2[var_name_2].values[0].left] * 2, [df_var2[var_name_2].values[0].right] * 2, facecolor=plt.cm.Greys(0.75),
-                         alpha=1, edgecolor='white')
+                         alpha=1, edgecolor='white', linewidth=0.5)
     ax1.set_xlabel('Sample count')
     # In case the axis value does not agree with the scale (e.g., 0 for log scale)
     with warnings.catch_warnings():
