@@ -41,11 +41,21 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
-# We remove values on glacier terrain
+# We remove values on glacier terrain, to use only stable terrain as a proxy for the elevation measurement errors
 dh.data[mask_glacier] = np.nan
 
 # %%
-# Let's plot the elevation differences
+# We estimate the average per-pixel elevation measurement error on stable terrain, using both the standard deviation
+# and normalized median absolute deviation
+print('STD: {:.2f}'.format(np.nanstd(dh.data)))
+print('NMAD: {:.2f}'.format(xdem.spatialstats.nmad(dh.data)))
+
+# %%
+# The two measures are quite similar which shows that, on average, there is a limited influence of outliers on the
+# elevation differences. The precision per-pixel is, on average, :math:`\pm` 2.5 meters at the 1-sigma confidence level.
+# Yet, the per-pixel precision is a limited metric to quantify the quality of the data to perform further spatial
+# analysis.
+# Let's plot the elevation differences to visually check the quality of the data.
 plt.figure(figsize=(8, 5))
 plt_extent = [
     dh.bounds.left,
@@ -60,11 +70,16 @@ plt.show()
 
 
 # %%
-# We can see that the elevation differences are still polluted by unmasked glaciers: let's filter outliers outside 4 NMAD
+# We see that the residual elevation differences on stable terrain are clearly not random. The positive and negative
+# differences (blue and red, respectively) seem correlated over large distances. **This needs to be quantified to
+# estimate elevation measurement errors for a sum, or average of elevation difference a certain surface area**.
+# Additionally, the elevation differences are still polluted by unrealistically large elevation differences near
+# glaciers, probably because the glacier inventory is more recent than the data, and the outlines are too small.
+# To remedy this, let's filter elevation difference outliers outside 4 NMAD.
 dh.data[np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data)] = np.nan
 
 # %%
-# Let's plot the elevation differences after filtering
+# We plot the elevation differences after filtering.
 plt.figure(figsize=(8, 5))
 plt_extent = [
     dh.bounds.left,
@@ -78,34 +93,67 @@ cbar.set_label('Elevation differences (m)')
 plt.show()
 
 # %%
-# Sample empirical variogram
+# To quantify the spatial correlation of the data, we sample an empirical variogram which calculates the covariance
+# between the elevation differences of pairs of pixels depending on their distance. This distance between pairs of
+# pixels if referred to as spatial lag.
+# To perform this effectively, we use methods providing efficient pairwise sampling methods for large grid data,
+# encapsulated by :func:`xdem.spatialstats.sample_multirange_variogram`:
 df = xdem.spatialstats.sample_multirange_variogram(
     values=dh.data, gsd=dh.res[0], subsample=50, runs=30, nrun=10)
 
-# Plot empirical variogram
+# %%
+# We can now plot the empirical variogram:
 xdem.spatialstats.plot_vgm(df)
 
 # %%
-# A lot of things are happening at the
+# With this plot, it is hard to conclude anything.
+# Properly visualizing the empirical variogram is one of the most important step. With grid data, we expect short-range
+# correlations close to the resolution of the grid (~20-200 meters), but also possibly longer range correlation due to
+# instrument noise or alignment issues (~1-50 km) (Hugonnet et al., in prep).
 
+# To better visualize the variogram, we can either change the axis to log-scale, but this might make it more difficult
+# to later compare to variogram models.
+# Another solution is to split the variogram plot into subpanels, each with its own linear scale:
+xdem.spatialstats.plot_vgm(df, xscale='log')
+xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 
 # %%
-#
+# We identify a short-range (short spatial lag) correlation, likely due to effects of resolution, which has a large
+# partial sill (correlated variance), meaning that the elevation measurement errors are strongly correlated until a
+# range of ~200 m.
+# We also identify a longer range correlation, with a smaller partial sill, meaning the part of the elevation
+# measurement errors remain correlated over a longer distance.
+# To show the difference between accounting only for the most noticeable, short-range correlation, and the long-range
+# correlation, we fit those empirical variogram with two different models: a single spherical model (one range), and
+# the sum of two spherical models (two ranges).
+# For this, we use :func:`xdem.spatialstats.fit_model_sum_vgm`:
 fun, params1 = xdem.spatialstats.fit_model_sum_vgm(['Sph'], emp_vgm_df=df)
-
 
 fun2, params2 = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph'], emp_vgm_df=df)
 xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
                            xscale='log')
+xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
+                           xscale_range_split=[100, 1000, 10000])
+
 
 # %%
-# Let's see how this affect the precision of the DEM integrated over a certain surface area, from pixel size to grid size
+# **The sum of two spherical models seems to fit better, by modelling a small additional partial sill at longer ranges.
+# This additional partial sill (correlated variance) is quite small, and one could thus wonder that the influence on
+# the estimation of elevation measurement error will also be small.**
+# However, even if the correlated variance if small, long-range correlated signals have a large effect on measurement
+# errors.
+# Let's show how this affect the precision of the DEM integrated over a certain surface area, from pixel size to grid
+# size, by spatially integrating the variogram model using :func:`xdem.spatialstats.neff_circ`. # We validate that the
+# double-range model provides more realistic estimationss of the error based on intensive Monte-Carlo sampling
+# ("patches" method) over the data grid (Dehecq et al. (2020), Hugonnet et al., in prep), which
+# # is integrated in :func:`xdem.spatialstats.patches_method`.
 
-# Areas varying from pixel size squared to grid size squared, with same unit as the variogram parameters (meters)
-areas = [400*2**i for i in range(20)]
+# We store the integrated elevation measurement error for each area
+list_stderr_singlerange, list_stderr_doublerange, list_stderr_empirical = ([] for i in range(3))
 
-# Derive the precision for each area
-list_stderr_singlerange, list_stderr_doublerange = ([] for i in range(2))
+# Numerical and exact integration of variogram run fast, so we derive errors for many surface areas from squared pixel
+# size to squared grid size, with same unit as the variogram (meters)
+areas = np.linspace(20**2, 10000**2, 1000)
 for area in areas:
 
     # Number of effective samples integrated over the area for a single-range model
@@ -118,17 +166,55 @@ for area in areas:
     # Convert into a standard error
     stderr_singlerange = np.nanstd(dh.data)/np.sqrt(neff_singlerange)
     stderr_doublerange = np.nanstd(dh.data)/np.sqrt(neff_doublerange)
-
     list_stderr_singlerange.append(stderr_singlerange)
     list_stderr_doublerange.append(stderr_doublerange)
 
+# Sample only feasable areas for patches method to avoid long processing times: increasing exponentially from areas of
+# 5 pixels to areas of 10000 pixels
+areas_emp = [10 * 400 * 2 ** i for i in range(10)]
+for area_emp in areas_emp:
+
+    # Empirically estimate standard error:
+    # 1/ Sample intensively circular patches of a given area, and derive the mean elevation differences
+    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, nmax=200, verbose=True)
+    # 2/ Estimate the dispersion of the patches means, i.e. the standard error of the mean
+    stderr_empirical = np.nanstd(df_patches['mean'].values)
+    list_stderr_empirical.append(stderr_empirical)
+
 fig, ax = plt.subplots()
-plt.scatter(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
-plt.scatter(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
+plt.plot(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
+plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
+plt.scatter(np.asarray(areas_emp)/1000000, list_stderr_empirical, label='Empirical estimate', color='black', marker='x')
 plt.xlabel('Averaging area (km²)')
 plt.ylabel('Uncertainty in the mean elevation difference (m)')
 plt.xscale('log')
+plt.yscale('log')
 plt.legend()
 
+# %%
+# Using a single-range variogram can underestimates the integrated elevation measurement error by a factor of ~100 for
+# large surface areas, be careful to multi-range variogram !
 
+list_stderr_doublerange_plus_fullycorrelated = []
+for area in areas:
 
+    # For a double-range model
+    neff_doublerange = xdem.spatialstats.neff_circ(area, [(params2[0], 'Sph', params2[1]),
+                                                          (params2[2], 'Sph', params2[3])])
+
+    # About 10% of the variance might be fully correlated, the other 90% has the random part that we quantified
+    stderr_fullycorr = np.sqrt(0.1*np.nanvar(dh.data))
+    stderr_doublerange = np.sqrt(0.9*np.nanvar(dh.data))/np.sqrt(neff_doublerange)
+    list_stderr_doublerange_plus_fullycorrelated.append(stderr_fullycorr + stderr_doublerange)
+
+fig, ax = plt.subplots()
+plt.plot(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
+plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
+plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange_plus_fullycorrelated,
+         label='10% fully correlated,\n 90% double-range spherical model')
+plt.scatter(np.asarray(areas_emp)/1000000, list_stderr_empirical, label='Empirical estimate', color='black', marker='x')
+plt.xlabel('Averaging area (km²)')
+plt.ylabel('Uncertainty in the mean elevation difference (m)')
+plt.xscale('log')
+plt.yscale('log')
+plt.legend()
