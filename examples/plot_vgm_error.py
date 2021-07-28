@@ -63,10 +63,8 @@ dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differ
 
 # %%
 # We clearly see that the residual elevation differences on stable terrain are not random. The positive and negative
-# differences (blue and red, respectively) appear correlated over large distances.
-#
-# Conclusion: **These correlated errors need to be quantified to reliably estimate elevation measurement errors for a
-# sum, or average of elevation differences samples for a specific surface area**.
+# differences (blue and red, respectively) appear correlated over large distances. These correlated errors are what
+# we aim to quantify.
 
 # %%
 # Additionally, we notice that the elevation differences are still polluted by unrealistically large elevation
@@ -94,13 +92,13 @@ df = xdem.spatialstats.sample_multirange_variogram(
 xdem.spatialstats.plot_vgm(df)
 
 # %%
-# With this plot, it is hard to conclude anything.
-# Properly visualizing the empirical variogram is one of the most important step. With grid data, we expect short-range
-# correlations close to the resolution of the grid (~20-200 meters), but also possibly longer range correlation due to
-# instrument noise or alignment issues (~1-50 km) (Hugonnet et al., in prep).
+# With this plot, it is hard to conclude anything! Properly visualizing the empirical variogram is one of the most
+# important step. With grid data, we expect short-range correlations close to the resolution of the grid (~20-200
+# meters), but also possibly longer range correlation due to instrument noise or alignment issues (~1-50 km) (Hugonnet et al., in prep).
+#
 # To better visualize the variogram, we can either change the axis to log-scale, but this might make it more difficult
-# to later compare to variogram models.
-# Another solution is to split the variogram plot into subpanels, each with its own linear scale:
+# to later compare to variogram models. # Another solution is to split the variogram plot into subpanels, each with
+# its own linear scale. Both are shown below.
 
 # %%
 # **Log scale:**
@@ -111,16 +109,17 @@ xdem.spatialstats.plot_vgm(df, xscale='log')
 xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 
 # %%
-# We identify a short-range (i.e., correlation length) correlation, likely due to effects of resolution. It has a large
+# We identify:
+#   - a short-range (i.e., correlation length) correlation, likely due to effects of resolution. It has a large
 # partial sill (correlated variance), meaning that the elevation measurement errors are strongly correlated until a
 # range of ~100 m.
-# We also identify a longer range correlation, with a smaller partial sill, meaning the part of the elevation
-# measurement errors remain correlated over a longer distance.
+#   - a longer range correlation, with a smaller partial sill, meaning the part of the elevation measurement errors
+#   remain correlated over a longer distance.
+#
 # In order to show the difference between accounting only for the most noticeable, short-range correlation, or adding the
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
-# the sum of two spherical models (two ranges).
-# For this, we use :func:`xdem.spatialstats.fit_sum_variogram`, which is based on `scipy.optimize.curve_fit
-# <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
+# the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_variogram`, which
+# is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
 fun, params1 = xdem.spatialstats.fit_sum_variogram(['Sph'], emp_vgm_df=df)
 
 fun2, params2 = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph'], emp_vgm_df=df)
@@ -129,15 +128,14 @@ xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Sing
                            xscale_range_split=[100, 1000, 10000])
 
 # %%
-# The sum of two spherical models fits better, adding a small partial sill at longer ranges.
+# The sum of two spherical models fits better, accouting for the small partial sill at longer ranges.
 
 # %%
 # **This longer range partial sill (correlated variance) is quite small, so is it really important to account for this
 # small additional "bump" in the variogram?**
 # We compute the precision of the DEM integrated over a certain surface area based on spatial integration of the
 # variogram models using :func:`xdem.spatialstats.neff_circ`, with areas varying from pixel size to grid size.
-# Numerical and exact integration of variogram is fast, so we derive errors for many surface areas from squared pixel
-# size to squared grid size, with same unit as the variogram (meters)
+# Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas radidly.
 
 areas = np.linspace(20**2, 10000**2, 1000)
 
@@ -158,10 +156,10 @@ for area in areas:
     list_stderr_doublerange.append(stderr_doublerange)
 
 # %%
-# We also compute an empirical error based on intensive Monte-Carlo sampling ("patches" method) over the data grid
-# (Dehecq et al. (2020), Hugonnet et al., in prep), which is integrated in :func:`xdem.spatialstats.patches_method`.
-# Here, we sample fewer areas to avoid for the patches method to run over long processing times. We increase
-# exponentially from areas of 5 pixels to areas of 10000 pixels.
+# We add an empirical error based on intensive Monte-Carlo sampling ("patches" method) to validate our results
+# (Dehecq et al. (2020), Hugonnet et al., in prep). This method is implemented in :func:`xdem.spatialstats.patches_method`.
+# Here, we sample fewer areas to avoid for the patches method to run over long processing times, increasing from areas
+# of 5 pixels to areas of 10000 pixels exponentially.
 areas_emp = [10 * 400 * 2 ** i for i in range(10)]
 for area_emp in areas_emp:
 
@@ -182,14 +180,15 @@ plt.yscale('log')
 plt.legend()
 
 # %%
-# We demonstrate that using a single-range variogram highly underestimates the measurement error integrated over an area,
-# by over a factor of ~100 for large surface areas. Using a double-range variogram brings us closer to the empirical error.
+# Using a single-range variogram highly underestimates the measurement error integrated over an area, by over a factor
+# of ~100 for large surface areas. Using a double-range variogram brings us closer to the empirical error.
+#
 # **But, in this case, the error is still too small. Why?**
 # The small size of the sampling area against the very large range of the noise means that we might no verify the
 # assumption of second-order stationarity (see :ref:`spatialstats`). We might be missing even longer range correlations
-# in our analysis, due to the limits of the variogram sampling.
-# In other words, a small part of the variance could be fully correlated over a large part of the grid, i.e. have a
-# vertical bias.
+# in our analysis, due to the limits of the variogram sampling. In other words, a small part of the variance could be
+# fully correlated over a large part of the grid, i.e. have a vertical bias.
+#
 # As a first guess for this, let's examine the difference between mean and median to gain some insight on the central
 # tendency of our sample:
 
@@ -233,5 +232,5 @@ plt.legend()
 # %%
 # Our final estimation is now very close to the empirical error estimate.
 # Take-home points:
-# 1. Long-range correlations are very important to reliably estimate measurement errors integrated in space, even if they have a small partial sill (correlated variance)!
-# 2. Ideally, the grid must only contain correlation range smaller than the grid size, to verify second-order stationarity and provide robust variogram quantification. Otherwise, be wary of small biases of central tendency!
+#   1. Long-range correlations are very important to reliably estimate measurement errors integrated in space, even if they have a small partial sill (correlated variance)!
+#   2. Ideally, the grid must only contain correlation range smaller than the grid size, to verify second-order stationarity and provide robust variogram quantification. Otherwise, be wary of small biases of central tendency!
