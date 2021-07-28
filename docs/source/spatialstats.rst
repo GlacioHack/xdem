@@ -73,46 +73,56 @@ Workflow for DEM precision estimation
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. minigallery:: xdem.spatialstats.nd_binning
-        :add-heading:
-
 Quantify and model non-stationarites
 """"""""""""""""""""""""""""""""""""
 
-TODO: Add this section based on Hugonnet et al. (in prep)
-
 .. literalinclude:: code/spatialstats.py
-        :lines: 16-17
+        :lines: 17-19
+
+.. minigallery:: xdem.spatialstats.nd_binning
+        :add-heading:
+
+TODO: Add this section based on Hugonnet et al. (in prep)
 
 Standardize elevation differences for further analysis
 """"""""""""""""""""""""""""""""""""""""""""""""""""""
 
+TODO: Add a new gallery example
 
 Spatial correlation of elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 TODO: Add this section based Rolstad et al. (2009), Dehecq et al. (2020), Hugonnet et al. (in prep)
 
-Quantify and model spatial correlations
-"""""""""""""""""""""""""""""""""""""""
+Quantify spatial correlations
+"""""""""""""""""""""""""""""
+
+Estimate empirical variogram:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 19-20
+        :lines: 24-25
 
-For a single range model:
+.. minigallery:: xdem.spatialstats.sample_multirange_variogram
+
+Model spatial correlations
+""""""""""""""""""""""""""
+
+Fit a multiple-range model:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 22-23
+        :lines: 27-28
 
-For multiple range model:
-
-.. literalinclude:: code/spatialstats.py
-        :lines: 25-26
-
-.. plot:: code/spatialstats_plot_vgm.py
+.. minigallery:: xdem.spatialstats.fit_sum_variogram
 
 Spatially integrated measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Deduce an effective sample size, and elevation measurement error:
+
+.. literalinclude:: code/spatialstats.py
+        :lines: 30-33
+
+.. minigallery:: xdem.spatialstats.neff_circ
 
 TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 
