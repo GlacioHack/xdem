@@ -1251,7 +1251,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     # If there is no split, get parameters for a single subplot
     if xscale_range_split is None:
         nb_subpanels=1
-        xmin = [0]
+        xmin = [np.min(df.bins)/10]
         xmax = [np.max(df.bins)]
         xgridmin = [0]
         xgridmax = [init_gridsize[0]]
@@ -1260,7 +1260,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     else:
         # Add initial zero if not in input
         if xscale_range_split[0] != 0:
-            xscale_range_split = [0] + xscale_range_split
+            xscale_range_split = [np.min(df.bins)/10] + xscale_range_split
         # Add maximum distance if not in input
         if xscale_range_split[-1] != np.max(df.bins):
             xscale_range_split.append(np.max(df.bins))
@@ -1301,9 +1301,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         else:
             ax0.set_yticks([])
         # Ignore warnings for log scales
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ax0.set_xlim((xmin[k], xmax[k]))
+        ax0.set_xlim((xmin[k], xmax[k]))
 
         # Now, plot the statistic of the data
         ax = fig.add_subplot(grid[3:, xgridmin[k]:xgridmax[k]])
@@ -1338,10 +1336,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         elif nb_subpanels>1:
             ax.xaxis.set_ticks(np.linspace(xmin[k],xmax[k],3)[:-1])
 
-        # Ignore warning for log scales
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ax.set_xlim((xmin[k], xmax[k]))
+        ax.set_xlim((xmin[k], xmax[k]))
 
         if k == int(nb_subpanels/2):
             ax.set_xlabel('Lag (m)')
