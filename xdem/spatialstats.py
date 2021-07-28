@@ -1251,7 +1251,10 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     # If there is no split, get parameters for a single subplot
     if xscale_range_split is None:
         nb_subpanels=1
-        xmin = [np.min(df.bins)/10]
+        if xscale == 'log':
+            xmin = [np.min(df.bins)/2]
+        else:
+            xmin = [0]
         xmax = [np.max(df.bins)]
         xgridmin = [0]
         xgridmax = [init_gridsize[0]]
@@ -1260,7 +1263,11 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     else:
         # Add initial zero if not in input
         if xscale_range_split[0] != 0:
-            xscale_range_split = [np.min(df.bins)/10] + xscale_range_split
+            if xscale == 'log':
+                first_xmin = np.min(df.bins)/2
+            else:
+                first_xmin = 0
+            xscale_range_split = [first_xmin] + xscale_range_split
         # Add maximum distance if not in input
         if xscale_range_split[-1] != np.max(df.bins):
             xscale_range_split.append(np.max(df.bins))
