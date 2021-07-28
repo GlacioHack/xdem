@@ -256,13 +256,12 @@ class TestPatchesMethod:
 
         diff, mask = load_ref_and_diff()[1:3]
 
-        warnings.filterwarnings("error")
         # check the patches method runs
-        df_patches = xdem.spatialstats.patches_method(
+        df = xdem.spatialstats.patches_method(
             diff.data.squeeze(),
             mask=~mask.astype(bool).squeeze(),
             gsd=diff.res[0],
-            area_size=10000
+            area=10000
         )
 
 class TestBinning:
