@@ -20,7 +20,7 @@ Here, we show an example in which we estimate spatially integrated elevation mea
 Longyearbyen glacier, demonstrated in :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py`. We first quantify the spatial
 correlations using :func:`xdem.spatialstats.sample_multirange_variogram` based on routines of `scikit-gstat
 <https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then model the empirical variogram using a sum of variogram
-models using :func:`xdem.spatialstats.fit_model_sum_vgm`.
+models using :func:`xdem.spatialstats.fit_sum_variogram`.
 Finally, we integrate the variogram models for varying surface areas to estimate the spatially integrated elevation
 measurement errors using :func:`xdem.spatialstats.neff_circ`, and empirically validate the improved robustness of
 our results using `xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
@@ -50,8 +50,8 @@ dh.data[mask_glacier] = np.nan
 # We estimate the average per-pixel elevation measurement error on stable terrain, using both the standard deviation
 # and normalized median absolute deviation. For this example, we do not account for the non-stationarity in elevation
 # measurement errors quantified in :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py`.
-print('STD: {:.2f}'.format(np.nanstd(dh.data))+' meters.')
-print('NMAD: {:.2f}'.format(xdem.spatialstats.nmad(dh.data))+' meters.')
+print('STD: {:.2f} meters.'.format(np.nanstd(dh.data)))
+print('NMAD: {:.2f} meters.'.format(xdem.spatialstats.nmad(dh.data)))
 
 # %%
 # The two measures of dispersion are quite similar showing that, on average, there is a small influence of outliers on the
@@ -59,17 +59,7 @@ print('NMAD: {:.2f}'.format(xdem.spatialstats.nmad(dh.data))+' meters.')
 # **Does this mean that every pixel has an independent measurement error of** :math:`\pm` **2.5 meters?**
 # Let's plot the elevation differences to visually check the quality of the data.
 plt.figure(figsize=(8, 5))
-plt_extent = [
-    dh.bounds.left,
-    dh.bounds.right,
-    dh.bounds.bottom,
-    dh.bounds.top,
-]
-plt.imshow(dh.data.squeeze(), cmap="RdYlBu", vmin=-4, vmax=4, extent=plt_extent)
-cbar = plt.colorbar()
-cbar.set_label('Elevation differences (m)')
-plt.show()
-
+dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
 
 # %%
 # We clearly see that the residual elevation differences on stable terrain are not random. The positive and negative
@@ -87,16 +77,7 @@ dh.data[np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data)] = np.nan
 # %%
 # We plot the elevation differences after filtering to check that we successively removed the reminaing glacier signals.
 plt.figure(figsize=(8, 5))
-plt_extent = [
-    dh.bounds.left,
-    dh.bounds.right,
-    dh.bounds.bottom,
-    dh.bounds.top,
-]
-plt.imshow(dh.data.squeeze(), cmap="RdYlBu", vmin=-4, vmax=4, extent=plt_extent)
-cbar = plt.colorbar()
-cbar.set_label('Elevation differences (m)')
-plt.show()
+dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
 
 # %%
 # To quantify the spatial correlation of the data, we sample an empirical variogram.
@@ -138,11 +119,11 @@ xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 # In order to show the difference between accounting only for the most noticeable, short-range correlation, or adding the
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
 # the sum of two spherical models (two ranges).
-# For this, we use :func:`xdem.spatialstats.fit_model_sum_vgm`, which is based on `scipy.optimize.curve_fit
+# For this, we use :func:`xdem.spatialstats.fit_sum_variogram`, which is based on `scipy.optimize.curve_fit
 # <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
-fun, params1 = xdem.spatialstats.fit_model_sum_vgm(['Sph'], emp_vgm_df=df)
+fun, params1 = xdem.spatialstats.fit_sum_variogram(['Sph'], emp_vgm_df=df)
 
-fun2, params2 = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph'], emp_vgm_df=df)
+fun2, params2 = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph'], emp_vgm_df=df)
 
 xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
                            xscale_range_split=[100, 1000, 10000])
@@ -187,7 +168,7 @@ for area_emp in areas_emp:
     #  First, sample intensively circular patches of a given area, and derive the mean elevation differences
     df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, nmax=200)
     # Second, estimate the dispersion of the means of each patch, i.e. the standard error of the mean
-    stderr_empirical = np.nanstd(df_patches['mean'].values)
+    stderr_empirical = np.nanstd(df_patches['nanmedian'].values)
     list_stderr_empirical.append(stderr_empirical)
 
 fig, ax = plt.subplots()
@@ -213,12 +194,12 @@ plt.legend()
 # tendency of our sample:
 
 diff_med_mean = np.nanmean(dh.data.data)-np.nanmedian(dh.data.data)
-print('Difference mean/median: {:.3f}'.format(diff_med_mean)+' meters.')
+print('Difference mean/median: {:.3f} meters.'.format(diff_med_mean))
 
 # %%
 # If we now express it as a percentage of the dispersion:
 
-print('{:.1f}'.format(diff_med_mean/np.nanstd(dh.data.data)*100)+ '% of STD.')
+print('{:.1f} % of STD.'.format(diff_med_mean/np.nanstd(dh.data.data)*100))
 
 # %%
 # There might be a significant bias of central tendency, i.e. almost fully correlated measurement error across the grid.
