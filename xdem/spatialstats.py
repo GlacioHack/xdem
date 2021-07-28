@@ -575,7 +575,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
     :param nrun: number of runs
     :param nproc: number of processing cores
     :param verbose: print statements during processing
-    :param random_state: random state or seed number to use for calculations (to fix drawings during testing)
+    :param random_state: random state or seed number to use for calculations (to fix random sampling during testing)
 
     :return: empirical variogram (variance, lags, counts)
     """
@@ -711,7 +711,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
 
     return df
 
-def fit_model_sum_vgm(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
+def fit_sum_variogram(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
     """
     Fit a multi-range variogram model to an empirical variogram, weighted based on sampling and elevation errors
 
@@ -1101,8 +1101,9 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
 
 
 def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[np.ndarray] = None,
-                   perc_min_valid: float = 80., patch_shape: str = 'circular', nmax: int = 1000, verbose: bool = False)\
-        -> pd.DataFrame:
+                   perc_min_valid: float = 80., statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad],
+                   patch_shape: str = 'circular', nmax: int = 1000, verbose: bool = False,
+                   random_state: None | int | np.random.RandomState | np.random.Generator = None) -> pd.DataFrame:
 
     """
     Patches method for empirical estimation of the standard error over an integration area
@@ -1112,14 +1113,27 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     :param mask: mask of sampled terrain
     :param area: size of integration area
     :param perc_min_valid: minimum valid area in the patch
+    :param statistics: list of statistics to compute in the patch
     :param patch_shape: shape of patch ['circular' or 'rectangular']
     :param nmax: maximum number of patch to sample
     :param verbose: print statement to console
+    :param random_state: random state or seed number to use for calculations (to fix random sampling during testing)
 
     :return: tile, mean, median, std and count of each patch
     """
 
-    # TODO: make robust to Raster inputs, masked arrays, etc...
+    # Define state for random subsampling (to fix results during testing)
+    if random_state is None:
+        rnd = np.random.default_rng()
+    elif isinstance(random_state, (np.random.RandomState, np.random.Generator)):
+        rnd = random_state
+    else:
+        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
+
+    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
+
+    values, mask_values = get_array_and_mask(values)
+
     values = values.squeeze()
 
     # Use all grid if no mask is provided
@@ -1127,7 +1141,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
         mask = np.ones(np.shape(values),dtype=bool)
 
     # First, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
-    valid_mask = np.logical_and(np.isfinite(values), mask)
+    valid_mask = np.logical_and(~mask_values, mask)
     values[~valid_mask] = np.nan
 
     # Divide raster in cadrants where we can sample
@@ -1143,18 +1157,17 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     # For circular patches
     rad = np.sqrt(area/np.pi) / gsd
 
-    tile, mean_patch, med_patch, std_patch, nb_patch = ([] for i in range(5))
-
     # Create list of all possible cadrants
     list_cadrant = [[i, j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
     u = 0
     # Keep sampling while there is cadrants left and below maximum number of patch to sample
     remaining_nsamp = nmax
+    list_df = []
     while len(list_cadrant) > 0 and u < nmax:
 
         # Draw a random coordinate from the list of cadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
-        list_idx_cadrant = np.random.choice(len(list_cadrant), size=min(len(list_cadrant), 10*remaining_nsamp))
+        list_idx_cadrant = rnd.choice(len(list_cadrant), size=min(len(list_cadrant), 10*remaining_nsamp))
 
         for idx_cadrant in list_idx_cadrant:
 
@@ -1184,21 +1197,27 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
                 if verbose:
                     print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
 
-                tile.append(str(i) + '_' + str(j))
-                mean_patch.append(np.nanmean(patch))
-                med_patch.append(np.nanmedian(patch.filled(np.nan) if isinstance(patch, np.ma.masked_array) else patch))
-                std_patch.append(np.nanstd(patch))
-                nb_patch.append(nb_pixel_valid)
+                df = pd.DataFrame()
+                df = df.assign(tile=[str(i) + '_' + str(j)])
+                for j, statistic in enumerate(statistics):
+                    if isinstance(statistic, str):
+                        if statistic == 'count':
+                            df[statistic] = [nb_pixel_valid]
+                        else:
+                            raise ValueError('No other string than "count" are supported for named statistics.')
+                    else:
+                        df[statistics_name[j]] = [statistic(patch)]
+
+                list_df.append(df)
 
         # Get remaining samples to draw
         remaining_nsamp = nmax - u
         # Remove cadrants already sampled from list
         list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
 
-    df = pd.DataFrame()
-    df = df.assign(tile=tile, mean=mean_patch, med=med_patch, std=std_patch, count=nb_patch)
+    df_all = pd.concat(list_df)
 
-    return df
+    return df_all
 
 
 def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
@@ -1207,7 +1226,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_multirange_variogram.
-    Input function model is expected to be the output of xdem.spatialstats.fit_model_sum_vgm.
+    Input function model is expected to be the output of xdem.spatialstats.fit_sum_variogram.
 
     :param df: dataframe of empirical variogram
     :param list_fit_fun: list of model function fits

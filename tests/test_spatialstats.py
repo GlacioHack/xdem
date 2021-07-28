@@ -136,7 +136,7 @@ class TestVariogram:
         df = df.assign(bins=x, exp=y_simu, err_exp=sigma)
 
         # Run the fitting
-        fun, params_est = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], df)
+        fun, params_est = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph', 'Sph'], df)
 
         for i in range(len(params_est)):
             # Assert all parameters were correctly estimated within a 30% relative margin
@@ -156,12 +156,12 @@ class TestVariogram:
             values=diff.data, gsd=diff.res[0], subsample=50, random_state=42, runs=10)
 
         # Single model fit
-        fun, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph'], df)
+        fun, _ = xdem.spatialstats.fit_sum_variogram(['Sph'], df)
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
 
         # Triple model fit
-        fun2, _ = xdem.spatialstats.fit_model_sum_vgm(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
+        fun2, _ = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
 
@@ -256,13 +256,28 @@ class TestPatchesMethod:
 
         diff, mask = load_ref_and_diff()[1:3]
 
-        # check the patches method runs
+        gsd = diff.res[0]
+        area = 10000
+
+        # Check the patches method runs
         df = xdem.spatialstats.patches_method(
-            diff.data.squeeze(),
+            diff.data,
             mask=~mask.astype(bool).squeeze(),
-            gsd=diff.res[0],
-            area=10000
+            gsd=gsd,
+            area=area,
+            random_state=42,
+            nmax=100
         )
+
+        # Check we get the expected shape
+        assert df.shape == (100, 4)
+
+        # Check the sampling is always fixed for a random state
+        assert df['tile'].values[0] == '31_184'
+        assert df['nanmedian'].values[0] == pytest.approx(2.28, abs=0.01)
+
+        # Check that all counts respect the default minimum percentage of 80% valid pixels
+        assert all(df['count'].values > 0.8*np.max(df['count'].values))
 
 class TestBinning:
 
