@@ -658,7 +658,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
 
     # Prepare necessary arguments to pass to variogram subfunctions
     args = {'values': values, 'coords': coords, 'subsample_method': subsample_method, 'subsample': subsample,
-            'verbose': verbose, 'random_state': random_state}
+            'verbose': verbose}
     if subsample_method in ['cdist_equidistant','pdist_ring','pdist_disk', 'pdist_point']:
         # The shape is needed for those three methods
         args.update({'shape': (nx, ny)})
@@ -667,6 +667,25 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
             args.update({'extent':extent})
         else:
             args.update({'gsd': gsd})
+
+    # If a random_state is passed, each run needs to be passed an independent child random state, otherwise they will
+    # provide exactly the same sampling and results
+    if random_state is not None:
+        # Define the random state if only a seed is provided
+        if isinstance(random_state, (np.random.RandomState, np.random.Generator)):
+            rnd = random_state
+        else:
+            rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
+
+        # Create a list of child random states
+        if n_variograms == 1:
+            # No issue if there is only one variogram run
+            list_random_state = [rnd]
+        else:
+            # Otherwise, pass a list of seeds
+            list_random_state = list(rnd.choice(n_variograms, n_variograms, replace=False))
+    else:
+        list_random_state = [None for i in range(n_variograms)]
 
     # Derive the variogram
     # Differentiate between 1 core and several cores for multiple runs
@@ -678,7 +697,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
         list_df_run = []
         for i in range(n_variograms):
 
-            argdict = {'i': i, 'imax': n_variograms, **args, **kwargs}
+            argdict = {'i': i, 'imax': n_variograms, 'random_state': list_random_state[i], **args, **kwargs}
             df_run = _wrapper_get_empirical_variogram(argdict=argdict)
 
             list_df_run.append(df_run)
@@ -687,7 +706,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
             print('Using ' + str(n_jobs) + ' cores...')
 
         pool = mp.Pool(n_jobs, maxtasksperchild=1)
-        argdict = [{'i': i, 'imax': n_variograms, **args, **kwargs} for i in range(n_variograms)]
+        argdict = [{'i': i, 'imax': n_variograms, 'random_state': list_random_state[i], **args, **kwargs} for i in range(n_variograms)]
         list_df_run = pool.map(_wrapper_get_empirical_variogram, argdict, chunksize=1)
         pool.close()
         pool.join()
