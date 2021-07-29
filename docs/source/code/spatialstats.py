@@ -22,7 +22,8 @@ df_ns = xdem.spatialstats.nd_binning(dh.data.ravel(), list_var=[slope.ravel()], 
 err_dh = xdem.spatialstats.interp_nd_binning(df_ns, list_var_names=['slope'])
 
 # Sample empirical variogram
-df_vgm = xdem.spatialstats.sample_multirange_variogram(values=dh.data, gsd=dh.res[0], subsample=100, runs=10, nrun=10)
+df_vgm = xdem.spatialstats.sample_multirange_variogram(values=dh.data, gsd=dh.res[0], subsample=100, runs=10,
+                                                       n_variograms=10)
 
 # Fit sum of triple-range spherical model
 fun, coefs = xdem.spatialstats.fit_sum_variogram(list_model=['Sph', 'Sph', 'Sph'], emp_vgm_df=df_vgm)

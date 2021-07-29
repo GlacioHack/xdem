@@ -50,7 +50,7 @@ class TestVariogram:
         # Test multiple runs
         df2 = xdem.spatialstats.sample_multirange_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50,
-            random_state=42, runs=2, nrun=2)
+            random_state=42, runs=2, n_variograms=2)
 
         # Check that an error is estimated
         assert any(~np.isnan(df2.err_exp.values))

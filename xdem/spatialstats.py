@@ -533,8 +533,8 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
 
 
 def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float = None, coords: np.ndarray = None,
-                                subsample: int = 10000, subsample_method: str = 'cdist_equidistant', nrun: int = 1,
-                                nproc: int = 1, verbose=False,
+                                subsample: int = 10000, subsample_method: str = 'cdist_equidistant',
+                                n_variograms: int = 1, n_jobs: int = 1, verbose=False,
                                 random_state: None | np.random.RandomState | np.random.Generator | int = None,
                                 **kwargs) -> pd.DataFrame:
     """
@@ -572,8 +572,8 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
     :param coords: coordinates
     :param subsample: number of samples to randomly draw from the values
     :param subsample_method: spatial subsampling method
-    :param nrun: number of runs
-    :param nproc: number of processing cores
+    :param n_variograms: number of independent empirical variogram estimations
+    :param n_jobs: number of processing cores
     :param verbose: print statements during processing
     :param random_state: random state or seed number to use for calculations (to fix random sampling during testing)
 
@@ -604,7 +604,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
                         '"pdist_disk" or "pdist_ring".')
     # Check that, for several runs, the binning function is an Iterable, otherwise skgstat might provide variogram
     # values over slightly different binnings due to randomly changing subsample maximum lags
-    if nrun > 1 and 'bin_func' in kwargs.keys() and not isinstance(kwargs.get('bin_func'), Iterable):
+    if n_variograms > 1 and 'bin_func' in kwargs.keys() and not isinstance(kwargs.get('bin_func'), Iterable):
         warnings.warn('Using a named binning function of scikit-gstat might provide different binnings for each '
                       'independent run. To remediate that issue, pass bin_func as an Iterable of right bin edges, '
                       '(or use default bin_func).')
@@ -670,24 +670,24 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
 
     # Derive the variogram
     # Differentiate between 1 core and several cores for multiple runs
-    # All runs have random sampling inherent to their subfunctions, so we provide the same input arguments
-    if nproc == 1:
+    # All variogram runs have random sampling inherent to their subfunctions, so we provide the same input arguments
+    if n_jobs == 1:
         if verbose:
             print('Using 1 core...')
 
         list_df_run = []
-        for i in range(nrun):
+        for i in range(n_variograms):
 
-            argdict = {'i': i, 'imax': nrun, **args, **kwargs}
+            argdict = {'i': i, 'imax': n_variograms, **args, **kwargs}
             df_run = _wrapper_get_empirical_variogram(argdict=argdict)
 
             list_df_run.append(df_run)
     else:
         if verbose:
-            print('Using ' + str(nproc) + ' cores...')
+            print('Using ' + str(n_jobs) + ' cores...')
 
-        pool = mp.Pool(nproc, maxtasksperchild=1)
-        argdict = [{'i': i, 'imax': nrun, **args, **kwargs} for i in range(nrun)]
+        pool = mp.Pool(n_jobs, maxtasksperchild=1)
+        argdict = [{'i': i, 'imax': n_variograms, **args, **kwargs} for i in range(n_variograms)]
         list_df_run = pool.map(_wrapper_get_empirical_variogram, argdict, chunksize=1)
         pool.close()
         pool.join()
@@ -696,7 +696,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
     df = pd.concat(list_df_run)
 
     # For a single run, no multi-run sigma estimated
-    if nrun == 1:
+    if n_variograms == 1:
         df['err_exp'] = np.nan
     # For several runs, group results, use mean as empirical variogram, estimate sigma, and sum the counts
     else:
