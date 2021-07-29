@@ -1125,7 +1125,7 @@ def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], lis
 
 def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[np.ndarray] = None,
                    perc_min_valid: float = 80., statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad],
-                   patch_shape: str = 'circular', nmax: int = 1000, verbose: bool = False,
+                   patch_shape: str = 'circular', n_patches: int = 1000, verbose: bool = False,
                    random_state: None | int | np.random.RandomState | np.random.Generator = None) -> pd.DataFrame:
 
     """
@@ -1138,7 +1138,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     :param perc_min_valid: minimum valid area in the patch
     :param statistics: list of statistics to compute in the patch
     :param patch_shape: shape of patch ['circular' or 'rectangular']
-    :param nmax: maximum number of patch to sample
+    :param n_patches: maximum number of patches to sample
     :param verbose: print statement to console
     :param random_state: random state or seed number to use for calculations (to fix random sampling during testing)
 
@@ -1184,9 +1184,9 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     list_cadrant = [[i, j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
     u = 0
     # Keep sampling while there is cadrants left and below maximum number of patch to sample
-    remaining_nsamp = nmax
+    remaining_nsamp = n_patches
     list_df = []
-    while len(list_cadrant) > 0 and u < nmax:
+    while len(list_cadrant) > 0 and u < n_patches:
 
         # Draw a random coordinate from the list of cadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
@@ -1215,10 +1215,10 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
             nb_pixel_valid = len(patch[np.isfinite(patch)])
             if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
                 u=u+1
-                if u > nmax:
+                if u > n_patches:
                     break
                 if verbose:
-                    print('Found valid cadrant ' + str(u)+ ' (maximum: '+str(nmax)+')')
+                    print('Found valid cadrant ' + str(u) + ' (maximum: ' + str(n_patches) + ')')
 
                 df = pd.DataFrame()
                 df = df.assign(tile=[str(i) + '_' + str(j)])
@@ -1234,7 +1234,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
                 list_df.append(df)
 
         # Get remaining samples to draw
-        remaining_nsamp = nmax - u
+        remaining_nsamp = n_patches - u
         # Remove cadrants already sampled from list
         list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
 

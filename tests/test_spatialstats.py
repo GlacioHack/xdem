@@ -266,7 +266,7 @@ class TestPatchesMethod:
             gsd=gsd,
             area=area,
             random_state=42,
-            nmax=100
+            n_patches=100
         )
 
         # Check we get the expected shape
