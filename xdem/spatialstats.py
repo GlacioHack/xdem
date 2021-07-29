@@ -711,16 +711,18 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
 
     return df
 
-def fit_sum_variogram(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[Callable, list[float]]:
+def fit_sum_variogram(list_model: list[str], empirical_variogram: pd.DataFrame) -> tuple[Callable, list[float]]:
     """
-    Fit a multi-range variogram model to an empirical variogram, weighted based on sampling and elevation errors
+    Fit a multi-range variogram model to an empirical variogram, weighted least-squares based on sampling errors
 
     :param list_model: list of variogram models to sum for the fit: from short-range to long-ranges
-    :param emp_vgm_df: empirical variogram
+    :param empirical_variogram: empirical variogram
 
     :return: modelled variogram function, coefficients
     """
     # TODO: expand to other models than spherical, exponential, gaussian (more than 2 arguments)
+
+    # Define a sum of variogram function
     def vgm_sum(h, *args):
         fn = 0
         i = 0
@@ -731,34 +733,35 @@ def fit_sum_variogram(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
 
         return fn
 
-    # use shape of empirical variogram to assess rough boundaries/first estimates
-    n_average = np.ceil(len(emp_vgm_df.exp.values) / 10)
-    exp_movaverage = np.convolve(emp_vgm_df.exp.values, np.ones(int(n_average))/n_average, mode='valid')
+    # First, filter outliers
+    empirical_variogram = empirical_variogram[np.isfinite(empirical_variogram.exp.values)]
+
+    # Use shape of empirical variogram to assess rough boundaries/first estimates
+    n_average = np.ceil(len(empirical_variogram.exp.values) / 10)
+    exp_movaverage = np.convolve(empirical_variogram.exp.values, np.ones(int(n_average)) / n_average, mode='valid')
     grad = np.gradient(exp_movaverage, 2)
-    # maximum variance
+    # Maximum variance of the process
     max_var = np.max(exp_movaverage)
 
-    # to simplify things for scipy, let's provide boundaries and first guesses
+    # Simplify things for scipy: let's provide boundaries and first guesses
     p0 = []
     bounds = []
     for i in range(len(list_model)):
 
-        # use largest boundaries possible for our problem
+        # Use largest boundaries possible for our problem
         psill_bound = [0, max_var]
-        range_bound = [0, emp_vgm_df.bins.values[-1]]
+        range_bound = [0, empirical_variogram.bins.values[-1]]
 
-        # use psill evenly distributed
+        # Use psill evenly distributed
         psill_p0 = ((i+1)/len(list_model))*max_var
-        # use corresponding ranges
 
-        # this fails when no empirical value crosses this (too wide binning/nugget)
+        # Use corresponding ranges
+        # !! This fails when no empirical value crosses this (too wide binning/nugget)
         # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
-        # range_p0 = emp_vgm_df.bins.values[ind]
-        range_p0 = ((i+1)/len(list_model))*emp_vgm_df.bins.values[-1]
+        # range_p0 = empirical_variogram.bins.values[ind]
+        range_p0 = ((i+1)/len(list_model)) * empirical_variogram.bins.values[-1]
 
-        # TODO: if adding other variogram models, add condition here
-
-        # add bounds and guesses with same order as function arguments
+        # Add bounds and guesses with same order as function arguments
         bounds.append(range_bound)
         bounds.append(psill_bound)
 
@@ -767,22 +770,23 @@ def fit_sum_variogram(list_model: list[str], emp_vgm_df: pd.DataFrame) -> tuple[
 
     bounds = np.transpose(np.array(bounds))
 
-    if np.all(np.isnan(emp_vgm_df.err_exp.values)):
-        valid = ~np.isnan(emp_vgm_df.exp.values)
-        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid],
-                             emp_vgm_df.exp.values[valid], method='trf', p0=p0, bounds=bounds)
+    # If the error provided is all NaNs (single variogram run), or all zeros (two variogram runs), run without weights
+    if np.all(np.isnan(empirical_variogram.err_exp.values)) or np.all(empirical_variogram.err_exp.values == 0):
+        cof, cov = curve_fit(vgm_sum, empirical_variogram.bins.values, empirical_variogram.exp.values, method='trf',
+                             p0=p0, bounds=bounds)
+    # Otherwise, use a weighted fit
     else:
-        valid = np.logical_and(~np.isnan(emp_vgm_df.exp.values), ~np.isnan(emp_vgm_df.err_exp.values))
-        cof, cov = curve_fit(vgm_sum, emp_vgm_df.bins.values[valid], emp_vgm_df.exp.values[valid],
-                             method='trf', p0=p0, bounds=bounds, sigma=emp_vgm_df.err_exp.values[valid])
+        # We need to filter for possible no data in the error
+        valid = np.isfinite(empirical_variogram.err_exp.values)
+        cof, cov = curve_fit(vgm_sum, empirical_variogram.bins.values[valid], empirical_variogram.exp.values[valid],
+                             method='trf', p0=p0, bounds=bounds, sigma=empirical_variogram.err_exp.values[valid])
 
-    # rewriting the output function: couldn't find a way to pass this with functool.partial because arguments are unordered
+    # Provide the output function (couldn't find a way to pass this through functool.partial as arguments are unordered)
     def vgm_sum_fit(h):
         fn = 0
         i = 0
         for model in list_model:
             fn += skg.models.spherical(h, cof[i], cof[i+1])
-            # fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
             i += 2
 
         return fn

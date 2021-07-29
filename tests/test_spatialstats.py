@@ -161,7 +161,7 @@ class TestVariogram:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
 
         # Triple model fit
-        fun2, _ = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph', 'Sph'], emp_vgm_df=df)
+        fun2, _ = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph', 'Sph'], empirical_variogram=df)
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
 

@@ -86,7 +86,7 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
 # conveniently by :func:`xdem.spatialstats.sample_multirange_variogram`:
 df = xdem.spatialstats.sample_multirange_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, estimator='cressie')
+    values=dh.data, gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, estimator='cressie', random_state=42)
 
 # %%
 # We plot the empirical variogram:
@@ -118,9 +118,9 @@ xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
 # the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_variogram`, which
 # is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
-fun, params1 = xdem.spatialstats.fit_sum_variogram(['Sph'], emp_vgm_df=df)
+fun, params1 = xdem.spatialstats.fit_sum_variogram(['Sph'], empirical_variogram=df)
 
-fun2, params2 = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph'], emp_vgm_df=df)
+fun2, params2 = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph'], empirical_variogram=df)
 
 xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
                            xscale_range_split=[100, 1000, 10000])
@@ -162,7 +162,7 @@ areas_emp = [10 * 400 * 2 ** i for i in range(10)]
 for area_emp in areas_emp:
 
     #  First, sample intensively circular patches of a given area, and derive the mean elevation differences
-    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, nmax=200)
+    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, nmax=200, random_state=42)
     # Second, estimate the dispersion of the means of each patch, i.e. the standard error of the mean
     stderr_empirical = np.nanstd(df_patches['nanmedian'].values)
     list_stderr_empirical.append(stderr_empirical)

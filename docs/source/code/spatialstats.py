@@ -22,14 +22,14 @@ df_ns = xdem.spatialstats.nd_binning(dh.data.ravel(), list_var=[slope.ravel()], 
 err_dh = xdem.spatialstats.interp_nd_binning(df_ns, list_var_names=['slope'])
 
 # Sample empirical variogram
-df_vgm = xdem.spatialstats.sample_multirange_variogram(values=dh.data, gsd=dh.res[0], subsample=100, runs=10,
-                                                       n_variograms=10)
-# Fit sum of triple-range spherical model
-fun, coefs = xdem.spatialstats.fit_sum_variogram(list_model=['Sph', 'Sph', 'Sph'], emp_vgm_df=df_vgm)
+df_vgm = xdem.spatialstats.sample_multirange_variogram(values=dh.data, gsd=dh.res[0], subsample=50,
+                                                       random_state=42, runs=10)
+# Fit sum of double-range spherical model
+fun, coefs = xdem.spatialstats.fit_sum_variogram(list_model=['Sph', 'Sph'], empirical_variogram=df_vgm)
 
 # Calculate the area-averaged uncertainty with these models
 list_vgm = []
-for i in range(3):
+for i in range(2):
     list_vgm.append((coefs[2 * i], "Sph", coefs[2 * i + 1]))
 area = 1000
 neff = xdem.spatialstats.neff_circ(area, list_vgm)
