@@ -28,7 +28,7 @@ import geoutils as gu
 # %%
 # We start by loading example files including a difference of DEMs at Longyearbyen glacier, the reference DEM later used to derive
 # several terrain attributes, and the outlines to rasterize a glacier mask.
-# Prior to differencing, the DEMs were aligned using :class:`xdem.coreg.NuthKaab` as shown in
+# Prior to differencing, the DEMs were aligned using :ref:`coregistration_nuthkaab` as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
 
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
