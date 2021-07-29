@@ -120,7 +120,25 @@ reach a stationary variance.
 .. math::
     z_{dh} = \frac{dh(\textrm{var}_{1}, \textrm{var}_{2}, ...)}{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, ...)}
 
-To de-standardize estimations for a given subsample :math:`\mathbb{S}g`, possibly after further analysis of :ref:`spatialstats_corr` and :ref:`spatialstats_errorpropag`,
+To de-standardize later estimations of the dispersion of a given subsample of elevation differences,
+possibly after further analysis of :ref:`spatialstats_corr` and :ref:`spatialstats_errorpropag`,
+one simply needs to apply the opposite operation.
+
+For a single pixel :math:`\mathbb{P}`, the dispersion is directly the elevation measurement error evaluated for the
+explanatory variable of this pixel as, per construction, :math:`\sigma_{z_{dh}} = 1`:
+
+.. math::
+    \sigma_{dh}(\mathbb{P}}) = 1 \cdot \sigma_{dh}(\textrm{var}_{1}(\mathbb{P}, \textrm{var}_{2}(\mathbb{P}), ...)
+
+For a mean of pixels :math:`\overline{dh}_{mathbb{S}}` of the subsample :math:`\mathbb{S}`, the standard error of the mean
+of the standardized data :math:`\overline{\sigma_{z_{dh}}}_{\mathbb{S}}` can be de-standardized by multiplying by the
+average measurement error of the pixels in the subsample (evaluated through the explanatory variables of each pixel):
+
+.. math::
+    \sigma_{\overline{dh_{\mathbb{S}}}} = \overline{\sigma_{z_{dh}}}_{\mathbb{S}} \cdot \overline{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, ...)}_{\mathbb{S}}
+
+Estimating the standard error of the mean of the standardized data :math:`\overline{\sigma_{z_{dh}}}_{\mathbb{S}}` requires
+an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
 
 TODO: Add a new gallery example
 
