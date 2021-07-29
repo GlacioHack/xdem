@@ -70,7 +70,7 @@ sphinx_gallery_conf = {
     },
      # directory where function/class granular galleries are stored
     "backreferences_dir"  : "gen_modules/backreferences",
-    "doc_module": ("xdem", "geoutils")  # I honestly don't know what this is.
+    "doc_module": ("xdem", "geoutils")  # which function/class levels are used to create galleries
 }
 
 # Add any paths that contain templates here, relative to this directory.

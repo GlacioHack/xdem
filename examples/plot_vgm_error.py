@@ -23,7 +23,7 @@ correlations using :func:`xdem.spatialstats.sample_multirange_variogram` based o
 models using :func:`xdem.spatialstats.fit_sum_variogram`.
 Finally, we integrate the variogram models for varying surface areas to estimate the spatially integrated elevation
 measurement errors using :func:`xdem.spatialstats.neff_circ`, and empirically validate the improved robustness of
-our results using `xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
+our results using :func:`xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
 
 """
 # sphinx_gallery_thumbnail_number = 6
@@ -35,7 +35,7 @@ import geoutils as gu
 # %%
 # We start by loading example files including a difference of DEMs at Longyearbyen glacier and the outlines to rasterize
 # a glacier mask.
-# Prior to differencing, the DEMs were aligned using :class:`xdem.coreg.NuthKaab` as shown in
+# Prior to differencing, the DEMs were aligned using as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
 
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
@@ -59,7 +59,7 @@ print('NMAD: {:.2f} meters.'.format(xdem.spatialstats.nmad(dh.data)))
 # **Does this mean that every pixel has an independent measurement error of** :math:`\pm` **2.5 meters?**
 # Let's plot the elevation differences to visually check the quality of the data.
 plt.figure(figsize=(8, 5))
-dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
+_ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
 
 # %%
 # We clearly see that the residual elevation differences on stable terrain are not random. The positive and negative
@@ -75,17 +75,18 @@ dh.data[np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data)] = np.nan
 # %%
 # We plot the elevation differences after filtering to check that we successively removed the reminaing glacier signals.
 plt.figure(figsize=(8, 5))
-dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
+_ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
 
 # %%
 # To quantify the spatial correlation of the data, we sample an empirical variogram.
 # The empirical variogram describes the variance between the elevation differences of pairs of pixels depending on their
 # distance. This distance between pairs of pixels if referred to as spatial lag.
+#
 # To perform this procedure effectively, we use improved methods that provide efficient pairwise sampling methods for
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
 # conveniently by :func:`xdem.spatialstats.sample_multirange_variogram`:
 df = xdem.spatialstats.sample_multirange_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=50, runs=30, nrun=10, estimator='cressie')
+    values=dh.data, gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, estimator='cressie')
 
 # %%
 # We plot the empirical variogram:
@@ -110,11 +111,8 @@ xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 
 # %%
 # We identify:
-#   - a short-range (i.e., correlation length) correlation, likely due to effects of resolution. It has a large
-# partial sill (correlated variance), meaning that the elevation measurement errors are strongly correlated until a
-# range of ~100 m.
-#   - a longer range correlation, with a smaller partial sill, meaning the part of the elevation measurement errors
-#   remain correlated over a longer distance.
+#   - a short-range (i.e., correlation length) correlation, likely due to effects of resolution. It has a large partial sill (correlated variance), meaning that the elevation measurement errors are strongly correlated until a range of ~100 m.
+#   - a longer range correlation, with a smaller partial sill, meaning the part of the elevation measurement errors remain correlated over a longer distance.
 #
 # In order to show the difference between accounting only for the most noticeable, short-range correlation, or adding the
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
@@ -128,12 +126,12 @@ xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Sing
                            xscale_range_split=[100, 1000, 10000])
 
 # %%
-# The sum of two spherical models fits better, accouting for the small partial sill at longer ranges.
-
-# %%
-# **This longer range partial sill (correlated variance) is quite small, so is it really important to account for this
-# small additional "bump" in the variogram?**
-# We compute the precision of the DEM integrated over a certain surface area based on spatial integration of the
+# The sum of two spherical models fits better, accouting for the small partial sill at longer ranges. Yet this longer
+# range partial sill (correlated variance) is quite small...
+#
+# **So one could ask himself: is it really important to account for this small additional "bump" in the variogram?**
+#
+# To answer this, we compute the precision of the DEM integrated over a certain surface area based on spatial integration of the
 # variogram models using :func:`xdem.spatialstats.neff_circ`, with areas varying from pixel size to grid size.
 # Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas radidly.
 
@@ -178,16 +176,17 @@ plt.ylabel('Uncertainty in the mean elevation difference (m)')
 plt.xscale('log')
 plt.yscale('log')
 plt.legend()
+plt.show()
 
 # %%
 # Using a single-range variogram highly underestimates the measurement error integrated over an area, by over a factor
 # of ~100 for large surface areas. Using a double-range variogram brings us closer to the empirical error.
 #
 # **But, in this case, the error is still too small. Why?**
-# The small size of the sampling area against the very large range of the noise means that we might no verify the
-# assumption of second-order stationarity (see :ref:`spatialstats`). We might be missing even longer range correlations
-# in our analysis, due to the limits of the variogram sampling. In other words, a small part of the variance could be
-# fully correlated over a large part of the grid, i.e. have a vertical bias.
+# The small size of the sampling area against the very large range of the noise implies that we might not verify the
+# assumption of second-order stationarity (see :ref:`spatialstats`). Longer range correlations might be omitted by
+# our analysis, due to the limits of the variogram sampling. In other words, a small part of the variance could be
+# fully correlated over a large part of the grid: a vertical bias.
 #
 # As a first guess for this, let's examine the difference between mean and median to gain some insight on the central
 # tendency of our sample:
@@ -228,9 +227,11 @@ plt.ylabel('Uncertainty in the mean elevation difference (m)')
 plt.xscale('log')
 plt.yscale('log')
 plt.legend()
+plt.show()
 
 # %%
 # Our final estimation is now very close to the empirical error estimate.
-# Take-home points:
-#   1. Long-range correlations are very important to reliably estimate measurement errors integrated in space, even if they have a small partial sill (correlated variance)!
-#   2. Ideally, the grid must only contain correlation range smaller than the grid size, to verify second-order stationarity and provide robust variogram quantification. Otherwise, be wary of small biases of central tendency!
+#
+# Some take-home points:
+#   1. Long-range correlations are very important to reliably estimate measurement errors integrated in space, even if they have a small partial sill i.e. correlated variance,
+#   2. Ideally, the grid must only contain correlation patterns significantly smaller than the grid size to verify second-order stationarity. Otherwise, be wary of small biases of central tendency, i.e. fully correlated measurement errors!

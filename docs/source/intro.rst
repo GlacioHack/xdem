@@ -55,8 +55,9 @@ Quality-controlled DEMs aligned on high-accuracy data also exists, such as TanDE
 
 Those biases can be corrected using the methods described in :ref:`coregistration`.
 
-.. minigallery:: xdem.coreg.NuthKaab
-        :add-heading:
+.. minigallery:: xdem.coreg
+    :add-heading:
+    :heading-level: *
 
 Optimizing DEM relative accuracy
 --------------------------------
@@ -92,5 +93,7 @@ statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
-.. minigallery:: xdem.spatialstats.nd_binning
-        :add-heading:
+.. minigallery:: xdem.spatialstats
+    :add-heading:
+    :heading-level: *
+
