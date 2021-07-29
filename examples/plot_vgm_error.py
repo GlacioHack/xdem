@@ -85,8 +85,14 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # To perform this procedure effectively, we use improved methods that provide efficient pairwise sampling methods for
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
 # conveniently by :func:`xdem.spatialstats.sample_multirange_variogram`:
+
 df = xdem.spatialstats.sample_multirange_variogram(
     values=dh.data, gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, estimator='cressie', random_state=42)
+
+# %%
+# *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
+# the grid, and a* ``runs`` *argument to reduce the computing time of* ``sgstat.MetricSpace.RasterEquidistantMetricSpace``
+# *which, by default, samples more data for robustness.*
 
 # %%
 # We plot the empirical variogram:
@@ -158,11 +164,12 @@ for area in areas:
 # (Dehecq et al. (2020), Hugonnet et al., in prep). This method is implemented in :func:`xdem.spatialstats.patches_method`.
 # Here, we sample fewer areas to avoid for the patches method to run over long processing times, increasing from areas
 # of 5 pixels to areas of 10000 pixels exponentially.
+
 areas_emp = [10 * 400 * 2 ** i for i in range(10)]
 for area_emp in areas_emp:
 
     #  First, sample intensively circular patches of a given area, and derive the mean elevation differences
-    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, nmax=200, random_state=42)
+    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, n_patches=200, random_state=42)
     # Second, estimate the dispersion of the means of each patch, i.e. the standard error of the mean
     stderr_empirical = np.nanstd(df_patches['nanmedian'].values)
     list_stderr_empirical.append(stderr_empirical)
@@ -177,6 +184,10 @@ plt.xscale('log')
 plt.yscale('log')
 plt.legend()
 plt.show()
+
+# %%
+# *Note: in this example, we add a* ``random_state`` *argument to the patches method to yield a reproducible random
+# sampling, and set* ``n_patches`` *to limit computing time.*
 
 # %%
 # Using a single-range variogram highly underestimates the measurement error integrated over an area, by over a factor

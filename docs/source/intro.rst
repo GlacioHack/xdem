@@ -55,9 +55,8 @@ Quality-controlled DEMs aligned on high-accuracy data also exists, such as TanDE
 
 Those biases can be corrected using the methods described in :ref:`coregistration`.
 
-.. minigallery:: xdem.coreg
-    :add-heading:
-    :heading-level: *
+.. minigallery:: xdem.coreg.Coreg
+    :add-heading: Examples that use coregistration functions
 
 Optimizing DEM relative accuracy
 --------------------------------
@@ -73,7 +72,7 @@ higher-accuracy point elevation data), one can identify and correct other types 
 Those biases can be tackled by iteratively combining co-registration and bias-correction methods described
 in :ref:`coregistration` and :ref:`biascorr`.
 
-TODO: Add a plot on co-registration + bias correction between two DEMs
+TODO: add mini-gallery for bias correction methods
 
 Quantifying DEM precision
 -------------------------
@@ -93,7 +92,6 @@ statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
-.. minigallery:: xdem.spatialstats
-    :add-heading:
-    :heading-level: *
+.. minigallery:: xdem.spatialstats.sample_multirange_variogram xdem.spatialstats.nd_binning
+    :add-heading: Examples that use spatial statistics functions
 
