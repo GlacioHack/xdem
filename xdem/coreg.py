@@ -1472,7 +1472,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
             mode="constant",
             cval=1,
             preserve_range=True
-        ) > 0.1  # Due to different interpolation approaches, everything above 0.25 is assumed to be 1 (True)
+        ) > 0.1  # Due to different interpolation approaches, everything above 0.1 is assumed to be 1 (True)
 
     if dilate_mask:
         tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
