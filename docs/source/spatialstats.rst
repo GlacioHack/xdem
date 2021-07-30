@@ -126,7 +126,9 @@ reach a stationary variance.
 .. math::
     z_{dh} = \frac{dh(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}
 
-To de-standardize later estimations of the dispersion of a given subsample of elevation differences,
+where :math:`z_{dh}` is the standardized elevation difference sample.
+
+To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
 possibly after further analysis of :ref:`spatialstats_corr` and :ref:`spatialstats_errorpropag`,
 one simply needs to apply the opposite operation.
 
@@ -167,7 +169,37 @@ instrument noise and deformations (mid- to long-range correlations).
 Quantify spatial correlations
 """""""""""""""""""""""""""""
 
-Estimate empirical variogram:
+`Variograms <https://en.wikipedia.org/wiki/Variogram>`_ are functions that describe the spatial correlation of a sample.
+The variogram :math:`2\gamma(h)` is a function of the distance between two points, referred to as spatial lag :math:`l`
+(usually noted :math:`h`, here avoided to avoid confusion with the elevation and elevation differences).
+The output of a variogram is the correlated variance of the sample.
+
+.. math::
+        2\gamma(l) = \textrm{var}\left(Z(\textrm{s}_{1}) - Z(\textrm{s}_{2})\right)
+
+where :math:`Z(\textrm{s}_{i})` is the value taken by the sample at location :math:`\textrm{s}_{i}`, and sample positions
+:math:`\textrm{s}_{1}` and :math:`\textrm{s}_{2}` are separated by a distance :math:`l`.
+
+For elevation differences :math:`dh`, this translates into:
+
+.. math::
+        2\gamma_{dh}(l) = \textrm{var}\left(dh(\textrm{s}_{1}) - dh(\textrm{s}_{2})\right)
+
+The variogram essentially describes the spatial covariance :math:`C` in relation to the variance of the entire sample
+:math:`\sigma_{dh}^{2}`:
+
+.. math::
+        \gamma_{dh}(l) = \sigma_{dh}^{2} - C_{dh}(l)
+
+Historically, variograms have been estimated using point data and using all possible pairwise differences in the samples.
+This amounts to :math:`N^2` pairwise calculations when using :math:`N` samples, which is not particularly suited to grid
+data that contains many millions of points. Random subsampling of a large grid is unsatisfactory as it creates a
+specific clustering of pairwise samples, that unevenly represents lag classes (many samples at mid distances, but too
+few at short distances and long distances).
+To remedy this issue, ``xdem`` encapsulates a subsampling method described in `skgstat.MetricSpace.RasterEquidistantMetricSpace`
+which subsamples grid data with pairwise distances evenly distributed both across the grid and across 2D lag classes
+(in 2D, lag classes separated by a factor of :math:`\sqrt{2}` have an equal number of pairwise differences computed).
+
 
 .. literalinclude:: code/spatialstats.py
         :lines: 24-25
