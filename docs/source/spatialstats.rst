@@ -14,10 +14,10 @@ partly on the package `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/in
 The spatial statistics tools can be used to assess the precision of DEMs (see the definition of precision in :ref:`intro`).
 In particular, these tools help to:
 
-- account for non-stationarities of elevation measurement errors (e.g., varying precision of DEMs with terrain slope),
-- quantify the spatial correlation of measurement errors in DEMs (e.g., native spatial resolution, instrument noise),
-- estimate robust errors for observations integrated in space (e.g., average or sum of samples),
-- propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
+    - account for non-stationarities of elevation measurement errors (e.g., varying precision of DEMs with terrain slope),
+    - quantify the spatial correlation of measurement errors in DEMs (e.g., native spatial resolution, instrument noise),
+    - estimate robust errors for observations integrated in space (e.g., average or sum of samples),
+    - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
 .. contents:: Contents 
    :local:
@@ -34,17 +34,15 @@ Spatial statistics are valid if the variable of interest verifies `the assumptio
 <https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/>`_.
 That is, if the three following assumptions are verified:
 
-1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,
-2. The variance of the variable of interest is stationary in space, i.e. constant over sufficiently large areas.
-3. The covariance between two observations only depends on the spatial distance between them, i.e. no other factor than this distance plays a role in the spatial correlation of measurement errors.
-
-A sufficiently large averaging area is an area expected to fit within the spatial domain studied.
+    1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,
+    2. The variance of the variable of interest is stationary in space, i.e. constant over sufficiently large areas.
+    3. The covariance between two observations only depends on the spatial distance between them, i.e. no other factor than this distance plays a role in the spatial correlation of measurement errors.
 
 In other words, for a reliable analysis, the DEM should:
 
-1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
-2. Not contain measurement errors that vary significantly in space.
-3. Not contain factors that significantly affect the distribution of measurement errors, except for the spatial distance.
+    1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
+    2. Not contain measurement errors that vary significantly in space.
+    3. Not contain factors that significantly affect the distribution of measurement errors, except for the spatial distance.
 
 Quantifying the precision of a single DEM, or of a difference of DEMs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -75,6 +73,56 @@ including moving terrain that is generally of greater interest for analysis.
 As shown in Hugonnet et al. (in prep), accounting for :ref:`spatialstats_nonstationarity` is needed to reliably
 use stable terrain as a proxy for other types of terrain.
 
+.. _spatialstats_metrics:
+
+Metrics for DEM precision
+-------------------------
+
+Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a
+single pixel, for example :math:`\pm 2` meters at the 1\ :math:`\sigma` `confidence level <https://en.wikipedia.org/wiki/Confidence_interval>`_.
+
+However, there is some limitations to this simple metric:
+
+    - the variability of the pixel-wise precision is not reported. The pixel-wise precision can vary depending on terrain- or instrument-related factors, such as the terrain slope. In rare occurences, part of this variability has been accounted in recent DEM products, such as TanDEM-X global DEM that partitions the precision between flat and steep slopes (`Rizzoli et al. (2017) <https://doi.org/10.1016/j.isprsjprs.2017.08.008>`_),
+    - the area-wise precision of a DEM is generally not reported. Depending on the inherent resolution of the DEM, and patterns of noise that might plague the observations, the precision of a DEM over a surface area can vary significantly.
+
+Pixel-wise elevation measurement error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The pixel-wise measurement error corresponds directly to the dispersion :math:`\sigma_{dh}` of the sample :math:`dh`.
+
+To estimate the pixel-wise measurement error for elevation data, two issues arise:
+
+    1. The dispersion :math:`\sigma_{dh}` cannot be estimated directly on changing terrain,
+    2. The dispersion :math:`\sigma_{dh}` can show important non-stationarities.
+
+In :ref:`spatialstats_nonstationarity`, we describe how to quantify the measurement error as a function of
+several explanatory variables by using stable terrain as a proxy.
+
+Spatially-integrated elevation measurement error
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The `standard error <https://en.wikipedia.org/wiki/Standard_error>`_ of a statistic is the dispersion of the
+distribution of this statistic. For spatially distributed samples, the standard error of the mean corresponds to the
+error of a mean (or sum) of samples in space.
+
+The standard error :math:`\sigma_{\overline{dh}}` of the mean :math:`\overline{dh}` of the elevation changes
+samples :math:`dh` can be written as:
+
+.. math::
+
+        \sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
+
+where :math:`\sigma_{dh}` is the dispersion of the samples, and :math:`N` is the number of **independent** observations.
+
+To estimate the standard error of the mean for elevation data, two issue arises:
+
+    1. The dispersion of elevation differences :math:`\sigma_{dh}` is not stationary, a necessary assumption for spatial statistics.
+    2. The number of pixels in the DEM :math:`N` does not equal the number of independent observations in the DEMs, because of spatial correlations.
+
+In :ref:`spatialstats_corr` and `spatialstats_errorpropag`, we describe how to account for spatial correlations and
+use those to estimate a number of effective samples to integrate and propagate measurement errors in space.
+
 Workflow for DEM precision estimation
 -------------------------------------
 
@@ -83,15 +131,11 @@ Workflow for DEM precision estimation
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Elevation data has been shown to contain significant non-stationarities in elevation measurement errors (`Hugonnet
+Elevation data contains significant non-stationarities in elevation measurement errors (`Hugonnet
 et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Hugonnet et al. (in prep)).
 
-``xdem`` contains method to **quantify** these non-stationarities along several explanatory variables,
+``xdem`` provides tools to **quantify** these non-stationarities along several explanatory variables,
 **model** those numerically to estimate an elevation measurement error, and **standardize** them for further analysis.
-
-.. minigallery:: xdem.spatialstats.nd_binning
-        :add-heading: Examples that deal with non-stationarities
-        :heading-level: "
 
 Quantify and model non-stationarites
 """"""""""""""""""""""""""""""""""""
@@ -104,17 +148,26 @@ of elevation observations.
 .. math::
     \sigma_{dh} = \sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...}) \neq \textrm{constant}
 
-Owing to the large number of samples of elevation data, we can easily estimate this variability by `binning *
-<https://en.wikipedia.org/wiki/Data_binning>`_ the data and estimating the statistical dispersion for these
-explanatory variables (see :ref:`robuststats_meanstd`):
+Owing to the large number of samples of elevation data, we can easily estimate this variability by `binning
+<https://en.wikipedia.org/wiki/Data_binning>`_ the data and estimating the statistical dispersion (see
+:ref:`robuststats_meanstd`) across several explanatory variables using :func:`xdem.spatialstats.nd_binning`.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 17-19
+        :lines: 18-19
+        :language: python
 
 The significant explanatory variables typically are:
+
     - the terrain slope and terrain curvature (see :ref:`terrain_attributes) that can explain a large part of the terrain-related variability in measurement error,
     - the quality of stereo-correlation that can explain a large part of the measurement error of DEMs generated by stereophotogrammetry,
     - the interferometric coherence that can explain a large part of the measurement error of DEMs generated by `InSAR <https://en.wikipedia.org/wiki/Interferometric_synthetic-aperture_radar>`_.
+
+Once quantified, the non-stationarities can be modelled numerically by linear interpolation across several
+variables using :func:`xdem.spatialstats.interp_nd_binning`.
+
+.. literalinclude:: code/spatialstats.py
+        :lines: 20
+        :language: python
 
 Standardize elevation differences for further analysis
 """"""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -150,6 +203,10 @@ requires an analysis of spatial correlation and a spatial integration of this co
 
 TODO: Add a gallery example on the standardization
 
+.. minigallery:: xdem.spatialstats.nd_binning
+        :add-heading: Examples that deal with non-stationarities
+        :heading-level: "
+
 .. _spatialstats_corr:
 
 Spatial correlation of elevation measurement errors
@@ -159,12 +216,8 @@ Spatial correlation of elevation measurement errors correspond to a dependency b
 close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
 instrument noise and deformations (mid- to long-range correlations).
 
-``xdem`` contains method to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
+``xdem`` provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
 **model** correlations simultaneously at multiple ranges.
-
-.. minigallery:: xdem.spatialstats.sample_multirange_variogram
-        :add-heading: Examples that deal with spatial correlations
-        :heading-level: "
 
 Quantify spatial correlations
 """""""""""""""""""""""""""""
@@ -191,33 +244,63 @@ The variogram essentially describes the spatial covariance :math:`C` in relation
 .. math::
         \gamma_{dh}(l) = \sigma_{dh}^{2} - C_{dh}(l)
 
-Historically, variograms have been estimated using point data and using all possible pairwise differences in the samples.
-This amounts to :math:`N^2` pairwise calculations when using :math:`N` samples, which is not particularly suited to grid
-data that contains many millions of points. Random subsampling of a large grid is unsatisfactory as it creates a
-specific clustering of pairwise samples, that unevenly represents lag classes (many samples at mid distances, but too
-few at short distances and long distances).
-To remedy this issue, ``xdem`` encapsulates a subsampling method described in `skgstat.MetricSpace.RasterEquidistantMetricSpace`
-which subsamples grid data with pairwise distances evenly distributed both across the grid and across 2D lag classes
-(in 2D, lag classes separated by a factor of :math:`\sqrt{2}` have an equal number of pairwise differences computed).
+Empirical variograms are variograms estimated directly by `binned <https://en.wikipedia.org/wiki/Data_binning>`_ analysis
+of variance of the data. Historically, empirical variograms were estimated for point data by calculating all possible
+pairwise differences in the samples. This amounts to :math:`N^2` pairwise calculations for :math:`N` samples, which is
+not well-suited to grid data that contains many millions of points and would be impossible to comupute. Thus, in order
+to estimate a variogram for large grid data, subsampling is necessary.
 
+Random subsampling of the grid samples used is a solution, but often unsatisfactory as it creates a clustering
+of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
+few at short distances and long distances).
+
+To remedy this issue, ``xdem`` provides an empirical variogram estimation tool :func:`xdem.spatialstats.sample_empirical_variogram`
+ that encapsulates a pairwise subsampling method described in ``skgstat.MetricSpace.RasterEquidistantMetricSpace``.
+This method compares pairwise distances between a center subset and equidistant subsets iteratively across a grid, based on
+`sparse matrices <https://en.wikipedia.org/wiki/Sparse_matrix>`_ routines computing pairwise distances of two separate
+subsets, as in `scipy.cdist <https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html>`_
+(instead of using pairwise distances within the same subset, as implemented in most spatial statistics packages).
+The resulting pairwise differences are evenly distributed across the grid and across lag classes (in 2 dimensions, this
+means that lag classes separated by a factor of :math:`\sqrt{2}` have an equal number of pairwise differences computed).
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 24-25
+        :lines: 25-26
+        :language: python
+
+The variogram is returned as a ``pd.Dataframe`` object.
+
+With all spatial lags sampled evenly, estimating a variogram requires significantly less samples, increasing the
+robustness of the spatial correlation estimation and decreasing computing time!
 
 Model spatial correlations
 """"""""""""""""""""""""""
 
-Fit a multiple-range model:
+Once an empirical variogram is estimated, fitting a function model allows to simplify later analysis by directly
+providing a function form (e.g., for kriging equations, or uncertainty analysis - see :ref:`spatialstats_errorpropag`),
+which would otherwise have to be numerically modelled.
+
+Generally, in spatial statistics, a single model is used to describe the correlation in the data.
+In elevation data, however, spatial correlations are observed at different scales, which requires fitting a sum of models at
+multiple ranges (introduced in `Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_ for glaciology
+applications).
+
+This can be performed through the function :func:`xdem.spatialstats.fit_sum_model_variogram`, which expects as input a
+``pd.Dataframe`` variogram.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 27-28
+        :lines: 28
+        :language: python
+
+.. minigallery:: xdem.spatialstats.sample_empirical_variogram
+        :add-heading: Examples that deal with spatial correlations
+        :heading-level: "
 
 .. _spatialstats_errorpropag:
 
 Spatially integrated measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Deduce an effective sample size, and elevation measurement error:
+After quantifying and modelling spatial correlations, those an effective sample size, and elevation measurement error:
 
 .. literalinclude:: code/spatialstats.py
         :lines: 30-33
@@ -230,40 +313,3 @@ Propagation of correlated errors
 TODO: Add this section based on Krige's relation (Webster & Oliver, 2007), Hugonnet et al. (in prep)
 
 
-Metrics for DEM precision
--------------------------
-
-Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a single pixel, for example :math:`\pm 2` meters.
-
-However, there is several limitations to this metric:
-
-- studies have shown significant variability of elevation measurement errors with terrain attributes, such as the slope, but also with the type of terrain
-
-
-Pixel-wise elevation measurement error
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-TODO
-
-
-Spatially-integrated elevation measurement error
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The standard error (SE) of a statistic is the standard deviation of the distribution of this statistic.
-For spatially distributed samples, the standard error of the mean (SEM) is of great interest as it allows quantification of the error of a mean (or sum) of samples in space.
-
-The standard error  :math:`\sigma_{\overline{dh}}` of the mean :math:`\overline{dh}` of elevation changes samples :math:`dh` is typically derived as:
-
-.. math::
-
-        \sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
-
-where :math:`\sigma_{dh}` is the dispersion of the samples, and :math:`N` is the number of **independent** observations.
-
-However, several issues arise to estimate the standard error of a mean of elevation observations samples:
-
-1. The dispersion :math:`\sigma_{dh}` cannot be estimated directly on changing terrain that we are usually interested in measuring (e.g., glacier, snow, forest).
-2. The dispersion :math:`\sigma_{dh}` typically shows important non-stationarities (e.g., an error 10 times as large on steep slopes than flat slopes).
-3. The number of samples :math:`N` is generally not equal to the number of sampled DEM pixels, as those are not independent in space and the Ground Sampling Distance of the DEM does not necessarily correspond to its effective resolution.
-
-Note that the SE represents completely stochastic (random) errors, and is therefore not accounting for possible remaining systematic errors have been accounted for, e.g. using one or multiple :ref:`coregistration` approaches.
