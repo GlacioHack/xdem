@@ -17,6 +17,8 @@ to first resort to outlier filtering (see :ref:`filters`) and perform analysis u
 .. contents:: Contents 
    :local:
 
+.. _robuststats_meanstd:
+
 Measures of central tendency and dispersion of a sample
 --------------------------------------------------------
 
@@ -63,6 +65,8 @@ When working with weighted data, the difference between the 84\ :sup:`th` and 16
 
 The NMAD is used by default for estimating elevation measurement errors in :ref:`spatialstats`.
 
+.. _robuststats_corr:
+
 Measures of correlation
 -----------------------
 
@@ -90,6 +94,8 @@ estimators such as Dowd's variogram based on medians (`Dowd (1984) <https://en.w
 where :math:`h` is the spatial lag and :math:`Z_{x_{i}}` is the value of the sample at the location :math:`x_{i}`.
 
 Dowd's variogram is used by default to estimate spatial auto-correlation of elevation measurement errors in :ref:`spatialstats`.
+
+.. _robuststats_regression:
 
 Regression analysis
 -------------------
