@@ -83,6 +83,12 @@ Workflow for DEM precision estimation
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Elevation data has been shown to contain significant non-stationarities in elevation measurement errors (`Hugonnet
+et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Hugonnet et al. (in prep)).
+
+``xdem`` contains method to **quantify** these non-stationarities along several explanatory variables,
+**model** those numerically to estimate an elevation measurement error, and **standardize** them for further analysis.
+
 .. minigallery:: xdem.spatialstats.nd_binning
         :add-heading: Examples that deal with non-stationarities
         :heading-level: "
@@ -97,7 +103,6 @@ of elevation observations.
 
 .. math::
     \sigma_{dh} = \sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...}) \neq \textrm{constant}
-
 
 Owing to the large number of samples of elevation data, we can easily estimate this variability by `binning *
 <https://en.wikipedia.org/wiki/Data_binning>`_ the data and estimating the statistical dispersion for these
@@ -136,10 +141,10 @@ of the standardized data :math:`\overline{\sigma_{z_{dh}}}\vert_{\mathbb{S}}` ca
 average measurement error of the pixels in the subsample, evaluated through the explanatory variables of each pixel:
 
 .. math::
-    \sigma_{\overline{dh}}\vert_{\mathbb{S}} = \overline{\sigma_{z_{dh}}}\vert_{\mathbb{S}} \cdot \overline{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}\vert_{\mathbb{S}}
+    \sigma_{\overline{dh}}\vert_{\mathbb{S}} = \sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}} \cdot \overline{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}\vert_{\mathbb{S}}
 
-Estimating the standard error of the mean of the standardized data :math:`\overline{\sigma_{z_{dh}}}\vert_{\mathbb{S}}` requires
-an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
+Estimating the standard error of the mean of the standardized data :math:`\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}`
+requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
 
 TODO: Add a gallery example on the standardization
 
@@ -148,7 +153,12 @@ TODO: Add a gallery example on the standardization
 Spatial correlation of elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-TODO: Add this section based Rolstad et al. (2009), Dehecq et al. (2020), Hugonnet et al. (in prep)
+Spatial correlation of elevation measurement errors correspond to a dependency between measurement errors of spatially
+close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
+instrument noise and deformations (mid- to long-range correlations).
+
+``xdem`` contains method to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
+**model** correlations simultaneously at multiple ranges.
 
 .. minigallery:: xdem.spatialstats.sample_multirange_variogram
         :add-heading: Examples that deal with spatial correlations
