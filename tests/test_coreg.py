@@ -505,7 +505,20 @@ class TestCoregClass:
         # Statistics are only calculated on finite values, so all of these should be finite as well.
         assert np.all(np.isfinite(stats))
 
+        # Copy the TBA DEM and set a square portion to nodata
+        tba = self.tba.copy()
+        tba.data[0, 450:500, 450:500] = -9999
+        tba.set_ndv(-9999)
 
+        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
+
+        # Align the DEM and apply the blockwise to a zero-array (to get the zshift)
+        aligned = blockwise.fit(self.ref, tba).apply(tba)
+        zshift = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform)
+
+        # Validate that the zshift is not something crazy high and that no negative values exist in the data.
+        assert np.nanmax(np.abs(zshift)) < 50
+        assert np.count_nonzero(aligned.data.filled(0) < -50) == 0
 
 
     def test_coreg_raster_and_ndarray_args(_) -> None:
