@@ -3,13 +3,13 @@ import xdem
 import geoutils as gu
 import numpy as np
 
+
 # Load data
 dh = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ddem"))
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 glacier_mask = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 mask = glacier_mask.create_mask(dh)
-
-# Get slope for non-stationarity
-slope = xdem.terrain.get_terrain_attribute(dh.data, resolution=dh.res[0], attribute=['slope'])
+slope = xdem.terrain.get_terrain_attribute(ref_dem.data, resolution=ref_dem.res[0], attribute=['slope'])
 
 # Keep only stable terrain data
 dh.data[mask] = np.nan
