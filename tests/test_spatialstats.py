@@ -38,7 +38,7 @@ class TestVariogram:
         diff, mask = load_ref_and_diff()[1:3]
 
         # Check the variogram estimation runs for a random state
-        df = xdem.spatialstats.sample_multirange_variogram(
+        df = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50,
             random_state=42, runs=2)
 
@@ -48,7 +48,7 @@ class TestVariogram:
         assert all(np.isnan(df.err_exp.values))
 
         # Test multiple runs
-        df2 = xdem.spatialstats.sample_multirange_variogram(
+        df2 = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50,
             random_state=42, runs=2, n_variograms=2)
 
@@ -67,7 +67,7 @@ class TestVariogram:
         diff, mask = load_ref_and_diff()[1:3]
 
         # Check the variogram estimation runs for several methods
-        df = xdem.spatialstats.sample_multirange_variogram(
+        df = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
             subsample_method=subsample_method)
 
@@ -86,29 +86,29 @@ class TestVariogram:
         # Check the function raises a warning for optional arguments incorrect to the method
         with pytest.warns(UserWarning):
             # An argument only use by cdist with a pdist method
-            df = xdem.spatialstats.sample_multirange_variogram(
+            df = xdem.spatialstats.sample_empirical_variogram(
                 values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
                 subsample_method='pdist_ring', **cdist_args)
 
         with pytest.warns(UserWarning):
             # Same here
-            df = xdem.spatialstats.sample_multirange_variogram(
+            df = xdem.spatialstats.sample_empirical_variogram(
                 values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **pdist_args)
 
         with pytest.warns(UserWarning):
             # Should also raise a warning for a nonsense argument
-            df = xdem.spatialstats.sample_multirange_variogram(
+            df = xdem.spatialstats.sample_empirical_variogram(
                 values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **nonsense_args)
 
         # Check the function passes optional arguments specific to pdist methods without warning
-        df = xdem.spatialstats.sample_multirange_variogram(
+        df = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
             subsample_method='pdist_ring', **pdist_args)
 
         # Check the function passes optional arguments specific to cdist methods without warning
-        df = xdem.spatialstats.sample_multirange_variogram(
+        df = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
             subsample_method='cdist_equidistant', runs=2, **cdist_args)
 
@@ -136,7 +136,7 @@ class TestVariogram:
         df = df.assign(bins=x, exp=y_simu, err_exp=sigma)
 
         # Run the fitting
-        fun, params_est = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph', 'Sph'], df)
+        fun, params_est = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph', 'Sph'], df)
 
         for i in range(len(params_est)):
             # Assert all parameters were correctly estimated within a 30% relative margin
@@ -152,16 +152,16 @@ class TestVariogram:
         diff, mask = load_ref_and_diff()[1:3]
 
         # Check the variogram estimation runs for a random state
-        df = xdem.spatialstats.sample_multirange_variogram(
+        df = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50, random_state=42, runs=10)
 
         # Single model fit
-        fun, _ = xdem.spatialstats.fit_sum_variogram(['Sph'], df)
+        fun, _ = xdem.spatialstats.fit_sum_model_variogram(['Sph'], df)
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
 
         # Triple model fit
-        fun2, _ = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph', 'Sph'], empirical_variogram=df)
+        fun2, _ = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph', 'Sph'], empirical_variogram=df)
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
 

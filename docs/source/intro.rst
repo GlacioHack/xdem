@@ -92,6 +92,6 @@ statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
-.. minigallery:: xdem.spatialstats.sample_multirange_variogram xdem.spatialstats.nd_binning
+.. minigallery:: xdem.spatialstats.sample_empirical_variogram xdem.spatialstats.nd_binning
     :add-heading: Examples that use spatial statistics functions
 

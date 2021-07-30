@@ -18,9 +18,9 @@ several methods exist to derive the related measurement error integrated in spac
 
 Here, we show an example in which we estimate spatially integrated elevation measurement errors for a DEM difference of
 Longyearbyen glacier, demonstrated in :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py`. We first quantify the spatial
-correlations using :func:`xdem.spatialstats.sample_multirange_variogram` based on routines of `scikit-gstat
+correlations using :func:`xdem.spatialstats.sample_empirical_variogram` based on routines of `scikit-gstat
 <https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then model the empirical variogram using a sum of variogram
-models using :func:`xdem.spatialstats.fit_sum_variogram`.
+models using :func:`xdem.spatialstats.fit_sum_model_variogram`.
 Finally, we integrate the variogram models for varying surface areas to estimate the spatially integrated elevation
 measurement errors using :func:`xdem.spatialstats.neff_circ`, and empirically validate the improved robustness of
 our results using :func:`xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
@@ -84,9 +84,9 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 #
 # To perform this procedure effectively, we use improved methods that provide efficient pairwise sampling methods for
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
-# conveniently by :func:`xdem.spatialstats.sample_multirange_variogram`:
+# conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
 
-df = xdem.spatialstats.sample_multirange_variogram(
+df = xdem.spatialstats.sample_empirical_variogram(
     values=dh.data, gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, estimator='cressie', random_state=42)
 
 # %%
@@ -122,11 +122,11 @@ xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 #
 # In order to show the difference between accounting only for the most noticeable, short-range correlation, or adding the
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
-# the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_variogram`, which
+# the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_model_variogram`, which
 # is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
-fun, params1 = xdem.spatialstats.fit_sum_variogram(['Sph'], empirical_variogram=df)
+fun, params1 = xdem.spatialstats.fit_sum_model_variogram(['Sph'], empirical_variogram=df)
 
-fun2, params2 = xdem.spatialstats.fit_sum_variogram(['Sph', 'Sph'], empirical_variogram=df)
+fun2, params2 = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph'], empirical_variogram=df)
 
 xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
                            xscale_range_split=[100, 1000, 10000])

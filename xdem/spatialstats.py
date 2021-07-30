@@ -357,7 +357,7 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
                                          pdist_multi_ranges: Optional[list[float]] = None, **kwargs) -> pd.DataFrame:
     """
     (Not used by default)
-    Aggregating subfunction of sample_multirange_variogram for pdist methods.
+    Aggregating subfunction of sample_empirical_variogram for pdist methods.
     The pairwise differences are calculated within each subsample.
     """
 
@@ -532,11 +532,11 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
     return get_variogram(**argdict)
 
 
-def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float = None, coords: np.ndarray = None,
-                                subsample: int = 10000, subsample_method: str = 'cdist_equidistant',
-                                n_variograms: int = 1, n_jobs: int = 1, verbose=False,
-                                random_state: None | np.random.RandomState | np.random.Generator | int = None,
-                                **kwargs) -> pd.DataFrame:
+def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float = None, coords: np.ndarray = None,
+                               subsample: int = 10000, subsample_method: str = 'cdist_equidistant',
+                               n_variograms: int = 1, n_jobs: int = 1, verbose=False,
+                               random_state: None | np.random.RandomState | np.random.Generator | int = None,
+                               **kwargs) -> pd.DataFrame:
     """
     Sample empirical variograms with binning adaptable to multiple ranges and spatial subsampling adapted for raster data.
     By default, subsampling is based on RasterEquidistantMetricSpace implemented in scikit-gstat. This method samples more
@@ -730,7 +730,7 @@ def sample_multirange_variogram(values: Union[np.ndarray,RasterType], gsd: float
 
     return df
 
-def fit_sum_variogram(list_model: list[str], empirical_variogram: pd.DataFrame) -> tuple[Callable, list[float]]:
+def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataFrame) -> tuple[Callable, list[float]]:
     """
     Fit a multi-range variogram model to an empirical variogram, weighted least-squares based on sampling errors
 
@@ -1248,8 +1248,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
              xscale='linear', xscale_range_split: Optional[list] = None):
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
-    Input dataframe is expected to be the output of xdem.spatialstats.sample_multirange_variogram.
-    Input function model is expected to be the output of xdem.spatialstats.fit_sum_variogram.
+    Input dataframe is expected to be the output of xdem.spatialstats.sample_empirical_variogram.
+    Input function model is expected to be the output of xdem.spatialstats.fit_sum_model_variogram.
 
     :param df: dataframe of empirical variogram
     :param list_fit_fun: list of model function fits
