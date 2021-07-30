@@ -518,7 +518,13 @@ class TestCoregClass:
 
         # Validate that the zshift is not something crazy high and that no negative values exist in the data.
         assert np.nanmax(np.abs(zshift)) < 50
-        assert np.count_nonzero(aligned.data.filled(0) < -50) == 0
+        assert np.count_nonzero(aligned.data.compressed() < -50) == 0
+
+        # Check that coregistration improved the alignment
+        ddem_post = (aligned - self.ref).data.compressed()
+        ddem_pre = (tba - self.ref).data.compressed()
+        assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
+        assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
 
 
     def test_coreg_raster_and_ndarray_args(_) -> None:
