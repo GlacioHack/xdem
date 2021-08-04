@@ -37,7 +37,7 @@ ax1.plot(0, 1, "^k", transform=ax1.transAxes, clip_on=False)
 # Non-stationary mean and stationary variance
 ax2.plot(x, y_rand2 + y_mean, color='tab:olive', linewidth=0.5)
 ax2.plot(x, y_mean, color='black', label='Mean', linestyle='dashed')
-ax2.plot(x, y_mean + 2*sig, color='tab:gray', label='Dispersion (2$\sigma$)', linestyle='dashed')
+ax2.plot(x, y_mean + 2*sig, color='tab:gray', label='Dispersion (2$\\sigma$)', linestyle='dashed')
 ax2.plot(x, y_mean - 2*sig, color='tab:gray', linestyle='dashed')
 ax2.set_xlim((0,1))
 ax2.set_title('Non-stationary mean\nStationary variance')
