@@ -195,7 +195,7 @@ for s, c in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
 
 # %%
 # The same function can be used to estimate the spatial distribution of the elevation measurement error over the area:
-maxc = np.maximum(profc, planc)
+maxc = np.maximum(np.abs(profc), np.abs(planc))
 dh_err = slope_curv_to_dh_err((slope, maxc))
 
 plt.figure(figsize=(8, 5))
