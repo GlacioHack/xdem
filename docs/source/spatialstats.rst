@@ -38,6 +38,9 @@ That is, if the three following assumptions are verified:
     2. The variance of the variable of interest is stationary in space, i.e. constant over sufficiently large areas.
     3. The covariance between two observations only depends on the spatial distance between them, i.e. no other factor than this distance plays a role in the spatial correlation of measurement errors.
 
+.. plot:: code/spatialstats_stationarity_assumption.py
+    :width: 90%
+
 In other words, for a reliable analysis, the DEM should:
 
     1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
