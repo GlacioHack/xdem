@@ -19,4 +19,4 @@ dh.data[mask] = np.nan
 df_ns = xdem.spatialstats.nd_binning(dh.data.ravel(), list_var=[slope.ravel()], list_var_names=['slope'],
                                      statistics=['count', xdem.spatialstats.nmad], list_var_bins=30)
 
-xdem.spatialstats.plot_1d_binning(df_ns, 'slope', 'nmad', 'Slope (degrees)', 'NMAD of dh (m)')
+xdem.spatialstats.plot_1d_binning(df_ns, 'slope', 'nmad', 'Slope (degrees)', 'Elevation measurement error (m)')

@@ -99,7 +99,7 @@ To estimate the pixel-wise measurement error for elevation data, two issues aris
     1. The dispersion :math:`\sigma_{dh}` cannot be estimated directly on changing terrain,
     2. The dispersion :math:`\sigma_{dh}` can show important non-stationarities.
 
-In :ref:`spatialstats_nonstationarity`, we describe how to quantify the measurement error as a function of
+The section :ref:`spatialstats_nonstationarity` describes how to quantify the measurement error as a function of
 several explanatory variables by using stable terrain as a proxy.
 
 Spatially-integrated elevation measurement error
@@ -123,8 +123,8 @@ To estimate the standard error of the mean for elevation data, two issue arises:
     1. The dispersion of elevation differences :math:`\sigma_{dh}` is not stationary, a necessary assumption for spatial statistics.
     2. The number of pixels in the DEM :math:`N` does not equal the number of independent observations in the DEMs, because of spatial correlations.
 
-In :ref:`spatialstats_corr` and `spatialstats_errorpropag`, we describe how to account for spatial correlations and
-use those to estimate a number of effective samples to integrate and propagate measurement errors in space.
+The sections :ref:`spatialstats_corr` and :ref:`spatialstats_errorpropag` describe how to account for spatial correlations
+and use those to integrate and propagate measurement errors in space.
 
 Workflow for DEM precision estimation
 -------------------------------------
@@ -134,8 +134,7 @@ Workflow for DEM precision estimation
 Non-stationarity in elevation measurement errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Elevation data contains significant non-stationarities in elevation measurement errors (`Hugonnet
-et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Hugonnet et al. (in prep)).
+Elevation data contains significant non-stationarities in elevation measurement errors.
 
 ``xdem`` provides tools to **quantify** these non-stationarities along several explanatory variables,
 **model** those numerically to estimate an elevation measurement error, and **standardize** them for further analysis.
@@ -172,20 +171,32 @@ Once quantified, the non-stationarities can be modelled numerically by linear in
 variables using :func:`xdem.spatialstats.interp_nd_binning`.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 20
+        :lines: 22
         :language: python
 
 Standardize elevation differences for further analysis
 """"""""""""""""""""""""""""""""""""""""""""""""""""""
 
 In order to verify the assumptions of spatial statistics and be able to use stable terrain as a reliable proxy in
-further analysis (see :ref:`spatialstats_intro`), standardization of the elevation differences are required to
-reach a stationary variance.
+further analysis (see :ref:`spatialstats_intro`), `standardization <https://en.wikipedia.org/wiki/Standard_score>`_
+of the elevation differences are required to reach a stationary variance.
+
+.. plot:: code/spatialstats_standardizing.py
+    :width: 90%
+
+For application to DEM precision assessment, the mean is already centered on zero and the variance is non-stationary,
+which yields:
 
 .. math::
     z_{dh} = \frac{dh(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}
 
 where :math:`z_{dh}` is the standardized elevation difference sample.
+
+Code-wise, standardization is as simple as a division with the measurement error ``err_dh`` estimated for each pixel:
+
+.. literalinclude:: code/spatialstats.py
+        :lines: 25
+        :language: python
 
 To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
 possibly after further analysis of :ref:`spatialstats_corr` and :ref:`spatialstats_errorpropag`,
@@ -206,8 +217,6 @@ average measurement error of the pixels in the subsample, evaluated through the 
 
 Estimating the standard error of the mean of the standardized data :math:`\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}`
 requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
-
-TODO: Add a gallery example on the standardization
 
 .. minigallery:: xdem.spatialstats.nd_binning
         :add-heading: Examples that deal with non-stationarities
@@ -273,7 +282,7 @@ The resulting pairwise differences are evenly distributed across the grid and ac
 means that lag classes separated by a factor of :math:`\sqrt{2}` have an equal number of pairwise differences computed).
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 25-26
+        :lines: 28-29
         :language: python
 
 The variogram is returned as a ``pd.Dataframe`` object.
@@ -297,7 +306,7 @@ This can be performed through the function :func:`xdem.spatialstats.fit_sum_mode
 ``pd.Dataframe`` variogram.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 28
+        :lines: 31
         :language: python
 
 .. minigallery:: xdem.spatialstats.sample_empirical_variogram
@@ -312,7 +321,7 @@ Spatially integrated measurement errors
 After quantifying and modelling spatial correlations, those an effective sample size, and elevation measurement error:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 30-33
+        :lines: 34-38
 
 TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 

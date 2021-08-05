@@ -1,3 +1,4 @@
+"""Documentation plot illustrating the link between variogram and covariance"""
 import matplotlib.pyplot as plt
 import numpy as np
 
