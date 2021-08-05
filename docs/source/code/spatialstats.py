@@ -22,7 +22,7 @@ df_ns = xdem.spatialstats.nd_binning(dh.data.ravel(), list_var=[slope.ravel()], 
 err_dh = xdem.spatialstats.interp_nd_binning(df_ns, list_var_names=['slope'])
 
 # Standardize the data
-z_dh = dh.data / err_dh
+z_dh = dh.data.ravel() / err_dh(slope.ravel())
 
 # Sample empirical variogram
 df_vgm = xdem.spatialstats.sample_empirical_variogram(values=dh.data, gsd=dh.res[0], subsample=50,
