@@ -19,8 +19,8 @@ to first resort to outlier filtering (see :ref:`filters`) and perform analysis u
 
 .. _robuststats_meanstd:
 
-Measures of central tendency and dispersion of a sample
---------------------------------------------------------
+Measures of central tendency and dispersion
+-------------------------------------------
 
 Central tendency
 ^^^^^^^^^^^^^^^^

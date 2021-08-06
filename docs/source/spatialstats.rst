@@ -44,13 +44,13 @@ That is, if the three following assumptions are verified:
 In other words, for a reliable analysis, the DEM should:
 
     1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
-    2. Not contain measurement errors that vary significantly in space.
-    3. Not contain factors that significantly affect the distribution of measurement errors, except for the spatial distance.
+    2. Not contain measurement errors that vary significantly across space.
+    3. Not contain factors that affect the spatial distribution of measurement errors, except for the distance between observations.
 
 Quantifying the precision of a single DEM, or of a difference of DEMs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To statistically infer the precision of a DEM, the DEM has to be compared against independent elevation observations.
+To statistically infer the precision of a DEM, it is compared against independent elevation observations.
 
 Significant measurement errors can originate from both sets of elevation observations, and the analysis of differences will represent the mixed precision of the two.
 As there is no reason for a dependency between the elevation data sets, the analysis of elevation differences yields:
@@ -184,7 +184,7 @@ of the elevation differences are required to reach a stationary variance.
 .. plot:: code/spatialstats_standardizing.py
     :width: 90%
 
-For application to DEM precision assessment, the mean is already centered on zero and the variance is non-stationary,
+For application to DEM precision estimation, the mean is already centered on zero and the variance is non-stationary,
 which yields:
 
 .. math::
@@ -192,7 +192,8 @@ which yields:
 
 where :math:`z_{dh}` is the standardized elevation difference sample.
 
-Code-wise, standardization is as simple as a division with the measurement error ``err_dh`` estimated for each pixel:
+Code-wise, standardization is as simple as a division of the elevation differences ``dh`` using the estimated measurement
+error:
 
 .. literalinclude:: code/spatialstats.py
         :lines: 25
