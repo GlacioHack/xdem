@@ -15,7 +15,7 @@ To cite this package: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.480
 
 ### With conda (recommended)
 ```bash
-conda install --c conda-forge --strict-channel-priority xdem
+conda install -c conda-forge --strict-channel-priority xdem
 ```
 The `--strict-channel-priority` flag seems essential for Windows installs to function correctly, and is recommended for UNIX-based systems as well.
 

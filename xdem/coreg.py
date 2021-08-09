@@ -578,6 +578,7 @@ class Coreg:
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+
         if np.all(dem_mask):
             raise ValueError("'dem' had only NaNs")
 
@@ -1391,19 +1392,17 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
         return demc + matrix[2, 3]
 
-    # Temporary. Should probably be removed.
-    #demc[demc == -9999] = np.nan
     nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Create a filled version of the DEM. (skimage doesn't like nans)
-    filled_dem = np.where(~nan_mask, demc, np.median(demc[~nan_mask]))
+    filled_dem = np.where(~nan_mask, demc, np.nan)
 
     # Get the centre coordinates of the DEM pixels.
     x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
 
     bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
 
-    # If a centroid was not given, default to the bottom left corner.
+    # If a centroid was not given, default to the center of the DEM (at Z=0).
     if centroid is None:
         centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
     else:
@@ -1453,24 +1452,27 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     # Create a skimage-compatible array of the new index coordinates that the pixels shall have after warping.
     inds = np.vstack((y_inds.reshape((1,) + y_inds.shape), x_inds.reshape((1,) + x_inds.shape)))
 
-    # Warp the DEM
-    transformed_dem = skimage.transform.warp(
-        filled_dem,
-        inds,
-        order=resampling_order,
-        mode="constant",
-        cval=0,
-        preserve_range=True
-    )
-    # Warp the NaN mask, setting true to all values outside the new frame.
-    tr_nan_mask = skimage.transform.warp(
-        nan_mask.astype("uint8"),
-        inds,
-        order=resampling_order,
-        mode="constant",
-        cval=1,
-        preserve_range=True
-    ) > 0.25  # Due to different interpolation approaches, everything above 0.25 is assumed to be 1 (True)
+    with warnings.catch_warnings():
+        # An skimage warning that will hopefully be fixed soon. (2021-07-30)
+        warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
+        # Warp the DEM
+        transformed_dem = skimage.transform.warp(
+            filled_dem,
+            inds,
+            order=resampling_order,
+            mode="constant",
+            cval=np.nan,
+            preserve_range=True
+        )
+        # Warp the NaN mask, setting true to all values outside the new frame.
+        tr_nan_mask = skimage.transform.warp(
+            nan_mask.astype("uint8"),
+            inds,
+            order=resampling_order,
+            mode="constant",
+            cval=1,
+            preserve_range=True
+        ) > 0.1  # Due to different interpolation approaches, everything above 0.1 is assumed to be 1 (True)
 
     if dilate_mask:
         tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
@@ -1870,7 +1872,8 @@ def warp_dem(
         source_coords: np.ndarray,
         destination_coords: np.ndarray,
         resampling: str = "cubic",
-        trim_border: bool = True
+        trim_border: bool = True,
+        dilate_mask: bool = True,
     ) -> np.ndarray:
     """
     Warp a DEM using a set of source-destination 2D or 3D coordinates.
@@ -1881,6 +1884,7 @@ def warp_dem(
     :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords'
     :param resampling: The resampling order to use. Choices: ['nearest', 'linear', 'cubic'].
     :param trim_border: Remove values outside of the interpolation regime (True) or leave them unmodified (False).
+    :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
 
     :raises ValueError: If the inputs are poorly formatted.
     :raises AssertionError: For unexpected outputs.
@@ -1958,20 +1962,24 @@ def warp_dem(
             # An skimage warning that will hopefully be fixed soon. (2021-06-08)
             warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
             warped = skimage.transform.warp(
-                image=np.where(dem_mask, -9999.12345, dem_arr),
+                image=np.where(dem_mask, np.nan, dem_arr),
                 inverse_map=np.moveaxis(new_indices, 2, 0),
                 output_shape=dem_arr.shape,
                 preserve_range=True,
                 order=order[resampling],
-                cval=-9999.12345
+                cval=np.nan
             )
             new_mask = skimage.transform.warp(
                 image=dem_mask,
                 inverse_map=np.moveaxis(new_indices, 2, 0),
                 output_shape=dem_arr.shape,
                 cval=False
-            ) == 1
-            warped[new_mask | (warped == -9999.12345)] = np.nan
+            ) > 0.25
+
+        if dilate_mask:
+            new_mask = scipy.ndimage.morphology.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
+
+        warped[new_mask] = np.nan
 
 
     # If the coordinates are 3D (N, 3), apply a Z correction as well.
