@@ -1389,8 +1389,32 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     # Check if the matrix only contains a Z correction. In that case, only shift the DEM values by the bias.
     empty_matrix = np.diag(np.ones(4, float))
     empty_matrix[2, 3] = matrix[2, 3]
-    if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
+    if np.array_equal(empty_matrix, matrix):
         return demc + matrix[2, 3]
+
+    # Check if the matrix only contains a X, Y and Z correction. In that case, only shift the DEM grid and values.
+    empty_matrix[0, 3] = matrix[0, 3]
+    empty_matrix[1, 3] = matrix[1, 3]
+    if np.array_equal(empty_matrix, matrix):
+
+        east_grid = np.arange(dem.shape[1])
+        north_grid = np.arange(dem.shape[0])
+
+        # Make a function to estimate the DEM (used to construct an offset DEM)
+        elevation_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid,
+                                                                   z=np.where(np.isnan(demc), -9999, dem))
+        # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
+        nodata_function = scipy.interpolate.RectBivariateSpline(x=north_grid, y=east_grid, z=np.isnan(demc))
+
+        shifted_east_grid = east_grid + matrix[0, 3] / transform[0]
+        # The typical negative sign is in the transform
+        shifted_north_grid = north_grid + matrix[1, 3] / transform[4]
+
+        shifted_dem = elevation_function(y=shifted_east_grid, x=shifted_north_grid)
+        new_nans = nodata_function(y=shifted_east_grid, x=shifted_north_grid)
+        shifted_dem[new_nans >= 1] = np.nan
+
+        return shifted_dem + matrix[2, 3]
 
     nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
