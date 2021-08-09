@@ -917,8 +917,10 @@ class ICP(Coreg):
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
                   weights: Optional[np.ndarray], verbose: bool = False):
         """Estimate the rigid transform from tba_dem to ref_dem."""
+
         if weights is not None:
             warnings.warn("ICP was given weights, but does not support it.")
+
 
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
         points: dict[str, np.ndarray] = {}
@@ -1391,6 +1393,10 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     empty_matrix[2, 3] = matrix[2, 3]
     if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
         return demc + matrix[2, 3]
+
+    # Opencv is required down from here
+    if not _has_cv2:
+        raise ValueError("Optional dependency needed. Install 'opencv'")
 
     nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
