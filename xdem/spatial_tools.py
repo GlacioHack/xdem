@@ -4,6 +4,7 @@ from typing import Callable, Union, Sized
 import warnings
 
 import geoutils as gu
+from geoutils.georaster import RasterType
 import numpy as np
 import rasterio as rio
 import rasterio.warp
@@ -27,7 +28,7 @@ def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
 
 
 def get_array_and_mask(
-        array: Union[np.ndarray, np.ma.masked_array],
+        array: np.ndarray | np.ma.masked_array | RasterType,
         check_shape: bool = True,
         copy: bool = True
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -42,6 +43,9 @@ def get_array_and_mask(
     :returns array_data, invalid_mask: a tuple of ndarrays. First is array with invalid pixels converted to NaN, \
     second is mask of invalid pixels (True if invalid).
     """
+    if isinstance(array, gu.Raster):
+        array = array.data
+
     if check_shape:
         if len(array.shape) > 2 and array.shape[0] > 1:
             raise ValueError(
