@@ -1416,6 +1416,9 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
 
         return shifted_dem + matrix[2, 3]
 
+    if not _has_cv2:
+        raise ValueError("Optional dependency needed. Install 'opencv'")
+
     nan_mask = xdem.spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Create a filled version of the DEM. (skimage doesn't like nans)
