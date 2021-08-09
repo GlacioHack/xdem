@@ -19,6 +19,14 @@ conda install -c conda-forge --strict-channel-priority xdem
 ```
 The `--strict-channel-priority` flag seems essential for Windows installs to function correctly, and is recommended for UNIX-based systems as well.
 
+If running into the `sklearn` error `ImportError: dlopen: cannot load any more object with static TLS`, your system 
+needs to update its `glibc` (see details [here](https://github.com/scikit-learn/scikit-learn/issues/14485)).
+If you have no administrator right on the system, you can circumvent this issue by installing an environment with a
+ downgraded version of scikit-learn:
+```bash
+mamba create -n xdem-env -c conda-forge xdem scikit-learn==0.20.3 numpy=1.19.*
+
+```
 
 ### Installing with pip
 **NOTE**: Setting up GDAL and PROJ may need some extra steps, depending on your operating system and configuration.
