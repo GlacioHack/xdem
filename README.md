@@ -22,7 +22,7 @@ The `--strict-channel-priority` flag seems essential for Windows installs to fun
 Solving dependencies can take a long time with `conda`. To speed up this, consider installing `mamba`:
 
 ```bash
-conda install mamba -n base -c conda-forge`
+conda install mamba -n base -c conda-forge
 ```
 
 Once installed, the same commands can be run by simply replacing `conda` by `mamba`. More details available through the [mamba project](https://github.com/mamba-org/mamba).
