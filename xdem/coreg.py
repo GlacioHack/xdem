@@ -11,6 +11,11 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, Optional, overload, Union, Sequence, TypeVar
 
+try:
+    import cv2
+    _has_cv2 = True
+except ImportError:
+    _has_cv2 = False
 import fiona
 import geoutils as gu
 from geoutils.georaster import RasterType
@@ -34,12 +39,6 @@ try:
     _has_rd = True
 except ImportError:
     _has_rd = False
-
-try:
-    import cv2
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
 
 try:
     from pytransform3d.transform_manager import TransformManager
