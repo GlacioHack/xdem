@@ -31,7 +31,6 @@ If you have no administrator right on the system, you might be able to circumven
 environment with specific downgraded versions of `scikit-learn` and `numpy`:
 ```bash
 conda create -n xdem-env -c conda-forge xdem scikit-learn==0.20.3 numpy=1.19.*
-
 ```
 
 ### Installing with pip
