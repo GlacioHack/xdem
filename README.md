@@ -28,7 +28,7 @@ conda install mamba -n base -c conda-forge`
 Once installed, the same commands can be run by simply replacing `conda` by `mamba`. More details available through the [mamba project](https://github.com/mamba-org/mamba).
 
 If running into the `sklearn` error `ImportError: dlopen: cannot load any more object with static TLS`, your system 
-needs to update its `glibc` (see details [here](https://github.com/scikit-learn/scikit-learn/issues/14485)).
+needs to update its `glibc` (see details [here](https://github.com/scikit-learn/scikit-learn/issues/14485#issuecomment-822678559)).
 If you have no administrator right on the system, you might be able to circumvent this issue by installing a working 
 environment with specific downgraded versions of `scikit-learn` and `numpy`:
 ```bash
