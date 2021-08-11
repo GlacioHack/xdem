@@ -1238,7 +1238,13 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
         # Remove cadrants already sampled from list
         list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
 
-    df_all = pd.concat(list_df)
+    if len(list_df)>0:
+        df_all = pd.concat(list_df)
+    else:
+        warnings.warn('No valid patch found covering this area: returning dataframe containing only nodata' )
+        df_all = pd.DataFrame()
+        for j, statistic in enumerate(statistics):
+            df_all[statistics_name[j]] = [np.nan]
 
     return df_all
 
