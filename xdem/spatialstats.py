@@ -1241,7 +1241,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     if len(list_df)>0:
         df_all = pd.concat(list_df)
     else:
-        warnings.warn('No valid patch found covering this area: returning dataframe containing only nodata' )
+        warnings.warn('No valid patch found covering this area: returning dataframe containing only nans' )
         df_all = pd.DataFrame()
         for j, statistic in enumerate(statistics):
             df_all[statistics_name[j]] = [np.nan]
