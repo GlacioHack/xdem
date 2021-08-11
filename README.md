@@ -19,6 +19,23 @@ conda install -c conda-forge --strict-channel-priority xdem
 ```
 The `--strict-channel-priority` flag seems essential for Windows installs to function correctly, and is recommended for UNIX-based systems as well.
 
+Solving dependencies can take a long time with `conda`. To speed up this, consider installing `mamba`:
+
+```bash
+conda install mamba -n base -c conda-forge
+```
+
+Once installed, the same commands can be run by simply replacing `conda` by `mamba`. More details available through the [mamba project](https://github.com/mamba-org/mamba).
+
+If running into the `sklearn` error `ImportError: dlopen: cannot load any more object with static TLS`, your system 
+needs to update its `glibc` (see details [here](https://github.com/scikit-learn/scikit-learn/issues/14485#issuecomment-822678559)).
+If you have no administrator right on the system, you might be able to circumvent this issue by installing a working 
+environment with specific downgraded versions of `scikit-learn` and `numpy`:
+```bash
+conda create -n xdem-env -c conda-forge xdem scikit-learn==0.20.3 numpy==1.19.*
+```
+On very old systems, if the above install results in segmentation faults, try setting more specifically 
+`numpy==1.19.2=py37h54aff64_0` (worked with Debian 8.11, GLIBC 2.19).
 
 ### Installing with pip
 **NOTE**: Setting up GDAL and PROJ may need some extra steps, depending on your operating system and configuration.
