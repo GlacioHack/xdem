@@ -5,7 +5,12 @@ import functools
 import warnings
 from typing import Any, Callable
 
-import cv2
+try:
+    import cv2
+    _has_cv2 = True
+except ImportError:
+    _has_cv2 = False
+
 import numpy as np
 
 import xdem.version
@@ -28,6 +33,10 @@ def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
 
     :returns: A numpy array of semi-random values from 0 to 1
     """
+
+    if not _has_cv2:
+        raise ValueError("Optional dependency needed. Install 'opencv'")
+
     field = cv2.resize(
         cv2.GaussianBlur(
             np.repeat(
