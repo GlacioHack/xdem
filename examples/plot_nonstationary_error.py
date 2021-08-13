@@ -10,7 +10,7 @@ Quantifying the non-stationarities in elevation measurement errors is essential 
 assessing the precision on other types of terrain (Hugonnet et al., in prep) and allows to standardize the measurement
 errors to reach a stationary variance, an assumption necessary for spatial statistics (see :ref:`spatialstats`).
 
-Here, we show an example in which we identify terrain-related non-stationarities for a DEM difference of Longyearbyen glacier.
+Here, we show an example in which we identify terrain-related non-stationarities for a DEM difference at Longyearbyen.
 We quantify those non-stationarities by `binning <https://en.wikipedia.org/wiki/Data_binning>`_ robustly
 in N-dimension using :func:`xdem.spatialstats.nd_binning` and applying a N-dimensional interpolation
 :func:`xdem.spatialstats.interp_nd_binning` to estimate a numerical function of the measurement error and derive the spatial
@@ -26,7 +26,7 @@ import xdem
 import geoutils as gu
 
 # %%
-# We start by loading example files including a difference of DEMs at Longyearbyen glacier, the reference DEM later used to derive
+# We start by loading example files including a difference of DEMs at Longyearbyen, the reference DEM later used to derive
 # several terrain attributes, and the outlines to rasterize a glacier mask.
 # Prior to differencing, the DEMs were aligned using :ref:`coregistration_nuthkaab` as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.

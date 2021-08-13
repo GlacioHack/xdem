@@ -76,11 +76,16 @@ dh_err = slope_curv_to_dh_err((slope, maxc))
 z_dh = dh.data/dh_err
 
 # %%
-# We remove values on glacierized terrain, large outliers, and perform a scale-correction.
+# We remove values on glacierized terrain and large outliers.
 z_dh.data[mask_glacier] = np.nan
 z_dh.data[np.abs(z_dh.data)>4] = np.nan
-fac_std = np.nanstd(z_dh.data)
-z_dh = z_dh/fac_std
+
+# %%
+# We perform a scale-correction for the standardization, to ensure that the standard deviation of the data is exactly 1.
+print('Standard deviation before scale-correction: {:.1f}'.format(np.nanstd(z_dh.data)))
+scale_fac_std = np.nanstd(z_dh.data)
+z_dh = z_dh/scale_fac_std
+print('Standard deviation after scale-correction: {:.1f}'.format(np.nanstd(z_dh.data)))
 
 plt.figure(figsize=(8, 5))
 plt_extent = [
@@ -177,8 +182,8 @@ print('Standardized integrated error of Medalsbreen glacier: {:.1f}'.format(meda
 # maximum curvature. This yields the uncertainty into the mean elevation change for each glacier.
 
 # Destandardize the uncertainty
-fac_svendsen_dh_err = fac_std * np.nanmean(dh_err[svendsen_mask])
-fac_medals_dh_err = fac_std * np.nanmean(dh_err[medals_mask])
+fac_svendsen_dh_err = scale_fac_std * np.nanmean(dh_err[svendsen_mask])
+fac_medals_dh_err = scale_fac_std * np.nanmean(dh_err[medals_mask])
 svendsen_dh_err = fac_svendsen_dh_err * svendsen_z_err
 medals_dh_err = fac_medals_dh_err * medals_z_err
 

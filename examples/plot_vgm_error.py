@@ -16,8 +16,8 @@ an area of interest (e.g, to estimate the error of a mean or sum of samples). On
 several methods exist to derive the related measurement error integrated in space (`Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_
 , Hugonnet et al. (in prep)). More details are available in :ref:`spatialstats`.
 
-Here, we show an example in which we estimate spatially integrated elevation measurement errors for a DEM difference of
-Longyearbyen glacier, demonstrated in :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py`. We first quantify the spatial
+Here, we show an example in which we estimate spatially integrated elevation measurement errors for a DEM difference at
+Longyearbyen, demonstrated in :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py`. We first quantify the spatial
 correlations using :func:`xdem.spatialstats.sample_empirical_variogram` based on routines of `scikit-gstat
 <https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then model the empirical variogram using a sum of variogram
 models using :func:`xdem.spatialstats.fit_sum_model_variogram`.
@@ -33,7 +33,7 @@ import xdem
 import geoutils as gu
 
 # %%
-# We start by loading example files including a difference of DEMs at Longyearbyen glacier and the outlines to rasterize
+# We start by loading example files including a difference of DEMs at Longyearbyen and the outlines to rasterize
 # a glacier mask.
 # Prior to differencing, the DEMs were aligned using :ref:`coregistration_nuthkaab` as shown in
 # the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
