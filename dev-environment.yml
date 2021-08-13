@@ -14,7 +14,7 @@ dependencies:
   - tqdm
   - scikit-image
   - proj-data
-  - scikit-gstat
+  - scikit-gstat>=0.6.8
   - pytransform3d
   - geoutils
 
