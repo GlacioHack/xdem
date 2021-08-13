@@ -1033,7 +1033,8 @@ class Deramp(Coreg):
             return estimated_values  # type: ignore
 
         def residuals(coefs: np.ndarray, x_coords: np.ndarray, y_coords: np.ndarray, targets: np.ndarray):
-            return np.median(np.abs(targets - poly2d(x_coords, y_coords, coefs)))
+            res = targets - poly2d(x_coords, y_coords, coefs)
+            return res[np.isfinite(res)]
 
         if verbose:
             print("Estimating deramp function...")
@@ -1055,15 +1056,14 @@ class Deramp(Coreg):
             ddem = ddem[indices]
 
         # Optimize polynomial parameters
-        coefs = scipy.optimize.fmin(
+        coefs = scipy.optimize.leastsq(
             func=residuals,
             x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
-            args=(x_coords, y_coords, ddem),
-            disp=verbose
+            args=(x_coords, y_coords, ddem)
         )
 
-        self._meta["coefficients"] = coefs
-        self._meta["func"] = lambda x, y: poly2d(x, y, coefs)
+        self._meta["coefficients"] = coefs[0]
+        self._meta["func"] = lambda x, y: poly2d(x, y, coefs[0])
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
         """Apply the deramp function to a DEM."""
