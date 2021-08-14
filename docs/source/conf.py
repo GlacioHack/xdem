@@ -70,7 +70,7 @@ sphinx_gallery_conf = {
     },
      # directory where function/class granular galleries are stored
     "backreferences_dir"  : "gen_modules/backreferences",
-    "doc_module": ("xdem", "geoutils")  # I honestly don't know what this is.
+    "doc_module": ("xdem", "geoutils")  # which function/class levels are used to create galleries
 }
 
 # Add any paths that contain templates here, relative to this directory.
@@ -87,7 +87,7 @@ html_theme = 'sphinx_rtd_theme'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# html_static_path = ['_static']  # Commented out as we have no custom static data
+html_static_path = ['imgs']  # Commented out as we have no custom static data
 
 
 exclude_patterns = [

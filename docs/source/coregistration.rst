@@ -1,7 +1,16 @@
 .. _coregistration:
 
-DEM Coregistration
-==================
+Coregistration
+===============
+
+Coregistration between DEMs correspond to aligning the digital elevation models in three dimension.
+
+Transformations that can be described by a 3-dimensional `affine <https://en.wikipedia.org/wiki/Affine_transformation>`_ function are included in coregistration methods.
+Those transformations include for instance:
+
+- vertical and horizontal translations,
+- rotations, reflections,
+- scalings.
 
 .. contents:: Contents 
    :local:
@@ -208,11 +217,10 @@ For larger rotations, ICP is the only reliable approach (but does not outperform
 
         coreg.ICP() + coreg.NuthKaab()
 
-
 For large biases, rotations and high amounts of noise:
 
 .. code-block:: python
 
-        coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()
+        coreg.VerticalShift() + coreg.ICP() + coreg.NuthKaab()
         
 
