@@ -31,7 +31,7 @@ setup(
         "tqdm",
         "scikit-gstat",
         "scikit-image",
-        "geoutils @ https://github.com/GlacioHack/geoutils/tarball/main",
+        "geoutils",
     ],
     extras_require={
         "rioxarray": ["rioxarray"],
