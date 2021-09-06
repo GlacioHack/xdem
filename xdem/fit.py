@@ -1,6 +1,8 @@
 """
 Functions to perform normal, weighted and robust fitting.
 """
+from __future__ import annotations
+
 from typing import Callable, Union, Sized, Optional
 
 import numpy as np
@@ -316,9 +318,10 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
     # check if an amplitude coefficient is almost 0: remove the coefs of that frequency and lower the degree
     final_degree = final_index + 1
     for i in range(final_index+1):
-        if final_coefs[3*i] < (y_fg.max() - y_fg.min())/1000:
-            final_coefs = np.delete(final_coefs,slice(3*i,3*i+2))
+        if np.abs(final_coefs[3*i]) < (np.nanpercentile(x, 90) - np.nanpercentile(x, 10))/1000:
+            final_coefs = np.delete(final_coefs, slice(3*i,3*i+3))
             final_degree -= 1
+            break
 
     # the number of frequency corresponds to the index plus one
     return final_coefs, final_degree

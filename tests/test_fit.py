@@ -21,7 +21,7 @@ class TestRobustFitting:
         x = np.linspace(1, 10, 1000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
-        y = np.polyval(true_coefs.reverse(), x)
+        y = np.polyval(np.flip(true_coefs), x)
 
         # Run fit
         coefs, deg = xdem.fit.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
@@ -40,7 +40,7 @@ class TestRobustFitting:
         x = np.linspace(1,10,1000)
         # Define an exact polynomial
         true_coefs = [-100, 5, 3, 2]
-        y = np.polyval(true_coefs.reverse(), x)
+        y = np.polyval(np.flip(true_coefs), x)
         # Add some noise on top
         y += np.random.normal(loc=0, scale=3, size=1000)
         # Add some outliers
@@ -60,12 +60,12 @@ class TestRobustFitting:
             assert coefs[i] == pytest.approx(true_coefs[i], abs=acceptable_scipy_linear_margins[i])
 
         # The sklearn Linear solution with MSE cost function will not be robust
-        coefs2, deg2 = xdem.fit.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn',
+        coefs2, deg2 = xdem.fit.robust_polynomial_fit(x, y, estimator='Linear', linear_pkg='sklearn',
                                                                 cost_func=mean_squared_error, margin_improvement=50)
         # It won't find the right degree because of the outliers and noise
         assert deg2 != 3
         # Using the median absolute error should improve the fit
-        coefs3, deg3 = xdem.fit.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn',
+        coefs3, deg3 = xdem.fit.robust_polynomial_fit(x, y, estimator='Linear', linear_pkg='sklearn',
                                                                 cost_func=median_absolute_error, margin_improvement=50)
         # Will find the right degree, but won't find the right coefficients because of the outliers and noise
         assert deg3 == 3
@@ -100,7 +100,7 @@ class TestRobustFitting:
         y = xdem.fit._sumofsinval(x, params=true_coefs)
 
         # Check that the function runs
-        coefs, deg = xdem.fit.robust_sumsin_fit(x,y, random_state=42)
+        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42)
 
         # Check that the estimated sum of sinusoid correspond to the input
         for i in range(2):
@@ -129,7 +129,7 @@ class TestRobustFitting:
 
         # Define first guess for bounds and run
         bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
-        coefs, deg = xdem.fit.robust_sumsin_fit(x,y, random_state=42, bounds_amp_freq_phase=bounds)
+        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, bounds_amp_freq_phase=bounds)
 
         # Should be less precise, but still on point
         # We need to re-order output coefficient to match input
@@ -140,5 +140,5 @@ class TestRobustFitting:
         for i in range(2):
             assert coefs[3*i] == pytest.approx(true_coefs[3*i], abs=0.2)
             assert coefs[3 * i +1] == pytest.approx(true_coefs[3 * i +1], abs=0.2)
-            error_phase = min(np.abs(coefs[3 * i + 2] - true_coefs[ 3* i + 2]), np.abs(2* np.pi - (coefs[3 * i + 2] - true_coefs[ 3* i + 2])))
+            error_phase = min(np.abs(coefs[3 * i + 2] - true_coefs[ 3* i + 2]), np.abs(2* np.pi - (coefs[3 * i + 2] - true_coefs[3* i + 2])))
             assert error_phase < 0.2
