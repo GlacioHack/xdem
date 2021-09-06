@@ -246,65 +246,67 @@ class TestRobustFitting:
 
         np.random.seed(42)
 
-        # x vector
+        # Define x vector
         x = np.linspace(1, 10, 1000)
-        # exact polynomial
+        # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
         y = true_coefs[0] + true_coefs[1] * x + true_coefs[2] * x ** 2 + true_coefs[3] * x ** 3
 
+        # Run fit
         coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
 
+        # Check coefficients are well constrained
         assert deg == 3 or deg == 4
-        assert np.abs(coefs[0] - true_coefs[0]) <= 100
-        assert np.abs(coefs[1] - true_coefs[1]) < 5
-        assert np.abs(coefs[2] - true_coefs[2]) < 2
-        assert np.abs(coefs[3] - true_coefs[3]) < 1
+        error_margins = [100, 5, 2, 1]
+        for i in range(4):
+            assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
     def test_robust_polynomial_fit_noise_and_outliers(self):
 
         np.random.seed(42)
 
-        # x vector
+        # Define x vector
         x = np.linspace(1,10,1000)
-        # exact polynomial
+        # Define an exact polynomial
         true_coefs = [-100, 5, 3, 2]
         y = true_coefs[0] + true_coefs[1] * x + true_coefs[2] * x**2 + true_coefs[3] * x**3
-        # add some noise on top
+        # Add some noise on top
         y += np.random.normal(loc=0,scale=3,size=1000)
-        # and some outliers
+        # Add some outliers
         y[50:75] = 0
         y[900:925] = 1000
 
-        # test linear estimators
-        coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='scipy', loss='soft_l1', f_scale=0.5)
+        # Run with the "Linear" estimator
+        coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='scipy',
+                                                              loss='soft_l1', f_scale=0.5)
 
-        # scipy solution should be quite robust to outliers/noise (with the soft_l1 method and f_scale parameter)
-        # however, it is subject to random processes inside the scipy function (couldn't find how to fix those...)
-        assert deg == 3 or deg == 4 # can find degree 3, or 4 with coefficient close to 0
-        assert np.abs(coefs[0] - true_coefs[0]) < 3
-        assert np.abs(coefs[1] - true_coefs[1]) < 3
-        assert np.abs(coefs[2] - true_coefs[2]) < 1
-        assert np.abs(coefs[3] - true_coefs[3]) < 1
+        # Scipy solution should be quite robust to outliers/noise (with the soft_l1 method and f_scale parameter)
+        # However, it is subject to random processes inside the scipy function (couldn't find how to fix those...)
+        # It can find a degree 3, or 4 with coefficient close to 0
+        assert deg in [3, 4]
+        acceptable_scipy_linear_margins = [3, 3, 1, 1]
+        for i in range(4):
+            assert coefs[i] == pytest.approx(true_coefs[i], abs=acceptable_scipy_linear_margins[i])
 
-        # the sklearn Linear solution with MSE cost function will not be robust
-        coefs2, deg2 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn', cost_func=mean_squared_error, margin_improvement=50)
+        # The sklearn Linear solution with MSE cost function will not be so robust
+        coefs2, deg2 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn',
+                                                                cost_func=mean_squared_error, margin_improvement=50)
         assert deg2 != 3
-        # using the median absolute error should improve the fit, but the parameters will still be hard to constrain
-        coefs3, deg3 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn', cost_func=median_absolute_error, margin_improvement=50)
+        # Using the median absolute error should improve the fit, but the parameters will still be hard to constrain
+        coefs3, deg3 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn',
+                                                                cost_func=median_absolute_error, margin_improvement=50)
         assert deg3 == 3
-        assert np.abs(coefs3[0] - true_coefs[0]) > 50
-        assert np.abs(coefs3[1] - true_coefs[1]) > 10
-        assert np.abs(coefs3[2] - true_coefs[2]) > 5
-        assert np.abs(coefs3[3] - true_coefs[3]) > 0.5
+        sklearn_linear_error = [50, 10, 5, 0.5]
+        for i in range(4):
+            assert np.abs(coefs3[i] - true_coefs[i]) > sklearn_linear_error[i]
 
-        # test robust estimator
-
+        # Now, the robust estimators
         # Theil-Sen should have better coefficients
         coefs4, deg4 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Theil-Sen', random_state=42)
         assert deg4 == 3
-        # high degree coefficients should be well constrained
-        assert np.abs(coefs4[2] - true_coefs[2]) < 1
-        assert np.abs(coefs4[3] - true_coefs[3]) < 1
+        # High degree coefficients should be well constrained
+        assert coefs4[2] == pytest.approx(true_coefs[2], abs=1)
+        assert coefs4[3] == pytest.approx(true_coefs[3], abs=1)
 
         # RANSAC is not always optimal, here it does not work well
         coefs5, deg5 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='RANSAC', random_state=42)
@@ -313,59 +315,58 @@ class TestRobustFitting:
         # Huber should perform well, close to the scipy robust solution
         coefs6, deg6 = xdem.spatial_tools.robust_polynomial_fit(x, y, estimator='Huber')
         assert deg6 == 3
-        assert np.abs(coefs6[1] - true_coefs[1]) < 1
-        assert np.abs(coefs6[2] - true_coefs[2]) < 1
-        assert np.abs(coefs6[3] - true_coefs[3]) < 1
+        for i in range(3):
+            assert coefs6[i+1] == pytest.approx(true_coefs[i+1], abs=1)
 
     def test_robust_sumsin_fit(self) -> None:
 
-        # x vector
+        # Define X vector
         x = np.linspace(0, 10, 1000)
-        # exact polynomial
+        # Define exact sum of sinusoid signal
         true_coefs = np.array([(5, 1, np.pi),(3, 0.3, 0)]).flatten()
-        y = xdem.spatial_tools._fitfun_sumofsin(x,params=true_coefs)
+        y = xdem.spatial_tools._fitfun_sumofsin(x, params=true_coefs)
 
-        # check that the function runs
+        # Check that the function runs
         coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y, random_state=42)
 
-        # check that the estimated sum of sinusoid correspond to the input
+        # Check that the estimated sum of sinusoid correspond to the input
         for i in range(2):
-            assert (coefs[3*i] - true_coefs[3*i]) < 0.01
+            assert coefs[3*i] == pytest.approx(true_coefs[3*i], abs=0.01)
 
-        # test that using custom arguments does not create an error
+        # Check that using custom arguments does not trigger an error
         bounds = [(3,7),(0.1,3),(0,2*np.pi),(1,7),(0.1,1),(0,2*np.pi),(0,1),(0.1,1),(0,2*np.pi)]
-        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y,bounds_amp_freq_phase=bounds, nb_frequency_max=2
-                                                          , significant_res=0.01, random_state=42)
+        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y,bounds_amp_freq_phase=bounds, nb_frequency_max=2,
+                                                          significant_res=0.01, random_state=42)
 
     def test_robust_simsin_fit_noise_and_outliers(self):
 
-        # test the robustness to outliers
-
+        # Check robustness to outliers
         np.random.seed(42)
-        # x vector
+        # Define X vector
         x = np.linspace(0, 10, 1000)
-        # exact polynomial
+        # Define exact sum of sinusoid signal
         true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
         y = xdem.spatial_tools._fitfun_sumofsin(x, params=true_coefs)
 
-        # adding some noise
+        # Add some noise
         y += np.random.normal(loc=0, scale=0.25, size=1000)
-        # and some outliers
+        # Add some outliers
         y[50:75] = -10
         y[900:925] = 10
 
+        # Define first guess for bounds and run
         bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
         coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y, random_state=42, bounds_amp_freq_phase=bounds)
 
-        # should be less precise, but still on point
-        # re-order output coefficient to match input
+        # Should be less precise, but still on point
+        # We need to re-order output coefficient to match input
         if coefs[3] > coefs[0]:
             coefs = np.concatenate((coefs[3:],coefs[0:3]))
 
-        # check values
+        # Check values
         for i in range(2):
-            assert (coefs[3*i] - true_coefs[3*i]) < 0.2
-            assert (coefs[3 * i +1] - true_coefs[3 * i +1]) < 0.2
+            assert coefs[3*i] == pytest.approx(true_coefs[3*i], abs=0.2)
+            assert coefs[3 * i +1] == pytest.approx(true_coefs[3 * i +1], abs=0.2)
             error_phase = min(np.abs(coefs[3 * i + 2] - true_coefs[ 3* i + 2]), np.abs(2* np.pi - (coefs[3 * i + 2] - true_coefs[ 3* i + 2])))
             assert error_phase < 0.2
 
