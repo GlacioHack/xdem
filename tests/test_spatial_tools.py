@@ -250,7 +250,7 @@ class TestRobustFitting:
         x = np.linspace(1, 10, 1000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
-        y = true_coefs[0] + true_coefs[1] * x + true_coefs[2] * x ** 2 + true_coefs[3] * x ** 3
+        y = np.polyval(true_coefs.reverse(), x)
 
         # Run fit
         coefs, deg = xdem.spatial_tools.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
@@ -269,9 +269,9 @@ class TestRobustFitting:
         x = np.linspace(1,10,1000)
         # Define an exact polynomial
         true_coefs = [-100, 5, 3, 2]
-        y = true_coefs[0] + true_coefs[1] * x + true_coefs[2] * x**2 + true_coefs[3] * x**3
+        y = np.polyval(true_coefs.reverse(), x)
         # Add some noise on top
-        y += np.random.normal(loc=0,scale=3,size=1000)
+        y += np.random.normal(loc=0, scale=3, size=1000)
         # Add some outliers
         y[50:75] = 0
         y[900:925] = 1000
