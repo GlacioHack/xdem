@@ -25,8 +25,6 @@ import xdem
 # %%
 # **Example files**
 
-xdem.examples.download_longyearbyen_examples()
-
 reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))

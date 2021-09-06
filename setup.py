@@ -5,7 +5,7 @@ import sys
 from setuptools import setup
 from setuptools.command.install import install
 
-FULLVERSION = "0.0.4"
+FULLVERSION = "0.0.5"
 VERSION = FULLVERSION
 
 with open(os.path.join(os.path.dirname(__file__), "README.md")) as infile:
@@ -31,7 +31,7 @@ setup(
         "tqdm",
         "scikit-gstat",
         "scikit-image",
-        "geoutils @ https://github.com/GlacioHack/geoutils/tarball/main",
+        "geoutils",
     ],
     extras_require={
         "rioxarray": ["rioxarray"],
