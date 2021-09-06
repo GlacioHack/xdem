@@ -495,7 +495,7 @@ def rmse(z: np.ndarray) -> float:
     :param z: Residuals between predicted and true value
     :return: Root Mean Square Error
     """
-    return np.sqrt(np.nanmean(np.square(np.asarray(z))))
+    return np.sqrt(np.nanmean(np.square(z)))
 
 def huber_loss(z: np.ndarray) -> float:
     """
@@ -503,8 +503,8 @@ def huber_loss(z: np.ndarray) -> float:
     :param z: Residuals between predicted and true values
     :return: Huber cost
     """
-    out = np.asarray(np.square(z) * 1.000)
-    out[np.where(z > 1)] = 2 * np.sqrt(z[np.where(z > 1)]) - 1
+    out = np.where(z > 1, 2 * np.sqrt(z[np.where(z > 1)]) - 1, np.square(z))
+
     return out.sum()
 
 def soft_loss(z: np.ndarray, scale = 0.5) -> float:
@@ -520,7 +520,7 @@ def _costfun_sumofsin(p, x, y, cost_func):
     """
     Calculate robust cost function for sum of sinusoids
     """
-    z = y -_fitfun_sumofsin(x, p)
+    z = y - _sumofsinval(x, p)
     return cost_func(z)
 
 
@@ -594,7 +594,7 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
     y = y[valid_data]
 
     # subsample
-    subsamp = subsample_raster(x, subsample=subsample, return_indices=True)
+    subsamp = subsample_raster(x, subsample=subsample, return_indices=True, random_state=random_state)
     x = x[subsamp]
     y = y[subsamp]
 
@@ -661,7 +661,7 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
     return np.trim_zeros(coeffs[final_index], 'b'), final_index + 1
 
 
-def _fitfun_sumofsin(x: np.array, params: np.ndarray) -> np.ndarray:
+def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
     """
     Function for a sum of N frequency sinusoids
     :param x: array of coordinates (N,)
@@ -671,13 +671,13 @@ def _fitfun_sumofsin(x: np.array, params: np.ndarray) -> np.ndarray:
     bix = np.arange(1, params.size, 3)
     cix = np.arange(2, params.size, 3)
 
-    val = np.sum(params[aix] * np.sin(np.divide(2 * np.pi, params[bix]) * x[:, np.newaxis] + params[cix]), axis=1)
+    val = np.sum(params[aix] * np.sin(2 * np.pi / params[bix] * x[:, np.newaxis] + params[cix]), axis=1)
 
     return val
 
 def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                       bounds_amp_freq_phase: Optional[list[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
-                      significant_res : Optional[float] = None, cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000,
+                      cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000, hop_length : Optional[float] = None,
                       random_state: Optional[Union[int,np.random.Generator,np.random.RandomState]] = None, verbose: bool = False) -> tuple[np.ndarray,int]:
     """
     Given 1D data x, y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
@@ -687,7 +687,8 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
     :param nb_frequency_max: maximum number of phases
     :param bounds_amp_freq_phase: bounds for amplitude, frequency and phase (L, 3, 2) and
     with mean value used for initialization
-    :param significant_res: significant resolution of X data to optimize algorithm search
+    :param hop_length: jump in function values to optimize basinhopping algorithm search (for best results, should be
+    comparable to the separation (in function value) between local minima)
     :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
     If > 1 will be considered the number of pixels to extract.
@@ -706,12 +707,12 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
     y = y[valid_data]
 
     # if no significant resolution is provided, assume that it is the mean difference between sampled X values
-    if significant_res is None:
+    if hop_length is None:
         x_sorted = np.sort(x)
-        significant_res = np.mean(np.diff(x_sorted))
+        hop_length = np.mean(np.diff(x_sorted))
 
     # binned statistics for first guess
-    nb_bin = int((x.max() - x.min())/(5*significant_res))
+    nb_bin = int((x.max() - x.min()) / (5 * hop_length))
     df = nd_binning(y, [x], ['var'], list_var_bins=nb_bin, statistics=[np.nanmedian])
     # first guess for x and y
     x_fg = pd.IntervalIndex(df['var']).mid.values
@@ -736,7 +737,7 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
             ub_phase = 2 * np.pi
             # for the frequency, we need at least 5 points to see any kind of periodic signal
             lb_frequency = 1 / (5 * (x.max() - x.min()))
-            ub_frequency = 1 / (5 * significant_res)
+            ub_frequency = 1 / (5 * hop_length)
 
             b = []
             for i in range(nb_freq):
@@ -755,11 +756,11 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
         init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B",
                          bounds=scipy_bounds, options={"ftol": 1E-6})
         init_results = scipy.optimize.basinhopping(wrapper_costfun_sumofsin, p0, disp=verbose,
-                                             T=significant_res,  minimizer_kwargs=init_args, seed = random_state)
+                                                   T=hop_length, minimizer_kwargs=init_args, seed=random_state)
         init_results = init_results.lowest_optimization_result
 
         # subsample
-        subsamp = subsample_raster(x, subsample=subsample, return_indices=True)
+        subsamp = subsample_raster(x, subsample=subsample, return_indices=True, random_state=random_state)
         x = x[subsamp]
         y = y[subsamp]
 
@@ -769,8 +770,8 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                                 bounds=scipy_bounds,
                                 options={"ftol": 1E-6})
         myresults = scipy.optimize.basinhopping(wrapper_costfun_sumofsin, init_results.x, disp=verbose,
-                                          T=5*significant_res, niter_success=40,
-                                          minimizer_kwargs=minimizer_kwargs, seed=random_state)
+                                                T=5 * hop_length, niter_success=40,
+                                                minimizer_kwargs=minimizer_kwargs, seed=random_state)
         myresults = myresults.lowest_optimization_result
         # write results for this number of frequency
         costs[nb_freq-1] = wrapper_costfun_sumofsin(myresults.x,x,y)

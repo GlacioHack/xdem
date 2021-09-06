@@ -288,13 +288,15 @@ class TestRobustFitting:
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=acceptable_scipy_linear_margins[i])
 
-        # The sklearn Linear solution with MSE cost function will not be so robust
+        # The sklearn Linear solution with MSE cost function will not be robust
         coefs2, deg2 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn',
                                                                 cost_func=mean_squared_error, margin_improvement=50)
+        # It won't find the right degree because of the outliers and noise
         assert deg2 != 3
-        # Using the median absolute error should improve the fit, but the parameters will still be hard to constrain
+        # Using the median absolute error should improve the fit
         coefs3, deg3 = xdem.spatial_tools.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='sklearn',
                                                                 cost_func=median_absolute_error, margin_improvement=50)
+        # Will find the right degree, but won't find the right coefficients because of the outliers and noise
         assert deg3 == 3
         sklearn_linear_error = [50, 10, 5, 0.5]
         for i in range(4):
@@ -324,7 +326,7 @@ class TestRobustFitting:
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
         true_coefs = np.array([(5, 1, np.pi),(3, 0.3, 0)]).flatten()
-        y = xdem.spatial_tools._fitfun_sumofsin(x, params=true_coefs)
+        y = xdem.spatial_tools._sumofsinval(x, params=true_coefs)
 
         # Check that the function runs
         coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y, random_state=42)
@@ -335,8 +337,8 @@ class TestRobustFitting:
 
         # Check that using custom arguments does not trigger an error
         bounds = [(3,7),(0.1,3),(0,2*np.pi),(1,7),(0.1,1),(0,2*np.pi),(0,1),(0.1,1),(0,2*np.pi)]
-        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x,y,bounds_amp_freq_phase=bounds, nb_frequency_max=2,
-                                                          significant_res=0.01, random_state=42)
+        coefs, deg = xdem.spatial_tools.robust_sumsin_fit(x, y, bounds_amp_freq_phase=bounds, nb_frequency_max=2,
+                                                          hop_length=0.01, random_state=42)
 
     def test_robust_simsin_fit_noise_and_outliers(self):
 
@@ -346,7 +348,7 @@ class TestRobustFitting:
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
         true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
-        y = xdem.spatial_tools._fitfun_sumofsin(x, params=true_coefs)
+        y = xdem.spatial_tools._sumofsinval(x, params=true_coefs)
 
         # Add some noise
         y += np.random.normal(loc=0, scale=0.25, size=1000)
