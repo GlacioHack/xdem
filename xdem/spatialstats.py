@@ -21,13 +21,28 @@ from scipy.optimize import curve_fit
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from xdem.spatial_tools import nmad, subsample_raster, get_array_and_mask
+from xdem.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
     from skgstat import models
+
+def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
+    """
+    Calculate the normalized median absolute deviation (NMAD) of an array.
+
+    :param data: input data
+    :param nfact: normalization factor for the data; default is 1.4826
+
+    :returns nmad: (normalized) median absolute deviation of data.
+    """
+    if isinstance(data, np.ma.masked_array):
+        data_arr = get_array_and_mask(data, check_shape=False)[0]
+    else:
+        data_arr = np.asarray(data)
+    return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
 def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
                       min_count: Optional[int] = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:

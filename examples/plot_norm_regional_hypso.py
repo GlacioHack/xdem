@@ -108,7 +108,7 @@ plt.show()
 
 difference = (ddem_filled - ddem).squeeze()[random_nans].filled(np.nan)
 median = np.nanmedian(difference)
-nmad = xdem.spatial_tools.nmad(difference)
+nmad = xdem.spatialstats.nmad(difference)
 
 plt.title(f"Median: {median:.2f} m, NMAD: {nmad:.2f} m")
 plt.hist(difference, bins=np.linspace(-15, 15, 100))

@@ -354,7 +354,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
     if metadata is not None:
         metadata["deramp"] = {
             "coefficients": coefficients,
-            "nmad": xdem.spatial_tools.nmad(residuals(coefficients, valid_diffs, valid_x_coords, valid_y_coords, degree))
+            "nmad": xdem.spatialstats.nmad(residuals(coefficients, valid_diffs, valid_x_coords, valid_y_coords, degree))
         }
 
     # Return the function which can be used later.
@@ -744,7 +744,7 @@ class Coreg:
                                    inlier_mask=inlier_mask, transform=transform)
 
         error_functions = {
-            "nmad": xdem.spatial_tools.nmad,
+            "nmad": xdem.spatialstats.nmad,
             "median": np.median,
             "mean": np.mean,
             "std": np.std,
@@ -1246,7 +1246,7 @@ class NuthKaab(Coreg):
         # Calculate initial dDEM statistics
         elevation_difference = ref_dem - aligned_dem
         bias = np.nanmedian(elevation_difference)
-        nmad_old = xdem.spatial_tools.nmad(elevation_difference)
+        nmad_old = xdem.spatialstats.nmad(elevation_difference)
         if verbose:
             print("   Statistics on initial dh:")
             print("      Median = {:.2f} - NMAD = {:.2f}".format(bias, nmad_old))
@@ -1291,7 +1291,7 @@ class NuthKaab(Coreg):
             # Update statistics
             elevation_difference = ref_dem - aligned_dem
             bias = np.nanmedian(elevation_difference)
-            nmad_new = xdem.spatial_tools.nmad(elevation_difference)
+            nmad_new = xdem.spatialstats.nmad(elevation_difference)
             nmad_gain = (nmad_new - nmad_old) / nmad_old*100
 
             if verbose:
