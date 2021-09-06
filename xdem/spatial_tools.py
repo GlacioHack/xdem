@@ -1,13 +1,12 @@
-"""
-A set of basic operations to be run on 2D arrays and DEMs.
-"""
-
+"""Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
 
-from typing import Callable, Union, Iterable, Optional, Sequence
+from typing import Callable, Union, Sized, Optional
+import warnings
 
 import itertools
 import geoutils as gu
+from geoutils.georaster import RasterType
 import numpy as np
 import pandas as pd
 import scipy
@@ -15,6 +14,11 @@ from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
+import numba
+import skimage.transform
+
+from xdem.misc import deprecate
+from xdem.spatialstats import nd_binning
 
 try:
     from sklearn.metrics import mean_squared_error, median_absolute_error
@@ -38,33 +42,48 @@ def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
     return mask.squeeze()
 
 
-def get_array_and_mask(array: Union[np.ndarray, np.ma.masked_array], check_shape: bool = True) -> (np.ndarray, np.ndarray):
+def get_array_and_mask(
+        array: np.ndarray | np.ma.masked_array | RasterType,
+        check_shape: bool = True,
+        copy: bool = True
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
     Return array with masked values set to NaN and the associated mask.
     Works whether array is a ndarray with NaNs or a np.ma.masked_array.
-    WARNING, if array is of dtype float, will return a view only, if integer dtype, will return a copy.
 
     :param array: Input array.
+    :param check_shape: Validate that the array is either a 1D array, a 2D array or a 3D array of shape (1, rows, cols).
+    :param copy: Return a copy of 'array'. If False, a view will be attempted (and warn if not possible)
 
     :returns array_data, invalid_mask: a tuple of ndarrays. First is array with invalid pixels converted to NaN, \
     second is mask of invalid pixels (True if invalid).
     """
+    if isinstance(array, gu.Raster):
+        array = array.data
+
     if check_shape:
         if len(array.shape) > 2 and array.shape[0] > 1:
             raise ValueError(
                     f"Invalid array shape given: {array.shape}."
                     "Expected 2D array or 3D array where arr.shape[0] == 1"
             )
-    # Get mask of invalid pixels
-    invalid_mask = get_mask(array)
 
-    # If array is of type integer, need to be converted to float, forcing not duplicate
-    if np.issubdtype(array.dtype, np.integer):
+    # If an occupied mask exists and a view was requested, trigger a warning.
+    if not copy and np.any(getattr(array, "mask", False)):
+        warnings.warn("Copying is required to respect the mask. Returning copy. Set 'copy=True' to hide this message.")
+        copy = True
+
+    # If array is of type integer and has a mask, it needs to be converted to float (to assign nans)
+    if np.any(getattr(array, "mask", False)) and np.issubdtype(array.dtype, np.integer):
         array = array.astype('float32')
 
-    # Convert into a regular ndarray and convert invalid values to NaN
-    array_data = np.asarray(array).squeeze()
-    array_data[invalid_mask] = np.nan
+    # Convert into a regular ndarray (a view or copy depending on the 'copy' argument)
+    array_data = np.array(array).squeeze() if copy else np.asarray(array).squeeze()
+
+    # Get the mask of invalid pixels and set nans if it is occupied.
+    invalid_mask = get_mask(array)
+    if np.any(invalid_mask):
+        array_data[invalid_mask] = np.nan
 
     return array_data, invalid_mask
 
@@ -97,105 +116,6 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
         data_arr = np.asarray(data)
     return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
-def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
-                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
-        -> pd.DataFrame:
-    """
-    N-dimensional binning of values according to one or several explanatory variables.
-    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
-    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
-
-    :param values: values array (N,)
-    :param list_var: list (L) of explanatory variables array (N,)
-    :param list_var_names: list (L) of names of the explanatory variables
-    :param list_var_bins: count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
-    :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
-    :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
-    :return:
-    """
-
-    # we separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
-    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
-    if list_var_bins is None:
-        list_var_bins = (10,) * len(list_var_names)
-    elif isinstance(list_var_bins,int):
-        list_var_bins = (list_var_bins,) * len(list_var_names)
-
-    # flatten the arrays if this has not been done by the user
-    values = values.ravel()
-    list_var = [var.ravel() for var in list_var]
-
-    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
-
-    # get binned statistics in 1d: a simple loop is sufficient
-    list_df_1d = []
-    for i, var in enumerate(list_var):
-        df_stats_1d = pd.DataFrame()
-        # get statistics
-        for j, statistic in enumerate(statistics):
-            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
-            # save in a dataframe
-            df_stats_1d[statistics_name[j]] = stats_binned_1d
-        # we need to get the middle of the bins from the edges, to get the same dimension length
-        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
-        # report number of dimensions used
-        df_stats_1d['nd'] = 1
-
-        list_df_1d.append(df_stats_1d)
-
-    # get binned statistics in 2d: all possible 2d combinations
-    list_df_2d = []
-    if len(list_var)>1:
-        combs = list(itertools.combinations(list_var_names, 2))
-        for i, comb in enumerate(combs):
-            var1_name, var2_name = comb
-            # corresponding variables indexes
-            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
-            df_stats_2d = pd.DataFrame()
-            for j, statistic in enumerate(statistics):
-                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
-                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
-                                                             ,range=list_ranges)[:3]
-                # get statistics
-                df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
-            # derive interval indexes and convert bins into 2d indexes
-            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
-            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
-            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
-            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
-            # report number of dimensions used
-            df_stats_2d['nd'] = 2
-
-            list_df_2d.append(df_stats_2d)
-
-
-    # get binned statistics in nd, without redoing the same stats
-    df_stats_nd = pd.DataFrame()
-    if len(list_var)>2:
-        for j, statistic in enumerate(statistics):
-            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
-            df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
-        list_ii = []
-        # loop through the bin edges and create IntervalIndexes from them (to get both
-        for bedges in list_bedges:
-            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
-
-        # create nd indexes in nd-array and flatten for each variable
-        iind = np.meshgrid(*list_ii)
-        for i, var_name in enumerate(list_var_names):
-            df_stats_nd[var_name] = iind[i].flatten()
-
-        # report number of dimensions used
-        df_stats_nd['nd'] = len(list_var_names)
-
-    # concatenate everything
-    list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
-    df_concat = pd.concat(list_all_dfs)
-    # commenting for now: pd.MultiIndex can be hard to use
-    # df_concat = df_concat.set_index(list_var_names)
-
-    return df_concat
-
 def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     """Get a rasterio resampling method from a string representation, e.g. "cubic_spline"."""
     # Try to match the string version of the resampling method with a rio Resampling enum name
@@ -212,6 +132,13 @@ def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     return resampling_method
 
 
+@deprecate(
+        removal_version="0.0.6",
+        details=(
+            "This function is redundant after the '-' operator for rasters was introduced."
+            " Use 'dem1 - dem2.reproject(dem1, resampling_method='cubic_spline')' instead."
+        )
+)
 def subtract_rasters(first_raster: Union[str, gu.georaster.Raster], second_raster: Union[str, gu.georaster.Raster],
                      reference: str = "first",
                      resampling_method: Union[str, rio.warp.Resampling] = "cubic_spline") -> gu.georaster.Raster:
@@ -440,74 +367,99 @@ If several algorithms are provided, each result is returned as a separate band.
     return merged_raster
 
 
-def hillshade(dem: Union[np.ndarray, np.ma.masked_array], resolution: Union[float, tuple[float, float]],
-              azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0) -> np.ndarray:
+def _get_closest_rectangle(size: int) -> tuple[int, int]:
     """
-    Generate a hillshade from the given DEM.
+    Given a 1D array size, return a rectangular shape that is closest to a cube which the size fits in.
 
-    :param dem: The input DEM to calculate the hillshade from.
-    :param resolution: One or two values specifying the resolution of the DEM.
-    :param azimuth: The azimuth in degrees (0-360°) going clockwise, starting from north.
-    :param altitude: The altitude in degrees (0-90°). 90° is straight from above.
-    :param z_factor: Vertical exaggeration factor.
-
-    :raises AssertionError: If the given DEM is not a 2D array.
-    :raises ValueError: If invalid argument types or ranges were given.
-
-    :returns: A hillshade with the dtype "float32" with value ranges of 0-255.
+    If 'size' does not have an integer root, a rectangle is returned that is slightly larger than 'size'.
+    
+    :examples:
+        >>> _get_closest_rectangle(4)  # size will be 4
+        (2, 2)
+        >>> _get_closest_rectangle(9)  # size will be 9
+        (3, 3)
+        >>> _get_closest_rectangle(3)  # size will be 4; needs padding afterward.
+        (2, 2)
+        >>> _get_closest_rectangle(55) # size will be 56; needs padding afterward.
+        (7, 8)
+        >>> _get_closest_rectangle(24)  # size will be 25; needs padding afterward
+        (5, 5)
+        >>> _get_closest_rectangle(85620)  # size will be 85849; needs padding afterward
+        (293, 293)
+        >>> _get_closest_rectangle(52011)  # size will be 52212; needs padding afterward
+        (228, 229)
     """
-    # Extract the DEM and mask
-    dem_values, mask = get_array_and_mask(dem.squeeze())
-    # The above is not guaranteed to copy the data, so this needs to be done first.
-    demc = dem_values.copy()
+    close_cube = int(np.sqrt(size))
 
-    # Validate the inputs.
-    assert len(demc.shape) == 2, f"Expected a 2D array. Got shape: {dem.shape}"
-    if (azimuth < 0.0) or (azimuth > 360.0):
-        raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {azimuth})")
-    if (altitude < 0.0) or (altitude > 90):
-        raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
-    if (z_factor < 0.0) or not np.isfinite(z_factor):
-        raise ValueError(f"z_factor must be a non-negative finite value (given value: {z_factor})")
+    # If size has an integer root, return the respective cube.
+    if close_cube ** 2 == size:
+        return (close_cube, close_cube)
+    
+    # One of these rectangles/cubes will cover all cells, so return the first that does.
+    potential_rectangles = [
+        (close_cube, close_cube + 1),
+        (close_cube + 1, close_cube + 1)
+    ]
 
-    # Fill the nonfinite values with the median (or maybe just 0?) to not interfere with the gradient analysis.
-    demc[~np.isfinite(demc)] = np.nanmedian(demc)
+    for rectangle in potential_rectangles:
+        if np.prod(rectangle) >= size:
+            return rectangle
 
-    # Multiply the DEM with the z_factor to increase the apparent height.
-    demc *= z_factor
+    raise NotImplementedError(f"Function criteria not met for rectangle of size: {size}")
 
-    # Parse the resolution argument. If it's subscriptable, it's assumed to be [X, Y] resolution.
-    try:
-        resolution[0]  # type: ignore
-    # If that fails, it's assumed to be the X&Y resolution.
-    except TypeError as exception:
-        if "not subscriptable" not in str(exception):
-            raise exception
-        resolution = (resolution,) * 2  # type: ignore
 
-    # Calculate the gradient of each pixel.
-    x_gradient, y_gradient = np.gradient(demc)
-    # Normalize by the radius of the resolution to make it resolution variant.
-    x_gradient /= resolution[0] * 0.5  # type: ignore
-    y_gradient /= resolution[1] * 0.5  # type: ignore
 
-    azimuth_rad = np.deg2rad(360 - azimuth)
-    altitude_rad = np.deg2rad(altitude)
+def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
+    """
+    Create indices for subdivison of an array in a number of blocks.
 
-    # Calculate slope and aspect maps.
-    slope = np.pi / 2.0 - np.arctan(np.sqrt(x_gradient ** 2 + y_gradient ** 2))
-    aspect = np.arctan2(-x_gradient, y_gradient)
+    If 'count' is divisible by the product of 'shape', the amount of cells in each block will be equal.
+    If 'count' is not divisible, the amount of cells in each block will be very close to equal.
 
-    # Create a hillshade from these products.
-    shaded = np.sin(altitude_rad) * np.sin(slope) + np.cos(altitude_rad) * \
-        np.cos(slope) * np.cos((azimuth_rad - np.pi / 2.0) - aspect)
+    :param shape: The shape of a array to be subdivided.
+    :param count: The amount of subdivisions to make.
 
-    # Set (potential) masked out values to nan
-    shaded[mask] = np.nan
+    :examples:
+        >>> subdivide_array((4, 4), 4)
+        array([[0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3]])
 
-    # Return the hillshade, scaled to uint8 ranges.
-    # The output is scaled by "(x + 0.6) / 1.84" to make it more similar to GDAL.
-    return np.clip(255 * (shaded + 0.6) / 1.84, 0, 255).astype("float32")
+        >>> subdivide_array((6, 4), 4)
+        array([[0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [0, 0, 1, 1],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3],
+               [2, 2, 3, 3]])
+
+        >>> subdivide_array((5, 4), 3)
+        array([[0, 0, 0, 0],
+               [0, 0, 0, 0],
+               [1, 1, 2, 2],
+               [1, 1, 2, 2],
+               [1, 1, 2, 2]])
+
+    :raises ValueError: If the 'shape' size (`np.prod(shape)`) is smallern than 'count'
+                        If the shape is not a 2D shape.
+
+    :returns: An array of shape 'shape' with 'count' unique indices.
+    """
+    if count > np.prod(shape):
+        raise ValueError(f"Shape '{shape}' size ({np.prod(shape)}) is smaller than 'count' ({count}).")
+
+    if len(shape) != 2:
+        raise ValueError(f"Expected a 2D shape, got {len(shape)}D shape: {shape}")
+
+    # Generate a small grid of indices, with the same unique count as 'count'
+    rect = _get_closest_rectangle(count)
+    small_indices = np.pad(np.arange(count), np.prod(rect) - count, mode="edge")[:np.prod(rect)].reshape(rect)
+
+    # Upscale the grid to fit the output shape using nearest neighbour scaling.
+    indices = skimage.transform.resize(small_indices, shape, order=0, preserve_range=True).astype(int)
+
+    return indices.reshape(shape)
 
 def get_xy_rotated(raster: gu.georaster.Raster, along_track_angle: float) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -841,17 +793,26 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
 
 
 def subsample_raster(
-    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False
-) -> np.ndarray:
+    array: Union[np.ndarray, np.ma.masked_array], subsample: Union[float, int], return_indices: bool = False,
+    random_state : None | np.random.RandomState | np.random.Generator | int = None) -> np.ndarray:
     """
     Randomly subsample a 1D or 2D array by a subsampling factor, taking only non NaN/masked values.
 
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
     If > 1 will be considered the number of pixels to extract.
     :param return_indices: If set to True, will return the extracted indices only.
+    :param random_state: Random state, or seed number to use for random calculations (for testing)
 
     :returns: The subsampled array (1D) or the indices to extract (same shape as input array)
     """
+    # Define state for random subsampling (to fix results during testing)
+    if random_state is None:
+        rnd = np.random.default_rng()
+    elif isinstance(random_state, (np.random.RandomState, np.random.Generator)):
+        rnd = random_state
+    else:
+        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
+
     # Get number of points to extract
     if (subsample <= 1) & (subsample > 0):
         npoints = int(subsample * np.size(array))
@@ -870,7 +831,7 @@ def subsample_raster(
         npoints = np.size(valids)
 
     # Randomly extract npoints without replacement
-    indices = np.random.choice(valids, npoints, replace=False)
+    indices = rnd.choice(valids, npoints, replace=False)
     unraveled_indices = np.unravel_index(indices, array.shape)
 
     if return_indices:

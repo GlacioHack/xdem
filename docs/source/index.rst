@@ -5,7 +5,7 @@
 
 Welcome to xdem's documentation!
 ================================
-xdem aims to make Digital Elevation Model (DEM) comparisons easy.
+``xdem`` aims to make Digital Elevation Model (DEM) analysis easy.
 Coregistration, subtraction (and volume measurements), and error statistics should be available to anyone with the correct input data.
 
 
@@ -19,7 +19,7 @@ Simple usage
         dem1 = xdem.DEM("path/to/first_dem.tif")
         dem2 = xdem.DEM("path/to/second_dem.tif")
 
-        difference = xdem.spatial_tools.subtract_rasters(dem1, dem2)
+        difference = dem1 - dem2
 
 
 
@@ -27,11 +27,16 @@ Simple usage
    :maxdepth: 2
    :caption: Contents:
 
-   tutorials
+   intro
    coregistration
+   biascorr
+   filters
    comparison
-   spatial_stats
-   api/xdem.rst
+   spatialstats
+   robuststats
+   terrain
+   auto_examples/index.rst
+   api.rst
 
 Indices and tables
 ==================

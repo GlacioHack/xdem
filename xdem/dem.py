@@ -1,6 +1,4 @@
-"""
-dem.py provides a class for working with digital elevation models (DEMs)
-"""
+"""DEM class and functions."""
 import os
 import pyproj
 import warnings
@@ -47,7 +45,7 @@ dem_attrs = ['vref','vref_grid','ccrs']
 
 class DEM(SatelliteImage):
 
-    def __init__(self, filename_or_dataset, vref_name=None, vref_grid=None, silent=False, **kwargs):
+    def __init__(self, filename_or_dataset, vref_name=None, vref_grid=None, silent=True, **kwargs):
         """
         Load digital elevation model data through the Raster class, parse additional attributes from filename or metadata
         trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
@@ -74,7 +72,8 @@ class DEM(SatelliteImage):
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
                 super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
-        if self.nbands > 1:
+        # self.nbands can be None when data is not loaded through the Raster class
+        if self.nbands is not None and self.nbands > 1:
             raise ValueError('DEM rasters should be composed of one band only')
 
         # user input

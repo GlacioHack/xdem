@@ -1,4 +1,4 @@
-
+"""DEM collection class and functions."""
 from __future__ import annotations
 
 import datetime
@@ -47,13 +47,14 @@ class DEMCollection:
 
         # Find the sort indices from the timestamps
         indices = np.argsort(self.timestamps.astype("int64"))
-        self.dems = np.asarray(dems)[indices]
+        self.dems = np.empty(len(dems), dtype=object)
+        self.dems[:] = [dems[i] for i in indices]
         self.ddems: list[xdem.dDEM] = []
         # The reference index changes place when sorted
         if isinstance(reference_dem, int):
             self.reference_index = np.argwhere(indices == reference_dem)[0][0]
         elif isinstance(reference_dem, gu.georaster.Raster):
-            self.reference_index = np.argwhere(self.dems == reference_dem)[0][0]
+            self.reference_index = [i for i, dem in enumerate(self.dems) if dem is reference_dem][0]
 
         if outlines is None:
             self.outlines: dict[np.datetime64, gu.geovector.Vector] = {}
@@ -99,12 +100,7 @@ class DEMCollection:
                 )
             else:
                 ddem = xdem.dDEM(
-                    raster=xdem.spatial_tools.subtract_rasters(
-                        self.reference_dem,
-                        dem,
-                        reference="first",
-                        resampling_method=resampling_method
-                    ),
+                    self.reference_dem - dem.reproject(resampling=resampling_method, silent=True),
                     start_time=min(self.reference_timestamp, self.timestamps[i]),
                     end_time=max(self.reference_timestamp, self.timestamps[i]),
                     error=None

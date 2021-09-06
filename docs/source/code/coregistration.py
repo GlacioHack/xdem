@@ -8,16 +8,14 @@ import numpy as np
 import xdem
 from xdem import coreg
 
-# Download the necessary data. This may take a few minutes.
-xdem.examples.download_longyearbyen_examples(overwrite=False)
 
 # Load the data using xdem and geoutils (could be with rasterio and geopandas instead)
 # Load a reference DEM from 2009
-reference_dem = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_ref_dem"])
+reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 # Load a moderately well aligned DEM from 1990
-dem_to_be_aligned = xdem.DEM(xdem.examples.FILEPATHS["longyearbyen_tba_dem"]).reproject(reference_dem, silent=True)
+dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(reference_dem, silent=True)
 # Load glacier outlines from 1990. This will act as the unstable ground.
-glacier_outlines = gu.Vector(xdem.examples.FILEPATHS["longyearbyen_glacier_outlines"])
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # Prepare the inputs for coregistration.
 ref_data = reference_dem.data.squeeze()  # This is a numpy 2D array/masked_array
@@ -55,10 +53,10 @@ deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.
 
 bias_corr = coreg.BiasCorr()
 # Note that the transform argument is not needed, since it is a simple vertical correction.
-bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask)
+bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask, transform=reference_dem.transform)
 
 # Apply the bias to a DEM
-corrected_dem = bias_corr.apply(tba_data, transform=None)  # The transform does not need to be given for bias
+corrected_dem = bias_corr.apply(tba_data, transform=dem_to_be_aligned.transform)
 
 # Use median bias instead
 bias_median = coreg.BiasCorr(bias_func=np.median)

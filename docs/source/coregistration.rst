@@ -1,13 +1,22 @@
 .. _coregistration:
 
-DEM Coregistration
-==================
+Coregistration
+===============
+
+Coregistration between DEMs correspond to aligning the digital elevation models in three dimension.
+
+Transformations that can be described by a 3-dimensional `affine <https://en.wikipedia.org/wiki/Affine_transformation>`_ function are included in coregistration methods.
+Those transformations include for instance:
+
+- vertical and horizontal translations,
+- rotations, reflections,
+- scalings.
 
 .. contents:: Contents 
    :local:
 
 Introduction
-^^^^^^^^^^^^
+------------
 
 Coregistration of a DEM is performed when it needs to be compared to a reference, but the DEM does not align with the reference perfectly.
 There are many reasons for why this might be, for example: poor georeferencing, unknown coordinate system transforms or vertical datums, and instrument- or processing-induced distortion.
@@ -30,7 +39,7 @@ Examples are given using data close to Longyearbyen on Svalbard. These can be lo
         :lines: 5-27
 
 The Coreg object
-^^^^^^^^^^^^^^^^^^^^
+----------------
 :class:`xdem.coreg.Coreg`
 
 Each of the coregistration approaches in ``xdem`` inherit their interface from the ``Coreg`` class.
@@ -47,15 +56,18 @@ First, ``.fit()`` is called to estimate the transform, and then this transform c
 .. inheritance-diagram:: xdem.coreg
         :top-classes: xdem.coreg.Coreg
 
+.. _coregistration_nuthkaab:
+
+
 Nuth and Kääb (2011)
-^^^^^^^^^^^^^^^^^^^^
+--------------------
 :class:`xdem.coreg.NuthKaab`
 
 - **Performs:** translation and bias corrections.
 - **Supports weights** (soon)
 - **Recommended for:** Noisy data with low rotational differences.
 
-The Nuth and Kääb (`2011 <https:https://doi.org/10.5194/tc-5-271-2011>`_) coregistration approach is named after the paper that first implemented it.
+The Nuth and Kääb (`2011 <https://doi.org/10.5194/tc-5-271-2011>`_) coregistration approach is named after the paper that first implemented it.
 It estimates translation and bias corrections iteratively by solving a cosine equation to model the direction at which the DEM is most likely offset.
 First, the DEMs are compared to get a dDEM, and slope/aspect maps are created from the reference DEM.
 Together, these three products contain the information about in which direction the offset is.
@@ -68,20 +80,24 @@ The loop is stopped either when the maximum iteration limit is reached, or when 
 *Caption: Demonstration of the Nuth and Kääb (2011) approach from Svalbard. Note that large improvements are seen, but nonlinear offsets still exist. The NMAD is calculated from the off-glacier surfaces.*
 
 Limitations
-***********
+^^^^^^^^^^^
 The Nuth and Kääb (2011) coregistration approach does not take rotation into account.
 Rotational corrections are often needed on for example satellite derived DEMs, so a complementary tool is required for a perfect fit.
 1st or higher degree `Deramping`_ can be used for small rotational corrections.
 For large rotations, the Nuth and Kääb (2011) approach will not work properly, and `ICP`_ is recommended instead.
 
 Example
-*******
+^^^^^^^
 
 .. literalinclude:: code/coregistration.py
-        :lines: 33-38
+        :lines: 31-36
+
+
+.. minigallery:: xdem.coreg.NuthKaab
+        :add-heading:
 
 Deramping
-^^^^^^^^^
+---------
 :class:`xdem.coreg.Deramp`
 
 - **Performs:** Bias, linear or nonlinear height corrections.
@@ -93,21 +109,21 @@ This may be useful for correcting small rotations in the dataset, or nonlinear e
 Applying a "0 degree deramping" is equivalent to a simple bias correction, and is recommended for e.g. vertical datum corrections.
 
 Limitations
-***********
+^^^^^^^^^^^
 Deramping does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
 
 1st order deramping is not perfectly equivalent to a rotational correction: Values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
 For large rotational corrections, `ICP`_ is recommended.
 
 Example
-*******
+^^^^^^^
 
 .. literalinclude:: code/coregistration.py
-        :lines: 44-50
+        :lines: 42-48
 
 
 Bias correction
-^^^^^^^^^^^^^^^
+---------------
 :class:`xdem.coreg.BiasCorr`
 
 - **Performs:** (Weighted) bias correction using the mean, median or anything else
@@ -119,16 +135,16 @@ This function is more customizable, for example allowing changing of the bias al
 It should also be faster, since it is a single function call.
 
 Limitations
-***********
+^^^^^^^^^^^
 Only performs vertical corrections, so it should be combined with another approach.
 
 Example
-*******
+^^^^^^^
 .. literalinclude:: code/coregistration.py
-        :lines: 56-66
+        :lines: 54-64
 
 ICP
-^^^
+---
 :class:`xdem.coreg.ICP`
 
 - **Performs:** Rigid transform correction (translation + rotation).
@@ -145,7 +161,7 @@ The opencv implementation of ICP includes outlier removal, since extreme outlier
 This may improve results on noisy data significantly, but care should still be taken, as the risk of landing in `local minima <https://en.wikipedia.org/wiki/Maxima_and_minima>`_ increases.
 
 Limitations
-***********
+^^^^^^^^^^^
 ICP often works poorly on noisy data.
 The outlier removal functionality of the opencv implementation is a step in the right direction, but it still does not compete with other coregistration approaches when the relative rotation is small.
 In cases of high rotation, ICP is the only approach that can account for this properly, but results may need refinement, for example with the `Nuth and Kääb (2011)`_ approach.
@@ -153,19 +169,22 @@ In cases of high rotation, ICP is the only approach that can account for this pr
 Due to the repeated nearest neighbour calculations, ICP is often the slowest coregistration approach out of the alternatives.
 
 Example
-*******
+^^^^^^^
 .. literalinclude:: code/coregistration.py
-        :lines: 72-78
+        :lines: 70-76
+
+.. minigallery:: xdem.coreg.ICP
+        :add-heading:
 
 The CoregPipeline object
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+------------------------
 :class:`xdem.coreg.CoregPipeline`
 
 Often, more than one coregistration approach is necessary to obtain the best results.
 For example, ICP works poorly with large initial biases, so a ``CoregPipeline`` can be constructed to perform both sequentially:
 
 .. literalinclude:: code/coregistration.py
-        :lines: 84-89
+        :lines: 82-87
 
 The ``CoregPipeline`` object exposes the same interface as the ``Coreg`` object.
 The results of a pipeline can be used in other programs by exporting the combined transformation matrix:
@@ -174,11 +193,15 @@ The results of a pipeline can be used in other programs by exporting the combine
 
         pipeline.to_matrix()
 
-
 This class is heavily inspired by the `Pipeline <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn-pipeline-pipeline>`_ and `make_pipeline() <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.make_pipeline.html#sklearn.pipeline.make_pipeline>`_ functionalities in ``scikit-learn``.
 
+
+.. minigallery:: xdem.coreg.CoregPipeline
+        :add-heading:
+
+
 Suggested pipelines
-*******************
+^^^^^^^^^^^^^^^^^^^
 
 For sub-pixel accuracy, the `Nuth and Kääb (2011)`_ approach should almost always be used.
 The approach does not account for rotations in the dataset, however, so a combination is often necessary.
@@ -194,11 +217,10 @@ For larger rotations, ICP is the only reliable approach (but does not outperform
 
         coreg.ICP() + coreg.NuthKaab()
 
-
 For large biases, rotations and high amounts of noise:
 
 .. code-block:: python
 
-        coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()
+        coreg.VerticalShift() + coreg.ICP() + coreg.NuthKaab()
         
 
