@@ -26,7 +26,6 @@ class TestRobustFitting:
         # Run fit
         coefs, deg = xdem.fit.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
 
-        print(coefs)
         # Check coefficients are constrained
         assert deg == 3 or deg == 4
         error_margins = [100, 5, 2, 1]
@@ -103,6 +102,7 @@ class TestRobustFitting:
         # Check that the function runs
         coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42)
 
+        print(coefs)
         # Check that the estimated sum of sinusoid correspond to the input
         for i in range(2):
             assert coefs[3*i] == pytest.approx(true_coefs[3*i], abs=0.02)
