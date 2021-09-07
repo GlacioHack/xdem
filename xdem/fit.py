@@ -93,7 +93,7 @@ def _choice_best_order(cost: np.ndarray, margin_improvement : float = 20., verbo
 def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, estimator: str  = 'Theil-Sen',
                           cost_func: Callable = median_absolute_error, margin_improvement : float = 20.,
                           subsample: Union[float,int] = 25000, linear_pkg = 'sklearn', verbose: bool = False,
-                          random_state = None, **kwargs) -> tuple[np.ndarray,int]:
+                          random_state: None | np.random.RandomState | np.random.Generator | int = None, **kwargs) -> tuple[np.ndarray,int]:
     """
     Given 1D data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
@@ -116,29 +116,30 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
     if not isinstance(linear_pkg, str) or linear_pkg not in ['sklearn','scipy']:
         raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
 
-    # select sklearn estimator
+    # Select sklearn estimator
     dict_estimators = {'Linear': LinearRegression(), 'Theil-Sen':TheilSenRegressor(random_state=random_state)
         , 'RANSAC': RANSACRegressor(random_state=random_state), 'Huber': HuberRegressor()}
     est = dict_estimators[estimator]
 
-    # remove NaNs
+    # Remove NaNs
     valid_data = np.logical_and(np.isfinite(y), np.isfinite(x))
     x = x[valid_data]
     y = y[valid_data]
 
-    # subsample
+    # Subsample data
     subsamp = subsample_raster(x, subsample=subsample, return_indices=True, random_state=random_state)
     x = x[subsamp]
     y = y[subsamp]
 
-    # initialize cost function and output coefficients
+    # Initialize cost function and output coefficients
     costs = np.empty(max_order)
     coeffs = np.zeros((max_order, max_order + 1))
-    # loop on polynomial degrees
+    # Loop on polynomial degrees
     for deg in np.arange(1, max_order + 1):
-        # if method is linear, and package is scipy
+        # If method is linear and package scipy
         if estimator == 'Linear' and linear_pkg == 'scipy':
-            # define the residual function to optimize
+
+            # Define the residual function to optimize
             def fitfun_polynomial(xx, params):
                 return sum([p * (xx ** i) for i, p in enumerate(params)])
             def errfun(p, xx, yy):
@@ -153,12 +154,13 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
                 print("Parameters:", myresults.x)
             costs[deg - 1] = myresults.cost
             coeffs[deg - 1, 0:myresults.x.size] = myresults.x
-        # otherwise, it's from sklearn
+
+        # Otherwise, it's from sklearn
         else:
             if not _has_sklearn:
                 raise ValueError("Optional dependency needed. Install 'scikit-learn'")
 
-            # create polynomial + linear estimator pipeline
+            # Create polynomial + linear estimator pipeline
             p = PolynomialFeatures(degree=deg)
             model = make_pipeline(p, est)
 
@@ -170,27 +172,25 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
             # model.fit(x_scaled, y)
             # y_pred = model.predict(x_scaled)
 
-            # fit scaled data
+            # Fit scaled data
             model.fit(x.reshape(-1,1), y)
             y_pred = model.predict(x.reshape(-1,1))
 
-            # calculate cost
+            # Calculate cost
             cost = cost_func(y_pred, y)
             costs[deg - 1] = cost
-            # get polynomial estimated with the estimator
+            # Get polynomial estimated with the estimator
             if estimator in ['Linear','Theil-Sen','Huber']:
                 c = est.coef_
-            # for some reason RANSAC doesn't store coef at the same place
+            # For some reason RANSAC doesn't store coef at the same place
             elif estimator == 'RANSAC':
                 c = est.estimator_.coef_
             coeffs[deg - 1, 0:deg+1] = c
 
-    # selecting the minimum (not robust)
-    # final_index = mycost.argmin()
-    # choosing the best polynomial with a margin of improvement on the cost
+    # Choosing the best polynomial with a margin of improvement on the cost
     final_index = _choice_best_order(cost=costs, margin_improvement=margin_improvement, verbose=verbose)
 
-    # the degree of the polynom correspond to the index plus one
+    # Degree of the polynomial corresponds to the index plus one
     return np.trim_zeros(coeffs[final_index], 'b'), final_index + 1
 
 
@@ -211,7 +211,7 @@ def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
 def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                       bounds_amp_freq_phase: Optional[list[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
                       cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000, hop_length : Optional[float] = None,
-                      random_state: Optional[Union[int,np.random.Generator,np.random.RandomState]] = None, verbose: bool = False) -> tuple[np.ndarray,int]:
+                      random_state: None | np.random.RandomState | np.random.Generator | int = None, verbose: bool = False) -> tuple[np.ndarray,int]:
     """
     Given 1D data x, y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
