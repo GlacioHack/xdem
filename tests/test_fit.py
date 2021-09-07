@@ -102,7 +102,6 @@ class TestRobustFitting:
         # Check that the function runs
         coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42)
 
-        print(coefs)
         # Check that the estimated sum of sinusoid correspond to the input
         for i in range(2):
             assert coefs[3*i] == pytest.approx(true_coefs[3*i], abs=0.02)
