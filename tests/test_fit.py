@@ -26,6 +26,7 @@ class TestRobustFitting:
         # Run fit
         coefs, deg = xdem.fit.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
 
+        print(coefs)
         # Check coefficients are constrained
         assert deg == 3 or deg == 4
         error_margins = [100, 5, 2, 1]
