@@ -13,7 +13,7 @@ class TestRobustFitting:
 
     @pytest.mark.parametrize("pkg_estimator", [('sklearn','Linear'), ('scipy','Linear'), ('sklearn','Theil-Sen'),
                                            ('sklearn','RANSAC'),('sklearn','Huber')])
-    def test_robust_polynomial_fit(self, pkg_estimator: str) -> None:
+    def test_robust_polynomial_fit(self, pkg_estimator: str):
 
         np.random.seed(42)
 
@@ -26,7 +26,7 @@ class TestRobustFitting:
         # Run fit
         coefs, deg = xdem.fit.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
 
-        # Check coefficients are well constrained
+        # Check coefficients are constrained
         assert deg == 3 or deg == 4
         error_margins = [100, 5, 2, 1]
         for i in range(4):
@@ -91,7 +91,7 @@ class TestRobustFitting:
         for i in range(3):
             assert coefs6[i+1] == pytest.approx(true_coefs[i+1], abs=1)
 
-    def test_robust_sumsin_fit(self) -> None:
+    def test_robust_sumsin_fit(self):
 
         # Define X vector
         x = np.linspace(0, 10, 1000)
