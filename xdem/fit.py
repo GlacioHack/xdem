@@ -3,7 +3,9 @@ Functions to perform normal, weighted and robust fitting.
 """
 from __future__ import annotations
 
+import inspect
 from typing import Callable, Union, Sized, Optional
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -89,18 +91,117 @@ def _choice_best_order(cost: np.ndarray, margin_improvement : float = 20., verbo
 
     return ind
 
+def _wrapper_scipy_leastsquares(residual_func, p0, x, y, verbose, **kwargs):
+    """
+    Wrapper function for scipy.optimize.least_squares: passes down keyword, extracts cost and final parameters, print
+    statements in the console
 
-def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, estimator: str  = 'Theil-Sen',
+    :param residual_func: Residual function to fit
+    :param p0: Initial guess
+    :param x: X vector
+    :param y: Y vector
+    :param verbose: Whether to print out statements
+    :return:
+    """
+
+    # Get arguments of scipy.optimize
+    fun_args = scipy.optimize.least_squares.__code__.co_varnames[:scipy.optimize.least_squares.__code__.co_argcount]
+    # Check no other argument is left to be passed
+    remaining_kwargs = kwargs.copy()
+    for arg in fun_args:
+        remaining_kwargs.pop(arg, None)
+    if len(remaining_kwargs) != 0:
+        warnings.warn('Keyword arguments: ' + ','.join(list(remaining_kwargs.keys())) + ' were not used.')
+    # Filter corresponding arguments before passing
+    filtered_kwargs = {k: kwargs[k] for k in fun_args if k in kwargs}
+
+    # Run function with associated keyword arguments
+    myresults = scipy.optimize.least_squares(residual_func, p0, args=(x, y), **filtered_kwargs)
+    if verbose:
+        print("Initial Parameters: ", p0)
+        print("Status: ", myresults.success, " - ", myresults.status)
+        print(myresults.message)
+        print("Lowest cost:", myresults.cost)
+        print("Parameters:", myresults.x)
+    cost = myresults.cost
+    coefs = myresults.x
+
+    return cost, coefs
+
+def _wrapper_sklearn_robustlinear(model, estimator_name, cost_func, x, y, **kwargs):
+    """
+    Wrapper function of sklearn.linear_models: passes down keyword, extracts cost and final parameters, sets random
+    states, scales input and de-scales output data, prints out statements
+
+    :param model: Function model to fit (e.g., Polynomial features)
+    :param estimator_name: Linear estimator to use (one of "Linear", "Theil-Sen", "RANSAC" and "Huber")
+    :param cost_func: Cost function to use for optimization
+    :param x: X vector
+    :param y: Y vector
+    :return:
+    """
+    # Select sklearn estimator
+    dict_estimators = {'Linear': LinearRegression, 'Theil-Sen': TheilSenRegressor,
+                       'RANSAC': RANSACRegressor, 'Huber': HuberRegressor}
+
+    est = dict_estimators[estimator_name]
+
+    # Get existing arguments of the sklearn estimator and model
+    estimator_args = list(inspect.signature(est.__init__).parameters.keys())
+
+    # Check no other argument is left to be passed
+    remaining_kwargs = kwargs.copy()
+    for arg in estimator_args:
+        remaining_kwargs.pop(arg, None)
+    if len(remaining_kwargs) != 0:
+        warnings.warn('Keyword arguments: ' + ','.join(list(remaining_kwargs.keys())) + ' were not used.')
+    # Filter corresponding arguments before passing
+    filtered_kwargs = {k: kwargs[k] for k in estimator_args if k in kwargs}
+
+    # TODO: Find out how to re-scale polynomial coefficient + doc on what is the best scaling for polynomials
+    # # Scale output data (important for ML algorithms):
+    # robust_scaler = RobustScaler().fit(x.reshape(-1,1))
+    # x_scaled = robust_scaler.transform(x.reshape(-1,1))
+    # # Fit scaled data
+    # model.fit(x_scaled, y)
+    # y_pred = model.predict(x_scaled)
+
+    # Initialize estimator with arguments
+    init_estimator = est(**filtered_kwargs)
+
+    # Create pipeline
+    pipeline = make_pipeline(model, init_estimator)
+
+    # Run with data
+    pipeline.fit(x.reshape(-1, 1), y)
+    y_pred = pipeline.predict(x.reshape(-1, 1))
+
+    # Calculate cost
+    cost = cost_func(y_pred, y)
+
+    # Get polynomial coefficients estimated with the estimators Linear, Theil-Sen and Huber
+    if estimator_name in ['Linear','Theil-Sen','Huber']:
+        coefs = init_estimator.coef_
+    # For some reason RANSAC doesn't store coef at the same place
+    else:
+        coefs = init_estimator.estimator_.coef_
+
+    return cost, coefs
+
+
+def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, estimator_name: str  = 'Theil-Sen',
                           cost_func: Callable = median_absolute_error, margin_improvement : float = 20.,
                           subsample: Union[float,int] = 25000, linear_pkg = 'sklearn', verbose: bool = False,
                           random_state: None | np.random.RandomState | np.random.Generator | int = None, **kwargs) -> tuple[np.ndarray,int]:
     """
-    Given 1D data x, y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
+    Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
+    Any keyword argument will be passed down to scipy.optimize.least_squares and sklearn linear estimators.
+
     :param x: input x data (N,)
     :param y: input y data (N,)
     :param max_order: maximum polynomial order tried for the fit
-    :param estimator: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
+    :param estimator_name: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
     :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
     :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
@@ -111,15 +212,10 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
 
     :returns coefs, degree: polynomial coefficients and degree for the best-fit polynomial
     """
-    if not isinstance(estimator, str) or estimator not in ['Linear','Theil-Sen','RANSAC','Huber']:
+    if not isinstance(estimator_name, str) or estimator_name not in ['Linear','Theil-Sen','RANSAC','Huber']:
         raise ValueError('Attribute estimator must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
     if not isinstance(linear_pkg, str) or linear_pkg not in ['sklearn','scipy']:
         raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
-
-    # Select sklearn estimator
-    dict_estimators = {'Linear': LinearRegression(), 'Theil-Sen':TheilSenRegressor(random_state=random_state)
-        , 'RANSAC': RANSACRegressor(random_state=random_state), 'Huber': HuberRegressor()}
-    est = dict_estimators[estimator]
 
     # Remove NaNs
     valid_data = np.logical_and(np.isfinite(y), np.isfinite(x))
@@ -132,66 +228,44 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
     y = y[subsamp]
 
     # Initialize cost function and output coefficients
-    costs = np.empty(max_order)
-    coeffs = np.zeros((max_order, max_order + 1))
+    list_costs = np.empty(max_order)
+    list_coeffs = np.zeros((max_order, max_order + 1))
     # Loop on polynomial degrees
     for deg in np.arange(1, max_order + 1):
         # If method is linear and package scipy
-        if estimator == 'Linear' and linear_pkg == 'scipy':
+        if estimator_name == 'Linear' and linear_pkg == 'scipy':
 
-            # Define the residual function to optimize
+            # Define the residual function to optimize with scipy
             def fitfun_polynomial(xx, params):
                 return sum([p * (xx ** i) for i, p in enumerate(params)])
-            def errfun(p, xx, yy):
+            def residual_func(p, xx, yy):
                 return fitfun_polynomial(xx, p) - yy
+            # Define the initial guess
             p0 = np.polyfit(x, y, deg)
-            myresults = scipy.optimize.least_squares(errfun, p0, args=(x, y), **kwargs)
-            if verbose:
-                print("Initial Parameters: ", p0)
-                print("Polynomial degree - ", deg, " --> Status: ", myresults.success, " - ", myresults.status)
-                print(myresults.message)
-                print("Lowest cost:", myresults.cost)
-                print("Parameters:", myresults.x)
-            costs[deg - 1] = myresults.cost
-            coeffs[deg - 1, 0:myresults.x.size] = myresults.x
 
-        # Otherwise, it's from sklearn
+            # Run the linear method with scipy
+            cost, coef = _wrapper_scipy_leastsquares(residual_func, p0, x, y, verbose=verbose, **kwargs)
+
         else:
+            # Otherwise, we use sklearn
             if not _has_sklearn:
                 raise ValueError("Optional dependency needed. Install 'scikit-learn'")
 
-            # Create polynomial + linear estimator pipeline
-            p = PolynomialFeatures(degree=deg)
-            model = make_pipeline(p, est)
+            # Define the polynomial model to insert in the pipeline
+            model = PolynomialFeatures(degree=deg)
 
-            # TODO: find out how to re-scale polynomial coefficient + doc on what is the best scaling for polynomials
-            # # scale output data (important for ML algorithms):
-            # robust_scaler = RobustScaler().fit(x.reshape(-1,1))
-            # x_scaled = robust_scaler.transform(x.reshape(-1,1))
-            # # fit scaled data
-            # model.fit(x_scaled, y)
-            # y_pred = model.predict(x_scaled)
+            # Run the linear method with sklearn
+            cost, coef = _wrapper_sklearn_robustlinear(model, estimator_name=estimator_name, cost_func=cost_func,
+                                                       x=x, y=y, **kwargs)
 
-            # Fit scaled data
-            model.fit(x.reshape(-1,1), y)
-            y_pred = model.predict(x.reshape(-1,1))
+        list_costs[deg - 1] = cost
+        list_coeffs[deg - 1, 0:coef.size] = coef
 
-            # Calculate cost
-            cost = cost_func(y_pred, y)
-            costs[deg - 1] = cost
-            # Get polynomial estimated with the estimator
-            if estimator in ['Linear','Theil-Sen','Huber']:
-                c = est.coef_
-            # For some reason RANSAC doesn't store coef at the same place
-            elif estimator == 'RANSAC':
-                c = est.estimator_.coef_
-            coeffs[deg - 1, 0:deg+1] = c
+    # Choose the best polynomial with a margin of improvement on the cost
+    final_index = _choice_best_order(cost=list_costs, margin_improvement=margin_improvement, verbose=verbose)
 
-    # Choosing the best polynomial with a margin of improvement on the cost
-    final_index = _choice_best_order(cost=costs, margin_improvement=margin_improvement, verbose=verbose)
-
-    # Degree of the polynomial corresponds to the index plus one
-    return np.trim_zeros(coeffs[final_index], 'b'), final_index + 1
+    # The degree of the best polynomial corresponds to the index plus one
+    return np.trim_zeros(list_coeffs[final_index], 'b'), final_index + 1
 
 
 def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
@@ -213,8 +287,10 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                       cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000, hop_length : Optional[float] = None,
                       random_state: None | np.random.RandomState | np.random.Generator | int = None, verbose: bool = False) -> tuple[np.ndarray,int]:
     """
-    Given 1D data x, y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
+    Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
+    Any keyword argument will be passed down to scipy.optimize.basinhopping.
+
     :param x: input x data (N,)
     :param y: input y data (N,)
     :param nb_frequency_max: maximum number of phases

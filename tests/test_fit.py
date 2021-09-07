@@ -15,8 +15,6 @@ class TestRobustFitting:
                                            ('sklearn','RANSAC'),('sklearn','Huber')])
     def test_robust_polynomial_fit(self, pkg_estimator: str):
 
-        np.random.seed(42)
-
         # Define x vector
         x = np.linspace(1, 10, 1000)
         # Define exact polynomial
@@ -24,7 +22,7 @@ class TestRobustFitting:
         y = np.polyval(np.flip(true_coefs), x)
 
         # Run fit
-        coefs, deg = xdem.fit.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator=pkg_estimator[1], random_state=42)
+        coefs, deg = xdem.fit.robust_polynomial_fit(x, y, linear_pkg=pkg_estimator[0], estimator_name=pkg_estimator[1], random_state=42)
 
         # Check coefficients are constrained
         assert deg == 3 or deg == 4
@@ -48,7 +46,7 @@ class TestRobustFitting:
         y[900:925] = 1000
 
         # Run with the "Linear" estimator
-        coefs, deg = xdem.fit.robust_polynomial_fit(x,y, estimator='Linear', linear_pkg='scipy',
+        coefs, deg = xdem.fit.robust_polynomial_fit(x,y, estimator_name='Linear', linear_pkg='scipy',
                                                               loss='soft_l1', f_scale=0.5)
 
         # Scipy solution should be quite robust to outliers/noise (with the soft_l1 method and f_scale parameter)
@@ -60,12 +58,12 @@ class TestRobustFitting:
             assert coefs[i] == pytest.approx(true_coefs[i], abs=acceptable_scipy_linear_margins[i])
 
         # The sklearn Linear solution with MSE cost function will not be robust
-        coefs2, deg2 = xdem.fit.robust_polynomial_fit(x, y, estimator='Linear', linear_pkg='sklearn',
+        coefs2, deg2 = xdem.fit.robust_polynomial_fit(x, y, estimator_name='Linear', linear_pkg='sklearn',
                                                                 cost_func=mean_squared_error, margin_improvement=50)
         # It won't find the right degree because of the outliers and noise
         assert deg2 != 3
         # Using the median absolute error should improve the fit
-        coefs3, deg3 = xdem.fit.robust_polynomial_fit(x, y, estimator='Linear', linear_pkg='sklearn',
+        coefs3, deg3 = xdem.fit.robust_polynomial_fit(x, y, estimator_name='Linear', linear_pkg='sklearn',
                                                                 cost_func=median_absolute_error, margin_improvement=50)
         # Will find the right degree, but won't find the right coefficients because of the outliers and noise
         assert deg3 == 3
@@ -75,18 +73,18 @@ class TestRobustFitting:
 
         # Now, the robust estimators
         # Theil-Sen should have better coefficients
-        coefs4, deg4 = xdem.fit.robust_polynomial_fit(x, y, estimator='Theil-Sen', random_state=42)
+        coefs4, deg4 = xdem.fit.robust_polynomial_fit(x, y, estimator_name='Theil-Sen', random_state=42)
         assert deg4 == 3
         # High degree coefficients should be well constrained
         assert coefs4[2] == pytest.approx(true_coefs[2], abs=1)
         assert coefs4[3] == pytest.approx(true_coefs[3], abs=1)
 
         # RANSAC is not always optimal, here it does not work well
-        coefs5, deg5 = xdem.fit.robust_polynomial_fit(x, y, estimator='RANSAC', random_state=42)
+        coefs5, deg5 = xdem.fit.robust_polynomial_fit(x, y, estimator_name='RANSAC', random_state=42)
         assert deg5 != 3
 
         # Huber should perform well, close to the scipy robust solution
-        coefs6, deg6 = xdem.fit.robust_polynomial_fit(x, y, estimator='Huber')
+        coefs6, deg6 = xdem.fit.robust_polynomial_fit(x, y, estimator_name='Huber')
         assert deg6 == 3
         for i in range(3):
             assert coefs6[i+1] == pytest.approx(true_coefs[i+1], abs=1)
