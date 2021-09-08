@@ -17,8 +17,8 @@ dem_coreg = nuth_kaab.apply(dem_1990.data, transform=dem_1990.transform)
 ddem_pre = (dem_2009.data - dem_1990.data).filled(np.nan).squeeze()
 ddem_post = (dem_2009.data - dem_coreg).filled(np.nan).squeeze()
 
-nmad_pre = xdem.spatial_tools.nmad(ddem_pre[inlier_mask.squeeze()])
-nmad_post = xdem.spatial_tools.nmad(ddem_post[inlier_mask.squeeze()])
+nmad_pre = xdem.spatialstats.nmad(ddem_pre[inlier_mask.squeeze()])
+nmad_post = xdem.spatialstats.nmad(ddem_post[inlier_mask.squeeze()])
 
 vlim = 20
 plt.figure(figsize=(8, 5))

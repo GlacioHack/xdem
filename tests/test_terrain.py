@@ -66,7 +66,7 @@ class TestTerrainAttribute:
         diff = (attr_xdem - attr_gdal).filled(np.nan)
         try:
             assert np.nanmean(diff) < 5
-            assert xdem.spatial_tools.nmad(diff) < 5
+            assert xdem.spatialstats.nmad(diff) < 5
         except Exception as exception:
 
             if PLOT:

@@ -1,19 +1,19 @@
 """Basic operations to be run on 2D arrays and DEMs"""
 from __future__ import annotations
-from typing import Callable, Union, Sized
+
+from typing import Callable, Union, Sized, Optional
 import warnings
 
+import itertools
 import geoutils as gu
 from geoutils.georaster import RasterType
 import numpy as np
 import rasterio as rio
 import rasterio.warp
 from tqdm import tqdm
-import numba
 import skimage.transform
 
 from xdem.misc import deprecate
-
 
 def get_mask(array: Union[np.ndarray, np.ma.masked_array]) -> np.ndarray:
     """
@@ -84,23 +84,6 @@ def get_valid_extent(array: Union[np.ndarray, np.ma.masked_array]) -> tuple:
     cols_nonzero = np.where(np.count_nonzero(valid_mask, axis=0) > 0)[0]
     rows_nonzero = np.where(np.count_nonzero(valid_mask, axis=1) > 0)[0]
     return rows_nonzero[0], rows_nonzero[-1], cols_nonzero[0], cols_nonzero[-1]
-
-
-def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
-    """
-    Calculate the normalized median absolute deviation (NMAD) of an array.
-
-    :param data: input data
-    :param nfact: normalization factor for the data; default is 1.4826
-
-    :returns nmad: (normalized) median absolute deviation of data.
-    """
-    if isinstance(data, np.ma.masked_array):
-        data_arr = get_array_and_mask(data, check_shape=False)[0]
-    else:
-        data_arr = np.asarray(data)
-    return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
-
 
 def resampling_method_from_str(method_str: str) -> rio.warp.Resampling:
     """Get a rasterio resampling method from a string representation, e.g. "cubic_spline"."""
@@ -394,7 +377,6 @@ def _get_closest_rectangle(size: int) -> tuple[int, int]:
     raise NotImplementedError(f"Function criteria not met for rectangle of size: {size}")
 
 
-
 def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
     """
     Create indices for subdivison of an array in a number of blocks.
@@ -446,6 +428,34 @@ def subdivide_array(shape: tuple[int, ...], count: int) -> np.ndarray:
     indices = skimage.transform.resize(small_indices, shape, order=0, preserve_range=True).astype(int)
 
     return indices.reshape(shape)
+
+def get_xy_rotated(raster: gu.georaster.Raster, along_track_angle: float) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Rotate x, y axes of image to get along- and cross-track distances.
+    :param raster: raster to get x,y positions from.
+    :param along_track_angle: angle by which to rotate axes (degrees)
+    :returns xxr, yyr: arrays corresponding to along (x) and cross (y) track distances.
+    """
+
+    myang = np.deg2rad(along_track_angle)
+
+    # get grid coordinates
+    xx, yy = raster.coords(grid=True)
+    xx -= np.min(xx)
+    yy -= np.min(yy)
+
+    # get rotated coordinates
+
+    # for along-track
+    xxr = np.multiply(xx, np.cos(myang)) + np.multiply(-1 * yy, np.sin(along_track_angle))
+    # for cross-track
+    yyr = np.multiply(xx, np.sin(myang)) + np.multiply(yy, np.cos(along_track_angle))
+
+    # re-initialize coordinate at zero
+    xxr -= np.nanmin(xxr)
+    yyr -= np.nanmin(yyr)
+
+    return xxr, yyr
 
 
 def subsample_raster(
