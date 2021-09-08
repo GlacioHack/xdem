@@ -58,7 +58,7 @@ The half difference between 84\ :sup:`th` and 16\ :sup:`th` percentiles, or the 
 can also be used as a robust dispersion measure equivalent to the standard deviation.
 
 .. code-block:: python
-        nmad = xdem.spatial_tools.nmad()
+        nmad = xdem.spatialstats.nmad()
 
 When working with weighted data, the difference between the 84\ :sup:`th` and 16\ :sup:`th` `weighted percentile <https://en.wikipedia.org
 /wiki/Percentile#Weighted_percentile>`_, or the absolute 68\ :sup:`th` weighted percentile can be used as a robust measure of dispersion.
