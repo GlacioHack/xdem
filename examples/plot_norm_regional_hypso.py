@@ -115,6 +115,6 @@ plt.hist(difference, bins=np.linspace(-15, 15, 100))
 plt.show()
 
 # %%
-# As we see, the median is close to zero, while the :ref:`spatial_stats_nmad` varies slightly more.
+# As we see, the median is close to zero, while the NMAD varies slightly more.
 # This is expected, as the regional signal is good for multiple glaciers at once, but it cannot account for difficult local topography and meteorological conditions.
 # It is therefore highly recommended for large regions; just don't zoom in too close!
