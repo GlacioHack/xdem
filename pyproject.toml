@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"
+testpaths = [
+	"tests",
+	"xdem"
+]
