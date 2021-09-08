@@ -70,7 +70,7 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
-    @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab])
+    @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])
     def test_copy(self, coreg_class: coreg.Coreg):
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")
@@ -427,8 +427,8 @@ class TestCoregClass:
     @pytest.mark.parametrize(
         "pipeline",
         [
-            coreg.BiasCorr(),
-            coreg.BiasCorr() + coreg.NuthKaab()
+            coreg.VerticalShift(),
+            coreg.VerticalShift() + coreg.NuthKaab()
         ]
     )
     @pytest.mark.parametrize(
@@ -463,7 +463,7 @@ class TestCoregClass:
 
         # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
         with pytest.raises(ValueError, match="instantiated Coreg subclass"):
-            coreg.BlockwiseCoreg(coreg=coreg.BiasCorr, subdivision=1)  # type: ignore
+            coreg.BlockwiseCoreg(coreg=coreg.VerticalShift, subdivision=1)  # type: ignore
 
         # Metadata copying has been an issue. Validate that all chunks have unique ids
         chunk_numbers = [m["i"] for m in blockwise._meta["coreg_meta"]]
@@ -538,31 +538,31 @@ class TestCoregClass:
         # Assign a funny value to one particular pixel. This is to validate that reprojection works perfectly.
         dem1.data[0, 1, 1] = 100
 
-        # Translate the DEM 1 "meter" right and add a bias
+        # Translate the DEM 1 "meter" right and add a vertical shift
         dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5), silent=True)
         dem2 += 1
 
-        # Create a biascorr for Rasters ("_r") and for arrays ("_a")
-        biascorr_r = coreg.BiasCorr()
-        biascorr_a = biascorr_r.copy()
+        # Create a vertical shift correction for Rasters ("_r") and for arrays ("_a")
+        vshiftcorr_r = coreg.VerticalShift()
+        vshiftcorr_a = vshiftcorr_r.copy()
 
         # Fit the data
-        biascorr_r.fit(
+        vshiftcorr_r.fit(
             reference_dem=dem1,
             dem_to_be_aligned=dem2
         )
-        biascorr_a.fit(
+        vshiftcorr_a.fit(
             reference_dem=dem1.data,
             dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
             transform=dem1.transform
         )
 
         # Validate that they ended up giving the same result.
-        assert biascorr_r._meta["bias"] == biascorr_a._meta["bias"]
+        assert vshiftcorr_r._meta["vshift"] == vshiftcorr_a._meta["vshift"]
 
         # De-shift dem2
-        dem2_r = biascorr_r.apply(dem2)
-        dem2_a = biascorr_a.apply(dem2.data, dem2.transform)
+        dem2_r = vshiftcorr_r.apply(dem2)
+        dem2_a = vshiftcorr_a.apply(dem2.data, dem2.transform)
 
         # Validate that the return formats were the expected ones, and that they are equal.
         assert isinstance(dem2_r, xdem.DEM)
@@ -571,10 +571,10 @@ class TestCoregClass:
 
         # If apply on a masked_array was given without a transform, it should fail.
         with pytest.raises(ValueError, match="'transform' must be given"):
-            biascorr_a.apply(dem2.data)
+            vshiftcorr_a.apply(dem2.data)
 
         with pytest.warns(UserWarning, match="DEM .* overrides the given 'transform'"):
-            biascorr_a.apply(dem2, transform=dem2.transform)
+            vshiftcorr_a.apply(dem2, transform=dem2.transform)
 
 
     @pytest.mark.parametrize("combination", [
@@ -618,11 +618,11 @@ class TestCoregClass:
         # Evaluate the parametrization (e.g. 'dem2.transform')
         ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
         
-        # Use BiasCorr as a representative example.
-        biascorr = xdem.coreg.BiasCorr()
+        # Use VerticalShift as a representative example.
+        vshiftcorr = xdem.coreg.VerticalShift()
 
-        fit_func = lambda: biascorr.fit(ref_dem, tba_dem, transform=transform)
-        apply_func = lambda: biascorr.apply(tba_dem, transform=transform)
+        fit_func = lambda: vshiftcorr.fit(ref_dem, tba_dem, transform=transform)
+        apply_func = lambda: vshiftcorr.apply(tba_dem, transform=transform)
 
         # Try running the methods in order and validate the result.
         for method, method_call in [("fit", fit_func), ("apply", apply_func)]:
@@ -649,7 +649,7 @@ class TestCoregClass:
         dem_arr2 = dem_arr + 1
         transform = rio.transform.from_origin(0, 5, 1, 1)
 
-        dem_arr2_fixed = coreg.BiasCorr().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
+        dem_arr2_fixed = coreg.VerticalShift().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
 
@@ -659,28 +659,28 @@ def test_apply_matrix():
     warnings.simplefilter("error")
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
 
-    # Test only bias (it should just apply the bias and not make anything else)
-    bias = 5
+    # Test only vertical shift (it should just apply the vertical shift and not make anything else)
+    vshift = 5
     matrix = np.diag(np.ones(4, float))
-    matrix[2, 3] = bias
+    matrix[2, 3] = vshift
     transformed_dem = coreg.apply_matrix(ref.data.squeeze(), ref.transform, matrix)
-    reverted_dem = transformed_dem - bias
+    reverted_dem = transformed_dem - vshift
 
     # Check that the reverted DEM has the exact same values as the initial one
-    # (resampling is not an exact science, so this will only apply for bias corrections)
+    # (resampling is not an exact science, so this will only apply for vertical shift corrections)
     assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(ref.data))
 
     # Synthesize a shifted and vertically offset DEM
     pixel_shift = 11
-    bias = 5
+    vshift = 5
     shifted_dem = ref.data.squeeze().copy()
     shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
     shifted_dem[:, :pixel_shift] = np.nan
-    shifted_dem += bias
+    shifted_dem += vshift
 
     matrix = np.diag(np.ones(4, dtype=float))
     matrix[0, 3] = pixel_shift * tba.res[0]
-    matrix[2, 3] = -bias
+    matrix[2, 3] = -vshift
 
     transformed_dem = coreg.apply_matrix(shifted_dem.data.squeeze(),
                                          ref.transform, matrix, resampling="bilinear")
@@ -728,7 +728,7 @@ def test_apply_matrix():
         ref.transform,
         rotation_matrix(-rotation * 0.99),
         centroid=centroid
-    ) + 4.0  # TODO: Check why the 0.99 rotation and +4 biases were introduced.
+    ) + 4.0  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
 
