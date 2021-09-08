@@ -2,6 +2,7 @@
 Functions to test the spatial tools.
 """
 from __future__ import annotations
+
 import os
 import shutil
 import subprocess
@@ -26,7 +27,6 @@ def test_dem_subtraction():
             examples.get_path("longyearbyen_tba_dem"))
 
     assert np.nanmean(np.abs(diff.data)) < 100
-
 
 class TestMerging:
     """
@@ -210,7 +210,6 @@ def test_get_array_and_mask(
         assert np.shares_memory(array, arr_view)
     else:
         assert not np.shares_memory(array, arr_view)
-
 
 class TestSubsample:
     """

@@ -63,8 +63,8 @@ plt.show()
 # %%
 # We can compare the :ref:`spatial_stats_nmad` to validate numerically that there was an improvment:
 
-print(f"Error before: {xdem.spatial_tools.nmad(diff_before):.2f} m")
-print(f"Error after: {xdem.spatial_tools.nmad(diff_after):.2f} m")
+print(f"Error before: {xdem.spatialstats.nmad(diff_before):.2f} m")
+print(f"Error after: {xdem.spatialstats.nmad(diff_after):.2f} m")
 
 # %%
 # In the plot above, one may notice a positive (blue) tendency toward the east.

@@ -17,7 +17,7 @@ import pytransform3d.transformations
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import coreg, examples, spatial_tools, misc
+    from xdem import coreg, examples, spatial_tools, spatialstats, misc
     import xdem
 
 
@@ -698,7 +698,7 @@ def test_apply_matrix():
     # Check that the median is very close to zero
     assert np.abs(np.nanmedian(diff)) < 0.01
     # Check that the NMAD is low
-    assert spatial_tools.nmad(diff) < 0.01
+    assert spatialstats.nmad(diff) < 0.01
 
     def rotation_matrix(rotation=30):
         rotation = np.deg2rad(rotation)
@@ -721,7 +721,7 @@ def test_apply_matrix():
     )
     # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
     assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
-    assert spatial_tools.nmad(rotated_dem - ref.data.data) > 500
+    assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
 
     # Apply a rotation in the opposite direction
     unrotated_dem = coreg.apply_matrix(
@@ -775,8 +775,8 @@ def test_apply_matrix():
     # Check that the median is very close to zero
     assert np.abs(np.nanmedian(diff)) < 0.5
     # Check that the NMAD is low
-    assert spatial_tools.nmad(diff) < 5
-    print(np.nanmedian(diff), spatial_tools.nmad(diff))
+    assert spatialstats.nmad(diff) < 5
+    print(np.nanmedian(diff), spatialstats.nmad(diff))
 
 
 def test_warp_dem():
@@ -874,7 +874,7 @@ def test_warp_dem():
     )
     # Validate that the DEM is now more or less the same as the original.
     # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
-    assert spatial_tools.nmad(dem - untransformed_dem) < 0.5
+    assert spatialstats.nmad(dem - untransformed_dem) < 0.5
 
     if False:
         import matplotlib.pyplot as plt

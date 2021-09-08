@@ -61,7 +61,7 @@ class TestDocs:
         return_code = sphinx.cmd.build.main(
             [
                 "-j",
-                str(self.n_threads or "auto"),
+                "1",
                 os.path.join(self.docs_dir, "source/"),
                 os.path.join(self.docs_dir, "build/html"),
             ]
