@@ -865,7 +865,7 @@ class VerticalShift(Coreg):
         diff = diff[np.isfinite(diff)]
 
         if np.count_nonzero(np.isfinite(diff)) == 0:
-            raise ValueError("No finite values in bias comparison.")
+            raise ValueError("No finite values in vertical shift comparison.")
 
         # Use weights if those were provided.
         vshift = self._meta["vshift_func"](diff) if weights is None \
@@ -1264,7 +1264,7 @@ class NuthKaab(Coreg):
             # Calculate the elevation difference and the residual (NMAD) between them.
             elevation_difference = ref_dem - aligned_dem
             vshift = np.nanmedian(elevation_difference)
-            # Correct potential biases
+            # Correct potential vertical shifts
             elevation_difference -= vshift
 
             # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
@@ -1391,7 +1391,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     # Copy the DEM to make sure the original is not modified, and convert it into an ndarray
     demc = np.array(dem)
 
-    # Check if the matrix only contains a Z correction. In that case, only shift the DEM values by the bias.
+    # Check if the matrix only contains a Z correction. In that case, only shift the DEM values by the vertical shift.
     empty_matrix = np.diag(np.ones(4, float))
     empty_matrix[2, 3] = matrix[2, 3]
     if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
@@ -1714,8 +1714,8 @@ class BlockwiseCoreg(Coreg):
             * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
             * {x,y,z}_off: The calculated offset in georeferenced units.
             * inlier_count: The number of pixels that were inliers in the chunk.
-            * nmad: The NMAD after coregistration.
-            * median: The bias after coregistration.
+            * nmad: The NMAD of elevation differences (robust dispersion) after coregistration.
+            * median: The median of elevation differences (vertical shift) after coregistration.
 
         :raises ValueError: If no coregistration results exist yet.
 
