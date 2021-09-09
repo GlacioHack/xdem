@@ -452,7 +452,8 @@ class Coreg:
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False) -> CoregType:
+            verbose: bool = False,
+            **kwargs) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -536,7 +537,7 @@ class Coreg:
 
 
         # Run the associated fitting function
-        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose)
+        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose, **kwargs)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -817,12 +818,15 @@ class Coreg:
         return CoregPipeline([self, other])
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], verbose: bool = False):
+                  weights: Optional[np.ndarray], verbose: bool = False, **kwargs):
         # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This should have been implemented by subclassing")
 
     def _to_matrix_func(self) -> np.ndarray:
         # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
+
+        if not self._is_affine:
+            raise ValueError(f"Non-affine coreg class ({type(self)}) cannot be represented by transformation matrices.")
 
         # Try to see if a matrix exists.
         meta_matrix = self._meta.get("matrix")

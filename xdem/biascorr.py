@@ -8,33 +8,33 @@ import rasterio as rio
 
 import xdem
 
-
 class DirectionalBias(xdem.coreg.Coreg):
     """
     For example for DEM along- or across-track bias correction.
     """
 
-    def __init__(self, bias_func : Callable = xdem.robust_stats.robust_polynomial_fit):  # pylint: disable=super-init-not-called
+    def __init__(self, bias_func : Callable[..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit):  # pylint: disable=super-init-not-called
         """
         Instantiate an directional bias correction object.
 
         :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
         """
         super().__init__(meta={"bias_func": bias_func})
+        self._is_affine = False
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], angle: Optional[float] = None, verbose: bool = False,**kwargs):
+                  weights: Optional[np.ndarray], angle: Optional[float] = None, verbose: bool = False, **kwargs):
         """Estimate the bias using the bias_func."""
 
         if verbose:
             print('Getting directional coordinates')
 
         diff = ref_dem - tba_dem
-        x, _ = xdem.spatial_tools.get_rotated_xy(ref_dem,angle=angle)
+        x, _ = xdem.spatial_tools.get_xy_rotated(ref_dem,angle=angle)
 
         if verbose:
             print("Estimating directional bias correction with function "+ self.meta['bias_func'].__name__)
-        deg, coefs = self.meta["bias_func"](x,diff,**kwargs)
+        deg, coefs = self._meta["bias_func"](x,diff,**kwargs)
 
         if verbose:
             print("Directional bias estimated")
@@ -62,13 +62,15 @@ class TerrainBias(xdem.coreg.Coreg):
     See Gardelle et al. (2012) (Figure 2), http://dx.doi.org/10.3189/2012jog11j175, for curvature-related biases.
     """
 
-    def __init__(self, bias_func = xdem.robust_stats.robust_polynomial_fit):
+    def __init__(self, bias_func: Callable[..., tuple[int, np.ndarray]] = xdem.robust_stats.robust_polynomial_fit):
         """
         Instantiate an terrain bias correction object
 
         :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
         """
         super().__init__(meta={"bias_func": bias_func})
+        self._is_affine = False
+
 
     def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, attribute: np.ndarray,
                   transform: Optional[rio.transform.Affine], weights: Optional[np.ndarray], verbose: bool = False,
@@ -79,7 +81,7 @@ class TerrainBias(xdem.coreg.Coreg):
 
         if verbose:
             print("Estimating terrain bias correction with function " + self.meta['bias_func'].__name__)
-        deg, coefs = self.meta["bias_func"](attribute, diff, **kwargs)
+        deg, coefs = self._meta["bias_func"](attribute, diff, **kwargs)
 
         if verbose:
             print("Terrain bias estimated")
