@@ -8,6 +8,154 @@ import rasterio as rio
 
 import xdem
 
+class BiasCorr(xdem.coreg.Coreg):
+    """
+    Parent class of bias-corrections methods: subclass of Coreg for non-affine methods.
+    This is a class made to be subclassed, that simply writes the bias function in the Coreg metadata and defines the
+    _is_affine tag as False.
+    """
+
+    def __init__(self, bias_func: Callable[
+        ..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit):  # pylint: disable=super-init-not-called
+        """
+        Instantiate a bias correction object.
+
+        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        """
+        super().__init__(meta={"bias_func": bias_func})
+        self._is_affine = False
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, bias_var: None | dict[str, np.ndarray] = None,
+                  transform: Optional[rio.transform.Affine] = None, weights: None | np.ndarray = None,
+                  verbose: bool = False, **kwargs):
+        # FOR DEVELOPERS: This function needs to be implemented in a subclass.
+        raise NotImplementedError("This step has to be implemented by subclassing.")
+
+
+class Bias1D(xdem.biascorr.BiasCorr):
+    """
+    Bias-correction along a single variable (e.g., angle, terrain attribute, or any other).
+    """
+
+    def __init__(self, bias_func : Callable[..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit):  # pylint: disable=super-init-not-called
+        """
+        Instantiate a 1D bias correction object.
+
+        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        """
+        super().__init__(bias_func=bias_func)
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, bias_var: None | dict[str, np.ndarray] = None,
+                  transform: None | rio.transform.Affine = None, weights: None | np.ndarray = None,
+                  verbose: bool = False, **kwargs):
+        """Estimate the bias along the single provided variable using the bias function."""
+
+        diff = ref_dem - tba_dem
+
+        # Check length of bias variable
+        if bias_var is None or len(bias_var) != 1:
+            raise ValueError('A single variable has to be provided through the argument "bias_var".')
+
+        # Get variable name
+        var_name = list(bias_var.keys())[0]
+
+        if verbose:
+            print("Estimating a 1D bias correction along variable {} "
+                  "with function {}...".format(var_name, self._meta['bias_func'].__name__))
+
+        params = self._meta["bias_func"](bias_var[var_name], diff, **kwargs)
+
+        if verbose:
+            print("1D bias estimated.")
+
+        # Save method results and variable name
+        self._meta['params'] = params
+        self._meta['bias_var'] = var_name
+
+
+class Bias2D(xdem.biascorr.BiasCorr):
+    """
+    Bias-correction along two variables (e.g., simultaneously slope and curvature, or simply x/y coordinates).
+    """
+
+    def __init__(self, bias_func: Callable[
+        ..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit):  # pylint: disable=super-init-not-called
+        """
+        Instantiate a 2D bias correction object.
+
+        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        """
+        super().__init__(bias_func=bias_func)
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, bias_var: None | dict[str, np.ndarray] = None,
+                  transform: None | rio.transform.Affine = None, weights: None | np.ndarray = None,
+                  verbose: bool = False, **kwargs):
+        """Estimate the bias along the two provided variable using the bias function."""
+
+        diff = ref_dem - tba_dem
+
+        # Check bias variable
+        if bias_var is None or len(bias_var) != 2:
+            raise ValueError('Two variables have to be provided through the argument "bias_var".')
+
+        # Get variable names
+        var_name_1 = list(bias_var.keys())[0]
+        var_name_2 = list(bias_var.keys())[1]
+
+        if verbose:
+            print("Estimating a 2D bias correction along variables {} and {} "
+                  "with function {}...".format(var_name_1, var_name_2, self._meta['bias_func'].__name__))
+
+        params = self._meta["bias_func"](bias_var[var_name_1], bias_var[var_name_2], diff, **kwargs)
+
+        if verbose:
+            print("2D bias estimated.")
+
+        self._meta['params'] = params
+        self._meta["bias_vars"] = [var_name_1, var_name_2]
+
+
+class BiasND(xdem.biascorr.BiasCorr):
+    """
+    Bias-correction along N variables (e.g., simultaneously slope, curvature, aspect and elevation).
+    """
+
+    def __init__(self, bias_func: Callable[
+        ..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit):  # pylint: disable=super-init-not-called
+        """
+        Instantiate a 2D bias correction object.
+
+        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        """
+        super().__init__(bias_func=bias_func)
+
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, bias_var: None | dict[str, np.ndarray] = None,
+                  transform: None | rio.transform.Affine = None, weights: None | np.ndarray = None,
+                  verbose: bool = False, **kwargs):
+        """Estimate the bias along the two provided variable using the bias function."""
+
+        diff = ref_dem - tba_dem
+
+        # Check bias variable
+        if bias_var is None or len(bias_var) <= 2:
+            raise ValueError('More than two variables have to be provided through the argument "bias_var".')
+
+        # Get variable names
+        list_var_names = list(bias_var.keys())
+
+        if verbose:
+            print("Estimating a 2D bias correction along variables {} "
+                  "with function {}...".format(', '.join(list_var_names), self._meta['bias_func'].__name__))
+
+        params = self._meta["bias_func"](**list(bias_var.values()), diff, **kwargs)
+
+        if verbose:
+            print("2D bias estimated.")
+
+        self._meta['params'] = params
+        self._meta["bias_vars"] = list_var_names
+
+
 class DirectionalBias(xdem.coreg.Coreg):
     """
     For example for DEM along- or across-track bias correction.
@@ -33,7 +181,7 @@ class DirectionalBias(xdem.coreg.Coreg):
         x, _ = xdem.spatial_tools.get_xy_rotated(ref_dem,angle=angle)
 
         if verbose:
-            print("Estimating directional bias correction with function "+ self.meta['bias_func'].__name__)
+            print("Estimating directional bias correction with function "+ self._meta['bias_func'].__name__)
         deg, coefs = self._meta["bias_func"](x,diff,**kwargs)
 
         if verbose:
@@ -43,14 +191,8 @@ class DirectionalBias(xdem.coreg.Coreg):
         self._meta['degree'] = deg
         self._meta["coefs"] = coefs
 
-    def _to_matrix_func(self) -> np.ndarray:
-        """Convert the bias to a transform matrix."""
 
-        raise ValueError(
-            "Directional bias-corrections cannot be represented as transformation matrices.")
-
-
-class TerrainBias(xdem.coreg.Coreg):
+class TerrainBias(xdem.biascorr.Bias1D):
     """
     Correct a bias according to terrain, such as elevation or curvature.
 
@@ -80,7 +222,7 @@ class TerrainBias(xdem.coreg.Coreg):
         diff = ref_dem - tba_dem
 
         if verbose:
-            print("Estimating terrain bias correction with function " + self.meta['bias_func'].__name__)
+            print("Estimating terrain bias correction with function " + self._meta['bias_func'].__name__)
         deg, coefs = self._meta["bias_func"](attribute, diff, **kwargs)
 
         if verbose:

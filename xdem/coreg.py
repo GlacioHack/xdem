@@ -817,10 +817,10 @@ class Coreg:
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
         return CoregPipeline([self, other])
 
-    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], verbose: bool = False, **kwargs):
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine] = None,
+                  weights: Optional[np.ndarray] = None, verbose: bool = False, **kwargs):
         # FOR DEVELOPERS: This function needs to be implemented.
-        raise NotImplementedError("This should have been implemented by subclassing")
+        raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _to_matrix_func(self) -> np.ndarray:
         # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
