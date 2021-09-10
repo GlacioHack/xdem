@@ -1621,7 +1621,7 @@ class BlockwiseCoreg(Coreg):
             if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
                 return None
             mask_subset = inlier_mask[arrayslice].copy()
-            west, top = rio.transform.xy(transform, int(min(rows)), int(min(cols)), offset="ul")
+            west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
             transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)
             coreg = self.coreg.copy()
 
@@ -1666,7 +1666,7 @@ class BlockwiseCoreg(Coreg):
 
             # Assign the closest finite value as the representative point
             representative_row, representative_col = finites[closest][0][0]
-            meta["representative_x"], meta["representative_y"] = rio.transform.xy(transform_subset, int(representative_row), int(representative_col))
+            meta["representative_x"], meta["representative_y"] = rio.transform.xy(transform_subset, representative_row, representative_col)
             meta["representative_val"] = ref_subset[representative_row, representative_col]
 
             # If the coreg is a pipeline, copy its metadatas to the output meta
