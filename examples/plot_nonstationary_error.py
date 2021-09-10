@@ -56,7 +56,8 @@ profc_arr = profc[~mask_glacier]
 
 # %%
 # We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
-# bin length divided by 30. We use the :ref:`spatial_stats_nmad` as a robust measure of `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_.
+# bin length divided by 30. We use the NMAD as a robust measure of `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_
+#  (see :ref:`robuststats_meanstd`).
 
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, aspect_arr, planc_arr, profc_arr],
                                   list_var_names=['slope','aspect','planc','profc'],
