@@ -147,7 +147,7 @@ class BiasND(xdem.biascorr.BiasCorr):
             print("Estimating a 2D bias correction along variables {} "
                   "with function {}...".format(', '.join(list_var_names), self._meta['bias_func'].__name__))
 
-        params = self._meta["bias_func"](**list(bias_var.values()), diff, **kwargs)
+        params = self._meta["bias_func"](*list(bias_var.values()), diff, **kwargs)
 
         if verbose:
             print("2D bias estimated.")
@@ -156,38 +156,38 @@ class BiasND(xdem.biascorr.BiasCorr):
         self._meta["bias_vars"] = list_var_names
 
 
-class DirectionalBias(xdem.coreg.Coreg):
+class DirectionalBias(xdem.biascorr.Bias1D):
     """
-    For example for DEM along- or across-track bias correction.
+    Bias correction for directional biases, for example along- or across-track of satellite angle.
     """
 
-    def __init__(self, bias_func : Callable[..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit):  # pylint: disable=super-init-not-called
+    def __init__(self, bias_func : Callable[..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit, angle: float = 0):  # pylint: disable=super-init-not-called
         """
         Instantiate an directional bias correction object.
 
         :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
         """
-        super().__init__(meta={"bias_func": bias_func})
-        self._is_affine = False
+        super().__init__(bias_func=bias_func)
+        self._meta['angle'] = angle
 
-    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: Optional[rio.transform.Affine],
-                  weights: Optional[np.ndarray], angle: Optional[float] = None, verbose: bool = False, **kwargs):
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: None | rio.transform.Affine = None,
+                  weights: None | np.ndarray = None, verbose: bool = False, **kwargs):
         """Estimate the bias using the bias_func."""
 
         if verbose:
             print('Getting directional coordinates')
 
         diff = ref_dem - tba_dem
-        x, _ = xdem.spatial_tools.get_xy_rotated(ref_dem,angle=angle)
+        x, _ = xdem.spatial_tools.get_xy_rotated(ref_dem, along_track_angle=self._meta['angle'])
 
         if verbose:
-            print("Estimating directional bias correction with function "+ self._meta['bias_func'].__name__)
-        deg, coefs = self._meta["bias_func"](x,diff,**kwargs)
+            print("Estimating directional bias correction with function {}".format(self._meta['bias_func'].__name__))
+
+        deg, coefs = self._meta["bias_func"](x, diff, **kwargs)
 
         if verbose:
             print("Directional bias estimated")
 
-        self._meta['angle'] = angle
         self._meta['degree'] = deg
         self._meta["coefs"] = coefs
 
@@ -204,26 +204,25 @@ class TerrainBias(xdem.biascorr.Bias1D):
     See Gardelle et al. (2012) (Figure 2), http://dx.doi.org/10.3189/2012jog11j175, for curvature-related biases.
     """
 
-    def __init__(self, bias_func: Callable[..., tuple[int, np.ndarray]] = xdem.robust_stats.robust_polynomial_fit):
+    def __init__(self, bias_func: Callable[..., tuple[int, np.ndarray]] = xdem.fit.robust_polynomial_fit,
+                 terrain_attribute = 'maximum_curvature'):
         """
         Instantiate an terrain bias correction object
 
         :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
         """
-        super().__init__(meta={"bias_func": bias_func})
-        self._is_affine = False
+        super().__init__(bias_func=bias_func)
+        self._meta['terrain_attribute'] = terrain_attribute
 
-
-    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, attribute: np.ndarray,
-                  transform: Optional[rio.transform.Affine], weights: Optional[np.ndarray], verbose: bool = False,
-                  **kwargs):
+    def _fit_func(self, ref_dem: np.ndarray, tba_dem: np.ndarray, transform: None | rio.transform.Affine = None,
+                  weights: None | np.ndarray = None, verbose: bool = False, **kwargs):
         """Estimate the bias using the bias_func."""
 
         diff = ref_dem - tba_dem
 
         if verbose:
-            print("Estimating terrain bias correction with function " + self._meta['bias_func'].__name__)
-        deg, coefs = self._meta["bias_func"](attribute, diff, **kwargs)
+            print("Estimating terrain bias correction with function {}".format(self._meta['bias_func'].__name__))
+        deg, coefs = self._meta["bias_func"](self._meta['terrain_attribute'], diff, **kwargs)
 
         if verbose:
             print("Terrain bias estimated")
