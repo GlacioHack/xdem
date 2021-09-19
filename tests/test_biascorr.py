@@ -52,40 +52,15 @@ class TestBiasCorrClass:
         with pytest.raises(NotImplementedError):
             bcorr.fit(*self.fit_params)
 
+        # Check the bias correction instantiation works with another bias function
+        bcorr = biascorr.BiasCorr(bias_func=xdem.fit.robust_sumsin_fit)
+
     def test_biascorr1d(self):
 
+        # Create a 1D bias correction
+        bcorr1d = biascorr.BiasCorr1D()
 
-
-        # Fit the vertical shift model to the data
-        vshiftcorr.fit(**self.fit_params)
-
-        # Check that a vertical shift was found.
-        assert vshiftcorr._meta.get("vshift") is not None
-        assert vshiftcorr._meta["vshift"] != 0.0
-
-        # Copy the vertical shift to see if it changes in the test (it shouldn't)
-        vshift = copy.copy(vshiftcorr._meta["vshift"])
-
-        # Check that the to_matrix function works as it should
-        matrix = vshiftcorr.to_matrix()
-        assert matrix[2, 3] == vshift, matrix
-
-        # Check that the first z coordinate is now the vertical shift
-        assert vshiftcorr.apply_pts(self.points)[0, 2] == vshiftcorr._meta["vshift"]
-
-        # Apply the model to correct the DEM
-        tba_unbiased = vshiftcorr.apply(self.tba.data, self.ref.transform)
-
-        # Create a new vertical shift correction model
-        vshiftcorr2 = coreg.VerticalShift()
-        # Check that this is indeed a new object
-        assert vshiftcorr is not vshiftcorr2
-        # Fit the corrected DEM to see if the vertical shift will be close to or at zero
-        vshiftcorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, transform=self.ref.transform,
-                        inlier_mask=self.inlier_mask)
-        # Test the vertical shift
-        assert abs(vshiftcorr2._meta.get("vshift")) < 0.01
-
-        # Check that the original model's vertical shift has not changed (that the _meta dicts are two different objects)
-        assert vshiftcorr._meta["vshift"] == vshift
-
+        # Try to run the correction using the elevation as external variable
+        elev_fit_params = self.fit_params.copy()
+        elev_fit_params.update({'bias_var': self.ref.data})
+        bcorr1d.fit(**elev_fit_params)

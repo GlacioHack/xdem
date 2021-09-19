@@ -32,7 +32,7 @@ class BiasCorr(xdem.coreg.Coreg):
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
 
-class Bias1D(xdem.biascorr.BiasCorr):
+class BiasCorr1D(BiasCorr):
     """
     Bias-correction along a single variable (e.g., angle, terrain attribute, or any other).
     """
@@ -73,7 +73,7 @@ class Bias1D(xdem.biascorr.BiasCorr):
         self._meta['bias_var'] = var_name
 
 
-class Bias2D(xdem.biascorr.BiasCorr):
+class BiasCorr2D(BiasCorr):
     """
     Bias-correction along two variables (e.g., simultaneously slope and curvature, or simply x/y coordinates).
     """
@@ -115,7 +115,7 @@ class Bias2D(xdem.biascorr.BiasCorr):
         self._meta["bias_vars"] = [var_name_1, var_name_2]
 
 
-class BiasND(xdem.biascorr.BiasCorr):
+class BiasCorrND(BiasCorr):
     """
     Bias-correction along N variables (e.g., simultaneously slope, curvature, aspect and elevation).
     """
@@ -156,7 +156,7 @@ class BiasND(xdem.biascorr.BiasCorr):
         self._meta["bias_vars"] = list_var_names
 
 
-class DirectionalBias(xdem.biascorr.Bias1D):
+class DirectionalBias(BiasCorr1D):
     """
     Bias correction for directional biases, for example along- or across-track of satellite angle.
     """
@@ -192,7 +192,7 @@ class DirectionalBias(xdem.biascorr.Bias1D):
         self._meta["coefs"] = coefs
 
 
-class TerrainBias(xdem.biascorr.Bias1D):
+class TerrainBias(BiasCorr1D):
     """
     Correct a bias according to terrain, such as elevation or curvature.
 
