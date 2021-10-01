@@ -485,7 +485,6 @@ class TestCoregClass:
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
 
-
     def test_blockwise_coreg_large_gaps(self):
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
         warnings.simplefilter("error")

@@ -61,7 +61,7 @@ plt.colorbar()
 plt.show()
 
 # %%
-# We can compare the :ref:`spatial_stats_nmad` to validate numerically that there was an improvment:
+# We compare the NMAD to validate numerically that there was an improvement (see :ref:`robuststats_meanstd`):
 
 print(f"Error before: {xdem.spatialstats.nmad(diff_before):.2f} m")
 print(f"Error after: {xdem.spatialstats.nmad(diff_after):.2f} m")

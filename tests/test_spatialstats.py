@@ -394,6 +394,9 @@ class TestBinning:
         # check a value is returned outside the grid
         assert all(np.isfinite(fun([-5,50])))
 
+        # check when the first passed binning variable contains NaNs because of other binning variable
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names='elevation')
+
         # in 2d
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'elevation'])
 
