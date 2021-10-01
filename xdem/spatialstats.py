@@ -1414,6 +1414,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
 
         if ylim is not None:
             ax.set_ylim(ylim)
+        else:
+            ax.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
 
         if k == int(nb_subpanels/2):
             ax.set_xlabel(xlabel)
