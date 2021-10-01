@@ -111,7 +111,8 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
-        if isinstance(df_sub[var].values[0],pd.Interval):
+        check_any_interval = [isinstance(x, pd.Interval) for x in df_sub[var].values]
+        if any(check_any_interval):
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
         # otherwise, leave as is
 
