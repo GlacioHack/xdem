@@ -1,4 +1,6 @@
 """DEM class and functions."""
+from __future__ import annotations
+
 import os
 import pyproj
 import warnings
