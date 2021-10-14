@@ -32,9 +32,11 @@ with warnings.catch_warnings():
 def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     """
     Calculate the normalized median absolute deviation (NMAD) of an array.
+    Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
+    distribution (see e.g. http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
 
     :param data: input data
-    :param nfact: normalization factor for the data; default is 1.4826
+    :param nfact: normalization factor for the data
 
     :returns nmad: (normalized) median absolute deviation of data.
     """
