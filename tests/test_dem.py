@@ -201,13 +201,24 @@ class TestDEM:
 
         # Check that the function properly runs with a reference set
         img.set_vref(vref_name='WGS84')
-        mean_ellips = np.nanmean(img.data)
         img.to_vref(vref_name='EGM96')
+        mean_ellips = np.nanmean(img.data)
         mean_geoid_96 = np.nanmean(img.data)
-
         assert img.vref == 'EGM96'
         assert img.vref_grid == 'us_nga_egm96_15.tif'
-
         # Check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
         assert np.greater(mean_ellips, mean_geoid_96)
-        assert np.less(np.abs(mean_ellips-mean_geoid_96), 35.)
+        assert np.less(np.abs(mean_ellips - mean_geoid_96), 35.)
+
+        # Check in the other direction
+        img = DEM(fn_img)
+        img.set_vref(vref_name='EGM96')
+        img.to_vref(vref_name='WGS84')
+        mean_ellips = np.nanmean(img.data)
+        mean_geoid_96 = np.nanmean(img.data)
+        assert img.vref == 'WGS84'
+        assert img.vref_grid is None
+        # Check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
+        assert np.less(mean_ellips, mean_geoid_96)
+        assert np.less(np.abs(mean_ellips - mean_geoid_96), 35.)
+
