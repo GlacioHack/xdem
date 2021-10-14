@@ -18,25 +18,23 @@ DO_PLOT = False
 class TestDEM:
 
     def test_init(self):
-        """
-        Test that inputs work properly in DEM class init
-        """
+        """Test that inputs work properly in DEM class init."""
         fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
 
-        # from filename
+        # From filename
         dem = DEM(fn_img)
         assert isinstance(dem, DEM)
 
-        # from DEM
+        # From DEM
         dem2 = DEM(dem)
         assert isinstance(dem2, DEM)
 
-        # from Raster
+        # From Raster
         r = gr.Raster(fn_img)
         dem3 = DEM(r)
         assert isinstance(dem3, DEM)
 
-        # from SatelliteImage
+        # From SatelliteImage
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Parse metadata from file not implemented")
             img = si.SatelliteImage(fn_img)
@@ -45,6 +43,7 @@ class TestDEM:
 
         list_dem = [dem, dem2, dem3, dem4]
 
+        # Check all attributes
         attrs = [at for at in r._get_rio_attrs() if at not in ['name', 'dataset_mask', 'driver']]
         all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
@@ -201,8 +200,8 @@ class TestDEM:
 
         # Check that the function properly runs with a reference set
         img.set_vref(vref_name='WGS84')
-        img.to_vref(vref_name='EGM96')
         mean_ellips = np.nanmean(img.data)
+        img.to_vref(vref_name='EGM96')
         mean_geoid_96 = np.nanmean(img.data)
         assert img.vref == 'EGM96'
         assert img.vref_grid == 'us_nga_egm96_15.tif'
@@ -213,12 +212,12 @@ class TestDEM:
         # Check in the other direction
         img = DEM(fn_img)
         img.set_vref(vref_name='EGM96')
+        mean_geoid_96 = np.nanmean(img.data)
         img.to_vref(vref_name='WGS84')
         mean_ellips = np.nanmean(img.data)
-        mean_geoid_96 = np.nanmean(img.data)
         assert img.vref == 'WGS84'
         assert img.vref_grid is None
         # Check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
-        assert np.less(mean_ellips, mean_geoid_96)
+        assert np.greater(mean_ellips, mean_geoid_96)
         assert np.less(np.abs(mean_ellips - mean_geoid_96), 35.)
 
