@@ -134,10 +134,10 @@ class TestDEM:
             img.set_vref(vref_grid='the best grid in the entire world, or any non-existing string')
 
     def test_to_vref(self):
+        """Tests to convert vertical references"""
 
-        # First, use test points to test the vertical transform
-
-        # In Chile
+        # First, we use test points to test the vertical transform
+        # Let's start with Chile
         lat = 43.70012234
         lng = -79.41629234
         z = 100
