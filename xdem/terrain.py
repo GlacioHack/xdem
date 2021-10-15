@@ -265,6 +265,9 @@ def get_terrain_attribute(
 ) -> np.ndarray | list[np.ndarray] | Raster | list[Raster]:
     """
     Derive one or multiple terrain attributes from a DEM.
+    The attributes are derived following Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, and based
+    on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and Zevenbergen and Thorne (1987),
+    http://dx.doi.org/10.1002/esp.3290120107.
 
     Attributes:
         * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical).
@@ -398,7 +401,7 @@ def get_terrain_attribute(
         ).astype("float32")
 
     if make_curvature:
-        # Curvature is the second derivative of the surface fit equation. See the ArcGIS documentation.
+        # Curvature is the second derivative of the surface fit equation.
         # (URL in get_quadric_coefficients() docstring)
         # Curvature = -2(D + E) * 100
         terrain_attributes["curvature"] = (
@@ -478,6 +481,7 @@ def slope(
 ) -> np.ndarray | Raster:
     """
     Generate a slope map for a DEM.
+    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
     :param dem: The DEM to generate a slope map for.
     :param resolution: The X/Y or (X, Y) resolution of the DEM.
@@ -502,6 +506,7 @@ def aspect(
 def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = True) -> np.ndarray | Raster:
     """
     Calculate the aspect of each cell in a DEM.
+    Based on Horn (1981) http://dx.doi.org/10.1109/PROC.1981.11918
 
     0=N, 90=E, 180=S, 270=W
 
@@ -596,6 +601,7 @@ def curvature(
 ) -> np.ndarray | Raster:
     """
     Get the terrain curvature (second derivative of elevation).
+    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     Information:
        * Curvature is positive on convex surfaces and negative on concave surfaces.
@@ -642,6 +648,7 @@ def planform_curvature(
 ) -> np.ndarray | Raster:
     """
     Get the terrain curvature perpendicular to the direction of the slope.
+    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM.
@@ -671,6 +678,7 @@ def profile_curvature(
 ) -> np.ndarray | Raster:
     """
     Get the terrain curvature parallel to the direction of the slope.
+    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM.
