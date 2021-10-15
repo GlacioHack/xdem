@@ -149,7 +149,8 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.mean(low_altitude) < np.mean(high_altitude)
 
-    @pytest.mark.parametrize("name", ["curvature", "planform_curvature", "profile_curvature"])
+    @pytest.mark.parametrize("name", ["curvature", "planform_curvature", "profile_curvature",
+                                      "maximum_curvature"])
     def test_curvatures(self, name: str) -> None:
         """Test the curvature function (which has no GDAL equivalent)"""
         warnings.simplefilter("error")

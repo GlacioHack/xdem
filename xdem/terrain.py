@@ -480,6 +480,7 @@ def get_terrain_attribute(
         * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
         * 'planform_curvature': The curvature perpendicular to the direction of the slope.
         * 'profile_curvature': The curvature parallel to the direction of the slope.
+        * 'maximum_curvature': The maximum curvature.
         * 'surface_fit': A quadric surface fit for each individual pixel.
         * 'terrain_ruggedness_index_topo': The terrain ruggedness index generally used for topography, defined by the
         squareroot of squared differences to neighbouring pixels.
@@ -529,8 +530,8 @@ def get_terrain_attribute(
         attribute = [attribute]
 
     # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
-    list_requiring_surface_fit = ["curvature", "planform_curvature", "profile_curvature", "slope", "hillshade",
-                                  "aspect", "surface_fit"]
+    list_requiring_surface_fit = ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature",
+                                  "slope", "hillshade", "aspect", "surface_fit"]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     list_requiring_windowed_index = ["terrain_ruggedness_index_topo", "terrain_ruggedness_index_bathy",
@@ -557,7 +558,7 @@ def get_terrain_attribute(
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
 
-    # Check which products should be made
+    # Check which products should be made to optimize the processing
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
     make_slope = any(
         attr in attribute for attr in ["slope", "hillshade", "planform_curvature", "aspect", "profile_curvature"]
@@ -565,8 +566,9 @@ def get_terrain_attribute(
     make_hillshade = "hillshade" in attribute
     make_surface_fit = len(attributes_requiring_surface_fit) > 0
     make_curvature = "curvature" in attribute
-    make_planform_curvature = "planform_curvature" in attribute
-    make_profile_curvature = "profile_curvature" in attribute
+    make_planform_curvature = "planform_curvature" or "maximum_curvature" in attribute
+    make_profile_curvature = "profile_curvature" or "maximum_curvature" in attribute
+    make_maximum_curvature = "maximum_curvature" in attribute
     make_windowed_index = len(attributes_requiring_windowed_index) > 0
     make_terrain_ruggedness_topo = "terrain_ruggedness_index_topo" in attribute
     make_terrain_ruggedness_bathy = "terrain_ruggedness_index_bathy" in attribute
@@ -666,6 +668,11 @@ def get_terrain_attribute(
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
         terrain_attributes["profile_curvature"][terrain_attributes["slope"] == 0.0] = 0.0
+
+    if make_maximum_curvature:
+        minc = np.minimum(terrain_attributes["profile_curvature"], terrain_attributes["planform_curvature"])
+        maxc = np.maximum(terrain_attributes["profile_curvature"], terrain_attributes["planform_curvature"])
+        terrain_attributes["maximum_curvature"] = np.where(np.abs(minc)>maxc, minc, maxc)
 
     if make_windowed_index:
         terrain_attributes["windowed_indexes"] = \
@@ -924,6 +931,35 @@ def profile_curvature(
     """
     return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution)
 
+
+@overload
+def maximum_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None,
+) -> Raster: ...
+
+@overload
+def maximum_curvature(
+    dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float] | None,
+) -> np.ndarray: ...
+
+def maximum_curvature(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+) -> np.ndarray | Raster:
+    """
+    Calculate the maximum profile or planform curvature parallel to the direction of the slope.
+    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The profile curvature array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="maximum_curvature", resolution=resolution)
 
 @overload
 def terrain_ruggedness_index(
