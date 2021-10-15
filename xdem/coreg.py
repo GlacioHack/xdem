@@ -18,7 +18,7 @@ except ImportError:
     _has_cv2 = False
 import fiona
 import geoutils as gu
-from geoutils.georaster import RasterType
+from geoutils.georaster import RasterType, spatial_tools
 import numpy as np
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
@@ -499,8 +499,8 @@ class Coreg:
         if transform is None:
             raise ValueError("'transform' must be given if both DEMs are array-like.")
 
-        ref_dem, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
-        tba_dem, tba_mask = xdem.spatial_tools.get_array_and_mask(dem_to_be_aligned)
+        ref_dem, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
+        tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
 
         # Make sure that the mask has an expected format.
         if inlier_mask is not None:
@@ -576,7 +576,7 @@ class Coreg:
                 raise ValueError("'transform' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
-        dem_array, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+        dem_array, dem_mask = spatial_tools.get_array_and_mask(dem)
 
         if np.all(dem_mask):
             raise ValueError("'dem' had only NaNs")
@@ -694,7 +694,7 @@ class Coreg:
         aligned_dem = self.apply(dem_to_be_aligned, transform=transform)
 
         # Format the reference DEM
-        ref_arr, ref_mask = xdem.spatial_tools.get_array_and_mask(reference_dem)
+        ref_arr, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
 
         if inlier_mask is None:
             inlier_mask = np.ones(ref_arr.shape, dtype=bool)
@@ -1397,7 +1397,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     if not _has_cv2:
         raise ValueError("Optional dependency needed. Install 'opencv'")
 
-    nan_mask = xdem.spatial_tools.get_mask(dem)
+    nan_mask = spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Create a filled version of the DEM. (skimage doesn't like nans)
     filled_dem = np.where(~nan_mask, demc, np.nan)
@@ -1816,7 +1816,7 @@ class BlockwiseCoreg(Coreg):
         """
         if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
             shape = (shape[1], shape[2])
-        return xdem.spatial_tools.subdivide_array(shape, count=self.subdivision)
+        return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
 
     def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
@@ -1910,7 +1910,7 @@ def warp_dem(
     if resampling not in allowed_resampling_strs:
         raise ValueError(f"Resampling type '{resampling}' not understood. Choices: {allowed_resampling_strs}")
 
-    dem_arr, dem_mask = xdem.spatial_tools.get_array_and_mask(dem)
+    dem_arr, dem_mask = spatial_tools.get_array_and_mask(dem)
 
     bounds, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
 

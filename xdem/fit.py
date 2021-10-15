@@ -12,7 +12,7 @@ import pandas as pd
 import scipy.optimize
 
 from xdem.spatialstats import nd_binning
-from xdem.spatial_tools import subsample_raster
+from geoutils.georaster.spatial_tools import subsample_raster
 
 try:
     from sklearn.metrics import mean_squared_error, median_absolute_error
