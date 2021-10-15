@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import tempfile
 import warnings
@@ -14,10 +16,22 @@ xdem.examples.download_longyearbyen_examples()
 PLOT = True
 
 
-def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
+def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> np.ma.masked_array:
     """Run GDAL's DEMProcessing and return the read numpy array."""
     # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
+
+    # Converting string into gdal processing options here to avoid import gdal outside this function
+    gdal_option_conversion = {
+        "hillshade_params": gdal.DEMProcessingOptions(azimuth=315, altitude=45),
+        "riley": gdal.DEMProcessingOptions(alg='Riley'),
+        "wilson": gdal.DEMProcessingOptions(alg='Wilson')
+    }
+
+    if options is None:
+        gdal_option = gdal.DEMProcessingOptions(options=None)
+    else:
+        gdal_option = gdal_option_conversion[options]
 
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = os.path.join(temp_dir.name, "output.tif")
@@ -25,7 +39,7 @@ def run_gdaldem(filepath: str, processing: str) -> np.ma.masked_array:
         destName=temp_path,
         srcDS=filepath,
         processing=processing,
-        options=gdal.DEMProcessingOptions(azimuth=315, altitude=45),
+        options=gdal_option,
     )
 
     data = gu.Raster(temp_path).data
@@ -40,7 +54,8 @@ class TestTerrainAttribute:
         warnings.filterwarnings("ignore", message="Parse metadata")
         dem = xdem.DEM(filepath, silent=True)
 
-    @pytest.mark.parametrize("attribute", ["slope", "aspect", "hillshade"])
+    @pytest.mark.parametrize("attribute", ["slope", "aspect", "hillshade", "tri_riley",
+                                           "tri_wilson", "tpi", "roughness"])
     def test_attribute_functions(self, attribute: str) -> None:
         """
         Test that all attribute functions (e.g. xdem.terrain.slope) behave appropriately.
@@ -53,6 +68,21 @@ class TestTerrainAttribute:
             "slope": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
             "aspect": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
             "hillshade": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
+            "tri_riley": lambda  dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Riley'),
+            "tri_wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Wilson'),
+            "tpi": lambda dem: xdem.terrain.topographic_position_index(dem.data),
+            "roughness": lambda dem: xdem.terrain.roughness(dem.data)
+        }
+
+        # Writing this option conversion here to avoid importing gdal outside of the dedicated function
+        gdal_processing_attr_option = {
+            "slope": ("slope", None),
+            "aspect": ("aspect", None),
+            "hillshade": ("hillshade", "hillshade_params"),
+            "tri_riley": ("TRI", "riley"),
+            "tri_wilson": ("TRI", "wilson"),
+            "tpi": ("TPI", None),
+            "roughness": ("Roughness", None)
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -60,7 +90,8 @@ class TestTerrainAttribute:
 
         # Derive the attribute using both GDAL and xdem
         attr_xdem = functions[attribute](dem).squeeze()
-        attr_gdal = run_gdaldem(self.filepath, attribute)
+        attr_gdal = run_gdaldem(self.filepath, processing=gdal_processing_attr_option[attribute][0],
+                                options=gdal_processing_attr_option[attribute][1])
 
         # Check that the xdem and gdal hillshades are relatively similar.
         diff = (attr_xdem - attr_gdal).filled(np.nan)

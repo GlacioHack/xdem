@@ -21,7 +21,7 @@ def _get_quadric_coefficients(
 
     See the xdem.terrain.get_quadric_coefficients() docstring for more info.
     """
-    # Rename the resolution to be consistent with the ArcGIS reference.
+    # Rename the resolution
     L = resolution
 
     # Allocate the output.
@@ -112,7 +112,8 @@ def get_quadric_coefficients(
     """
     Return the 9 coefficients of a quadric surface fit to every pixel in the raster.
 
-    Mostly inspired by: https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
+    Based on Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, also described in the documentation:
+    https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
 
     The function that is solved is:
     Z = Ax²y² + Bx²y + Cxy² + Dx² + Ey² + Fxy + Gx + Hy + I
@@ -193,6 +194,199 @@ def get_quadric_coefficients(
 
     return coeffs
 
+@numba.njit(parallel=True)
+def _get_windowed_indexes(
+    dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3)\
+        -> np.ndarray:
+    """
+    Run the pixel-wise analysis in parallel.
+
+    See the xdem.terrain.get_windowed_indexes() docstring for more info.
+    """
+
+    # Allocate the outputs.
+    output = np.empty((4,) + dem.shape, dtype=dem.dtype) + np.nan
+
+    # Half window size
+    hw = int(np.floor(window_size / 2))
+
+    # Convert the string to a number (fewer bytes to compare each iteration)
+    if fill_method == "median":
+        fill_method_n = numba.uint8(0)
+    elif fill_method == "mean":
+        fill_method_n = numba.uint8(1)
+    elif fill_method == "none":
+        fill_method_n = numba.uint8(2)
+
+    if edge_method == "nearest":
+        edge_method_n = numba.uint8(0)
+    elif edge_method == "wrap":
+        edge_method_n = numba.uint8(1)
+    elif edge_method == "none":
+        edge_method_n = numba.uint8(2)
+
+    # Loop over every pixel concurrently.
+    for i in numba.prange(dem.size):
+        # Derive its associated row and column index.
+        col = i % dem.shape[1]
+        row = int(i / dem.shape[1])
+
+        # Extract the pixel and its 8 immediate neighbours.
+        # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
+        Z = np.empty((window_size**2,), dtype=dem.dtype)
+        count = 0
+
+        # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
+        if edge_method_n == 2:
+            if (row < window_size - 2) or (row > (dem.shape[0] - window_size + 1)) or (col < window_size - 2) or \
+                    (col > (dem.shape[1] - window_size + 1)):
+                continue
+
+        for j in range(-hw, -hw+window_size):
+            for k in range(-hw, hw+window_size):
+                # Here the "nearest" edge_method is performed.
+                if edge_method_n == 0:
+                    row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
+                    col_indexer = min(max(col + j, 0), dem.shape[1] - 1)
+                elif edge_method_n == 1:
+                    row_indexer = (row + k) % dem.shape[0]
+                    col_indexer = (col + j) % dem.shape[1]
+                Z[count] = dem[row_indexer, col_indexer]
+                count += 1
+
+        # Get a mask of all invalid (nan or inf) values.
+        invalids = ~np.isfinite(Z)
+        n_invalid = np.count_nonzero(invalids)
+
+        # Skip the pixel if it and all of its neighbours are invalid
+        if np.all(invalids):
+            continue
+
+        if np.count_nonzero(invalids) > 0:
+            if fill_method_n == 0:
+                # Fill all non-finite values with the most common value.
+                Z[invalids] = np.nanmedian(Z)
+            elif fill_method_n == 1:
+                # Fill all non-finite values with the mean.
+                Z[invalids] = np.nanmean(Z)
+            elif fill_method_n == 2:
+                # Skip the pixel if any of its neighbours are nan.
+                continue
+            else:
+                # This should not occur.
+                pass
+
+        # Difference pixels between specific cells
+        count = 0
+        index_middle_pixel = int((window_size**2 - 1)/2)
+        S = np.empty((window_size**2,))
+        for j in range(-hw, -hw + window_size):
+            for k in range(-hw, hw + window_size):
+                S[count] = np.abs(Z[count] - Z[index_middle_pixel])
+                count += 1
+
+        # First output is the Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of
+        # differences between center and neighbouring pixels
+        output[0, row, col] = np.sqrt(np.sum(S**2))
+        # Second output is the Terrain Ruggedness Index from Wilson et al. (2007): mean difference between center
+        # and neighbouring pixels
+        output[1, row, col] = np.sum(S) / (window_size**2 - 1)
+        # Third output is the Topographic Position Index from Weiss (2001): difference between center and mean of
+        # neighbouring pixels
+        output[2, row, col] =  Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
+        # Fourth output is the Roughness: difference between maximum and minimum of the window
+        output[3, row, col] = np.max(Z) - np.min(Z)
+
+    return output
+
+
+def get_windowed_indexes(
+    dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3,
+) -> np.ndarray:
+    """
+    Return terrain indexes based on a windowed calculation of variable size.
+
+    Includes:
+    - Terrain Ruggedness Index from Riley et al. (1999) for topgraphy and from Wilson et al. (2007) for bathymetry.
+    - Topographic Position Index from Weiss (2001).
+    - Roughness from Dartnell (2000).
+    Also all referenced in Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
+
+    Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
+    Each pixel's index can be accessed at [:, row, col], returning an array of shape 4.
+
+    Fill methods
+        If the 3x3 matrix to fit the quadric function on has NaNs, these need to be handled:
+        * 'median': NaNs are filled with the median value of the matrix.
+        * 'mean': NaNs are filled with the mean value of the matrix.
+        * 'none': If NaNs are encountered, skip the entire cell (default for GDAL and SAGA).
+
+    Edge methods
+        Each iteration requires a 3x3 matrix, so special edge cases have to be made.
+        * 'nearest': Pixels outside the range are filled using the closest pixel value.
+        * 'wrap': The array is wrapped so pixels near the right edge will be sampled from the left, etc.
+        * 'none': Edges will not be analyzed, leaving a 1 pixel edge of NaNs.
+
+    Quirks:
+        * Edges are naively treated by filling the closest value, so that a 3x3 matrix is always calculated.\
+                It may therefore be slightly off in the edges.
+        * NaNs and infs are filled with the median of the finites in the matrix, possibly affecting the fit.
+        * The X and Y resolution needs to be the same. It does not work if they differ.
+
+    :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported)
+    :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
+    :param edge_method: The method to use near the array edge.
+    :param window_size: The size of the window
+
+    :raises ValueError: If the inputs are poorly formatted.
+    :raises RuntimeError: If unexpected backend errors occurred.
+
+    :examples:
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 2, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> indexes = get_windowed_indexes(dem, resolution=1.0)
+        >>> index.shape
+        (4, 3, 3)
+        >>> coeffs[:, 1, 1]
+        array([ 1., 0.125, -0.125, 1.])
+
+    :returns: An array of coefficients for each pixel of shape (4, row, col).
+    """
+    # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
+    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+
+    if len(dem_arr.shape) != 2:
+        raise ValueError(
+            f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
+            "Expected 2D array or 3D array of shape (1, row, col)"
+        )
+
+    if any(dim < 3 for dim in dem_arr.shape):
+        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
+
+    if not isinstance(window_size, int) or window_size % 2 != 1:
+        raise ValueError("Window size must be an odd integer.")
+
+    allowed_fill_methods = ["median", "mean", "none"]
+    allowed_edge_methods = ["nearest", "wrap", "none"]
+    for value, name, allowed in zip(
+        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
+    ):
+        if value.lower() not in allowed:
+            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
+
+    # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
+    try:
+        indexes = _get_windowed_indexes(
+            dem_arr, fill_method=fill_method.lower(), edge_method=edge_method.lower(),
+            window_size=window_size
+        )
+    except Exception as exception:
+        raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
+
+    return indexes
+
 
 @overload
 def get_terrain_attribute(
@@ -204,7 +398,8 @@ def get_terrain_attribute(
     hillshade_azimuth: float,
     hillshade_z_factor: float,
     fill_method: str,
-    edge_method: str
+    edge_method: str,
+    window_size: int
 ) -> np.ndarray:
     ...
 
@@ -219,7 +414,8 @@ def get_terrain_attribute(
     hillshade_azimuth: float,
     hillshade_z_factor: float,
     fill_method: str,
-    edge_method: str
+    edge_method: str,
+    window_size: int
 ) -> list[np.ndarray]:
     ...
 
@@ -233,7 +429,8 @@ def get_terrain_attribute(
     hillshade_azimuth: float,
     hillshade_z_factor: float,
     fill_method: str,
-    edge_method: str
+    edge_method: str,
+    window_size: int
 ) -> Raster:
     ...
 
@@ -247,7 +444,8 @@ def get_terrain_attribute(
     hillshade_azimuth: float,
     hillshade_z_factor: float,
     fill_method: str,
-    edge_method: str
+    edge_method: str,
+    window_size: int
 ) -> list[Raster]:
     ...
 
@@ -262,12 +460,18 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     fill_method: str = "median",
     edge_method: str = "nearest",
+    window_size: int = 3
 ) -> np.ndarray | list[np.ndarray] | Raster | list[Raster]:
     """
     Derive one or multiple terrain attributes from a DEM.
-    The attributes are derived following Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, and based
-    on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and Zevenbergen and Thorne (1987),
-    http://dx.doi.org/10.1002/esp.3290120107.
+    The attributes are derived following Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 which is
+    directy based on the following references:
+    - Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
+    - Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    - Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
+    - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
+    - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
 
     Attributes:
         * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical).
@@ -276,7 +480,14 @@ def get_terrain_attribute(
         * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
         * 'planform_curvature': The curvature perpendicular to the direction of the slope.
         * 'profile_curvature': The curvature parallel to the direction of the slope.
-        * 'surface_fit': A quadric surface fit for each individual pixel. For more info, see get_quadric_coefficients()
+        * 'surface_fit': A quadric surface fit for each individual pixel.
+        * 'terrain_ruggedness_index_topo': The terrain ruggedness index generally used for topography, defined by the
+        squareroot of squared differences to neighbouring pixels.
+        * 'terrain_ruggedness_index_bathy': The terrain ruggedness index generally used for bathymetry, defined by the
+        mean absolute difference to neighbouring pixels.
+        * 'topographic_position_index': The topographic position index defined by a difference to the average of
+        neighbouring pixels.
+        * 'roughness': The roughness, i.e. maximum difference to neighbouring pixels.
 
     :param dem: The DEM to analyze.
     :param attribute: The terrain attribute(s) to calculate.
@@ -286,7 +497,8 @@ def get_terrain_attribute(
     :param hillshade_azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param hillshade_z_factor: Vertical exaggeration factor.
     :param fill_method: See the 'get_quadric_coefficients()' docstring for information.
-    :param edge_method: see the 'get_quadric_coefficients()' docstring for information.
+    :param edge_method: See the 'get_quadric_coefficients()' docstring for information.
+    :param window_size: The window size for windowed ruggedness and roughness indexes.
 
     :raises ValueError: If the inputs are poorly formatted or are invalid.
 
@@ -312,19 +524,26 @@ def get_terrain_attribute(
         if resolution is None:
             resolution = dem.res
 
-    if resolution is None:
-        raise ValueError("'resolution' must be provided as an argument.")
     # Validate and format the inputs
     if isinstance(attribute, str):
         attribute = [attribute]
 
-    choices = ["slope", "aspect", "hillshade", "curvature", "planform_curvature", "profile_curvature", "surface_fit"]
+    # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
+    list_requiring_surface_fit = ["curvature", "planform_curvature", "profile_curvature", "slope", "hillshade",
+                                  "aspect", "surface_fit"]
+    attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
+
+    list_requiring_windowed_index = ["terrain_ruggedness_index_topo", "terrain_ruggedness_index_bathy",
+                                     "topographic_position_index", "roughness"]
+    attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
+
+    if resolution is None and len(attributes_requiring_surface_fit)>1:
+        raise ValueError(f"'resolution' must be provided as an argument for attributes: {list_requiring_surface_fit}")
+
+    choices = list_requiring_surface_fit + list_requiring_windowed_index
     for attr in attribute:
         if attr not in choices:
             raise ValueError(f"Attribute '{attr}' is not supported. Choices: {choices}")
-
-    if not isinstance(resolution, Sized):
-        resolution = (float(resolution), float(resolution))
 
     if (hillshade_azimuth < 0.0) or (hillshade_azimuth > 360.0):
         raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {hillshade_azimuth})")
@@ -338,13 +557,6 @@ def get_terrain_attribute(
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
 
-    # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
-    attributes_requiring_surface_fit = [
-        attr
-        for attr in attribute
-        if attr in ["curvature", "planform_curvature", "profile_curvature", "slope", "hillshade", "aspect"]
-    ]
-
     # Check which products should be made
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
     make_slope = any(
@@ -355,8 +567,15 @@ def get_terrain_attribute(
     make_curvature = "curvature" in attribute
     make_planform_curvature = "planform_curvature" in attribute
     make_profile_curvature = "profile_curvature" in attribute
+    make_windowed_index = len(attributes_requiring_windowed_index) > 0
+    make_terrain_ruggedness_topo = "terrain_ruggedness_index_topo" in attribute
+    make_terrain_ruggedness_bathy = "terrain_ruggedness_index_bathy" in attribute
+    make_topographic_position = "topographic_position_index" in attribute
+    make_roughness = "roughness" in attribute
 
     if make_surface_fit:
+        if not isinstance(resolution, Sized):
+            resolution = (float(resolution), float(resolution))
         if resolution[0] != resolution[1]:
             raise ValueError(
                 f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "
@@ -448,6 +667,22 @@ def get_terrain_attribute(
         # Completely flat surfaces trigger the warning above. These need to be set to zero
         terrain_attributes["profile_curvature"][terrain_attributes["slope"] == 0.0] = 0.0
 
+    if make_windowed_index:
+        terrain_attributes["windowed_indexes"] = \
+            get_windowed_indexes(dem=dem_arr, fill_method=fill_method, edge_method=edge_method, window_size=window_size)
+
+    if make_terrain_ruggedness_topo:
+        terrain_attributes["terrain_ruggedness_index_topo"] = terrain_attributes["windowed_indexes"][0, :, :]
+
+    if make_terrain_ruggedness_bathy:
+        terrain_attributes["terrain_ruggedness_index_bathy"] = terrain_attributes["windowed_indexes"][1, :, :]
+
+    if make_topographic_position:
+        terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
+
+    if make_roughness:
+        terrain_attributes["roughness"] = terrain_attributes["windowed_indexes"][3, :, :]
+
     # Convert the unit if wanted.
     if degrees:
         for attr in ["slope", "aspect"]:
@@ -506,7 +741,7 @@ def aspect(
 def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = True) -> np.ndarray | Raster:
     """
     Calculate the aspect of each cell in a DEM.
-    Based on Horn (1981) http://dx.doi.org/10.1109/PROC.1981.11918
+    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
     0=N, 90=E, 180=S, 270=W
 
@@ -600,7 +835,7 @@ def curvature(
     resolution: float | tuple[float, float] | None = None,
 ) -> np.ndarray | Raster:
     """
-    Get the terrain curvature (second derivative of elevation).
+    Calculate the terrain curvature (second derivative of elevation).
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     Information:
@@ -647,7 +882,7 @@ def planform_curvature(
     resolution: float | tuple[float, float] | None = None,
 ) -> np.ndarray | Raster:
     """
-    Get the terrain curvature perpendicular to the direction of the slope.
+    Calculate the terrain curvature perpendicular to the direction of the slope.
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
@@ -677,7 +912,7 @@ def profile_curvature(
     resolution: float | tuple[float, float] | None = None,
 ) -> np.ndarray | Raster:
     """
-    Get the terrain curvature parallel to the direction of the slope.
+    Calculate the terrain curvature parallel to the direction of the slope.
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
@@ -688,3 +923,109 @@ def profile_curvature(
     :returns: The profile curvature array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution)
+
+
+@overload
+def terrain_ruggedness_index(
+    dem: RasterType,
+    method: str,
+    window_size: int
+) -> Raster: ...
+
+@overload
+def terrain_ruggedness_index(
+    dem: np.ndarray | np.ma.masked_array,
+    method: str,
+    window_size: int
+) -> np.ndarray: ...
+
+def terrain_ruggedness_index(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    method: str = "Riley",
+    window_size: int = 3
+) -> np.ndarray | Raster:
+    """
+    Calculates the Terrain Ruggedness Index.
+    Based either on:
+     - Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, preferred
+     for topography.
+     - Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, preferred for bathymetry.
+
+    :param dem: The DEM to calculate the terrain ruggedness index from.
+    :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry)
+    :param window_size: The size of the window for deriving the terrain index
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The terrain ruggedness index array of the DEM.
+    """
+    if method.lower() == 'riley':
+        return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index_topo", window_size=window_size)
+    elif method.lower() == 'wilson':
+        return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index_bathy", window_size=window_size)
+    else:
+        raise ValueError('Method for Terrain Ruggedness Index must be "Riley" or "Wilson".')
+
+
+@overload
+def topographic_position_index(
+    dem: RasterType,
+    window_size: int,
+) -> Raster: ...
+
+
+@overload
+def topographic_position_index(
+    dem: np.ndarray | np.ma.masked_array,
+    window_size: int,
+) -> np.ndarray: ...
+
+
+def topographic_position_index(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    window_size: int = 3
+) -> np.ndarray | Raster:
+    """
+    Calculates the Topographic Position Index.
+    Based on: Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
+
+    :param dem: The DEM to calculate the topographic position index from.
+    :param window_size: The size of the window for deriving the terrain index
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The topographic position index array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="topographic_position_index", window_size=window_size)
+
+
+@overload
+def roughness(
+    dem: RasterType,
+    window_size: int
+) -> Raster: ...
+
+
+@overload
+def roughness(
+    dem: np.ndarray | np.ma.masked_array,
+    window_size: int
+) -> np.ndarray: ...
+
+
+def roughness(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    window_size: int = 3
+) -> np.ndarray | Raster:
+    """
+    Calculates the roughness.
+    Based on: Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+
+    :param dem: The DEM to calculate the roughness from.
+    :param window_size: The size of the window for deriving the terrain index
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The roughness array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="roughness", window_size=window_size)
