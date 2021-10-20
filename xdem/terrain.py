@@ -623,27 +623,29 @@ def get_terrain_attribute(
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
-
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
 
     # Check which products should be made to optimize the processing
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
     make_slope = any(
-        attr in attribute for attr in ["slope", "hillshade", "planform_curvature", "aspect", "profile_curvature"]
+        attr in attribute for attr in ["slope", "hillshade", "planform_curvature", "aspect", "profile_curvature",
+                                       "maximum_curvature"]
     )
     make_hillshade = "hillshade" in attribute
     make_surface_fit = len(attributes_requiring_surface_fit) > 0
     make_curvature = "curvature" in attribute
-    make_planform_curvature = "planform_curvature" or "maximum_curvature" in attribute
-    make_profile_curvature = "profile_curvature" or "maximum_curvature" in attribute
+    make_planform_curvature = "planform_curvature" in attribute or "maximum_curvature" in attribute
+    make_profile_curvature = "profile_curvature" in attribute or  "maximum_curvature" in attribute
     make_maximum_curvature = "maximum_curvature" in attribute
     make_windowed_index = len(attributes_requiring_windowed_index) > 0
     make_terrain_ruggedness_topo = "terrain_ruggedness_index_topo" in attribute
     make_terrain_ruggedness_bathy = "terrain_ruggedness_index_bathy" in attribute
     make_topographic_position = "topographic_position_index" in attribute
     make_roughness = "roughness" in attribute
+
+    # Get array of DEM
+    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
 
     if make_surface_fit:
         if not isinstance(resolution, Sized):
