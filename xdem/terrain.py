@@ -205,7 +205,7 @@ def _get_windowed_indexes(
     """
 
     # Allocate the outputs.
-    output = np.empty((4,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.empty((5,) + dem.shape, dtype=dem.dtype) + np.nan
 
     # Half window size
     hw = int(np.floor(window_size / 2))
@@ -243,7 +243,7 @@ def _get_windowed_indexes(
                 continue
 
         for j in range(-hw, -hw+window_size):
-            for k in range(-hw, hw+window_size):
+            for k in range(-hw, -hw+window_size):
                 # Here the "nearest" edge_method is performed.
                 if edge_method_n == 0:
                     row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
@@ -276,14 +276,82 @@ def _get_windowed_indexes(
                 # This should not occur.
                 pass
 
-        # Difference pixels between specific cells
+        # Difference pixels between specific cells: only useful for Terrain Ruggedness Index
         count = 0
         index_middle_pixel = int((window_size**2 - 1)/2)
         S = np.empty((window_size**2,))
         for j in range(-hw, -hw + window_size):
-            for k in range(-hw, hw + window_size):
+            for k in range(-hw, -hw + window_size):
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
                 count += 1
+
+
+        # Elevation differences and horizontal length
+        dzs = np.empty((16,))
+        dls = np.empty((16,))
+
+        count = 0
+        # First, the 8 connected segments from the center cells, the center cell is index 4
+        for j in range(-hw, -hw + window_size):
+            for k in range(-hw, -hw + window_size):
+                # Skip if this is the center pixel
+                if j == 0 and k == 0:
+                    continue
+                # The first eight elevation differences from the cell center
+                dzs[count] = Z[4] - Z[count]
+                # The first eight planimetric length that can be diagonal or straight from the center
+                dls[count] = np.sqrt(j**2 + k**2)
+                count += 1
+
+        # Manually for the remaining eight segments between surrounding pixels:
+        # First, four elevation differences along the x axis
+        dzs[8] = Z[0] - Z[1]
+        dzs[9] = Z[1] - Z[2]
+        dzs[10] = Z[6] - Z[7]
+        dzs[11] = Z[7] - Z[8]
+        # Second, along the y axis
+        dzs[12] = Z[0] - Z[3]
+        dzs[13] = Z[3] - Z[6]
+        dzs[14] = Z[2] - Z[5]
+        dzs[15] = Z[5] - Z[8]
+        # For the planimetric lengths, all are equal to one
+        dls[8:] = 1
+
+        # Finally, the half-surface length of each segment
+        L = np.sqrt(dzs**2 + dls**2)/2
+
+        # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding pixels
+        # and 1 segment between surrounding pixels; pixel 4 is the center
+        # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
+        # Triangle 1: pixels 3 and 0
+        T1 = [L[3], L[0], L[12]]
+        # Triangle 2: pixels 0 and 1
+        T2 = [L[0], L[1], L[8]]
+        # Triangle 3: pixels 1 and 2
+        T3 = [L[1], L[2], L[9]]
+        # Triangle 4: pixels 2 and 5
+        T4 = [L[2], L[4], L[14]]
+        # Triangle 5: pixels 5 and 8
+        T5 = [L[4], L[7], L[15]]
+        # Triangle 6: pixels 8 and 7
+        T6 = [L[7], L[6], L[11]]
+        # Triangle 7: pixels 7 and 6
+        T7 = [L[6], L[5], L[10]]
+        # Triangle 8: pixels 6 and 3
+        T8 = [L[5], L[3], L[13]]
+
+        list_T = [T1, T2, T3, T4, T5, T6, T7, T8]
+
+        # Finally, we compute the 3D surface areas of the 8 triangles
+        A = np.empty((8,))
+        count = 0
+        for T in list_T:
+            # Half sum of lengths
+            hs = sum(T)/2
+            # Surface area of triangle
+            A[count] = np.sqrt(hs*(hs-T[0])*(hs-T[1])*(hs-T[2]))
+            count += 1
+
 
         # First output is the Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of
         # differences between center and neighbouring pixels
@@ -296,6 +364,8 @@ def _get_windowed_indexes(
         output[2, row, col] =  Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
         # Fourth output is the Roughness: difference between maximum and minimum of the window
         output[3, row, col] = np.max(Z) - np.min(Z)
+        # Fifth output is the Rugosity: difference between real surface area and planimetric surface area
+        output[4, row, col] = sum(A)
 
     return output
 
@@ -345,13 +415,13 @@ def get_windowed_indexes(
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
-        >>> indexes = get_windowed_indexes(dem, resolution=1.0)
-        >>> index.shape
-        (4, 3, 3)
-        >>> coeffs[:, 1, 1]
-        array([ 1., 0.125, -0.125, 1.])
+        >>> indexes = get_windowed_indexes(dem)
+        >>> indexes.shape
+        (5, 3, 3)
+        >>> indexes[:, 1, 1]
+        array([2.82842712, 1., 1., 1., 1.27716652])
 
-    :returns: An array of coefficients for each pixel of shape (4, row, col).
+    :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
     dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
