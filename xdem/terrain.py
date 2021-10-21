@@ -112,7 +112,7 @@ def get_quadric_coefficients(
     """
     Return the 9 coefficients of a quadric surface fit to every pixel in the raster.
 
-    Based on Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, also described in the documentation:
+    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107, also described in the documentation:
     https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
 
     The function that is solved is:
