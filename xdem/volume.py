@@ -13,7 +13,7 @@ import scipy.interpolate
 from tqdm import tqdm
 
 import xdem
-from geoutils.georaster import spatial_tools
+from geoutils import spatial_tools
 
 
 def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float, np.ndarray] = 50.0,

@@ -7,7 +7,7 @@ from typing import Sized, overload
 import numba
 import numpy as np
 
-from geoutils.georaster import spatial_tools
+from geoutils import spatial_tools
 import geoutils as gu
 from geoutils.georaster import RasterType, Raster
 

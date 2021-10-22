@@ -6,7 +6,7 @@ import warnings
 from typing import Any, Optional, Union
 
 import geoutils as gu
-from geoutils.georaster import spatial_tools
+from geoutils import spatial_tools
 import numpy as np
 import shapely
 

@@ -18,7 +18,8 @@ except ImportError:
     _has_cv2 = False
 import fiona
 import geoutils as gu
-from geoutils.georaster import RasterType, spatial_tools
+from geoutils.georaster import RasterType
+from geoutils import spatial_tools
 import numpy as np
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
