@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from xdem.spatial_tools import subsample_raster, get_array_and_mask
+from geoutils.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
 
 with warnings.catch_warnings():
