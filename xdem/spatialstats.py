@@ -157,7 +157,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
-    interp_fun = RegularGridInterpolator(tuple(list_bmid), values_grid, method='linear', bounds_error=False, fill_value=None)
+    interp_fun = RegularGridInterpolator(tuple(list_bmid), values_grid.T, method='linear', bounds_error=False, fill_value=None)
 
     return interp_fun
 
