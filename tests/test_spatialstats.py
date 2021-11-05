@@ -332,6 +332,10 @@ class TestBinning:
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
 
+        # check that the dimensions are rightly ordered
+        assert fun((1, 3)) == df[np.logical_and(df['var1']==1, df['var2']==3)]['statistic'].values[0]
+        assert fun((3, 1)) == df[np.logical_and(df['var1']==3, df['var2']==1)]['statistic'].values[0]
+
         # check interpolation falls right on values for points (1, 1), (1, 2) etc...
         for i in range(3):
             for j in range(3):
