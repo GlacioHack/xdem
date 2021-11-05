@@ -65,7 +65,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     :examples
     # Using a dataframe created from scratch
-    >>> df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+    >>> df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
 
     # In 2 dimensions, the statistic array looks like this
     # array([

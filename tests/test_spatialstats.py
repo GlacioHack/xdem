@@ -327,7 +327,7 @@ class TestBinning:
     def test_interp_nd_binning(self):
 
         # check the function works with a classic input (see example)
-        df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+        df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3],
                                 "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
@@ -338,7 +338,7 @@ class TestBinning:
                 x = df['var1'][3 * i + j]
                 y = df['var2'][3 * i + j]
                 stat = df['statistic'][3 * i + j]
-                assert fun((y, x)) == stat
+                assert fun((x, y)) == stat
 
         # check bilinear interpolation inside the grid
         points_in = [(1.5, 1.5), (1.5, 2.5), (2.5, 1.5), (2.5, 2.5)]
