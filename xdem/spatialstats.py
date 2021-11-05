@@ -1223,9 +1223,6 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
             i = list_cadrant[idx_cadrant][0]
             j = list_cadrant[idx_cadrant][1]
 
-            if not np.isfinite(values[i, j]):
-                continue
-
             if patch_shape == 'rectangular':
                 patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
             elif patch_shape == 'circular':
