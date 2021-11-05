@@ -153,7 +153,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
     # fill grid no data with nearest neighbour
     values_grid = griddata(points_valid, values, points_grid, method='nearest')
-    values_grid = values_grid.reshape(tuple(shape))
+    values_grid = values_grid.reshape(tuple(np.flip(np.array(shape))))
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
@@ -1419,6 +1419,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
 
         if k == int(nb_subpanels/2):
             ax.set_xlabel(xlabel)
+        if k == nb_subpanels - 1:
             ax.legend(loc='best')
         if k == 0:
             ax.set_ylabel(ylabel)
