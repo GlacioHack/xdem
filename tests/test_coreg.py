@@ -17,7 +17,7 @@ import pytransform3d.transformations
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import coreg, examples, spatial_tools, spatialstats, misc
+    from xdem import coreg, examples, spatialstats, misc
     import xdem
 
 
