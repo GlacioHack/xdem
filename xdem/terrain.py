@@ -7,7 +7,7 @@ from typing import Sized, overload
 import numba
 import numpy as np
 
-import xdem.spatial_tools
+from geoutils import spatial_tools
 import geoutils as gu
 from geoutils.georaster import RasterType, Raster
 
@@ -160,7 +160,7 @@ def get_quadric_coefficients(
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = spatial_tools.get_array_and_mask(dem)[0]
 
     if len(dem_arr.shape) != 2:
         raise ValueError(
@@ -330,7 +330,7 @@ def get_terrain_attribute(
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = spatial_tools.get_array_and_mask(dem)[0]
 
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
