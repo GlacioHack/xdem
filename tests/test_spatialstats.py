@@ -382,6 +382,21 @@ class TestBinning:
                 diff_out = arr[x, y - 1] - val_extra
             assert diff_in == diff_out
 
+        # check that the output is rightly ordered in 3 dimensions, and works with varying dimension lengths
+        vec1 = np.arange(1, 3)
+        vec2 = np.arange(1, 4)
+        vec3 = np.arange(1, 5)
+        x, y, z = np.meshgrid(vec1, vec2, vec3)
+        df = pd.DataFrame({"var1": x.flatten(), "var2": y.flatten(), "var3": z.flatten(),
+                           "statistic": np.arange(len(x.flatten()))})
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2", "var3"], statistic="statistic",
+                                                  min_count=None)
+        for i in vec1:
+            for j in vec2:
+                for k in vec3:
+                    assert fun((i, j, k)) == \
+                           df[np.logical_and.reduce((df['var1'] == i, df['var2'] == j, df['var3'] == k))]['statistic'].values[0]
+
         # check if it works with nd_binning output
         ref, diff, mask = load_ref_and_diff()
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
@@ -407,9 +422,9 @@ class TestBinning:
         # check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
         # check the nmad increases with slope
-        assert fun([20, 1000]) > fun([0, 1000])
+        assert fun([20, 800]) > fun([0, 800])
         # check a value is returned outside the grid
-        assert all(np.isfinite(fun(([-5, 50],[-500,3000]))))
+        assert all(np.isfinite(fun(([-5, 50], [-500,3000]))))
 
         # in 3d, let's decrease the number of bins to get something with enough samples
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'], list_var_bins=3)
@@ -418,8 +433,8 @@ class TestBinning:
         # check a value is returned inside the grid
         assert np.isfinite(fun([15,1000, np.pi]))
         # check the nmad increases with slope
-        assert fun([20, 1000, np.pi]) > fun([0, 1000, np.pi])
+        assert fun([20, 500, np.pi]) > fun([0, 500, np.pi])
         # check a value is returned outside the grid
-        assert all(np.isfinite(fun(([-5, 50],[-500,3000],[-2*np.pi,4*np.pi]))))
+        assert all(np.isfinite(fun(([-5, 50], [-500,3000], [-2*np.pi,4*np.pi]))))
 
 
