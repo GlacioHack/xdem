@@ -64,6 +64,7 @@ class TestMerging:
         )
     )
 
+    @pytest.mark.skip('This test will be deleted from xdem')
     def test_stack_rasters(self):
         """Test stack_rasters"""
         # Merge the two overlapping DEMs and check that output bounds and shape is correct
@@ -98,6 +99,7 @@ class TestMerging:
         stacked_dem2 = xdem.spatial_tools.stack_rasters([self.dem1, self.dem3], reference=self.dem, use_ref_bounds=True)
         assert stacked_dem2.bounds == self.dem.bounds
 
+    @pytest.mark.skip('This test will be deleted from xdem')
     def test_merge_rasters(self):
         """Test merge_rasters"""
         # Merge the two overlapping DEMs and check that it closely resembles the initial DEM
