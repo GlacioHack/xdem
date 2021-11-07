@@ -11,7 +11,7 @@ import sphinx.cmd.build
 
 class TestDocs:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "docs/")
-    n_threads = os.getenv("N_CPUS")
+    n_threads = os.cpu_count()
 
     def test_example_code(self):
         """Try running each python script in the docs/source/code\
