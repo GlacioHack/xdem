@@ -149,15 +149,15 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     # coordinates of valid values
     points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
     # grid coordinates
-    bmid_grid = np.meshgrid(*list_bmid)
+    bmid_grid = np.meshgrid(*list_bmid, indexing='ij')
     points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
     # fill grid no data with nearest neighbour
     values_grid = griddata(points_valid, values, points_grid, method='nearest')
-    values_grid = values_grid.reshape(tuple(np.flip(np.array(shape))))
+    values_grid = values_grid.reshape(shape)
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
-    interp_fun = RegularGridInterpolator(tuple(list_bmid), values_grid.T, method='linear', bounds_error=False, fill_value=None)
+    interp_fun = RegularGridInterpolator(tuple(list_bmid), values_grid, method='linear', bounds_error=False, fill_value=None)
 
     return interp_fun
 
