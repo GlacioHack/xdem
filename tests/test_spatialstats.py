@@ -39,7 +39,7 @@ class TestVariogram:
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50,
+            values=diff, subsample=50,
             random_state=42, runs=2)
 
         # With random state, results should always be the same
@@ -47,9 +47,15 @@ class TestVariogram:
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
+        # Check that all type of coordinate inputs work
+        # Only the array and the ground sampling distance
+        df = xdem.spatialstats.sample_empirical_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=50,
+            random_state=42, runs=2)
+
         # Test multiple runs
         df2 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50,
+            values=diff, subsample=50,
             random_state=42, runs=2, n_variograms=2)
 
         # Check that an error is estimated
@@ -68,7 +74,7 @@ class TestVariogram:
 
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            values=diff, subsample=50, random_state=42,
             subsample_method=subsample_method)
 
         assert not df.empty
@@ -87,29 +93,29 @@ class TestVariogram:
         with pytest.warns(UserWarning):
             # An argument only use by cdist with a pdist method
             df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                values=diff, subsample=50, random_state=42,
                 subsample_method='pdist_ring', **cdist_args)
 
         with pytest.warns(UserWarning):
             # Same here
             df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                values=diff, subsample=50, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **pdist_args)
 
         with pytest.warns(UserWarning):
             # Should also raise a warning for a nonsense argument
             df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                values=diff, subsample=50, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **nonsense_args)
 
         # Check the function passes optional arguments specific to pdist methods without warning
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            values=diff, subsample=50, random_state=42,
             subsample_method='pdist_ring', **pdist_args)
 
         # Check the function passes optional arguments specific to cdist methods without warning
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            values=diff, subsample=50, random_state=42,
             subsample_method='cdist_equidistant', runs=2, **cdist_args)
 
     def test_multirange_fit_performance(self):
