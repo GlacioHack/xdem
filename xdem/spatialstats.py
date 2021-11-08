@@ -68,7 +68,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     :examples
     # Using a dataframe created from scratch
-    >>> df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+    >>> df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
 
     # In 2 dimensions, the statistic array looks like this
     # array([
@@ -152,11 +152,11 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     # coordinates of valid values
     points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
     # grid coordinates
-    bmid_grid = np.meshgrid(*list_bmid)
+    bmid_grid = np.meshgrid(*list_bmid, indexing='ij')
     points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
     # fill grid no data with nearest neighbour
     values_grid = griddata(points_valid, values, points_grid, method='nearest')
-    values_grid = values_grid.reshape(tuple(shape))
+    values_grid = values_grid.reshape(shape)
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
@@ -1419,6 +1419,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
 
         if k == int(nb_subpanels/2):
             ax.set_xlabel(xlabel)
+        if k == nb_subpanels - 1:
             ax.legend(loc='best')
         if k == 0:
             ax.set_ylabel(ylabel)
