@@ -7,6 +7,8 @@ import tempfile
 import urllib.request
 from distutils.dir_util import copy_tree
 
+import numpy as np
+
 import geoutils as gu
 import xdem
 
@@ -94,9 +96,10 @@ def process_coregistered_examples(overwrite: bool =False):
     nuth_kaab.fit(reference_raster.data, to_be_aligned_raster.data,
                   inlier_mask=inlier_mask, transform=reference_raster.transform)
     aligned_raster = nuth_kaab.apply(to_be_aligned_raster.data, transform=reference_raster.transform)
+    aligned_raster.data[~np.isfinite(aligned_raster)] = reference_raster.nodata
 
-    diff = gu.Raster.from_array((reference_raster.data - aligned_raster),
-                                transform=reference_raster.transform, crs=reference_raster.crs)
+    diff = reference_raster - \
+           gu.Raster.from_array(aligned_raster.data, transform=reference_raster.transform, crs=reference_raster.crs, nodata=reference_raster.nodata)
 
     # Save it so that future calls won't need to recreate the file
     os.makedirs(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']), exist_ok=True)

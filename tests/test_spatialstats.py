@@ -39,7 +39,7 @@ class TestVariogram:
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50,
+            values=diff, subsample=50,
             random_state=42, runs=2)
 
         # With random state, results should always be the same
@@ -47,9 +47,15 @@ class TestVariogram:
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
+        # Check that all type of coordinate inputs work
+        # Only the array and the ground sampling distance
+        df = xdem.spatialstats.sample_empirical_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=50,
+            random_state=42, runs=2)
+
         # Test multiple runs
         df2 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50,
+            values=diff, subsample=50,
             random_state=42, runs=2, n_variograms=2)
 
         # Check that an error is estimated
@@ -68,7 +74,7 @@ class TestVariogram:
 
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            values=diff, subsample=50, random_state=42,
             subsample_method=subsample_method)
 
         assert not df.empty
@@ -87,29 +93,29 @@ class TestVariogram:
         with pytest.warns(UserWarning):
             # An argument only use by cdist with a pdist method
             df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                values=diff, subsample=50, random_state=42,
                 subsample_method='pdist_ring', **cdist_args)
 
         with pytest.warns(UserWarning):
             # Same here
             df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                values=diff, subsample=50, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **pdist_args)
 
         with pytest.warns(UserWarning):
             # Should also raise a warning for a nonsense argument
             df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+                values=diff, subsample=50, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **nonsense_args)
 
         # Check the function passes optional arguments specific to pdist methods without warning
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            values=diff, subsample=50, random_state=42,
             subsample_method='pdist_ring', **pdist_args)
 
         # Check the function passes optional arguments specific to cdist methods without warning
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42,
+            values=diff, subsample=50, random_state=42,
             subsample_method='cdist_equidistant', runs=2, **cdist_args)
 
     def test_multirange_fit_performance(self):
@@ -327,10 +333,14 @@ class TestBinning:
     def test_interp_nd_binning(self):
 
         # check the function works with a classic input (see example)
-        df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+        df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3],
                                 "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
+
+        # check that the dimensions are rightly ordered
+        assert fun((1, 3)) == df[np.logical_and(df['var1']==1, df['var2']==3)]['statistic'].values[0]
+        assert fun((3, 1)) == df[np.logical_and(df['var1']==3, df['var2']==1)]['statistic'].values[0]
 
         # check interpolation falls right on values for points (1, 1), (1, 2) etc...
         for i in range(3):
@@ -338,7 +348,7 @@ class TestBinning:
                 x = df['var1'][3 * i + j]
                 y = df['var2'][3 * i + j]
                 stat = df['statistic'][3 * i + j]
-                assert fun((y, x)) == stat
+                assert fun((x, y)) == stat
 
         # check bilinear interpolation inside the grid
         points_in = [(1.5, 1.5), (1.5, 2.5), (2.5, 1.5), (2.5, 2.5)]
@@ -378,6 +388,21 @@ class TestBinning:
                 diff_out = arr[x, y - 1] - val_extra
             assert diff_in == diff_out
 
+        # check that the output is rightly ordered in 3 dimensions, and works with varying dimension lengths
+        vec1 = np.arange(1, 3)
+        vec2 = np.arange(1, 4)
+        vec3 = np.arange(1, 5)
+        x, y, z = np.meshgrid(vec1, vec2, vec3)
+        df = pd.DataFrame({"var1": x.flatten(), "var2": y.flatten(), "var3": z.flatten(),
+                           "statistic": np.arange(len(x.flatten()))})
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2", "var3"], statistic="statistic",
+                                                  min_count=None)
+        for i in vec1:
+            for j in vec2:
+                for k in vec3:
+                    assert fun((i, j, k)) == \
+                           df[np.logical_and.reduce((df['var1'] == i, df['var2'] == j, df['var3'] == k))]['statistic'].values[0]
+
         # check if it works with nd_binning output
         ref, diff, mask = load_ref_and_diff()
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
@@ -403,9 +428,9 @@ class TestBinning:
         # check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
         # check the nmad increases with slope
-        assert fun([20, 1000]) > fun([0, 1000])
+        assert fun([20, 800]) > fun([0, 800])
         # check a value is returned outside the grid
-        assert all(np.isfinite(fun(([-5, 50],[-500,3000]))))
+        assert all(np.isfinite(fun(([-5, 50], [-500,3000]))))
 
         # in 3d, let's decrease the number of bins to get something with enough samples
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'], list_var_bins=3)
@@ -414,8 +439,8 @@ class TestBinning:
         # check a value is returned inside the grid
         assert np.isfinite(fun([15,1000, np.pi]))
         # check the nmad increases with slope
-        assert fun([20, 1000, np.pi]) > fun([0, 1000, np.pi])
+        assert fun([20, 500, np.pi]) > fun([0, 500, np.pi])
         # check a value is returned outside the grid
-        assert all(np.isfinite(fun(([-5, 50],[-500,3000],[-2*np.pi,4*np.pi]))))
+        assert all(np.isfinite(fun(([-5, 50], [-500,3000], [-2*np.pi,4*np.pi]))))
 
 
