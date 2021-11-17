@@ -612,7 +612,10 @@ class Coreg:
         # Apply final mask
         nan_mask = np.isnan(applied_dem)
         final_mask = dem_mask + nan_mask
-        applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
+        if isinstance(dem, (np.ma.masked_array, gu.Raster)):
+            applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
+        else:
+            applied_dem[final_mask] = np.nan
 
         # If the input was a Raster, return a Raster as well.
         if isinstance(dem, gu.Raster):
