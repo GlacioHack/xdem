@@ -1297,7 +1297,7 @@ class NuthKaab(Coreg):
 
             # Set NaNs where NaNs were in the original data
             new_nans = nodata_function(y=east_grid + offset_east, x=north_grid - offset_north)
-            new_elevation[new_nans >= 1] = np.nan
+            new_elevation[new_nans > 0] = np.nan
 
             # Assign the newly calculated elevations to the aligned_dem
             aligned_dem = new_elevation
@@ -1491,7 +1491,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
             mode="constant",
             cval=1,
             preserve_range=True
-        ) > 0.1  # Due to different interpolation approaches, everything above 0.1 is assumed to be 1 (True)
+        ) > 0
 
     if dilate_mask:
         tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
@@ -1648,16 +1648,16 @@ class BlockwiseCoreg(Coreg):
                     transform=transform_subset,
                     inlier_mask=mask_subset
                 )
+
+                nmad, median = coreg.error(
+                    reference_dem=ref_subset,
+                    dem_to_be_aligned=tba_subset,
+                    error_type=["nmad", "median"],
+                    inlier_mask=mask_subset,
+                    transform=transform_subset
+                )
             except Exception as exception:
                 return exception
-
-            nmad, median = coreg.error(
-                reference_dem=ref_subset,
-                dem_to_be_aligned=tba_subset,
-                error_type=["nmad", "median"],
-                inlier_mask=mask_subset,
-                transform=transform_subset
-            )
 
             meta: dict[str, Any] = {
                 "i": i,
@@ -1993,7 +1993,7 @@ def warp_dem(
                 inverse_map=np.moveaxis(new_indices, 2, 0),
                 output_shape=dem_arr.shape,
                 cval=False
-            ) > 0.25
+            ) > 0
 
         if dilate_mask:
             new_mask = scipy.ndimage.morphology.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
