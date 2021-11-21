@@ -194,8 +194,6 @@ def test_get_quadric_coefficients() -> None:
 
     coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0)
 
-    assert np.all(np.isfinite(coefficients))
-
     # The last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
     assert np.array_equal(coefficients[-1, :, :], dem)
 

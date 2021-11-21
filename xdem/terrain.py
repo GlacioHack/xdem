@@ -528,13 +528,13 @@ def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = Tr
                [1, 1, 1],
                [2, 2, 2]])
         >>> aspect(dem, degrees=True)[1, 1]
-        0.
+        0.0
         >>> dem.T
         array([[0, 1, 2],
                [0, 1, 2],
                [0, 1, 2]])
         >>> aspect(dem.T, degrees=True)[1, 1]
-        270.
+        270.0
 
     """
     return get_terrain_attribute(dem, attribute="aspect", resolution=1.0, degrees=degrees)
@@ -624,7 +624,7 @@ def curvature(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> curvature(dem, resolution=1.0)[1, 1]
-        400.
+        400.0
 
     :returns: The curvature array of the DEM.
     """
