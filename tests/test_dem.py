@@ -98,6 +98,11 @@ class TestDEM:
         r.data += 5
         assert not np.array_equal(r.data, r2.data, equal_nan=True)
 
+        # Check that the new_array argument indeed modifies the raster
+        r3 = r.copy(new_array=r2.data)
+
+        assert np.array_equal(r3.data, r2.data)
+
     def test_set_vref(self):
         """Tests to set the vertical reference"""
 

@@ -545,22 +545,23 @@ class Coreg:
         return self
 
     @overload
-    def apply(self, dem: RasterType, transform: rio.transform.Affine | None) -> RasterType: ...
+    def apply(self, dem: RasterType, transform: rio.transform.Affine | None, **kwargs) -> RasterType: ...
 
     @overload
-    def apply(self, dem: np.ndarray, transform: rio.transform.Affine | None) -> np.ndarray: ...
+    def apply(self, dem: np.ndarray, transform: rio.transform.Affine | None, **kwargs) -> np.ndarray: ...
 
     @overload
-    def apply(self, dem: np.ma.masked_array, transform: rio.transform.Affine | None) -> np.ma.masked_array: ...
+    def apply(self, dem: np.ma.masked_array, transform: rio.transform.Affine | None, **kwargs) -> np.ma.masked_array: ...
 
 
     def apply(self, dem: np.ndarray | np.ma.masked_array | RasterType,
-              transform: rio.transform.Affine | None = None) -> RasterType | np.ndarray | np.ma.masked_array:
+              transform: rio.transform.Affine | None = None, **kwargs) -> RasterType | np.ndarray | np.ma.masked_array:
         """
         Apply the estimated transform to a DEM.
 
         :param dem: A DEM array or Raster to apply the transform on.
         :param transform: The transform object of the DEM. Required if 'dem' is an array and not a Raster.
+        :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
 
         :returns: The transformed DEM.
         """
@@ -585,27 +586,40 @@ class Coreg:
         # See if a _apply_func exists
         try:
             # Run the associated apply function
-            applied_dem = self._apply_func(dem_array, transform)  # pylint: disable=assignment-from-no-return
+            applied_dem = self._apply_func(dem_array, transform, **kwargs)  # pylint: disable=assignment-from-no-return
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
             if self.is_affine:  # This only works on it's affine, however.
+                # If dilate_mask is not specified, set it to True by default
+                if "dilate_mask" in kwargs.keys():
+                    dilate_mask = kwargs["dilate_mask"]
+                    kwargs.pop("dilate_mask")
+                else:
+                    dilate_mask = True
+
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
                 applied_dem = apply_matrix(
                     dem_array,
                     transform=transform,
                     matrix=self.to_matrix(),
                     centroid=self._meta.get("centroid"),
-                    dilate_mask=True
+                    dilate_mask=dilate_mask,
+                    **kwargs
                 )
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
+        # Calculate final mask
+        final_mask = dem_mask + np.isnan(applied_dem)
+
         # If the DEM was a masked_array, copy the mask to the new DEM
         if hasattr(dem, "mask"):
-            applied_dem = np.ma.masked_array(applied_dem, mask=dem.mask)  # type: ignore
+            applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
         # If the DEM was a Raster with a mask, copy the mask to the new DEM
         elif hasattr(dem, "data") and hasattr(dem.data, "mask"):
-            applied_dem = np.ma.masked_array(applied_dem, mask=dem.data.mask)  # type: ignore
+            applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
+        else:
+            applied_dem[final_mask] = np.nan
 
         # If the input was a Raster, return a Raster as well.
         if isinstance(dem, gu.Raster):
@@ -833,7 +847,7 @@ class Coreg:
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine, **kwargs) -> np.ndarray:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -1066,7 +1080,7 @@ class Deramp(Coreg):
         self._meta["coefficients"] = coefs[0]
         self._meta["func"] = lambda x, y: poly2d(x, y, coefs[0])
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine, **kwargs) -> np.ndarray:
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
 
@@ -1139,12 +1153,11 @@ class CoregPipeline(Coreg):
 
             tba_dem_mod = coreg.apply(tba_dem_mod, transform)
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine, **kwargs) -> np.ndarray:
         """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
-
         for coreg in self.pipeline:
-            dem_mod = coreg.apply(dem_mod, transform)
+            dem_mod = coreg.apply(dem_mod, transform, **kwargs)
 
         return dem_mod
 
@@ -1284,7 +1297,7 @@ class NuthKaab(Coreg):
 
             # Set NaNs where NaNs were in the original data
             new_nans = nodata_function(y=east_grid + offset_east, x=north_grid - offset_north)
-            new_elevation[new_nans >= 1] = np.nan
+            new_elevation[new_nans > 0] = np.nan
 
             # Assign the newly calculated elevations to the aligned_dem
             aligned_dem = new_elevation
@@ -1347,7 +1360,7 @@ def invert_matrix(matrix: np.ndarray) -> np.ndarray:
 def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.ndarray, invert: bool = False,
                  centroid: Optional[tuple[float, float, float]] = None,
                  resampling: Union[int, str] = "bilinear",
-                 dilate_mask: bool = False) -> np.ndarray:
+                 dilate_mask: bool = False, **kwargs) -> np.ndarray:
     """
     Apply a 3D transformation matrix to a 2.5D DEM.
 
@@ -1478,7 +1491,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
             mode="constant",
             cval=1,
             preserve_range=True
-        ) > 0.1  # Due to different interpolation approaches, everything above 0.1 is assumed to be 1 (True)
+        ) > 0
 
     if dilate_mask:
         tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
@@ -1528,7 +1541,7 @@ class ZScaleCorr(Coreg):
         coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
         self._meta["coefficients"] = coefficients
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine, **kwargs) -> np.ndarray:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
@@ -1635,16 +1648,16 @@ class BlockwiseCoreg(Coreg):
                     transform=transform_subset,
                     inlier_mask=mask_subset
                 )
+
+                nmad, median = coreg.error(
+                    reference_dem=ref_subset,
+                    dem_to_be_aligned=tba_subset,
+                    error_type=["nmad", "median"],
+                    inlier_mask=mask_subset,
+                    transform=transform_subset
+                )
             except Exception as exception:
                 return exception
-
-            nmad, median = coreg.error(
-                reference_dem=ref_subset,
-                dem_to_be_aligned=tba_subset,
-                error_type=["nmad", "median"],
-                inlier_mask=mask_subset,
-                transform=transform_subset
-            )
 
             meta: dict[str, Any] = {
                 "i": i,
@@ -1820,7 +1833,7 @@ class BlockwiseCoreg(Coreg):
         return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
 
-    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine) -> np.ndarray:
+    def _apply_func(self, dem: np.ndarray, transform: rio.transform.Affine, **kwargs) -> np.ndarray:
 
         points = self.to_points()
 
@@ -1980,7 +1993,7 @@ def warp_dem(
                 inverse_map=np.moveaxis(new_indices, 2, 0),
                 output_shape=dem_arr.shape,
                 cval=False
-            ) > 0.25
+            ) > 0
 
         if dilate_mask:
             new_mask = scipy.ndimage.morphology.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
