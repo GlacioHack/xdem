@@ -7,6 +7,7 @@ import warnings
 from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
 import geoutils as gu
+import numpy as np
 from pyproj import Transformer
 import json
 import subprocess
@@ -84,9 +85,9 @@ class DEM(SatelliteImage):
         # trying to get vref from product name (priority to user input)
         self.__parse_vref_from_fn(silent=silent)
 
-    def copy(self, new_array=None):
+    def copy(self, new_array: np.ndarray | None = None) -> DEM:
 
-        new_dem = super().copy()
+        new_dem = super().copy(new_array=new_array) # type: ignore
         # The rest of attributes are immutable, including pyproj.CRS
         # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
         for attrs in dem_attrs:
