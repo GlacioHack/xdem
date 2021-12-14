@@ -232,6 +232,7 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
     if isinstance(ddem_bins, pd.DataFrame):
         ddem_bins = ddem_bins["value"]
 
+    # For timeframe "mean" or "nonreference", check that ddem_bins values can be interpolated at any altitude
     if timeframe in ["mean", "nonreference"]:
         assert not np.any(np.isnan(ddem_bins.values)), "The dDEM bins cannot contain NaNs. Remove or fill them first."
 
