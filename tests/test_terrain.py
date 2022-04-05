@@ -21,11 +21,14 @@ def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> n
     # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
 
-    # Converting string into gdal processing options here to avoid import gdal outside this function
+    # Converting string into gdal processing options here to avoid import gdal outside this function:
+    # Riley or Wilson for Terrain Ruggedness, and Zevenberg or Horn for slope, aspect and hillshade
     gdal_option_conversion = {
-        "hillshade_params": gdal.DEMProcessingOptions(azimuth=315, altitude=45),
         "riley": gdal.DEMProcessingOptions(alg='Riley'),
-        "wilson": gdal.DEMProcessingOptions(alg='Wilson')
+        "wilson": gdal.DEMProcessingOptions(alg='Wilson'),
+        "zevenberg": gdal.DEMProcessingOptions(alg='ZevenbergenThorne'),
+        "horn": gdal.DEMProcessingOptions(alg='Horn'),
+        "hillshade_zevenberg": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg='ZevenbergenThorne')
     }
 
     if options is None:
@@ -74,11 +77,11 @@ class TestTerrainAttribute:
             "roughness": lambda dem: xdem.terrain.roughness(dem.data)
         }
 
-        # Writing this option conversion here to avoid importing gdal outside of the dedicated function
+        # Writing dictionary options here to avoid importing gdal outside of the dedicated function
         gdal_processing_attr_option = {
-            "slope": ("slope", None),
-            "aspect": ("aspect", None),
-            "hillshade": ("hillshade", "hillshade_params"),
+            "slope": ("slope", "zevenberg"),
+            "aspect": ("aspect", "zevenberg"),
+            "hillshade": ("hillshade", "hillshade_zevenberg"),
             "tri_riley": ("TRI", "riley"),
             "tri_wilson": ("TRI", "wilson"),
             "tpi": ("TPI", None),
@@ -93,20 +96,39 @@ class TestTerrainAttribute:
         attr_gdal = run_gdaldem(self.filepath, processing=gdal_processing_attr_option[attribute][0],
                                 options=gdal_processing_attr_option[attribute][1])
 
-        # Check that the xdem and gdal hillshades are relatively similar.
+        # For hillshade, we round into an integer to match GDAL's output
+        if attribute == 'hillshade':
+            attr_xdem = attr_xdem.astype('int').astype('float32')
+
+        # We compute the difference and keep only valid values
         diff = (attr_xdem - attr_gdal).filled(np.nan)
+        diff_valid = diff[np.isfinite(diff)]
+
         try:
-            assert np.nanmean(diff) < 5
-            assert xdem.spatialstats.nmad(diff) < 5
+            # Difference between xdem and GDAL attribute
+            # Mean of attribute values to get an order of magnitude of the attribute unit
+            magn = np.nanmean(np.abs(attr_xdem))
+
+            # Check that the attributes are similar within a tolerance of a thousandth of the magnitude
+            if attribute == 'hillshade':
+                # For hillshade, check 0 or 1 difference due to integer rounding
+                assert np.all(np.logical_or(diff_valid == 0., np.abs(diff_valid) == 1.))
+            else:
+                # All attributes other than hillshade are floats, so we check within a tolerance
+                assert np.all(np.abs(diff_valid < 10**(-3) * magn))
+
         except Exception as exception:
 
             if PLOT:
                 import matplotlib.pyplot as plt
 
+                # Plotting the xdem and GDAL attributes for comparison (plotting "diff" can also help debug)
                 plt.subplot(121)
-                plt.imshow(attr_gdal.squeeze())
+                plt.imshow(diff.squeeze())
+                plt.colorbar()
                 plt.subplot(122)
                 plt.imshow(attr_xdem.squeeze())
+                plt.colorbar()
                 plt.show()
 
             

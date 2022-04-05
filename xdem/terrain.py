@@ -684,7 +684,7 @@ def get_terrain_attribute(
         azimuth_rad = np.deg2rad(360 - hillshade_azimuth)
         altitude_rad = np.deg2rad(hillshade_altitude)
         terrain_attributes["hillshade"] = np.clip(
-            255
+            1.5 + 254
             * (
                 np.sin(altitude_rad) * np.cos(slopemap)
                 + np.cos(altitude_rad) * np.sin(slopemap) * np.sin(azimuth_rad - terrain_attributes["aspect"])
