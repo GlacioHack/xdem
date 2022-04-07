@@ -7,7 +7,6 @@ from typing import Sized, overload
 import numba
 import numpy as np
 
-import xdem.spatial_tools
 import geoutils as gu
 from geoutils.georaster import RasterType, Raster
 
@@ -167,7 +166,7 @@ def get_quadric_coefficients(
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
 
     if len(dem_arr.shape) != 2:
         raise ValueError(
@@ -430,7 +429,7 @@ def get_windowed_indexes(
     :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
 
     if len(dem_arr.shape) != 2:
         raise ValueError(
@@ -662,7 +661,7 @@ def get_terrain_attribute(
     make_roughness = "roughness" in attribute
 
     # Get array of DEM
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
 
     if make_surface_fit:
         if not isinstance(resolution, Sized):
