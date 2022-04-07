@@ -25,7 +25,7 @@ def _get_quadric_coefficients(
     L = resolution
 
     # Allocate the output.
-    output = np.empty((9,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.empty((11,) + dem.shape, dtype=dem.dtype) + np.nan
 
     # Convert the string to a number (fewer bytes to compare each iteration)
     if fill_method == "median":
@@ -93,6 +93,8 @@ def _get_quadric_coefficients(
                 pass
 
         # Assign the A, B, C, D etc., factors to the output. This ugly syntax is needed to make parallel numba happy.
+
+        # Coefficients of Zevenberg and Thorne (1987), Equations 3 to 11
         output[0, row, col] = ((Z[0] + Z[2] + Z[6] + Z[8]) / 4 - (Z[1] + Z[3] + Z[5] + Z[7]) / 2 + Z[4]) / (L ** 4)  # A
         output[1, row, col] = ((Z[0] + Z[2] - Z[6] - Z[8]) / 4 - (Z[1] - Z[7]) / 2) / (L ** 3)  # B
         output[2, row, col] = ((-Z[0] + Z[2] - Z[6] + Z[8]) / 4 + (Z[3] - Z[5]) / 2) / (L ** 3)  # C
@@ -102,6 +104,10 @@ def _get_quadric_coefficients(
         output[6, row, col] = (-Z[3] + Z[5]) / (2 * L)  # G
         output[7, row, col] = (Z[1] - Z[7]) / (2 * L)  # H
         output[8, row, col] = Z[4]  # I
+
+        # Refined coefficients for slope of Horn (1981), page 18 bottom left equations.
+        output[9, row, col] = ((Z[6] + 2 * Z[7] + Z[8]) - (Z[0] + 2 * Z[1] + Z[2])) / (8 * L)
+        output[10, row, col] = ((Z[6] + 2 * Z[3] + Z[0]) - (Z[8] + 2 * Z[5] + Z[2])) / (8 * L)
 
     return output
 
@@ -467,6 +473,8 @@ def get_terrain_attribute(
     hillshade_altitude: float,
     hillshade_azimuth: float,
     hillshade_z_factor: float,
+    slope_method: str,
+    tri_method: str,
     fill_method: str,
     edge_method: str,
     window_size: int
@@ -483,6 +491,8 @@ def get_terrain_attribute(
     hillshade_altitude: float,
     hillshade_azimuth: float,
     hillshade_z_factor: float,
+    slope_method: str,
+    tri_method: str,
     fill_method: str,
     edge_method: str,
     window_size: int
@@ -498,6 +508,8 @@ def get_terrain_attribute(
     hillshade_altitude: float,
     hillshade_azimuth: float,
     hillshade_z_factor: float,
+    slope_method: str,
+    tri_method: str,
     fill_method: str,
     edge_method: str,
     window_size: int
@@ -513,6 +525,8 @@ def get_terrain_attribute(
     hillshade_altitude: float,
     hillshade_azimuth: float,
     hillshade_z_factor: float,
+    slope_method: str,
+    tri_method: str,
     fill_method: str,
     edge_method: str,
     window_size: int
@@ -528,34 +542,36 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
     fill_method: str = "median",
     edge_method: str = "nearest",
     window_size: int = 3
 ) -> np.ndarray | list[np.ndarray] | Raster | list[Raster]:
     """
     Derive one or multiple terrain attributes from a DEM.
-    The attributes are derived following Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 which is
-    directy based on the following references:
-    - Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
-    - Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
-    - Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
+    The attributes are based on:
+    - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
+    - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    - Terrain Ruggedness Index (topography) from Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
+    - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    Aspect and hillshade are derived directly from the slope, and thus use the same method.
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
 
     Attributes:
-        * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical).
-        * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W)
+        * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical). Default method: "Horn".
+        * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W).
         * 'hillshade': The shaded slope in relation to its aspect.
         * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
         * 'planform_curvature': The curvature perpendicular to the direction of the slope.
         * 'profile_curvature': The curvature parallel to the direction of the slope.
         * 'maximum_curvature': The maximum curvature.
         * 'surface_fit': A quadric surface fit for each individual pixel.
-        * 'terrain_ruggedness_index_topo': The terrain ruggedness index generally used for topography, defined by the
-        squareroot of squared differences to neighbouring pixels.
-        * 'terrain_ruggedness_index_bathy': The terrain ruggedness index generally used for bathymetry, defined by the
-        mean absolute difference to neighbouring pixels.
+        * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the
+        squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the
+        mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
         * 'topographic_position_index': The topographic position index defined by a difference to the average of
         neighbouring pixels.
         * 'roughness': The roughness, i.e. maximum difference to neighbouring pixels.
@@ -567,6 +583,8 @@ def get_terrain_attribute(
     :param hillshade_altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param hillshade_azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param hillshade_z_factor: Vertical exaggeration factor.
+    :param slope_method: Method to calculate the slope, aspect and hillshade: "Horn" or "ZevenbergThorne".
+    :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param fill_method: See the 'get_quadric_coefficients()' docstring for information.
     :param edge_method: See the 'get_quadric_coefficients()' docstring for information.
     :param window_size: The window size for windowed ruggedness and roughness indexes.
@@ -604,7 +622,7 @@ def get_terrain_attribute(
                                   "slope", "hillshade", "aspect", "surface_fit"]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
-    list_requiring_windowed_index = ["terrain_ruggedness_index_topo", "terrain_ruggedness_index_bathy",
+    list_requiring_windowed_index = ["terrain_ruggedness_index",
                                      "topographic_position_index", "roughness"]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
 
@@ -639,8 +657,7 @@ def get_terrain_attribute(
     make_profile_curvature = "profile_curvature" in attribute or  "maximum_curvature" in attribute
     make_maximum_curvature = "maximum_curvature" in attribute
     make_windowed_index = len(attributes_requiring_windowed_index) > 0
-    make_terrain_ruggedness_topo = "terrain_ruggedness_index_topo" in attribute
-    make_terrain_ruggedness_bathy = "terrain_ruggedness_index_bathy" in attribute
+    make_terrain_ruggedness = "terrain_ruggedness_index" in attribute
     make_topographic_position = "topographic_position_index" in attribute
     make_roughness = "roughness" in attribute
 
@@ -660,19 +677,38 @@ def get_terrain_attribute(
         )
 
     if make_slope:
-        # This calculation is based on (p18, left side): https://ieeexplore.ieee.org/document/1456186
-        # SLOPE = -(G²+H²)**(1/2)
-        terrain_attributes["slope"] = np.arctan(
-            (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2) ** 0.5
-        )
+
+        if slope_method == "Horn":
+            # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
+            terrain_attributes["slope"] = np.arctan(
+                (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2) ** 0.5
+            )
+
+        elif slope_method == "ZevenbergThorne":
+            # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+            # SLOPE = -(G²+H²)**(1/2)
+            terrain_attributes["slope"] = np.arctan(
+                (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2) ** 0.5
+            )
 
     if make_aspect:
         # ASPECT = ARCTAN(-H/-G)  # This did not work
         # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
-        terrain_attributes["aspect"] = (
-            np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
-            + np.pi / 2
-        ) % (2 * np.pi)
+
+        if slope_method == "Horn":
+            # This uses the estimates from Horn (1981).
+            terrain_attributes["aspect"] = (-
+                                                   np.arctan2(-terrain_attributes["surface_fit"][9, :, :],
+                                                              terrain_attributes["surface_fit"][10, :, :])
+                                                   -  np.pi
+                                           ) % (2 * np.pi)
+
+        elif slope_method == "ZevenbergThorne":
+            # This uses the slope estimate from Zevenbergen and Thorne (1987).
+            terrain_attributes["aspect"] = (
+                np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
+                + np.pi / 2
+            ) % (2 * np.pi)
 
     if make_hillshade:
         # If a different z-factor was given, slopemap with exaggerated gradients.
@@ -683,6 +719,9 @@ def get_terrain_attribute(
 
         azimuth_rad = np.deg2rad(360 - hillshade_azimuth)
         altitude_rad = np.deg2rad(hillshade_altitude)
+
+        # The operation below yielded the closest hillshade to GDAL (multiplying by 255 did not work)
+        # As 0 is generally no data for this uint8, we add 1 and then 0.5 for the rounding to occur between 1 and 255
         terrain_attributes["hillshade"] = np.clip(
             1.5 + 254
             * (
@@ -750,11 +789,13 @@ def get_terrain_attribute(
         terrain_attributes["windowed_indexes"] = \
             get_windowed_indexes(dem=dem_arr, fill_method=fill_method, edge_method=edge_method, window_size=window_size)
 
-    if make_terrain_ruggedness_topo:
-        terrain_attributes["terrain_ruggedness_index_topo"] = terrain_attributes["windowed_indexes"][0, :, :]
+    if make_terrain_ruggedness:
 
-    if make_terrain_ruggedness_bathy:
-        terrain_attributes["terrain_ruggedness_index_bathy"] = terrain_attributes["windowed_indexes"][1, :, :]
+        if tri_method == "Riley":
+            terrain_attributes["terrain_ruggedness_index"] = terrain_attributes["windowed_indexes"][0, :, :]
+
+        elif tri_method == "Wilson":
+            terrain_attributes["terrain_ruggedness_index"] = terrain_attributes["windowed_indexes"][1, :, :]
 
     if make_topographic_position:
         terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
@@ -780,6 +821,7 @@ def get_terrain_attribute(
 def slope(
     dem: RasterType,
     resolution: float | tuple[float, float] | None,
+    method: str,
     degrees: bool
 ) -> Raster: ...
 
@@ -787,44 +829,56 @@ def slope(
 def slope(
     dem: np.ndarray | np.ma.masked_array,
     resolution: float | tuple[float, float] | None,
+    method: str,
     degrees: bool
 ) -> np.ndarray: ...
 
 def slope(
-    dem: np.ndarray | np.ma.masked_array | RasterType, resolution: float | tuple[float, float] | None = None, degrees: bool = True
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    degrees: bool = True
 ) -> np.ndarray | Raster:
     """
     Generate a slope map for a DEM.
-    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
+    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
+     http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to generate a slope map for.
     :param resolution: The X/Y or (X, Y) resolution of the DEM.
+    :param method: Method to calculate slope: "Horn" or "ZevenbergThorne".
     :param degrees: Return a slope map in degrees (False means radians)
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
-    return get_terrain_attribute(dem, attribute="slope", resolution=resolution, degrees=degrees)
+    return get_terrain_attribute(dem, attribute="slope", slope_method=method, resolution=resolution, degrees=degrees)
 
 @overload
 def aspect(
     dem: np.ndarray | np.ma.masked_array,
+    method: str,
     degrees: bool
 ) -> np.ndarray: ...
 
 @overload
 def aspect(
     dem: RasterType,
+    method: str,
     degrees: bool
 ) -> Raster: ...
 
-def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = True) -> np.ndarray | Raster:
+def aspect(dem: np.ndarray | np.ma.masked_array | RasterType,
+           method: str = "Horn",
+           degrees: bool = True) -> np.ndarray | Raster:
     """
     Calculate the aspect of each cell in a DEM.
-    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
+    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
+     http://dx.doi.org/10.1002/esp.3290120107.
 
     0=N, 90=E, 180=S, 270=W
 
     :param dem: The DEM to calculate the aspect from.
+    :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
     :param degrees: Return an aspect map in degrees (if False, returns radians)
 
     :examples:
@@ -847,12 +901,13 @@ def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = Tr
                [270., 270., 270.]])
 
     """
-    return get_terrain_attribute(dem, attribute="aspect", resolution=1.0, degrees=degrees)
+    return get_terrain_attribute(dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees)
 
 @overload
 def hillshade(
     dem: RasterType,
     resolution: float | tuple[float, float],
+    method: str,
     azimuth: float,
     altitude: float,
     z_factor: float,
@@ -862,6 +917,7 @@ def hillshade(
 def hillshade(
     dem: np.ndarray | np.ma.masked_array,
     resolution: float | tuple[float, float],
+    method: str,
     azimuth: float,
     altitude: float,
     z_factor: float,
@@ -870,15 +926,18 @@ def hillshade(
 def hillshade(
     dem: np.ndarray | np.ma.masked_array,
     resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
 ) -> np.ndarray | Raster:
     """
     Generate a hillshade from the given DEM.
+    Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
     :param dem: The input DEM to calculate the hillshade from.
     :param resolution: One or two values specifying the resolution of the DEM.
+    :param method: Method to calculate the slope and aspect used for hillshading.
     :param azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param z_factor: Vertical exaggeration factor.
@@ -892,6 +951,7 @@ def hillshade(
         dem,
         attribute="hillshade",
         resolution=resolution,
+        slope_method=method,
         hillshade_azimuth=azimuth,
         hillshade_altitude=altitude,
         hillshade_z_factor=z_factor,
@@ -1067,12 +1127,7 @@ def terrain_ruggedness_index(
 
     :returns: The terrain ruggedness index array of the DEM.
     """
-    if method.lower() == 'riley':
-        return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index_topo", window_size=window_size)
-    elif method.lower() == 'wilson':
-        return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index_bathy", window_size=window_size)
-    else:
-        raise ValueError('Method for Terrain Ruggedness Index must be "Riley" or "Wilson".')
+    return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size)
 
 
 @overload

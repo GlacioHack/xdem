@@ -24,11 +24,12 @@ def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> n
     # Converting string into gdal processing options here to avoid import gdal outside this function:
     # Riley or Wilson for Terrain Ruggedness, and Zevenberg or Horn for slope, aspect and hillshade
     gdal_option_conversion = {
-        "riley": gdal.DEMProcessingOptions(alg='Riley'),
-        "wilson": gdal.DEMProcessingOptions(alg='Wilson'),
-        "zevenberg": gdal.DEMProcessingOptions(alg='ZevenbergenThorne'),
-        "horn": gdal.DEMProcessingOptions(alg='Horn'),
-        "hillshade_zevenberg": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg='ZevenbergenThorne')
+        "Riley": gdal.DEMProcessingOptions(alg="Riley"),
+        "Wilson": gdal.DEMProcessingOptions(alg="Wilson"),
+        "Zevenberg": gdal.DEMProcessingOptions(alg="ZevenbergenThorne"),
+        "Horn": gdal.DEMProcessingOptions(alg="Horn"),
+        "hillshade_Zevenberg": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="ZevenbergenThorne"),
+        "hillshade_Horn": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="Horn")
     }
 
     if options is None:
@@ -57,8 +58,9 @@ class TestTerrainAttribute:
         warnings.filterwarnings("ignore", message="Parse metadata")
         dem = xdem.DEM(filepath, silent=True)
 
-    @pytest.mark.parametrize("attribute", ["slope", "aspect", "hillshade", "tri_riley",
-                                           "tri_wilson", "tpi", "roughness"])
+    @pytest.mark.parametrize("attribute", ["slope_Horn", "aspect_Horn", "hillshade_Horn",
+                                           "slope_Zevenberg", "aspect_Zevenberg", "hillshade_Zevenberg",
+                                           "tri_Riley", "tri_Wilson", "tpi", "roughness"])
     def test_attribute_functions(self, attribute: str) -> None:
         """
         Test that all attribute functions (e.g. xdem.terrain.slope) behave appropriately.
@@ -68,22 +70,28 @@ class TestTerrainAttribute:
         warnings.simplefilter("error")
 
         functions = {
-            "slope": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
-            "aspect": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
-            "tri_riley": lambda  dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Riley'),
-            "tri_wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Wilson'),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
+            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
+            "slope_Zevenberg": lambda dem: xdem.terrain.slope(dem.data, dem.res, method="ZevenbergThorne", degrees=True),
+            "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
+            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(dem.data, dem.res, method="ZevenbergThorne"),
+            "tri_Riley": lambda  dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Riley'),
+            "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Wilson'),
             "tpi": lambda dem: xdem.terrain.topographic_position_index(dem.data),
             "roughness": lambda dem: xdem.terrain.roughness(dem.data)
         }
 
         # Writing dictionary options here to avoid importing gdal outside of the dedicated function
         gdal_processing_attr_option = {
-            "slope": ("slope", "zevenberg"),
-            "aspect": ("aspect", "zevenberg"),
-            "hillshade": ("hillshade", "hillshade_zevenberg"),
-            "tri_riley": ("TRI", "riley"),
-            "tri_wilson": ("TRI", "wilson"),
+            "slope_Horn": ("slope", "Horn"),
+            "aspect_Horn": ("aspect", "Horn"),
+            "hillshade_Horn": ("hillshade", "hillshade_Horn"),
+            "slope_Zevenberg": ("slope", "Zevenberg"),
+            "aspect_Zevenberg": ("aspect", "Zevenberg"),
+            "hillshade_Zevenberg": ("hillshade", "hillshade_Zevenberg"),
+            "tri_Riley": ("TRI", "Riley"),
+            "tri_Wilson": ("TRI", "Wilson"),
             "tpi": ("TPI", None),
             "roughness": ("Roughness", None)
         }
@@ -97,7 +105,7 @@ class TestTerrainAttribute:
                                 options=gdal_processing_attr_option[attribute][1])
 
         # For hillshade, we round into an integer to match GDAL's output
-        if attribute == 'hillshade':
+        if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
             attr_xdem = attr_xdem.astype('int').astype('float32')
 
         # We compute the difference and keep only valid values
@@ -110,11 +118,17 @@ class TestTerrainAttribute:
             magn = np.nanmean(np.abs(attr_xdem))
 
             # Check that the attributes are similar within a tolerance of a thousandth of the magnitude
-            if attribute == 'hillshade':
+            if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
                 # For hillshade, check 0 or 1 difference due to integer rounding
                 assert np.all(np.logical_or(diff_valid == 0., np.abs(diff_valid) == 1.))
+
+            elif attribute in ["aspect_Horn", "aspect_Zevenberg"]:
+                # For aspect, check the tolerance within a 360 degree modulo due to the circularity of the variable
+                diff_valid = np.mod(np.abs(diff_valid), 360)
+                assert np.all(np.minimum(diff_valid, np.abs(360 - diff_valid)) < 10**(-3) * magn)
             else:
-                # All attributes other than hillshade are floats, so we check within a tolerance
+                # All attributes other than hillshade and aspect are non-circular floats, so we check within a tolerance
+                # For instance, slopes have an average magnitude around 45 deg, so the tolerance is 0.045 deg
                 assert np.all(np.abs(diff_valid < 10**(-3) * magn))
 
         except Exception as exception:
@@ -124,7 +138,7 @@ class TestTerrainAttribute:
 
                 # Plotting the xdem and GDAL attributes for comparison (plotting "diff" can also help debug)
                 plt.subplot(121)
-                plt.imshow(diff.squeeze())
+                plt.imshow(attr_gdal.squeeze())
                 plt.colorbar()
                 plt.subplot(122)
                 plt.imshow(attr_xdem.squeeze())
@@ -250,8 +264,8 @@ def test_get_quadric_coefficients() -> None:
 
     assert np.all(np.isfinite(coefficients))
 
-    # The last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
-    assert np.array_equal(coefficients[-1, :, :], dem)
+    # The 3rd to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
+    assert np.array_equal(coefficients[-3, :, :], dem)
 
     # The middle pixel (index 1, 1) should be concave in the x-direction
     assert coefficients[3, 1, 1] < 0
