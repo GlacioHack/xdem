@@ -16,4 +16,4 @@ dependencies:
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-  - geoutils
+  - geoutils>=0.0.5

@@ -13,6 +13,7 @@ import scipy.interpolate
 from tqdm import tqdm
 
 import xdem
+from geoutils import spatial_tools
 
 
 def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float, np.ndarray] = 50.0,
@@ -35,10 +36,10 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     assert ddem.shape == ref_dem.shape
 
     # Convert ddem mask into NaN
-    ddem, _ = xdem.spatial_tools.get_array_and_mask(ddem)
+    ddem, _ = spatial_tools.get_array_and_mask(ddem)
 
     # Extract only the valid values, i.e. valid in ref_dem
-    valid_mask = ~xdem.spatial_tools.get_mask(ref_dem)
+    valid_mask = ~spatial_tools.get_mask(ref_dem)
     ddem = np.array(ddem[valid_mask])
     ref_dem = np.array(ref_dem.squeeze()[valid_mask])
 
@@ -230,10 +231,15 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
 
     if isinstance(ddem_bins, pd.DataFrame):
         ddem_bins = ddem_bins["value"]
-    assert not np.any(np.isnan(ddem_bins.values)), "The dDEM bins cannot contain NaNs. Remove or fill them first."
-    # Generate a continuous elevation vs. dDEM function
-    ddem_func = scipy.interpolate.interp1d(ddem_bins.index.mid, ddem_bins.values,
-                                           kind="linear", fill_value="extrapolate")
+
+    # For timeframe "mean" or "nonreference", check that ddem_bins values can be interpolated at any altitude
+    if timeframe in ["mean", "nonreference"]:
+        assert not np.any(np.isnan(ddem_bins.values)), "The dDEM bins cannot contain NaNs. Remove or fill them first."
+
+        # Generate a continuous elevation vs. dDEM function
+        ddem_func = scipy.interpolate.interp1d(ddem_bins.index.mid, ddem_bins.values,
+                                               kind="linear", fill_value="extrapolate")
+
     # Generate average elevations by subtracting half of the dDEM's values to the reference DEM
     if timeframe == "mean":
         elevations = ref_dem - (ddem_func(ref_dem.data) / 2)
@@ -269,7 +275,7 @@ to interpolate from. The default is 10.
     :returns: A filled array with no NaNs
     """
     # Create a mask for where nans exist
-    nan_mask = xdem.spatial_tools.get_mask(array)
+    nan_mask = spatial_tools.get_mask(array)
 
     interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"),
                                                   max_search_distance=max_search_distance)
@@ -313,10 +319,10 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     :param mask: A mask to delineate the area that will be interpolated (True means hypsometric will be used).
     """
     # Get ddem array with invalid pixels converted to NaN and mask of invalid pixels
-    ddem, ddem_mask = xdem.spatial_tools.get_array_and_mask(voided_ddem)
+    ddem, ddem_mask = spatial_tools.get_array_and_mask(voided_ddem)
 
     # Get ref_dem array with invalid pixels converted to NaN and mask of invalid pixels
-    dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
+    dem, dem_mask = spatial_tools.get_array_and_mask(ref_dem)
 
     # Make sure the mask does not have e.g. the shape (1, height, width)
     mask = mask.squeeze()
@@ -392,10 +398,10 @@ for areas filling the min_coverage criterion.
     assert voided_ddem.shape == ref_dem.shape == mask.shape
 
     # Get ddem array with invalid pixels converted to NaN and mask of invalid pixels
-    ddem, ddem_mask = xdem.spatial_tools.get_array_and_mask(voided_ddem)
+    ddem, ddem_mask = spatial_tools.get_array_and_mask(voided_ddem)
 
     # Get ref_dem array with invalid pixels converted to NaN and mask of invalid pixels
-    dem, dem_mask = xdem.spatial_tools.get_array_and_mask(ref_dem)
+    dem, dem_mask = spatial_tools.get_array_and_mask(ref_dem)
 
     # A mask of inlier values: The union of the mask and the inverted exclusion masks of both rasters.
     inlier_mask = (mask != 0) & (~ddem_mask & ~dem_mask)
@@ -466,7 +472,7 @@ for areas filling the min_coverage criterion.
         if plot:
             local_ddem = np.where(local_inlier_mask, ddem, np.nan)
             vmax = max(np.abs(np.nanpercentile(local_ddem, [2, 98])))
-            rowmin, rowmax, colmin, colmax = xdem.spatial_tools.get_valid_extent(mask == index)
+            rowmin, rowmax, colmin, colmax = spatial_tools.get_valid_extent(mask == index)
 
             fig = plt.figure(figsize=(12, 8))
             plt.subplot(121)
@@ -533,8 +539,8 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
     :returns: A DataFrame of bin statistics, scaled by elevation and elevation change.
     """
     # Extract the array and mask representations of the arrays.
-    ddem_arr, ddem_mask = xdem.spatial_tools.get_array_and_mask(ddem.squeeze())
-    ref_arr, ref_mask = xdem.spatial_tools.get_array_and_mask(ref_dem.squeeze())
+    ddem_arr, ddem_mask = spatial_tools.get_array_and_mask(ddem.squeeze())
+    ref_arr, ref_mask = spatial_tools.get_array_and_mask(ref_dem.squeeze())
 
     # The reference DEM should be void free
     assert np.count_nonzero(ref_mask) == 0, "Reference DEM has voids"
@@ -635,8 +641,8 @@ def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma
     :returns: A dDEM where glacier's that fit the min_coverage criterion are interpolated.
     """
     # Extract the array and nan parts of the inputs.
-    ddem_arr, ddem_nans = xdem.spatial_tools.get_array_and_mask(voided_ddem)
-    ref_arr, ref_nans = xdem.spatial_tools.get_array_and_mask(ref_dem)
+    ddem_arr, ddem_nans = spatial_tools.get_array_and_mask(voided_ddem)
+    ref_arr, ref_nans = spatial_tools.get_array_and_mask(ref_dem)
 
     # The reference DEM should be void free
     assert np.count_nonzero(ref_nans) == 0, "Reference DEM has voids"

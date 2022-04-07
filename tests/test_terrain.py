@@ -267,6 +267,7 @@ def test_get_quadric_coefficients() -> None:
     # The 3rd to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
     assert np.array_equal(coefficients[-3, :, :], dem)
 
+
     # The middle pixel (index 1, 1) should be concave in the x-direction
     assert coefficients[3, 1, 1] < 0
 

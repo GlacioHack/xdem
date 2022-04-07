@@ -6,6 +6,7 @@ import warnings
 from typing import Any, Optional, Union
 
 import geoutils as gu
+from geoutils import spatial_tools
 import numpy as np
 import shapely
 
@@ -138,7 +139,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             if not isinstance(mask, gu.Vector):
                 mask = gu.Vector(mask)
 
-            interpolated_ddem, nans = xdem.spatial_tools.get_array_and_mask(self.data.copy())
+            interpolated_ddem, nans = spatial_tools.get_array_and_mask(self.data.copy())
             entries = mask.ds[mask.ds.intersects(shapely.geometry.box(*self.bounds))]
 
             ddem_mask = nans.copy().squeeze()

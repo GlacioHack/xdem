@@ -1,24 +1,25 @@
 """DEM class and functions."""
+from __future__ import annotations
+
 import os
 import pyproj
 import warnings
 from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
 import geoutils as gu
+import numpy as np
 from pyproj import Transformer
 import json
 import subprocess
 
-def parse_vref_from_product(product):
+def parse_vref_from_product(product: str) -> str:
     """
 
     :param product: Product name (typically from satimg.parse_metadata_from_fn)
-    :type product: str
 
     :return: vref_name: Vertical reference name
-    :rtype: vref_name: str
     """
-    # sources for defining vertical references:
+    # Sources for defining vertical references:
     # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
     # SRTMGL1: https://lpdaac.usgs.gov/documents/179/SRTM_User_Guide_V3.pdf
     # SRTMv4.1: http://www.cgiar-csi.org/data/srtm-90m-digital-elevation-database-v4-1
@@ -41,7 +42,7 @@ def parse_vref_from_product(product):
     return vref_name
 
 
-dem_attrs = ['vref','vref_grid','ccrs']
+dem_attrs = ['vref','vref_grid','_ccrs']
 
 class DEM(SatelliteImage):
 
@@ -79,26 +80,23 @@ class DEM(SatelliteImage):
         # user input
         self.vref = vref_name
         self.vref_grid = vref_grid
-        self.ccrs = None
+        self._ccrs = None
 
         # trying to get vref from product name (priority to user input)
         self.__parse_vref_from_fn(silent=silent)
 
-    def copy(self, new_array=None):
+    def copy(self, new_array: np.ndarray | None = None) -> DEM:
 
-        new_dem = super().copy()
-        # those attributes are immutable, including pyproj.CRS
+        new_dem = super().copy(new_array=new_array) # type: ignore
+        # The rest of attributes are immutable, including pyproj.CRS
         # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
         for attrs in dem_attrs:
             setattr(new_dem, attrs, getattr(self, attrs))
 
         return new_dem
 
-    def __parse_vref_from_fn(self,silent=False):
-
-        """
-        Attempts to pull vertical reference from product name identified by SatImg
-        """
+    def __parse_vref_from_fn(self, silent: bool = False):
+        """Attempts to pull vertical reference from product name identified by SatImg."""
 
         if self.product is not None:
             vref = parse_vref_from_product(self.product)
@@ -114,22 +112,11 @@ class DEM(SatelliteImage):
                 if not silent:
                     print('Could not find a vertical reference based on product name: "'+str(self.product)+'"')
 
+    @property
+    def ccrs(self):
+        """Set compound CRS, i.e. horizontal and vertical references"""
 
-    def set_vref(self,vref_name=None,vref_grid=None,compute_ccrs=False):
-        """
-        Set vertical reference with a name or with a grid
-
-        :param vref_name: Vertical reference name
-        :type vref_name: str
-        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
-        :type vref_grid: str
-        :param compute_ccrs: Whether to compute the ccrs (read pyproj-data grid file)
-        :type compute_ccrs: boolean
-
-        :return:
-        """
-
-        # temporary fix for some CRS with proj < 7.2
+        # Temporary fix for some CRS with proj < 7.2
         def get_crs(filepath: str) -> pyproj.CRS:
             """Get the CRS of a raster with the given filepath."""
             info = subprocess.run(
@@ -143,9 +130,42 @@ class DEM(SatelliteImage):
 
             return pyproj.CRS.from_wkt(wkt_string)
 
-        #for names, we only look for WGS84 ellipsoid or the EGM96/EGM08 geoids: those are used 99% of the time
+        # Temporary fix to get all types of CRS
+        if pyproj.proj_version_str >= "7.2.0":
+            crs = self.crs
+        else:
+            crs = get_crs(self.filename)
+
+        if self.vref == 'WGS84':
+            # The WGS84 ellipsoid corresponds to no vertical reference in pyproj
+            self._ccrs = pyproj.CRS(crs)
+        elif self.vref_grid is not None:
+            # For other vrefs, keep same horizontal projection and add geoid grid (the "dirty" way: because init is so
+            # practical and still going to be used for a while)
+            # see https://gis.stackexchange.com/questions/352277/including-geoidgrids-when-initializing-projection-via-epsg/352300#352300
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", module="pyproj")
+                self._ccrs = pyproj.Proj(init="EPSG:" + str(int(crs.to_epsg())), geoidgrids=self.vref_grid).crs
+        else:
+            self._ccrs = None
+
+        return self._ccrs
+
+
+    def set_vref(self, vref_name: str | None = None, vref_grid: str | None = None):
+        """
+        Set vertical reference with a name or with a grid.
+
+        :param vref_name: Vertical reference name
+        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
+
+        :return:
+        """
+
+        # Using vref_name only for WGS84 ellipsoid or the EGM96/EGM08 geoids (used 99% of the time)
         if isinstance(vref_grid, str):
 
+            # Default behaviour: use grid if both name and grid are provided
             if isinstance(vref_name, str):
                 print('Both a vertical reference name and vertical grid are provided: defaulting to using grid only.')
 
@@ -163,6 +183,8 @@ class DEM(SatelliteImage):
                     raise ValueError('Grid not found in '+str(pyproj.datadir.get_data_dir())+': check if proj-data is '
                          'installed via conda-forge, the pyproj.datadir, and that you are using a grid available at '
                          'https://github.com/OSGeo/PROJ-data')
+
+        # Otherwise, use name provided
         elif isinstance(vref_name,str):
             if vref_name == 'WGS84':
                 self.vref_grid = None
@@ -177,59 +199,37 @@ class DEM(SatelliteImage):
                 raise ValueError(
                     'Vertical reference name must be either "WGS84", "EGM96" or "EGM08". Otherwise, provide'
                     ' a geoid grid from PROJ DATA: https://github.com/OSGeo/PROJ-data')
+
+        # Else, return an error
         else:
             raise ValueError('Vertical reference name or vertical grid must be a string')
 
-        #temporary fix to get all types of CRS
-        if pyproj.proj_version_str >= "7.2.0":
-            crs = self.crs
-        else:
-            crs = get_crs(self.filename)
 
-        # no deriving the ccrs until those are used in a reprojection (requires pyproj-data grids = ~500Mo)
-        if compute_ccrs:
-            if self.vref == 'WGS84':
-                # the WGS84 ellipsoid essentially corresponds to no vertical reference in pyproj
-                self.ccrs = pyproj.CRS(crs)
-            else:
-                # for other vrefs, keep same horizontal projection and add geoid grid (the "dirty" way: because init is so
-                # practical and still going to be used for a while)
-                # see https://gis.stackexchange.com/questions/352277/including-geoidgrids-when-initializing-projection-via-epsg/352300#352300
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", module="pyproj")
-                    self.ccrs = pyproj.Proj(init="EPSG:" + str(int(crs.to_epsg())), geoidgrids=self.vref_grid).crs
-
-    def to_vref(self,vref_name='EGM96',vref_grid=None):
+    def to_vref(self, vref_name: str = 'EGM96', vref_grid: str | None = None):
 
         """
-        Convert between vertical references: ellipsoidal heights or geoid grids
+        Convert between vertical references: ellipsoidal heights or geoid grids.
 
         :param vref_name: Vertical reference name
-        :type vref_grid: str
         :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
-        :type vref_name: str
 
         :return:
         """
 
-        # all transformations grids file are described here: https://github.com/OSGeo/PROJ-data
+        # All transformations grids file are described here: https://github.com/OSGeo/PROJ-data
         if self.vref is None and self.vref_grid is None:
             raise ValueError('The current DEM has not vertical reference: need to set one before attempting a conversion '
                              'towards another vertical reference.')
-        elif isinstance(self.vref,str) and self.vref_grid is None:
-            # to set the vref grid names automatically EGM96/08 for geoids + compute the ccrs
-            self.set_vref(vref_name=self.vref,compute_ccrs=True)
 
-        # inital ccrs
+        # Inital ccrs
         ccrs_init = self.ccrs
 
-        # destination crs
-
-        # set the new reference (before calculation doesn't change anything, we need to update the data manually anyway)
-        self.set_vref(vref_name=vref_name,vref_grid=vref_grid,compute_ccrs=True)
+        # Destination crs: first, set the new reference (before calculation doesn't change anything,
+        # we need to update the data manually anyway)
+        self.set_vref(vref_name=vref_name, vref_grid=vref_grid)
         ccrs_dest = self.ccrs
 
-        # transform matrix
+        # Transform the grid
         transformer = Transformer.from_crs(ccrs_init, ccrs_dest)
         meta = self.ds.meta
         zz = self.data
@@ -237,5 +237,5 @@ class DEM(SatelliteImage):
         zz_trans = transformer.transform(xx,yy,zz[0,:])[2]
         zz[0,:] = zz_trans
 
-        # update raster
+        # Update raster
         self._update(metadata=meta,imgdata=zz)
