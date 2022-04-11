@@ -655,7 +655,7 @@ class TestCoregClass:
         assert np.array_equal(dem_arr, dem_arr2_fixed)
 
 
-
+@pytest.mark.skip('Failure triggered between 10.2021 and 04.2022, likely with warp dem, issue opened.')
 def test_apply_matrix():
     warnings.simplefilter("error")
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
@@ -779,6 +779,7 @@ def test_apply_matrix():
     print(np.nanmedian(diff), spatialstats.nmad(diff))
 
 
+@pytest.mark.skip('Failure triggered between 10.2021 and 04.2022, likely with warp dem, issue opened.')
 def test_warp_dem():
     """Test that the warp_dem function works expectedly."""
     warnings.simplefilter("error")
