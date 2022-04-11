@@ -260,7 +260,7 @@ def test_get_quadric_coefficients() -> None:
                     [1, 2, 1],
                     [1, 1, 1]], dtype="float32")
 
-    coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0)
+    coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method='nearest')
 
     assert np.all(np.isfinite(coefficients))
 
