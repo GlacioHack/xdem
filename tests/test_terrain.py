@@ -198,13 +198,6 @@ class TestTerrainAttribute:
 
         # Validate that the array has the same shape as the input and that all values are finite.
         assert curvature.shape == dem.data.shape
-        try:
-            assert np.all(np.isfinite(curvature))
-        except:
-            import matplotlib.pyplot as plt
-
-            plt.imshow(curvature.squeeze())
-            plt.show()
 
         with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1., 2.))
