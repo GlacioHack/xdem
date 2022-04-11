@@ -14,7 +14,6 @@ Full information about xdem's functionality is provided on this page.
         coreg
         dem
         filters
-        spatial_tools
         spatialstats
         terrain
         volume
