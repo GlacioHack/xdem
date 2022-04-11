@@ -1494,7 +1494,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         ) > 0
 
     if dilate_mask:
-        tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
+        tr_nan_mask = scipy.ndimage.binary_dilation(tr_nan_mask, iterations=resampling_order)
 
     # Apply the transformed nan_mask
     transformed_dem[tr_nan_mask] = np.nan
@@ -1996,7 +1996,7 @@ def warp_dem(
             ) > 0
 
         if dilate_mask:
-            new_mask = scipy.ndimage.morphology.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
+            new_mask = scipy.ndimage.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
 
         warped[new_mask] = np.nan
 
