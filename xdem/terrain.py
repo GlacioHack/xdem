@@ -370,9 +370,10 @@ def _get_windowed_indexes(
         # Third output is the Topographic Position Index from Weiss (2001): difference between center and mean of
         # neighbouring pixels
         output[2, row, col] =  Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
-        # Fourth output is the Roughness: difference between maximum and minimum of the window
+        # Fourth output is the Roughness from Dartnell (2000): difference between maximum and minimum of the window
         output[3, row, col] = np.max(Z) - np.min(Z)
-        # Fifth output is the Rugosity: difference between real surface area and planimetric surface area
+        # Fifth output is the Rugosity from Jenness (2004): difference between real surface area and planimetric
+        # surface area
         output[4, row, col] = sum(A)
 
     return output
@@ -388,6 +389,7 @@ def get_windowed_indexes(
     - Terrain Ruggedness Index from Riley et al. (1999) for topgraphy and from Wilson et al. (2007) for bathymetry.
     - Topographic Position Index from Weiss (2001).
     - Roughness from Dartnell (2000).
+    - Rugosity from Jenness (2004).
     Also all referenced in Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
 
     Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
@@ -559,7 +561,8 @@ def get_terrain_attribute(
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
-    Aspect and hillshade are derived directly from the slope, and thus use the same method.
+    - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+    Aspect and hillshade are derived using the slope, and thus depend on the same method.
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
 
     Attributes:
@@ -625,7 +628,7 @@ def get_terrain_attribute(
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     list_requiring_windowed_index = ["terrain_ruggedness_index",
-                                     "topographic_position_index", "roughness"]
+                                     "topographic_position_index", "roughness", "rugosity"]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
 
     if resolution is None and len(attributes_requiring_surface_fit)>1:
@@ -662,6 +665,7 @@ def get_terrain_attribute(
     make_terrain_ruggedness = "terrain_ruggedness_index" in attribute
     make_topographic_position = "topographic_position_index" in attribute
     make_roughness = "roughness" in attribute
+    make_rugosity = "rugosity" in attribute
 
     # Get array of DEM
     dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
@@ -805,6 +809,9 @@ def get_terrain_attribute(
 
     if make_roughness:
         terrain_attributes["roughness"] = terrain_attributes["windowed_indexes"][3, :, :]
+
+    if make_rugosity:
+        terrain_attributes["rugosity"] = terrain_attributes["windowed_indexes"][4, :, :]
 
     # Convert the unit if wanted.
     if degrees:
@@ -1200,3 +1207,34 @@ def roughness(
     :returns: The roughness array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="roughness", window_size=window_size)
+
+
+@overload
+def rugosity(
+    dem: RasterType,
+) -> Raster: ...
+
+
+@overload
+def rugosity(
+    dem: np.ndarray | np.ma.masked_array,
+) -> np.ndarray: ...
+
+
+def rugosity(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+) -> np.ndarray | Raster:
+    """
+    Calculates the roughness.
+    Based on: Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+
+    :param dem: The DEM to calculate the rugosity from.
+    :param window_size: The size of the window for deriving the terrain index
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The rugosity array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="rugosity", window_size=3)
+
+
