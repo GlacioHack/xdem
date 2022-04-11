@@ -164,7 +164,7 @@ def get_quadric_coefficients(
         >>> coeffs.shape
         (11, 3, 3)
         >>> coeffs[:, 1, 1]
-        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2., 0., 0.])
+        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.,  0.,  0.])
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
@@ -429,7 +429,7 @@ def get_windowed_indexes(
         >>> indexes.shape
         (5, 3, 3)
         >>> indexes[:, 1, 1]
-        array([2.82842712, 1., 1., 1., 1.27716652])
+        array([2.82842712, 1.        , 1.        , 1.        , 1.27716652])
 
     :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
