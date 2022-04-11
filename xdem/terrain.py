@@ -162,9 +162,9 @@ def get_quadric_coefficients(
         ...                 [1, 1, 1]], dtype="float32")
         >>> coeffs = get_quadric_coefficients(dem, resolution=1.0)
         >>> coeffs.shape
-        (9, 3, 3)
+        (11, 3, 3)
         >>> coeffs[:, 1, 1]
-        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.])
+        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2., 0., 0.])
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
