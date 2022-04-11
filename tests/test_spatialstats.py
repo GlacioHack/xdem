@@ -280,7 +280,7 @@ class TestPatchesMethod:
 
         # Check the sampling is always fixed for a random state
         assert df['tile'].values[0] == '31_184'
-        assert df['nanmedian'].values[0] == pytest.approx(2.3, abs=0.01)
+        assert df['nanmedian'].values[0] == pytest.approx(2.28, abs=0.01)
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df['count'].values > 0.8*np.max(df['count'].values))
