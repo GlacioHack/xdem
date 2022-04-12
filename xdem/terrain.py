@@ -645,6 +645,8 @@ def get_terrain_attribute(
         raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
+    if (window_size>3) and ("rugosity" in attribute):
+        raise Warning('Rugosity computation is not supported for window sizes larger than 3x3 pixels.')
 
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
