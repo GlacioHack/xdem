@@ -118,6 +118,7 @@ class TestTerrainAttribute:
             magn = np.nanmean(np.abs(attr_xdem))
 
             # Check that the attributes are similar within a tolerance of a thousandth of the magnitude
+            # For instance, slopes have an average magnitude of around 30 deg, so the tolerance is 0.030 deg
             if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
                 # For hillshade, check 0 or 1 difference due to integer rounding
                 assert np.all(np.logical_or(diff_valid == 0., np.abs(diff_valid) == 1.))
@@ -128,7 +129,6 @@ class TestTerrainAttribute:
                 assert np.all(np.minimum(diff_valid, np.abs(360 - diff_valid)) < 10**(-3) * magn)
             else:
                 # All attributes other than hillshade and aspect are non-circular floats, so we check within a tolerance
-                # For instance, slopes have an average magnitude around 45 deg, so the tolerance is 0.045 deg
                 assert np.all(np.abs(diff_valid < 10**(-3) * magn))
 
         except Exception as exception:
@@ -198,6 +198,13 @@ class TestTerrainAttribute:
 
         # Validate that the array has the same shape as the input and that all values are finite.
         assert curvature.shape == dem.data.shape
+        try:
+            assert np.all(np.isfinite(curvature))
+        except:
+            import matplotlib.pyplot as plt
+
+            plt.imshow(curvature.squeeze())
+            plt.show()
 
         with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1., 2.))

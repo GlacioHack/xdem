@@ -765,7 +765,8 @@ def get_terrain_attribute(
             )
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
-        terrain_attributes["planform_curvature"][terrain_attributes["slope"] == 0.0] = 0.0
+        terrain_attributes["planform_curvature"][terrain_attributes["surface_fit"][6, :, :] ** 2 +
+                                                 terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0] = 0.0
 
     if make_profile_curvature:
         # PROFC = -2(DH² + EG² + FGH)/(G²+H²)
@@ -785,7 +786,8 @@ def get_terrain_attribute(
             )
 
         # Completely flat surfaces trigger the warning above. These need to be set to zero
-        terrain_attributes["profile_curvature"][terrain_attributes["slope"] == 0.0] = 0.0
+        terrain_attributes["profile_curvature"][terrain_attributes["surface_fit"][6, :, :] ** 2 +
+                                                 terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0] = 0.0
 
     if make_maximum_curvature:
         minc = np.minimum(terrain_attributes["profile_curvature"], terrain_attributes["planform_curvature"])
