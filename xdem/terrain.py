@@ -6,9 +6,44 @@ from typing import Sized, overload
 
 import numba
 import numpy as np
+import rasterio as rio
 
 import geoutils as gu
 from geoutils.georaster import RasterType, Raster
+
+try:
+    import richdem as rd
+    _has_rd = True
+except ImportError:
+    _has_rd = False
+
+
+def _rio_to_rda(ds: rio.DatasetReader) -> rd.rdarray:
+    """
+    Get georeferenced richDEM array from rasterio dataset
+    :param ds: DEM
+    :return: DEM
+    """
+    arr = ds.read(1)
+    rda = rd.rdarray(arr, no_data=ds.get_nodatavals()[0])
+    rda.geotransform = ds.get_transform()
+    rda.projection = ds.get_gcps()
+
+    return rda
+
+
+def get_terrainattr(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray:
+    """
+    Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
+    "profile_curvature", "planform_curvature", "curvature" and others (see richDEM documentation)
+    :param ds: DEM
+    :param attrib: terrain attribute
+    :return:
+    """
+    rda = _rio_to_rda(ds)
+    terrattr = rd.TerrainAttribute(rda, attrib=attrib)
+
+    return terrattr
 
 
 @numba.njit(parallel=True)
@@ -557,29 +592,31 @@ def get_terrain_attribute(
     The attributes are based on:
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
     - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Terrain Ruggedness Index (topography) from Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
-    - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+
     Aspect and hillshade are derived using the slope, and thus depend on the same method.
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
 
     Attributes:
-        * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical). Default method: "Horn".
-        * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W).
-        * 'hillshade': The shaded slope in relation to its aspect.
-        * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
-        * 'planform_curvature': The curvature perpendicular to the direction of the slope.
-        * 'profile_curvature': The curvature parallel to the direction of the slope.
-        * 'maximum_curvature': The maximum curvature.
-        * 'surface_fit': A quadric surface fit for each individual pixel.
-        * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the
-        squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the
-        mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
-        * 'topographic_position_index': The topographic position index defined by a difference to the average of
-        neighbouring pixels.
-        * 'roughness': The roughness, i.e. maximum difference to neighbouring pixels.
+    * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical). Default method: "Horn".
+    * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W).
+    * 'hillshade': The shaded slope in relation to its aspect.
+    * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
+    * 'planform_curvature': The curvature perpendicular to the direction of the slope.
+    * 'profile_curvature': The curvature parallel to the direction of the slope.
+    * 'maximum_curvature': The maximum curvature.
+    * 'surface_fit': A quadric surface fit for each individual pixel.
+    * 'topographic_position_index': The topographic position index defined by a difference to the average of
+    neighbouring pixels.
+    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the
+    squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the
+    mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
+    * 'roughness': The roughness, i.e. maximum difference to neighbouring pixels.
+    * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
 
     :param dem: The DEM to analyze.
     :param attribute: The terrain attribute(s) to calculate.
@@ -664,8 +701,8 @@ def get_terrain_attribute(
     make_profile_curvature = "profile_curvature" in attribute or  "maximum_curvature" in attribute
     make_maximum_curvature = "maximum_curvature" in attribute
     make_windowed_index = len(attributes_requiring_windowed_index) > 0
-    make_terrain_ruggedness = "terrain_ruggedness_index" in attribute
     make_topographic_position = "topographic_position_index" in attribute
+    make_terrain_ruggedness = "terrain_ruggedness_index" in attribute
     make_roughness = "roughness" in attribute
     make_rugosity = "rugosity" in attribute
 
@@ -800,6 +837,9 @@ def get_terrain_attribute(
         terrain_attributes["windowed_indexes"] = \
             get_windowed_indexes(dem=dem_arr, fill_method=fill_method, edge_method=edge_method, window_size=window_size)
 
+    if make_topographic_position:
+        terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
+
     if make_terrain_ruggedness:
 
         if tri_method == "Riley":
@@ -807,9 +847,6 @@ def get_terrain_attribute(
 
         elif tri_method == "Wilson":
             terrain_attributes["terrain_ruggedness_index"] = terrain_attributes["windowed_indexes"][1, :, :]
-
-    if make_topographic_position:
-        terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
 
     if make_roughness:
         terrain_attributes["roughness"] = terrain_attributes["windowed_indexes"][3, :, :]
@@ -856,7 +893,7 @@ def slope(
     """
     Generate a slope map for a DEM.
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
-     http://dx.doi.org/10.1002/esp.3290120107.
+    http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to generate a slope map for.
     :param resolution: The X/Y or (X, Y) resolution of the DEM.
@@ -898,7 +935,7 @@ def aspect(dem: np.ndarray | np.ma.masked_array | RasterType,
     """
     Calculate the aspect of each cell in a DEM.
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
-     http://dx.doi.org/10.1002/esp.3290120107.
+    http://dx.doi.org/10.1002/esp.3290120107.
 
     0=N, 90=E, 180=S, 270=W
 
@@ -1113,43 +1150,6 @@ def maximum_curvature(
     return get_terrain_attribute(dem=dem, attribute="maximum_curvature", resolution=resolution)
 
 @overload
-def terrain_ruggedness_index(
-    dem: RasterType,
-    method: str,
-    window_size: int
-) -> Raster: ...
-
-@overload
-def terrain_ruggedness_index(
-    dem: np.ndarray | np.ma.masked_array,
-    method: str,
-    window_size: int
-) -> np.ndarray: ...
-
-def terrain_ruggedness_index(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
-    method: str = "Riley",
-    window_size: int = 3
-) -> np.ndarray | Raster:
-    """
-    Calculates the Terrain Ruggedness Index.
-    Based either on:
-     - Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, preferred
-     for topography.
-     - Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, preferred for bathymetry.
-
-    :param dem: The DEM to calculate the terrain ruggedness index from.
-    :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry)
-    :param window_size: The size of the window for deriving the terrain index
-
-    :raises ValueError: If the inputs are poorly formatted.
-
-    :returns: The terrain ruggedness index array of the DEM.
-    """
-    return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size)
-
-
-@overload
 def topographic_position_index(
     dem: RasterType,
     window_size: int,
@@ -1179,6 +1179,43 @@ def topographic_position_index(
     :returns: The topographic position index array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="topographic_position_index", window_size=window_size)
+
+
+@overload
+def terrain_ruggedness_index(
+    dem: RasterType,
+    method: str,
+    window_size: int
+) -> Raster: ...
+
+@overload
+def terrain_ruggedness_index(
+    dem: np.ndarray | np.ma.masked_array,
+    method: str,
+    window_size: int
+) -> np.ndarray: ...
+
+def terrain_ruggedness_index(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    method: str = "Riley",
+    window_size: int = 3
+) -> np.ndarray | Raster:
+    """
+    Calculates the Terrain Ruggedness Index.
+    Based either on:
+    * Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf,
+    preferred for topography.
+    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, preferred for bathymetry.
+
+    :param dem: The DEM to calculate the terrain ruggedness index from.
+    :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry)
+    :param window_size: The size of the window for deriving the terrain index
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The terrain ruggedness index array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size)
 
 
 @overload
