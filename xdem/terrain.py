@@ -329,7 +329,7 @@ def _get_windowed_indexes(
                 count += 1
 
 
-        # Elevation differences and horizontal length
+        # Rugosity (see reference for details): need elevation differences and horizontal length of 16 segments
         dzs = np.empty((16,))
         dls = np.empty((16,))
 
@@ -1138,6 +1138,7 @@ def profile_curvature(
         ...                 [1, 2, 3]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
         -0.0
+
     :returns: The profile curvature array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution)
