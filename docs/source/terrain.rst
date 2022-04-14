@@ -114,11 +114,11 @@ The profile curvature is the curvature parallel to the direction of slope. It is
 .. minigallery:: xdem.terrain.profile_curvature
         :add-heading:
 
-Topographic position index
+Topographic Position Index
 --------------------------
 :func:`xdem.terrain.topographic_position_index`
 
-The topographic position index (TPI) is a metric of slope position, based on the method of `Weiss (2001) <http://www
+The Topographic Position Index (TPI) is a metric of slope position, based on the method of `Weiss (2001) <http://www
 .jennessent.com/downloads/TPI-poster-TNC_18x22.pdf>`_ that corresponds to the difference of the elevation of a central
 pixel with the average of that of neighbouring pixels. It can be computed for any window size (default 3x3 pixels).
 
@@ -128,11 +128,11 @@ pixel with the average of that of neighbouring pixels. It can be computed for an
 .. minigallery:: xdem.terrain.topographic_position_index
         :add-heading:
 
-Terrain ruggedness index
+Terrain Ruggedness Index
 ------------------------
 :func:`xdem.terrain.terrain_ruggedness_index`
 
-The terrain ruggedness index (TRI) is a metric of terrain ruggedness, based on cumulated differences in elevation between
+The Terrain Ruggedness Index (TRI) is a metric of terrain ruggedness, based on cumulated differences in elevation between
 a central pixel and its surroundings. It can be computed for any window size (default 3x3 pixels).
 
 For topography (default), the method of `Riley et al. (1999) <http://download.osgeo.org/qgis/doc/reference-docs/Terrain_

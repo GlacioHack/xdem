@@ -94,14 +94,14 @@ profile_curvature = xdem.terrain.profile_curvature(dem.data, resolution=dem.res)
 plot_attribute(profile_curvature, "RdGy_r", "Profile curvature (100 / m)", vlim=1)
 
 # %%
-# Topographic position index
+# Topographic Position Index
 # --------------------------
 tpi = xdem.terrain.topographic_position_index(dem.data)
 
 plot_attribute(tpi, "Spectral", "Topographic Position Index", vlim=5)
 
 # %%
-# Terrain ruggedness index
+# Terrain Ruggedness Index
 # ------------------------
 tri = xdem.terrain.terrain_ruggedness_index(dem.data)
 
