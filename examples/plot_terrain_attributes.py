@@ -21,7 +21,14 @@ dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 def plot_attribute(attribute, cmap, label=None, vlim=None):
     plt.figure(figsize=(8, 5))
 
-    vlims = {"vmin": -vlim, "vmax": vlim} if vlim is not None else {}
+    if vlim is not None:
+        if isinstance(vlim, (int, float)):
+            vlims = {"vmin": -vlim, "vmax": vlim}
+        elif len(vlim) == 2:
+            vlims = {"vmin": vlim[0], "vmax": vlim[1]}
+    else:
+        vlims = {}
+
     plt.imshow(
         attribute.squeeze(),
         cmap=cmap,
@@ -85,6 +92,34 @@ plot_attribute(planform_curvature, "RdGy_r", "Planform curvature (100 / m)", vli
 profile_curvature = xdem.terrain.profile_curvature(dem.data, resolution=dem.res)
 
 plot_attribute(profile_curvature, "RdGy_r", "Profile curvature (100 / m)", vlim=1)
+
+# %%
+# Topographic position index
+# --------------------------
+tpi = xdem.terrain.topographic_position_index(dem.data)
+
+plot_attribute(tpi, "Spectral", "Topographic Position Index", vlim=5)
+
+# %%
+# Terrain ruggedness index
+# ------------------------
+tri = xdem.terrain.terrain_ruggedness_index(dem.data)
+
+plot_attribute(tri, "Purples", "Terrain Ruggedness Index")
+
+# %%
+# Roughness
+# --------------------------
+roughness = xdem.terrain.roughness(dem.data)
+
+plot_attribute(roughness, "Oranges", "Roughness")
+
+# %%
+# Rugosity
+# --------------------------
+rugosity = xdem.terrain.rugosity(dem.data)
+
+plot_attribute(rugosity, "Blues", "Rugosity", vlim=[1, 3])
 
 # %%
 # Generating multiple attributes at once
