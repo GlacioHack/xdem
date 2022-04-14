@@ -808,14 +808,14 @@ def get_terrain_attribute(
                                                  terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0] = 0.0
 
     if make_profile_curvature:
-        # PROFC = -2(DH² + EG² + FGH)/(G²+H²)
+        # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
             terrain_attributes["profile_curvature"] = (
                 -2
                 * (
-                    terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
-                    + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
+                    terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
+                    + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
                     + terrain_attributes["surface_fit"][5, :, :]
                     * terrain_attributes["surface_fit"][6, :, :]
                     * terrain_attributes["surface_fit"][7, :, :]
@@ -1052,8 +1052,8 @@ def curvature(
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
-        >>> curvature(dem, resolution=1.0)[1, 1]
-        400.0
+        >>> curvature(dem, resolution=1.0)[1, 1] / 100.
+        4.0
 
     :returns: The curvature array of the DEM.
     """
@@ -1085,6 +1085,18 @@ def planform_curvature(
 
     :raises ValueError: If the inputs are poorly formatted.
 
+    :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
+        0.0
+        >>> dem = np.array([[1, 4, 8],
+        ...                 [1, 2, 4],
+        ...                 [1, 4, 8]], dtype="float32")
+        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
+        4.0
+
     :returns: The planform curvature array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution)
@@ -1115,6 +1127,17 @@ def profile_curvature(
 
     :raises ValueError: If the inputs are poorly formatted.
 
+    :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
+        -1.0
+        >>> dem = np.array([[1, 2, 3],
+        ...                 [1, 2, 3],
+        ...                 [1, 2, 3]], dtype="float32")
+        >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
+        -0.0
     :returns: The profile curvature array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution)
@@ -1137,7 +1160,7 @@ def maximum_curvature(
     resolution: float | tuple[float, float] | None = None,
 ) -> np.ndarray | Raster:
     """
-    Calculate the maximum profile or planform curvature parallel to the direction of the slope.
+    Calculate the signed maximum profile or planform curvature parallel to the direction of the slope.
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
@@ -1176,6 +1199,18 @@ def topographic_position_index(
 
     :raises ValueError: If the inputs are poorly formatted.
 
+    :examples:
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 2, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> topographic_position_index(dem)[1, 1]
+        1.0
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 1, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> topographic_position_index(dem)[1, 1]
+        0.0
+
     :returns: The topographic position index array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="topographic_position_index", window_size=window_size)
@@ -1213,6 +1248,18 @@ def terrain_ruggedness_index(
 
     :raises ValueError: If the inputs are poorly formatted.
 
+    :examples:
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 2, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> terrain_ruggedness_index(dem)[1, 1]
+        2.8284271247461903
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 1, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> terrain_ruggedness_index(dem)[1, 1]
+        0.0
+
     :returns: The terrain ruggedness index array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size)
@@ -1245,6 +1292,18 @@ def roughness(
 
     :raises ValueError: If the inputs are poorly formatted.
 
+    :examples:
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 2, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> roughness(dem)[1, 1]
+        1.0
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 1, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> roughness(dem)[1, 1]
+        0.0
+
     :returns: The roughness array of the DEM.
     """
     return get_terrain_attribute(dem=dem, attribute="roughness", window_size=window_size)
@@ -1270,9 +1329,20 @@ def rugosity(
     Based on: Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
 
     :param dem: The DEM to calculate the rugosity from.
-    :param window_size: The size of the window for deriving the terrain index
 
     :raises ValueError: If the inputs are poorly formatted.
+
+    :examples:
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 2, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> rugosity(dem)[1, 1]
+        1.2771665227259312
+        >>> dem = np.array([[1, 1, 1],
+        ...                 [1, 1, 1],
+        ...                 [1, 1, 1]], dtype="float32")
+        >>> np.round(rugosity(dem)[1, 1], 5)
+        1.0
 
     :returns: The rugosity array of the DEM.
     """
