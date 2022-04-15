@@ -294,6 +294,9 @@ def _get_windowed_indexes(
                 elif edge_method_n == 1:
                     row_indexer = (row + k) % dem.shape[0]
                     col_indexer = (col + j) % dem.shape[1]
+                else:
+                    row_indexer = row + k
+                    col_indexer = col + j
                 Z[count] = dem[row_indexer, col_indexer]
                 count += 1
 
@@ -330,21 +333,25 @@ def _get_windowed_indexes(
 
 
         # Rugosity (see reference for details): need elevation differences and horizontal length of 16 segments
-        dzs = np.empty((16,))
-        dls = np.empty((16,))
+        dzs = np.zeros((16,))
+        dls = np.zeros((16,))
 
-        count = 0
+        count_without_center = 0
+        count_all = 0
         # First, the 8 connected segments from the center cells, the center cell is index 4
         for j in range(-hw, -hw + window_size):
             for k in range(-hw, -hw + window_size):
+
                 # Skip if this is the center pixel
                 if j == 0 and k == 0:
+                    count_all += 1
                     continue
                 # The first eight elevation differences from the cell center
-                dzs[count] = Z[4] - Z[count]
+                dzs[count_without_center] = Z[4] - Z[count_all]
                 # The first eight planimetric length that can be diagonal or straight from the center
-                dls[count] = np.sqrt(j**2 + k**2)
-                count += 1
+                dls[count_without_center] = np.sqrt(j**2 + k**2)
+                count_all +=1
+                count_without_center += 1
 
         # Manually for the remaining eight segments between surrounding pixels:
         # First, four elevation differences along the x axis
