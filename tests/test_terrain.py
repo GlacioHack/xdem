@@ -286,4 +286,49 @@ def test_get_quadric_coefficients() -> None:
     assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
 
 
+@pytest.mark.parametrize("dh", [np.linspace(0.01, 100, 10)])
+@pytest.mark.parametrize("L", [np.linspace(0.01, 100, 10)])
+def test_rugosity(self, dh: float, ) -> None:
+    """Test the rugosity calculation."""
+
+    # We here check the value for a fully symmetric case: the rugosity calculation can be simplified because all
+    # eight triangles (see Jenness (2004)) have the same surface area
+
+    # Elevation difference with the center
+    dh = 1.
+
+    # Derive rugosity from the function
+    dem = np.array([[1, 1, 1],
+                    [1, 1 + dh, 1],
+                    [1, 1, 1]], dtype="float32")
+
+    # Resolution
+    L = 1.
+
+    rugosity = xdem.terrain.rugosity(dem)
+
+    # Half surface length between the center and a corner cell (in 3D: accounting for elevation changes)
+    side1 = np.sqrt(2*L**2 + dh) / 2.
+    # Half surface length between the center and a side cell (in 3D: accounting for elevation changes)
+    side2 = np.sqrt(L**2 + dh) / 2.
+    # Half surface length between the corner and side cell (no elevation changes on this side)
+    side3 = L / 2.
+
+    # Formula for area A of one triangle
+    s = (side1 + side2 + side3) / 2.
+    A = np.sqrt(s * (s-side1) * (s-side2) * (s-side3))
+
+    # We sum the area of the eight triangles, and divide by the planimetric area (resolution squared)
+    r = 8*A / (L**2)
+
+    # Check rugosity value is valid
+    assert r == pytest.approx(rugosity[1,1], abs=10**(-6))
+
+
+
+
+
+
+
+
 
