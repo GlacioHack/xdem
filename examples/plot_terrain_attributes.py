@@ -119,7 +119,7 @@ plot_attribute(roughness, "Oranges", "Roughness")
 # --------------------------
 rugosity = xdem.terrain.rugosity(dem.data)
 
-plot_attribute(rugosity, "Blues", "Rugosity", vlim=[1, 3])
+plot_attribute(rugosity, "YlOrRd", "Rugosity")
 
 # %%
 # Generating multiple attributes at once
