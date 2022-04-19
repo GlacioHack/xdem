@@ -181,7 +181,7 @@ Generating multiple attributes at once
 --------------------------------------
 
 Often, one may seek more terrain attributes than one, e.g. both the slope and the aspect.
-Since both are dependent on the gradient of the DEM, calculating them separately is unneccesarily repetitive.
+Since both are dependent on the gradient of the DEM, calculating them separately is computationally repetitive.
 Multiple terrain attributes can be calculated from the same gradient using the :func:`xdem.terrain.get_terrain_attribute` function.
 
 .. minigallery:: xdem.terrain.get_terrain_attribute
