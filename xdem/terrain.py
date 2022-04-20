@@ -285,8 +285,8 @@ def get_quadric_coefficients(
         (12, 3, 3)
         >>> coeffs[:, 1, 1]
         array([ 1.        ,  0.        ,  0.        , -1.        , -1.        ,
-            0.        ,  0.        ,  0.        ,  2.        ,  0.        ,
-            0.        ,  1.41421356])
+        0.        ,  0.        ,  0.        ,  2.        ,  0.        ,
+        0.        ,  1.41421356])
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
@@ -1197,12 +1197,12 @@ def planform_curvature(
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
         >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        0.0
+        -0.0
         >>> dem = np.array([[1, 4, 8],
         ...                 [1, 2, 4],
         ...                 [1, 4, 8]], dtype="float32")
         >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        4.0
+        -4.0
 
     :returns: The planform curvature array of the DEM.
     """
@@ -1243,12 +1243,12 @@ def profile_curvature(
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        -1.0
+        1.0
         >>> dem = np.array([[1, 2, 3],
         ...                 [1, 2, 3],
         ...                 [1, 2, 3]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        -0.0
+        0.0
 
     :returns: The profile curvature array of the DEM.
     """
