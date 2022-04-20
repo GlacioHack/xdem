@@ -13,6 +13,7 @@ dependencies:
   - scipy
   - tqdm
   - scikit-image
+  - richdem
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
