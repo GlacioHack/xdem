@@ -283,10 +283,12 @@ def get_quadric_coefficients(
         >>> coeffs = get_quadric_coefficients(dem, resolution=1.0, make_rugosity=True)
         >>> coeffs.shape
         (12, 3, 3)
-        >>> coeffs[:, 1, 1]
-        array([ 1.        ,  0.        ,  0.        , -1.        , -1.        ,
-        0.        ,  0.        ,  0.        ,  2.        ,  0.        ,
-        0.        ,  1.41421356])
+        >>> coeffs[:9, 1, 1]
+        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.])
+        >>> coeffs[9:11, 1, 1]
+        array([0., 0.])
+        >>> coeffs[11, 1, 1]
+        1.4142135623730954
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
