@@ -1,4 +1,4 @@
-"""Terrain attribute calculations, such as the slope, aspect etc."""
+"""Terrain attribute calculations, such as slope, aspect, hillshade, curvature and ruggedness indexes."""
 from __future__ import annotations
 
 import warnings
@@ -32,7 +32,7 @@ def _rio_to_rda(ds: rio.DatasetReader) -> rd.rdarray:
     return rda
 
 
-def get_terrainattr(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray:
+def _get_terrainattr_richdem(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray:
     """
     Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
     "profile_curvature", "planform_curvature", "curvature" and others (see richDEM documentation)
@@ -284,7 +284,9 @@ def get_quadric_coefficients(
         >>> coeffs.shape
         (12, 3, 3)
         >>> coeffs[:, 1, 1]
-        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.,  0.,  0.,  1.41421356])
+        array([ 1.        ,  0.        ,  0.        , -1.        , -1.        ,
+            0.        ,  0.        ,  0.        ,  2.        ,  0.        ,
+            0.        ,  1.41421356])
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
@@ -480,7 +482,7 @@ def get_windowed_indexes(
         >>> indexes.shape
         (4, 3, 3)
         >>> indexes[:, 1, 1]
-        array([2.82842712, 1.        , 1.        , 1.])
+        array([2.82842712, 1.        , 1.        , 1.        ])
 
     :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
@@ -606,6 +608,7 @@ def get_terrain_attribute(
     """
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
+
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
     - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
@@ -618,6 +621,7 @@ def get_terrain_attribute(
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
 
     Attributes:
+
     * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical). Default method: "Horn".
     * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W).
     * 'hillshade': The shaded slope in relation to its aspect.

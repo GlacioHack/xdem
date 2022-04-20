@@ -117,7 +117,7 @@ plot_attribute(roughness, "Oranges", "Roughness")
 # %%
 # Rugosity
 # --------------------------
-rugosity = xdem.terrain.rugosity(dem.data)
+rugosity = xdem.terrain.rugosity(dem.data, resolution=dem.res)
 
 plot_attribute(rugosity, "YlOrRd", "Rugosity")
 
