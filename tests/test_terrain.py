@@ -251,6 +251,56 @@ class TestTerrainAttribute:
         assert slope.transform == self.dem.transform == aspect.transform
         assert slope.crs == self.dem.crs == aspect.crs
 
+    def test_rugosity_jenness(self) -> None:
+        """Test the rugosity with the same example as in Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2."""
+
+        # Derive rugosity from the function
+        dem = np.array([[190, 170, 155],
+                        [183, 165, 145],
+                        [175, 160, 122]], dtype="float32")
+
+        # Derive rugosity
+        rugosity = xdem.terrain.rugosity(dem, resolution=100.)
+
+        # Rugosity of Jenness (2004) example
+        r = 10280.48 / 10000.
+
+        assert rugosity[1, 1] == pytest.approx(r, rel=10**(-4))
+
+    # Loop for various elevation differences with the center
+    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))
+    # Loop for different resolutions
+    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))
+    def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
+        """Test the rugosity calculation for simple cases."""
+
+        # We here check the value for a fully symmetric case: the rugosity calculation can be simplified because all
+        # eight triangles have the same surface area, see Jenness (2004).
+
+        # Derive rugosity from the function
+        dem = np.array([[1, 1, 1],
+                        [1, 1 + dh, 1],
+                        [1, 1, 1]], dtype="float32")
+
+        rugosity = xdem.terrain.rugosity(dem, resolution=resolution)
+
+        # Half surface length between the center and a corner cell (in 3D: accounting for elevation changes)
+        side1 = np.sqrt(2 * resolution ** 2 + dh **2) / 2.
+        # Half surface length between the center and a side cell (in 3D: accounting for elevation changes)
+        side2 = np.sqrt(resolution ** 2 + dh ** 2) / 2.
+        # Half surface length between the corner and side cell (no elevation changes on this side)
+        side3 = resolution / 2.
+
+        # Formula for area A of one triangle
+        s = (side1 + side2 + side3) / 2.
+        A = np.sqrt(s * (s - side1) * (s - side2) * (s - side3))
+
+        # We sum the area of the eight triangles, and divide by the planimetric area (resolution squared)
+        r = 8 * A / (resolution ** 2)
+
+        # Check rugosity value is valid
+        assert r == pytest.approx(rugosity[1, 1], rel=10**(-6))
+
 
 def test_get_quadric_coefficients() -> None:
     """Test the outputs and exceptions of the get_quadric_coefficients() function."""
@@ -260,13 +310,13 @@ def test_get_quadric_coefficients() -> None:
                     [1, 2, 1],
                     [1, 1, 1]], dtype="float32")
 
-    coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method='nearest')
+    coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method='nearest', make_rugosity=True)
 
+    # Check all coefficients are finite with an edge method
     assert np.all(np.isfinite(coefficients))
 
-    # The 3rd to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
-    assert np.array_equal(coefficients[-3, :, :], dem)
-
+    # The 4th to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
+    assert np.array_equal(coefficients[-4, :, :], dem)
 
     # The middle pixel (index 1, 1) should be concave in the x-direction
     assert coefficients[3, 1, 1] < 0
@@ -284,46 +334,6 @@ def test_get_quadric_coefficients() -> None:
     # When using edge wrapping, all coefficients should be finite.
     coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
     assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
-
-
-@pytest.mark.parametrize("dh", [np.linspace(0.01, 100, 10)])
-@pytest.mark.parametrize("L", [np.linspace(0.01, 100, 10)])
-def test_rugosity(self, dh: float, ) -> None:
-    """Test the rugosity calculation."""
-
-    # We here check the value for a fully symmetric case: the rugosity calculation can be simplified because all
-    # eight triangles (see Jenness (2004)) have the same surface area
-
-    # Elevation difference with the center
-    dh = 1.
-
-    # Derive rugosity from the function
-    dem = np.array([[1, 1, 1],
-                    [1, 1 + dh, 1],
-                    [1, 1, 1]], dtype="float32")
-
-    # Resolution
-    L = 1.
-
-    rugosity = xdem.terrain.rugosity(dem)
-
-    # Half surface length between the center and a corner cell (in 3D: accounting for elevation changes)
-    side1 = np.sqrt(2*L**2 + dh) / 2.
-    # Half surface length between the center and a side cell (in 3D: accounting for elevation changes)
-    side2 = np.sqrt(L**2 + dh) / 2.
-    # Half surface length between the corner and side cell (no elevation changes on this side)
-    side3 = L / 2.
-
-    # Formula for area A of one triangle
-    s = (side1 + side2 + side3) / 2.
-    A = np.sqrt(s * (s-side1) * (s-side2) * (s-side3))
-
-    # We sum the area of the eight triangles, and divide by the planimetric area (resolution squared)
-    r = 8*A / (L**2)
-
-    # Check rugosity value is valid
-    assert r == pytest.approx(rugosity[1,1], abs=10**(-6))
-
 
 
 
