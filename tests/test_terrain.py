@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import re
 import warnings
 
 import geoutils as gu
@@ -18,7 +19,7 @@ PLOT = True
 
 def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> np.ma.masked_array:
     """Run GDAL's DEMProcessing and return the read numpy array."""
-    # rasterio strongly recommends against importing gdal along rio, so this is done here instead.
+    # Rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
 
     # Converting string into gdal processing options here to avoid import gdal outside this function:
@@ -61,13 +62,13 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize("attribute", ["slope_Horn", "aspect_Horn", "hillshade_Horn",
                                            "slope_Zevenberg", "aspect_Zevenberg", "hillshade_Zevenberg",
                                            "tri_Riley", "tri_Wilson", "tpi", "roughness"])
-    def test_attribute_functions(self, attribute: str) -> None:
+    def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
         """
-        Test that all attribute functions (e.g. xdem.terrain.slope) behave appropriately.
+        Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-        warnings.simplefilter("error")
+        # warnings.simplefilter("error")
 
         functions = {
             "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
@@ -82,7 +83,7 @@ class TestTerrainAttribute:
             "roughness": lambda dem: xdem.terrain.roughness(dem.data)
         }
 
-        # Writing dictionary options here to avoid importing gdal outside of the dedicated function
+        # Writing dictionary options here to avoid importing gdal outside the dedicated function
         gdal_processing_attr_option = {
             "slope_Horn": ("slope", "Horn"),
             "aspect_Horn": ("aspect", "Horn"),
@@ -156,10 +157,94 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
 
+    @pytest.mark.parametrize("attribute", ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature",
+                                           "profile_curvature", "planform_curvature"])
+    def test_attribute_functions_against_richdem(self, attribute: str) -> None:
+        """
+        Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
+
+        :param attribute: The attribute to test (e.g. 'slope')
+        """
+        # warnings.simplefilter("error")
+
+        # Functions for xdem-implemented methods
+        functions_xdem = {
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem, dem.res, degrees=True),
+            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
+            "curvature": lambda dem: xdem.terrain.curvature(dem.data, dem.res),
+            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, dem.res),
+            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, dem.res),
+        }
+
+        # Functions for RichDEM wrapper methods
+        functions_richdem = {
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem, degrees=True, use_richdem=True),
+            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem, degrees=True, use_richdem=True),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem, use_richdem=True),
+            "curvature": lambda dem: xdem.terrain.curvature(dem, use_richdem=True),
+            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem, use_richdem=True),
+            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem, use_richdem=True),
+        }
+
+        # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
+        dem = self.dem.copy()
+
+        # Derive the attribute using both RichDEM and xdem
+        attr_xdem = gu.spatial_tools.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
+        attr_richdem = gu.spatial_tools.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
+
+        # We compute the difference and keep only valid values
+        diff = (attr_xdem - attr_richdem)
+        diff_valid = diff[np.isfinite(diff)]
+
+        try:
+            # Difference between xdem and RichDEM attribute
+            # Mean of attribute values to get an order of magnitude of the attribute unit
+            magn = np.nanmean(np.abs(attr_xdem))
+
+            # Check that the attributes are similar within a tolerance of a thousandth of the magnitude
+            # For instance, slopes have an average magnitude of around 30 deg, so the tolerance is 0.030 deg
+            if attribute in ["aspect_Horn"]:
+                # For aspect, check the tolerance within a 360 degree modulo due to the circularity of the variable
+                diff_valid = np.mod(np.abs(diff_valid), 360)
+                assert np.all(np.minimum(diff_valid, np.abs(360 - diff_valid)) < 10 ** (-3) * magn)
+
+            else:
+                # All attributes other than aspect are non-circular floats, so we check within a tolerance
+                # Here hillshade is not rounded as integer by our calculation, so no need to differentiate as with GDAL
+                assert np.all(np.abs(diff_valid < 10 ** (-3) * magn))
+
+        except Exception as exception:
+
+            if PLOT:
+                import matplotlib.pyplot as plt
+
+                # Plotting the xdem and RichDEM attributes for comparison (plotting "diff" can also help debug)
+                plt.subplot(221)
+                plt.imshow(attr_richdem)
+                plt.colorbar()
+                plt.subplot(222)
+                plt.imshow(attr_xdem)
+                plt.colorbar()
+                plt.subplot(223)
+                plt.imshow(diff)
+                plt.colorbar()
+                plt.show()
+
+            raise exception
+
+        # Introduce some nans
+        dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+
+        # Validate that this doesn't raise weird warnings after introducing nans.
+        functions_richdem[attribute](dem)
+
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""
         # Try giving the hillshade invalid arguments.
-        warnings.simplefilter("error")
+        # warnings.simplefilter("error")
 
         with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
             xdem.terrain.hillshade(self.dem.data, self.dem.res, azimuth=361)
@@ -172,29 +257,30 @@ class TestTerrainAttribute:
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
-        warnings.simplefilter("error")
+        # warnings.simplefilter("error")
         zfactor_1 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=1.0)
         zfactor_10 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=10.0)
 
         # A higher z-factor should be more variable than a low one.
-        assert np.std(zfactor_1) < np.std(zfactor_10)
+        assert np.nanstd(zfactor_1) < np.nanstd(zfactor_10)
 
         low_altitude = xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=10)
         high_altitude = xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=80)
 
         # A low altitude should be darker than a high altitude.
-        assert np.mean(low_altitude) < np.mean(high_altitude)
+        assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
     @pytest.mark.parametrize("name", ["curvature", "planform_curvature", "profile_curvature",
                                       "maximum_curvature"])
     def test_curvatures(self, name: str) -> None:
-        """Test the curvature function (which has no GDAL equivalent)"""
-        warnings.simplefilter("error")
+        """Test the curvature functions"""
+        # warnings.simplefilter("error")
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
-        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
+        # Derive curvature without any gaps
+        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res, edge_method='nearest')
 
         # Validate that the array has the same shape as the input and that all values are finite.
         assert curvature.shape == dem.data.shape
@@ -218,7 +304,7 @@ class TestTerrainAttribute:
 
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
-        warnings.simplefilter("error")
+        # warnings.simplefilter("error")
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
         assert isinstance(slope, np.ndarray)
@@ -232,12 +318,31 @@ class TestTerrainAttribute:
         hillshade2 = xdem.terrain.hillshade(self.dem.data, self.dem.res)
 
         # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
-        assert np.array_equal(hillshade, hillshade2)
-        assert np.array_equal(slope, slope2)
+        assert np.array_equal(hillshade, hillshade2, equal_nan=True)
+        assert np.array_equal(slope, slope2, equal_nan=True)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
-        assert np.mean(slope) > np.mean(slope_lowres)
+        assert np.nanmean(slope) > np.nanmean(slope_lowres)
+
+    def test_get_terrain_attribute_errors(self) -> None:
+        """Test the get_terrain_attribute function raises appropriate errors."""
+
+        with pytest.raises(ValueError, match=re.escape("RichDEM can only compute the slope and aspect using the "
+                                                       "default method of Horn (1981)")):
+            xdem.terrain.slope(self.dem, method="ZevenbergThorne", use_richdem=True)
+
+        with pytest.raises(ValueError, match="To derive RichDEM attributes, the DEM passed must be a Raster object"):
+            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, use_richdem=True)
+
+        with pytest.raises(ValueError, match=re.escape("Slope method 'DoesNotExist' is not supported. Must be one of: "
+                                             "['Horn', 'ZevenbergThorne']")):
+            xdem.terrain.slope(self.dem.data, method="DoesNotExist")
+
+        with pytest.raises(ValueError, match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: "
+                                             "['Riley', 'Wilson']")):
+            xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
+
 
     def test_raster_argument(self):
 
@@ -266,6 +371,7 @@ class TestTerrainAttribute:
         r = 10280.48 / 10000.
 
         assert rugosity[1, 1] == pytest.approx(r, rel=10**(-4))
+
 
     # Loop for various elevation differences with the center
     @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))
@@ -302,43 +408,35 @@ class TestTerrainAttribute:
         assert r == pytest.approx(rugosity[1, 1], rel=10**(-6))
 
 
-def test_get_quadric_coefficients() -> None:
-    """Test the outputs and exceptions of the get_quadric_coefficients() function."""
-    warnings.simplefilter("error")
+    def test_get_quadric_coefficients(self) -> None:
+        """Test the outputs and exceptions of the get_quadric_coefficients() function."""
+        warnings.simplefilter("error")
 
-    dem = np.array([[1, 1, 1],
-                    [1, 2, 1],
-                    [1, 1, 1]], dtype="float32")
+        dem = np.array([[1, 1, 1],
+                        [1, 2, 1],
+                        [1, 1, 1]], dtype="float32")
 
-    coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method='nearest', make_rugosity=True)
+        coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method='nearest', make_rugosity=True)
 
-    # Check all coefficients are finite with an edge method
-    assert np.all(np.isfinite(coefficients))
+        # Check all coefficients are finite with an edge method
+        assert np.all(np.isfinite(coefficients))
 
-    # The 4th to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
-    assert np.array_equal(coefficients[-4, :, :], dem)
+        # The 4th to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
+        assert np.array_equal(coefficients[-4, :, :], dem)
 
-    # The middle pixel (index 1, 1) should be concave in the x-direction
-    assert coefficients[3, 1, 1] < 0
+        # The middle pixel (index 1, 1) should be concave in the x-direction
+        assert coefficients[3, 1, 1] < 0
 
-    # The middle pixel (index 1, 1) should be concave in the y-direction
-    assert coefficients[4, 1, 1] < 0
+        # The middle pixel (index 1, 1) should be concave in the y-direction
+        assert coefficients[4, 1, 1] < 0
 
-    with pytest.raises(ValueError, match="Invalid input array shape"):
-        xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
-
-
-    # Validate that when using the edge_method="none", only the one non-edge value is kept.
-    coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="none")
-    assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 1
-    # When using edge wrapping, all coefficients should be finite.
-    coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
-    assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+        with pytest.raises(ValueError, match="Invalid input array shape"):
+            xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
 
 
-
-
-
-
-
-
+        # Validate that when using the edge_method="none", only the one non-edge value is kept.
+        coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="none")
+        assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 1
+        # When using edge wrapping, all coefficients should be finite.
+        coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
+        assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
