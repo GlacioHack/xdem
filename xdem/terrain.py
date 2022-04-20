@@ -48,10 +48,10 @@ def get_terrainattr(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray
 
 @numba.njit(parallel=True)
 def _get_quadric_coefficients(
-    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none"
-) -> np.ndarray:
+    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none",
+        make_rugosity: bool = False) -> np.ndarray:
     """
-    Run the pixel-wise analysis in parallel.
+    Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
 
     See the xdem.terrain.get_quadric_coefficients() docstring for more info.
     """
@@ -59,7 +59,7 @@ def _get_quadric_coefficients(
     L = resolution
 
     # Allocate the output.
-    output = np.empty((11,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.empty((12,) + dem.shape, dtype=dem.dtype) + np.nan
 
     # Convert the string to a number (fewer bytes to compare each iteration)
     if fill_method == "median":
@@ -129,6 +129,80 @@ def _get_quadric_coefficients(
                 # This should not occur.
                 pass
 
+        if make_rugosity:
+
+            # Rugosity is computed on a 3x3 window like the quadratic coefficients, see Jenness (2004) for details
+
+            # For this, we need elevation differences and horizontal length of 16 segments
+            dzs = np.zeros((16,))
+            dls = np.zeros((16,))
+
+            count_without_center = 0
+            count_all = 0
+            # First, the 8 connected segments from the center cells, the center cell is index 4
+            for j in range(-1, 2):
+                for k in range(-1, 2):
+
+                    # Skip if this is the center pixel
+                    if j == 0 and k == 0:
+                        count_all += 1
+                        continue
+                    # The first eight elevation differences from the cell center
+                    dzs[count_without_center] = Z[4] - Z[count_all]
+                    # The first eight planimetric length that can be diagonal or straight from the center
+                    dls[count_without_center] = np.sqrt(j ** 2 + k ** 2)*L
+                    count_all += 1
+                    count_without_center += 1
+
+            # Manually for the remaining eight segments between surrounding pixels:
+            # First, four elevation differences along the x axis
+            dzs[8] = Z[0] - Z[1]
+            dzs[9] = Z[1] - Z[2]
+            dzs[10] = Z[6] - Z[7]
+            dzs[11] = Z[7] - Z[8]
+            # Second, along the y axis
+            dzs[12] = Z[0] - Z[3]
+            dzs[13] = Z[3] - Z[6]
+            dzs[14] = Z[2] - Z[5]
+            dzs[15] = Z[5] - Z[8]
+            # For the planimetric lengths, all are equal to one
+            dls[8:] = L
+
+            # Finally, the half-surface length of each segment
+            hsl = np.sqrt(dzs ** 2 + dls ** 2) / 2
+
+            # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding pixels
+            # and 1 segment between surrounding pixels; pixel 4 is the center
+            # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
+            # Triangle 1: pixels 3 and 0
+            T1 = [hsl[3], hsl[0], hsl[12]]
+            # Triangle 2: pixels 0 and 1
+            T2 = [hsl[0], hsl[1], hsl[8]]
+            # Triangle 3: pixels 1 and 2
+            T3 = [hsl[1], hsl[2], hsl[9]]
+            # Triangle 4: pixels 2 and 5
+            T4 = [hsl[2], hsl[4], hsl[14]]
+            # Triangle 5: pixels 5 and 8
+            T5 = [hsl[4], hsl[7], hsl[15]]
+            # Triangle 6: pixels 8 and 7
+            T6 = [hsl[7], hsl[6], hsl[11]]
+            # Triangle 7: pixels 7 and 6
+            T7 = [hsl[6], hsl[5], hsl[10]]
+            # Triangle 8: pixels 6 and 3
+            T8 = [hsl[5], hsl[3], hsl[13]]
+
+            list_T = [T1, T2, T3, T4, T5, T6, T7, T8]
+
+            # Finally, we compute the 3D surface areas of the 8 triangles
+            A = np.empty((8,))
+            count = 0
+            for T in list_T:
+                # Half sum of lengths
+                hs = sum(T) / 2
+                # Surface area of triangle
+                A[count] = np.sqrt(hs * (hs - T[0]) * (hs - T[1]) * (hs - T[2]))
+                count += 1
+
         # Assign the A, B, C, D etc., factors to the output. This ugly syntax is needed to make parallel numba happy.
 
         # Coefficients of Zevenberg and Thorne (1987), Equations 3 to 11
@@ -146,24 +220,34 @@ def _get_quadric_coefficients(
         output[9, row, col] = ((Z[6] + 2 * Z[7] + Z[8]) - (Z[0] + 2 * Z[1] + Z[2])) / (8 * L)
         output[10, row, col] = ((Z[6] + 2 * Z[3] + Z[0]) - (Z[8] + 2 * Z[5] + Z[2])) / (8 * L)
 
+        # Rugosity from Jenness (2004): difference between real surface area and planimetric surface area
+        if make_rugosity:
+            output[11, row, col] = sum(A) / L**2
+
     return output
 
 
 def get_quadric_coefficients(
-    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none"
-) -> np.ndarray:
+    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none",
+        make_rugosity : bool = False) -> np.ndarray:
     """
-    Return the 9 coefficients of a quadric surface fit to every pixel in the raster.
+    Computes quadric and other coefficients on a fixed 3x3 pixel window, and that depends on the resolution.
+    Returns the 9 coefficients of a quadric surface fit to every pixel in the raster, the 2 coefficients of optimized
+    slope gradient, and the rugosity.
 
-    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107, also described in the documentation:
+    For the quadric surface, based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107, also
+    described in the documentation:
     https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
-
     The function that is solved is:
     Z = Ax²y² + Bx²y + Cxy² + Dx² + Ey² + Fxy + Gx + Hy + I
-
     Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
-    Each pixel's fit can be accessed by coefficients[:, row, col], returning an array of shape 9.
-    The 9 coefficients correspond to those in the equation above.
+
+    For the 2 coefficients of optimized slope, based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918, page 18
+    bottom left equations.
+
+    For the rugosity, based on Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+
+    Each pixel's fit can be accessed by coefficients[:, row, col], returning an array of shape 12.
 
     Fill methods
         If the 3x3 matrix to fit the quadric function on has NaNs, these need to be handled:
@@ -187,6 +271,7 @@ def get_quadric_coefficients(
     :param resolution: The X/Y resolution of the DEM.
     :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
     :param edge_method: The method to use near the array edge.
+    :param make_rugosity: Whether to compute coefficients for rugosity.
 
     :raises ValueError: If the inputs are poorly formatted.
     :raises RuntimeError: If unexpected backend errors occurred.
@@ -195,11 +280,11 @@ def get_quadric_coefficients(
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
-        >>> coeffs = get_quadric_coefficients(dem, resolution=1.0)
+        >>> coeffs = get_quadric_coefficients(dem, resolution=1.0, make_rugosity=True)
         >>> coeffs.shape
-        (11, 3, 3)
+        (12, 3, 3)
         >>> coeffs[:, 1, 1]
-        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.,  0.,  0.])
+        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.,  0.,  0.,  1.41421356])
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
@@ -230,8 +315,8 @@ def get_quadric_coefficients(
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
         coeffs = _get_quadric_coefficients(
-            dem_arr, resolution, fill_method=fill_method.lower(), edge_method=edge_method.lower()
-        )
+            dem_arr, resolution, fill_method=fill_method.lower(), edge_method=edge_method.lower(),
+            make_rugosity=make_rugosity)
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
 
@@ -242,13 +327,13 @@ def _get_windowed_indexes(
     dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3)\
         -> np.ndarray:
     """
-    Run the pixel-wise analysis in parallel.
+    Run the pixel-wise analysis in parallel for any window size without using the resolution.
 
     See the xdem.terrain.get_windowed_indexes() docstring for more info.
     """
 
     # Allocate the outputs.
-    output = np.empty((5,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.empty((4,) + dem.shape, dtype=dem.dtype) + np.nan
 
     # Half window size
     hw = int(np.floor(window_size / 2))
@@ -331,78 +416,6 @@ def _get_windowed_indexes(
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
                 count += 1
 
-
-        # Rugosity (see reference for details): need elevation differences and horizontal length of 16 segments
-        dzs = np.zeros((16,))
-        dls = np.zeros((16,))
-
-        count_without_center = 0
-        count_all = 0
-        # First, the 8 connected segments from the center cells, the center cell is index 4
-        for j in range(-hw, -hw + window_size):
-            for k in range(-hw, -hw + window_size):
-
-                # Skip if this is the center pixel
-                if j == 0 and k == 0:
-                    count_all += 1
-                    continue
-                # The first eight elevation differences from the cell center
-                dzs[count_without_center] = Z[4] - Z[count_all]
-                # The first eight planimetric length that can be diagonal or straight from the center
-                dls[count_without_center] = np.sqrt(j**2 + k**2)
-                count_all +=1
-                count_without_center += 1
-
-        # Manually for the remaining eight segments between surrounding pixels:
-        # First, four elevation differences along the x axis
-        dzs[8] = Z[0] - Z[1]
-        dzs[9] = Z[1] - Z[2]
-        dzs[10] = Z[6] - Z[7]
-        dzs[11] = Z[7] - Z[8]
-        # Second, along the y axis
-        dzs[12] = Z[0] - Z[3]
-        dzs[13] = Z[3] - Z[6]
-        dzs[14] = Z[2] - Z[5]
-        dzs[15] = Z[5] - Z[8]
-        # For the planimetric lengths, all are equal to one
-        dls[8:] = 1
-
-        # Finally, the half-surface length of each segment
-        L = np.sqrt(dzs**2 + dls**2)/2
-
-        # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding pixels
-        # and 1 segment between surrounding pixels; pixel 4 is the center
-        # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
-        # Triangle 1: pixels 3 and 0
-        T1 = [L[3], L[0], L[12]]
-        # Triangle 2: pixels 0 and 1
-        T2 = [L[0], L[1], L[8]]
-        # Triangle 3: pixels 1 and 2
-        T3 = [L[1], L[2], L[9]]
-        # Triangle 4: pixels 2 and 5
-        T4 = [L[2], L[4], L[14]]
-        # Triangle 5: pixels 5 and 8
-        T5 = [L[4], L[7], L[15]]
-        # Triangle 6: pixels 8 and 7
-        T6 = [L[7], L[6], L[11]]
-        # Triangle 7: pixels 7 and 6
-        T7 = [L[6], L[5], L[10]]
-        # Triangle 8: pixels 6 and 3
-        T8 = [L[5], L[3], L[13]]
-
-        list_T = [T1, T2, T3, T4, T5, T6, T7, T8]
-
-        # Finally, we compute the 3D surface areas of the 8 triangles
-        A = np.empty((8,))
-        count = 0
-        for T in list_T:
-            # Half sum of lengths
-            hs = sum(T)/2
-            # Surface area of triangle
-            A[count] = np.sqrt(hs*(hs-T[0])*(hs-T[1])*(hs-T[2]))
-            count += 1
-
-
         # First output is the Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of
         # differences between center and neighbouring pixels
         output[0, row, col] = np.sqrt(np.sum(S**2))
@@ -414,9 +427,6 @@ def _get_windowed_indexes(
         output[2, row, col] =  Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
         # Fourth output is the Roughness from Dartnell (2000): difference between maximum and minimum of the window
         output[3, row, col] = np.max(Z) - np.min(Z)
-        # Fifth output is the Rugosity from Jenness (2004): difference between real surface area and planimetric
-        # surface area
-        output[4, row, col] = sum(A)
 
     return output
 
@@ -425,14 +435,13 @@ def get_windowed_indexes(
     dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3,
 ) -> np.ndarray:
     """
-    Return terrain indexes based on a windowed calculation of variable size.
+    Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
 
     Includes:
-    - Terrain Ruggedness Index from Riley et al. (1999) for topgraphy and from Wilson et al. (2007) for bathymetry.
+    - Terrain Ruggedness Index from Riley et al. (1999) for topography and from Wilson et al. (2007) for bathymetry.
     - Topographic Position Index from Weiss (2001).
     - Roughness from Dartnell (2000).
-    - Rugosity from Jenness (2004).
-    Also all referenced in Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
+    Nearly all are also referenced in Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
 
     Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
     Each pixel's index can be accessed at [:, row, col], returning an array of shape 4.
@@ -469,9 +478,9 @@ def get_windowed_indexes(
         ...                 [1, 1, 1]], dtype="float32")
         >>> indexes = get_windowed_indexes(dem)
         >>> indexes.shape
-        (5, 3, 3)
+        (4, 3, 3)
         >>> indexes[:, 1, 1]
-        array([2.82842712, 1.        , 1.        , 1.        , 1.27716652])
+        array([2.82842712, 1.        , 1.        , 1.])
 
     :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
@@ -668,11 +677,11 @@ def get_terrain_attribute(
 
     # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
     list_requiring_surface_fit = ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature",
-                                  "slope", "hillshade", "aspect", "surface_fit"]
+                                  "slope", "hillshade", "aspect", "surface_fit", "rugosity"]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     list_requiring_windowed_index = ["terrain_ruggedness_index",
-                                     "topographic_position_index", "roughness", "rugosity"]
+                                     "topographic_position_index", "roughness"]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
 
     if resolution is None and len(attributes_requiring_surface_fit)>1:
@@ -689,8 +698,6 @@ def get_terrain_attribute(
         raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
-    if (window_size>3) and ("rugosity" in attribute):
-        raise Warning('Rugosity computation is not supported for window sizes larger than 3x3 pixels.')
 
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
@@ -725,8 +732,8 @@ def get_terrain_attribute(
                 f"This was required by: {attributes_requiring_surface_fit}"
             )
         terrain_attributes["surface_fit"] = get_quadric_coefficients(
-            dem=dem_arr, resolution=resolution[0], fill_method=fill_method, edge_method=edge_method
-        )
+            dem=dem_arr, resolution=resolution[0], fill_method=fill_method, edge_method=edge_method,
+            make_rugosity=make_rugosity)
 
     if make_slope:
 
@@ -859,7 +866,7 @@ def get_terrain_attribute(
         terrain_attributes["roughness"] = terrain_attributes["windowed_indexes"][3, :, :]
 
     if make_rugosity:
-        terrain_attributes["rugosity"] = terrain_attributes["windowed_indexes"][4, :, :]
+        terrain_attributes["rugosity"] = terrain_attributes["surface_fit"][11, :, :]
 
     # Convert the unit if wanted.
     if degrees:
@@ -1320,23 +1327,27 @@ def roughness(
 @overload
 def rugosity(
     dem: RasterType,
+    resolution: float | tuple[float, float] | None = None
 ) -> Raster: ...
 
 
 @overload
 def rugosity(
     dem: np.ndarray | np.ma.masked_array,
+    resolution: float | tuple[float, float] | None = None
 ) -> np.ndarray: ...
 
 
 def rugosity(
     dem: np.ndarray | np.ma.masked_array | RasterType,
+    resolution: float | tuple[float, float] | None = None
 ) -> np.ndarray | Raster:
     """
     Calculates the roughness.
     Based on: Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
 
     :param dem: The DEM to calculate the rugosity from.
+    :param resolution: The X/Y resolution of the DEM.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1344,16 +1355,16 @@ def rugosity(
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
-        >>> rugosity(dem)[1, 1]
-        1.2771665227259312
+        >>> rugosity(dem, resolution=1.)[1, 1]
+        1.4142135623730954
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
-        >>> np.round(rugosity(dem)[1, 1], 5)
+        >>> np.round(rugosity(dem, resolution=1.)[1, 1], 5)
         1.0
 
     :returns: The rugosity array of the DEM.
     """
-    return get_terrain_attribute(dem=dem, attribute="rugosity", window_size=3)
+    return get_terrain_attribute(dem=dem, attribute="rugosity", resolution=resolution)
 
 
