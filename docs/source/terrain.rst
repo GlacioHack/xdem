@@ -21,6 +21,9 @@ The slope can be computed either by the method of `Horn (1981) <http://dx.doi.or
 based on a refined gradient formulation on a 3x3 pixel window, or by the method of `Zevenbergen and Thorne (1987)
 <http://dx.doi.org/10.1002/esp.3290120107>`_ based on a plane fit on a 3x3 pixel window.
 
+The differences between methods are illustrated in the :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`
+example.
+
 .. image:: ../build/_images/sphx_glr_plot_terrain_attributes_001.png
   :width: 600
 
