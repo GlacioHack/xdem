@@ -328,6 +328,7 @@ class TestTerrainAttribute:
     def test_get_terrain_attribute_errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
+        # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
         with pytest.raises(ValueError, match=re.escape("RichDEM can only compute the slope and aspect using the "
                                                        "default method of Horn (1981)")):
             xdem.terrain.slope(self.dem, method="ZevenbergThorne", use_richdem=True)
