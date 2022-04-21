@@ -544,7 +544,7 @@ def get_windowed_indexes(
         >>> indexes = get_windowed_indexes(dem)
         >>> indexes.shape
         (5, 3, 3)
-        >>> indexes[:, 1, 1]
+        >>> indexes[:4, 1, 1]
         array([2.82842712, 1.        , 1.        , 1.        ])
 
     :returns: An array of coefficients for each pixel of shape (5, row, col).
