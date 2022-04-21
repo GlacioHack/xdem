@@ -328,8 +328,8 @@ def get_quadric_coefficients(
 
 @numba.njit(parallel=True)
 def _get_windowed_indexes(
-    dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3)\
-        -> np.ndarray:
+    dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3,
+    make_fractal_roughness: bool = False) -> np.ndarray:
     """
     Run the pixel-wise analysis in parallel for any window size without using the resolution.
 
@@ -337,7 +337,7 @@ def _get_windowed_indexes(
     """
 
     # Allocate the outputs.
-    output = np.empty((4,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.empty((5,) + dem.shape, dtype=dem.dtype) + np.nan
 
     # Half window size
     hw = int(np.floor(window_size / 2))
@@ -370,8 +370,7 @@ def _get_windowed_indexes(
 
         # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
         if edge_method_n == 2:
-            if (row < window_size - 2) or (row > (dem.shape[0] - window_size + 1)) or (col < window_size - 2) or \
-                    (col > (dem.shape[1] - window_size + 1)):
+            if (row < hw) or (row >= (dem.shape[0] - hw)) or (col < hw) or (col >= (dem.shape[1] - hw)):
                 continue
 
         for j in range(-hw, -hw+window_size):
@@ -420,6 +419,60 @@ def _get_windowed_indexes(
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
                 count += 1
 
+        if make_fractal_roughness:
+            # Fractal roughness computation according to the box-counting method of Taud and Parrot (2005)
+            # First, we compute the number of voxels for each pixel of Equation 4
+            count = 0
+            V = np.empty((window_size, window_size))
+            for j in range(-hw, -hw + window_size):
+                for k in range(-hw, -hw + window_size):
+                    T = (Z[count] - Z[index_middle_pixel])
+                    # The following is the equivalent of np.clip, written like this for numba
+                    if T < 0:
+                        V[hw + j, hw + k] = 0
+                    elif T > window_size:
+                        V[hw + j, hw + k] = window_size
+                    else:
+                        V[hw + j, hw + k] = T
+                    count += 1
+
+            # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window size,
+            # following Equation 5
+
+            # Get all the divisors of the half window size
+            list_box_sizes = []
+            for j in range(1, hw + 1):
+                if hw % j == 0:
+                    list_box_sizes.append(j)
+
+            Ns = np.empty((len(list_box_sizes),))
+            for l in range(0, len(list_box_sizes)):
+                # We loop over boxes of size q x q in the cube
+                q = list_box_sizes[l]
+                sumNs = 0
+                for j in range(0, int((window_size-1)/q)):
+                    for k in range(0, int((window_size-1)/q)):
+                        sumNs += np.max(V[slice(j*q, (j+1)*q), slice(k*q, (k+1)*q)].flatten())
+                Ns[l] = sumNs / q
+
+            # Finally, we calculate the slope of the logarithm of Ns with q
+            # We do the linear regression manually, as np.polyfit is not supported by numba
+            x = np.log(np.array(list_box_sizes))
+            y = np.log(Ns)
+            # The number of observations
+            n = len(x)
+            # Mean of x and y vector
+            m_x = np.mean(x)
+            m_y = np.mean(y)
+            # Cross-deviation and deviation about x
+            SS_xy = np.sum(y * x) - n * m_y * m_x
+            SS_xx = np.sum(x * x) - n * m_x * m_x
+            # Calculating slope
+            b_1 = SS_xy / SS_xx
+
+            # The fractal dimension D is the opposite of the slope
+            D = -b_1
+
         # First output is the Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of
         # differences between center and neighbouring pixels
         output[0, row, col] = np.sqrt(np.sum(S**2))
@@ -432,20 +485,27 @@ def _get_windowed_indexes(
         # Fourth output is the Roughness from Dartnell (2000): difference between maximum and minimum of the window
         output[3, row, col] = np.max(Z) - np.min(Z)
 
+        if make_fractal_roughness:
+            # Fifth output is the Fractal Roughness from Taud et Parrot (2005): estimate of the fractal dimension
+            # based on volume box-counting
+            output[4, row, col] = D
+
     return output
 
 
 def get_windowed_indexes(
     dem: np.ndarray, fill_method: str = "none", edge_method: str = "none", window_size: int = 3,
-) -> np.ndarray:
+    make_fractal_roughness: bool = False) -> np.ndarray:
     """
     Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
 
     Includes:
-    - Terrain Ruggedness Index from Riley et al. (1999) for topography and from Wilson et al. (2007) for bathymetry.
-    - Topographic Position Index from Weiss (2001).
-    - Roughness from Dartnell (2000).
-    Nearly all are also referenced in Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
+    - Terrain Ruggedness Index from Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf,
+    for topography and from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
+    - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
+    - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
+    Nearly all are also referenced in Wilson et al. (2007).
 
     Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
     Each pixel's index can be accessed at [:, row, col], returning an array of shape 4.
@@ -468,10 +528,11 @@ def get_windowed_indexes(
         * NaNs and infs are filled with the median of the finites in the matrix, possibly affecting the fit.
         * The X and Y resolution needs to be the same. It does not work if they differ.
 
-    :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported)
+    :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported).
     :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
     :param edge_method: The method to use near the array edge.
-    :param window_size: The size of the window
+    :param window_size: The size of the window.
+    :param make_fractal_roughness: Whether to compute fractal roughness.
 
     :raises ValueError: If the inputs are poorly formatted.
     :raises RuntimeError: If unexpected backend errors occurred.
@@ -482,7 +543,7 @@ def get_windowed_indexes(
         ...                 [1, 1, 1]], dtype="float32")
         >>> indexes = get_windowed_indexes(dem)
         >>> indexes.shape
-        (4, 3, 3)
+        (5, 3, 3)
         >>> indexes[:, 1, 1]
         array([2.82842712, 1.        , 1.        , 1.        ])
 
@@ -515,7 +576,7 @@ def get_windowed_indexes(
     try:
         indexes = _get_windowed_indexes(
             dem_arr, fill_method=fill_method.lower(), edge_method=edge_method.lower(),
-            window_size=window_size
+            window_size=window_size, make_fractal_roughness=make_fractal_roughness
         )
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
@@ -623,6 +684,7 @@ def get_terrain_attribute(
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+    - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     Aspect and hillshade are derived using the slope, and thus depend on the same method.
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
@@ -645,6 +707,7 @@ def get_terrain_attribute(
     mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
     * 'roughness': The roughness, i.e. maximum difference to neighbouring pixels.
     * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
+    * 'fractal_roughness': The roughness based on a volume box-counting estimate of the fractal dimension.
 
     :param dem: The DEM to analyze.
     :param attribute: The terrain attribute(s) to calculate.
@@ -716,8 +779,8 @@ def get_terrain_attribute(
             # For now, not supported
             raise ValueError("To derive RichDEM attributes, the DEM passed must be a Raster object")
 
-    list_requiring_windowed_index = ["terrain_ruggedness_index",
-                                     "topographic_position_index", "roughness"]
+    list_requiring_windowed_index = ["terrain_ruggedness_index", "topographic_position_index", "roughness",
+                                     "fractal_roughness"]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
 
     if resolution is None and len(attributes_requiring_surface_fit)>1:
@@ -761,6 +824,7 @@ def get_terrain_attribute(
     make_terrain_ruggedness = "terrain_ruggedness_index" in attribute
     make_roughness = "roughness" in attribute
     make_rugosity = "rugosity" in attribute
+    make_fractal_roughness = "fractal_roughness" in attribute
 
     # Get array of DEM
     dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
@@ -919,7 +983,8 @@ def get_terrain_attribute(
 
     if make_windowed_index:
         terrain_attributes["windowed_indexes"] = \
-            get_windowed_indexes(dem=dem_arr, fill_method=fill_method, edge_method=edge_method, window_size=window_size)
+            get_windowed_indexes(dem=dem_arr, fill_method=fill_method, edge_method=edge_method,
+                                 window_size=window_size, make_fractal_roughness=make_fractal_roughness)
 
     if make_topographic_position:
         terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
@@ -937,6 +1002,9 @@ def get_terrain_attribute(
 
     if make_rugosity:
         terrain_attributes["rugosity"] = terrain_attributes["surface_fit"][11, :, :]
+
+    if make_fractal_roughness:
+        terrain_attributes["fractal_roughness"] = terrain_attributes["windowed_indexes"][4, :, :]
 
     # Convert the unit if wanted.
     if degrees:
@@ -1472,3 +1540,47 @@ def rugosity(
     return get_terrain_attribute(dem=dem, attribute="rugosity", resolution=resolution)
 
 
+@overload
+def fractal_roughness(
+    dem: RasterType,
+    window_size: int
+) -> Raster: ...
+
+
+@overload
+def fractal_roughness(
+    dem: np.ndarray | np.ma.masked_array,
+    window_size: int
+) -> np.ndarray: ...
+
+
+def fractal_roughness(
+    dem: np.ndarray | np.ma.masked_array | RasterType,
+    window_size: int = 13
+) -> np.ndarray | Raster:
+    """
+    Calculates the fractal roughness.
+    Based on: Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
+
+    :param dem: The DEM to calculate the roughness from.
+    :param window_size: The size of the window for deriving the terrain index
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :examples:
+        >>> dem = np.zeros((13, 13), dtype='float32')
+        >>> dem[1, 1] = 6.5
+        >>> np.round(fractal_roughness(dem)[6, 6], 5) # The fractal dimension of a line is 1
+        1.0
+        >>> dem = np.zeros((13, 13), dtype='float32')
+        >>> dem[:, 1] = 13
+        >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of plane is 2
+        2.0
+        >>> dem = np.zeros((13, 13), dtype='float32')
+        >>> dem[:, :6] = 13 # The fractal dimension of a cube is 3
+        >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of cube is 3
+        3.0
+
+    :returns: The fractal roughness array of the DEM.
+    """
+    return get_terrain_attribute(dem=dem, attribute="fractal_roughness", window_size=window_size)
