@@ -13,7 +13,7 @@ Slope
 -----
 :func:`xdem.terrain.slope`
 
-The slope map of a DEM describes the tilt (or gradient) of each pixel in relation to its neighbours.
+The slope of a DEM describes the tilt, or gradient, of each pixel in relation to its neighbours.
 It is most often described in degrees, where a flat surface is 0° and a vertical cliff is 90°.
 No tilt direction is stored in the slope map; a 45° tilt westward is identical to a 45° tilt eastward.
 
@@ -36,7 +36,7 @@ Aspect
 
 The aspect describes the orientation of strongest slope.
 It is often reported in degrees, where a slope tilting straight north corresponds to an aspect of 0°, and an eastern
-aspect is 90°, south is 180° and west is 270°.
+aspect is 90°, south is 180° and west is 270°. By default, a flat slope is given an arbitrary aspect of 180°.
 
 As the aspect is directly based on the slope, it varies between the method of `Horn (1981) <http://dx.doi.org/10.
 1109/PROC.1981.11918>`_ (default) and that of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
@@ -79,11 +79,9 @@ Curvature
 The curvature map is the second derivative of elevation, which highlights the convexity or concavity of the terrain.
 If a surface is convex (like a mountain peak), it will have positive curvature.
 If a surface is concave (like a trough or a valley bottom), it will have negative curvature.
+The curvature values in units of m\ :sup:`-1` are quite small, so they are by convention multiplied by 100.
 
 The curvature is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
-
-Usually, the curvature values are quite small, so they are by convention multiplied by 100.
-For analytic purposes, it may therefore be worth considering dividing the output by 100.
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_004.png
   :width: 600
@@ -95,8 +93,9 @@ Planform curvature
 ------------------
 :func:`xdem.terrain.planform_curvature`
 
-The planform curvature is the curvature perpendicular to the direction of slope. It is based on the method of
-`Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
+The planform curvature is the curvature perpendicular to the direction of slope, reported in 100 m\ :sup:`-1`.
+
+It is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_005.png
   :width: 600
@@ -108,8 +107,9 @@ Profile curvature
 -----------------
 :func:`xdem.terrain.profile_curvature`
 
-The profile curvature is the curvature parallel to the direction of slope. It is based on the method of
-`Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
+The profile curvature is the curvature parallel to the direction of slope, reported in 100 m\ :sup:`-1`..
+
+It is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_006.png
   :width: 600
@@ -123,7 +123,8 @@ Topographic Position Index
 
 The Topographic Position Index (TPI) is a metric of slope position, based on the method of `Weiss (2001) <http://www
 .jennessent.com/downloads/TPI-poster-TNC_18x22.pdf>`_ that corresponds to the difference of the elevation of a central
-pixel with the average of that of neighbouring pixels. It can be computed for any window size (default 3x3 pixels).
+pixel with the average of that of neighbouring pixels. Its unit is that of the DEM (typically meters) and it can be
+computed for any window size (default 3x3 pixels).
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_007.png
   :width: 600
@@ -136,7 +137,8 @@ Terrain Ruggedness Index
 :func:`xdem.terrain.terrain_ruggedness_index`
 
 The Terrain Ruggedness Index (TRI) is a metric of terrain ruggedness, based on cumulated differences in elevation between
-a central pixel and its surroundings. It can be computed for any window size (default 3x3 pixels).
+a central pixel and its surroundings. Its unit is that of the DEM (typically meters) and it can be computed for any
+window size (default 3x3 pixels).
 
 For topography (default), the method of `Riley et al. (1999) <http://download.osgeo.org/qgis/doc/reference-docs/Terrain_
 Ruggedness_Index.pdf>`_ is generally used, where the TRI is computed by the squareroot of squared differences with
@@ -157,7 +159,7 @@ Roughness
 
 The roughness is a metric of terrain ruggedness, based on the maximum difference in elevation in the surroundings.
 The roughness is based on the method of `Dartnell (2000) <http://dx.doi.org/10.14358/PERS.70.9.
-1081>`_. It can be computed for any window size (default 3x3 pixels).
+1081>`_. Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_009.png
   :width: 600
@@ -171,7 +173,7 @@ Rugosity
 
 The rugosity is a metric of terrain ruggedness, based on the ratio between planimetric and real surface area. The
 rugosity is based on the method of `Jenness (2004) <https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>`_.
-It is only supported for a 3x3 window size.
+It is unitless, and is only supported for a 3x3 window size.
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_010.png
   :width: 600
@@ -183,11 +185,11 @@ Fractal roughness
 -----------------
 :func:`xdem.terrain.fractal_roughness`
 
-The fractal roughness is a metric of terrain ruggedness based on the local fractal dimension, based on the volume
+The fractal roughness is a metric of terrain ruggedness based on the local fractal dimension estimated by the volume
 box-counting method of `Taud and Parrot (2005) <https://doi.org/10.4000/geomorphologie.622>`_.
 The fractal roughness is computed by estimating the fractal dimension in 3D space, for a local window centered on the
-DEM pixels. Its value is always between 1 (dimension of a line in 3D space) and 3 (dimension of a cube in 3D space).
-It can only be computed on window sizes larger than 5x5 pixels, and defaults to 13x13.
+DEM pixels. Its unit is that of a dimension, and is always between 1 (dimension of a line in 3D space) and 3
+(dimension of a cube in 3D space). It can only be computed on window sizes larger than 5x5 pixels, and defaults to 13x13.
 
 .. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_011.png
   :width: 600
