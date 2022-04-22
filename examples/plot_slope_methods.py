@@ -108,4 +108,4 @@ plot_attribute(diff_aspect_mod, "Spectral", "Aspect of Horn (1981) minus\n aspec
 # differences for areas with nearly flat slopes, owing to the high sensitivity of orientation estimation
 # for flat terrain.
 
-# Note: the default aspect for a 0° slope is 90°, as in GDAL.
+# Note: the default aspect for a 0° slope is 180°, as in GDAL.

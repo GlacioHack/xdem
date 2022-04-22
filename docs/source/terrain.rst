@@ -179,6 +179,21 @@ It is only supported for a 3x3 window size.
 .. minigallery:: xdem.terrain.rugosity
         :add-heading:
 
+Fractal roughness
+-----------------
+:func:`xdem.terrain.fractal_roughness`
+
+The fractal roughness is a metric of terrain ruggedness based on the local fractal dimension, based on the volume
+box-counting method of `Taud and Parrot (2005) <https://doi.org/10.4000/geomorphologie.622>`_.
+The fractal roughness is computed by estimating the fractal dimension in 3D space, for a local window centered on the
+DEM pixels. Its value is always between 1 (dimension of a line in 3D space) and 3 (dimension of a cube in 3D space).
+It can only be computed on window sizes larger than 5x5 pixels, and defaults to 13x13.
+
+.. image:: ../build/_images/sphx_glr_plot_terrain_attributes_011.png
+  :width: 600
+
+.. minigallery:: xdem.terrain.fractal_roughness
+        :add-heading:
 
 Generating multiple attributes at once
 --------------------------------------

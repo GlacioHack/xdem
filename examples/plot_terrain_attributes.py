@@ -8,7 +8,7 @@ Here is an example of how to generate these products.
 For more information, see the :ref:`terrain_attributes` chapter and the
 :ref:`sphx_glr_auto_examples_plot_slope_methods.py` example.
 """
-# sphinx_gallery_thumbnail_number = 11
+# sphinx_gallery_thumbnail_number = 12
 import matplotlib.pyplot as plt
 
 import xdem
@@ -110,17 +110,24 @@ plot_attribute(tri, "Purples", "Terrain Ruggedness Index")
 
 # %%
 # Roughness
-# --------------------------
+# ---------
 roughness = xdem.terrain.roughness(dem.data)
 
 plot_attribute(roughness, "Oranges", "Roughness")
 
 # %%
 # Rugosity
-# --------------------------
+# --------
 rugosity = xdem.terrain.rugosity(dem.data, resolution=dem.res)
 
 plot_attribute(rugosity, "YlOrRd", "Rugosity")
+
+# %%
+# Fractal roughness
+# -----------------
+fractal_roughness = xdem.terrain.fractal_roughness(dem.data)
+
+plot_attribute(fractal_roughness, "Reds", "Fractal roughness")
 
 # %%
 # Generating multiple attributes at once
