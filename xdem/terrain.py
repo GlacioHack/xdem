@@ -871,20 +871,22 @@ def get_terrain_attribute(
         else:
             # ASPECT = ARCTAN(-H/-G)  # This did not work
             # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
-            if slope_method == "Horn":
-                # This uses the estimates from Horn (1981).
-                terrain_attributes["aspect"] = (-
-                                                       np.arctan2(-terrain_attributes["surface_fit"][9, :, :],
-                                                                  terrain_attributes["surface_fit"][10, :, :])
-                                                       -  np.pi
-                                               ) % (2 * np.pi)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "invalid value encountered in remainder")
+                if slope_method == "Horn":
+                    # This uses the estimates from Horn (1981).
+                    terrain_attributes["aspect"] = (-
+                                                           np.arctan2(-terrain_attributes["surface_fit"][9, :, :],
+                                                                      terrain_attributes["surface_fit"][10, :, :])
+                                                           -  np.pi
+                                                   ) % (2 * np.pi)
 
-            elif slope_method == "ZevenbergThorne":
-                # This uses the slope estimate from Zevenbergen and Thorne (1987).
-                terrain_attributes["aspect"] = (
-                    np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
-                    + np.pi / 2
-                ) % (2 * np.pi)
+                elif slope_method == "ZevenbergThorne":
+                    # This uses the slope estimate from Zevenbergen and Thorne (1987).
+                    terrain_attributes["aspect"] = (
+                        np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
+                        + np.pi / 2
+                    ) % (2 * np.pi)
 
     if make_hillshade:
         # If a different z-factor was given, slopemap with exaggerated gradients.
