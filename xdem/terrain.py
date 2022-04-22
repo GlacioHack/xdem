@@ -500,8 +500,8 @@ def get_windowed_indexes(
     Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
 
     Includes:
-    - Terrain Ruggedness Index from Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf,
-    for topography and from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
+
+    - Terrain Ruggedness Index from Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
@@ -700,12 +700,9 @@ def get_terrain_attribute(
     * 'profile_curvature': The curvature parallel to the direction of the slope, multiplied by 100.
     * 'maximum_curvature': The maximum curvature.
     * 'surface_fit': A quadric surface fit for each individual pixel.
-    * 'topographic_position_index': The topographic position index defined by a difference to the average of
-    neighbouring pixels.
-    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the
-    squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the
-    mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
-    * 'roughness': The roughness, i.e. maximum difference to neighbouring pixels.
+    * 'topographic_position_index': The topographic position index defined by a difference to the average of neighbouring pixels.
+    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
+    * 'roughness': The roughness, i.e. maximum difference between neighbouring pixels.
     * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
     * 'fractal_roughness': The roughness based on a volume box-counting estimate of the fractal dimension.
 
@@ -1047,6 +1044,7 @@ def slope(
 ) -> np.ndarray | Raster:
     """
     Generate a slope map for a DEM, returned in degrees by default.
+
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
     http://dx.doi.org/10.1002/esp.3290120107.
 
@@ -1094,11 +1092,13 @@ def aspect(dem: np.ndarray | np.ma.masked_array | RasterType,
            use_richdem: bool = False,
            ) -> np.ndarray | Raster:
     """
-    Calculate the aspect of each cell in a DEM, returned in degrees by default.
+    Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
+    default (as in GDAL).
+
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
     http://dx.doi.org/10.1002/esp.3290120107.
 
-    0=N, 90=E, 180=S, 270=W
+    0=N, 90=E, 180=S, 270=W.
 
     :param dem: The DEM to calculate the aspect from.
     :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
@@ -1156,7 +1156,8 @@ def hillshade(
     use_richdem: bool = False,
 ) -> np.ndarray | Raster:
     """
-    Generate a hillshade from the given DEM.
+    Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
+
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
     :param dem: The input DEM to calculate the hillshade from.
@@ -1205,6 +1206,7 @@ def curvature(
 ) -> np.ndarray | Raster:
     """
     Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
+
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     Information:
@@ -1253,7 +1255,8 @@ def planform_curvature(
     use_richdem: bool = False,
 ) -> np.ndarray | Raster:
     """
-    Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100..
+    Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
+
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
@@ -1300,6 +1303,7 @@ def profile_curvature(
 ) -> np.ndarray | Raster:
     """
     Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
+
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
@@ -1347,6 +1351,7 @@ def maximum_curvature(
     """
     Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
     multiplied by 100.
+
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
@@ -1378,11 +1383,13 @@ def topographic_position_index(
     window_size: int = 3
 ) -> np.ndarray | Raster:
     """
-    Calculates the Topographic Position Index.
+    Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
+    unit of the DEM (typically meters).
+
     Based on: Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
 
     :param dem: The DEM to calculate the topographic position index from.
-    :param window_size: The size of the window for deriving the terrain index
+    :param window_size: The size of the window for deriving the metric.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1398,7 +1405,7 @@ def topographic_position_index(
         >>> topographic_position_index(dem)[1, 1]
         0.0
 
-    :returns: The topographic position index array of the DEM.
+    :returns: The topographic position index array of the DEM (unit of the DEM).
     """
     return get_terrain_attribute(dem=dem, attribute="topographic_position_index", window_size=window_size)
 
@@ -1423,15 +1430,17 @@ def terrain_ruggedness_index(
     window_size: int = 3
 ) -> np.ndarray | Raster:
     """
-    Calculates the Terrain Ruggedness Index.
+    Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
+    unit of the DEM (typically meters).
+
     Based either on:
-    * Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf,
-    preferred for topography.
-    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, preferred for bathymetry.
+
+    * Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf that derives the squareroot of squared differences to neighbouring pixels, preferred for topography.
+    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 that derives the mean absolute difference to neighbouring pixels, preferred for bathymetry.
 
     :param dem: The DEM to calculate the terrain ruggedness index from.
-    :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry)
-    :param window_size: The size of the window for deriving the terrain index
+    :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry).
+    :param window_size: The size of the window for deriving the metric.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1447,7 +1456,7 @@ def terrain_ruggedness_index(
         >>> terrain_ruggedness_index(dem)[1, 1]
         0.0
 
-    :returns: The terrain ruggedness index array of the DEM.
+    :returns: The terrain ruggedness index array of the DEM (unit of the DEM).
     """
     return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size)
 
@@ -1471,11 +1480,13 @@ def roughness(
     window_size: int = 3
 ) -> np.ndarray | Raster:
     """
-    Calculates the roughness.
+    Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
+    unit of the DEM (typically meters).
+
     Based on: Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
 
     :param dem: The DEM to calculate the roughness from.
-    :param window_size: The size of the window for deriving the terrain index
+    :param window_size: The size of the window for deriving the metric.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1491,7 +1502,7 @@ def roughness(
         >>> roughness(dem)[1, 1]
         0.0
 
-    :returns: The roughness array of the DEM.
+    :returns: The roughness array of the DEM (unit of the DEM).
     """
     return get_terrain_attribute(dem=dem, attribute="roughness", window_size=window_size)
 
@@ -1515,7 +1526,9 @@ def rugosity(
     resolution: float | tuple[float, float] | None = None
 ) -> np.ndarray | Raster:
     """
-    Calculates the roughness.
+    Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
+    output is unitless.
+
     Based on: Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
 
     :param dem: The DEM to calculate the rugosity from.
@@ -1535,7 +1548,7 @@ def rugosity(
         >>> np.round(rugosity(dem, resolution=1.)[1, 1], 5)
         1.0
 
-    :returns: The rugosity array of the DEM.
+    :returns: The rugosity array of the DEM (unitless).
     """
     return get_terrain_attribute(dem=dem, attribute="rugosity", resolution=resolution)
 
@@ -1559,11 +1572,13 @@ def fractal_roughness(
     window_size: int = 13
 ) -> np.ndarray | Raster:
     """
-    Calculates the fractal roughness.
+    Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
+    equal to 5x5, defaults to 13x13. Output unit is a fractal dimension between 1 and 3.
+
     Based on: Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     :param dem: The DEM to calculate the roughness from.
-    :param window_size: The size of the window for deriving the terrain index
+    :param window_size: The size of the window for deriving the metric.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1581,6 +1596,6 @@ def fractal_roughness(
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of cube is 3
         3.0
 
-    :returns: The fractal roughness array of the DEM.
+    :returns: The fractal roughness array of the DEM in fractal dimension (between 1 and 3).
     """
     return get_terrain_attribute(dem=dem, attribute="fractal_roughness", window_size=window_size)
