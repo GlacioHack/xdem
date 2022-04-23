@@ -1,7 +1,7 @@
 .. _intro:
 
-Introduction: why is it complex to assess DEM accuracy and precision?
-=====================================================================
+Analysis of accuracy and precision
+==================================
 
 Digital Elevation Models are numerical, gridded representations of elevation. They are generated from different
 instruments (e.g., optical sensors, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite)

@@ -9,34 +9,47 @@ Welcome to xdem's documentation!
 Coregistration, subtraction (and volume measurements), and error statistics should be available to anyone with the correct input data.
 
 
-Simple usage
-==================
+.. toctree::
+   :maxdepth: 2
+   :caption: Getting started
 
-.. code-block:: python
+   what_is_xdem
+   install_xdem
+   first_steps
 
-        import xdem
+.. toctree::
+   :maxdepth: 2
+   :caption: Background
 
-        dem1 = xdem.DEM("path/to/first_dem.tif")
-        dem2 = xdem.DEM("path/to/second_dem.tif")
-
-        difference = dem1 - dem2
-
+   intro_dems
+   intro_robuststats
+   intro_accuracy_precision
 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Features
 
-   intro
+   vertical_ref
+   terrain
    coregistration
    biascorr
    filters
    comparison
    spatialstats
-   robuststats
-   terrain
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Gallery of examples
+
    auto_examples/index.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: References
+
    api.rst
+
 
 Indices and tables
 ==================

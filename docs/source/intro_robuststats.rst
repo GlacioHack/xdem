@@ -1,7 +1,7 @@
 .. _robuststats:
 
-Robust statistics
-==================
+The need for robust statistics
+==============================
 
 Digital Elevation Models often contain outliers that hamper further analysis.
 In order to mitigate their effect on DEM analysis, ``xdem`` integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
