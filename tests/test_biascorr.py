@@ -11,7 +11,7 @@ import pytest
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import biascorr, coreg, examples, spatial_tools, spatialstats, misc
+    from xdem import biascorr, coreg, examples, spatialstats, misc
     import xdem
 
 
