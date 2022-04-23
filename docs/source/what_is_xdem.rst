@@ -1,6 +1,6 @@
 .. _what_is_xdem:
 
-What is xdem?
+What is xDEM?
 =============
 
 In construction
