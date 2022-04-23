@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from xdem.spatial_tools import subsample_raster, get_array_and_mask
+from geoutils.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
 
 with warnings.catch_warnings():
@@ -32,9 +32,12 @@ with warnings.catch_warnings():
 def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     """
     Calculate the normalized median absolute deviation (NMAD) of an array.
+    Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
+    distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
+    e.g. http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
 
     :param data: input data
-    :param nfact: normalization factor for the data; default is 1.4826
+    :param nfact: normalization factor for the data
 
     :returns nmad: (normalized) median absolute deviation of data.
     """
@@ -65,7 +68,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     :examples
     # Using a dataframe created from scratch
-    >>> df = pd.DataFrame({"var1": [1, 1, 1, 2, 2, 2, 3, 3, 3], "var2": [1, 2, 3, 1, 2, 3, 1, 2, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+    >>> df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3], "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
 
     # In 2 dimensions, the statistic array looks like this
     # array([
@@ -111,7 +114,8 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
-        if isinstance(df_sub[var].values[0],pd.Interval):
+        check_any_interval = [isinstance(x, pd.Interval) for x in df_sub[var].values]
+        if any(check_any_interval):
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
         # otherwise, leave as is
 
@@ -148,11 +152,11 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     # coordinates of valid values
     points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
     # grid coordinates
-    bmid_grid = np.meshgrid(*list_bmid)
+    bmid_grid = np.meshgrid(*list_bmid, indexing='ij')
     points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
     # fill grid no data with nearest neighbour
     values_grid = griddata(points_valid, values, points_grid, method='nearest')
-    values_grid = values_grid.reshape(tuple(shape))
+    values_grid = values_grid.reshape(shape)
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
@@ -596,7 +600,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     """
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
-        coords = values.coords()
+        gsd = values.res[0]
         values, mask = get_array_and_mask(values.data)
     elif isinstance(values, (np.ndarray, np.ma.masked_array)):
         values, mask = get_array_and_mask(values)
@@ -745,12 +749,16 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
 
     return df
 
-def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataFrame) -> tuple[Callable, list[float]]:
+def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataFrame,
+                            bounds: list[tuple[float, float]] = None,
+                            p0: list[float] = None) -> tuple[Callable, list[float]]:
     """
     Fit a multi-range variogram model to an empirical variogram, weighted least-squares based on sampling errors
 
-    :param list_model: list of variogram models to sum for the fit: from short-range to long-ranges
+    :param list_model: list of K variogram models to sum for the fit: from short-range to long-ranges
     :param empirical_variogram: empirical variogram
+    :param bounds: bounds of ranges and sills for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper)
+    :param p0: initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess)
 
     :return: modelled variogram function, coefficients
     """
@@ -778,29 +786,31 @@ def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataF
     max_var = np.max(exp_movaverage)
 
     # Simplify things for scipy: let's provide boundaries and first guesses
-    p0 = []
-    bounds = []
-    for i in range(len(list_model)):
+    if bounds is None:
+        bounds = []
+        for i in range(len(list_model)):
 
-        # Use largest boundaries possible for our problem
-        psill_bound = [0, max_var]
-        range_bound = [0, empirical_variogram.bins.values[-1]]
+            # Use largest boundaries possible for our problem
+            psill_bound = [0, max_var]
+            range_bound = [0, empirical_variogram.bins.values[-1]]
 
-        # Use psill evenly distributed
-        psill_p0 = ((i+1)/len(list_model))*max_var
+            # Add bounds and guesses with same order as function arguments
+            bounds.append(range_bound)
+            bounds.append(psill_bound)
+    if p0 is None:
+        p0 = []
+        for i in range(len(list_model)):
+            # Use psill evenly distributed
+            psill_p0 = ((i+1)/len(list_model))*max_var
 
-        # Use corresponding ranges
-        # !! This fails when no empirical value crosses this (too wide binning/nugget)
-        # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
-        # range_p0 = empirical_variogram.bins.values[ind]
-        range_p0 = ((i+1)/len(list_model)) * empirical_variogram.bins.values[-1]
+            # Use corresponding ranges
+            # !! This fails when no empirical value crosses this (too wide binning/nugget)
+            # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
+            # range_p0 = empirical_variogram.bins.values[ind]
+            range_p0 = ((i+1)/len(list_model)) * empirical_variogram.bins.values[-1]
 
-        # Add bounds and guesses with same order as function arguments
-        bounds.append(range_bound)
-        bounds.append(psill_bound)
-
-        p0.append(range_p0)
-        p0.append(psill_p0)
+            p0.append(range_p0)
+            p0.append(psill_p0)
 
     bounds = np.transpose(np.array(bounds))
 
@@ -1216,9 +1226,6 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
             i = list_cadrant[idx_cadrant][0]
             j = list_cadrant[idx_cadrant][1]
 
-            if not np.isfinite(values[i, j]):
-                continue
-
             if patch_shape == 'rectangular':
                 patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
             elif patch_shape == 'circular':
@@ -1231,7 +1238,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
 
             nb_pixel_total = len(patch)
             nb_pixel_valid = len(patch[np.isfinite(patch)])
-            if nb_pixel_valid > np.ceil(perc_min_valid / 100. * nb_pixel_total):
+            if nb_pixel_valid >= np.ceil(perc_min_valid / 100. * nb_pixel_total):
                 u=u+1
                 if u > n_patches:
                     break
@@ -1269,7 +1276,8 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
 
 def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],float]]] = None,
              list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None,
-             xscale='linear', xscale_range_split: Optional[list] = None):
+             xscale='linear', xscale_range_split: Optional[list] = None,
+             xlabel = None, ylabel = None, xlim = None, ylim = None):
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_empirical_variogram.
@@ -1281,6 +1289,10 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     :param ax: plotting ax to use, creates a new one by default
     :param xscale: scale of x axis
     :param xscale_range_split: list of ranges at which to split the figure
+    :param xlabel: label of x axis
+    :param ylabel: label of y axis
+    :param xlim: limits of x axis
+    :param ylim: limits of y axis
     :return:
     """
 
@@ -1292,6 +1304,11 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         fig = ax.figure
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+
+    if ylabel is None:
+        ylabel = r'Variance [$\mu$ $\pm \sigma$]'
+    if xlabel is None:
+        xlabel = 'Spatial lag (m)'
 
     init_gridsize = [10, 10]
     # Create parameters to split x axis into different linear scales
@@ -1373,7 +1390,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         # If a list of functions is passed, plot the modelled variograms
         if list_fit_fun is not None:
             for i, fit_fun in enumerate(list_fit_fun):
-                x = np.linspace(0, np.max(df.bins), 10000)
+                x = np.linspace(xmin[k], xmax[k], 1000)
                 y = fit_fun(x)
 
                 if list_fit_fun_label is not None:
@@ -1390,13 +1407,22 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         elif nb_subpanels>1:
             ax.xaxis.set_ticks(np.linspace(xmin[k],xmax[k],3)[:-1])
 
-        ax.set_xlim((xmin[k], xmax[k]))
+        if xlim is None:
+            ax.set_xlim((xmin[k], xmax[k]))
+        else:
+            ax.set_xlim(xlim)
+
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        else:
+            ax.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
 
         if k == int(nb_subpanels/2):
-            ax.set_xlabel('Lag (m)')
+            ax.set_xlabel(xlabel)
+        if k == nb_subpanels - 1:
             ax.legend(loc='best')
         if k == 0:
-            ax.set_ylabel(r'Variance [$\mu$ $\pm \sigma$]')
+            ax.set_ylabel(ylabel)
         else:
             ax.set_yticks([])
 

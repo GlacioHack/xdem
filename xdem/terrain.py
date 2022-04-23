@@ -7,14 +7,14 @@ from typing import Sized, overload
 import numba
 import numpy as np
 
-import xdem.spatial_tools
+from geoutils import spatial_tools
 import geoutils as gu
 from geoutils.georaster import RasterType, Raster
 
 
 @numba.njit(parallel=True)
 def _get_quadric_coefficients(
-    dem: np.ndarray, resolution: float, fill_method: str = "median", edge_method: str = "nearest"
+    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none"
 ) -> np.ndarray:
     """
     Run the pixel-wise analysis in parallel.
@@ -67,6 +67,9 @@ def _get_quadric_coefficients(
                 elif edge_method_n == 1:
                     row_indexer = (row + k) % dem.shape[0]
                     col_indexer = (col + j) % dem.shape[1]
+                else:
+                    row_indexer = row + k
+                    col_indexer = col + j
                 Z[count] = dem[row_indexer, col_indexer]
                 count += 1
 
@@ -107,7 +110,7 @@ def _get_quadric_coefficients(
 
 
 def get_quadric_coefficients(
-    dem: np.ndarray, resolution: float, fill_method: str = "median", edge_method: str = "nearest"
+    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none"
 ) -> np.ndarray:
     """
     Return the 9 coefficients of a quadric surface fit to every pixel in the raster.
@@ -160,7 +163,7 @@ def get_quadric_coefficients(
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = spatial_tools.get_array_and_mask(dem)[0]
 
     if len(dem_arr.shape) != 2:
         raise ValueError(
@@ -330,7 +333,7 @@ def get_terrain_attribute(
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
-    dem_arr = xdem.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = spatial_tools.get_array_and_mask(dem)[0]
 
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
     terrain_attributes: dict[str, np.ndarray] = {}
@@ -364,8 +367,7 @@ def get_terrain_attribute(
         )
 
     if make_slope:
-        # This calculation is based on (p18, left side): https://ieeexplore.ieee.org/document/1456186
-        # SLOPE = -(G²+H²)**(1/2)
+        # SLOPE = ARCTAN((G²+H²)**(1/2))
         terrain_attributes["slope"] = np.arctan(
             (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2) ** 0.5
         )
@@ -483,6 +485,17 @@ def slope(
     :param resolution: The X/Y or (X, Y) resolution of the DEM.
     :param degrees: Return a slope map in degrees (False means radians)
 
+    :examples:
+        >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
+        >>> dem
+        array([[0, 0, 0],
+               [1, 1, 1],
+               [2, 2, 2]])
+        >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
+        45.0
+        >>> np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.) # Slope in percentage
+        0.5
+
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
     return get_terrain_attribute(dem, attribute="slope", resolution=resolution, degrees=degrees)
@@ -514,18 +527,14 @@ def aspect(dem: np.ndarray | np.ma.masked_array | RasterType, degrees: bool = Tr
         array([[0, 0, 0],
                [1, 1, 1],
                [2, 2, 2]])
-        >>> aspect(dem, degrees=True)
-        array([[0., 0., 0.],
-               [0., 0., 0.],
-               [0., 0., 0.]])
+        >>> aspect(dem, degrees=True)[1, 1]
+        0.0
         >>> dem.T
         array([[0, 1, 2],
                [0, 1, 2],
                [0, 1, 2]])
-        >>> aspect(dem.T, degrees=True)
-        array([[270., 270., 270.],
-               [270., 270., 270.],
-               [270., 270., 270.]])
+        >>> aspect(dem.T, degrees=True)[1, 1]
+        270.0
 
     """
     return get_terrain_attribute(dem, attribute="aspect", resolution=1.0, degrees=degrees)
@@ -614,10 +623,8 @@ def curvature(
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
-        >>> curvature(dem, resolution=1.0)
-        array([[  -0., -100.,   -0.],
-               [-100.,  400., -100.],
-               [  -0., -100.,   -0.]])
+        >>> curvature(dem, resolution=1.0)[1, 1]
+        400.0
 
     :returns: The curvature array of the DEM.
     """

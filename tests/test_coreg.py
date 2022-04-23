@@ -17,7 +17,7 @@ import pytransform3d.transformations
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import coreg, examples, spatial_tools, spatialstats, misc
+    from xdem import coreg, examples, spatialstats, misc
     import xdem
 
 
@@ -206,12 +206,13 @@ class TestCoregClass:
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
         # Measure the difference (should be more or less zero)
-        diff = np.asarray(self.ref.data.squeeze() - unshifted_dem)
+        diff = self.ref.data.squeeze() - unshifted_dem
+        diff = diff.compressed()  # turn into a 1D array with only unmasked values
 
         # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 0.01
+        assert np.abs(np.median(diff)) < 0.01
         # Check that the RMSE is low
-        assert np.sqrt(np.nanmean(np.square(diff))) < 1
+        assert np.sqrt(np.mean(np.square(diff))) < 1
 
         # Transform some arbitrary points.
         transformed_points = nuth_kaab.apply_pts(self.points)
@@ -483,7 +484,6 @@ class TestCoregClass:
         assert np.all(np.isfinite(stats["nmad"]))
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
-
 
     def test_blockwise_coreg_large_gaps(self):
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
