@@ -155,13 +155,13 @@ xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)'
 #
 # If we use custom quantiles for both binning variables, and adjust the plot scale:
 
-custom_bin_slope = np.unique(np.concatenate([np.quantile(slope_arr,np.linspace(0,0.95,20)),
-                                             np.quantile(slope_arr,np.linspace(0.96,0.99,5)),
-                                             np.quantile(slope_arr,np.linspace(0.991,1,10))]))
+custom_bin_slope = np.unique(np.concatenate([np.nanquantile(slope_arr,np.linspace(0,0.95,20)),
+                                             np.nanquantile(slope_arr,np.linspace(0.96,0.99,5)),
+                                             np.nanquantile(slope_arr,np.linspace(0.991,1,10))]))
 
-custom_bin_curvature = np.unique(np.concatenate([np.quantile(maxc_arr,np.linspace(0,0.95,20)),
-                                             np.quantile(maxc_arr,np.linspace(0.96,0.99,5)),
-                                             np.quantile(maxc_arr,np.linspace(0.991,1,10))]))
+custom_bin_curvature = np.unique(np.concatenate([np.nanquantile(maxc_arr,np.linspace(0,0.95,20)),
+                                             np.nanquantile(maxc_arr,np.linspace(0.96,0.99,5)),
+                                             np.nanquantile(maxc_arr,np.linspace(0.991,1,10))]))
 
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr], list_var_names=['slope', 'maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
