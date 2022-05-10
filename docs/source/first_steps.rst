@@ -23,4 +23,13 @@ Load DEM data and calculate elevation difference
 
 A simple example on how to load raster data and run simple arithmetic operations such as subtraction, plotting the data and saving to file can be found in the example gallery:
 
-.. minigallery:: plot_dem_subtraction
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="DEM subtraction">
+
+.. only:: html
+
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_dem_subtraction_thumb.png
+     :alt: DEM subtraction
+
+     :ref:`sphx_glr_auto_examples_plot_dem_subtraction.py`
