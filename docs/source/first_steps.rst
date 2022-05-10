@@ -1,19 +1,26 @@
 .. _first_steps:
 
-First steps
+Quick start
 ===========
 
-In construction
+Sample data
+-----------
 
-
-Simple usage
-------------
+*xdem* comes with some sample data that are used throughout this documentation to demonstrate the features. If not done already, the sample data can be downloaded with the command
 
 .. code-block:: python
 
-        import xdem
+        xdem.examples.download_longyearbyen_examples(overwrite=False)
+        
+The dataset ids and paths can be found from 
 
-        dem1 = xdem.DEM("path/to/first_dem.tif")
-        dem2 = xdem.DEM("path/to/second_dem.tif")
+.. code-block:: python
 
-        difference = dem1 - dem2
+        xdem.examples.FILEPATHS_DATA
+
+Load DEM data and calculate elevation difference
+------------------------------------------------
+
+A simple example on how to load raster data and run simple arithmetic operations such as subtraction, plotting the data and saving to file can be found in the example gallery:
+
+.. minigallery:: plot_dem_subtraction
