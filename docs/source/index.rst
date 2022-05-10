@@ -3,11 +3,9 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to xdem's documentation!
+xDEM: Analysis of Digital Elevation Models for geosciences
 ================================
-``xdem`` aims to make Digital Elevation Model (DEM) analysis easy.
-Coregistration, subtraction (and volume measurements), and error statistics should be available to anyone with the correct input data.
-
+*xdem* aims at simplifying the analysis of Digital Elevation Models (DEM). This module provides typical post-processing steps such as coregistration, elevation/volume change measurements and error statistics.
 
 .. toctree::
    :maxdepth: 2
@@ -46,7 +44,7 @@ Coregistration, subtraction (and volume measurements), and error statistics shou
 
 .. toctree::
    :maxdepth: 2
-   :caption: References
+   :caption: API Reference
 
    api.rst
 
