@@ -6,30 +6,39 @@ Quick start
 Sample data
 -----------
 
-*xdem* comes with some sample data that are used throughout this documentation to demonstrate the features. If not done already, the sample data can be downloaded with the command
+*xdem* comes with some sample data that is used throughout this documentation to demonstrate the features. If not done already, the sample data can be downloaded with the command
 
 .. code-block:: python
 
         xdem.examples.download_longyearbyen_examples(overwrite=False)
         
-The dataset ids and paths can be found from 
+The dataset keys and paths can be found from 
 
 .. code-block:: python
 
         xdem.examples.FILEPATHS_DATA
 
-Load DEM data and calculate elevation difference
+Load DEMs and calculate elevation difference
 ------------------------------------------------
 
-A simple example on how to load raster data and run simple arithmetic operations such as subtraction, plotting the data and saving to file can be found in the example gallery:
+.. code-block:: python
 
-.. raw:: html
+  import xdem
+  dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+  dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem_coreg"))
+  ddem = dem_2009 - dem_1990
+  ddem.show(cmap='coolwarm_r', vmin=-20, vmax=20, cb_title="Elevation change (m)")
 
-    <div class="sphx-glr-thumbcontainer" tooltip="DEM subtraction">
+A detailed example on how to load raster data, reproject it, run simple arithmetic operations such as subtraction, plotting the data and saving to file can be found in the example gallery :ref:`sphx_glr_auto_examples_plot_dem_subtraction.py`.
 
-.. only:: html
+..
+   .. raw:: html
 
- .. figure:: /auto_examples/images/thumb/sphx_glr_plot_dem_subtraction_thumb.png
-     :alt: DEM subtraction
+       <div class="sphx-glr-thumbcontainer" tooltip="DEM subtraction">
 
-     :ref:`sphx_glr_auto_examples_plot_dem_subtraction.py`
+   .. only:: html
+
+    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_dem_subtraction_thumb.png
+	:alt: DEM subtraction
+
+	:ref:`sphx_glr_auto_examples_plot_dem_subtraction.py`
