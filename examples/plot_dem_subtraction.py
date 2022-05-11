@@ -9,7 +9,6 @@ Before DEMs can be compared, they need to be reprojected/resampled/cropped to fi
 The :func:`xdem.DEM.reproject` method takes care of this.
 
 """
-import matplotlib.pyplot as plt
 import xdem
 
 
@@ -50,11 +49,15 @@ print(ddem)
 # It is a new :class:`xdem.DEM` instance, loaded in memory.
 # Let's visualize it:
 
-plt.figure(figsize=(8, 5))
-plt.imshow(ddem.data.squeeze(), cmap="coolwarm_r", vmin=-20, vmax=20)
+ddem.show(cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
 
-plt.show()
+# %%
+# For missing values, ``xdem`` provides a number of interpolation methods which are shown in the other examples.
+
+# %%
+# Saving the output to a file is also very simple
+
+ddem.save("temp.tif")
 
 # %%
 # ... and that's it!
-# For missing values, ``xdem`` provides a number of interpolation methods which are shown in the other examples.
