@@ -13,7 +13,7 @@ xDEM: Analysis of Digital Elevation Models for geosciences
 
    what_is_xdem
    install_xdem
-   first_steps
+   quick_start
 
 .. toctree::
    :maxdepth: 2

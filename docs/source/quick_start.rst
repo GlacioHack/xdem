@@ -1,4 +1,4 @@
-.. _first_steps:
+.. _quick_start:
 
 Quick start
 ===========
