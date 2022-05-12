@@ -15,6 +15,8 @@ import fiona
 import geoutils as gu
 from geoutils.georaster import RasterType
 from geoutils import spatial_tools
+from geoutils._typing import AnyNumber
+import matplotlib.pyplot as plt
 import numpy as np
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
@@ -1979,3 +1981,120 @@ def warp_dem(
     assert not np.all(np.isnan(warped)), "All-NaN output."
 
     return warped.reshape(dem.shape)
+
+
+def dem_coregistration(
+    src_dem_path: str,
+    ref_dem_path: str,
+    shpfile: str,
+    out_dem_path: str,
+    coreg_method: Coreg | None = NuthKaab() + BiasCorr(bias_func=np.nanmedian),
+    grid: str = "ref",
+    filtering: bool = True,
+    slope_lim: list(AnyNumber) = (0.1, 40),
+    plot: bool = False,
+    out_fig: str = None,
+    verbose: bool = False,
+):
+    """
+    Coregister a selected DEM to a reference DEM.
+    Reads both DEMs, reproject DEM onto ref DEM grid, mask content of shpfile, run the coregistration and save the coregistered DEM as well as some optional figures and returns some statistics.
+
+    :param src_dem_path: path to the input DEM to be coregistered
+    :param ref_dem: path to the reference DEM
+    :param shpfile: path to a vector file containing areas to be masked for coregistration
+    :param out_dem_path: Path where to save the coregistered DEM
+    :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to ref grid and optionally filtered, but not coregistered.
+    :param grid: the grid to be used during coregistration, set either to "ref" or "src".
+    :param filtering: if set to True, filtering will be applied prior to coregistration
+    :param plot: Set to True to plot a figure of elevation diff before/after coregistration
+    :param out_fig: Path to the output figure. If None will display to screen.
+    :param verbose: set to True to print details on screen during coregistration.
+
+    :returns: a tuple containing - basename of coregistered DEM, [count of obs, median and NMAD over stable terrain, coverage over roi] before coreg, [same stats] after coreg
+    """
+    # Load both DEMs
+    ref_dem = xdem.DEM(ref_dem_path)
+    src_dem = xdem.DEM(src_dem_path)
+
+    # Reproject to common grid
+    if grid == "ref":
+        src_dem = src_dem.reproject(ref_dem, resampling='bilinear', silent=True)
+    elif grid == "src":
+        ref_dem = ref_dem.reproject(src_dem, resampling='bilinear', silent=True)
+    else:
+        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+
+    # Create raster mask
+    outlines = gu.Vector(shpfile)
+    stable_mask = ~outlines.create_mask(src_dem)
+
+    # Calculate dDEM
+    ddem = src_dem - ref_dem
+
+    # Filter gross outliers in stable terrain
+    if filtering:
+        # TO DO implement the NMAD filter in xdem
+        inlier_mask = stable_mask  # nmad_filter(ddem.data, stable_mask, verbose=False)
+
+        # Exclude steep slopes for coreg
+        slope = xdem.terrain.slope(ref_dem)
+        inlier_mask[slope.data < slope_lim[0]] = False
+        inlier_mask[slope.data > slope_lim[1]] = False
+
+    else:
+        inlier_mask = stable_mask
+
+    # Calculate dDEM statistics on pixels used for coreg
+    inlier_data = ddem.data[inlier_mask].compressed()
+    nstable_orig, med_orig, nmad_orig = len(inlier_data), np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
+
+    # Coregister to reference - Note: this will spread NaN
+    # Better strategy: calculate shift, update transform, resample
+    if isinstance(coreg_method, xdem.coreg.Coreg):
+        coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
+        dem_coreg = coreg_method.apply(src_dem, dilate_mask=False)
+    elif coreg_method is None:
+        dem_coreg = src_dem
+    ddem_coreg = dem_coreg - ref_dem
+
+    # Calculate new stats
+    inlier_data = ddem_coreg.data[inlier_mask].compressed()
+    nstable_coreg, med_coreg, nmad_coreg = len(inlier_data), np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
+
+    # Plot results
+    if plot:
+        # Max colorbar value - 98th percentile rounded to nearest 5
+        vmax = np.percentile(np.abs(ddem.data.compressed()), 98) // 5 * 5
+
+        plt.figure(figsize=(11, 5))
+
+        ax1 = plt.subplot(121)
+        plt.imshow(ddem.data.squeeze(), cmap="coolwarm_r", vmin=-vmax, vmax=vmax)
+        cb = plt.colorbar()
+        cb.set_label("Elevation change (m)")
+        ax1.set_title(f"Before coreg\n\nmed = {med_orig:.2f} m - NMAD = {nmad_orig:.2f} m")
+
+        ax2 = plt.subplot(122, sharex=ax1, sharey=ax1)
+        plt.imshow(ddem_coreg.data.squeeze(), cmap="coolwarm_r", vmin=-vmax, vmax=vmax)
+        cb = plt.colorbar()
+        cb.set_label("Elevation change (m)")
+        ax2.set_title(f"After coreg\n\nmed = {med_coreg:.2f} m - NMAD = {nmad_coreg:.2f} m")
+
+        plt.tight_layout()
+        if out_fig is None:
+            plt.show()
+        else:
+            plt.savefig(out_fig, dpi=200)
+            plt.close()
+
+    # Save coregistered DEM
+    dem_coreg.save(out_dem_path, tiled=True)
+
+    # Save stats to DataFrame
+    out_stats = pd.DataFrame(
+        ((nstable_orig, med_orig, nmad_orig, nstable_coreg, med_coreg, nmad_coreg),),
+        columns=("nstable_orig", "med_orig", "nmad_orig", "nstable_coreg", "med_coreg", "nmad_coreg")
+    )
+
+    return dem_coreg, out_stats
