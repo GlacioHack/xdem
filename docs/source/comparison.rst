@@ -26,7 +26,7 @@ So far, ``xdem`` has three types of interpolation:
 Let's first create a :class:`xdem.ddem.dDEM` object to experiment on:
 
 .. literalinclude:: code/comparison.py
-        :lines: 51-60
+        :lines: 51-61
 
 
 Linear spatial interpolation
@@ -35,7 +35,7 @@ Linear spatial interpolation (also often called bilinear interpolation) of dDEMs
 
 
 .. literalinclude:: code/comparison.py
-        :lines: 64
+        :lines: 65
 
 .. plot:: code/comparison_plot_spatial_interpolation.py
         
@@ -51,7 +51,7 @@ Then, voids are interpolated by replacing them with what "should be there" at th
 
 
 .. literalinclude:: code/comparison.py
-        :lines: 68
+        :lines: 69
 
 .. plot:: code/comparison_plot_local_hypsometric_interpolation.py
         
@@ -67,7 +67,7 @@ This is advantageous in respect to areas where voids are frequent, as not even a
 Of course, the accuracy of such an averaging is much lower than if the local hypsometric approach is used (assuming it is possible).
 
 .. literalinclude:: code/comparison.py
-        :lines: 72
+        :lines: 73
 
 .. plot:: code/comparison_plot_regional_hypsometric_interpolation.py
         
