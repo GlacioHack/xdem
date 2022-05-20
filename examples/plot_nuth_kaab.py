@@ -32,12 +32,8 @@ plt_extent = [
 # The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to avoid.
 # These can be visualized by plotting a change map:
 
-diff_before = (reference_dem - dem_to_be_aligned).data
-
-plt.figure(figsize=(8, 5))
-plt.imshow(diff_before.squeeze(), cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
-plt.colorbar()
-plt.show()
+diff_before = reference_dem - dem_to_be_aligned
+diff_before.show(cmap="coolwarm_r", vmin=-10, vmax=10)
 
 
 # %%
@@ -46,19 +42,16 @@ plt.show()
 
 nuth_kaab = xdem.coreg.NuthKaab()
 
-nuth_kaab.fit(reference_dem.data, dem_to_be_aligned.data, inlier_mask, transform=reference_dem.transform)
+nuth_kaab.fit(reference_dem, dem_to_be_aligned, inlier_mask)
 
-aligned_dem_data = nuth_kaab.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform)
+aligned_dem = nuth_kaab.apply(dem_to_be_aligned)
 
 # %%
 # Then, the new difference can be plotted to validate that it improved.
 
-diff_after = reference_dem.data - aligned_dem_data
+diff_after = reference_dem - aligned_dem
+diff_after.show(cmap="coolwarm_r", vmin=-10, vmax=10)
 
-plt.figure(figsize=(8, 5))
-plt.imshow(diff_after.squeeze(), cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
-plt.colorbar()
-plt.show()
 
 # %%
 # We compare the NMAD to validate numerically that there was an improvement (see :ref:`robuststats_meanstd`):
