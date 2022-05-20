@@ -1983,12 +1983,27 @@ def warp_dem(
     return warped.reshape(dem.shape)
 
 
+hmodes_dict = {
+    "nuth_kaab": NuthKaab(),
+    "nuth_kaab_block": BlockwiseCoreg(coreg=NuthKaab(), subdivision=16),
+    "icp": ICP(),
+}
+
+vmodes_dict = {
+    "median": BiasCorr(bias_func=np.median),
+    "mean": BiasCorr(bias_func=np.mean),
+    "deramp": Deramp(),
+}
+
 def dem_coregistration(
     src_dem_path: str,
     ref_dem_path: str,
-    shpfile: str,
     out_dem_path: str,
-    coreg_method: Coreg | None = NuthKaab() + BiasCorr(bias_func=np.nanmedian),
+    shpfile: str | None,
+    coreg_method: Coreg | None = None,
+    hmode: str = "nuth_kaab",
+    vmode: str = "median",
+    deramp_degree: int = 1,
     grid: str = "ref",
     filtering: bool = True,
     slope_lim: list(AnyNumber) = (0.1, 40),
@@ -2002,9 +2017,12 @@ def dem_coregistration(
 
     :param src_dem_path: path to the input DEM to be coregistered
     :param ref_dem: path to the reference DEM
-    :param shpfile: path to a vector file containing areas to be masked for coregistration
     :param out_dem_path: Path where to save the coregistered DEM
+    :param shpfile: path to a vector file containing areas to be masked for coregistration
     :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to ref grid and optionally filtered, but not coregistered.
+    :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any of {list(vmodes_dict.keys())}.
+    :param vmode: The method to be used for vertically aligning the DEMs, e.g. mean/median bias correction or deramping. Can be any of {list(hmodes_dict.keys())}.
+    :param deramp_degree: The degree of the polynomial for deramping.
     :param grid: the grid to be used during coregistration, set either to "ref" or "src".
     :param filtering: if set to True, filtering will be applied prior to coregistration
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration
@@ -2013,7 +2031,19 @@ def dem_coregistration(
 
     :returns: a tuple containing - basename of coregistered DEM, [count of obs, median and NMAD over stable terrain, coverage over roi] before coreg, [same stats] after coreg
     """
+    # Check input arguments
+    if (coreg_method is not None) and ((hmode is not None) or (vmode is not None)):
+        warnings.warn("Both `coreg_method` and `hmode/vmode` are set. Using coreg_method.")
+
+    if hmode not in list(hmodes_dict.keys()):
+        raise ValueError(f"vhmode must be in {list(hmodes_dict.keys())}")
+
+    if vmode not in list(vmodes_dict.keys()):
+        raise ValueError(f"vmode must be in {list(vmodes_dict.keys())}")
+
     # Load both DEMs
+    if verbose:
+        print("Loading and reprojecting input data")
     ref_dem = xdem.DEM(ref_dem_path)
     src_dem = xdem.DEM(src_dem_path)
 
@@ -2026,8 +2056,11 @@ def dem_coregistration(
         raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
 
     # Create raster mask
-    outlines = gu.Vector(shpfile)
-    stable_mask = ~outlines.create_mask(src_dem)
+    if shpfile is not None:
+        outlines = gu.Vector(shpfile)
+        stable_mask = ~outlines.create_mask(src_dem)
+    else:
+        stable_mask = np.ones(src_dem.data.shape, dtype="bool")
 
     # Calculate dDEM
     ddem = src_dem - ref_dem
@@ -2047,7 +2080,8 @@ def dem_coregistration(
 
     # Calculate dDEM statistics on pixels used for coreg
     inlier_data = ddem.data[inlier_mask].compressed()
-    nstable_orig, med_orig, nmad_orig = len(inlier_data), np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
+    nstable_orig, mean_orig = len(inlier_data), np.mean(inlier_data)
+    med_orig, nmad_orig = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
     # Better strategy: calculate shift, update transform, resample
@@ -2055,12 +2089,24 @@ def dem_coregistration(
         coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
         dem_coreg = coreg_method.apply(src_dem, dilate_mask=False)
     elif coreg_method is None:
-        dem_coreg = src_dem
+        # Horizontal coregistration
+        hcoreg_method = hmodes_dict[hmode]
+        hcoreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
+        dem_hcoreg = hcoreg_method.apply(src_dem, dilate_mask=False)
+
+        # Vertical coregistration
+        vcoreg_method = vmodes_dict[vmode]
+        if vmode == 'deramp':
+            vcoreg_method.degree = deramp_degree
+        vcoreg_method.fit(ref_dem, dem_hcoreg, inlier_mask, verbose=verbose)
+        dem_coreg = vcoreg_method.apply(dem_hcoreg, dilate_mask=False)
+
     ddem_coreg = dem_coreg - ref_dem
 
     # Calculate new stats
     inlier_data = ddem_coreg.data[inlier_mask].compressed()
-    nstable_coreg, med_coreg, nmad_coreg = len(inlier_data), np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
+    nstable_coreg, mean_coreg = len(inlier_data), np.mean(inlier_data)
+    med_coreg, nmad_coreg = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
 
     # Plot results
     if plot:
@@ -2073,13 +2119,13 @@ def dem_coregistration(
         plt.imshow(ddem.data.squeeze(), cmap="coolwarm_r", vmin=-vmax, vmax=vmax)
         cb = plt.colorbar()
         cb.set_label("Elevation change (m)")
-        ax1.set_title(f"Before coreg\n\nmed = {med_orig:.2f} m - NMAD = {nmad_orig:.2f} m")
+        ax1.set_title(f"Before coreg\n\nmean = {mean_orig:.1f} m - med = {med_orig:.1f} m - NMAD = {nmad_orig:.1f} m")
 
         ax2 = plt.subplot(122, sharex=ax1, sharey=ax1)
         plt.imshow(ddem_coreg.data.squeeze(), cmap="coolwarm_r", vmin=-vmax, vmax=vmax)
         cb = plt.colorbar()
         cb.set_label("Elevation change (m)")
-        ax2.set_title(f"After coreg\n\nmed = {med_coreg:.2f} m - NMAD = {nmad_coreg:.2f} m")
+        ax2.set_title(f"After coreg\n\n\nmean = {mean_coreg:.1f} m - med = {med_coreg:.1f} m - NMAD = {nmad_coreg:.1f} m")
 
         plt.tight_layout()
         if out_fig is None:
