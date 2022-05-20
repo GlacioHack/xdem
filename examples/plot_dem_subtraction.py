@@ -9,8 +9,9 @@ Before DEMs can be compared, they need to be reprojected/resampled/cropped to fi
 The :func:`xdem.DEM.reproject` method takes care of this.
 
 """
+import geoutils as gu
+import matplotlib.pyplot as plt
 import xdem
-
 
 # %%
 
@@ -49,6 +50,22 @@ print(ddem)
 # Let's visualize it:
 
 ddem.show(cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
+
+# %%
+# Let's add some glacier outlines
+
+# Load the outlines
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+
+# Need to create a common matplotlib Axes to plot both on the same figure
+# The xlim/ylim commands are necessary only because outlines extend further than the raster extent
+ax = plt.subplot(111)
+ddem.show(ax=ax, cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
+glacier_outlines.ds.plot(ax=ax, fc='none', ec='k')
+plt.xlim(ddem.bounds.left, ddem.bounds.right)
+plt.ylim(ddem.bounds.bottom, ddem.bounds.top)
+plt.title("With glacier outlines")
+plt.show()
 
 # %%
 # For missing values, ``xdem`` provides a number of interpolation methods which are shown in the other examples.
