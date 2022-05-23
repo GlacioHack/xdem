@@ -24,10 +24,7 @@ dem.crop(subset_extent)
 
 # %%
 # Let's plot a hillshade of the mountain for context.
-plt_extent = [subset_extent[0], subset_extent[2], subset_extent[1], subset_extent[3]]
-
-plt.imshow(xdem.terrain.hillshade(dem.data, resolution=dem.res).squeeze(), cmap="Greys_r", extent=plt_extent)
-plt.show()
+xdem.terrain.hillshade(dem).show(cmap='gray')
 
 # %%
 # To try the effects of rotation, we can artificially rotate the DEM using a transformation matrix.
@@ -46,14 +43,13 @@ rotation_matrix = np.array(
 
 # This will apply the matrix along the center of the DEM
 rotated_dem = xdem.coreg.apply_matrix(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
-
+rotated_dem = xdem.DEM.from_array(rotated_dem, transform=dem.transform, crs=dem.crs, nodata=-9999)
 
 # %%
 # We can plot the difference between the original and rotated DEM.
 # It is now artificially tilting from east down to the west.
-diff_before = dem.data - rotated_dem
-plt.imshow(diff_before.squeeze(), cmap="coolwarm_r", vmin=-20, vmax=20, extent=plt_extent)
-
+diff_before = dem - rotated_dem
+diff_before.show(cmap="coolwarm_r", vmin=-20, vmax=20)
 plt.show()
 
 # %%
@@ -75,18 +71,17 @@ plt.figure(figsize=(6, 12))
 
 for i, (approach, name) in enumerate(approaches):
     approach.fit(
-        reference_dem=dem.data,
+        reference_dem=dem,
         dem_to_be_aligned=rotated_dem,
-        transform=dem.transform,
     )
 
-    corrected_dem_data = approach.apply(dem=rotated_dem, transform=dem.transform)
+    corrected_dem = approach.apply(dem=rotated_dem)
 
-    diff = dem.data - corrected_dem_data
+    diff = dem - corrected_dem
 
-    plt.subplot(3, 1, i + 1)
+    ax = plt.subplot(3, 1, i + 1)
     plt.title(name)
-    plt.imshow(diff.squeeze(), cmap="coolwarm_r", vmin=-20, vmax=20, extent=plt_extent)
+    diff.show(cmap="coolwarm_r", vmin=-20, vmax=20, ax=ax)
 
 plt.tight_layout()
 plt.show()
