@@ -44,11 +44,9 @@ plt_extent = [
 # The product is a mosaic of multiple DEMs, so "seams" may exist in the data.
 # These can be visualized by plotting a change map:
 
-diff_before = (reference_dem - dem_to_be_aligned).data
+diff_before = reference_dem - dem_to_be_aligned
 
-plt.figure(figsize=(8, 5))
-plt.imshow(diff_before.squeeze(), cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
-plt.colorbar()
+diff_before.show(cmap="coolwarm_r", vmin=-10, vmax=10)
 plt.show()
 
 # %%
@@ -70,9 +68,9 @@ plt.show()
 # Coregistration is performed with the ``.fit()`` method.
 # This runs in multiple threads by default, so more CPU cores are preferable here.
 
-blockwise.fit(reference_dem.data, dem_to_be_aligned.data, transform=reference_dem.transform, inlier_mask=inlier_mask)
+blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
 
-aligned_dem_data = blockwise.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform)
+aligned_dem = blockwise.apply(dem_to_be_aligned)
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
@@ -89,11 +87,9 @@ for _, row in blockwise.stats().iterrows():
 # %%
 # Then, the new difference can be plotted to validate that it improved.
 
-diff_after = reference_dem.data - aligned_dem_data
+diff_after = reference_dem - aligned_dem
 
-plt.figure(figsize=(8, 5))
-plt.imshow(diff_after.squeeze(), cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
-plt.colorbar()
+diff_after.show(cmap="coolwarm_r", vmin=-10, vmax=10)
 plt.show()
 
 # %%
