@@ -5,7 +5,7 @@ Spatial statistics
 
 Spatial statistics, also referred to as `geostatistics <https://en.wikipedia.org/wiki/Geostatistics>`_, are essential
 for the analysis of observations distributed in space.
-To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs described in recent literature,
+To analyze DEMs, xDEM integrates spatial statistics tools specific to DEMs described in recent literature,
 in particular in `Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_,
 `Dehecq et al. (2020) <https://doi.org/10.3389/feart.2020.566802>`_ and
 `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_. The implementation of these methods relies
@@ -136,7 +136,7 @@ Non-stationarity in elevation measurement errors
 
 Elevation data contains significant non-stationarities in elevation measurement errors.
 
-``xdem`` provides tools to **quantify** these non-stationarities along several explanatory variables,
+xDEM provides tools to **quantify** these non-stationarities along several explanatory variables,
 **model** those numerically to estimate an elevation measurement error, and **standardize** them for further analysis.
 
 Quantify and model non-stationarites
@@ -232,7 +232,7 @@ Spatial correlation of elevation measurement errors correspond to a dependency b
 close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
 instrument noise and deformations (mid- to long-range correlations).
 
-``xdem`` provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
+xDEM provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
 **model** correlations simultaneously at multiple ranges.
 
 Quantify spatial correlations
@@ -273,7 +273,7 @@ Random subsampling of the grid samples used is a solution, but often unsatisfact
 of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
 few at short distances and long distances).
 
-To remedy this issue, ``xdem`` provides :func:`xdem.spatialstats.sample_empirical_variogram`, an empirical variogram estimation tool
+To remedy this issue, xDEM provides :func:`xdem.spatialstats.sample_empirical_variogram`, an empirical variogram estimation tool
 that encapsulates a pairwise subsampling method described in ``skgstat.MetricSpace.RasterEquidistantMetricSpace``.
 This method compares pairwise distances between a center subset and equidistant subsets iteratively across a grid, based on
 `sparse matrices <https://en.wikipedia.org/wiki/Sparse_matrix>`_ routines computing pairwise distances of two separate

@@ -42,7 +42,7 @@ The Coreg object
 ----------------
 :class:`xdem.coreg.Coreg`
 
-Each of the coregistration approaches in ``xdem`` inherit their interface from the ``Coreg`` class.
+Each of the coregistration approaches in xDEM inherit their interface from the ``Coreg`` class.
 It is written in a style that should resemble that of ``scikit-learn`` (see their `LinearRegression <https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression>`_ class for example).
 Each coregistration approach has the methods:
 

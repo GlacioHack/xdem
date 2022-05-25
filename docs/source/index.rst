@@ -4,8 +4,8 @@
    contain the root `toctree` directive.
 
 xDEM: Analysis of digital elevation models for geosciences
-================================
-*xdem* aims at simplifying the analysis of digital elevation models (DEMs). This module provides typical post-processing steps such as coregistration, elevation/volume change measurements and error statistics.
+==========================================================
+xDEM aims at simplifying the analysis of digital elevation models (DEMs). This module provides typical post-processing steps such as coregistration, elevation/volume change measurements and error statistics.
 
 .. toctree::
    :maxdepth: 2

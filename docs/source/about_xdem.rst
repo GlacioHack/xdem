@@ -1,9 +1,9 @@
 .. _about_xdem:
 
 About xDEM
-=============
+==========
 
-*xdem* is a set of open-source Python tools to facilitate the postprocessing of DEMs, and more general with georeferenced rasters. It is designed by geoscientists for geoscientists, although currently our group has a strong focus on glaciological applications.
+xDEM is a set of open-source Python tools to facilitate the postprocessing of DEMs, and more general with georeferenced rasters. It is designed by geoscientists for geoscientists, although currently our group has a strong focus on glaciological applications.
 
 We are not software developers, but we try our best to offer tools that can be useful to a larger group, are well documented and are reliable and maintained. All develpment and maintenance is made on a voluntary basis and we welcome any new contributors. See some information on how to contribute in the dedicated page of our `GitHub repository <https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md>`_.
 

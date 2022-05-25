@@ -6,7 +6,7 @@ Quick start
 Sample data
 -----------
 
-*xdem* comes with some sample data that is used throughout this documentation to demonstrate the features. If not done already, the sample data can be downloaded with the command
+xDEM comes with some sample data that is used throughout this documentation to demonstrate the features. If not done already, the sample data can be downloaded with the command
 
 .. code-block:: python
 
