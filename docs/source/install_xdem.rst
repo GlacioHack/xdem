@@ -45,7 +45,7 @@ Installing with pip
 
 Installing for contributors
 ---------------------------
-Recommended: Use conda for depencency solving.
+Recommended: Use conda for dependency solving.
 
 .. code-block:: shell
 

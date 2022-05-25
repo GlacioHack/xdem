@@ -10,7 +10,7 @@ Sample data
 
 .. code-block:: python
 
-        xdem.examples.download_longyearbyen_examples(overwrite=False)
+        xdem.examples.download_longyearbyen_examples()
         
 The dataset keys and paths can be found from 
 
