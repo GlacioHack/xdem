@@ -1,6 +1,6 @@
-.. _install_xdem:
+.. _how_to_install:
 
-Install xDEM
+How to install
 ============
 
 Installing with conda (recommended)
