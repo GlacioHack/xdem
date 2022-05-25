@@ -49,13 +49,13 @@ maxc_arr = np.maximum(np.abs(planc_arr),np.abs(profc_arr))
 dh_arr[np.abs(dh_arr) > 4 * xdem.spatialstats.nmad(dh_arr)] = np.nan
 
 # Define bins for 2D binning
-custom_bin_slope = np.unique(np.concatenate([np.quantile(slope_arr,np.linspace(0,0.95,20)),
-                                             np.quantile(slope_arr,np.linspace(0.96,0.99,5)),
-                                             np.quantile(slope_arr,np.linspace(0.991,1,10))]))
+custom_bin_slope = np.unique(np.concatenate([np.nanquantile(slope_arr,np.linspace(0,0.95,20)),
+                                             np.nanquantile(slope_arr,np.linspace(0.96,0.99,5)),
+                                             np.nanquantile(slope_arr,np.linspace(0.991,1,10))]))
 
-custom_bin_curvature = np.unique(np.concatenate([np.quantile(maxc_arr,np.linspace(0,0.95,20)),
-                                             np.quantile(maxc_arr,np.linspace(0.96,0.99,5)),
-                                             np.quantile(maxc_arr,np.linspace(0.991,1,10))]))
+custom_bin_curvature = np.unique(np.concatenate([np.nanquantile(maxc_arr,np.linspace(0,0.95,20)),
+                                             np.nanquantile(maxc_arr,np.linspace(0.96,0.99,5)),
+                                             np.nanquantile(maxc_arr,np.linspace(0.991,1,10))]))
 
 # Perform 2D binning to estimate the measurement error with slope and maximum curvature
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr], list_var_names=['slope', 'maxc'],
