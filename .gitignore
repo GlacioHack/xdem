@@ -143,3 +143,4 @@ examples/*/data/
 auto_examples/
 gen_modules/
 examples/*/processed
+examples/temp.tif

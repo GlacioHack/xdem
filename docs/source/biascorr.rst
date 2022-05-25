@@ -8,9 +8,9 @@ Bias corrections correspond to transformations that cannot be described as a 3-d
 Directional biases
 ------------------
 
-TODO
+TODO: In construction
 
 Terrain biases
 --------------
 
-TODO
+TODO: In construction

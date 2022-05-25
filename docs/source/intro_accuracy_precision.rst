@@ -1,7 +1,7 @@
 .. _intro:
 
-Introduction: why is it complex to assess DEM accuracy and precision?
-=====================================================================
+Analysis of accuracy and precision
+==================================
 
 Digital Elevation Models are numerical, gridded representations of elevation. They are generated from different
 instruments (e.g., optical sensors, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite)
@@ -16,7 +16,7 @@ While some complexities are specific to certain instruments and methods, all DEM
 These factors lead to difficulties in assessing the accuracy and precision of DEMs, which are necessary to perform
 further analysis.
 
-In ``xdem``, we provide a framework with state-of-the-art methods published in the scientific literature to make DEM
+In xDEM, we provide a framework with state-of-the-art methods published in the scientific literature to make DEM
 calculations consistent, reproducible, and easy.
 
 Accuracy and precision
@@ -87,7 +87,7 @@ ps://doi.org/10.3389/feart.2020.566802>`_ and `Hugonnet et al. (2021) <https://d
 have shown the limitations of such simple metrics and provide more statistically-advanced methods to account for
 potential variabilities in precision and related correlations in space.
 However, the lack of implementations of these methods in a modern programming language makes them hard to reproduce,
-validate, and apply consistently. This is why one of the main goals of ``xdem`` is to simplify state-of-the-art
+validate, and apply consistently. This is why one of the main goals of xDEM is to simplify state-of-the-art
 statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
