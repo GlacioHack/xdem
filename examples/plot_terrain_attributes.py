@@ -104,35 +104,35 @@ plot_attribute(profile_curvature, "RdGy_r", "Profile curvature (100 / m)", vlim=
 # %%
 # Topographic Position Index
 # --------------------------
-tpi = xdem.terrain.topographic_position_index(dem.data)
+tpi = xdem.terrain.topographic_position_index(dem)
 
 plot_attribute(tpi, "Spectral", "Topographic Position Index", vlim=5)
 
 # %%
 # Terrain Ruggedness Index
 # ------------------------
-tri = xdem.terrain.terrain_ruggedness_index(dem.data)
+tri = xdem.terrain.terrain_ruggedness_index(dem)
 
 plot_attribute(tri, "Purples", "Terrain Ruggedness Index")
 
 # %%
 # Roughness
 # ---------
-roughness = xdem.terrain.roughness(dem.data)
+roughness = xdem.terrain.roughness(dem)
 
 plot_attribute(roughness, "Oranges", "Roughness")
 
 # %%
 # Rugosity
 # --------
-rugosity = xdem.terrain.rugosity(dem.data, resolution=dem.res)
+rugosity = xdem.terrain.rugosity(dem)
 
 plot_attribute(rugosity, "YlOrRd", "Rugosity")
 
 # %%
 # Fractal roughness
 # -----------------
-fractal_roughness = xdem.terrain.fractal_roughness(dem.data)
+fractal_roughness = xdem.terrain.fractal_roughness(dem)
 
 plot_attribute(fractal_roughness, "Reds", "Fractal roughness")
 
@@ -142,6 +142,7 @@ plot_attribute(fractal_roughness, "Reds", "Fractal roughness")
 
 attributes = xdem.terrain.get_terrain_attribute(
     dem.data,
+    resolution=dem.res,
     attribute=["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"]
 )
 
