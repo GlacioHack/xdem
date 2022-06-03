@@ -1445,11 +1445,14 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     # Create axes
     if ax is None:
         fig = plt.figure()
+        ax = plt.subplot(111)
     elif isinstance(ax, matplotlib.axes.Axes):
-        ax = ax
         fig = ax.figure
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+
+    # Hide axes for the main subplot (which will be subdivded)
+    ax.axis("off")
 
     if label_var is None:
         label_var = var_name
@@ -1465,7 +1468,7 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
     # First, an axis to plot the sample histogram
-    ax0 = fig.add_subplot(grid[:3, :])
+    ax0 = ax.inset_axes(grid[:3, :].get_position(fig).bounds)
     ax0.set_xticks([])
 
     # Plot the histogram manually with fill_between
@@ -1488,12 +1491,11 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     ax0.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
 
     # Now, plot the statistic of the data
-    ax = fig.add_subplot(grid[3:, :])
-
-    ax.scatter(interval_var.mid, df_sub[statistic_name],marker='x')
-    ax.set_xlabel(label_var)
-    ax.set_ylabel(label_statistic)
-    ax.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
+    ax1 = ax.inset_axes(grid[3:, :].get_position(fig).bounds)
+    ax1.scatter(interval_var.mid, df_sub[statistic_name],marker='x')
+    ax1.set_xlabel(label_var)
+    ax1.set_ylabel(label_statistic)
+    ax1.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
 
 
 def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statistic_name: str,
@@ -1525,11 +1527,14 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     # Create axes
     if ax is None:
         fig = plt.figure(figsize=(8,6))
+        ax = plt.subplot(111)
     elif isinstance(ax, matplotlib.axes.Axes):
-        ax = ax
         fig = ax.figure
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+
+    # Hide axes for the main subplot (which will be subdivded)
+    ax.axis("off")
 
     # Subsample to 2D and for the variables of interest
     df_sub = df[np.logical_and.reduce((df.nd == 2, np.isfinite(pd.IntervalIndex(df[var_name_1]).mid),
@@ -1546,7 +1551,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
 
     # First, an horizontal axis on top to plot the sample histogram of the first variable
-    ax0 = fig.add_subplot(grid[:3, :-3])
+    ax0 = ax.inset_axes(grid[:3, :-3].get_position(fig).bounds)
     ax0.set_xscale(scale_var_1)
     ax0.set_xticklabels([])
 
@@ -1576,7 +1581,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
                  fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
 
     # Second, a vertical axis on the right to plot the sample histogram of the second variable
-    ax1 = fig.add_subplot(grid[3:, -3:])
+    ax1 = ax.inset_axes(grid[3:, -3:].get_position(fig).bounds)
     ax1.set_yscale(scale_var_2)
     ax1.set_yticklabels([])
 
@@ -1606,7 +1611,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
                  fontweight='bold', transform=ax1.transAxes, rotation=90, bbox=dict(facecolor='white', alpha=0.8))
 
     # Third, an axis to plot the data as a colored grid
-    ax = fig.add_subplot(grid[3:, :-3])
+    ax2 = ax.inset_axes(grid[3:, :-3].get_position(fig).bounds)
 
     # Define limits of colormap is none are provided, robust max and min using percentiles
     if vmin is None and vmax is None:
@@ -1634,21 +1639,21 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
             else:
                 col = nodata_color
 
-            ax.fill_between([df_both[var_name_1].values[0].left, df_both[var_name_1].values[0].right], [df_both[var_name_2].values[0].left] * 2,
+            ax2.fill_between([df_both[var_name_1].values[0].left, df_both[var_name_1].values[0].right], [df_both[var_name_2].values[0].left] * 2,
                             [df_both[var_name_2].values[0].right] * 2, facecolor=col, alpha=1, edgecolor='white')
 
-    ax.set_xlabel(label_var_name_1)
-    ax.set_ylabel(label_var_name_2)
-    ax.set_xscale(scale_var_1)
-    ax.set_yscale(scale_var_2)
+    ax2.set_xlabel(label_var_name_1)
+    ax2.set_ylabel(label_var_name_2)
+    ax2.set_xscale(scale_var_1)
+    ax2.set_yscale(scale_var_2)
     # In case the axis value does not agree with the scale (e.g., 0 for log scale)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        ax.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
-        ax.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
+        ax2.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
+        ax2.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
 
     # Fourth and finally, add a colormap and nodata color to the legend
-    axcmap = fig.add_subplot(grid[:3, -3:])
+    axcmap = ax.inset_axes(grid[:3, -3:].get_position(fig).bounds)
 
     # Remove ticks, labels, frame
     axcmap.set_xticks([])
