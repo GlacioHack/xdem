@@ -1299,11 +1299,14 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     # Create axes if they are not passed
     if ax is None:
         fig = plt.figure()
+        ax = plt.subplot(111)
     elif isinstance(ax, matplotlib.axes.Axes):
-        ax = ax
         fig = ax.figure
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+
+    # Hide axes for the main subplot (which will be subdivded)
+    ax.axis("off")
 
     if ylabel is None:
         ylabel = r'Variance [$\mu$ $\pm \sigma$]'
@@ -1354,7 +1357,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     # Loop over each subpanel
     for k in range(nb_subpanels):
         # First, an axis to plot the sample histogram
-        ax0 = fig.add_subplot(grid[:3, xgridmin[k]:xgridmax[k]])
+        ax0 = ax.inset_axes(grid[:3, xgridmin[k]:xgridmax[k]].get_position(fig).bounds)
         ax0.set_xscale(xscale)
         ax0.set_xticks([])
 
@@ -1375,17 +1378,17 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         ax0.set_xlim((xmin[k], xmax[k]))
 
         # Now, plot the statistic of the data
-        ax = fig.add_subplot(grid[3:, xgridmin[k]:xgridmax[k]])
+        ax1 = ax.inset_axes(grid[3:, xgridmin[k]:xgridmax[k]].get_position(fig).bounds)
 
         # Get the bins center
         bins_center = np.subtract(df.bins, np.diff([0] + df.bins.tolist()) / 2)
 
         # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
         if np.all(np.isnan(df.err_exp)):
-            ax.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
+            ax1.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
         # Otherwise, plot the error estimates through multiple runs
         else:
-            ax.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)', fmt='x')
+            ax1.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)', fmt='x')
 
         # If a list of functions is passed, plot the modelled variograms
         if list_fit_fun is not None:
@@ -1394,37 +1397,37 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
                 y = fit_fun(x)
 
                 if list_fit_fun_label is not None:
-                    ax.plot(x, y, linestyle='dashed', label=list_fit_fun_label[i], zorder=30)
+                    ax1.plot(x, y, linestyle='dashed', label=list_fit_fun_label[i], zorder=30)
                 else:
-                    ax.plot(x, y, linestyle='dashed', color='black', zorder=30)
+                    ax1.plot(x, y, linestyle='dashed', color='black', zorder=30)
 
             if list_fit_fun_label is None:
-                ax.plot([],[],linestyle='dashed',color='black',label='Model fit')
+                ax1.plot([],[],linestyle='dashed',color='black',label='Model fit')
 
-        ax.set_xscale(xscale)
+        ax1.set_xscale(xscale)
         if nb_subpanels>1 and k == (nb_subpanels-1):
-            ax.xaxis.set_ticks(np.linspace(xmin[k], xmax[k], 3))
+            ax1.xaxis.set_ticks(np.linspace(xmin[k], xmax[k], 3))
         elif nb_subpanels>1:
-            ax.xaxis.set_ticks(np.linspace(xmin[k],xmax[k],3)[:-1])
+            ax1.xaxis.set_ticks(np.linspace(xmin[k],xmax[k],3)[:-1])
 
         if xlim is None:
-            ax.set_xlim((xmin[k], xmax[k]))
+            ax1.set_xlim((xmin[k], xmax[k]))
         else:
-            ax.set_xlim(xlim)
+            ax1.set_xlim(xlim)
 
         if ylim is not None:
-            ax.set_ylim(ylim)
+            ax1.set_ylim(ylim)
         else:
-            ax.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
+            ax1.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
 
         if k == int(nb_subpanels/2):
-            ax.set_xlabel(xlabel)
+            ax1.set_xlabel(xlabel)
         if k == nb_subpanels - 1:
-            ax.legend(loc='best')
+            ax1.legend(loc='best')
         if k == 0:
-            ax.set_ylabel(ylabel)
+            ax1.set_ylabel(ylabel)
         else:
-            ax.set_yticks([])
+            ax1.set_yticks([])
 
 
 def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
