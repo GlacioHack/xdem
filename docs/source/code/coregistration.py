@@ -11,18 +11,14 @@ from xdem import coreg
 
 # Load the data using xdem and geoutils (could be with rasterio and geopandas instead)
 # Load a reference DEM from 2009
-reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 # Load a moderately well aligned DEM from 1990
-dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(reference_dem, silent=True)
+tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(ref_dem, silent=True)
 # Load glacier outlines from 1990. This will act as the unstable ground.
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
-# Prepare the inputs for coregistration.
-ref_data = reference_dem.data.squeeze()  # This is a numpy 2D array/masked_array
-tba_data = dem_to_be_aligned.data.squeeze()  # This is a numpy 2D array/masked_array
 # This is a boolean numpy 2D array. Note the bitwise not (~) symbol
-inlier_mask = ~glacier_outlines.create_mask(reference_dem)
-transform = reference_dem.transform  # This is a rio.transform.Affine object.
+inlier_mask = ~glacier_outlines.create_mask(ref_dem)
 
 ########################
 # SECTION: Nuth and Kääb
@@ -30,10 +26,10 @@ transform = reference_dem.transform  # This is a rio.transform.Affine object.
 
 nuth_kaab = coreg.NuthKaab()
 # Fit the data to a suitable x/y/z offset.
-nuth_kaab.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
+nuth_kaab.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
 # Apply the transformation to the data (or any other data)
-aligned_dem = nuth_kaab.apply(tba_data, transform=transform)
+aligned_dem = nuth_kaab.apply(tba_dem)
 
 ####################
 # SECTION: Deramping
@@ -42,10 +38,10 @@ aligned_dem = nuth_kaab.apply(tba_data, transform=transform)
 # Instantiate a 1st order deramping object.
 deramp = coreg.Deramp(degree=1)
 # Fit the data to a suitable polynomial solution.
-deramp.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
+deramp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
 # Apply the transformation to the data (or any other data)
-deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform)
+deramped_dem = deramp.apply(tba_dem)
 
 ##########################
 # SECTION: Bias correction
@@ -53,10 +49,10 @@ deramped_dem = deramp.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.
 
 bias_corr = coreg.BiasCorr()
 # Note that the transform argument is not needed, since it is a simple vertical correction.
-bias_corr.fit(ref_data, tba_data, inlier_mask=inlier_mask, transform=reference_dem.transform)
+bias_corr.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
 # Apply the bias to a DEM
-corrected_dem = bias_corr.apply(tba_data, transform=dem_to_be_aligned.transform)
+corrected_dem = bias_corr.apply(tba_dem)
 
 # Use median bias instead
 bias_median = coreg.BiasCorr(bias_func=np.median)
@@ -70,10 +66,10 @@ bias_median = coreg.BiasCorr(bias_func=np.median)
 # Instantiate the object with default parameters
 icp = coreg.ICP()
 # Fit the data to a suitable transformation.
-icp.fit(ref_data, tba_data, transform=transform, inlier_mask=inlier_mask)
+icp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
 # Apply the transformation matrix to the data (or any other data)
-aligned_dem = icp.apply(tba_data, transform=transform)
+aligned_dem = icp.apply(tba_dem)
 
 ###################
 # SECTION: Pipeline

@@ -1,10 +1,10 @@
 .. _robuststats:
 
-Robust statistics
-==================
+The need for robust statistics
+==============================
 
 Digital Elevation Models often contain outliers that hamper further analysis.
-In order to mitigate their effect on DEM analysis, ``xdem`` integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
+In order to mitigate their effect on DEM analysis, xDEM integrates `robust statistics <https://en.wikipedia.org/wiki/Robust_statistics>`_
 methods at different levels.
 These methods can be used to robustly fit functions necessary to perform DEM alignment (see :ref:`coregistration`, :ref:`biascorr`), or to provide
 robust statistical measures equivalent to the mean, the standard deviation or the covariance of a sample when analyzing DEM precision with
@@ -58,7 +58,8 @@ The half difference between 84\ :sup:`th` and 16\ :sup:`th` percentiles, or the 
 can also be used as a robust dispersion measure equivalent to the standard deviation.
 
 .. code-block:: python
-        nmad = xdem.spatialstats.nmad
+
+    nmad = xdem.spatialstats.nmad
 
 When working with weighted data, the difference between the 84\ :sup:`th` and 16\ :sup:`th` `weighted percentile <https://en.wikipedia.org
 /wiki/Percentile#Weighted_percentile>`_, or the absolute 68\ :sup:`th` weighted percentile can be used as a robust measure of dispersion.
@@ -85,7 +86,7 @@ Spatial auto-correlation of a sample
 
 `Variogram <https://en.wikipedia.org/wiki/Variogram>`_ analysis exploits statistical measures equivalent to the covariance,
 and is therefore also subject to outliers.
-Based on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, ``xdem`` allows to specify robust variogram
+Based on `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, xDEM allows to specify robust variogram
 estimators such as Dowd's variogram based on medians (`Dowd (1984) <https://en.wikipedia.org/wiki/Variogram>`_) defined as:
 
 .. math::
@@ -106,7 +107,7 @@ Least-square loss functions
 When performing least-squares linear regression, the traditional `loss functions <https://en.wikipedia.org/wiki/Loss_
 function>`_ that are used are not robust to outliers.
 
-A robust soft L1 loss default is used by default when ``xdem`` performs least-squares regression through `scipy.optimize
+A robust soft L1 loss default is used by default when xDEM performs least-squares regression through `scipy.optimize
 <https://docs.scipy.org/doc/scipy/reference/optimize.html#>`_.
 
 Robust estimators

@@ -36,12 +36,6 @@ import pandas as pd
 import xdem
 
 try:
-    import richdem as rd
-    _has_rd = True
-except ImportError:
-    _has_rd = False
-
-try:
     from pytransform3d.transform_manager import TransformManager
     import pytransform3d.transformations
     _HAS_P3D = True
@@ -111,34 +105,6 @@ def apply_z_shift(ds: rio.DatasetReader, dz: float):
     a = src_dem.read(1)
     ds_shift = a + dz
     return ds_shift
-
-
-def rio_to_rda(ds: rio.DatasetReader) -> rd.rdarray:
-    """
-    Get georeferenced richDEM array from rasterio dataset
-    :param ds: DEM
-    :return: DEM
-    """
-    arr = ds.read(1)
-    rda = rd.rdarray(arr, no_data=ds.get_nodatavals()[0])
-    rda.geotransform = ds.get_transform()
-    rda.projection = ds.get_gcps()
-
-    return rda
-
-
-def get_terrainattr(ds: rio.DatasetReader, attrib='slope_degrees') -> rd.rdarray:
-    """
-    Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
-    "profile_curvature", "planform_curvature", "curvature" and others (see richDEM documentation)
-    :param ds: DEM
-    :param attrib: terrain attribute
-    :return:
-    """
-    rda = rio_to_rda(ds)
-    terrattr = rd.TerrainAttribute(rda, attrib=attrib)
-
-    return terrattr
 
 
 def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, aspect: np.ndarray,
@@ -1494,7 +1460,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
         ) > 0
 
     if dilate_mask:
-        tr_nan_mask = scipy.ndimage.morphology.binary_dilation(tr_nan_mask, iterations=resampling_order)
+        tr_nan_mask = scipy.ndimage.binary_dilation(tr_nan_mask, iterations=resampling_order)
 
     # Apply the transformed nan_mask
     transformed_dem[tr_nan_mask] = np.nan
@@ -1996,7 +1962,7 @@ def warp_dem(
             ) > 0
 
         if dilate_mask:
-            new_mask = scipy.ndimage.morphology.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
+            new_mask = scipy.ndimage.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
 
         warped[new_mask] = np.nan
 

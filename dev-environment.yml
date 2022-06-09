@@ -13,10 +13,10 @@ dependencies:
   - scipy
   - tqdm
   - scikit-image
+  - richdem
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-  - geoutils>=0.0.5
 
   # Development-specific
   - pytest
@@ -28,3 +28,7 @@ dependencies:
   - flake8
   - sphinx-autodoc-typehints
   - sphinx-gallery
+
+  - pip:
+    - git+https://github.com/GlacioHack/GeoUtils.git
+
