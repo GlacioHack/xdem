@@ -769,8 +769,12 @@ def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataF
         fn = 0
         i = 0
         for model in list_model:
-            fn += skg.models.spherical(h, args[i], args[i+1])
-            # fn += vgm(h, model=model,crange=args[i],psill=args[i+1])
+            if model == 'Sph':
+                fn += skg.models.spherical(h, args[i], args[i+1])
+            elif model == 'Gau':
+                fn += skg.models.gaussian(h, args[i], args[i+1])
+            elif model == 'Exp':
+                fn += skg.models.exponential(h, args[i], args[i+1])
             i += 2
 
         return fn
@@ -830,7 +834,13 @@ def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataF
         fn = 0
         i = 0
         for model in list_model:
-            fn += skg.models.spherical(h, cof[i], cof[i+1])
+            if model == 'Sph':
+                fn += skg.models.spherical(h, cof[i], cof[i + 1])
+            elif model == 'Gau':
+                fn += skg.models.gaussian(h, cof[i], cof[i + 1])
+            elif model == 'Exp':
+                fn += skg.models.exponential(h, cof[i], cof[ i + 1])
+            # fn += skg.models.spherical(h, cof[i], cof[i+1])
             i += 2
 
         return fn
