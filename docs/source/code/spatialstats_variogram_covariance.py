@@ -1,11 +1,11 @@
 """Documentation plot illustrating the link between variogram and covariance"""
 import matplotlib.pyplot as plt
 import numpy as np
+import skgstat as skg
 
 # Example variogram function
 def variogram_exp(h):
-    from xdem.spatialstats import vgm
-    val = vgm(h, 15, model='Exp', psill=10)
+    val = skg.models.exponential(h, 15, 10)
     return val
 
 fig, ax = plt.subplots()
