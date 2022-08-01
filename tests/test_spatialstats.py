@@ -294,56 +294,57 @@ class TestBinning:
 
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
 
-        # 1d binning, by default will create 10 bins
+        # 1D binning, by default will create 10 bins
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'])
 
-        # check length matches
+        # Check length matches
         assert df.shape[0] == 10
-        # check bin edges match the minimum and maximum of binning variable
+        # Check bin edges match the minimum and maximum of binning variable
         assert np.nanmin(slope) == np.min(pd.IntervalIndex(df.slope).left)
         assert np.nanmax(slope) == np.max(pd.IntervalIndex(df.slope).right)
 
-        # 1d binning with 20 bins
+        # 1D binning with 20 bins
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'],
                                           list_var_bins=[[20]])
-        # check length matches
+        # Check length matches
         assert df.shape[0] == 20
 
-        # nmad goes up quite a bit with slope, we can expect a 10 m measurement error difference
+        # NMAD goes up quite a bit with slope, we can expect a 10 m measurement error difference
         assert df.nmad.values[-1] - df.nmad.values[0] > 10
 
-        # try custom stat
+        # Define function for custom stat
         def percentile_80(a):
             return np.nanpercentile(a, 80)
+        # Check the function runs with custom functions
+        df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'], statistics=[percentile_80])
+        # Check that the count is added automatically by the function when not user-defined
+        assert 'count' in df.columns.values
 
-        # check the function runs with custom functions
-        xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'], statistics=['count', percentile_80])
-
-        # 2d binning
+        # 2D binning
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten()], list_var_names=['slope', 'elevation'])
 
-        # dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
+        # Dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
         assert df.shape[0] == (10 + 10 + 100)
 
-        # nd binning
+        # N-D binning
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'])
 
-        # dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
+        # Dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
         assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
 
     def test_interp_nd_binning(self):
 
-        # check the function works with a classic input (see example)
+        # Check the function works with a classic input (see example)
         df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3],
                                 "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3,3))
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
 
-        # check that the dimensions are rightly ordered
+        # Check that the dimensions are rightly ordered
         assert fun((1, 3)) == df[np.logical_and(df['var1']==1, df['var2']==3)]['statistic'].values[0]
         assert fun((3, 1)) == df[np.logical_and(df['var1']==3, df['var2']==1)]['statistic'].values[0]
 
-        # check interpolation falls right on values for points (1, 1), (1, 2) etc...
+        # Check interpolation falls right on values for points (1, 1), (1, 2) etc...
         for i in range(3):
             for j in range(3):
                 x = df['var1'][3 * i + j]
@@ -351,28 +352,28 @@ class TestBinning:
                 stat = df['statistic'][3 * i + j]
                 assert fun((x, y)) == stat
 
-        # check bilinear interpolation inside the grid
+        # Check bilinear interpolation inside the grid
         points_in = [(1.5, 1.5), (1.5, 2.5), (2.5, 1.5), (2.5, 2.5)]
         for point in points_in:
-            # the values are 1 off from Python indexes
+            # The values are 1 off from Python indexes
             x = point[0] - 1
             y = point[1] - 1
-            # get four closest points on the grid
+            # Get four closest points on the grid
             xlow = int(x - 0.5)
             xupp = int(x + 0.5)
             ylow = int(y - 0.5)
             yupp = int(y + 0.5)
-            # check the bilinear interpolation matches the mean value of those 4 points (equivalent as its the middle)
+            # Check the bilinear interpolation matches the mean value of those 4 points (equivalent as its the middle)
             assert fun((y + 1, x + 1)) == np.mean([arr[xlow, ylow], arr[xupp, ylow], arr[xupp, yupp], arr[xlow, yupp]])
 
-        # check bilinear extrapolation for points at 1 spacing outside from the input grid
+        # Check bilinear extrapolation for points at 1 spacing outside from the input grid
         points_out = [(0, i) for i in np.arange(1, 4)] + [(i, 0) for i in np.arange(1, 4)] \
                      + [(4, i) for i in np.arange(1, 4)] + [(i, 4) for i in np.arange(4, 1)]
         for point in points_out:
             x = point[0] - 1
             y = point[1] - 1
             val_extra = fun((y + 1, x + 1))
-            # the difference between the points extrapolated outside should be linear with the grid edges,
+            # The difference between the points extrapolated outside should be linear with the grid edges,
             # i.e. the same as the difference as the first points inside the grid along the same axis
             if point[0] == 0:
                 diff_in = arr[x + 2, y] - arr[x + 1, y]
@@ -389,7 +390,7 @@ class TestBinning:
                 diff_out = arr[x, y - 1] - val_extra
             assert diff_in == diff_out
 
-        # check that the output is rightly ordered in 3 dimensions, and works with varying dimension lengths
+        # Check that the output is rightly ordered in 3 dimensions, and works with varying dimension lengths
         vec1 = np.arange(1, 3)
         vec2 = np.arange(1, 4)
         vec3 = np.arange(1, 5)
@@ -404,44 +405,61 @@ class TestBinning:
                     assert fun((i, j, k)) == \
                            df[np.logical_and.reduce((df['var1'] == i, df['var2'] == j, df['var3'] == k))]['statistic'].values[0]
 
-        # check if it works with nd_binning output
+        # Check if it works with nd_binning output
         ref, diff, mask = load_ref_and_diff()
         slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
 
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'])
 
-        # in 1d
+        # First, in 1D
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names='slope')
 
-        # check a value is returned inside the grid
+        # Check a value is returned inside the grid
         assert np.isfinite(fun([15]))
-        # check the nmad increases with slope
+        # Check the nmad increases with slope
         assert fun([20]) > fun([0])
-        # check a value is returned outside the grid
+        # Check a value is returned outside the grid
         assert all(np.isfinite(fun([-5,50])))
 
-        # check when the first passed binning variable contains NaNs because of other binning variable
+        # Check when the first passed binning variable contains NaNs because of other binning variable
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names='elevation')
 
-        # in 2d
+        # Then, in 2D
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'elevation'])
 
-        # check a value is returned inside the grid
+        # Check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
-        # check the nmad increases with slope
+        # Check the nmad increases with slope
         assert fun([20, 800]) > fun([0, 800])
-        # check a value is returned outside the grid
+        # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500,3000]))))
 
-        # in 3d, let's decrease the number of bins to get something with enough samples
+        # The, in 3D, let's decrease the number of bins to get something with enough samples
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'], list_var_bins=3)
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'elevation', 'aspect'])
 
-        # check a value is returned inside the grid
+        # Check a value is returned inside the grid
         assert np.isfinite(fun([15,1000, np.pi]))
-        # check the nmad increases with slope
+        # Check the nmad increases with slope
         assert fun([20, 500, np.pi]) > fun([0, 500, np.pi])
-        # check a value is returned outside the grid
+        # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500,3000], [-2*np.pi,4*np.pi]))))
 
 
+
+    def test_plot_binning(self):
+
+        # Define placeholder data
+        df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
+
+        # Check that the 1D plotting fails with a warning if the variable or statistic is not well-defined
+        with pytest.raises(ValueError, match="The variable var3 is not part of the provided dataframe column names."):
+            xdem.spatialstats.plot_1d_binning(df, var_name='var3', statistic_name='statistic')
+        with pytest.raises(ValueError, match="The statistic stat is not part of the provided dataframe column names."):
+            xdem.spatialstats.plot_1d_binning(df, var_name='var1', statistic_name='stat')
+
+        # Same for the 2D plotting
+        with pytest.raises(ValueError, match="The variable var3 is not part of the provided dataframe column names."):
+            xdem.spatialstats.plot_2d_binning(df, var_name_1='var3', statistic_name='statistic')
+        with pytest.raises(ValueError, match="The statistic stat is not part of the provided dataframe column names."):
+            xdem.spatialstats.plot_2d_binning(df, var_name_1='var1', statistic_name='stat')

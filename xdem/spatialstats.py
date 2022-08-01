@@ -92,11 +92,11 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     >>> fun((-1, 1))
     array(-1.)
     """
-    # if list of variable input is simply a string
+    # If list of variable input is simply a string
     if isinstance(list_var_names,str):
         list_var_names = [list_var_names]
 
-    # check that the dataframe contains what we need
+    # Check that the dataframe contains what we need
     for var in list_var_names:
         if var not in df.columns:
             raise ValueError('Variable "'+var+'" does not exist in the provided dataframe.')
@@ -110,37 +110,37 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     df_sub = df.copy()
 
-    # if the dataframe is an output of nd_binning, keep only the dimension of interest
+    # If the dataframe is an output of nd_binning, keep only the dimension of interest
     if 'nd' in df_sub.columns:
         df_sub = df_sub[df_sub.nd == len(list_var_names)]
 
-    # compute the middle values instead of bin interval if the variable is a pandas interval type
+    # Compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
         check_any_interval = [isinstance(x, pd.Interval) for x in df_sub[var].values]
         if any(check_any_interval):
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
-        # otherwise, leave as is
+        # Otherwise, leave as is
 
-    # check that explanatory variables have valid binning values which coincide along the dataframe
+    # Check that explanatory variables have valid binning values which coincide along the dataframe
     df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in list_var_names])]
     if df_sub.empty:
         raise ValueError('Dataframe does not contain a nd binning with the variables corresponding to the list of variables.')
-    # check that the statistic data series contain valid data
+    # Check that the statistic data series contain valid data
     if all(~np.isfinite(df_sub[statistic_name].values)):
         raise ValueError('Dataframe does not contain any valid statistic values.')
 
-    # remove statistic values calculated with a sample count under the minimum count
+    # Remove statistic values calculated with a sample count under the minimum count
     if min_count is not None:
         df_sub.loc[df_sub['count'] < min_count,statistic_name] = np.nan
 
     values = df_sub[statistic_name].values
     ind_valid = np.isfinite(values)
 
-    # re-check that the statistic data series contain valid data after filtering with min_count
+    # Re-check that the statistic data series contain valid data after filtering with min_count
     if all(~ind_valid):
         raise ValueError("Dataframe does not contain any valid statistic values after filtering with min_count = "+str(min_count)+".")
 
-    # get a list of middle values for the binning coordinates, to define a nd grid
+    # Get a list of middle values for the binning coordinates, to define a nd grid
     list_bmid = []
     shape = []
     for var in list_var_names:
@@ -148,15 +148,15 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
         list_bmid.append(bmid)
         shape.append(len(bmid))
 
-    # griddata first to perform nearest interpolation with NaNs (irregular grid)
-    # valid values
+    # Use griddata first to perform nearest interpolation with NaNs (irregular grid)
+    # Valid values
     values = values[ind_valid]
     # coordinates of valid values
     points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
-    # grid coordinates
+    # Grid coordinates
     bmid_grid = np.meshgrid(*list_bmid, indexing='ij')
     points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
-    # fill grid no data with nearest neighbour
+    # Fill grid no data with nearest neighbour
     values_grid = griddata(points_valid, values, points_grid, method='nearest')
     values_grid = values_grid.reshape(shape)
 
@@ -171,7 +171,9 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
                      statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
         -> pd.DataFrame:
     """
-    N-dimensional binning of values according to one or several explanatory variables.
+    N-dimensional binning of values according to one or several explanatory variables with computed statistics in
+    each bin. By default, the sample count, the median and the normalized absolute median deviation (NMAD). The count
+    is always computed, no matter user input.
     Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
     For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
 
@@ -184,25 +186,29 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     :return:
     """
 
-    # we separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
+    # We separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
     # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
     if list_var_bins is None:
         list_var_bins = (10,) * len(list_var_names)
     elif isinstance(list_var_bins,int):
         list_var_bins = (list_var_bins,) * len(list_var_names)
 
-    # flatten the arrays if this has not been done by the user
+    # Flatten the arrays if this has not been done by the user
     values = values.ravel()
     list_var = [var.ravel() for var in list_var]
 
-    # remove no data values
+    # Remove no data values
     valid_data = np.logical_and.reduce([np.isfinite(values)]+[np.isfinite(var) for var in list_var])
     values = values[valid_data]
     list_var = [var[valid_data] for var in list_var]
 
+    # In case the statistics are user-defined, and they forget count, we add it for later calculation or plotting
+    if 'count' not in statistics:
+        statistics = itertools.chain(['count'], statistics)
+
     statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
 
-    # get binned statistics in 1d: a simple loop is sufficient
+    # Get binned statistics in 1d: a simple loop is sufficient
     list_df_1d = []
     for i, var in enumerate(list_var):
         df_stats_1d = pd.DataFrame()
@@ -218,7 +224,7 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
 
         list_df_1d.append(df_stats_1d)
 
-    # get binned statistics in 2d: all possible 2d combinations
+    # Get binned statistics in 2d: all possible 2d combinations
     list_df_2d = []
     if len(list_var)>1:
         combs = list(itertools.combinations(list_var_names, 2))
@@ -244,26 +250,26 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
             list_df_2d.append(df_stats_2d)
 
 
-    # get binned statistics in nd, without redoing the same stats
+    # Get binned statistics in nd, without redoing the same stats
     df_stats_nd = pd.DataFrame()
     if len(list_var)>2:
         for j, statistic in enumerate(statistics):
             stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
             df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
         list_ii = []
-        # loop through the bin edges and create IntervalIndexes from them (to get both
+        # Loop through the bin edges and create IntervalIndexes from them (to get both
         for bedges in list_bedges:
             list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
 
-        # create nd indexes in nd-array and flatten for each variable
+        # Create nd indexes in nd-array and flatten for each variable
         iind = np.meshgrid(*list_ii)
         for i, var_name in enumerate(list_var_names):
             df_stats_nd[var_name] = iind[i].flatten()
 
-        # report number of dimensions used
+        # Report number of dimensions used
         df_stats_nd['nd'] = len(list_var_names)
 
-    # concatenate everything
+    # Concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
     df_concat = pd.concat(list_all_dfs)
     # commenting for now: pd.MultiIndex can be hard to use
@@ -289,7 +295,7 @@ def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list
     if radius is None:  # use the smallest distance between the center and image walls
         radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    # skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
+    # Skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
     mask = np.zeros(shape, dtype=bool)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
@@ -444,7 +450,7 @@ def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwa
 
     :param values: Values
     :param coords: Coordinates
-    :return: Empirical variogram (variance, lags, counts)
+    :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
 
@@ -475,6 +481,53 @@ def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwa
 
     return df
 
+def _choose_cdist_equidistant_sampling_parameters(**kwargs):
+    """Add a little calculation to partition the "subsample" argument automatically into the "run" and "samples"
+    arguments of RasterEquidistantMetricSpace, to have a similar number of points than with a classic pdist method.
+
+    The number of pairwise samples for a classic pdist is N0(N0-1)/2 with N0 the number of samples of the ensemble. For
+    the cdist equidistant calculation it is M*N*R where N are the subsamples in the center disk, M is the number of
+    samples in the rings which amounts to X*N where X is the number of rings in the grid extent, as each ring draws N
+    samples. And R is the number of runs with a different random center point.
+    X is fixed by the extent and ratio_subsample parameters, and so N0**2/(2X) = N**2*R, and we want at least 30 runs
+    with 10 subsamples."""
+
+    # First, the extent
+    extent = kwargs['extent']
+    shape = kwargs['shape']
+    subsample = kwargs['subsample']
+    maxdist = np.sqrt((extent[1] - extent[0]) ** 2 + (extent[3] - extent[2]) ** 2)
+    res = np.mean([(extent[1] - extent[0]) / (shape[0] - 1), (extent[3] - extent[2]) / (shape[1] - 1)])
+    # Then the radius from the center ensemble with the default subsample ratio
+    ratio_subsample = 0.2
+    center_radius = np.sqrt(1. / ratio_subsample * subsample / np.pi) * res
+    # Now, we can derive the number of successive disks that are going to be sampled in the grid
+    equidistant_radii = [0.]
+    increasing_rad = center_radius
+    while increasing_rad < maxdist:
+        equidistant_radii.append(increasing_rad)
+        increasing_rad *= np.sqrt(2)
+    nb_disk_samples = len(equidistant_radii)
+
+    # We divide the number of samples by the number of disks
+    pairwise_comp_per_disk = np.ceil(subsample**2 / (2*nb_disk_samples))
+
+    # Using the equation in the function description, we compute the number of runs (minimum 30)
+    runs = max(np.ceil(pairwise_comp_per_disk**(1/3)), 30)
+    # Then we deduce the number of samples per disk (and per ring)
+    subsample_per_disk_per_run = np.ceil(np.sqrt(pairwise_comp_per_disk/runs))
+
+    final_pairwise_comparisons = runs*subsample_per_disk_per_run**2*nb_disk_samples
+
+    if kwargs['verbose']:
+        print('Equidistant circular sampling will be performed for {} runs (random center points) with pairwise '
+              'comparison between {} samples (points) of the central disk and again {} samples times {} independent '
+              'rings centered on the same center point. This results in approximately {} pairwise comparisons (duplicate'
+              ' pairwise points randomly selected will be removed).'.format(runs, subsample_per_disk_per_run,
+                                                                            subsample_per_disk_per_run, nb_disk_samples,
+                                                                            final_pairwise_comparisons))
+
+    return runs, subsample_per_disk_per_run
 
 def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample_method: str,
                                    **kwargs) -> pd.DataFrame:
@@ -484,11 +537,25 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
 
     :param values: Values
     :param coords: Coordinates
-    :return: Empirical variogram (variance, lags, counts)
+    :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
-    # Rename the "subsample" argument into "samples", which is used by skgstat Metric subclasses
-    kwargs['samples'] = kwargs.pop('subsample')
+
+    if subsample_method == 'cdist_equidistant' and 'runs' not in kwargs.keys() and 'samples' not in kwargs.keys():
+
+        # We define subparameters for the equidistant technique to match the number of pairwise comparison
+        # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
+        runs, samples = _choose_cdist_equidistant_sampling_parameters(**kwargs)
+
+        kwargs['runs'] = runs
+        # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
+        kwargs['samples'] = samples
+
+    elif subsample_method == 'cdist_point':
+
+        # We set the samples to match the subsample argument if the method is random points
+        kwargs['samples'] = kwargs.pop('subsample')
+
     # Rename the "random_state" argument into "rnd", also used by skgstat Metric subclasses
     kwargs['rnd'] = kwargs.pop('random_state')
 
@@ -520,7 +587,7 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
     V = skg.Variogram(M, values=values, normalize=False, fit_method=None, **filtered_var_kwargs)
 
     # Get bins, empirical variogram values, and bin count
-    bins, exp = V.get_empirical()
+    bins, exp = V.get_empirical(bin_center=False)
     count = V.bin_count
 
     # Write to dataframe
@@ -535,7 +602,7 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
     Multiprocessing wrapper for get_pdist_empirical_variogram and get_cdist_empirical variogram
 
     :param argdict: Keyword argument to pass to get_pdist/cdist_empirical_variogram
-    :return: Empirical variogram (variance, lags, counts)
+    :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
     if argdict['verbose']:
@@ -555,16 +622,28 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
 
 def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float = None, coords: np.ndarray = None,
                                subsample: int = 10000, subsample_method: str = 'cdist_equidistant',
-                               n_variograms: int = 1, n_jobs: int = 1, verbose=False,
+                               n_variograms: int = 1, n_jobs: int = 1, verbose = False,
                                random_state: None | np.random.RandomState | np.random.Generator | int = None,
                                **kwargs) -> pd.DataFrame:
     """
     Sample empirical variograms with binning adaptable to multiple ranges and spatial subsampling adapted for raster data.
-    By default, subsampling is based on RasterEquidistantMetricSpace implemented in scikit-gstat. This method samples more
-    effectively large grid data by isolating pairs of spatially equidistant ensembles for distributed pairwise comparison.
-    In practice, two subsamples are drawn for pairwise comparison: one from a disk of certain radius within the grid, and
-    another one from rings of larger radii that increase steadily between the pixel size and the extent of the raster.
-    Those disk and rings are sampled several times across the grid using random centers.
+    Returns an empirical variogram (empirical variance, upper bound of spatial lag bin, count of pairwise samples).
+
+    By default, the subsampling is based on RasterEquidistantMetricSpace implemented in scikit-gstat. This method
+    samples more effectively large grid data by isolating pairs of spatially equidistant ensembles for distributed
+    pairwise comparison. In practice, two subsamples are drawn for pairwise comparison: one from a disk of certain
+    radius within the grid, and another one from rings of larger radii that increase steadily between the pixel size
+    and the extent of the raster. Those disks and rings are sampled several times across the grid using random centers.
+
+    See more details in Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922, in particular on
+    Supplementary Fig. 13. for the subsampling scheme.
+
+    The "subsample" argument determines the number of samples for each method to yield a number of pairwise comparisons
+    close to that of a pdist calculation, that is N*(N-1)/2 where N is the subsample argument.
+    For the cdist equidistant method, the "runs" (random centers) and "samples" (subsample of a disk/ring) are set
+    automatically to get close to N*(N-1)/2 pairwise samples. But those can be more finely adjusted by passing the
+    argument "runs", "samples" and "ratio_subsample" to kwargs. Further details can be found in the description of
+    skgstat.MetricSpace.RasterEquidistantMetricSpace.
 
     If values are provided as a Raster subclass, nothing else is required.
     If values are provided as a 2D array (M,N), a ground sampling distance is sufficient to derive the pairwise distances.
@@ -573,14 +652,13 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
 
     Spatial subsampling method argument subsample_method can be one of "cdist_equidistant", "cdist_point", "pdist_point",
      "pdist_disk" and "pdist_ring".
-    The cdist methods use MetricSpace classes of scikit-gstat and do pairwise comparison of two ensembles as in
-    scipy.spatial.cdist.
+    The cdist methods use MetricSpace classes of scikit-gstat and do pairwise comparison between two distinct ensembles
+    as in scipy.spatial.cdist. For the cdist methods, the variogram is estimated in a single run from the MetricSpace.
+
     The pdist methods use methods to subsample the Raster points directly and do pairwise comparison within a single
-    ensemble as in scipy.spatial.pdist.
+    ensemble as in scipy.spatial.pdist. For the pdist methods, an iterative process is required: a list of ranges
+    subsampled independently is used.
 
-    For the cdist methods, the variogram is estimated in a single run from the MetricSpace.
-
-    For the pdist methods, an iterative process is required: a list of ranges subsampled independently is used.
     Variograms are derived independently for several runs and ranges using each pairwise sample, and later aggregated.
     If the subsampling method selected is "random_point", the multi-range argument is ignored as range has no effect on
     this subsampling method.
@@ -598,7 +676,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     :param verbose: Print statements during processing
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
-    :return: Empirical variogram (variance, lags, counts)
+    :return: Empirical variogram (variance, upper bound of lag bin, counts)
     """
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
@@ -745,7 +823,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
         df_std = df_grouped[['exp']].std()
         df_count = df_grouped[['count']].sum()
         df_mean['bins'] = df_mean.index.values
-        df_mean['err_exp'] = df_std['exp']
+        df_mean['err_exp'] = df_std['exp'] / np.sqrt(n_variograms)
         df_mean['count'] = df_count['count']
         df = df_mean
 
@@ -781,14 +859,18 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
                             bounds: list[tuple[float, float]] = None,
                             p0: list[float] = None) -> tuple[Callable, pd.DataFrame]:
     """
-    Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors
+    Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
+    use preferably with the empirical variogram dataframe returned by the `sample_empirical_variogram` function.
 
-    :param list_models: List of K variogram models to sum for the fit, from short to long ranges
-    :param empirical_variogram: Empirical variogram
-    :param bounds: Bounds of ranges and sills for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper)
+    :param list_models: List of K variogram models to sum for the fit in order from short to long ranges.
+    Can either be a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
+    spherical model: "Sph", "Spherical" or skgstat.models.spherical).
+    :param empirical_variogram: Empirical variogram, formatted as a dataframe with count (pairwise sample count),
+    bins (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance).
+    :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper)
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess)
 
-    :return: Function of sum of variogram, Dataframe of coefficients
+    :return: Function of sum of variogram, Dataframe of optimized coefficients
     """
 
     # Define a function of a sum of variogram model forms, with undetermined arguments
@@ -902,13 +984,13 @@ def neff_exact_circular_twospherical(area: float, crange1: float, psill1: float,
     Number of effective samples derived from exact integration of sum of 2 spherical variogram models over a circular area.
     The number of effective samples serves to convert between standard deviation/partial sills and standard error
     over the area.
-    Source: Rolstad et al. (2009), appendix: http://dx.doi.org/10.3189/002214309789470950
+    From Rolstad et al. (2009), appendix: http://dx.doi.org/10.3189/002214309789470950
     If SE is the standard error, SD the standard deviation and N_eff the number of effective samples, we have:
     SE = SD / sqrt(N_eff) => N_eff = SD^2 / SE^2 => N_eff = (PS1 + PS2)/SE^2 where PS1 and PS2 are the partial sills
     estimated from the variogram models, and SE is estimated by integrating the variogram models with parameters PS1/PS2
     and R1/R2 where R1/R2 are the correlation ranges.
 
-    :param area: Circular area
+    :param area: Circular area (in square unit of the variogram ranges)
     :param crange1: Range of short-range variogram model
     :param psill1: Partial sill of short-range variogram model
     :param crange2: Range of long-range variogram model
@@ -955,7 +1037,7 @@ def neff_circular_area_approximation(area: float, params_vgm: pd.DataFrame) -> f
     The number of effective samples N_eff serves to convert between standard deviation and standard error
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
 
-    :param area: Area (in square unit of the variogram range)
+    :param area: Area (in square unit of the variogram ranges)
     :param params_vgm: Dataframe of variogram functions to sum: model_name, range, partial sill and (if it exists) the
     smoothness factor
 
@@ -1430,7 +1512,13 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     elif isinstance(ax, matplotlib.axes.Axes):
         fig = ax.figure
     else:
-        raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+        raise ValueError("ax must be a matplotlib.axes.Axes instance or None.")
+
+    if var_name not in df.columns.values:
+        raise ValueError('The variable {} is not part of the provided dataframe column names.'.format(var_name))
+
+    if statistic_name not in df.columns.values:
+        raise ValueError('The statistic {} is not part of the provided dataframe column names.'.format(statistic_name))
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -1512,7 +1600,15 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     elif isinstance(ax, matplotlib.axes.Axes):
         fig = ax.figure
     else:
-        raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
+        raise ValueError("ax must be a matplotlib.axes.Axes instance or None.")
+
+    if var_name_1 not in df.columns.values:
+        raise ValueError('The variable {} is not part of the provided dataframe column names.'.format(var_name_1))
+    elif var_name_2 not in df.columns.values:
+        raise ValueError('The variable {} is not part of the provided dataframe column names.'.format(var_name_2))
+
+    if statistic_name not in df.columns.values:
+        raise ValueError('The statistic {} is not part of the provided dataframe column names.'.format(statistic_name))
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
