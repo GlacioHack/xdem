@@ -192,10 +192,11 @@ class TestVariogram:
             for area in [10**i for i in range(10)]:
 
                 # Exact integration
-                neff_circ_exact = xdem.spatialstats.exact_neff_sphsum_circular(
+                neff_circ_exact = xdem.spatialstats.neff_exact_circular_twospherical(
                     area=area, crange1=r1, psill1=p1, crange2=r2, psill2=p2)
                 # Numerical integration
-                neff_circ_numer = xdem.spatialstats.neff_circ(area, [(r1, 'Sph', p1), (r2, 'Sph', p2)])
+                params_vgm = pd.DataFrame(data={'model':['spherical', 'spherical'], 'range':[r1, r2], 'psill':[p1, p2]})
+                neff_circ_numer = xdem.spatialstats.neff_circular_area_approximation(area, params_vgm)
 
                 # Check results are the same
                 assert neff_circ_exact == pytest.approx(neff_circ_numer, 0.001)
