@@ -1,6 +1,7 @@
 """Spatial statistical tools to estimate uncertainties related to DEMs"""
 from __future__ import annotations
 
+import inspect
 import math as m
 import multiprocessing as mp
 import os
@@ -18,6 +19,7 @@ import numpy as np
 import pandas as pd
 from scipy import integrate
 from scipy.optimize import curve_fit
+from scipy.spatial.distance import pdist
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
@@ -36,8 +38,8 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
     e.g. http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
 
-    :param data: input data
-    :param nfact: normalization factor for the data
+    :param data: Input data
+    :param nfact: Normalization factor for the data
 
     :returns nmad: (normalized) median absolute deviation of data.
     """
@@ -60,10 +62,10 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     Fills the no-data present on the regular N-D binning grid with nearest neighbour from scipy.griddata, then provides an
     interpolant function that linearly interpolates/extrapolates using scipy.RegularGridInterpolator.
 
-    :param df: dataframe with statistic of binned values according to explanatory variables (preferably output of nd_binning)
-    :param list_var_names: explanatory variable data series to select from the dataframe (containing interval or float dtype)
-    :param statistic: statistic to interpolate, stored as a data series in the dataframe
-    :param min_count: minimum number of samples to be used as a valid statistic (replaced by nodata)
+    :param df: Dataframe with statistic of binned values according to explanatory variables (preferably output of nd_binning)
+    :param list_var_names: Explanatory variable data series to select from the dataframe (containing interval or float dtype)
+    :param statistic: Statistic to interpolate, stored as a data series in the dataframe
+    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata)
     :return: N-dimensional interpolant function
 
     :examples
@@ -173,12 +175,12 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
     For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
 
-    :param values: values array (N,)
-    :param list_var: list (L) of explanatory variables array (N,)
-    :param list_var_names: list (L) of names of the explanatory variables
-    :param list_var_bins: count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
-    :param statistics: list (X) of statistics to be computed; defaults to count, median and nmad
-    :param list_ranges: list (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
+    :param values: Values array (N,)
+    :param list_var: List (L) of explanatory variables array (N,)
+    :param list_var_names: List (L) of names of the explanatory variables
+    :param list_var_bins: Count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param statistics: List (X) of statistics to be computed; defaults to count, median and nmad
+    :param list_ranges: List (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
     :return:
     """
 
@@ -440,9 +442,9 @@ def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwa
     """
     Get empirical variogram from skgstat.Variogram object calculating pairwise distances within the sample
 
-    :param values: values
-    :param coords: coordinates
-    :return: empirical variogram (variance, lags, counts)
+    :param values: Values
+    :param coords: Coordinates
+    :return: Empirical variogram (variance, lags, counts)
 
     """
 
@@ -480,9 +482,9 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
     Get empirical variogram from skgstat.Variogram object calculating pairwise distances between two sample collections
     of a MetricSpace (see scikit-gstat documentation for more details)
 
-    :param values: values
-    :param coords: coordinates
-    :return: empirical variogram (variance, lags, counts)
+    :param values: Values
+    :param coords: Coordinates
+    :return: Empirical variogram (variance, lags, counts)
 
     """
     # Rename the "subsample" argument into "samples", which is used by skgstat Metric subclasses
@@ -533,7 +535,7 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
     Multiprocessing wrapper for get_pdist_empirical_variogram and get_cdist_empirical variogram
 
     :param argdict: Keyword argument to pass to get_pdist/cdist_empirical_variogram
-    :return: empirical variogram (variance, lags, counts)
+    :return: Empirical variogram (variance, lags, counts)
 
     """
     if argdict['verbose']:
@@ -567,7 +569,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     If values are provided as a Raster subclass, nothing else is required.
     If values are provided as a 2D array (M,N), a ground sampling distance is sufficient to derive the pairwise distances.
     If values are provided as a 1D array (N), an array of coordinates (N,2) or (2,N) is expected. If the coordinates
-    do not correspond to all points of the grid, a ground sampling distance is needed to correctly get the grid size.
+    do not correspond to points of a grid, a ground sampling distance is needed to correctly get the grid size.
 
     Spatial subsampling method argument subsample_method can be one of "cdist_equidistant", "cdist_point", "pdist_point",
      "pdist_disk" and "pdist_ring".
@@ -586,17 +588,17 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     For pdist methods, keyword arguments are passed to skgstat.Variogram.
     For cdist methods, keyword arguments are passed to both skgstat.Variogram and skgstat.MetricSpace.
 
-    :param values: values
-    :param gsd: ground sampling distance
-    :param coords: coordinates
-    :param subsample: number of samples to randomly draw from the values
-    :param subsample_method: spatial subsampling method
-    :param n_variograms: number of independent empirical variogram estimations
-    :param n_jobs: number of processing cores
-    :param verbose: print statements during processing
-    :param random_state: random state or seed number to use for calculations (to fix random sampling during testing)
+    :param values: Values of studied variable
+    :param gsd: Ground sampling distance
+    :param coords: Coordinates
+    :param subsample: Number of samples to randomly draw from the values
+    :param subsample_method: Spatial subsampling method
+    :param n_variograms: Number of independent empirical variogram estimations
+    :param n_jobs: Number of processing cores
+    :param verbose: Print statements during processing
+    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
-    :return: empirical variogram (variance, lags, counts)
+    :return: Empirical variogram (variance, lags, counts)
     """
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
@@ -749,33 +751,62 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
 
     return df
 
-def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataFrame,
+def _get_scikitgstat_vgm_model_name(model: str | Callable) -> str:
+    """Fonction to identify a SciKit-GStat variogram model from a string or a function"""
+
+    list_supported_models = ['spherical', 'gaussian', 'exponential', 'cubic', 'stable', 'matern']
+
+    if callable(model):
+        if inspect.getmodule(model).__name__ == 'skgstat.models':
+            model_name = model.__name__
+        else:
+            raise ValueError('Variogram models can only be passed as functions of the skgstat.models package.')
+
+    elif isinstance(model, str):
+        model_name = None
+        for supp_model in list_supported_models:
+            if model.lower() in [supp_model[0:3], supp_model]:
+                model_name = supp_model
+        if model_name is None:
+            raise ValueError('Variogram model name {} not recognized. Supported models are: '.format(model)+
+                             ', '.join(list_supported_models)+'.')
+
+    else:
+        raise ValueError('Variogram models can be passed as strings or skgstat.models function. '
+                         'Supported models are: '+', '.join(list_supported_models)+'.')
+
+    return model_name
+
+def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_variogram: pd.DataFrame,
                             bounds: list[tuple[float, float]] = None,
-                            p0: list[float] = None) -> tuple[Callable, list[float]]:
+                            p0: list[float] = None) -> tuple[Callable, pd.DataFrame]:
     """
-    Fit a multi-range variogram model to an empirical variogram, weighted least-squares based on sampling errors
+    Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors
 
-    :param list_model: list of K variogram models to sum for the fit: from short-range to long-ranges
-    :param empirical_variogram: empirical variogram
-    :param bounds: bounds of ranges and sills for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper)
-    :param p0: initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess)
+    :param list_models: List of K variogram models to sum for the fit, from short to long ranges
+    :param empirical_variogram: Empirical variogram
+    :param bounds: Bounds of ranges and sills for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper)
+    :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess)
 
-    :return: modelled variogram function, coefficients
+    :return: Function of sum of variogram, Dataframe of coefficients
     """
-    # TODO: expand to other models than spherical, exponential, gaussian (more than 2 arguments)
 
-    # Define a sum of variogram function
+    # Define a function of a sum of variogram model forms, with undetermined arguments
     def vgm_sum(h, *args):
         fn = 0
         i = 0
-        for model in list_model:
-            if model == 'Sph':
-                fn += skg.models.spherical(h, args[i], args[i+1])
-            elif model == 'Gau':
-                fn += skg.models.gaussian(h, args[i], args[i+1])
-            elif model == 'Exp':
-                fn += skg.models.exponential(h, args[i], args[i+1])
-            i += 2
+        for model in list_models:
+            # Get the model name and convert to SciKit-GStat function
+            model_name = _get_scikitgstat_vgm_model_name(model)
+            model_function = getattr(skg.models, model_name)
+            # For models that expect 2 parameters
+            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+                fn += model_function(h, args[i], args[i+1])
+                i += 2
+            # For models that expect 3 parameters
+            elif model_name in ['stable', 'matern']:
+                fn += model_function(h, args[i], args[i+1], args[i+2])
+                i += 3
 
         return fn
 
@@ -792,7 +823,7 @@ def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataF
     # Simplify things for scipy: let's provide boundaries and first guesses
     if bounds is None:
         bounds = []
-        for i in range(len(list_model)):
+        for i in range(len(list_models)):
 
             # Use largest boundaries possible for our problem
             psill_bound = [0, max_var]
@@ -803,15 +834,15 @@ def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataF
             bounds.append(psill_bound)
     if p0 is None:
         p0 = []
-        for i in range(len(list_model)):
+        for i in range(len(list_models)):
             # Use psill evenly distributed
-            psill_p0 = ((i+1)/len(list_model))*max_var
+            psill_p0 = ((i+1)/len(list_models))*max_var
 
             # Use corresponding ranges
             # !! This fails when no empirical value crosses this (too wide binning/nugget)
             # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
             # range_p0 = empirical_variogram.bins.values[ind]
-            range_p0 = ((i+1)/len(list_model)) * empirical_variogram.bins.values[-1]
+            range_p0 = ((i+1)/len(list_models)) * empirical_variogram.bins.values[-1]
 
             p0.append(range_p0)
             p0.append(psill_p0)
@@ -833,51 +864,69 @@ def fit_sum_model_variogram(list_model: list[str], empirical_variogram: pd.DataF
     def vgm_sum_fit(h):
         fn = 0
         i = 0
-        for model in list_model:
-            if model == 'Sph':
-                fn += skg.models.spherical(h, cof[i], cof[i + 1])
-            elif model == 'Gau':
-                fn += skg.models.gaussian(h, cof[i], cof[i + 1])
-            elif model == 'Exp':
-                fn += skg.models.exponential(h, cof[i], cof[ i + 1])
-            # fn += skg.models.spherical(h, cof[i], cof[i+1])
+        for model in list_models:
+            model_name = _get_scikitgstat_vgm_model_name(model)
+            model_function = getattr(skg.models, model_name)
+            # For models that expect 2 parameters
+            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+                fn += model_function(h, cof[i], cof[i + 1])
+                i += 2
+            # For models that expect 3 parameters
+            elif model_name in ['stable', 'matern']:
+                fn += model_function(h, cof[i], cof[i + 1], cof[i + 2])
+                i += 3
+
+    # Pass sorted parameters
+    list_df = []
+    i = 0
+    for model in list_models:
+        model_name = _get_scikitgstat_vgm_model_name(model)
+        # For models that expect 2 parameters
+        if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+            df = pd.DataFrame()
+            df = df.assign(model=model_name, range=cof[i], psill=cof[i+1])
             i += 2
+        # For models that expect 3 parameters
+        elif model_name in ['stable', 'matern']:
+            df = pd.DataFrame()
+            df = df.assign(model=model_name, range=cof[i], psill=cof[i + 1], smooth=cof[i+2])
+            i += 3
+        list_df.append(df)
+    df_params = pd.concat(list_df)
 
-        return fn
-
-    return vgm_sum_fit, cof
+    return vgm_sum_fit, df_params
 
 
-def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crange2: float, psill2: float) -> float:
+def neff_exact_circular_twospherical(area: float, crange1: float, psill1: float, crange2: float, psill2: float) -> float:
     """
     Number of effective samples derived from exact integration of sum of 2 spherical variogram models over a circular area.
     The number of effective samples serves to convert between standard deviation/partial sills and standard error
     over the area.
+    Source: Rolstad et al. (2009), appendix: http://dx.doi.org/10.3189/002214309789470950
     If SE is the standard error, SD the standard deviation and N_eff the number of effective samples, we have:
     SE = SD / sqrt(N_eff) => N_eff = SD^2 / SE^2 => N_eff = (PS1 + PS2)/SE^2 where PS1 and PS2 are the partial sills
     estimated from the variogram models, and SE is estimated by integrating the variogram models with parameters PS1/PS2
     and R1/R2 where R1/R2 are the correlation ranges.
-    Source: Rolstad et al. (2009), appendix: http://dx.doi.org/10.3189/002214309789470950
 
-    :param area: circular area
-    :param crange1: range of short-range variogram model
-    :param psill1: partial sill of short-range variogram model
-    :param crange2: range of long-range variogram model
-    :param psill2: partial sill of long-range variogram model
+    :param area: Circular area
+    :param crange1: Range of short-range variogram model
+    :param psill1: Partial sill of short-range variogram model
+    :param crange2: Range of long-range variogram model
+    :param psill2: Partial sill of long-range variogram model
 
     :return: number of effective samples
     """
-    # short range variogram
-    c1 = psill1  # partial sill
-    a1 = crange1  # short correlation range
+    # Short-range variogram
+    c1 = psill1
+    a1 = crange1
 
-    # long range variogram
+    # Long-range variogram
     c1_2 = psill2
-    a1_2 = crange2  # long correlation range
+    a1_2 = crange2
 
     h_equiv = np.sqrt(area / np.pi)
 
-    # hypothesis of a circular shape to integrate variogram model
+    # Hypothesis of a circular shape to integrate variogram model
     if h_equiv > a1_2:
         std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c1_2 * a1_2 ** 2 / (5 * h_equiv ** 2))
     elif (h_equiv < a1_2) and (h_equiv > a1):
@@ -888,145 +937,148 @@ def exact_neff_sphsum_circular(area: float, crange1: float, psill1: float, crang
 
     return (psill1 + psill2)/std_err**2
 
+def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
+    """
+    Numerically integrate function between an upper and lower bounds
+    :param fun: Function to integrate
+    :param low_b: Lower bound
+    :param upp_b: Upper bound
 
-def neff_circ(area: float, list_vgm: list[tuple[float, str, float]]) -> float:
+    :return: Integral between lower and upper bound
+    """
+    return integrate.quad(fun, low_b, upp_b)[0]
+
+def neff_circular_area_approximation(area: float, params_vgm: pd.DataFrame) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
-    (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950)
-    The number of effective samples N_eff serves to convert between standard deviation/partial sills and standard error
+    (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950).
+    The number of effective samples N_eff serves to convert between standard deviation and standard error
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
 
-    :param area: area
-    :param list_vgm: variogram functions to sum (range, model name, partial sill)
+    :param area: Area (in square unit of the variogram range)
+    :param params_vgm: Dataframe of variogram functions to sum: model_name, range, partial sill and (if it exists) the
+    smoothness factor
 
-    :returns: number of effective samples
+    :returns: Number of effective samples
     """
-    psill_tot = 0
-    for vario in list_vgm:
-        psill_tot += vario[2]
 
+    # Get the total sill from the sum of partial sills
+    psill_tot = np.nansum(params_vgm.psill)
+
+    # Define the covariance sum function times the spatial lag, for later integration
     def hcov_sum(h):
         fn = 0
-        for vario in list_vgm:
-            crange, model, psill = vario
-            fn += h*(cov(h, crange, model=model, psill=psill))
+        for i in np.arange((len(params_vgm))):
+            model_name = params_vgm['model'][i]
+            range = params_vgm['range'][i]
+            psill = params_vgm['psill'][i]
+            model_function = getattr(skg.models, model_name)
+            # For models that expect 2 parameters
+            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+                # The covariance is the partial sill minus the variogram
+                fn += h * (psill - model_function(h, range, psill))
+                i += 2
+            # For models that expect 3 parameters
+            elif model_name in ['stable', 'matern']:
+                smooth = params_vgm['smooth'][i]
+                # The covariance is the partial sill minus the variogram
+                fn += h * (psill - model_function(h, range, psill, smooth))
+                i += 3
 
         return fn
 
+    # Get a radius for which the circle as the defined area
     h_equiv = np.sqrt(area / np.pi)
 
-    full_int = integrate_fun(hcov_sum, 0, h_equiv)
+    # Integrate the covariance function between the center and the radius
+    full_int = _integrate_fun(hcov_sum, 0, h_equiv)
+
+    # Get the standard error, and return the number of effective samples
     std_err = np.sqrt(2*np.pi*full_int / area)
 
     return psill_tot/std_err**2
 
 
-def neff_rect(area: float, width: float, crange1: float, psill1: float, model1: str = 'Sph', crange2: float = None,
-              psill2: float = None, model2: str = None) -> float:
+def neff_double_sum_covar_exact(coords: np.ndarray, areas: np.ndarray, errors: list[np.ndarray],
+                     vgm_funcs: list[Callable]):
     """
-    Number of effective samples derived from numerical integration for a sum of 2 variogram functions over a rectangular area
-
-    :param area: area
-    :param width: width of rectangular area
-    :param crange1: correlation range of first variogram
-    :param psill1: partial sill of first variogram
-    :param model1: model of first variogram
-    :param crange2: correlation range of second variogram
-    :param psill2: partial sill of second variogram
-    :param model2: model of second variogram
-
-    :returns: number of effective samples
+    Double sum of covariance for euclidean coordinates
+    :param coords: Spatial support (typically, pixel) coordinates
+    :param areas:  Area of supports (in square unit of the variogram range)
+    :param errors: Standard errors of supports
+    :param vgm_funcs: Variogram function
+    :return: Number of effective samples
     """
-    def hcov_sum(h, crange1=crange1, psill1=psill1, model1=model1, crange2=crange2, psill2=psill2, model2=model2):
 
-        if crange2 is None or psill2 is None or model2 is None:
-            return h*(cov(h, crange1, model=model1, psill=psill1))
-        else:
-            return h*(cov(h, crange1, model=model1, psill=psill1)+cov(h, crange2, model=model2, psill=psill2))
+    n = len(coords)
+    pds = pdist(coords)
+    var = 0
+    for i in range(n):
+        for j in range(n):
 
-    width = min(width, area/width)
+            # For index calculation of the pairwise distance, see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
+            if i == j:
+                d = 0
+            elif i < j:
+                ind = n * i + j - ((i + 2) * (i + 1)) // 2
+                d = pds[ind]
+            else:
+                ind = n * j + i - ((j + 2) * (j + 1)) // 2
+                d = pds[ind]
 
-    full_int = integrate_fun(hcov_sum, 0, width/2)
-    bin_int = np.linspace(width/2, area/width, 100)
-    for i in range(len(bin_int)-1):
-        low = bin_int[i]
-        upp = bin_int[i+1]
-        mid = bin_int[i] + (bin_int[i+1] - bin_int[i])/2
-        piec_int = integrate_fun(hcov_sum, low, upp)
-        full_int += piec_int * 2/np.pi*np.arctan(width/(2*mid))
+            for k in range(len(vgm_funcs)):
+                var += errors[k][i] * errors[k][j] * (1 - vgm_funcs[k](d)) * areas[i] * areas[j]
 
-    std_err = np.sqrt(2*np.pi*full_int / area)
+    total_area = sum(areas)
+    se_dsc = np.sqrt(var / total_area ** 2)
+    neff = (np.mean(errors)/se_dsc) ** 2
 
-    if crange2 is None or psill2 is None or model2 is None:
-        return psill1 / std_err ** 2
-    else:
-        return (psill1 + psill2) / std_err ** 2
+    return neff
 
-
-def integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
+def neff_double_sum_covar_hugonnet(coords: np.ndarray, errors: list[np.ndarray],
+                     vgm_funcs: list[Callable], nb_subsample=100) -> float:
     """
-    Numerically integrate function between upper and lower bounds
-    :param fun: function
-    :param low_b: lower bound
-    :param upp_b: upper bound
-
-    :return: integral
+    Approximation of double sum of covariance following
+    :param coords: Spatial support (typically, pixel) coordinates
+    :param errors: Standard errors of supports
+    :param vgm_funcs: Variogram function
+    :param nb_subsample: Number of points used to subset the integration
+    :return: Number of effective samples
     """
-    return integrate.quad(fun, low_b, upp_b)[0]
 
+    n = len(coords)
 
-def cov(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0) -> Callable:
-    """
-    Covariance function based on variogram function (COV = STD - VGM)
+    rand_points = np.random.choice(n, size=min(nb_subsample, n), replace=False)
+    pds = pdist(coords)
 
-    :param h: spatial lag
-    :param crange: correlation range
-    :param model: model
-    :param psill: partial sill
-    :param kappa: smoothing parameter for Exp Class
-    :param nugget: nugget
+    var = 0
+    for ind_sub in range(nb_subsample):
+        for j in range(n):
 
-    :returns: covariance function
-    """
-    return (nugget + psill) - vgm(h, crange, model=model, psill=psill, kappa=kappa)
+            i = rand_points[ind_sub]
+            # For index calculation of the pairwise distance, see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
+            if i == j:
+                d = 0
+            elif i < j:
+                ind = n * i + j - ((i + 2) * (i + 1)) // 2
+                d = pds[ind]
+            else:
+                ind = n * j + i - ((j + 2) * (j + 1)) // 2
+                d = pds[ind]
 
+            for k in range(len(vgm_funcs)):
+                var += errors[k][i] * errors[k][j] * (1 - vgm_funcs[k](d))
 
-def vgm(h: float, crange: float, model: str = 'Sph', psill: float = 1., kappa: float = 1/2, nugget: float = 0):
-    """
-    Compute variogram model function (Spherical, Exponential, Gaussian or Exponential Class)
+    total_area = n * nb_subsample
+    se_dsc = np.sqrt(var / total_area)
+    neff = (np.mean(errors) / se_dsc) ** 2
 
-    :param h: spatial lag
-    :param crange: correlation range
-    :param model: model
-    :param psill: partial sill
-    :param kappa: smoothing parameter for Exp Class
-    :param nugget: nugget
-
-    :returns: variogram function
-    """
-    c0 = nugget  # nugget
-    c1 = psill  # partial sill
-    a1 = crange  # correlation range
-    s = kappa  # smoothness parameter for Matern class
-
-    if model == 'Sph':  # spherical model
-        if h < a1:
-            vgm = c0 + c1 * (3 / 2 * h / a1-1 / 2 * (h / a1) ** 3)
-        else:
-            vgm = c0 + c1
-    elif model == 'Exp':  # exponential model
-        vgm = c0 + c1 * (1-np.exp(-h / a1))
-    elif model == 'Gau':  # gaussian model
-        vgm = c0 + c1 * (1-np.exp(- (h / a1) ** 2))
-    elif model == 'Exc':  # stable exponential model
-        vgm = c0 + c1 * (1-np.exp(-(h / a1)**s))
-
-    return vgm
+    return neff
 
 
 def std_err_finite(std: float, neff_tot: float, neff: float) -> float:
     """
-    Standard error of subsample of a finite ensemble
+    Standard error formula for a subsample of a finite ensemble.
 
     :param std: standard deviation
     :param neff_tot: maximum number of effective samples
@@ -1039,7 +1091,7 @@ def std_err_finite(std: float, neff_tot: float, neff: float) -> float:
 
 def std_err(std: float, neff: float) -> float:
     """
-    Standard error
+    Standard error formula.
 
     :param std: standard deviation
     :param neff: number of effective samples
@@ -1074,90 +1126,6 @@ def distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> flo
 
     return distance
 
-
-def kernel_sph(xi: float, x0: float, a1: float) -> float:
-    # TODO: homogenize kernel/variogram use
-    """
-    Spherical kernel
-    :param xi: position of first point
-    :param x0: position of second point
-    :param a1: range of kernel
-
-    :return: covariance between the two points
-    """
-    if np.abs(xi - x0) > a1:
-        return 0
-    else:
-        return 1 - 3 / 2 * np.abs(xi-x0) / a1 + 1 / 2 * (np.abs(xi-x0) / a1) ** 3
-
-
-def part_covar_sum(argsin: tuple) -> float:
-    """
-    Multiprocessing wrapper for covariance summing
-    :param argsin: Tupled argument for covariance calculation
-
-    :return: covariance sum
-    """
-    list_tuple_errs, corr_ranges, list_area_tot, list_lat, list_lon, i_range = argsin
-
-    n = len(list_tuple_errs)
-    part_var_err = 0
-    for i in i_range:
-        for j in range(n):
-            d = distance_latlon((list_lon[i], list_lat[i]), (list_lon[j], list_lat[j]))
-            for k in range(len(corr_ranges)):
-                part_var_err += kernel_sph(0, d, corr_ranges[k]) * list_tuple_errs[i][k] * list_tuple_errs[j][k] * \
-                    list_area_tot[i] * list_area_tot[j]
-
-    return part_var_err
-
-
-def double_sum_covar(list_tuple_errs: list[float], corr_ranges: list[float], list_area_tot: list[float],
-                     list_lat: list[float], list_lon: list[float], nproc: int = 1) -> float:
-    """
-    Double sum of covariances for propagating multi-range correlated errors between disconnected spatial ensembles
-
-    :param list_tuple_errs: list of tuples of correlated errors by range, by ensemble
-    :param corr_ranges: list of correlation ranges
-    :param list_area_tot: list of areas of ensembles
-    :param list_lat: list of center latitude of ensembles
-    :param list_lon: list of center longitude of ensembles
-    :param nproc: number of cores to use for multiprocessing
-
-    :returns: sum of covariances
-    """
-    n = len(list_tuple_errs)
-
-    if nproc == 1:
-        print('Deriving double covariance sum with 1 core...')
-        var_err = 0
-        for i in range(n):
-            for j in range(n):
-                d = distance_latlon((list_lon[i], list_lat[i]), (list_lon[j], list_lat[j]))
-                for k in range(len(corr_ranges)):
-                    var_err += kernel_sph(0, d, corr_ranges[k]) * list_tuple_errs[i][k] * list_tuple_errs[j][k] * \
-                        list_area_tot[i] * list_area_tot[j]
-    else:
-        print('Deriving double covariance sum with '+str(nproc)+' cores...')
-        pack_size = int(np.ceil(n/nproc))
-        argsin = [(list_tuple_errs, corr_ranges, list_area_tot, list_lon, list_lat, np.arange(
-            i, min(i+pack_size, n))) for k, i in enumerate(np.arange(0, n, pack_size))]
-        pool = mp.Pool(nproc, maxtasksperchild=1)
-        outputs = pool.map(part_covar_sum, argsin, chunksize=1)
-        pool.close()
-        pool.join()
-
-        var_err = np.sum(np.array(outputs))
-
-    area_tot = 0
-    for j in range(len(list_area_tot)):
-        area_tot += list_area_tot[j]
-
-    var_err /= np.nansum(area_tot) ** 2
-
-    return np.sqrt(var_err)
-
-
 def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[np.ndarray] = None,
                    perc_min_valid: float = 80., statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad],
                    patch_shape: str = 'circular', n_patches: int = 1000, verbose: bool = False,
@@ -1166,16 +1134,16 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     """
     Patches method for empirical estimation of the standard error over an integration area
 
-    :param values: values
-    :param gsd: ground sampling distance
-    :param mask: mask of sampled terrain
-    :param area: size of integration area
-    :param perc_min_valid: minimum valid area in the patch
-    :param statistics: list of statistics to compute in the patch
-    :param patch_shape: shape of patch ['circular' or 'rectangular']
-    :param n_patches: maximum number of patches to sample
-    :param verbose: print statement to console
-    :param random_state: random state or seed number to use for calculations (to fix random sampling during testing)
+    :param values: Values
+    :param gsd: Ground sampling distance
+    :param mask: Mask of sampled terrain
+    :param area: Size of integration area
+    :param perc_min_valid: Minimum valid area in the patch
+    :param statistics: List of statistics to compute in the patch
+    :param patch_shape: Shape of patch ['circular' or 'rectangular']
+    :param n_patches: Maximum number of patches to sample
+    :param verbose: Print statement to console
+    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
     :return: tile, mean, median, std and count of each patch
     """
@@ -1293,16 +1261,16 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     Input dataframe is expected to be the output of xdem.spatialstats.sample_empirical_variogram.
     Input function model is expected to be the output of xdem.spatialstats.fit_sum_model_variogram.
 
-    :param df: dataframe of empirical variogram
-    :param list_fit_fun: list of model function fits
-    :param list_fit_fun_label: list of model function fits labels
-    :param ax: plotting ax to use, creates a new one by default
-    :param xscale: scale of x axis
-    :param xscale_range_split: list of ranges at which to split the figure
-    :param xlabel: label of x axis
-    :param ylabel: label of y axis
-    :param xlim: limits of x axis
-    :param ylim: limits of y axis
+    :param df: Dataframe of empirical variogram
+    :param list_fit_fun: List of model function fits
+    :param list_fit_fun_label: List of model function fits labels
+    :param ax: Plotting ax to use, creates a new one by default
+    :param xscale: Scale of X-axis
+    :param xscale_range_split: List of ranges at which to split the figure
+    :param xlabel: Label of X-axis
+    :param ylabel: Label of Y-axis
+    :param xlim: Limits of X-axis
+    :param ylim: Limits of Y-axis
     :return:
     """
 
@@ -1446,13 +1414,13 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     Plot a statistic and its count along a single binning variable.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
 
-    :param df: output dataframe of nd_binning
-    :param var_name: name of binning variable to plot
-    :param statistic_name: name of statistic of interest to plot
-    :param label_var: label of binning variable
-    :param label_statistic: label of statistic of interest
-    :param min_count: removes statistic values computed with a count inferior to this minimum value
-    :param ax: plotting ax to use, creates a new one by default
+    :param df: Output dataframe of nd_binning
+    :param var_name: Name of binning variable to plot
+    :param statistic_name: Name of statistic of interest to plot
+    :param label_var: Label of binning variable
+    :param label_statistic: Label of statistic of interest
+    :param min_count: Removes statistic values computed with a count inferior to this minimum value
+    :param ax: Plotting ax to use, creates a new one by default
     """
 
     # Create axes
@@ -1520,21 +1488,21 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     Plot one statistic and its count along two binning variables.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
 
-    :param df: output dataframe of nd_binning
-    :param var_name_1: name of first binning variable to plot
-    :param var_name_2: name of second binning variable to plot
-    :param statistic_name: name of statistic of interest to plot
-    :param label_var_name_1: label of first binning variable
-    :param label_var_name_2: label of second binning variable
-    :param label_statistic: label of statistic of interest
-    :param cmap: colormap
-    :param min_count: removes statistic values computed with a count inferior to this minimum value
-    :param scale_var_1: scale along the axis of the first variable
-    :param scale_var_2: scale along the axis of the second variable
-    :param vmin: minimum statistic value in colormap range
-    :param vmax: maximum statistic value in colormap range
-    :param nodata_color: color for no data bins
-    :param ax: plotting ax to use, creates a new one by default
+    :param df: Output dataframe of nd_binning
+    :param var_name_1: Name of first binning variable to plot
+    :param var_name_2: Name of second binning variable to plot
+    :param statistic_name: Name of statistic of interest to plot
+    :param label_var_name_1: Label of first binning variable
+    :param label_var_name_2: Label of second binning variable
+    :param label_statistic: Label of statistic of interest
+    :param cmap: Colormap
+    :param min_count: Removes statistic values computed with a count inferior to this minimum value
+    :param scale_var_1: Scale along the axis of the first variable
+    :param scale_var_2: Scale along the axis of the second variable
+    :param vmin: Minimum statistic value in colormap range
+    :param vmax: Maximum statistic value in colormap range
+    :param nodata_color: Color for no data bins
+    :param ax: Plotting ax to use, creates a new one by default
     """
 
     # Create axes
