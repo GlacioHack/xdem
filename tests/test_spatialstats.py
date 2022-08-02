@@ -61,6 +61,11 @@ class TestVariogram:
         # Check that an error is estimated
         assert any(~np.isnan(df2.err_exp.values))
 
+        # Test that running on several cores does not trigger any error
+        df3 = xdem.spatialstats.sample_empirical_variogram(
+            values=diff, subsample=50,
+            random_state=42, runs=2, n_variograms=2, n_jobs=2)
+
         # Test plotting of empirical variogram by itself
         if PLOT:
             xdem.spatialstats.plot_vgm(df2)
