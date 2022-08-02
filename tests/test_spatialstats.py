@@ -39,7 +39,7 @@ class TestVariogram:
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50,
+            values=diff, samples=50,
             random_state=42, runs=2)
 
         # With random state, results should always be the same
@@ -176,35 +176,51 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
 
+    @pytest.mark.parametrize('range1', [10**i for i in range(3)])
+    @pytest.mark.parametrize('psill1', [0.1, 1, 10])
+    @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian'])
+    @pytest.mark.parametrize('area', [10**(2*i) for i in range(3)])
+    def test_neff_estimation_single_range(self, range1, psill1, model1, area):
+        """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
+        spherical, gaussian or exponential forms"""
 
-    def test_neff_estimation(self):
-        """ Test the precision of numerical integration for several spherical models at different scales """
+         # Exact integration
+        neff_circ_exact = xdem.spatialstats.neff_circular_approx_exact_sph_gau_exp(area=area, model1=model1, range1=range1, psill1=psill1)
+        # Numerical integration
+        params_vgm = pd.DataFrame(data={'model':[model1], 'range':[range1], 'psill':[psill1]})
+        neff_circ_numer = xdem.spatialstats.neff_circular_approx(area, params_vgm)
 
-        # Short ranges
-        crange1 = [10**i for i in range(8)]
-        # Long ranges
-        crange2 = [100*sr for sr in crange1]
+        # Check results are the exact same
+        assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-        # Partial sills
-        p1 = 0.8
-        p2 = 0.2
+    @pytest.mark.parametrize('range1', [10 ** i for i in range(2)])
+    @pytest.mark.parametrize('range2', [10 ** i for i in range(2)])
+    @pytest.mark.parametrize('range3', [10 ** i for i in range(2)])
+    @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian'])
+    @pytest.mark.parametrize('model2', ['spherical', 'exponential', 'gaussian'])
+    @pytest.mark.parametrize('model3', ['spherical', 'exponential', 'gaussian'])
+    def test_neff_estimation_three_ranges(self, range1, range2, range3, model1, model2, model3):
+        """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
+        spherical, gaussian or exponential forms"""
 
-        # Run for all ranges
-        for r1 in crange1:
-            r2 = crange2[crange1.index(r1)]
+        area = 1000
+        psill1 = 1
+        psill2 = 1
+        psill3 = 1
 
-            # And for a wide range of surface areas
-            for area in [10**i for i in range(10)]:
+        # Exact integration
+        neff_circ_exact = xdem.spatialstats.neff_circular_approx_exact_sph_gau_exp(area=area, model1=model1,
+                                                                                   range1=range1, psill1=psill1,
+                                                                                   model2=model2, range2=range2,
+                                                                                   psill2=psill2, model3=model3,
+                                                                                   range3=range3, psill3=psill3)
+        # Numerical integration
+        params_vgm = pd.DataFrame(
+            data={'model': [model1, model2, model3], 'range': [range1, range2, range3], 'psill': [psill1, psill2, psill3]})
+        neff_circ_numer = xdem.spatialstats.neff_circular_approx(area, params_vgm)
 
-                # Exact integration
-                neff_circ_exact = xdem.spatialstats.neff_exact_circular_twospherical(
-                    area=area, crange1=r1, psill1=p1, crange2=r2, psill2=p2)
-                # Numerical integration
-                params_vgm = pd.DataFrame(data={'model':['spherical', 'spherical'], 'range':[r1, r2], 'psill':[p1, p2]})
-                neff_circ_numer = xdem.spatialstats.neff_circular_area_approximation(area, params_vgm)
-
-                # Check results are the same
-                assert neff_circ_exact == pytest.approx(neff_circ_numer, 0.001)
+        # Check results are the exact same
+        assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
 class TestSubSampling:
 
@@ -465,6 +481,6 @@ class TestBinning:
 
         # Same for the 2D plotting
         with pytest.raises(ValueError, match="The variable var3 is not part of the provided dataframe column names."):
-            xdem.spatialstats.plot_2d_binning(df, var_name_1='var3', statistic_name='statistic')
+            xdem.spatialstats.plot_2d_binning(df, var_name_1='var3', var_name_2='var1', statistic_name='statistic')
         with pytest.raises(ValueError, match="The statistic stat is not part of the provided dataframe column names."):
-            xdem.spatialstats.plot_2d_binning(df, var_name_1='var1', statistic_name='stat')
+            xdem.spatialstats.plot_2d_binning(df, var_name_1='var1', var_name_2='var1', statistic_name='stat')

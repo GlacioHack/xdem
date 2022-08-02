@@ -49,6 +49,119 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
         data_arr = np.asarray(data)
     return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
+
+def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian, nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
+        -> pd.DataFrame:
+    """
+    N-dimensional binning of values according to one or several explanatory variables with computed statistics in
+    each bin. By default, the sample count, the median and the normalized absolute median deviation (NMAD). The count
+    is always computed, no matter user input.
+    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
+    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
+
+    :param values: Values array (N,)
+    :param list_var: List (L) of explanatory variables array (N,)
+    :param list_var_names: List (L) of names of the explanatory variables
+    :param list_var_bins: Count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param statistics: List (X) of statistics to be computed; defaults to count, median and nmad
+    :param list_ranges: List (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
+    :return:
+    """
+
+    # We separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
+    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
+    if list_var_bins is None:
+        list_var_bins = (10,) * len(list_var_names)
+    elif isinstance(list_var_bins,int):
+        list_var_bins = (list_var_bins,) * len(list_var_names)
+
+    # Flatten the arrays if this has not been done by the user
+    values = values.ravel()
+    list_var = [var.ravel() for var in list_var]
+
+    # Remove no data values
+    valid_data = np.logical_and.reduce([np.isfinite(values)]+[np.isfinite(var) for var in list_var])
+    values = values[valid_data]
+    list_var = [var[valid_data] for var in list_var]
+
+    statistics = list(statistics)
+    # In case the statistics are user-defined, and they forget count, we add it for later calculation or plotting
+    if 'count' not in statistics:
+        statistics = ['count'] + statistics
+
+    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
+
+    # Get binned statistics in 1d: a simple loop is sufficient
+    list_df_1d = []
+    for i, var in enumerate(list_var):
+        df_stats_1d = pd.DataFrame()
+        # get statistics
+        for j, statistic in enumerate(statistics):
+            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
+            # save in a dataframe
+            df_stats_1d[statistics_name[j]] = stats_binned_1d
+        # we need to get the middle of the bins from the edges, to get the same dimension length
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
+        # report number of dimensions used
+        df_stats_1d['nd'] = 1
+
+        list_df_1d.append(df_stats_1d)
+
+    # Get binned statistics in 2d: all possible 2d combinations
+    list_df_2d = []
+    if len(list_var)>1:
+        combs = list(itertools.combinations(list_var_names, 2))
+        for i, comb in enumerate(combs):
+            var1_name, var2_name = comb
+            # corresponding variables indexes
+            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
+            df_stats_2d = pd.DataFrame()
+            for j, statistic in enumerate(statistics):
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
+                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
+                                                             ,range=list_ranges)[:3]
+                # get statistics
+                df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
+            # derive interval indexes and convert bins into 2d indexes
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
+            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
+            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
+            # report number of dimensions used
+            df_stats_2d['nd'] = 2
+
+            list_df_2d.append(df_stats_2d)
+
+
+    # Get binned statistics in nd, without redoing the same stats
+    df_stats_nd = pd.DataFrame()
+    if len(list_var)>2:
+        for j, statistic in enumerate(statistics):
+            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
+            df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
+        list_ii = []
+        # Loop through the bin edges and create IntervalIndexes from them (to get both
+        for bedges in list_bedges:
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
+
+        # Create nd indexes in nd-array and flatten for each variable
+        iind = np.meshgrid(*list_ii)
+        for i, var_name in enumerate(list_var_names):
+            df_stats_nd[var_name] = iind[i].flatten()
+
+        # Report number of dimensions used
+        df_stats_nd['nd'] = len(list_var_names)
+
+    # Concatenate everything
+    list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
+    df_concat = pd.concat(list_all_dfs)
+    # commenting for now: pd.MultiIndex can be hard to use
+    # df_concat = df_concat.set_index(list_var_names)
+
+    return df_concat
+
+
 def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
                       min_count: Optional[int] = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
     """
@@ -166,116 +279,6 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     return interp_fun
 
-
-def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
-                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
-        -> pd.DataFrame:
-    """
-    N-dimensional binning of values according to one or several explanatory variables with computed statistics in
-    each bin. By default, the sample count, the median and the normalized absolute median deviation (NMAD). The count
-    is always computed, no matter user input.
-    Values input is a (N,) array and variable input is a list of flattened arrays of similar dimensions (N,).
-    For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
-
-    :param values: Values array (N,)
-    :param list_var: List (L) of explanatory variables array (N,)
-    :param list_var_names: List (L) of names of the explanatory variables
-    :param list_var_bins: Count, or list (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
-    :param statistics: List (X) of statistics to be computed; defaults to count, median and nmad
-    :param list_ranges: List (L) of minimum and maximum ranges to bin the explanatory variables; defaults to min/max of the data
-    :return:
-    """
-
-    # We separate 1d, 2d and nd binning, because propagating statistics between different dimensional binning is not always feasible
-    # using scipy because it allows for several dimensional binning, while it's not straightforward in pandas
-    if list_var_bins is None:
-        list_var_bins = (10,) * len(list_var_names)
-    elif isinstance(list_var_bins,int):
-        list_var_bins = (list_var_bins,) * len(list_var_names)
-
-    # Flatten the arrays if this has not been done by the user
-    values = values.ravel()
-    list_var = [var.ravel() for var in list_var]
-
-    # Remove no data values
-    valid_data = np.logical_and.reduce([np.isfinite(values)]+[np.isfinite(var) for var in list_var])
-    values = values[valid_data]
-    list_var = [var[valid_data] for var in list_var]
-
-    # In case the statistics are user-defined, and they forget count, we add it for later calculation or plotting
-    if 'count' not in statistics:
-        statistics = itertools.chain(['count'], statistics)
-
-    statistics_name = [f if isinstance(f,str) else f.__name__ for f in statistics]
-
-    # Get binned statistics in 1d: a simple loop is sufficient
-    list_df_1d = []
-    for i, var in enumerate(list_var):
-        df_stats_1d = pd.DataFrame()
-        # get statistics
-        for j, statistic in enumerate(statistics):
-            stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
-            # save in a dataframe
-            df_stats_1d[statistics_name[j]] = stats_binned_1d
-        # we need to get the middle of the bins from the edges, to get the same dimension length
-        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
-        # report number of dimensions used
-        df_stats_1d['nd'] = 1
-
-        list_df_1d.append(df_stats_1d)
-
-    # Get binned statistics in 2d: all possible 2d combinations
-    list_df_2d = []
-    if len(list_var)>1:
-        combs = list(itertools.combinations(list_var_names, 2))
-        for i, comb in enumerate(combs):
-            var1_name, var2_name = comb
-            # corresponding variables indexes
-            i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
-            df_stats_2d = pd.DataFrame()
-            for j, statistic in enumerate(statistics):
-                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
-                                                             ,bins=[list_var_bins[i1],list_var_bins[i2]]
-                                                             ,range=list_ranges)[:3]
-                # get statistics
-                df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
-            # derive interval indexes and convert bins into 2d indexes
-            ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
-            ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
-            df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
-            df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
-            # report number of dimensions used
-            df_stats_2d['nd'] = 2
-
-            list_df_2d.append(df_stats_2d)
-
-
-    # Get binned statistics in nd, without redoing the same stats
-    df_stats_nd = pd.DataFrame()
-    if len(list_var)>2:
-        for j, statistic in enumerate(statistics):
-            stats_binned_2d, list_bedges = binned_statistic_dd(list_var,values,statistic=statistic,bins=list_var_bins,range=list_ranges)[0:2]
-            df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
-        list_ii = []
-        # Loop through the bin edges and create IntervalIndexes from them (to get both
-        for bedges in list_bedges:
-            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
-
-        # Create nd indexes in nd-array and flatten for each variable
-        iind = np.meshgrid(*list_ii)
-        for i, var_name in enumerate(list_var_names):
-            df_stats_nd[var_name] = iind[i].flatten()
-
-        # Report number of dimensions used
-        df_stats_nd['nd'] = len(list_var_names)
-
-    # Concatenate everything
-    list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
-    df_concat = pd.concat(list_all_dfs)
-    # commenting for now: pd.MultiIndex can be hard to use
-    # df_concat = df_concat.set_index(list_var_names)
-
-    return df_concat
 
 def create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None,
                          radius: Optional[float] = None) -> np.ndarray:
@@ -980,8 +983,8 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
 
 
 def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, range1: float, psill1: float,
-                                                       model2: str | Callable = None, range2: float = None, psill2: float = None,
-                                                       model3: str | Callable = None, range3: float = None, psill3: float = None) -> float:
+                                           model2: str | Callable = None, range2: float = None, psill2: float = None,
+                                           model3: str | Callable = None, range3: float = None, psill3: float = None) -> float:
     """
     Number of effective samples approximated from exact disk integration of a sum of one, two or three variogram models
     of spherical, gaussian or exponential form over a disk of a certain area.
@@ -997,7 +1000,7 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
     and R1/R2 where R1/R2 are the correlation ranges.
 
     :param area: Area (in square unit of the variogram ranges)
-    :param model1: Form of first variogram model. Can either be a 3-letter string, full string of the variogram name
+    :param model1: Form of first variogram model: can either be a 3-letter string, full string of the variogram name
     or SciKit-GStat model function (e.g., for a spherical model: "Sph", "Spherical" or skgstat.models.spherical)
     :param range1: Range of first variogram model
     :param psill1: Partial sill of short-range variogram model
@@ -1011,10 +1014,16 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
     :return: number of effective samples
     """
 
+    # List of psills and ranges
+    psills = []
+    ranges = []
+    models = []
+
     # First variogram
-    c1 = psill1
-    a1 = range1
+    psills.append(psill1)
+    ranges.append(range1)
     model_name1 = _get_scikitgstat_vgm_model_name(model1)
+    models.append(model_name1)
 
     # Second variogram
     vgm_params2 = [psill2, range2, model2]
@@ -1024,12 +1033,10 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
                          'or all None.')
     # If all parameters are defined, pass them
     elif all([param is not None for param in vgm_params2]):
-        c2 = psill2
-        a2 = range2
         model_name2 = _get_scikitgstat_vgm_model_name(model2)
-    # Otherwise, set the model as None to skip it in the integration
-    else:
-        model_name2 = None
+        psills.append(psill2)
+        ranges.append(range2)
+        models.append(model_name2)
 
     # Third variogram: same as for second
     vgm_params3 = [psill3, range3, model3]
@@ -1037,28 +1044,61 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
         raise ValueError('Parameters of the third variogram ("model3", "range3" and "psill3") need to be all valid '
                          'or all None.')
     elif all([param is not None for param in vgm_params3]):
-        c3 = psill3
-        a3 = range3
         model_name3 = _get_scikitgstat_vgm_model_name(model3)
-    else:
-        model_name3 = None
+        psills.append(psill3)
+        ranges.append(range3)
+        models.append(model_name3)
 
-    # Lag h equal to the radius of a disk of area A
-    h_equiv = np.sqrt(area / np.pi)
+    # Lag l equal to the radius needed for a disk of area A
+    l = np.sqrt(area / np.pi)
 
     # Hypothesis of a disk integrated radially from the center
 
+    # Formulas of h * covariance = h * ( psill - variogram ) for each form, then its integral for each form to yield
+    # the standard error SE. a1 = range and c1 = partial sill.
 
-    if h_equiv > a2:
-        std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c2 * a2 ** 2 / (5 * h_equiv ** 2))
-    elif (h_equiv < a2) and (h_equiv > a1):
-        std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c2 * (1-h_equiv / a2+1 / 5 * (h_equiv / a2) ** 3))
-    else:
-        std_err = np.sqrt(c1 * (1-h_equiv / a1+1 / 5 * (h_equiv / a1) ** 3) +
-                          c2 * (1-h_equiv / a2+1 / 5 * (h_equiv / a2) ** 3))
+    # Spherical: h * covariance = c1 * h * ( 1 - 3/2 * h / a1 + 1/2 * (h/a1)**3 ) = c1 * (h - 3/2 * h**2 / a1 + 1/2 * h**4 / a1**3)
+    # Spherical: radial integral of above from 0 to L: SE**2 = 2 / (L**2) * c1 * (L**2 / 2 - 3/2 * L**3 / 3 / a1 + 1/2 * 1/5 * L**5 / a1**3)
+    # which leads to SE**2 =  c1 * (1 - L / a1 + 1/5 * (L/a1)**3 )
+    # If spherical model is above the spherical range a1: SE**2 = c1 /5 * (a1/L)**2
 
+    def spherical_exact_integral(a1, c1, L):
+        if l <= a1:
+            squared_se = c1 * (1 - L/a1 + 1/5 * (L/a1)**3)
+        else:
+            squared_se = c1 / 5 * (a1/L)**2
+        return squared_se
 
-    return (psill1 + psill2)/std_err**2
+    # Exponential: h * covariance = c1 * h * exp(-h/a); a = a1/3
+    # Exponential: radial integral of above from 0 to L: SE**2 =  2 / (L**2) * c1 * a * (a - exp(-L/a) * (a + L))
+
+    def exponential_exact_integral(a1, c1, L):
+        a = a1 / 3
+        squared_se = 2 * c1 * (a/L)**2 * (1 - np.exp(-L/a) * (1 + L/a))
+        return squared_se
+
+    # Gaussian: h * covariance = c1 * h * exp(-h**2/a**2) ; a = a1/2
+    # Gaussian: radial integral of above from 0 to L: SE**2 = 2 / (L**2) * c1 * 1/2 * a**2 * (1 - exp(-L**2/a**2))
+
+    def gaussian_exact_integral(a1, c1, L):
+        a = a1 / 2
+        squared_se = c1 * (a/L)**2 * (1 - np.exp(-L**2 / a**2))
+        return squared_se
+
+    squared_se = 0
+    valid_models = ['spherical', 'exponential', 'gaussian']
+    exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral]
+    for i, model_name in enumerate(models):
+        if model_name in valid_models:
+            exact_integral = exact_integrals[valid_models.index(model_name)]
+            squared_se += exact_integral(ranges[i], psills[i], l)
+
+    # We sum all partial sill to get the total sill
+    total_sill = sum(psills)
+    # The number of effective sample is the fraction of total sill by squared standard error
+    neff = total_sill/squared_se
+
+    return neff
 
 def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
     """
@@ -1073,14 +1113,19 @@ def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
 
 def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     """
-    Number of effective samples derived from numerical integration for any sum of variogram models a circular area
-    (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950).
+    Number of effective samples derived from numerical integration for any sum of variogram models a circular area.
+    This is a generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950, which is verified
+    against exact integration in `neff_circular_approx_exact_sph_gau_exp`.
+    The input variogram parameters correspond to the dataframe returned by `fit_sum_variogram_models`, also detailed in
+    the parameter description.
+
     The number of effective samples N_eff serves to convert between standard deviation and standard error
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
 
     :param area: Area (in square unit of the variogram ranges)
-    :param params_vgm: Dataframe of variogram functions to sum: model_name, range, partial sill and (if it exists) the
-    smoothness factor
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
     :returns: Number of effective samples
     """
@@ -1092,7 +1137,7 @@ def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     def hcov_sum(h):
         fn = 0
         for i in np.arange((len(params_vgm))):
-            model_name = params_vgm['model'][i]
+            model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'][i])
             range = params_vgm['range'][i]
             psill = params_vgm['psill'][i]
             model_function = getattr(skg.models, model_name)
@@ -1119,7 +1164,10 @@ def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     # Get the standard error, and return the number of effective samples
     std_err = np.sqrt(2*np.pi*full_int / area)
 
-    return psill_tot/std_err**2
+    # The number of effective sample is the fraction of total sill by squared standard error
+    neff = psill_tot/std_err**2
+
+    return neff
 
 
 def neff_double_sum_covar_exact(coords: np.ndarray, areas: np.ndarray, errors: list[np.ndarray],
