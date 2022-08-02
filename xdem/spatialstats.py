@@ -979,43 +979,84 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
     return vgm_sum_fit, df_params
 
 
-def neff_exact_circular_twospherical(area: float, crange1: float, psill1: float, crange2: float, psill2: float) -> float:
+def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, range1: float, psill1: float,
+                                                       model2: str | Callable = None, range2: float = None, psill2: float = None,
+                                                       model3: str | Callable = None, range3: float = None, psill3: float = None) -> float:
     """
-    Number of effective samples derived from exact integration of sum of 2 spherical variogram models over a circular area.
-    The number of effective samples serves to convert between standard deviation/partial sills and standard error
-    over the area.
-    From Rolstad et al. (2009), appendix: http://dx.doi.org/10.3189/002214309789470950
-    If SE is the standard error, SD the standard deviation and N_eff the number of effective samples, we have:
+    Number of effective samples approximated from exact disk integration of a sum of one, two or three variogram models
+    of spherical, gaussian or exponential form over a disk of a certain area.
+    Inspired by Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950.
+
+    This function is contains the exact integrated formulas and is mostly used for testing the numerical integration
+    of any number and forms of variograms provided by the function `neff_circular_approx`.
+
+    The number of effective samples serves to convert between standard deviation and standard error. For example, with
+    two models: if SE is the standard error, SD the standard deviation and N_eff the number of effective samples, we have:
     SE = SD / sqrt(N_eff) => N_eff = SD^2 / SE^2 => N_eff = (PS1 + PS2)/SE^2 where PS1 and PS2 are the partial sills
     estimated from the variogram models, and SE is estimated by integrating the variogram models with parameters PS1/PS2
     and R1/R2 where R1/R2 are the correlation ranges.
 
-    :param area: Circular area (in square unit of the variogram ranges)
-    :param crange1: Range of short-range variogram model
+    :param area: Area (in square unit of the variogram ranges)
+    :param model1: Form of first variogram model. Can either be a 3-letter string, full string of the variogram name
+    or SciKit-GStat model function (e.g., for a spherical model: "Sph", "Spherical" or skgstat.models.spherical)
+    :param range1: Range of first variogram model
     :param psill1: Partial sill of short-range variogram model
-    :param crange2: Range of long-range variogram model
-    :param psill2: Partial sill of long-range variogram model
+    :param model2: Form of second variogram model
+    :param range2: Range of second variogram model
+    :param psill2: Partial sill of second variogram model
+    :param model3: Form of third variogram model
+    :param range3: Range of third variogram model
+    :param psill3: Partial sill of third variogram model
 
     :return: number of effective samples
     """
-    # Short-range variogram
+
+    # First variogram
     c1 = psill1
-    a1 = crange1
+    a1 = range1
+    model_name1 = _get_scikitgstat_vgm_model_name(model1)
 
-    # Long-range variogram
-    c1_2 = psill2
-    a1_2 = crange2
+    # Second variogram
+    vgm_params2 = [psill2, range2, model2]
+    # Raise an error if a parameter of the second variogram is None but any one of the others is not None
+    if None in vgm_params2 and any([param is not None for param in vgm_params2]):
+        raise ValueError('Parameters of the second variogram ("model2", "range2" and "psill2") need to be all valid '
+                         'or all None.')
+    # If all parameters are defined, pass them
+    elif all([param is not None for param in vgm_params2]):
+        c2 = psill2
+        a2 = range2
+        model_name2 = _get_scikitgstat_vgm_model_name(model2)
+    # Otherwise, set the model as None to skip it in the integration
+    else:
+        model_name2 = None
 
+    # Third variogram: same as for second
+    vgm_params3 = [psill3, range3, model3]
+    if None in vgm_params3 and any([param is not None for param in vgm_params3]):
+        raise ValueError('Parameters of the third variogram ("model3", "range3" and "psill3") need to be all valid '
+                         'or all None.')
+    elif all([param is not None for param in vgm_params3]):
+        c3 = psill3
+        a3 = range3
+        model_name3 = _get_scikitgstat_vgm_model_name(model3)
+    else:
+        model_name3 = None
+
+    # Lag h equal to the radius of a disk of area A
     h_equiv = np.sqrt(area / np.pi)
 
-    # Hypothesis of a circular shape to integrate variogram model
-    if h_equiv > a1_2:
-        std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c1_2 * a1_2 ** 2 / (5 * h_equiv ** 2))
-    elif (h_equiv < a1_2) and (h_equiv > a1):
-        std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c1_2 * (1-h_equiv / a1_2+1 / 5 * (h_equiv / a1_2) ** 3))
+    # Hypothesis of a disk integrated radially from the center
+
+
+    if h_equiv > a2:
+        std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c2 * a2 ** 2 / (5 * h_equiv ** 2))
+    elif (h_equiv < a2) and (h_equiv > a1):
+        std_err = np.sqrt(c1 * a1 ** 2 / (5 * h_equiv ** 2) + c2 * (1-h_equiv / a2+1 / 5 * (h_equiv / a2) ** 3))
     else:
         std_err = np.sqrt(c1 * (1-h_equiv / a1+1 / 5 * (h_equiv / a1) ** 3) +
-                          c1_2 * (1-h_equiv / a1_2+1 / 5 * (h_equiv / a1_2) ** 3))
+                          c2 * (1-h_equiv / a2+1 / 5 * (h_equiv / a2) ** 3))
+
 
     return (psill1 + psill2)/std_err**2
 
@@ -1030,7 +1071,7 @@ def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
     """
     return integrate.quad(fun, low_b, upp_b)[0]
 
-def neff_circular_area_approximation(area: float, params_vgm: pd.DataFrame) -> float:
+def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area
     (generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950).
