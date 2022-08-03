@@ -1314,7 +1314,7 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.DataFrame,
         # Convert the compact pairwise distance into a square matrix
         pds_matrix = squareform(pds)
         # Vectorize calculation
-        var = np.matmul(errors, errors.T) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
+        var = np.sum(errors.reshape((-1, 1)) @ errors.reshape((1, -1)) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape))
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / n ** 2
@@ -1323,7 +1323,7 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.DataFrame,
     return neff
 
 def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.DataFrame, subsample: int = 1000,
-                         vectorized=True) -> float:
+                         vectorized=True, random_state: None | np.random.RandomState | np.random.Generator | int = None) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
     based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
@@ -1336,9 +1336,18 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.
     sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
     :param subsample: Number of samples to subset the calculation
     :param vectorized: Perform the vectorized calculation (used for testing).
+    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
     :return: Number of effective samples
     """
+
+    # Define state for random subsampling (to fix results during testing)
+    if random_state is None:
+        rnd = np.random.default_rng()
+    elif isinstance(random_state, (np.random.RandomState, np.random.Generator)):
+        rnd = random_state
+    else:
+        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
 
     # Check input dataframe
     _check_validity_params_vgm(params_vgm)
@@ -1351,7 +1360,7 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.
     pds = pdist(coords)
 
     # Get random subset of points for one of the sums
-    rand_points = np.random.choice(n, size=min(subsample, n), replace=False)
+    rand_points = rnd.choice(n, size=min(subsample, n), replace=False)
 
     # Now we compute the double covariance sum
     # Either using for-loop-version
@@ -1381,7 +1390,7 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.
         pds_matrix = squareform(pds)
         pds_matrix_sub = pds_matrix[:, rand_points]
         # Vectorized calculation
-        var = np.matmul(errors, errors_sub.T) * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape)
+        var = np.sum(errors.reshape((-1, 1)) @ errors_sub.reshape((1, -1)) * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape))
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / (n * subsample)

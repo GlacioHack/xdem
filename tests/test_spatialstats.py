@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Tuple
 
 import warnings
+import time
 
 import geoutils as gu
 import numpy as np
@@ -228,13 +229,15 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
 
+class TestNeffEstimation:
+
     @pytest.mark.parametrize('range1', [10**i for i in range(3)])
     @pytest.mark.parametrize('psill1', [0.1, 1, 10])
     @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian', 'cubic'])
     @pytest.mark.parametrize('area', [10**(2*i) for i in range(3)])
-    def test_neff_estimation_single_range(self, range1, psill1, model1, area):
-        """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
-        spherical, gaussian or exponential forms"""
+    def test_neff_circular_single_range(self, range1, psill1, model1, area):
+        """ Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
+        forms to get the number of effective samples"""
 
         params_vgm = pd.DataFrame(data={'model':[model1], 'range':[range1], 'psill':[psill1]})
 
@@ -251,9 +254,9 @@ class TestVariogram:
     @pytest.mark.parametrize('range3', [10 ** i for i in range(2)])
     @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian', 'cubic'])
     @pytest.mark.parametrize('model2', ['spherical', 'exponential', 'gaussian', 'cubic'])
-    def test_neff_estimation_three_ranges(self, range1, range2, range3, model1, model2):
-        """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
-        spherical, gaussian or exponential forms"""
+    def test_neff_circular_three_ranges(self, range1, range2, range3, model1, model2):
+        """ Test the accuracy of numerical integration for one to three models of spherical, gaussian or
+        exponential forms"""
 
         area = 1000
         psill1 = 1
@@ -268,11 +271,61 @@ class TestVariogram:
         # Exact integration
         neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_vgm=params_vgm)
         # Numerical integration
-
         neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_vgm=params_vgm)
 
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
+
+    def test_neff_exact_and_approx_hugonnet(self):
+        """Test the exact and approximated calculation of the number of effective sample by double covariance sum"""
+
+        # Generate a gridded dataset with varying errors associated to each pixel
+        shape = (15, 15)
+        np.random.seed(42)
+        errors = np.abs(np.random.normal(0, 1, size=shape))
+
+        # Coordinates
+        x = np.arange(0, shape[0])
+        y = np.arange(0, shape[1])
+        xx, yy = np.meshgrid(x, y)
+
+        # Flatten everything
+        coords = np.dstack((xx.flatten(), yy.flatten())).squeeze()
+        errors = errors.flatten()
+
+        # Create a list of variogram that, summed, represent the spatial correlation
+        params_vgm = pd.DataFrame(data={'model':['spherical', 'gaussian'], 'range':[5, 50], 'psill':[0.5, 0.5]})
+
+        # Check that the function runs with default parameters
+        t0 = time.time()
+        neff_exact = xdem.spatialstats.neff_exact(coords=coords, errors=errors, params_vgm=params_vgm)
+        t1 = time.time()
+
+        # Check that the non-vectorized version gives the same result
+        neff_exact_nv = xdem.spatialstats.neff_exact(coords=coords, errors=errors, params_vgm=params_vgm, vectorized=False)
+        t2 = time.time()
+        assert neff_exact == pytest.approx(neff_exact_nv, rel=0.001)
+
+        # Check that the vectorized version is faster (vectorized for about 250 points here)
+        assert (t1 - t0) < (t2 - t1)
+
+        # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
+        t3 = time.time()
+        neff_approx = xdem.spatialstats.neff_hugonnet_approx(coords=coords, errors=errors, params_vgm=params_vgm,
+                                                             subsample=100, random_state=42)
+        t4 = time.time()
+
+        # Check that the non-vectorized version gives the same result, sampling 100 out of 250 samples
+        neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(coords=coords, errors=errors, params_vgm=params_vgm,
+                                                             subsample=100, vectorized=False, random_state=42)
+
+        assert neff_approx == pytest.approx(neff_approx_nv, rel=0.001)
+
+        # Check that the approximation version is faster
+        assert (t4 - t3) < (t1 - t0)
+
+        # Check that the approximation is about the same as the original estimate within 10%
+        assert neff_approx == pytest.approx(neff_exact, rel=0.1)
 
 class TestSubSampling:
 
