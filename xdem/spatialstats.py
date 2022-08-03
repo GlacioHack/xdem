@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from scipy import integrate
 from scipy.optimize import curve_fit
-from scipy.spatial.distance import pdist
+from scipy.spatial.distance import pdist, squareform
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
@@ -858,7 +858,7 @@ def _get_scikitgstat_vgm_model_name(model: str | Callable) -> str:
 
     return model_name
 
-def get_func_sum_vgm_models(params_vgm: pd.DataFrame) -> Callable[[float], float]:
+def get_func_sum_vgm_models(params_vgm: pd.DataFrame) -> Callable[[np.ndarray], np.ndarray]:
     """
     Construct the sum of spatial variogram function from a dataframe of variogram parameters.
 
@@ -892,7 +892,7 @@ def get_func_sum_vgm_models(params_vgm: pd.DataFrame) -> Callable[[float], float
 
     return sum_model
 
-def covariance_from_vgm(params_vgm: pd.DataFrame) -> Callable[[float], float]:
+def covariance_from_vgm(params_vgm: pd.DataFrame) -> Callable[[np.ndarray], np.ndarray]:
     """
     Construct the spatial covariance function from a dataframe of variogram parameters.
     The covariance function is the sum of partial sills "PS" minus the sum of associated variograms "gamma":
@@ -919,7 +919,7 @@ def covariance_from_vgm(params_vgm: pd.DataFrame) -> Callable[[float], float]:
 
     return cov
 
-def correlation_from_vgm(params_vgm: pd.DataFrame)-> Callable[[float], float]:
+def correlation_from_vgm(params_vgm: pd.DataFrame)-> Callable[[np.ndarray], np.ndarray]:
     """
     Construct the spatial correlation function from a dataframe of variogram parameters.
     The correlation function is the covariance function "C" divided by the sum of partial sills "PS": rho = C / PS
@@ -1099,7 +1099,8 @@ def _check_validity_params_vgm(params_vgm: pd.DataFrame):
 def neff_circular_approx_theoretical(area: float, params_vgm: pd.DataFrame) -> float:
     """
     Number of effective samples approximated from exact disk integration of a sum of any number of variogram models
-    of spherical, gaussian, exponential or cubic form over a disk of a certain area.
+    of spherical, gaussian, exponential or cubic form over a disk of a certain area. This approximation performs best
+    for areas with a shape close to that of a disk.
     Inspired by Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950.
     The input variogram parameters match the format of the dataframe returned by `fit_sum_variogram_models`, also
     detailed in the parameter description to be passed manually.
@@ -1204,7 +1205,8 @@ def neff_circular_approx_numerical(area: float, params_vgm: pd.DataFrame) -> flo
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area.
     This is a generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950, which is verified
-    against exact integration of `neff_circular_approx_theoretical`.
+    against exact integration of `neff_circular_approx_theoretical`. This approximation performs best for areas with
+    a shape close to that of a disk.
     The input variogram parameters match the format of the dataframe returned by `fit_sum_variogram_models`, also
     detailed in the parameter description to be passed manually.
 
@@ -1262,88 +1264,128 @@ def neff_circular_approx_numerical(area: float, params_vgm: pd.DataFrame) -> flo
     return neff
 
 
-def neff_discrete_exact(coords: np.ndarray, areas: np.ndarray, errors: list[np.ndarray], params_vgm: pd.DataFrame) -> float:
+def neff_exact(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.DataFrame, vectorized=True) -> float:
     """
      Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
-     the provided variogram parameters.
+     the provided variogram parameters. This method works for any shape of area.
 
     :param coords: Coordinates at the scale of the spatial support (typically, pixel)
-    :param areas:  Areas of spatial supports (in square unit of the variogram range)
     :param errors: Standard errors of supports
     :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
     (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
     sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param vectorized: Perform the vectorized calculation (used for testing).
 
     :return: Number of effective samples
     """
 
+    # Check input dataframe
     _check_validity_params_vgm(params_vgm)
 
+    # Get spatial correlation function from variogram parameters
+    rho = correlation_from_vgm(params_vgm)
 
-
-
+    # Get number of points and pairwise distance compacted matrix from scipy.pdist
     n = len(coords)
     pds = pdist(coords)
-    var = 0
-    for i in range(n):
-        for j in range(n):
 
-            # For index calculation of the pairwise distance, see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
-            if i == j:
-                d = 0
-            elif i < j:
-                ind = n * i + j - ((i + 2) * (i + 1)) // 2
-                d = pds[ind]
-            else:
-                ind = n * j + i - ((j + 2) * (j + 1)) // 2
-                d = pds[ind]
+    # Now we compute the double covariance sum
+    # Either using for-loop-version
+    if not vectorized:
+        var = 0
+        for i in range(n):
+            for j in range(n):
 
-            for k in range(len(vgm_funcs)):
-                var += errors[k][i] * errors[k][j] * (1 - vgm_funcs[k](d)) * areas[i] * areas[j]
+                # For index calculation of the pairwise distance,
+                # see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
+                if i == j:
+                    d = 0
+                elif i < j:
+                    ind = n * i + j - ((i + 2) * (i + 1)) // 2
+                    d = pds[ind]
+                else:
+                    ind = n * j + i - ((j + 2) * (j + 1)) // 2
+                    d = pds[ind]
 
-    total_area = sum(areas)
-    se_dsc = np.sqrt(var / total_area ** 2)
-    neff = (np.mean(errors)/se_dsc) ** 2
+                var += rho(d) * errors[i] * errors[j]
+
+    # Or vectorized version
+    else:
+        # Convert the compact pairwise distance into a square matrix
+        pds_matrix = squareform(pds)
+        # Vectorize calculation
+        var = np.matmul(errors, errors.T) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
+
+    # The number of effective sample is the fraction of total sill by squared standard error
+    squared_se_dsc = var / n ** 2
+    neff = np.mean(errors)**2/squared_se_dsc
 
     return neff
 
-def neff_double_sum_covar_hugonnet(coords: np.ndarray, errors: list[np.ndarray],
-                     vgm_funcs: list[Callable], nb_subsample=100) -> float:
+def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.DataFrame, subsample: int = 1000,
+                         vectorized=True) -> float:
     """
-    Approximation of double sum of covariance following
-    :param coords: Spatial support (typically, pixel) coordinates
+    Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
+    based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
+    See Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922, in particular Supplementary Fig. S16.
+
+    :param coords: Coordinates at the scale of the spatial support (typically, pixel)
     :param errors: Standard errors of supports
-    :param vgm_funcs: Variogram function
-    :param nb_subsample: Number of points used to subset the integration
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param subsample: Number of samples to subset the calculation
+    :param vectorized: Perform the vectorized calculation (used for testing).
+
     :return: Number of effective samples
     """
 
-    n = len(coords)
+    # Check input dataframe
+    _check_validity_params_vgm(params_vgm)
 
-    rand_points = np.random.choice(n, size=min(nb_subsample, n), replace=False)
+    # Get spatial correlation function from variogram parameters
+    rho = correlation_from_vgm(params_vgm)
+
+    # Get number of points and pairwise distance compacted matrix from scipy.pdist
+    n = len(coords)
     pds = pdist(coords)
 
-    var = 0
-    for ind_sub in range(nb_subsample):
-        for j in range(n):
+    # Get random subset of points for one of the sums
+    rand_points = np.random.choice(n, size=min(subsample, n), replace=False)
 
-            i = rand_points[ind_sub]
-            # For index calculation of the pairwise distance, see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
-            if i == j:
-                d = 0
-            elif i < j:
-                ind = n * i + j - ((i + 2) * (i + 1)) // 2
-                d = pds[ind]
-            else:
-                ind = n * j + i - ((j + 2) * (j + 1)) // 2
-                d = pds[ind]
+    # Now we compute the double covariance sum
+    # Either using for-loop-version
+    if not vectorized:
+        var = 0
+        for ind_sub in range(subsample):
+            for j in range(n):
 
-            for k in range(len(vgm_funcs)):
-                var += errors[k][i] * errors[k][j] * (1 - vgm_funcs[k](d))
+                i = rand_points[ind_sub]
+                # For index calculation of the pairwise distance,
+                # see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
+                if i == j:
+                    d = 0
+                elif i < j:
+                    ind = n * i + j - ((i + 2) * (i + 1)) // 2
+                    d = pds[ind]
+                else:
+                    ind = n * j + i - ((j + 2) * (j + 1)) // 2
+                    d = pds[ind]
 
-    total_area = n * nb_subsample
-    se_dsc = np.sqrt(var / total_area)
-    neff = (np.mean(errors) / se_dsc) ** 2
+                var += rho(d) * errors[i] * errors[j]
+
+    # Or vectorized version
+    else:
+        # We subset the points used in one dimension, for errors and pairwise distances computed
+        errors_sub = errors[rand_points]
+        pds_matrix = squareform(pds)
+        pds_matrix_sub = pds_matrix[:, rand_points]
+        # Vectorized calculation
+        var = np.matmul(errors, errors_sub.T) * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape)
+
+    # The number of effective sample is the fraction of total sill by squared standard error
+    squared_se_dsc = var / (n * subsample)
+    neff = np.mean(errors)**2 / squared_se_dsc
 
     return neff
 
