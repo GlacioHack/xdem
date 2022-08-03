@@ -178,7 +178,7 @@ class TestVariogram:
 
     @pytest.mark.parametrize('range1', [10**i for i in range(3)])
     @pytest.mark.parametrize('psill1', [0.1, 1, 10])
-    @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian'])
+    @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian', 'cubic'])
     @pytest.mark.parametrize('area', [10**(2*i) for i in range(3)])
     def test_neff_estimation_single_range(self, range1, psill1, model1, area):
         """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
@@ -196,10 +196,9 @@ class TestVariogram:
     @pytest.mark.parametrize('range1', [10 ** i for i in range(2)])
     @pytest.mark.parametrize('range2', [10 ** i for i in range(2)])
     @pytest.mark.parametrize('range3', [10 ** i for i in range(2)])
-    @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian'])
-    @pytest.mark.parametrize('model2', ['spherical', 'exponential', 'gaussian'])
-    @pytest.mark.parametrize('model3', ['spherical', 'exponential', 'gaussian'])
-    def test_neff_estimation_three_ranges(self, range1, range2, range3, model1, model2, model3):
+    @pytest.mark.parametrize('model1', ['spherical', 'exponential', 'gaussian', 'cubic'])
+    @pytest.mark.parametrize('model2', ['spherical', 'exponential', 'gaussian', 'cubic'])
+    def test_neff_estimation_three_ranges(self, range1, range2, range3, model1, model2):
         """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
         spherical, gaussian or exponential forms"""
 
@@ -207,6 +206,7 @@ class TestVariogram:
         psill1 = 1
         psill2 = 1
         psill3 = 1
+        model3 = 'spherical'
 
         # Exact integration
         neff_circ_exact = xdem.spatialstats.neff_circular_approx_exact_sph_gau_exp(area=area, model1=model1,

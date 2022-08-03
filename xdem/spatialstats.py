@@ -987,7 +987,7 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
                                            model3: str | Callable = None, range3: float = None, psill3: float = None) -> float:
     """
     Number of effective samples approximated from exact disk integration of a sum of one, two or three variogram models
-    of spherical, gaussian or exponential form over a disk of a certain area.
+    of spherical, gaussian, exponential or cubic form over a disk of a certain area.
     Inspired by Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950.
 
     This function is contains the exact integrated formulas and is mostly used for testing the numerical integration
@@ -1085,15 +1085,26 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
         squared_se = c1 * (a/L)**2 * (1 - np.exp(-L**2 / a**2))
         return squared_se
 
+    # Cubic: h * covariance = c1 * h * (1 - (7 * (h**2 / a**2)) + ((35 / 4) * (h**3 / a**3)) -
+    #                          ((7 / 2) * (h**5 / a**5)) + ((3 / 4) * (h**7 / a**7)))
+    # Cubic: radial integral of above from 0 to L: SE**2 = c1 * (6*a**7 -21*a**5*L**2 + 21*a**4*L**3 - 6*a**2*L**5 + L**7) / (6*a**7)
+
+    def cubic_exact_integral(a1, c1, L):
+        if l <= a1:
+            squared_se = c1 * (6*a1**7 -21*a1**5*L**2 + 21*a1**4*L**3 - 6*a1**2*L**5 + L**7) / (6*a1**7)
+        else:
+            squared_se = 1/6 * c1 * a1**2 / L**2
+        return squared_se
+
     squared_se = 0
-    valid_models = ['spherical', 'exponential', 'gaussian']
-    exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral]
+    valid_models = ['spherical', 'exponential', 'gaussian', 'cubic']
+    exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral, cubic_exact_integral]
     for i, model_name in enumerate(models):
         if model_name in valid_models:
             exact_integral = exact_integrals[valid_models.index(model_name)]
             squared_se += exact_integral(ranges[i], psills[i], l)
 
-    # We sum all partial sill to get the total sill
+    # We sum al²l partial sill to get the total sill
     total_sill = sum(psills)
     # The number of effective sample is the fraction of total sill by squared standard error
     neff = total_sill/squared_se
@@ -1115,7 +1126,7 @@ def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area.
     This is a generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950, which is verified
-    against exact integration in `neff_circular_approx_exact_sph_gau_exp`.
+    against exact integration of `neff_circular_approx_exact_sph_gau_exp`.
     The input variogram parameters correspond to the dataframe returned by `fit_sum_variogram_models`, also detailed in
     the parameter description.
 
@@ -1162,10 +1173,10 @@ def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     full_int = _integrate_fun(hcov_sum, 0, h_equiv)
 
     # Get the standard error, and return the number of effective samples
-    std_err = np.sqrt(2*np.pi*full_int / area)
+    squared_se = 2*np.pi*full_int / area
 
     # The number of effective sample is the fraction of total sill by squared standard error
-    neff = psill_tot/std_err**2
+    neff = psill_tot/squared_se
 
     return neff
 
