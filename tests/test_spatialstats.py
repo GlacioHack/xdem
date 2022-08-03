@@ -156,6 +156,58 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
 
+    def test_check_params_vgm(self):
+        """Verify that the checking function for the modelled variogram parameters dataframe returns adequate errors"""
+
+        # Check when missing a column
+        with pytest.raises(ValueError, match='The dataframe with variogram parameters must contain the columns "model",'
+                                             ' "range" and "psill".'):
+            xdem.spatialstats._check_validity_params_vgm(pd.DataFrame(data={'model':['spherical'], 'range':[100]}))
+
+        # Check with wrong model format
+        list_supported_models = ['spherical', 'gaussian', 'exponential', 'cubic', 'stable', 'matern']
+        with pytest.raises(ValueError, match='Variogram model name Supraluminal not recognized. Supported models are: '+
+                             ', '.join(list_supported_models)+'.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['Supraluminal'], 'range': [100], 'psill': [1]}))
+
+        # Check with wrong range format
+        with pytest.raises(ValueError, match='The variogram ranges must be float or integer.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['spherical'], 'range': ['a'], 'psill': [1]}))
+
+        # Check with negative range
+        with pytest.raises(ValueError, match='The variogram ranges must have non-zero, positive values.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['spherical'], 'range': [-1], 'psill': [1]}))
+
+        # Check with wrong partial sill format
+        with pytest.raises(ValueError, match='The variogram partial sills must be float or integer.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['spherical'], 'range': [100], 'psill': ['a']}))
+
+        # Check with negative partial sill
+        with pytest.raises(ValueError, match='The variogram partial sills must have non-zero, positive values.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['spherical'], 'range': [100], 'psill': [-1]}))
+
+        # Check with a model that requires smoothness and without the smoothness column
+        with pytest.raises(ValueError, match='The dataframe with variogram parameters must contain the column "smooth" '
+                                             'for the smoothness factor when using Matern or Stable models.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1]}))
+
+        # Check with wrong smoothness format
+        with pytest.raises(ValueError, match='The variogram smoothness parameter must be float or integer.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1], 'smooth': ['a']}))
+
+        # Check with negative smoothness
+        with pytest.raises(ValueError, match='The variogram smoothness parameter must have non-zero, positive values.'):
+            xdem.spatialstats._check_validity_params_vgm(
+                pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1], 'smooth': [-1]}))
+
+
     def test_empirical_fit_plotting(self):
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
 
@@ -184,11 +236,12 @@ class TestVariogram:
         """ Test the of the exactitude, and numerical precision, of numerical integration for one to three models of
         spherical, gaussian or exponential forms"""
 
-         # Exact integration
-        neff_circ_exact = xdem.spatialstats.neff_circular_approx_exact_sph_gau_exp(area=area, model1=model1, range1=range1, psill1=psill1)
-        # Numerical integration
         params_vgm = pd.DataFrame(data={'model':[model1], 'range':[range1], 'psill':[psill1]})
-        neff_circ_numer = xdem.spatialstats.neff_circular_approx(area, params_vgm)
+
+         # Exact integration
+        neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_vgm=params_vgm)
+        # Numerical integration
+        neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_vgm=params_vgm)
 
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
@@ -208,16 +261,15 @@ class TestVariogram:
         psill3 = 1
         model3 = 'spherical'
 
-        # Exact integration
-        neff_circ_exact = xdem.spatialstats.neff_circular_approx_exact_sph_gau_exp(area=area, model1=model1,
-                                                                                   range1=range1, psill1=psill1,
-                                                                                   model2=model2, range2=range2,
-                                                                                   psill2=psill2, model3=model3,
-                                                                                   range3=range3, psill3=psill3)
-        # Numerical integration
         params_vgm = pd.DataFrame(
-            data={'model': [model1, model2, model3], 'range': [range1, range2, range3], 'psill': [psill1, psill2, psill3]})
-        neff_circ_numer = xdem.spatialstats.neff_circular_approx(area, params_vgm)
+            data={'model': [model1, model2, model3], 'range': [range1, range2, range3],
+                  'psill': [psill1, psill2, psill3]})
+
+        # Exact integration
+        neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_vgm=params_vgm)
+        # Numerical integration
+
+        neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_vgm=params_vgm)
 
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)

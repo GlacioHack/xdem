@@ -858,6 +858,94 @@ def _get_scikitgstat_vgm_model_name(model: str | Callable) -> str:
 
     return model_name
 
+def get_func_sum_vgm_models(params_vgm: pd.DataFrame) -> Callable[[float], float]:
+    """
+    Construct the sum of spatial variogram function from a dataframe of variogram parameters.
+
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+
+    :return: Function of sum of variogram with spatial lags
+    """
+
+    # Check input dataframe
+    _check_validity_params_vgm(params_vgm)
+
+    # Define the function of sum of variogram models of h (spatial lag) to return
+    def sum_model(h):
+        fn = 0
+        for i in range(len(params_vgm)):
+            # Get scikit-gstat model from name or Callable
+            model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'][i])
+            model_function = getattr(skg.models, model_name)
+            r = params_vgm['range'][i]
+            p = params_vgm['psill'][i]
+            # For models that expect 2 parameters
+            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+                fn += model_function(h, r, p)
+            # For models that expect 3 parameters
+            elif model_name in ['stable', 'matern']:
+                s = params_vgm['smooth'][i]
+                fn += model_function(h, r, p, s)
+        return fn
+
+    return sum_model
+
+def covariance_from_vgm(params_vgm: pd.DataFrame) -> Callable[[float], float]:
+    """
+    Construct the spatial covariance function from a dataframe of variogram parameters.
+    The covariance function is the sum of partial sills "PS" minus the sum of associated variograms "gamma":
+    C = PS - gamma
+
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+
+    :return: Covariance function with spatial lags
+    """
+
+    # Check input dataframe
+    _check_validity_params_vgm(params_vgm)
+
+    # Get total sill
+    total_sill = np.sum(params_vgm['psill'])
+
+    # Get function from sum of variogram
+    sum_vgm = get_func_sum_vgm_models(params_vgm)
+
+    def cov(h):
+        return total_sill - sum_vgm(h)
+
+    return cov
+
+def correlation_from_vgm(params_vgm: pd.DataFrame)-> Callable[[float], float]:
+    """
+    Construct the spatial correlation function from a dataframe of variogram parameters.
+    The correlation function is the covariance function "C" divided by the sum of partial sills "PS": rho = C / PS
+
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+
+    :return: Correlation function with spatial lags
+    """
+
+    # Check input dataframe
+    _check_validity_params_vgm(params_vgm)
+
+    # Get total sill
+    total_sill = np.sum(params_vgm['psill'])
+
+    # Get covariance from sum of variogram
+    cov = covariance_from_vgm(params_vgm)
+
+    def rho(h):
+        return cov(h)/total_sill
+
+    return rho
+
+
 def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_variogram: pd.DataFrame,
                             bounds: list[tuple[float, float]] = None,
                             p0: list[float] = None) -> tuple[Callable, pd.DataFrame]:
@@ -945,23 +1033,7 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
         cof, cov = curve_fit(vgm_sum, empirical_variogram.bins.values[valid], empirical_variogram.exp.values[valid],
                              method='trf', p0=p0, bounds=bounds, sigma=empirical_variogram.err_exp.values[valid])
 
-    # Provide the output function (couldn't find a way to pass this through functool.partial as arguments are unordered)
-    def vgm_sum_fit(h):
-        fn = 0
-        i = 0
-        for model in list_models:
-            model_name = _get_scikitgstat_vgm_model_name(model)
-            model_function = getattr(skg.models, model_name)
-            # For models that expect 2 parameters
-            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
-                fn += model_function(h, cof[i], cof[i + 1])
-                i += 2
-            # For models that expect 3 parameters
-            elif model_name in ['stable', 'matern']:
-                fn += model_function(h, cof[i], cof[i + 1], cof[i + 2])
-                i += 3
-
-    # Pass sorted parameters
+    # Store optimized parameters
     list_df = []
     i = 0
     for model in list_models:
@@ -979,19 +1051,61 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
         list_df.append(df)
     df_params = pd.concat(list_df)
 
+    # Also pass the function of sum of variogram
+    vgm_sum_fit = get_func_sum_vgm_models(df_params)
+
     return vgm_sum_fit, df_params
 
+def _check_validity_params_vgm(params_vgm: pd.DataFrame):
+    """Check the validity of the modelled variogram parameters dataframe (mostly in the case it is passed manually)."""
 
-def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, range1: float, psill1: float,
-                                           model2: str | Callable = None, range2: float = None, psill2: float = None,
-                                           model3: str | Callable = None, range3: float = None, psill3: float = None) -> float:
+    # Check that expected columns exists
+    expected_columns = ['model', 'range', 'psill']
+    if not all([c in params_vgm for c in expected_columns]):
+        raise ValueError('The dataframe with variogram parameters must contain the columns "model", "range" and "psill".')
+
+    # Check that the format of variogram models are correct
+    for m in params_vgm['model'].values:
+        _get_scikitgstat_vgm_model_name(m)
+
+    # Check that the format of ranges, sills are correct
+    for r in params_vgm['range'].values:
+        if not isinstance(r, (float, np.integer)):
+            raise ValueError('The variogram ranges must be float or integer.')
+        if r <= 0:
+            raise ValueError('The variogram ranges must have non-zero, positive values.')
+
+    # Check that the format of ranges, sills are correct
+    for p in params_vgm['psill'].values:
+        if not isinstance(p, (float, np.integer)):
+            raise ValueError('The variogram partial sills must be float or integer.')
+        if p <= 0:
+            raise ValueError('The variogram partial sills must have non-zero, positive values.')
+
+    # Check that the mattern smoothness factor exist and is rightly formatted
+    if ['stable'] in params_vgm['model'].values or ['matern'] in params_vgm['model'].values:
+        if 'smooth' not in params_vgm:
+            raise ValueError('The dataframe with variogram parameters must contain the column "smooth" for '
+                             'the smoothness factor when using Matern or Stable models.')
+        for i in range(len(params_vgm)):
+            if params_vgm['model'].values[i] in ['stable', 'matern']:
+                s = params_vgm['smooth'].values[i]
+                if not isinstance(s, (float, np.integer)):
+                    raise ValueError('The variogram smoothness parameter must be float or integer.')
+                if s <= 0:
+                    raise ValueError('The variogram smoothness parameter must have non-zero, positive values.')
+
+
+def neff_circular_approx_theoretical(area: float, params_vgm: pd.DataFrame) -> float:
     """
-    Number of effective samples approximated from exact disk integration of a sum of one, two or three variogram models
+    Number of effective samples approximated from exact disk integration of a sum of any number of variogram models
     of spherical, gaussian, exponential or cubic form over a disk of a certain area.
     Inspired by Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950.
+    The input variogram parameters match the format of the dataframe returned by `fit_sum_variogram_models`, also
+    detailed in the parameter description to be passed manually.
 
     This function is contains the exact integrated formulas and is mostly used for testing the numerical integration
-    of any number and forms of variograms provided by the function `neff_circular_approx`.
+    of any number and forms of variograms provided by the function `neff_circular_approx_numerical`.
 
     The number of effective samples serves to convert between standard deviation and standard error. For example, with
     two models: if SE is the standard error, SD the standard deviation and N_eff the number of effective samples, we have:
@@ -1000,59 +1114,20 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
     and R1/R2 where R1/R2 are the correlation ranges.
 
     :param area: Area (in square unit of the variogram ranges)
-    :param model1: Form of first variogram model: can either be a 3-letter string, full string of the variogram name
-    or SciKit-GStat model function (e.g., for a spherical model: "Sph", "Spherical" or skgstat.models.spherical)
-    :param range1: Range of first variogram model
-    :param psill1: Partial sill of short-range variogram model
-    :param model2: Form of second variogram model
-    :param range2: Range of second variogram model
-    :param psill2: Partial sill of second variogram model
-    :param model3: Form of third variogram model
-    :param range3: Range of third variogram model
-    :param psill3: Partial sill of third variogram model
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
-    :return: number of effective samples
+    :return: Number of effective samples
     """
 
-    # List of psills and ranges
-    psills = []
-    ranges = []
-    models = []
-
-    # First variogram
-    psills.append(psill1)
-    ranges.append(range1)
-    model_name1 = _get_scikitgstat_vgm_model_name(model1)
-    models.append(model_name1)
-
-    # Second variogram
-    vgm_params2 = [psill2, range2, model2]
-    # Raise an error if a parameter of the second variogram is None but any one of the others is not None
-    if None in vgm_params2 and any([param is not None for param in vgm_params2]):
-        raise ValueError('Parameters of the second variogram ("model2", "range2" and "psill2") need to be all valid '
-                         'or all None.')
-    # If all parameters are defined, pass them
-    elif all([param is not None for param in vgm_params2]):
-        model_name2 = _get_scikitgstat_vgm_model_name(model2)
-        psills.append(psill2)
-        ranges.append(range2)
-        models.append(model_name2)
-
-    # Third variogram: same as for second
-    vgm_params3 = [psill3, range3, model3]
-    if None in vgm_params3 and any([param is not None for param in vgm_params3]):
-        raise ValueError('Parameters of the third variogram ("model3", "range3" and "psill3") need to be all valid '
-                         'or all None.')
-    elif all([param is not None for param in vgm_params3]):
-        model_name3 = _get_scikitgstat_vgm_model_name(model3)
-        psills.append(psill3)
-        ranges.append(range3)
-        models.append(model_name3)
+    # Check input dataframe
+    _check_validity_params_vgm(params_vgm)
 
     # Lag l equal to the radius needed for a disk of area A
     l = np.sqrt(area / np.pi)
 
-    # Hypothesis of a disk integrated radially from the center
+    # Below, we list exact integral functions over an area A assumed a disk integrated radially from the center
 
     # Formulas of h * covariance = h * ( psill - variogram ) for each form, then its integral for each form to yield
     # the standard error SE. a1 = range and c1 = partial sill.
@@ -1099,13 +1174,16 @@ def neff_circular_approx_exact_sph_gau_exp(area: float, model1: str | Callable, 
     squared_se = 0
     valid_models = ['spherical', 'exponential', 'gaussian', 'cubic']
     exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral, cubic_exact_integral]
-    for i, model_name in enumerate(models):
+    for i in np.arange((len(params_vgm))):
+        model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'][i])
+        r = params_vgm['range'][i]
+        p = params_vgm['psill'][i]
         if model_name in valid_models:
             exact_integral = exact_integrals[valid_models.index(model_name)]
-            squared_se += exact_integral(ranges[i], psills[i], l)
+            squared_se += exact_integral(r, p, l)
 
-    # We sum al²l partial sill to get the total sill
-    total_sill = sum(psills)
+    # We sum all partial sill to get the total sill
+    total_sill = np.nansum(params_vgm.psill)
     # The number of effective sample is the fraction of total sill by squared standard error
     neff = total_sill/squared_se
 
@@ -1122,13 +1200,13 @@ def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
     """
     return integrate.quad(fun, low_b, upp_b)[0]
 
-def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
+def neff_circular_approx_numerical(area: float, params_vgm: pd.DataFrame) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models a circular area.
     This is a generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950, which is verified
-    against exact integration of `neff_circular_approx_exact_sph_gau_exp`.
-    The input variogram parameters correspond to the dataframe returned by `fit_sum_variogram_models`, also detailed in
-    the parameter description.
+    against exact integration of `neff_circular_approx_theoretical`.
+    The input variogram parameters match the format of the dataframe returned by `fit_sum_variogram_models`, also
+    detailed in the parameter description to be passed manually.
 
     The number of effective samples N_eff serves to convert between standard deviation and standard error
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
@@ -1141,8 +1219,11 @@ def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     :returns: Number of effective samples
     """
 
+    # Check input dataframe
+    _check_validity_params_vgm(params_vgm)
+
     # Get the total sill from the sum of partial sills
-    psill_tot = np.nansum(params_vgm.psill)
+    total_sill = np.nansum(params_vgm.psill)
 
     # Define the covariance sum function times the spatial lag, for later integration
     def hcov_sum(h):
@@ -1176,21 +1257,30 @@ def neff_circular_approx(area: float, params_vgm: pd.DataFrame) -> float:
     squared_se = 2*np.pi*full_int / area
 
     # The number of effective sample is the fraction of total sill by squared standard error
-    neff = psill_tot/squared_se
+    neff = total_sill/squared_se
 
     return neff
 
 
-def neff_double_sum_covar_exact(coords: np.ndarray, areas: np.ndarray, errors: list[np.ndarray],
-                     vgm_funcs: list[Callable]):
+def neff_discrete_exact(coords: np.ndarray, areas: np.ndarray, errors: list[np.ndarray], params_vgm: pd.DataFrame) -> float:
     """
-    Double sum of covariance for euclidean coordinates
-    :param coords: Spatial support (typically, pixel) coordinates
-    :param areas:  Area of supports (in square unit of the variogram range)
+     Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
+     the provided variogram parameters.
+
+    :param coords: Coordinates at the scale of the spatial support (typically, pixel)
+    :param areas:  Areas of spatial supports (in square unit of the variogram range)
     :param errors: Standard errors of supports
-    :param vgm_funcs: Variogram function
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
+    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+
     :return: Number of effective samples
     """
+
+    _check_validity_params_vgm(params_vgm)
+
+
+
 
     n = len(coords)
     pds = pdist(coords)
