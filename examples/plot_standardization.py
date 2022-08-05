@@ -108,10 +108,10 @@ plt.show()
 # Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_auto_examples_plot_vgm_error.py`
 # example, by estimating a variogram and fitting a sum of two models.
 df_vgm = xdem.spatialstats.sample_empirical_variogram(
-    values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, random_state=42)
+    values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=10000, n_variograms=10, random_state=42)
 
-fun, params = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph'], empirical_variogram=df_vgm)
-xdem.spatialstats.plot_vgm(df_vgm, xscale_range_split=[100, 1000, 10000], list_fit_fun=[fun],
+func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(['Gaussian', 'Spherical'], empirical_variogram=df_vgm)
+xdem.spatialstats.plot_vgm(df_vgm, xscale_range_split=[100, 1000, 10000], list_fit_fun=[func_sum_vgm],
                            list_fit_fun_label=['Standardized double-range variogram'])
 
 # %%
@@ -159,11 +159,9 @@ print('Average maximum curvature of Medalsbreen glacier : {:.1f}'.format(np.nanm
 
 # %%
 # We calculate the number of effective samples for each glacier based on the variogram
-svendsen_neff = xdem.spatialstats.neff_circ(svendsen_shp.ds.area.values[0],  [(params[0], 'Sph', params[1]),
-                                                   (params[2], 'Sph', params[3])])
+svendsen_neff = xdem.spatialstats.neff_circular_approx_numerical(area=svendsen_shp.ds.area.values[0], params_vgm=params_vgm)
 
-medals_neff = xdem.spatialstats.neff_circ(np.sum(medals_shp.ds.area.values[0]),  [(params[0], 'Sph', params[1]),
-                                                   (params[2], 'Sph', params[3])])
+medals_neff = xdem.spatialstats.neff_circular_approx_numerical(area=medals_shp.ds.area.values[0], params_vgm=params_vgm)
 
 print('Number of effective samples of Svendsenbreen glacier: {:.1f}'.format(svendsen_neff))
 print('Number of effective samples of Medalsbreen glacier: {:.1f}'.format(medals_neff))

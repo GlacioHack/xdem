@@ -87,7 +87,7 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
 
 df = xdem.spatialstats.sample_empirical_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, random_state=42)
+    values=dh.data, gsd=dh.res[0], subsample=10000, n_variograms=10, random_state=42)
 
 # %%
 # *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
@@ -124,11 +124,12 @@ xdem.spatialstats.plot_vgm(df, xscale_range_split=[100, 1000, 10000])
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
 # the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_model_variogram`, which
 # is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
-fun, params1 = xdem.spatialstats.fit_sum_model_variogram(['Sph'], empirical_variogram=df)
+func_sum_vgm1, params_vgm1 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Spherical'], empirical_variogram=df)
 
-fun2, params2 = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph'], empirical_variogram=df)
+func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Gaussian', 'Spherical'], empirical_variogram=df)
 
-xdem.spatialstats.plot_vgm(df,list_fit_fun=[fun, fun2],list_fit_fun_label=['Single-range model', 'Double-range model'],
+xdem.spatialstats.plot_vgm(df,list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
+                           list_fit_fun_label=['Single-range model', 'Double-range model'],
                            xscale_range_split=[100, 1000, 10000])
 
 # %%
@@ -147,11 +148,10 @@ list_stderr_singlerange, list_stderr_doublerange, list_stderr_empirical = ([] fo
 for area in areas:
 
     # Number of effective samples integrated over the area for a single-range model
-    neff_singlerange = xdem.spatialstats.neff_circ(area, [(params1[0], 'Sph', params1[1])])
+    neff_singlerange = xdem.spatialstats.neff_circular_approx_numerical(area, params_vgm1)
 
     # For a double-range model
-    neff_doublerange = xdem.spatialstats.neff_circ(area, [(params2[0], 'Sph', params2[1]),
-                                                   (params2[2], 'Sph', params2[3])])
+    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area, params_vgm2)
 
     # Convert into a standard error
     stderr_singlerange = np.nanstd(dh.data)/np.sqrt(neff_singlerange)
@@ -219,8 +219,7 @@ list_stderr_doublerange_plus_fullycorrelated = []
 for area in areas:
 
     # For a double-range model
-    neff_doublerange = xdem.spatialstats.neff_circ(area, [(params2[0], 'Sph', params2[1]),
-                                                          (params2[2], 'Sph', params2[3])])
+    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area = area, params_vgm = params_vgm2)
 
     # About 5% of the variance might be fully correlated, the other 95% has the random part that we quantified
     stderr_fullycorr = np.sqrt(0.05*np.nanvar(dh.data))
