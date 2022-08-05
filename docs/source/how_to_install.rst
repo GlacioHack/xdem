@@ -1,10 +1,11 @@
 .. _how_to_install:
 
 How to install
-============
+==============
 
 Installing with conda (recommended)
-------------------------
+-----------------------------------
+
 .. code-block:: bash
 
   conda install -c conda-forge --strict-channel-priority xdem

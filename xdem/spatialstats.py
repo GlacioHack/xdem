@@ -516,9 +516,9 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs):
     pairwise_comp_per_disk = np.ceil(subsample**2 / (2*nb_disk_samples))
 
     # Using the equation in the function description, we compute the number of runs (minimum 30)
-    runs = max(np.ceil(pairwise_comp_per_disk**(1/3)), 30)
+    runs = int(max(np.ceil(pairwise_comp_per_disk**(1/3)), 30))
     # Then we deduce the number of samples per disk (and per ring)
-    subsample_per_disk_per_run = np.ceil(np.sqrt(pairwise_comp_per_disk/runs))
+    subsample_per_disk_per_run = int(np.ceil(np.sqrt(pairwise_comp_per_disk/runs)))
 
     final_pairwise_comparisons = runs*subsample_per_disk_per_run**2*nb_disk_samples
 
@@ -655,7 +655,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     do not correspond to points of a grid, a ground sampling distance is needed to correctly get the grid size.
 
     Spatial subsampling method argument subsample_method can be one of "cdist_equidistant", "cdist_point", "pdist_point",
-     "pdist_disk" and "pdist_ring".
+    "pdist_disk" and "pdist_ring".
     The cdist methods use MetricSpace classes of scikit-gstat and do pairwise comparison between two distinct ensembles
     as in scipy.spatial.cdist. For the cdist methods, the variogram is estimated in a single run from the MetricSpace.
 
@@ -863,11 +863,11 @@ def get_func_sum_vgm_models(params_vgm: pd.DataFrame) -> Callable[[np.ndarray], 
     """
     Construct the sum of spatial variogram function from a dataframe of variogram parameters.
 
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
-    :return: Function of sum of variogram with spatial lags
+    :return: Function of sum of variogram with spatial lags.
     """
 
     # Check input dataframe
@@ -899,9 +899,9 @@ def covariance_from_vgm(params_vgm: pd.DataFrame) -> Callable[[np.ndarray], np.n
     The covariance function is the sum of partial sills "PS" minus the sum of associated variograms "gamma":
     C = PS - gamma
 
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
     :return: Covariance function with spatial lags
     """
@@ -925,9 +925,9 @@ def correlation_from_vgm(params_vgm: pd.DataFrame)-> Callable[[np.ndarray], np.n
     Construct the spatial correlation function from a dataframe of variogram parameters.
     The correlation function is the covariance function "C" divided by the sum of partial sills "PS": rho = C / PS
 
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
     :return: Correlation function with spatial lags
     """
@@ -954,15 +954,15 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
     Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
     use preferably with the empirical variogram dataframe returned by the `sample_empirical_variogram` function.
 
-    :param list_models: List of K variogram models to sum for the fit in order from short to long ranges.
-    Can either be a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
-    spherical model: "Sph", "Spherical" or skgstat.models.spherical).
-    :param empirical_variogram: Empirical variogram, formatted as a dataframe with count (pairwise sample count),
-    bins (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance).
-    :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper)
-    :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess)
+    :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
+        a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
+        spherical model "Sph", "Spherical" or skgstat.models.spherical).
+    :param empirical_variogram: Empirical variogram, formatted as a dataframe with count (pairwise sample count), bins
+        (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance).
+    :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper).
+    :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
 
-    :return: Function of sum of variogram, Dataframe of optimized coefficients
+    :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
 
     # Define a function of a sum of variogram model forms, with undetermined arguments
@@ -1116,9 +1116,9 @@ def neff_circular_approx_theoretical(area: float, params_vgm: pd.DataFrame) -> f
     and R1/R2 where R1/R2 are the correlation ranges.
 
     :param area: Area (in square unit of the variogram ranges)
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
     :return: Number of effective samples
     """
@@ -1215,9 +1215,9 @@ def neff_circular_approx_numerical(area: float, params_vgm: pd.DataFrame) -> flo
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
 
     :param area: Area (in square unit of the variogram ranges)
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
 
     :returns: Number of effective samples
     """
@@ -1272,9 +1272,9 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.DataFrame,
 
     :param coords: Coordinates at the scale of the spatial support (typically, pixel)
     :param errors: Standard errors of supports
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
     :param vectorized: Perform the vectorized calculation (used for testing).
 
     :return: Number of effective samples
@@ -1332,9 +1332,9 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_vgm: pd.
 
     :param coords: Coordinates at the scale of the spatial support (typically, pixel)
     :param errors: Standard errors of supports
-    :param params_vgm: Dataframe of variogram models to sum with three to four columns: "model" for the model types
-    (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
-    sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
+    :param params_vgm: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness paramter if exists for this model (e.g., [None, 0.2]).
     :param subsample: Number of samples to subset the calculation
     :param vectorized: Perform the vectorized calculation (used for testing).
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
