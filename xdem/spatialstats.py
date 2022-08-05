@@ -553,6 +553,7 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
         kwargs['runs'] = runs
         # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
         kwargs['samples'] = samples
+        kwargs.pop('subsample')
 
     elif subsample_method == 'cdist_point':
 
