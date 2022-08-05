@@ -322,7 +322,7 @@ Spatially integrated measurement errors
 After quantifying and modelling spatial correlations, those an effective sample size, and elevation measurement error:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 34-38
+        :lines: 33
 
 TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 
