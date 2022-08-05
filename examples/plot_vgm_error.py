@@ -128,7 +128,7 @@ func_sum_vgm1, params_vgm1 = xdem.spatialstats.fit_sum_model_variogram(list_mode
 
 func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Gaussian', 'Spherical'], empirical_variogram=df)
 
-xdem.spatialstats.plot_vgm(df,list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
+xdem.spatialstats.plot_vgm(df, list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
                            list_fit_fun_label=['Single-range model', 'Double-range model'],
                            xscale_range_split=[100, 1000, 10000])
 

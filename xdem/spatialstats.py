@@ -625,7 +625,7 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
 
 
 def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float = None, coords: np.ndarray = None,
-                               subsample: int = 10000, subsample_method: str = 'cdist_equidistant',
+                               subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
                                n_variograms: int = 1, n_jobs: int = 1, verbose = False,
                                random_state: None | np.random.RandomState | np.random.Generator | int = None,
                                **kwargs) -> pd.DataFrame:
@@ -848,7 +848,7 @@ def _get_scikitgstat_vgm_model_name(model: str | Callable) -> str:
         model_name = None
         for supp_model in list_supported_models:
             if model.lower() in [supp_model[0:3], supp_model]:
-                model_name = supp_model
+                model_name = supp_model.lower()
         if model_name is None:
             raise ValueError('Variogram model name {} not recognized. Supported models are: '.format(model)+
                              ', '.join(list_supported_models)+'.')
@@ -874,20 +874,22 @@ def get_func_sum_vgm_models(params_vgm: pd.DataFrame) -> Callable[[np.ndarray], 
     _check_validity_params_vgm(params_vgm)
 
     # Define the function of sum of variogram models of h (spatial lag) to return
-    def sum_model(h):
-        fn = 0
+    def sum_model(h: np.ndarray) -> np.ndarray:
+
+        fn = np.zeros(np.shape(h))
+
         for i in range(len(params_vgm)):
             # Get scikit-gstat model from name or Callable
-            model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'][i])
+            model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'].values[i])
             model_function = getattr(skg.models, model_name)
-            r = params_vgm['range'][i]
-            p = params_vgm['psill'][i]
+            r = params_vgm['range'].values[i]
+            p = params_vgm['psill'].values[i]
             # For models that expect 2 parameters
             if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
                 fn += model_function(h, r, p)
             # For models that expect 3 parameters
             elif model_name in ['stable', 'matern']:
-                s = params_vgm['smooth'][i]
+                s = params_vgm['smooth'].values[i]
                 fn += model_function(h, r, p, s)
         return fn
 
@@ -936,7 +938,7 @@ def correlation_from_vgm(params_vgm: pd.DataFrame)-> Callable[[np.ndarray], np.n
     _check_validity_params_vgm(params_vgm)
 
     # Get total sill
-    total_sill = np.sum(params_vgm['psill'])
+    total_sill = np.sum(params_vgm['psill'].values)
 
     # Get covariance from sum of variogram
     cov = covariance_from_vgm(params_vgm)
@@ -1042,12 +1044,12 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
         # For models that expect 2 parameters
         if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
             df = pd.DataFrame()
-            df = df.assign(model=model_name, range=cof[i], psill=cof[i+1])
+            df = df.assign(model=[model_name], range=[cof[i]], psill=[cof[i+1]])
             i += 2
         # For models that expect 3 parameters
         elif model_name in ['stable', 'matern']:
             df = pd.DataFrame()
-            df = df.assign(model=model_name, range=cof[i], psill=cof[i + 1], smooth=cof[i+2])
+            df = df.assign(model=[model_name], range=[cof[i]], psill=[cof[i + 1]], smooth=[cof[i+2]])
             i += 3
         list_df.append(df)
     df_params = pd.concat(list_df)
@@ -1177,9 +1179,9 @@ def neff_circular_approx_theoretical(area: float, params_vgm: pd.DataFrame) -> f
     valid_models = ['spherical', 'exponential', 'gaussian', 'cubic']
     exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral, cubic_exact_integral]
     for i in np.arange((len(params_vgm))):
-        model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'][i])
-        r = params_vgm['range'][i]
-        p = params_vgm['psill'][i]
+        model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'].values[i])
+        r = params_vgm['range'].values[i]
+        p = params_vgm['psill'].values[i]
         if model_name in valid_models:
             exact_integral = exact_integrals[valid_models.index(model_name)]
             squared_se += exact_integral(r, p, l)
@@ -1232,9 +1234,9 @@ def neff_circular_approx_numerical(area: float, params_vgm: pd.DataFrame) -> flo
     def hcov_sum(h):
         fn = 0
         for i in np.arange((len(params_vgm))):
-            model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'][i])
-            range = params_vgm['range'][i]
-            psill = params_vgm['psill'][i]
+            model_name = _get_scikitgstat_vgm_model_name(params_vgm['model'].values[i])
+            range = params_vgm['range'].values[i]
+            psill = params_vgm['psill'].values[i]
             model_function = getattr(skg.models, model_name)
             # For models that expect 2 parameters
             if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
@@ -1243,7 +1245,7 @@ def neff_circular_approx_numerical(area: float, params_vgm: pd.DataFrame) -> flo
                 i += 2
             # For models that expect 3 parameters
             elif model_name in ['stable', 'matern']:
-                smooth = params_vgm['smooth'][i]
+                smooth = params_vgm['smooth'].values[i]
                 # The covariance is the partial sill minus the variogram
                 fn += h * (psill - model_function(h, range, psill, smooth))
                 i += 3
