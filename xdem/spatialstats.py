@@ -819,6 +819,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
 
     # For a single run, no multi-run sigma estimated
     if n_variograms == 1:
+        df = df.rename(columns={'bins': 'lags'})
         df['err_exp'] = np.nan
     # For several runs, group results, use mean as empirical variogram, estimate sigma, and sum the counts
     else:
@@ -826,7 +827,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
         df_mean = df_grouped[['exp']].mean()
         df_std = df_grouped[['exp']].std()
         df_count = df_grouped[['count']].sum()
-        df_mean['bins'] = df_mean.index.values
+        df_mean['lags'] = df_mean.index.values
         df_mean['err_exp'] = df_std['exp'] / np.sqrt(n_variograms)
         df_mean['count'] = df_count['count']
         df = df_mean
@@ -959,7 +960,7 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
     :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
         a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
         spherical model "Sph", "Spherical" or skgstat.models.spherical).
-    :param empirical_variogram: Empirical variogram, formatted as a dataframe with count (pairwise sample count), bins
+    :param empirical_variogram: Empirical variogram, formatted as a dataframe with count (pairwise sample count), lags
         (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance).
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
@@ -1003,7 +1004,7 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
 
             # Use largest boundaries possible for our problem
             psill_bound = [0, max_var]
-            range_bound = [0, empirical_variogram.bins.values[-1]]
+            range_bound = [0, empirical_variogram.lags.values[-1]]
 
             # Add bounds and guesses with same order as function arguments
             bounds.append(range_bound)
@@ -1017,8 +1018,8 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
             # Use corresponding ranges
             # !! This fails when no empirical value crosses this (too wide binning/nugget)
             # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
-            # range_p0 = empirical_variogram.bins.values[ind]
-            range_p0 = ((i+1)/len(list_models)) * empirical_variogram.bins.values[-1]
+            # range_p0 = empirical_variogram.lags.values[ind]
+            range_p0 = ((i+1)/len(list_models)) * empirical_variogram.lags.values[-1]
 
             p0.append(range_p0)
             p0.append(psill_p0)
@@ -1027,13 +1028,13 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
 
     # If the error provided is all NaNs (single variogram run), or all zeros (two variogram runs), run without weights
     if np.all(np.isnan(empirical_variogram.err_exp.values)) or np.all(empirical_variogram.err_exp.values == 0):
-        cof, cov = curve_fit(vgm_sum, empirical_variogram.bins.values, empirical_variogram.exp.values, method='trf',
+        cof, cov = curve_fit(vgm_sum, empirical_variogram.lags.values, empirical_variogram.exp.values, method='trf',
                              p0=p0, bounds=bounds)
     # Otherwise, use a weighted fit
     else:
         # We need to filter for possible no data in the error
         valid = np.isfinite(empirical_variogram.err_exp.values)
-        cof, cov = curve_fit(vgm_sum, empirical_variogram.bins.values[valid], empirical_variogram.exp.values[valid],
+        cof, cov = curve_fit(vgm_sum, empirical_variogram.lags.values[valid], empirical_variogram.exp.values[valid],
                              method='trf', p0=p0, bounds=bounds, sigma=empirical_variogram.err_exp.values[valid])
 
     # Store optimized parameters
@@ -1587,7 +1588,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     Input dataframe is expected to be the output of xdem.spatialstats.sample_empirical_variogram.
     Input function model is expected to be the output of xdem.spatialstats.fit_sum_model_variogram.
 
-    :param df: Dataframe of empirical variogram
+    :param df: Empirical variogram, formatted as a dataframe with count (pairwise sample count), lags
+        (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance).
     :param list_fit_fun: List of model function fits
     :param list_fit_fun_label: List of model function fits labels
     :param ax: Plotting ax to use, creates a new one by default
@@ -1609,6 +1611,12 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     else:
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
 
+    # Check format of input dataframe
+    expected_values = ['exp', 'lags', 'count']
+    for val in expected_values:
+        if val not in df.columns.values:
+            raise ValueError('The expected variable "{}" is not part of the provided dataframe column names.'.format(val))
+
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
 
@@ -1623,10 +1631,10 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
     if xscale_range_split is None:
         nb_subpanels=1
         if xscale == 'log':
-            xmin = [np.min(df.bins)/2]
+            xmin = [np.min(df.lags)/2]
         else:
             xmin = [0]
-        xmax = [np.max(df.bins)]
+        xmax = [np.max(df.lags)]
         xgridmin = [0]
         xgridmax = [init_gridsize[0]]
         gridsize = init_gridsize
@@ -1635,13 +1643,13 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         # Add initial zero if not in input
         if xscale_range_split[0] != 0:
             if xscale == 'log':
-                first_xmin = np.min(df.bins)/2
+                first_xmin = np.min(df.lags)/2
             else:
                 first_xmin = 0
             xscale_range_split = [first_xmin] + xscale_range_split
         # Add maximum distance if not in input
-        if xscale_range_split[-1] != np.max(df.bins):
-            xscale_range_split.append(np.max(df.bins))
+        if xscale_range_split[-1] != np.max(df.lags):
+            xscale_range_split.append(np.max(df.lags))
 
         # Scale grid size by the number of subpanels
         nb_subpanels = len(xscale_range_split)-1
@@ -1666,7 +1674,7 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         ax0.set_xticks([])
 
         # Plot the histogram manually with fill_between
-        interval_var = [0] + list(df.bins)
+        interval_var = [0] + list(df.lags)
         for i in range(len(df)):
             count = df['count'].values[i]
             ax0.fill_between([interval_var[i], interval_var[i+1]], [0] * 2, [count] * 2,
@@ -1684,8 +1692,8 @@ def plot_vgm(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float],floa
         # Now, plot the statistic of the data
         ax1 = ax.inset_axes(grid[3:, xgridmin[k]:xgridmax[k]].get_position(fig).bounds)
 
-        # Get the bins center
-        bins_center = np.subtract(df.bins, np.diff([0] + df.bins.tolist()) / 2)
+        # Get the lags bin centers
+        bins_center = np.subtract(df.lags, np.diff([0] + df.lags.tolist()) / 2)
 
         # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
         if np.all(np.isnan(df.err_exp)):
@@ -1759,10 +1767,10 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None.")
 
     if var_name not in df.columns.values:
-        raise ValueError('The variable {} is not part of the provided dataframe column names.'.format(var_name))
+        raise ValueError('The variable "{}" is not part of the provided dataframe column names.'.format(var_name))
 
     if statistic_name not in df.columns.values:
-        raise ValueError('The statistic {} is not part of the provided dataframe column names.'.format(statistic_name))
+        raise ValueError('The statistic "{}" is not part of the provided dataframe column names.'.format(statistic_name))
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -1847,12 +1855,12 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None.")
 
     if var_name_1 not in df.columns.values:
-        raise ValueError('The variable {} is not part of the provided dataframe column names.'.format(var_name_1))
+        raise ValueError('The variable "{}" is not part of the provided dataframe column names.'.format(var_name_1))
     elif var_name_2 not in df.columns.values:
-        raise ValueError('The variable {} is not part of the provided dataframe column names.'.format(var_name_2))
+        raise ValueError('The variable "{}" is not part of the provided dataframe column names.'.format(var_name_2))
 
     if statistic_name not in df.columns.values:
-        raise ValueError('The statistic {} is not part of the provided dataframe column names.'.format(statistic_name))
+        raise ValueError('The statistic "{}" is not part of the provided dataframe column names.'.format(statistic_name))
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")

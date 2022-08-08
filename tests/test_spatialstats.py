@@ -38,10 +38,15 @@ class TestVariogram:
         # Load data
         diff, mask = load_ref_and_diff()[1:3]
 
-        # Check the variogram estimation runs for a random state
+        # Check the variogram output is consistent for a random state
+        df0 = xdem.spatialstats.sample_empirical_variogram(
+            values=diff, subsample=50, random_state=42)
+        assert df0.exp[0] == pytest.approx(31.72, 0.01)
+
+        # Same check, using arguments "samples" and "runs" for historic reason which is to check if the output value
+        # is the same since the beginning of the package
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, samples=50,
-            random_state=42, runs=2)
+            values=diff, samples=50, random_state=42, runs=2)
 
         # With random state, results should always be the same
         assert df.exp[0] == pytest.approx(2.38, 0.01)
@@ -52,20 +57,18 @@ class TestVariogram:
         # Only the array and the ground sampling distance
         df = xdem.spatialstats.sample_empirical_variogram(
             values=diff.data, gsd=diff.res[0], subsample=50,
-            random_state=42, runs=2)
+            random_state=42)
 
         # Test multiple runs
         df2 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50,
-            random_state=42, runs=2, n_variograms=2)
+            values=diff, subsample=50, random_state=42, n_variograms=2)
 
         # Check that an error is estimated
         assert any(~np.isnan(df2.err_exp.values))
 
         # Test that running on several cores does not trigger any error
         df3 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50,
-            random_state=42, runs=2, n_variograms=2, n_jobs=2)
+            values=diff, subsample=50, random_state=42, n_variograms=2, n_jobs=2)
 
         # Test plotting of empirical variogram by itself
         if PLOT:
@@ -92,7 +95,7 @@ class TestVariogram:
         diff, mask = load_ref_and_diff()[1:3]
 
         pdist_args = {'pdist_multi_ranges':[0, diff.res[0]*5, diff.res[0]*10]}
-        cdist_args = {'ratio_subsample': 0.5}
+        cdist_args = {'ratio_subsample': 0.5, 'samples': 50, 'runs': 10}
         nonsense_args = {'thisarg': 'shouldnotexist'}
 
         # Check the function raises a warning for optional arguments incorrect to the method
@@ -121,8 +124,7 @@ class TestVariogram:
 
         # Check the function passes optional arguments specific to cdist methods without warning
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42,
-            subsample_method='cdist_equidistant', runs=2, **cdist_args)
+            values=diff, random_state=42, subsample_method='cdist_equidistant', **cdist_args)
 
     def test_multirange_fit_performance(self):
         """Verify that the fitting works with artificial dataset"""
@@ -145,14 +147,15 @@ class TestVariogram:
 
         # Put all in a dataframe
         df = pd.DataFrame()
-        df = df.assign(bins=x, exp=y_simu, err_exp=sigma)
+        df = df.assign(lags=x, exp=y_simu, err_exp=sigma)
 
         # Run the fitting
-        fun, params_est = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph', 'Sph'], df)
+        fun, params_est = xdem.spatialstats.fit_sum_model_variogram(['spherical', 'spherical', 'spherical'], df)
 
         for i in range(len(params_est)):
             # Assert all parameters were correctly estimated within a 30% relative margin
-            assert params_real[i] == pytest.approx(params_est[i],rel=0.3)
+            assert params_real[2*i] == pytest.approx(params_est['range'].values[i],rel=0.3)
+            assert params_real[2*i+1] == pytest.approx(params_est['psill'].values[i],rel=0.3)
 
         if PLOT:
             xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
@@ -217,17 +220,34 @@ class TestVariogram:
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42, runs=10)
+            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42)
 
         # Single model fit
-        fun, _ = xdem.spatialstats.fit_sum_model_variogram(['Sph'], df)
-        if PLOT:
-            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+        fun, _ = xdem.spatialstats.fit_sum_model_variogram(['spherical'], empirical_variogram=df)
 
         # Triple model fit
-        fun2, _ = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph', 'Sph'], empirical_variogram=df)
-        if PLOT:
-            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
+        fun2, _ = xdem.spatialstats.fit_sum_model_variogram(['spherical', 'spherical', 'spherical'], empirical_variogram=df)
+
+        # Plot with a single model fit
+        xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+
+        # Plot with a triple model fit
+        xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
+
+        # Check that errors are raised with wrong inputs
+        # If the experimental variogram values "exp" are not passed
+        with pytest.raises(ValueError, match='The expected variable "exp" is not part of the provided dataframe column names.'):
+            xdem.spatialstats.plot_vgm(pd.DataFrame(data={'wrong_name':[1], 'lags':[1], 'count':[100]}))
+        # If the spatial lags "lags" are not passed
+        with pytest.raises(ValueError,
+                           match='The expected variable "lags" is not part of the provided dataframe column names.'):
+            xdem.spatialstats.plot_vgm(pd.DataFrame(data={'exp': [1], 'wrong_name': [1], 'count': [100]}))
+        # If the pairwise sample count "count" is not passed
+        with pytest.raises(ValueError,
+                           match='The expected variable "count" is not part of the provided dataframe column names.'):
+            xdem.spatialstats.plot_vgm(pd.DataFrame(data={'exp': [1], 'lags': [1], 'wrong_name': [100]}))
+
+
 
 class TestNeffEstimation:
 
@@ -572,20 +592,19 @@ class TestBinning:
         assert all(np.isfinite(fun(([-5, 50], [-500,3000], [-2*np.pi,4*np.pi]))))
 
 
-
     def test_plot_binning(self):
 
         # Define placeholder data
         df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
 
         # Check that the 1D plotting fails with a warning if the variable or statistic is not well-defined
-        with pytest.raises(ValueError, match="The variable var3 is not part of the provided dataframe column names."):
+        with pytest.raises(ValueError, match='The variable "var3" is not part of the provided dataframe column names.'):
             xdem.spatialstats.plot_1d_binning(df, var_name='var3', statistic_name='statistic')
-        with pytest.raises(ValueError, match="The statistic stat is not part of the provided dataframe column names."):
+        with pytest.raises(ValueError, match='The statistic "stat" is not part of the provided dataframe column names.'):
             xdem.spatialstats.plot_1d_binning(df, var_name='var1', statistic_name='stat')
 
         # Same for the 2D plotting
-        with pytest.raises(ValueError, match="The variable var3 is not part of the provided dataframe column names."):
+        with pytest.raises(ValueError, match='The variable "var3" is not part of the provided dataframe column names.'):
             xdem.spatialstats.plot_2d_binning(df, var_name_1='var3', var_name_2='var1', statistic_name='statistic')
-        with pytest.raises(ValueError, match="The statistic stat is not part of the provided dataframe column names."):
+        with pytest.raises(ValueError, match='The statistic "stat" is not part of the provided dataframe column names.'):
             xdem.spatialstats.plot_2d_binning(df, var_name_1='var1', var_name_2='var1', statistic_name='stat')

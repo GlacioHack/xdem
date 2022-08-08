@@ -107,7 +107,7 @@ plt.show()
 # %%
 # Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_auto_examples_plot_vgm_error.py`
 # example, by estimating a variogram and fitting a sum of two models.
-df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=1000,
+df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=300,
                                                       n_variograms=10, random_state=42)
 
 func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(['Gaussian', 'Spherical'], empirical_variogram=df_vgm)
