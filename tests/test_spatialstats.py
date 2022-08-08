@@ -5,6 +5,8 @@ from typing import Tuple
 import warnings
 import time
 
+import skgstat
+
 import geoutils as gu
 import numpy as np
 import pandas as pd
@@ -88,6 +90,16 @@ class TestVariogram:
 
         assert not df.empty
 
+        # Check that the output is correct
+        expected_columns = ['exp', 'lags', 'count']
+        expected_dtypes = [np.float64, np.float64, np.int64]
+        for col in expected_columns:
+            # Check that the column exists
+            assert col in df.columns
+            # Check that the column has the correct dtype
+            assert df[col].dtype == expected_dtypes[expected_columns.index(col)]
+
+
     def test_sample_multirange_variogram_args(self):
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
 
@@ -125,6 +137,44 @@ class TestVariogram:
         # Check the function passes optional arguments specific to cdist methods without warning
         df = xdem.spatialstats.sample_empirical_variogram(
             values=diff, random_state=42, subsample_method='cdist_equidistant', **cdist_args)
+
+    # N is the number of samples in an ensemble
+    @pytest.mark.parametrize('subsample', [100, 1000, 10000])
+    @pytest.mark.parametrize('shape', [(50, 50), (100, 100), (500, 500)])
+    def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int]):
+        """Verify that the automatically-derived parameters of equidistant sampling are sound"""
+
+        # Assign an arbitrary extent
+        extent = (0, 1, 0, 1)
+
+        # Get maxdist
+        maxdist = np.sqrt((extent[1] - extent[0]) ** 2 + (extent[3] - extent[2]) ** 2)
+        res = np.mean([(extent[1] - extent[0]) / (shape[0] - 1), (extent[3] - extent[2]) / (shape[1] - 1)])
+        # Then, we compute the radius from the center ensemble with the default value of subsample ratio in the function
+        # skgstat.RasterEquidistantMetricSpace
+        ratio_subsample = 0.2
+        center_radius = np.sqrt(1. / ratio_subsample * subsample / np.pi) * res
+        # Now, we can derive the number of successive disks that are going to be sampled in the grid
+        equidistant_radii = [0.]
+        increasing_rad = center_radius
+        while increasing_rad < maxdist:
+            equidistant_radii.append(increasing_rad)
+            increasing_rad *= np.sqrt(2)
+        nb_disk_samples = len(equidistant_radii)
+
+        # ms = skgstat.RasterEquidistantMetricSpace(coords=np.ones(subsample), shape=shape, extent=extent, samples=)
+
+        # The number of different pairwise combinations in a single ensemble (scipy.pdist function) is N*(N-1)/2
+        # which is approximately N**2/2
+        pdist_pairwise_combinations = subsample**2 / 2
+
+        keyword_arguments = {'subsample':subsample , 'extent':extent, 'shape': shape, 'verbose': False}
+        runs, samples = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
+        cdist_pairwise_combinations = runs*samples**2*nb_disk_samples
+
+        # Check the number of pairwise comparisons are the same (within 30%, due to rounding as integers)
+        assert cdist_pairwise_combinations == pytest.approx(pdist_pairwise_combinations, rel=0.3)
+
 
     def test_multirange_fit_performance(self):
         """Verify that the fitting works with artificial dataset"""
