@@ -1242,7 +1242,7 @@ def neff_circular_approx_numerical(area: float, params_variogram_model: pd.DataF
 
     # Define the covariance sum function times the spatial lag, for later integration
     def hcov_sum(h):
-        return h * covariance_from_variogram(params_variogram_model)
+        return h * covariance_from_variogram(params_variogram_model)(h)
 
     # Get a radius for which the circle as the defined area
     h_equiv = np.sqrt(area / np.pi)

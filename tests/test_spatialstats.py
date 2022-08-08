@@ -160,7 +160,7 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
-    def test_check_params_vgm(self):
+    def test_check_params_variogram_model(self):
         """Verify that the checking function for the modelled variogram parameters dataframe returns adequate errors"""
 
         # Check when missing a column
@@ -259,12 +259,12 @@ class TestNeffEstimation:
         """ Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
         forms to get the number of effective samples"""
 
-        params_vgm = pd.DataFrame(data={'model':[model1], 'range':[range1], 'psill':[psill1]})
+        params_variogram_model = pd.DataFrame(data={'model':[model1], 'range':[range1], 'psill':[psill1]})
 
          # Exact integration
-        neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_vgm=params_vgm)
+        neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_variogram_model=params_variogram_model)
         # Numerical integration
-        neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_vgm=params_vgm)
+        neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
 
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
@@ -284,14 +284,14 @@ class TestNeffEstimation:
         psill3 = 1
         model3 = 'spherical'
 
-        params_vgm = pd.DataFrame(
+        params_variogram_model = pd.DataFrame(
             data={'model': [model1, model2, model3], 'range': [range1, range2, range3],
                   'psill': [psill1, psill2, psill3]})
 
         # Exact integration
-        neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_vgm=params_vgm)
+        neff_circ_exact = xdem.spatialstats.neff_circular_approx_theoretical(area=area, params_variogram_model=params_variogram_model)
         # Numerical integration
-        neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_vgm=params_vgm)
+        neff_circ_numer = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
 
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
@@ -314,15 +314,15 @@ class TestNeffEstimation:
         errors = errors.flatten()
 
         # Create a list of variogram that, summed, represent the spatial correlation
-        params_vgm = pd.DataFrame(data={'model':['spherical', 'gaussian'], 'range':[5, 50], 'psill':[0.5, 0.5]})
+        params_variogram_model = pd.DataFrame(data={'model':['spherical', 'gaussian'], 'range':[5, 50], 'psill':[0.5, 0.5]})
 
         # Check that the function runs with default parameters
         t0 = time.time()
-        neff_exact = xdem.spatialstats.neff_exact(coords=coords, errors=errors, params_vgm=params_vgm)
+        neff_exact = xdem.spatialstats.neff_exact(coords=coords, errors=errors, params_variogram_model=params_variogram_model)
         t1 = time.time()
 
         # Check that the non-vectorized version gives the same result
-        neff_exact_nv = xdem.spatialstats.neff_exact(coords=coords, errors=errors, params_vgm=params_vgm, vectorized=False)
+        neff_exact_nv = xdem.spatialstats.neff_exact(coords=coords, errors=errors, params_variogram_model=params_variogram_model, vectorized=False)
         t2 = time.time()
         assert neff_exact == pytest.approx(neff_exact_nv, rel=0.001)
 
@@ -331,12 +331,12 @@ class TestNeffEstimation:
 
         # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
         t3 = time.time()
-        neff_approx = xdem.spatialstats.neff_hugonnet_approx(coords=coords, errors=errors, params_vgm=params_vgm,
+        neff_approx = xdem.spatialstats.neff_hugonnet_approx(coords=coords, errors=errors, params_variogram_model=params_variogram_model,
                                                              subsample=100, random_state=42)
         t4 = time.time()
 
         # Check that the non-vectorized version gives the same result, sampling 100 out of 250 samples
-        neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(coords=coords, errors=errors, params_vgm=params_vgm,
+        neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(coords=coords, errors=errors, params_variogram_model=params_variogram_model,
                                                              subsample=100, vectorized=False, random_state=42)
 
         assert neff_approx == pytest.approx(neff_approx_nv, rel=0.001)
@@ -353,8 +353,8 @@ class TestSubSampling:
         """Test that the circular masking works as intended"""
 
         # using default (center should be [2,2], radius 2)
-        circ = xdem.spatialstats.create_circular_mask((5, 5))
-        circ2 = xdem.spatialstats.create_circular_mask((5, 5), center=[2, 2], radius=2)
+        circ = xdem.spatialstats._create_circular_mask((5, 5))
+        circ2 = xdem.spatialstats._create_circular_mask((5, 5), center=[2, 2], radius=2)
 
         # check default center and radius are derived properly
         assert np.array_equal(circ,circ2)
@@ -367,14 +367,14 @@ class TestSubSampling:
 
         # check distance is not a multiple of pixels (more accurate subsampling)
         # will create a 1-pixel mask around the center
-        circ3 = xdem.spatialstats.create_circular_mask((5, 5), center=[1, 1], radius=1)
+        circ3 = xdem.spatialstats._create_circular_mask((5, 5), center=[1, 1], radius=1)
 
         eq_circ3 = np.zeros((5,5), dtype=bool)
         eq_circ3[1,1] = True
         assert np.array_equal(circ3, eq_circ3)
 
         # will create a square mask (<1.5 pixel) around the center
-        circ4 = xdem.spatialstats.create_circular_mask((5, 5), center=[1, 1], radius=1.5)
+        circ4 = xdem.spatialstats._create_circular_mask((5, 5), center=[1, 1], radius=1.5)
         # should not be the same as radius = 1
         assert not np.array_equal(circ3,circ4)
 
@@ -384,15 +384,15 @@ class TestSubSampling:
         warnings.simplefilter("error")
 
         # by default, the mask is only an outside circle (ring of size 0)
-        ring1 = xdem.spatialstats.create_ring_mask((5, 5))
-        circ1 = xdem.spatialstats.create_circular_mask((5, 5))
+        ring1 = xdem.spatialstats._create_ring_mask((5, 5))
+        circ1 = xdem.spatialstats._create_circular_mask((5, 5))
 
         assert np.array_equal(ring1,circ1)
 
         # test rings with different inner radius
-        ring2 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=1, out_radius=2)
-        ring3 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=0, out_radius=2)
-        ring4 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=1.5, out_radius=2)
+        ring2 = xdem.spatialstats._create_ring_mask((5, 5), in_radius=1, out_radius=2)
+        ring3 = xdem.spatialstats._create_ring_mask((5, 5), in_radius=0, out_radius=2)
+        ring4 = xdem.spatialstats._create_ring_mask((5, 5), in_radius=1.5, out_radius=2)
 
         assert np.logical_and(~np.array_equal(ring2,ring3),~np.array_equal(ring3,ring4))
 

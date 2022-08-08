@@ -159,9 +159,11 @@ print('Average maximum curvature of Medalsbreen glacier : {:.1f}'.format(np.nanm
 
 # %%
 # We calculate the number of effective samples for each glacier based on the variogram
-svendsen_neff = xdem.spatialstats.neff_circular_approx_numerical(area=svendsen_shp.ds.area.values[0], params_vgm=params_vgm)
+svendsen_neff = xdem.spatialstats.neff_circular_approx_numerical(area=svendsen_shp.ds.area.values[0],
+                                                                 params_variogram_model=params_vgm)
 
-medals_neff = xdem.spatialstats.neff_circular_approx_numerical(area=medals_shp.ds.area.values[0], params_vgm=params_vgm)
+medals_neff = xdem.spatialstats.neff_circular_approx_numerical(area=medals_shp.ds.area.values[0],
+                                                               params_variogram_model=params_vgm)
 
 print('Number of effective samples of Svendsenbreen glacier: {:.1f}'.format(svendsen_neff))
 print('Number of effective samples of Medalsbreen glacier: {:.1f}'.format(medals_neff))

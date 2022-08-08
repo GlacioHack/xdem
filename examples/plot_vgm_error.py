@@ -219,7 +219,7 @@ list_stderr_doublerange_plus_fullycorrelated = []
 for area in areas:
 
     # For a double-range model
-    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area = area, params_vgm = params_vgm2)
+    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area = area, params_variogram_model = params_vgm2)
 
     # About 5% of the variance might be fully correlated, the other 95% has the random part that we quantified
     stderr_fullycorr = np.sqrt(0.05*np.nanvar(dh.data))
