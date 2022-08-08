@@ -72,7 +72,7 @@ class TestVariogram:
 
         # Test plotting of empirical variogram by itself
         if PLOT:
-            xdem.spatialstats.plot_vgm(df2)
+            xdem.spatialstats.plot_variogram(df2)
 
     @pytest.mark.parametrize('subsample_method',['pdist_point','pdist_ring','pdist_disk','cdist_point'])
     def test_sample_multirange_variogram_methods(self, subsample_method):
@@ -158,7 +158,7 @@ class TestVariogram:
             assert params_real[2*i+1] == pytest.approx(params_est['psill'].values[i],rel=0.3)
 
         if PLOT:
-            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+            xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
     def test_check_params_vgm(self):
         """Verify that the checking function for the modelled variogram parameters dataframe returns adequate errors"""
@@ -166,49 +166,49 @@ class TestVariogram:
         # Check when missing a column
         with pytest.raises(ValueError, match='The dataframe with variogram parameters must contain the columns "model",'
                                              ' "range" and "psill".'):
-            xdem.spatialstats._check_validity_params_vgm(pd.DataFrame(data={'model':['spherical'], 'range':[100]}))
+            xdem.spatialstats._check_validity_params_variogram(pd.DataFrame(data={'model':['spherical'], 'range':[100]}))
 
         # Check with wrong model format
         list_supported_models = ['spherical', 'gaussian', 'exponential', 'cubic', 'stable', 'matern']
         with pytest.raises(ValueError, match='Variogram model name Supraluminal not recognized. Supported models are: '+
                              ', '.join(list_supported_models)+'.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['Supraluminal'], 'range': [100], 'psill': [1]}))
 
         # Check with wrong range format
         with pytest.raises(ValueError, match='The variogram ranges must be float or integer.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['spherical'], 'range': ['a'], 'psill': [1]}))
 
         # Check with negative range
         with pytest.raises(ValueError, match='The variogram ranges must have non-zero, positive values.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['spherical'], 'range': [-1], 'psill': [1]}))
 
         # Check with wrong partial sill format
         with pytest.raises(ValueError, match='The variogram partial sills must be float or integer.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['spherical'], 'range': [100], 'psill': ['a']}))
 
         # Check with negative partial sill
         with pytest.raises(ValueError, match='The variogram partial sills must have non-zero, positive values.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['spherical'], 'range': [100], 'psill': [-1]}))
 
         # Check with a model that requires smoothness and without the smoothness column
         with pytest.raises(ValueError, match='The dataframe with variogram parameters must contain the column "smooth" '
                                              'for the smoothness factor when using Matern or Stable models.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1]}))
 
         # Check with wrong smoothness format
         with pytest.raises(ValueError, match='The variogram smoothness parameter must be float or integer.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1], 'smooth': ['a']}))
 
         # Check with negative smoothness
         with pytest.raises(ValueError, match='The variogram smoothness parameter must have non-zero, positive values.'):
-            xdem.spatialstats._check_validity_params_vgm(
+            xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1], 'smooth': [-1]}))
 
 
@@ -230,22 +230,22 @@ class TestVariogram:
 
         if PLOT:
             # Plot with a single model fit
-            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+            xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
             # Plot with a triple model fit
-            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
+            xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun2])
 
         # Check that errors are raised with wrong inputs
         # If the experimental variogram values "exp" are not passed
         with pytest.raises(ValueError, match='The expected variable "exp" is not part of the provided dataframe column names.'):
-            xdem.spatialstats.plot_vgm(pd.DataFrame(data={'wrong_name':[1], 'lags':[1], 'count':[100]}))
+            xdem.spatialstats.plot_variogram(pd.DataFrame(data={'wrong_name':[1], 'lags':[1], 'count':[100]}))
         # If the spatial lags "lags" are not passed
         with pytest.raises(ValueError,
                            match='The expected variable "lags" is not part of the provided dataframe column names.'):
-            xdem.spatialstats.plot_vgm(pd.DataFrame(data={'exp': [1], 'wrong_name': [1], 'count': [100]}))
+            xdem.spatialstats.plot_variogram(pd.DataFrame(data={'exp': [1], 'wrong_name': [1], 'count': [100]}))
         # If the pairwise sample count "count" is not passed
         with pytest.raises(ValueError,
                            match='The expected variable "count" is not part of the provided dataframe column names.'):
-            xdem.spatialstats.plot_vgm(pd.DataFrame(data={'exp': [1], 'lags': [1], 'wrong_name': [100]}))
+            xdem.spatialstats.plot_variogram(pd.DataFrame(data={'exp': [1], 'lags': [1], 'wrong_name': [100]}))
 
 
 

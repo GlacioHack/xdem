@@ -1351,7 +1351,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
     # Parse the resampling argument given.
-    if isinstance(resampling, int):
+    if isinstance(resampling, (int, np.integer)):
         resampling_order = resampling
     elif resampling == "cubic":
         resampling_order = 3

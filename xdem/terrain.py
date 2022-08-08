@@ -562,7 +562,7 @@ def get_windowed_indexes(
     if any(dim < 3 for dim in dem_arr.shape):
         raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
 
-    if not isinstance(window_size, int) or window_size % 2 != 1:
+    if not isinstance(window_size, (int, np.integer)) or window_size % 2 != 1:
         raise ValueError("Window size must be an odd integer.")
 
     allowed_fill_methods = ["median", "mean", "none"]

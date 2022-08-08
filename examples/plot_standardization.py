@@ -111,8 +111,8 @@ df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh.data.squeeze()
                                                       n_variograms=10, random_state=42)
 
 func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(['Gaussian', 'Spherical'], empirical_variogram=df_vgm)
-xdem.spatialstats.plot_vgm(df_vgm, xscale_range_split=[100, 1000, 10000], list_fit_fun=[func_sum_vgm],
-                           list_fit_fun_label=['Standardized double-range variogram'])
+xdem.spatialstats.plot_variogram(df_vgm, xscale_range_split=[100, 1000, 10000], list_fit_fun=[func_sum_vgm],
+                                 list_fit_fun_label=['Standardized double-range variogram'])
 
 # %%
 # With standardized input, the variogram should converge towards one. With the input data close to a stationary
