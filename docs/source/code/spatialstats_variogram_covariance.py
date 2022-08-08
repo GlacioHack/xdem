@@ -4,9 +4,7 @@ import numpy as np
 import skgstat.models as models
 
 # Example variogram function
-def variogram_exp(h):
-    val = models.exponential(h, 15, 10)
-    return val
+variogram_exp = lambda h : models.exponential(h, 15, 10)
 
 fig, ax = plt.subplots()
 x = np.linspace(0,100,100)
