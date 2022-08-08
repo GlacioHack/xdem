@@ -228,11 +228,11 @@ class TestVariogram:
         # Triple model fit
         fun2, _ = xdem.spatialstats.fit_sum_model_variogram(['spherical', 'spherical', 'spherical'], empirical_variogram=df)
 
-        # Plot with a single model fit
-        xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
-
-        # Plot with a triple model fit
-        xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
+        if PLOT:
+            # Plot with a single model fit
+            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun])
+            # Plot with a triple model fit
+            xdem.spatialstats.plot_vgm(df, list_fit_fun=[fun2])
 
         # Check that errors are raised with wrong inputs
         # If the experimental variogram values "exp" are not passed
