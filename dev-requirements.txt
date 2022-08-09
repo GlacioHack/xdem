@@ -4,9 +4,10 @@ sphinx_rtd_theme
 sphinx_autodoc_typehints
 sphinxcontrib-programoutput
 numpy
+fiona
+shapely
 scipy
 rasterio
-geopandas
 pyproj
 tqdm
 git+https://github.com/GlacioHack/GeoUtils.git
