@@ -59,7 +59,7 @@ def _get_quadric_coefficients(
     L = resolution
 
     # Allocate the output.
-    output = np.empty((12,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.full((12,) + dem.shape, fill_value=np.nan)
 
     # Convert the string to a number (fewer bytes to compare each iteration)
     if fill_method == "median":
@@ -337,7 +337,7 @@ def _get_windowed_indexes(
     """
 
     # Allocate the outputs.
-    output = np.empty((5,) + dem.shape, dtype=dem.dtype) + np.nan
+    output = np.full((5,) + dem.shape, fill_value=np.nan)
 
     # Half window size
     hw = int(np.floor(window_size / 2))
