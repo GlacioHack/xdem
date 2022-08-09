@@ -505,6 +505,7 @@ def get_windowed_indexes(
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
+
     Nearly all are also referenced in Wilson et al. (2007).
 
     Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
@@ -561,7 +562,7 @@ def get_windowed_indexes(
     if any(dim < 3 for dim in dem_arr.shape):
         raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
 
-    if not isinstance(window_size, int) or window_size % 2 != 1:
+    if not isinstance(window_size, (int, np.integer)) or window_size % 2 != 1:
         raise ValueError("Window size must be an odd integer.")
 
     allowed_fill_methods = ["median", "mean", "none"]
