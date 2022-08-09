@@ -2,10 +2,12 @@ name: xdem
 channels:
   - conda-forge
 dependencies:
-  - python>=3.7
+  - python>=3.8
   - proj>=7.2
-  - geopandas
+  - fiona
+  - shapely
   - numba
+  - numpy
   - matplotlib
   - opencv
   - pyproj
