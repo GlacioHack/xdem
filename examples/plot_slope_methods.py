@@ -23,7 +23,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     plt.figure(figsize=(8, 5))
 
     if vlim is not None:
-        if isinstance(vlim, (int, float)):
+        if isinstance(vlim, (int, np.integer, float, np.floating)):
             vlims = {"vmin": -vlim, "vmax": vlim}
         elif len(vlim) == 2:
             vlims = {"vmin": vlim[0], "vmax": vlim[1]}
