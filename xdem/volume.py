@@ -550,7 +550,7 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
 
     # Create empty (ddem) value and (pixel) count arrays which will be filled iteratively.
     values = np.full((n_bins, unique_indices.shape[0]), fill_value=np.nan, dtype=float)
-    counts = np.empty((n_bins, unique_indices.shape[0]), fill_value=np.nan, dtype=float)
+    counts = np.full((n_bins, unique_indices.shape[0]), fill_value=np.nan, dtype=float)
 
     # Start a counter of glaciers that are actually processed.
     count = 0
