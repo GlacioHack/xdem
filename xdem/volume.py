@@ -71,7 +71,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
     # Calculate statistics for each bin.
     # If no values exist, all stats should be nans (except count with should be 0)
     # medians, means, stds, nmads = (np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan, ) * 4
-    values = np.zeros(shape=zbins.shape[0] - 1, dtype=ddem.dtype) * np.nan
+    values = np.full(shape=zbins.shape[0] - 1, fill_value=np.nan, dtype=ddem.dtype)
     counts = np.zeros_like(values, dtype=int)
     for i in np.arange(indices.min(), indices.max() + 1):
         values_in_bin = ddem[indices == i]
@@ -549,8 +549,8 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
     unique_indices = np.unique(glacier_index_map)
 
     # Create empty (ddem) value and (pixel) count arrays which will be filled iteratively.
-    values = np.empty((n_bins, unique_indices.shape[0]), dtype=float) * np.nan
-    counts = np.empty((n_bins, unique_indices.shape[0]), dtype=float) * np.nan
+    values = np.full((n_bins, unique_indices.shape[0]), fill_value=np.nan, dtype=float)
+    counts = np.empty((n_bins, unique_indices.shape[0]), fill_value=np.nan, dtype=float)
 
     # Start a counter of glaciers that are actually processed.
     count = 0
