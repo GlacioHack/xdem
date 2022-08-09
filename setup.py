@@ -39,7 +39,7 @@ setup(
         "opencv": ["opencv"],
         "pytransform3d": ["pytransform3d"],
     },
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     scripts=[],
     zip_safe=False,
 )
