@@ -56,7 +56,8 @@ jobs:
         python -c "from xdem.examples import *; download_longyearbyen_examples(overwrite=False)"
     - name: Test with pytest
       run: |
-        pytest -ra -n=auto
+        pip install pytest-cov coveralls
+        pytest -ra -n=auto --cov=xdem/
 
     - name: Coverall coverage
       uses: coverallsapp/github-action@master
