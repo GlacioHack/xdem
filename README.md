@@ -8,6 +8,7 @@ More documentation to come!
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
+[![Coverage Status](https://coveralls.io/repos/github/GlacioHack/xdem/badge.svg?branch=main)](https://coveralls.io/github/GlacioHack/xdem?branch=main)
 
 To cite this package: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
 
