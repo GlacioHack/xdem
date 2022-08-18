@@ -17,6 +17,7 @@ import matplotlib.colors as colors
 from numba import njit
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 from scipy import integrate
 from scipy.optimize import curve_fit
 from scipy.spatial.distance import pdist, squareform
@@ -25,6 +26,7 @@ from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, gri
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from geoutils.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
+from geoutils.geovector import VectorType, Vector
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -1259,7 +1261,7 @@ def neff_circular_approx_numerical(area: float, params_variogram_model: pd.DataF
     return neff
 
 
-def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, vectorized=True) -> float:
+def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, vectorized: bool = True) -> float:
     """
      Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
      the provided variogram parameters. This method works for any shape of area.
@@ -1270,6 +1272,7 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: p
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
         sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
         [None, 0.2]).
+    :param vectorized: Perform the vectorized calculation (used for testing).
 
     :return: Number of effective samples
     """
@@ -1318,7 +1321,7 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: p
     return neff
 
 def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, subsample: int = 1000,
-                         vectorized=True, random_state: None | np.random.RandomState | np.random.Generator | int = None) -> float:
+                         vectorized: bool = True, random_state: None | np.random.RandomState | np.random.Generator | int = None) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
     based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
@@ -1391,6 +1394,82 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogra
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / (n * subsample)
     neff = np.mean(errors)**2 / squared_se_dsc
+
+    return neff
+
+def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, params_variogram_model: pd.DataFrame,
+                             rasterize_resolution: RasterType | float = None, **kwargs) -> float:
+    """
+    Compute the number of effective samples, i.e. the number of uncorrelated samples, in an area accounting for spatial
+    correlations described by a sum of variogram models.
+
+    This function wraps two methods:
+
+    - A discretized integration method that provides the exact estimate for any shape of area using a double sum of
+        covariance. By default, this method is approximated using Equation 18 of Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922
+        to decrease computing times while preserving a good approximation.
+
+    - A continuous integration method that provides a conservative (i.e., slightly overestimated) value for a disk
+        area shape, based on a generalization of the approach of Rolstad et al. (2009), http://dx.doi.org/10.3189/002214309789470950.
+
+    By default, if a numeric value is passed for an area, the continuous method is used considering a disk shape. If a
+    vector is passed, the discretized method is computed on that shape.
+
+    :param area: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
+    assume a circular shape), or as a vector (shapefile) of the area
+    :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
+        [None, 0.2]).
+    :param rasterize_resolution: Resolution to rasterize the area if passed as a vector. Can be a float value or a Raster.
+    :param kwargs: Keyword argument to pass to the `neff_hugonnet_approx` function.
+    :return: Number of effective samples
+    """
+
+    # Check input for variogram parameters
+    _check_validity_params_variogram(params_variogram_model=params_variogram_model)
+
+    # If area is numeric, run the continuous circular approximation
+    if isinstance(area, (float, int, np.floating, np.integer)):
+        neff = neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
+
+    # Otherwise, run the discrete sum of covariance
+    elif isinstance(area, (Vector, gpd.GeoDataFrame)):
+
+        # If the input is a geopandas dataframe, put into a Vector object
+        if isinstance(area, gpd.GeoDataFrame):
+            V = Vector(area)
+        else:
+            V = area
+
+        # Rasterize with numeric resolution or Raster metadata
+        if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
+
+            # We only need relative mask and coordinates, not absolute
+            mask = V.create_mask(xres=rasterize_resolution)
+            x = rasterize_resolution * np.arange(0, mask.shape[0])
+            y = rasterize_resolution * np.arange(0, mask.shape[1])
+            coords = np.meshgrid(x, y)
+            coords_on_mask = coords[:, mask]
+
+        elif isinstance(rasterize_resolution, Raster):
+
+            # With a Raster we can get the coordinates directly
+            mask = V.create_mask(rst=rasterize_resolution)
+            coords = rasterize_resolution.coords()
+            coords_on_mask = coords[:, mask]
+
+        else:
+            ValueError('The rasterize resolution must be a float, integer or Raster subclass.')
+
+        # Here we don't care about heteroscedasticity, so all errors are standardized to one
+        errors_on_mask = np.ones(len(coords_on_mask))
+
+        neff = neff_hugonnet_approx(coords=coords_on_mask, errors=errors_on_mask,
+                                    params_variogram_model=params_variogram_model, **kwargs)
+
+    else:
+        ValueError('Area must be a float, integer, Vector subclass or geopandas dataframe.')
 
     return neff
 
