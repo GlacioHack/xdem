@@ -1266,7 +1266,7 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: p
      Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
      the provided variogram parameters. This method works for any shape of area.
 
-    :param coords: Center coordinates with size (N,) for each spatial support (typically, pixel)
+    :param coords: Center coordinates with size (N,2) for each spatial support (typically, pixel)
     :param errors: Errors at the coordinates with size (N,) for each spatial support (typically, pixel)
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
@@ -1327,7 +1327,7 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogra
     based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
     See Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922, in particular Supplementary Fig. S16.
 
-    :param coords: Center coordinates with size (N,) for each spatial support (typically, pixel)
+    :param coords: Center coordinates with size (N,2) for each spatial support (typically, pixel)
     :param errors: Errors at the coordinates with size (N,) for each spatial support (typically, pixel)
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
@@ -1358,8 +1358,11 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogra
     n = len(coords)
     pds = pdist(coords)
 
+    # At maximum, the number of subsamples has to be equal to number of points
+    subsample = min(subsample, n)
+
     # Get random subset of points for one of the sums
-    rand_points = rnd.choice(n, size=min(subsample, n), replace=False)
+    rand_points = rnd.choice(n, size=subsample, replace=False)
 
     # Now we compute the double covariance sum
     # Either using for-loop-version
@@ -1413,7 +1416,9 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
         area shape, based on a generalization of the approach of Rolstad et al. (2009), http://dx.doi.org/10.3189/002214309789470950.
 
     By default, if a numeric value is passed for an area, the continuous method is used considering a disk shape. If a
-    vector is passed, the discretized method is computed on that shape.
+    vector is passed, the discretized method is computed on that shape. If the discretized method is used, a resolution
+    for rasterization is generally expected, otherwise is arbitrarily chosen as a fifth of the shortest correlation
+    range to ensure a sufficiently fine grid for propagation of the shortest range.
 
     :param area: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
     assume a circular shape), or as a vector (shapefile) of the area
@@ -1423,6 +1428,7 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
         [None, 0.2]).
     :param rasterize_resolution: Resolution to rasterize the area if passed as a vector. Can be a float value or a Raster.
     :param kwargs: Keyword argument to pass to the `neff_hugonnet_approx` function.
+
     :return: Number of effective samples
     """
 
@@ -1442,6 +1448,11 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
         else:
             V = area
 
+        if rasterize_resolution is None:
+            rasterize_resolution =  np.min(params_variogram_model['range'].values)/5.
+            warnings.warn('Resolution for vector rasterization is not defined and thus set at 20% of the shortest '
+                'correlation range, which might result in large memory usage.')
+
         # Rasterize with numeric resolution or Raster metadata
         if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
 
@@ -1449,15 +1460,15 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
             mask = V.create_mask(xres=rasterize_resolution)
             x = rasterize_resolution * np.arange(0, mask.shape[0])
             y = rasterize_resolution * np.arange(0, mask.shape[1])
-            coords = np.meshgrid(x, y)
-            coords_on_mask = coords[:, mask]
+            coords = np.array(np.meshgrid(y, x))
+            coords_on_mask = coords[:, mask].T
 
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(rst=rasterize_resolution)
-            coords = rasterize_resolution.coords()
-            coords_on_mask = coords[:, mask]
+            mask = V.create_mask(rst=rasterize_resolution).squeeze()
+            coords = np.array(rasterize_resolution.coords())
+            coords_on_mask = coords[:, mask].T
 
         else:
             ValueError('The rasterize resolution must be a float, integer or Raster subclass.')
