@@ -1471,7 +1471,7 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
             coords_on_mask = coords[:, mask].T
 
         else:
-            ValueError('The rasterize resolution must be a float, integer or Raster subclass.')
+            raise ValueError('The rasterize resolution must be a float, integer or Raster subclass.')
 
         # Here we don't care about heteroscedasticity, so all errors are standardized to one
         errors_on_mask = np.ones(len(coords_on_mask))
@@ -1480,7 +1480,7 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
                                     params_variogram_model=params_variogram_model, **kwargs)
 
     else:
-        ValueError('Area must be a float, integer, Vector subclass or geopandas dataframe.')
+        raise ValueError('Area must be a float, integer, Vector subclass or geopandas dataframe.')
 
     return neff
 

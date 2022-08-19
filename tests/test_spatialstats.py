@@ -414,11 +414,11 @@ class TestNeffEstimation:
         # First, get the vector area and compute with the wrapper function
         res = 100.
         outlines = Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-        outlines_medals = Vector(outlines.ds[outlines.ds['NAME']=='Medalsbreen'])
-        neff1 = xdem.spatialstats.number_effective_samples(area=outlines_medals, params_variogram_model=params_variogram_model,
+        outlines_brom = Vector(outlines.ds[outlines.ds['NAME']=='Brombreen'])
+        neff1 = xdem.spatialstats.number_effective_samples(area=outlines_brom, params_variogram_model=params_variogram_model,
                                                            rasterize_resolution=res, random_state=42)
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_medals.create_mask(xres=res)
+        mask = outlines_brom.create_mask(xres=res)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))
@@ -431,15 +431,15 @@ class TestNeffEstimation:
 
         # Check that using a Raster as input for the resolution works
         raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-        neff3 = xdem.spatialstats.number_effective_samples(area=outlines_medals,
+        neff3 = xdem.spatialstats.number_effective_samples(area=outlines_brom,
                                                            params_variogram_model=params_variogram_model,
                                                            rasterize_resolution=raster, random_state=42)
-        # The value should be nearly the same within 1% (the discretization grid is different so affects a tiny bit the result)
-        assert neff3 == pytest.approx(neff2, rel=0.01)
+        # The value should be nearly the same within 2% (the discretization grid is different so affects a tiny bit the result)
+        assert neff3 == pytest.approx(neff2, rel=0.02)
 
         # Check that the number of effective samples matches that of the circular approximation within 20%
-        area_medals = np.sum(outlines_medals.ds.area.values)
-        neff4 = xdem.spatialstats.number_effective_samples(area=area_medals, params_variogram_model=params_variogram_model)
+        area_brom = np.sum(outlines_brom.ds.area.values)
+        neff4 = xdem.spatialstats.number_effective_samples(area=area_brom, params_variogram_model=params_variogram_model)
         assert neff4 == pytest.approx(neff2, rel=0.2)
         # The circular approximation is always conservative, so should yield a smaller value
         assert neff4 < neff2
@@ -447,11 +447,11 @@ class TestNeffEstimation:
         # Check that errors are correctly raised
         with pytest.warns(UserWarning, match='Resolution for vector rasterization is not defined and thus set at 20% '
                                              'of the shortest correlation range, which might result in large memory usage.'):
-            xdem.spatialstats.number_effective_samples(area=outlines_medals, params_variogram_model=params_variogram_model)
+            xdem.spatialstats.number_effective_samples(area=outlines_brom, params_variogram_model=params_variogram_model)
         with pytest.raises(ValueError, match='Area must be a float, integer, Vector subclass or geopandas dataframe.'):
             xdem.spatialstats.number_effective_samples(area='not supported', params_variogram_model=params_variogram_model)
         with pytest.raises(ValueError, match='The rasterize resolution must be a float, integer or Raster subclass.'):
-            xdem.spatialstats.number_effective_samples(area=10, params_variogram_model=params_variogram_model,
+            xdem.spatialstats.number_effective_samples(area=outlines_brom, params_variogram_model=params_variogram_model,
                                                        rasterize_resolution=(10, 10))
 
 
