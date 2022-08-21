@@ -1333,6 +1333,8 @@ def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], l
                                                      subsample=subsample, subsample_method=subsample_method,
                                                      n_variograms=n_variograms, n_jobs=n_jobs, verbose=verbose,
                                                      random_state=random_state, **kwargs)
+    # TODO: prevent this last bin with few samples to be returned by `sample_empirical_variogram`
+    empirical_variogram = empirical_variogram[:-1]
 
     params_variogram_model = fit_sum_model_variogram(list_models=list_models, empirical_variogram=empirical_variogram,
                                              bounds=bounds, p0=p0)[1]
@@ -2059,7 +2061,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     return df_all
 
 
-def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float], float]]] = None,
+def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.ndarray], np.ndarray]]] = None,
                    list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None,
                    xscale='linear', xscale_range_split: Optional[list] = None,
                    xlabel = None, ylabel = None, xlim = None, ylim = None):
@@ -2210,12 +2212,15 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float
         if ylim is not None:
             ax1.set_ylim(ylim)
         else:
-            ax1.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
+            if np.all(np.isnan(df.err_exp)):
+                ax1.set_ylim((0, 1.05*np.nanmax(df.exp)))
+            else:
+                ax1.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
 
         if k == int(nb_subpanels/2):
             ax1.set_xlabel(xlabel)
         if k == nb_subpanels - 1:
-            ax1.legend(loc='best')
+            ax1.legend(loc='lower right')
         if k == 0:
             ax1.set_ylabel(ylabel)
         else:
