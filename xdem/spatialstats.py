@@ -367,6 +367,7 @@ def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np
 @overload
 def infer_heteroscedasticy_from_stable(dvalues: np.ndarray , list_var: list[np.ndarray | RasterType],
                                        stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                       unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
                                        list_var_names: Iterable[str],
                                        spread_statistic: Callable,
                                        list_var_bins: Optional[Union[int,Iterable[Iterable]]],
@@ -379,6 +380,7 @@ def infer_heteroscedasticy_from_stable(dvalues: np.ndarray , list_var: list[np.n
 @overload
 def infer_heteroscedasticy_from_stable(dvalues: RasterType , list_var: list[np.ndarray | RasterType],
                                        stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                       unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
                                        list_var_names: Iterable[str],
                                        spread_statistic: Callable,
                                        list_var_bins: Optional[Union[int,Iterable[Iterable]]],
@@ -389,7 +391,8 @@ def infer_heteroscedasticy_from_stable(dvalues: RasterType , list_var: list[np.n
                                             Callable[[tuple[np.ndarray, ...]], np.ndarray]]: ...
 
 def infer_heteroscedasticy_from_stable(dvalues: np.ndarray | RasterType, list_var: list[np.ndarray | RasterType],
-                                       stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                       stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                       unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
                                        list_var_names: Iterable[str] = None,
                                        spread_statistic: Callable = nmad,
                                        list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
@@ -405,9 +408,12 @@ def infer_heteroscedasticy_from_stable(dvalues: np.ndarray | RasterType, list_va
     It is a convenience wrapper for `estimate_model_heteroscedasticity` to work on either Raster or array, compute the
     stable mask and return an error map.
 
+    If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
+
     :param dvalues: Proxy values as array or Raster
     :param list_var: List of size (L) of explanatory variables as array or Raster of same shape as dvalues
     :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param unstable_mask: Vector shapefile of unstable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
     :param list_var_names: List of size (L) of names of the explanatory variables, otherwise named var1, var2, etc.
     :param spread_statistic: Statistic to be computed for the spread; defaults to nmad
     :param list_var_bins: Count of size (1), or list of size (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
@@ -422,16 +428,18 @@ def infer_heteroscedasticy_from_stable(dvalues: np.ndarray | RasterType, list_va
     # Check inputs
     if not isinstance(dvalues, (Raster, np.ndarray)):
         raise ValueError('The dvalues must be a Raster or NumPy array.')
-    if not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+    if stable_mask is not None and not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
         raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
+    if unstable_mask is not None and not isinstance(unstable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
 
     # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
-    if isinstance(dvalues, Raster) and isinstance(stable_mask, (Vector, gpd.GeoDataFrame)):
+    if not isinstance(dvalues, Raster) and (isinstance(stable_mask, (Vector, gpd.GeoDataFrame)) or isinstance(unstable_mask,  (Vector, gpd.GeoDataFrame))):
         raise ValueError('The stable mask can only passed as a Vector or GeoDataFrame if the input dvalues is a Raster.')
 
     # Create placeholder variables names if those don't exist
     if list_var_names is None:
-        list_var_names = ['var'+str(i) for i in range(len(list_var))]
+        list_var_names = ['var'+str(i+1) for i in range(len(list_var))]
 
     # Get the arrays for proxy values and explanatory variables
     if isinstance(dvalues, Raster):
@@ -442,7 +450,9 @@ def infer_heteroscedasticy_from_stable(dvalues: np.ndarray | RasterType, list_va
                     for var in list_var if isinstance(var, Raster)]
 
     # If the stable mask is not an array, create it
-    if not isinstance(stable_mask, np.ndarray):
+    if stable_mask is None:
+        stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(stable_mask, np.ndarray):
 
         # If the stable mask is a geopandas dataframe, wrap it in a Vector object
         if isinstance(stable_mask, gpd.GeoDataFrame):
@@ -455,6 +465,25 @@ def infer_heteroscedasticy_from_stable(dvalues: np.ndarray | RasterType, list_va
     # If the mask is already an array, just pass it
     else:
         stable_mask_arr = stable_mask
+
+    # If the unstable mask is not an array, create it
+    if unstable_mask is None:
+        unstable_mask_arr = np.zeros(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(unstable_mask, np.ndarray):
+
+        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(unstable_mask, gpd.GeoDataFrame):
+            unstable_vector = Vector(unstable_mask)
+        else:
+            unstable_vector = unstable_mask
+
+        # Create the mask
+        unstable_mask_arr = unstable_vector.create_mask(dvalues)
+    # If the mask is already an array, just pass it
+    else:
+        unstable_mask_arr = unstable_mask
+
+    stable_mask_arr = np.logical_and(stable_mask_arr, ~unstable_mask_arr).squeeze()
 
     # Get the subsets on stable terrain
     dvalues_stable_arr = dvalues_arr[stable_mask_arr]
@@ -471,9 +500,9 @@ def infer_heteroscedasticy_from_stable(dvalues: np.ndarray | RasterType, list_va
 
     # Return the right type, depending on dvalues input
     if isinstance(dvalues, Raster):
-        return dvalues.copy(new_array=error)
+        return dvalues.copy(new_array=error), df, fun
     else:
-        return error
+        return error, df, fun
 
 
 def _create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None,
@@ -889,17 +918,19 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     elif isinstance(values, (np.ndarray, np.ma.masked_array)):
         values, mask = get_array_and_mask(values)
     else:
-        raise TypeError('Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.')
+        raise ValueError('Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.')
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
     if (gsd is not None or subsample_method in ['cdist_equidistant', 'pdist_disk','pdist_ring']) and values.ndim == 1:
-        raise TypeError('Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
+        raise ValueError('Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
                         '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.')
     elif coords is not None and values.ndim != 1:
-        raise TypeError('Values array must be 1D when providing coordinates.')
+        raise ValueError('Values array must be 1D when providing coordinates.')
     elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
-        raise TypeError('The coordinates array must have one dimension with length equal to 2')
+        raise ValueError('The coordinates array must have one dimension with length equal to 2')
+    elif values.ndim == 2 and gsd is None:
+        raise ValueError('The ground sampling distance must be defined when passing a 2D values array.')
 
     # Check the subsample method provided exists, otherwise list options
     if subsample_method not in ['cdist_equidistant','cdist_point','pdist_point','pdist_disk','pdist_ring']:
@@ -1311,8 +1342,9 @@ def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], l
     return empirical_variogram, params_variogram_model, spatial_correlation_func
 
 def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
-                                          stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
                                           list_models: list[str | Callable],
+                                          stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                          unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
                                           errors: np.ndarray | RasterType = None,
                                           estimator = 'dowd', gsd: float = None, coords: np.ndarray = None,
                                           subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
@@ -1330,12 +1362,15 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     It is a convenience wrapper for `estimate_model_spatial_correlation` to work on either Raster or array and compute
     the stable mask.
 
+    If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
+
     :param dvalues: Proxy values as array or Raster
-    :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
-    :param errors: Error values to account for heteroscedasticity (ignored if None).
     :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
     a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
     spherical model "Sph", "Spherical" or skgstat.models.spherical).
+    :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param unstable_mask: Vector shapefile of unstable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param errors: Error values to account for heteroscedasticity (ignored if None).
     :param estimator: Estimator for the empirical variogram; default to Dowd's variogram (see skgstat.Variogram for
     the list of available estimators).
     :param gsd: Ground sampling distance
@@ -1355,22 +1390,28 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     # Check inputs
     if not isinstance(dvalues, (Raster, np.ndarray)):
         raise ValueError('The dvalues must be a Raster or NumPy array.')
-    if not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+    if stable_mask is not None and not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
         raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
+    if unstable_mask is not None and not isinstance(unstable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
 
     # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
-    if isinstance(dvalues, Raster) and isinstance(stable_mask, (Vector, gpd.GeoDataFrame)):
+    if not isinstance(dvalues, Raster) and isinstance(stable_mask, (Vector, gpd.GeoDataFrame)):
         raise ValueError(
             'The stable mask can only passed as a Vector or GeoDataFrame if the input dvalues is a Raster.')
 
     # Get array if input is a Raster
     if isinstance(dvalues, Raster):
         dvalues_arr = get_array_and_mask(dvalues)[0]
+        gsd = dvalues.res[0]
     else:
         dvalues_arr = dvalues
 
     # If the stable mask is not an array, create it
-    if not isinstance(stable_mask, np.ndarray):
+    # If the stable mask is not an array, create it
+    if stable_mask is None:
+        stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(stable_mask, np.ndarray):
 
         # If the stable mask is a geopandas dataframe, wrap it in a Vector object
         if isinstance(stable_mask, gpd.GeoDataFrame):
@@ -1384,8 +1425,28 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     else:
         stable_mask_arr = stable_mask
 
-    # Get the subsets on stable terrain
-    dvalues_stable_arr = dvalues_arr[stable_mask_arr]
+    # If the unstable mask is not an array, create it
+    if unstable_mask is None:
+        unstable_mask_arr = np.zeros(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(unstable_mask, np.ndarray):
+
+        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(unstable_mask, gpd.GeoDataFrame):
+            unstable_vector = Vector(unstable_mask)
+        else:
+            unstable_vector = unstable_mask
+
+        # Create the mask
+        unstable_mask_arr = unstable_vector.create_mask(dvalues)
+    # If the mask is already an array, just pass it
+    else:
+        unstable_mask_arr = unstable_mask
+
+    stable_mask_arr = np.logical_and(stable_mask_arr, ~unstable_mask_arr).squeeze()
+
+    # Need to preserve the shape, so setting as NaNs all points not on stable terrain
+    dvalues_stable_arr = dvalues_arr.copy()
+    dvalues_stable_arr[~stable_mask_arr] = np.nan
 
     # Perform standardization if error array is provided
     if errors is not None:
@@ -1393,14 +1454,13 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
             errors_arr = get_array_and_mask(errors)[0]
         else:
             errors_arr = errors
-        errors_stable_arr = errors_arr[stable_mask_arr]
 
         # Standardize
-        dvalues_stable_arr /= errors_stable_arr
+        dvalues_stable_arr /= errors_arr
 
     # Estimate and model spatial correlations
     empirical_variogram, params_variogram_model, spatial_correlation_func = estimate_model_spatial_correlation(
-        values=dvalues_stable_arr, list_models=list_models, estimator=estimator, gsd=gsd, coords=coords,
+        dvalues=dvalues_stable_arr, list_models=list_models, estimator=estimator, gsd=gsd, coords=coords,
         subsample=subsample, subsample_method=subsample_method, n_variograms=n_variograms, n_jobs=n_jobs,
         verbose=verbose, random_state=random_state, bounds=bounds, p0=p0, **kwargs)
 

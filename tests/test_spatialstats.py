@@ -8,6 +8,7 @@ import time
 import skgstat
 
 import geoutils as gu
+import geoutils.spatial_tools
 from geoutils import Raster, Vector
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ with warnings.catch_warnings():
 
 PLOT = False
 
-def load_ref_and_diff() -> tuple[Raster, Raster, np.ndarray]:
+def load_ref_and_diff() -> tuple[Raster, Raster, np.ndarray, Vector]:
     """Load example files to try coregistration methods with."""
 
     reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
@@ -31,7 +32,7 @@ def load_ref_and_diff() -> tuple[Raster, Raster, np.ndarray]:
     ddem = Raster(examples.get_path('longyearbyen_ddem'))
     mask = glacier_mask.create_mask(ddem)
 
-    return reference_raster, ddem, mask
+    return reference_raster, ddem, mask, glacier_mask
 
 class TestVariogram:
 
@@ -262,6 +263,65 @@ class TestVariogram:
             xdem.spatialstats._check_validity_params_variogram(
                 pd.DataFrame(data={'model': ['stable'], 'range': [100], 'psill': [1], 'smooth': [-1]}))
 
+    def test_estimate_model_spatial_correlation_and_infer_from_stable(self):
+        """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
+
+        # Load data
+        diff, mask_glacier, vector_glacier = load_ref_and_diff()[1:4]
+
+        # Keep only data on stable
+        diff_on_stable = diff.copy()
+        diff_on_stable.set_mask(mask_glacier)
+
+        # Run wrapper estimate and model function
+        emp_vgm_1, params_model_vgm_1, _ = \
+            xdem.spatialstats.estimate_model_spatial_correlation(dvalues=diff_on_stable, list_models=['Gau', 'Sph'],
+                                                                 subsample=100, random_state=42)
+
+        # Check that the output matches that of the original function under the same random state
+        emp_vgm_2 = xdem.spatialstats.sample_empirical_variogram(values=diff_on_stable, estimator='dowd', subsample=100,
+                                                               random_state=42)
+        pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_2)
+        params_model_vgm_2 = xdem.spatialstats.fit_sum_model_variogram(list_models=['Gau', 'Sph'],
+                                                                       empirical_variogram=emp_vgm_2)[1]
+        pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_2)
+
+        # Run wrapper infer from stable function with a Raster and the mask, and check the consistency there as well
+        emp_vgm_3, params_model_vgm_3, _ = \
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff_on_stable, stable_mask=~mask_glacier.squeeze(),
+                                                                    list_models=['Gau', 'Sph'], subsample=100, random_state=42)
+        pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_3)
+        pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_3)
+
+        # Run again with array instead of Raster as input
+        diff_on_stable_arr = gu.spatial_tools.get_array_and_mask(diff_on_stable)[0]
+        emp_vgm_4, params_model_vgm_4, _ = \
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff_on_stable_arr, gsd=diff_on_stable.res[0],
+                                                                    stable_mask=~mask_glacier.squeeze(),
+                                                                    list_models=['Gau', 'Sph'], subsample=100,
+                                                                    random_state=42)
+        pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_4)
+        pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_4)
+
+        # Check that errors are raised with wrong input
+        with pytest.raises(ValueError, match='The dvalues must be a Raster or NumPy array.'):
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues='not_an_array', stable_mask=~mask_glacier.squeeze(),
+                                                                    list_models=['Gau', 'Sph'], random_state=42)
+        with pytest.raises(ValueError, match='The stable mask must be a Vector, GeoDataFrame or NumPy array.'):
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff,
+                                                                    stable_mask='not_a_vector_or_array',
+                                                                    list_models=['Gau', 'Sph'], random_state=42)
+        with pytest.raises(ValueError, match='The unstable mask must be a Vector, GeoDataFrame or NumPy array.'):
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff,
+                                                                    unstable_mask='not_a_vector_or_array',
+                                                                    list_models=['Gau', 'Sph'], random_state=42)
+        diff_on_stable_arr = gu.spatial_tools.get_array_and_mask(diff_on_stable)[0]
+        with pytest.raises(ValueError, match='The stable mask can only passed as a Vector or GeoDataFrame if the input '
+                                             'dvalues is a Raster.'):
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff_on_stable_arr,
+                                                                    stable_mask=vector_glacier,
+                                                                    list_models=['Gau', 'Sph'], random_state=42)
+
 
     def test_empirical_fit_plotting(self):
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
@@ -401,6 +461,9 @@ class TestNeffEstimation:
     def test_number_effective_samples(self):
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
 
+        raster = load_ref_and_diff()[0]
+        outlines = load_ref_and_diff()[3]
+
         # The function should return the same result as neff_circular_approx_numerical when using a numerical area
         area = 10000
         params_variogram_model = pd.DataFrame(data={'model':['spherical', 'gaussian'], 'range':[300, 3000], 'psill':[0.5, 0.5]})
@@ -413,7 +476,6 @@ class TestNeffEstimation:
         # The function should return the same results as neff_hugonnet_approx when using a shape area
         # First, get the vector area and compute with the wrapper function
         res = 100.
-        outlines = Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
         outlines_brom = Vector(outlines.ds[outlines.ds['NAME']=='Brombreen'])
         neff1 = xdem.spatialstats.number_effective_samples(area=outlines_brom, params_variogram_model=params_variogram_model,
                                                            rasterize_resolution=res, random_state=42)
@@ -430,7 +492,6 @@ class TestNeffEstimation:
         assert neff1 == pytest.approx(neff2, rel=0.00001)
 
         # Check that using a Raster as input for the resolution works
-        raster = Raster(examples.get_path("longyearbyen_ref_dem"))
         neff3 = xdem.spatialstats.number_effective_samples(area=outlines_brom,
                                                            params_variogram_model=params_variogram_model,
                                                            rasterize_resolution=raster, random_state=42)
@@ -544,9 +605,10 @@ class TestBinning:
 
     def test_nd_binning(self):
 
-        ref, diff, mask = load_ref_and_diff()
+        ref, diff, mask = load_ref_and_diff()[0:3]
 
-        slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
+        ref_arr = gu.spatial_tools.get_array_and_mask(ref)[0]
+        slope, aspect = xdem.terrain.get_terrain_attribute(ref_arr, resolution=ref.res, attribute=['slope', 'aspect'])
 
         # 1D binning, by default will create 10 bins
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten()], list_var_names=['slope'])
@@ -660,8 +722,10 @@ class TestBinning:
                            df[np.logical_and.reduce((df['var1'] == i, df['var2'] == j, df['var3'] == k))]['statistic'].values[0]
 
         # Check if it works with nd_binning output
-        ref, diff, mask = load_ref_and_diff()
-        slope, aspect = xdem.coreg.calculate_slope_and_aspect(ref.data.squeeze())
+        ref, diff, mask = load_ref_and_diff()[0:3]
+        ref_arr = gu.spatial_tools.get_array_and_mask(ref)[0]
+
+        slope, aspect = xdem.terrain.get_terrain_attribute(ref_arr, resolution=ref.res, attribute=['slope', 'aspect'])
 
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'])
 
@@ -684,7 +748,7 @@ class TestBinning:
         # Check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
         # Check the nmad increases with slope
-        assert fun([20, 800]) > fun([0, 800])
+        assert fun([40, 800]) > fun([0, 800])
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500,3000]))))
 
@@ -699,6 +763,107 @@ class TestBinning:
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500,3000], [-2*np.pi,4*np.pi]))))
 
+    def test_two_step_standardization(self):
+        """Test two-step standardization function"""
+
+        ref_dem, diff, mask_glacier, vector_glacier = load_ref_and_diff()
+
+        # Get attributes
+        slope, maximum_curv = xdem.terrain.get_terrain_attribute(ref_dem, attribute=['slope', 'maximum_curvature'])
+
+        # Test this gives the same results as when using the base functions
+        diff_arr = gu.spatial_tools.get_array_and_mask(diff)[0]
+        slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0]
+        maximum_curv_arr = gu.spatial_tools.get_array_and_mask(maximum_curv)[0]
+        stable_mask_arr = ~vector_glacier.create_mask(ref_dem).squeeze()
+
+        # Reproduce the first steps of binning
+        df_binning = xdem.spatialstats.nd_binning(values=diff_arr[stable_mask_arr],
+                                                  list_var=[slope_arr[stable_mask_arr],
+                                                            maximum_curv_arr[stable_mask_arr]],
+                                                  list_var_names=['var1', 'var2'],
+                                                  statistics=[xdem.spatialstats.nmad])
+        unscaled_fun = xdem.spatialstats.interp_nd_binning(df_binning, list_var_names=['var1', 'var2'],
+                                                           statistic='nmad')
+        # The zscore spread should not be one right after binning
+        zscores = diff_arr[stable_mask_arr] / unscaled_fun((slope_arr[stable_mask_arr], maximum_curv_arr[stable_mask_arr]))
+        scale_fac = xdem.spatialstats.nmad(zscores)
+        assert scale_fac != 1
+
+        # Filter with a factor of 5 and the standard deviation and check the function outputs the exact same array
+        zscores[np.abs(zscores) > 3*np.nanstd(zscores)] = np.nan
+        scale_fac_std = np.nanstd(zscores)
+        zscores /= scale_fac_std
+        zscores_2, final_func = xdem.spatialstats.two_step_standardization(diff_arr[stable_mask_arr],
+                                                                           list_var=[slope_arr[stable_mask_arr],
+                                                                                     maximum_curv_arr[stable_mask_arr]],
+                                                                           unscaled_error_fun=unscaled_fun,
+                                                                           spread_statistic=np.nanstd,
+                                                                           fac_spread_outliers=3)
+        assert np.array_equal(zscores, zscores_2, equal_nan=True)
+
+        # Check the output of the scaled function is simply the unscaled one times the spread statistic
+        test_slopes = np.linspace(0, 50, 50)
+        test_max_curvs = np.linspace(0, 10, 50)
+        assert np.array_equal(unscaled_fun((test_slopes, test_max_curvs)) * scale_fac_std,
+                              final_func((test_slopes, test_max_curvs)))
+
+
+    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self):
+        """Test consistency of outputs and errors in wrapper functions for estimation of heteroscedasticity"""
+
+        # Load data
+        ref_dem, diff, mask_glacier, vector_glacier = load_ref_and_diff()
+
+        # Get attributes
+        slope, maximum_curv = xdem.terrain.get_terrain_attribute(ref_dem, attribute=['slope', 'maximum_curvature'])
+
+        # Test infer function
+        errors_1, df_binning_1, err_fun_1 = \
+            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff,
+                                                                 list_var=[slope, maximum_curv],
+                                                                 unstable_mask=vector_glacier)
+
+        # Test this gives the same results as when using the base functions
+        diff_arr = gu.spatial_tools.get_array_and_mask(diff)[0]
+        slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0]
+        maximum_curv_arr = gu.spatial_tools.get_array_and_mask(maximum_curv)[0]
+        stable_mask_arr = ~vector_glacier.create_mask(ref_dem).squeeze()
+
+        df_binning_2, err_fun_2 = \
+            xdem.spatialstats.estimate_model_heteroscedasticity(dvalues=diff_arr[stable_mask_arr],
+                                                                list_var=[slope_arr[stable_mask_arr],
+                                                                          maximum_curv_arr[stable_mask_arr]],
+                                                                list_var_names=['var1', 'var2'])
+
+        pd.testing.assert_frame_equal(df_binning_1, df_binning_2)
+        test_slopes = np.linspace(0, 50, 50)
+        test_max_curvs = np.linspace(0, 10, 50)
+        assert np.array_equal(err_fun_1((test_slopes, test_max_curvs)), err_fun_2((test_slopes, test_max_curvs)))
+
+        # Test the error map is consistent as well
+        errors_2_arr = err_fun_2((slope_arr, maximum_curv_arr))
+        errors_1_arr = gu.spatial_tools.get_array_and_mask(errors_1)[0]
+        assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
+
+        # Check that errors are raised with wrong input
+        with pytest.raises(ValueError, match='The dvalues must be a Raster or NumPy array.'):
+            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues='not_an_array',
+                                                                 stable_mask=~mask_glacier.squeeze(),
+                                                                 list_var=[slope_arr])
+        with pytest.raises(ValueError, match='The stable mask must be a Vector, GeoDataFrame or NumPy array.'):
+            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff,
+                                                                 stable_mask='not_a_vector_or_array',
+                                                                 list_var=[slope_arr])
+        with pytest.raises(ValueError, match='The unstable mask must be a Vector, GeoDataFrame or NumPy array.'):
+            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff,
+                                                                 unstable_mask='not_a_vector_or_array',
+                                                                 list_var=[slope_arr])
+
+        with pytest.raises(ValueError, match='The stable mask can only passed as a Vector or GeoDataFrame if the input '
+                                             'dvalues is a Raster.'):
+            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff_arr, stable_mask=vector_glacier,
+                                                                 list_var=[slope_arr])
 
     def test_plot_binning(self):
 
