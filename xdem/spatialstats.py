@@ -1884,6 +1884,59 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
 
     return neff
 
+def spatial_error_propagation(areas: list[float | VectorType | gpd.GeoDataFrame],
+                              errors: RasterType,
+                              params_variogram_model: pd.Dataframe,
+                              **kwargs) -> list[float]:
+    """
+    Spatial propagation of elevation errors to an area using the estimated heteroscedasticity and spatial correlations.
+
+    This function is based on the `number_effective_samples` function to estimate uncorrelated samples. If given a
+    vector area, it uses Equation 18 of Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922. If given
+    a numeric area, it uses a generalization of Rolstad et al. (2009), http://dx.doi.org/10.3189/002214309789470950.
+
+    The standard error SE (1-sigma) is then computed as SE = mean(SD) / Neff, where mean(SD) is the mean of errors in
+    the area of interest which accounts for heteroscedasticity, and Neff is the number of effective samples.
+
+
+    :param areas: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
+    assume a circular shape), or as a vector (shapefile) of the area
+    :param errors: Errors from heteroscedasticity estimation and modelling, as an array or Raster
+    :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
+        [None, 0.2]).
+    :param kwargs: Keyword argument to pass to the `neff_hugonnet_approx` function.
+
+    :return: List of standard errors (1-sigma) for the input areas
+    """
+
+    standard_errors = []
+    errors_arr = get_array_and_mask(errors)[0]
+    for area in areas:
+        # We estimate the number of effective samples in the area
+        neff = number_effective_samples(area=area, params_variogram_model=params_variogram_model,
+                                        rasterize_resolution=errors, **kwargs)
+
+        # We compute the average error in this area
+        # If the area is only a value, take the average error over the entire Raster
+        if isinstance(area, float):
+            average_spread = np.nanmean(errors_arr)
+        else:
+            if isinstance(area, gpd.GeoDataFrame):
+                area_vector = Vector(area)
+            else:
+                area_vector = area
+            area_mask = area_vector.create_mask(errors).squeeze()
+
+            average_spread = np.nanmean(errors_arr[area_mask])
+
+        # Compute the standard error from those two values
+        standard_error = average_spread / np.sqrt(neff)
+        standard_errors.append(standard_error)
+
+    return standard_errors
+
 
 def _std_err_finite(std: float, neff_tot: float, neff: float) -> float:
     """

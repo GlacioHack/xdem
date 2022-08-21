@@ -515,6 +515,36 @@ class TestNeffEstimation:
             xdem.spatialstats.number_effective_samples(area=outlines_brom, params_variogram_model=params_variogram_model,
                                                        rasterize_resolution=(10, 10))
 
+    def test_spatial_error_propagation(self):
+        """Test that the spatial error propagation wrapper function runs properly"""
+
+        ref, diff, mask_glacier, vector_glacier = load_ref_and_diff()
+
+        # Get the error map and variogram model with standardization
+        slope, maxc = xdem.terrain.get_terrain_attribute(ref, attribute=['slope', 'maximum_curvature'])
+        errors = xdem.spatialstats.infer_heteroscedasticy_from_stable(
+            dvalues=diff, list_var=[slope, maxc], unstable_mask=vector_glacier)[0]
+        # Standardize the differences
+        zscores = diff / errors
+        params_variogram_model = xdem.spatialstats.infer_spatial_correlation_from_stable(
+            dvalues=zscores, list_models=['Gaussian', 'Spherical'], unstable_mask=vector_glacier, subsample=100)[1]
+
+        # Run the function with vector areas
+        areas_vector = [vector_glacier.ds[vector_glacier.ds['NAME']=='Brombreen'],
+                        vector_glacier.ds[vector_glacier.ds['NAME']=='Medalsbreen']]
+
+        list_stderr_vec = xdem.spatialstats.spatial_error_propagation(areas=areas_vector, errors=errors,
+                                                               params_variogram_model=params_variogram_model)
+
+        # Run the function with numeric areas (sum needed for Medalsbreen that has two separate polygons)
+        areas_numeric = [np.sum(area_vec.area.values) for area_vec in areas_vector]
+        list_stderr = xdem.spatialstats.spatial_error_propagation(areas=areas_numeric, errors=errors,
+                                                                  params_variogram_model=params_variogram_model)
+
+        # Check that the outputs are consistent: the numeric method should give smaller neff
+        for i in range(2):
+            assert list_stderr_vec[i] > list_stderr[i]
+
 
 class TestSubSampling:
 
