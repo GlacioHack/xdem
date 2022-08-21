@@ -8,6 +8,7 @@ variability in elevation error, using terrain slope and maximum curvature as exp
 as an error proxy for moving terrain.
 
 **References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_. See in particular Figure 4.
+
 Errors in elevation difference can be converted in elevation errors following Equation 7 (equal if other source of much
 higher precision) or Equation 8 (divided by sqrt(2) if the two sources are of same precision).
 """
@@ -29,14 +30,14 @@ slope, maximum_curvature = xdem.terrain.get_terrain_attribute(ref_dem, attribute
 
 # %%
 # Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain:
-error_map, df_binning, error_function = \
+errors, df_binning, error_function = \
     xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=dh, list_var=[slope, maximum_curvature],
                                                          list_var_names=['slope', 'maxc'],
                                                          unstable_mask=glacier_outlines)
 
 # %%
 # The first output corresponds to the error map for the DEM (1-sigma):
-error_map.show(vmin=2, vmax=7, cmap='Reds', cb_title='Elevation error (1$\sigma$)')
+errors.show(vmin=2, vmax=7, cmap='Reds', cb_title='Elevation error (1$\sigma$)')
 
 # %%
 # The second output is the dataframe of 2D binning with slope and maximum curvature:

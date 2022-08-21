@@ -541,9 +541,11 @@ class TestNeffEstimation:
         list_stderr = xdem.spatialstats.spatial_error_propagation(areas=areas_numeric, errors=errors,
                                                                   params_variogram_model=params_variogram_model)
 
-        # Check that the outputs are consistent: the numeric method should give smaller neff
+        # Check that the outputs are consistent: the numeric method should always give smaller neff, but not too far
+        # off (20% relative) for those two glaciers as their shape is not too different from a disk
         for i in range(2):
             assert list_stderr_vec[i] > list_stderr[i]
+            assert list_stderr_vec[i] == pytest.approx(list_stderr[i], rel=0.2)
 
 
 class TestSubSampling:

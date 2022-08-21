@@ -7,7 +7,8 @@ the framework of `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.31
 spatial correlation in elevation error, using a sum of variogram forms to model this correlation, and stable terrain
 as an error proxy for moving terrain.
 
-**References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_. See in particular Figure 5.
+**References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_. See in particular Figure 5,
+Equation 13–16.
 """
 # sphinx_gallery_thumbnail_number = 1
 import xdem
