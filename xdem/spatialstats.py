@@ -98,15 +98,15 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     list_df_1d = []
     for i, var in enumerate(list_var):
         df_stats_1d = pd.DataFrame()
-        # get statistics
+        # Get statistics
         for j, statistic in enumerate(statistics):
             stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
-            # save in a dataframe
+            # Save in a dataframe
             df_stats_1d[statistics_name[j]] = stats_binned_1d
-        # we need to get the middle of the bins from the edges, to get the same dimension length
+        # We need to get the middle of the bins from the edges, to get the same dimension length
         df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
-        # report number of dimensions used
-        df_stats_1d['nd'] = 1
+        # Report number of dimensions used
+        df_stats_1d.insert(0, 'nd', 1)
 
         list_df_1d.append(df_stats_1d)
 
@@ -116,22 +116,22 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
         combs = list(itertools.combinations(list_var_names, 2))
         for i, comb in enumerate(combs):
             var1_name, var2_name = comb
-            # corresponding variables indexes
+            # Corresponding variables indexes
             i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
             df_stats_2d = pd.DataFrame()
             for j, statistic in enumerate(statistics):
                 stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
                                                              ,bins=[list_var_bins[i1],list_var_bins[i2]]
                                                              ,range=list_ranges)[:3]
-                # get statistics
+                # Get statistics
                 df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
-            # derive interval indexes and convert bins into 2d indexes
+            # Derive interval indexes and convert bins into 2d indexes
             ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
             ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
             df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
             df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
-            # report number of dimensions used
-            df_stats_2d['nd'] = 2
+            # Report number of dimensions used
+            df_stats_2d.insert(0, 'nd', 2)
 
             list_df_2d.append(df_stats_2d)
 
@@ -153,7 +153,7 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
             df_stats_nd[var_name] = iind[i].flatten()
 
         # Report number of dimensions used
-        df_stats_nd['nd'] = len(list_var_names)
+        df_stats_nd.insert(0, 'nd', len(list_var_names))
 
     # Concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
