@@ -37,11 +37,9 @@ df_model_params
 
 # %%
 # The third output is the spatial correlation function with spatial lags, derived from the variogram:
-print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.format(spatial_corr_function(0)*100, 0))
-print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.format(spatial_corr_function(100)*100, 100))
-print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.format(spatial_corr_function(1000)*100, 1000))
-print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.format(spatial_corr_function(10000)*100, 10000))
-print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.format(spatial_corr_function(30000)*100, 30000))
+for spatial_lag in [0, 100, 1000, 10000, 30000]:
+    print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.
+          format(spatial_corr_function(spatial_lag)*100, spatial_lag))
 
 # %%
 # We can plot the empirical variogram and its model on a non-linear X-axis to identify the multi-scale correlations.

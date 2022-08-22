@@ -1,6 +1,6 @@
 """
-Spatial correlation of elevation measurement errors
-===================================================
+Estimate and model spatial variograms
+=====================================
 
 Digital elevation models have elevation measurement errors that can vary with terrain or instrument-related variables
 (see :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py`), but those measurement errors are also often

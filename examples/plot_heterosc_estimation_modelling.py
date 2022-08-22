@@ -11,11 +11,15 @@ to apply spatial statistics (see :ref:`spatialstats`).
 Here, we show an advanced example in which we look for terrain-dependent explanatory variables to explain the
 heteroscedasticity for a DEM difference at Longyearbyen. We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_
 and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
-:func:`xdem.spatialstats.interp_nd_binning`, and scale our interpolant function by :func:`xdem.spatialstats.two_step_standardization`
-to produce an elevation error function.
+:func:`xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
+ :func:`xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
 
 **References**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Equation 1, Extended Data Fig.
 3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9.
+
+Errors in elevation difference can be converted in elevation errors following Equation 7 (equal if other source of much
+higher precision) or Equation 8 (divided by sqrt(2) if the two sources are of same precision). Below we consider errors
+in elevation differences.
 """
 # sphinx_gallery_thumbnail_number = 8
 import matplotlib.pyplot as plt
@@ -24,10 +28,8 @@ import xdem
 import geoutils as gu
 
 # %%
-# We start by loading example files including a difference of DEMs at Longyearbyen, the reference DEM later used to derive
-# several terrain attributes, and the outlines to rasterize a glacier mask.
-# Prior to differencing, the DEMs were aligned using :ref:`coregistration_nuthkaab` as shown in
-# the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
+# Here, we detail the steps used by ``xdem.spatialstats.infer_heteroscedasticity_from_stable`` exemplified in
+# :ref:`sphx_glr_auto_examples_plot_infer_heterosc.py`. First, we load example files and create a glacier mask.
 
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
@@ -35,17 +37,15 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
-# We use the reference DEM to derive terrain variables such as slope, aspect, curvature (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`)
-# that we'll use to explore potential non-stationarities in elevation measurement error
-
-# We compute the slope, aspect, and both plan and profile curvatures:
+# We derive terrain attributes from the reference DEM (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`),
+# which we will use to explore the variability in elevation error.
 slope, aspect, planc, profc = \
     xdem.terrain.get_terrain_attribute(dem=ref_dem.data,
                                        attribute=['slope','aspect', 'planform_curvature', 'profile_curvature'],
                                        resolution=ref_dem.res)
 
 # %%
-# We remove values on unstable terrain
+# We keep only stable terrain for the analysis of variability
 dh_arr = dh.data[~mask_glacier]
 slope_arr = slope[~mask_glacier]
 aspect_arr = aspect[~mask_glacier]
@@ -77,21 +77,19 @@ df[df.nd == 4]
 # using :func:`xdem.spatialstats.plot_1d_binning`.
 # We can start with the slope that has been long known to be related to the elevation measurement error (e.g.,
 # `Toutin (2002) <https://doi.org/10.1109/TGRS.2002.802878>`_).
-xdem.spatialstats.plot_1d_binning(df, 'slope', 'nmad', 'Slope (degrees)', 'NMAD of dh (m)')
+xdem.spatialstats.plot_1d_binning(df, var_name='slope', statistic_name='nmad',
+                                  label_var='Slope (degrees)', label_statistic='NMAD of dh (m)')
 
 # %%
 # We identify a clear variability, with the dispersion estimated from the NMAD increasing from ~2 meters for nearly flat
 # slopes to above 12 meters for slopes steeper than 50°.
-# In statistical terms, such a variability of `variance <https://en.wikipedia.org/wiki/Variance>`_ is referred as
-# `heteroscedasticity <https://en.wikipedia.org/wiki/Heteroscedasticity>`_. Here we observe heteroscedastic elevation
-# differences due to a non-stationarity of variance with the terrain slope.
 #
 # What about the aspect?
 
 xdem.spatialstats.plot_1d_binning(df, 'aspect', 'nmad', 'Aspect (degrees)', 'NMAD of dh (m)')
 
 # %%
-# There is no variability with the aspect which shows a dispersion averaging 2-3 meters, i.e. that of the complete sample.
+# There is no variability with the aspect that shows a dispersion averaging 2-3 meters, i.e. that of the complete sample.
 #
 # What about the plan curvature?
 
@@ -101,40 +99,40 @@ xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 
 # The relation with the plan curvature remains ambiguous.
 # We should better define our bins to avoid sampling bins with too many or too few samples. For this, we can partition
 # the data in quantiles in :func:`xdem.spatialstats.nd_binning`.
-# Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. Thus, as
-# with many dimensions the N dimensional bin size increases exponentially, we avoid binning all variables at the same
-# time and instead bin one at a time.
+# *Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. As
+# with many dimensions the ND bin size increases exponentially, we avoid binning all variables at the same
+# time and instead bin one at a time.*
 # We define 1000 quantile bins of size 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
 
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[profc_arr], list_var_names=['profc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
-                                  list_var_bins=[np.nanquantile(profc_arr,np.linspace(0,1,1000))])
+                                  list_var_bins=[np.nanquantile(profc_arr, np.linspace(0,1,1000))])
 xdem.spatialstats.plot_1d_binning(df, 'profc', 'nmad', 'Profile curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
-# We now clearly identify the variability with the profile curvature, from 2 meters for low curvatures to above 4 meters
+# We clearly identify a variability with the profile curvature, from 2 meters for low curvatures to above 4 meters
 # for higher positive or negative curvature.
+#
 # What about the role of the plan curvature?
 
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[planc_arr], list_var_names=['planc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
-                                  list_var_bins=[np.nanquantile(planc_arr,np.linspace(0,1,1000))])
+                                  list_var_bins=[np.nanquantile(planc_arr, np.linspace(0,1,1000))])
 xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
 # The plan curvature shows a similar relation. Those are symmetrical with 0, and almost equal for both types of curvature.
 # To simplify the analysis, we here combine those curvatures into the maximum absolute curvature:
 
-# Derive maximum absolute curvature
 maxc_arr = np.maximum(np.abs(planc_arr),np.abs(profc_arr))
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[maxc_arr], list_var_names=['maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
-                                  list_var_bins=[np.nanquantile(maxc_arr,np.linspace(0,1,1000))])
+                                  list_var_bins=[np.nanquantile(maxc_arr, np.linspace(0,1,1000))])
 xdem.spatialstats.plot_1d_binning(df, 'maxc', 'nmad', 'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
 
 # %%
 # Here's our simplified relation! We now have both slope and maximum absolute curvature with clear variability of
-# the elevation measurement error.
+# the elevation error.
 #
 # **But, one might wonder: high curvatures might occur more often around steep slopes than flat slope,
 # so what if those two dependencies are actually one and the same?**
@@ -145,7 +143,10 @@ df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
                                   list_var_bins=30)
 
-xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)', 'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)')
+xdem.spatialstats.plot_2d_binning(df, var_name_1='slope', var_name_2='maxc', statistic_name='nmad',
+                                  label_var_name_1='Slope (degrees)',
+                                  label_var_name_2='Maximum absolute curvature (100 m$^{-1}$)',
+                                  label_statistic='NMAD of dh (m)')
 
 # %%
 # We can see that part of the variability seems to be independent, but with the uniform bins it is hard to tell much
@@ -153,18 +154,19 @@ xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)'
 #
 # If we use custom quantiles for both binning variables, and adjust the plot scale:
 
-custom_bin_slope = np.unique(np.concatenate([np.nanquantile(slope_arr,np.linspace(0,0.95,20)),
-                                             np.nanquantile(slope_arr,np.linspace(0.96,0.99,5)),
-                                             np.nanquantile(slope_arr,np.linspace(0.991,1,10))]))
+custom_bin_slope = np.unique(np.concatenate([np.nanquantile(slope_arr, np.linspace(0,0.95,20)),
+                                             np.nanquantile(slope_arr, np.linspace(0.96,0.99,5)),
+                                             np.nanquantile(slope_arr, np.linspace(0.991,1,10))]))
 
-custom_bin_curvature = np.unique(np.concatenate([np.nanquantile(maxc_arr,np.linspace(0,0.95,20)),
-                                             np.nanquantile(maxc_arr,np.linspace(0.96,0.99,5)),
-                                             np.nanquantile(maxc_arr,np.linspace(0.991,1,10))]))
+custom_bin_curvature = np.unique(np.concatenate([np.nanquantile(maxc_arr, np.linspace(0,0.95,20)),
+                                             np.nanquantile(maxc_arr, np.linspace(0.96,0.99,5)),
+                                             np.nanquantile(maxc_arr, np.linspace(0.991,1,10))]))
 
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr], list_var_names=['slope', 'maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
                                   list_var_bins=[custom_bin_slope,custom_bin_curvature])
-xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)', 'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)', scale_var_2='log', vmin=2, vmax=10)
+xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)',
+                                  'Maximum absolute curvature (100 m$^{-1}$)', 'NMAD of dh (m)', scale_var_2='log', vmin=2, vmax=10)
 
 
 # %%
@@ -180,22 +182,35 @@ xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)'
 # approximation i.e. a piecewise linear interpolation/extrapolation based on the binning results.
 # To ensure that only robust statistic values are used in the interpolation, we set a ``min_count`` value at 30 samples.
 
-slope_curv_to_dh_err = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'maxc'], statistic='nmad', min_count=30)
+unscaled_dh_err_fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'maxc'],
+                                                           statistic='nmad', min_count=30)
 
 # %%
-# The output is an interpolant function of slope and curvature that we can use to estimate the elevation measurement
-# error at any point.
+# The output is an interpolant function of slope and curvature that predicts the elevation error at any point. However,
+# this predicted error might have a spread slightly off from that of the data:
 #
-# For instance:
+# We compare the spread of the elevation difference on stable terrain and the average predicted error:
+dh_err_stable = unscaled_dh_err_fun((slope_arr, maxc_arr))
 
-for s, c in [(0.,0.1), (50.,0.1), (0.,20.), (50.,20.)]:
-    print('Elevation measurement error for slope of {0:.0f} degrees, '
-          'curvature of {1:.2f} m-1: {2:.1f}'.format(s, c/100, slope_curv_to_dh_err((s,c)))+ ' meters.')
+print('The spread of elevation difference is {:.2f} '
+      'compared to a mean predicted elevation error of {:.2f}.'.format(xdem.spatialstats.nmad(dh_arr),
+                                                                       np.nanmean(dh_err_stable)))
 
 # %%
-# The same function can be used to estimate the spatial distribution of the elevation measurement error over the area:
+# Thus, we rescale the function to exactly match the spread on stable terrain using the
+# ``xdem.spatialstats.two_step_standardization`` function, and get our final error function.
+
+dh_err_fun = xdem.spatialstats.two_step_standardization(dh_arr, list_var=[slope_arr, maxc_arr],
+                                                           unscaled_error_fun=unscaled_dh_err_fun)
+
+for s, c in [(0., 0.1), (50., 0.1), (0., 20.), (50., 20.)]:
+    print('Elevation measurement error for slope of {0:.0f} degrees, '
+          'curvature of {1:.2f} m-1: {2:.1f}'.format(s, c/100, dh_err_fun((s, c)))+ ' meters.')
+
+# %%
+# This function can be used to estimate the spatial distribution of the elevation error on the extent of our DEMs:
 maxc = np.maximum(np.abs(profc), np.abs(planc))
-dh_err = slope_curv_to_dh_err((slope, maxc))
+errors = dh_err_fun((slope, maxc))
 
 plt.figure(figsize=(8, 5))
 plt_extent = [
@@ -204,7 +219,14 @@ plt_extent = [
     ref_dem.bounds.bottom,
     ref_dem.bounds.top,
 ]
-plt.imshow(dh_err.squeeze(), cmap="Reds", vmin=2, vmax=8, extent=plt_extent)
+plt.imshow(errors.squeeze(), cmap="Reds", vmin=2, vmax=8, extent=plt_extent)
 cbar = plt.colorbar()
-cbar.set_label('Elevation measurement error (m)')
+cbar.set_label('Elevation error ($1\sigma$, m)')
 plt.show()
+
+# %%
+# These 3 steps can be done in one go using the ``xdem.spatialstats.estimate_model_heteroscedasticity`` function, which
+# wraps those three funtions, expecting ``np.ndarray`` inputs subset to stable terrain.
+
+df, dh_err_fun = xdem.spatialstats.estimate_model_heteroscedasticity(dvalues=dh_arr, list_var=[slope_arr, maxc_arr],
+                                                                     list_var_names=['slope', 'maxc'])
