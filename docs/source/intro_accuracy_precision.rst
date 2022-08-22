@@ -31,6 +31,10 @@ for when analyzing DEMs:
 .. figure:: imgs/precision_accuracy.png
     :width: 80%
 
+*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, following
+`ISO 5725-1 <https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en>`_. Here, we used accuracy for systematic errors
+as, to our knowledge, it is more common in remote sensing applications."
+
 Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-
 and-accuracy-glacial-geology/>`_, accessed 29.06.21.
 
@@ -96,6 +100,6 @@ The tools for quantifying DEM precision are described in :ref:`spatialstats`.
     Functions that are used in several examples create duplicate examples intead of being merged into the list.
     Circumventing manually by selecting functions used only once in each example for now.
 
-.. minigallery:: xdem.spatialstats.neff_circ xdem.spatialstats.plot_1d_binning
+.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.infer_spatial_correlation_from_stable
     :add-heading: Examples that use spatial statistics functions
 

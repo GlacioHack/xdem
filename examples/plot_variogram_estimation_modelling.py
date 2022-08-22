@@ -1,6 +1,6 @@
 """
-Estimate and model spatial variograms
-=====================================
+Estimation and modelling of spatial variograms
+==============================================
 
 Digital elevation models have errors that are often `correlated in space <https://en.wikipedia.org/wiki/Spatial_analysis#Spatial_auto-correlation>`_.
 While many DEM studies used solely short-range `variogram <https://en.wikipedia.org/wiki/Variogram>`_ to

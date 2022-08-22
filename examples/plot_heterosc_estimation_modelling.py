@@ -1,6 +1,6 @@
 """
-Estimate and model elevation heteroscedasticity
-===============================================
+Estimation and modelling of elevation heteroscedasticity
+========================================================
 
 Digital elevation models have a precision that can vary with terrain and instrument-related variables. This variability
 in variance is called `heteroscedasticy <https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity>`_,
