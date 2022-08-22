@@ -1,6 +1,6 @@
 """
-Iterative Closest Point (ICP) coregistration.
-=============================================
+Iterative Closest Point coregistration
+======================================
 Some DEMs may for one or more reason be erroneously rotated in the X, Y or Z directions.
 Established coregistration approaches like :ref:`coregistration_nuthkaab` work great for X, Y and Z *translations*, but rotation is not accounted for at all.
 

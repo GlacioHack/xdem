@@ -2,29 +2,21 @@
 Estimate and model spatial variograms
 =====================================
 
-Digital elevation models have elevation measurement errors that can vary with terrain or instrument-related variables
-(see :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py`), but those measurement errors are also often
-`correlated in space <https://en.wikipedia.org/wiki/Spatial_analysis#Spatial_auto-correlation>`_.
-While many DEM studies have been using short-range `variogram <https://en.wikipedia.org/wiki/Variogram>`_ to
+Digital elevation models have errors that are often `correlated in space <https://en.wikipedia.org/wiki/Spatial_analysis#Spatial_auto-correlation>`_.
+While many DEM studies used solely short-range `variogram <https://en.wikipedia.org/wiki/Variogram>`_ to
 estimate the correlation of elevation measurement errors (e.g., `Howat et al. (2008) <https://doi.org/10.1029/2008GL034496>`_
 , `Wang and Kääb (2015) <https://doi.org/10.3390/rs70810117>`_), recent studies show that variograms of multiple ranges
-provide larger, more reliable estimates of spatial correlation for DEMs (e.g., `Dehecq et al. (2020) <https://doi.org/10.3389/feart.2020.566802>`_
-, `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_).
+provide larger, more reliable estimates of spatial correlation for DEMs.
 
-Quantifying the spatial correlation in elevation measurement errors is essential to integrate measurement errors over
-an area of interest (e.g, to estimate the error of a mean or sum of samples). Once the spatial correlations are quantified,
-several methods exist to derive the related measurement error integrated in space (`Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_
-, Hugonnet et al. (in prep)). More details are available in :ref:`spatialstats`.
+Here, we show an example in which we estimate the spatial correlation for a DEM difference at Longyearbyen, and its
+impact on the standard error with averaging area. We first estimate an empirical variogram with
+:func:`xdem.spatialstats.sample_empirical_variogram` based on routines of `scikit-gstat
+<https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then fit the empirical variogram with a sum of variogram
+models using :func:`xdem.spatialstats.fit_sum_model_variogram`. Finally, we perform spatial propagation for a range of
+averaging area using :func:`xdem.spatialstats.number_effective_samples`, and empirically validate the improved
+robustness of our results using :func:`xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
 
-Here, we show an example in which we estimate spatially integrated elevation measurement errors for a DEM difference at
-Longyearbyen, demonstrated in :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py`. We first quantify the spatial
-correlations using :func:`xdem.spatialstats.sample_empirical_variogram` based on routines of `scikit-gstat
-<https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then model the empirical variogram using a sum of variogram
-models using :func:`xdem.spatialstats.fit_sum_model_variogram`.
-Finally, we integrate the variogram models for varying surface areas to estimate the spatially integrated elevation
-measurement errors using :func:`xdem.spatialstats.neff_circ`, and empirically validate the improved robustness of
-our results using :func:`xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
-
+**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
 """
 # sphinx_gallery_thumbnail_number = 6
 import matplotlib.pyplot as plt
@@ -33,23 +25,19 @@ import xdem
 import geoutils as gu
 
 # %%
-# We start by loading example files including a difference of DEMs at Longyearbyen and the outlines to rasterize
-# a glacier mask.
-# Prior to differencing, the DEMs were aligned using :ref:`coregistration_nuthkaab` as shown in
-# the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We later refer to those elevation differences as *dh*.
+# We load example files.
 
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
-# We remove values on glacier terrain in order to isolate stable terrain, our proxy for elevation measurement errors.
+# We exclude values on glacier terrain in order to isolate stable terrain, our proxy for elevation errors.
 dh.data[mask_glacier] = np.nan
 
 # %%
-# We estimate the average per-pixel elevation measurement error on stable terrain, using both the standard deviation
-# and normalized median absolute deviation. For this example, we do not account for the non-stationarity in elevation
-# measurement errors quantified in :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py`.
+# We estimate the average per-pixel elevation error on stable terrain, using both the standard deviation
+# and normalized median absolute deviation. For this example, we do not account for elevation heteroscedasticity.
 print('STD: {:.2f} meters.'.format(np.nanstd(dh.data)))
 print('NMAD: {:.2f} meters.'.format(xdem.spatialstats.nmad(dh.data)))
 
@@ -64,16 +52,16 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # %%
 # We clearly see that the residual elevation differences on stable terrain are not random. The positive and negative
 # differences (blue and red, respectively) appear correlated over large distances. These correlated errors are what
-# we aim to quantify.
+# we want to estimate and model.
 
 # %%
 # Additionally, we notice that the elevation differences are still polluted by unrealistically large elevation
-# differences near glaciers, probably because the glacier inventory is more recent than the data, and the outlines are too small.
+# differences near glaciers, probably because the glacier inventory is more recent than the data, hence with too small outlines.
 # To remedy this, we filter large elevation differences outside 4 NMAD.
 dh.data[np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data)] = np.nan
 
 # %%
-# We plot the elevation differences after filtering to check that we successively removed the reminaing glacier signals.
+# We plot the elevation differences after filtering to check that we successively removed glacier signals.
 plt.figure(figsize=(8, 5))
 _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
 
@@ -159,10 +147,9 @@ for area in areas:
     list_stderr_doublerange.append(stderr_doublerange)
 
 # %%
-# We add an empirical error based on intensive Monte-Carlo sampling ("patches" method) to validate our results
-# (Dehecq et al. (2020), Hugonnet et al., in prep). This method is implemented in :func:`xdem.spatialstats.patches_method`.
-# Here, we sample fewer areas to avoid for the patches method to run over long processing times, increasing from areas
-# of 5 pixels to areas of 10000 pixels exponentially.
+# We add an empirical error based on intensive Monte-Carlo sampling ("patches" method) to validate our results.
+# This method is implemented in :func:`xdem.spatialstats.patches_method`. Here, we sample fewer areas to avoid for the
+# patches method to run over long processing times, increasing from areas of 5 pixels to areas of 10000 pixels exponentially.
 
 areas_emp = [10 * 400 * 2 ** i for i in range(10)]
 for area_emp in areas_emp:
@@ -186,7 +173,7 @@ plt.show()
 
 # %%
 # *Note: in this example, we add a* ``random_state`` *argument to the patches method to yield a reproducible random
-# sampling, and set* ``n_patches`` *to limit computing time.*
+# sampling, and set* ``n_patches`` *to reduce computing time.*
 
 # %%
 # Using a single-range variogram highly underestimates the measurement error integrated over an area, by over a factor
