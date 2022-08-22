@@ -522,7 +522,7 @@ class TestNeffEstimation:
 
         # Get the error map and variogram model with standardization
         slope, maxc = xdem.terrain.get_terrain_attribute(ref, attribute=['slope', 'maximum_curvature'])
-        errors = xdem.spatialstats.infer_heteroscedasticy_from_stable(
+        errors = xdem.spatialstats.infer_heteroscedasticity_from_stable(
             dvalues=diff, list_var=[slope, maxc], unstable_mask=vector_glacier)[0]
         # Standardize the differences
         zscores = diff / errors
@@ -853,9 +853,9 @@ class TestBinning:
 
         # Test infer function
         errors_1, df_binning_1, err_fun_1 = \
-            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff,
-                                                                 list_var=[slope, maximum_curv],
-                                                                 unstable_mask=vector_glacier)
+            xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=diff,
+                                                                   list_var=[slope, maximum_curv],
+                                                                   unstable_mask=vector_glacier)
 
         # Test this gives the same results as when using the base functions
         diff_arr = gu.spatial_tools.get_array_and_mask(diff)[0]
@@ -881,22 +881,22 @@ class TestBinning:
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match='The dvalues must be a Raster or NumPy array.'):
-            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues='not_an_array',
-                                                                 stable_mask=~mask_glacier.squeeze(),
-                                                                 list_var=[slope_arr])
+            xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues='not_an_array',
+                                                                   stable_mask=~mask_glacier.squeeze(),
+                                                                   list_var=[slope_arr])
         with pytest.raises(ValueError, match='The stable mask must be a Vector, GeoDataFrame or NumPy array.'):
-            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff,
-                                                                 stable_mask='not_a_vector_or_array',
-                                                                 list_var=[slope_arr])
+            xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=diff,
+                                                                   stable_mask='not_a_vector_or_array',
+                                                                   list_var=[slope_arr])
         with pytest.raises(ValueError, match='The unstable mask must be a Vector, GeoDataFrame or NumPy array.'):
-            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff,
-                                                                 unstable_mask='not_a_vector_or_array',
-                                                                 list_var=[slope_arr])
+            xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=diff,
+                                                                   unstable_mask='not_a_vector_or_array',
+                                                                   list_var=[slope_arr])
 
         with pytest.raises(ValueError, match='The stable mask can only passed as a Vector or GeoDataFrame if the input '
                                              'dvalues is a Raster.'):
-            xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=diff_arr, stable_mask=vector_glacier,
-                                                                 list_var=[slope_arr])
+            xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=diff_arr, stable_mask=vector_glacier,
+                                                                   list_var=[slope_arr])
 
     def test_plot_binning(self):
 

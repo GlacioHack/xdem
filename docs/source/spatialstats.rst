@@ -216,7 +216,7 @@ average measurement error of the pixels in the subsample, evaluated through the 
 Estimating the standard error of the mean of the standardized data :math:`\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}`
 requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
 
-.. minigallery:: xdem.spatialstats.nd_binning xdem.spatialstats.infer_heteroscedasticity_from_stable
+.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.nd_binning
         :add-heading: Examples that deal with elevation heteroscedasticity
         :heading-level: "
 
@@ -307,7 +307,7 @@ This can be performed through the function :func:`xdem.spatialstats.fit_sum_mode
         :lines: 31
         :language: python
 
-.. minigallery:: xdem.spatialstats.sample_empirical_variogram xdem.spatialstats.infer_spatial_correlation_from_stable
+.. minigallery:: xdem.spatialstats.infer_spatial_correlation_from_stable xdem.spatialstats.sample_empirical_variogram
         :add-heading: Examples that deal with spatial correlations
         :heading-level: "
 

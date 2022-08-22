@@ -26,9 +26,9 @@ ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 slope, maximum_curvature = xdem.terrain.get_terrain_attribute(ref_dem, attribute=['slope', 'maximum_curvature'])
 errors, df_binning, error_function = \
-    xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=dh, list_var=[slope, maximum_curvature],
-                                                         list_var_names=['slope', 'maxc'],
-                                                         unstable_mask=glacier_outlines)
+    xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=dh, list_var=[slope, maximum_curvature],
+                                                           list_var_names=['slope', 'maxc'],
+                                                           unstable_mask=glacier_outlines)
 
 # %%
 # We use the error map to standardize the elevation differences before variogram estimation, following Equation 12 of

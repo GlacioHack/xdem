@@ -32,9 +32,9 @@ slope, maximum_curvature = xdem.terrain.get_terrain_attribute(ref_dem, attribute
 # %%
 # Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain:
 errors, df_binning, error_function = \
-    xdem.spatialstats.infer_heteroscedasticy_from_stable(dvalues=dh, list_var=[slope, maximum_curvature],
-                                                         list_var_names=['slope', 'maxc'],
-                                                         unstable_mask=glacier_outlines)
+    xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=dh, list_var=[slope, maximum_curvature],
+                                                           list_var_names=['slope', 'maxc'],
+                                                           unstable_mask=glacier_outlines)
 
 # %%
 # The first output corresponds to the error map for the DEM (1-sigma):
