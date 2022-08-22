@@ -1063,6 +1063,10 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
         df_mean['count'] = df_count['count']
         df = df_mean
 
+    # Remove the last spatial lag bin which is always undersampled
+    # TODO: Solve this problem at the root: how the spatial lag binning is defined, probably?
+    df.drop(df.tail(1).index, inplace=True)
+
     return df
 
 def _get_skgstat_variogram_model_name(model: str | Callable) -> str:
@@ -1333,8 +1337,6 @@ def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], l
                                                      subsample=subsample, subsample_method=subsample_method,
                                                      n_variograms=n_variograms, n_jobs=n_jobs, verbose=verbose,
                                                      random_state=random_state, **kwargs)
-    # TODO: prevent this last bin with few samples to be returned by `sample_empirical_variogram`
-    empirical_variogram = empirical_variogram[:-1]
 
     params_variogram_model = fit_sum_model_variogram(list_models=list_models, empirical_variogram=empirical_variogram,
                                              bounds=bounds, p0=p0)[1]

@@ -527,24 +527,25 @@ class TestNeffEstimation:
         # Standardize the differences
         zscores = diff / errors
         params_variogram_model = xdem.spatialstats.infer_spatial_correlation_from_stable(
-            dvalues=zscores, list_models=['Gaussian', 'Spherical'], unstable_mask=vector_glacier, subsample=100)[1]
+            dvalues=zscores, list_models=['Gaussian', 'Spherical'], unstable_mask=vector_glacier, subsample=100,
+            random_state=42)[1]
 
         # Run the function with vector areas
         areas_vector = [vector_glacier.ds[vector_glacier.ds['NAME']=='Brombreen'],
                         vector_glacier.ds[vector_glacier.ds['NAME']=='Medalsbreen']]
 
         list_stderr_vec = xdem.spatialstats.spatial_error_propagation(areas=areas_vector, errors=errors,
-                                                               params_variogram_model=params_variogram_model)
+                                                                      params_variogram_model=params_variogram_model,
+                                                                      random_state=42)
 
         # Run the function with numeric areas (sum needed for Medalsbreen that has two separate polygons)
         areas_numeric = [np.sum(area_vec.area.values) for area_vec in areas_vector]
         list_stderr = xdem.spatialstats.spatial_error_propagation(areas=areas_numeric, errors=errors,
                                                                   params_variogram_model=params_variogram_model)
 
-        # Check that the outputs are consistent: the numeric method should always give smaller neff, but not too far
-        # off (20% relative) for those two glaciers as their shape is not too different from a disk
+        # Check that the outputs are consistent: the numeric method should always give a neff that is almost the same
+        # (20% relative) for those two glaciers as their shape is not too different from a disk
         for i in range(2):
-            assert list_stderr_vec[i] > list_stderr[i]
             assert list_stderr_vec[i] == pytest.approx(list_stderr[i], rel=0.2)
 
 
