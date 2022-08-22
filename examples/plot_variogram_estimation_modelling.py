@@ -86,8 +86,7 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
 # conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
 
-df = xdem.spatialstats.sample_empirical_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=300, n_variograms=10, random_state=42)
+df = xdem.spatialstats.sample_empirical_variogram(values=dh.data, gsd=dh.res[0], subsample=100, n_variograms=10, random_state=42)
 
 # %%
 # *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
@@ -169,7 +168,7 @@ areas_emp = [10 * 400 * 2 ** i for i in range(10)]
 for area_emp in areas_emp:
 
     #  First, sample intensively circular patches of a given area, and derive the mean elevation differences
-    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, n_patches=200, random_state=42)
+    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, n_patches=100, random_state=42)
     # Second, estimate the dispersion of the means of each patch, i.e. the standard error of the mean
     stderr_empirical = np.nanstd(df_patches['nanmedian'].values)
     list_stderr_empirical.append(stderr_empirical)
@@ -219,7 +218,7 @@ list_stderr_doublerange_plus_fullycorrelated = []
 for area in areas:
 
     # For a double-range model
-    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area = area, params_variogram_model = params_vgm2)
+    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_variogram_model=params_vgm2)
 
     # About 5% of the variance might be fully correlated, the other 95% has the random part that we quantified
     stderr_fullycorr = np.sqrt(0.05*np.nanvar(dh.data))

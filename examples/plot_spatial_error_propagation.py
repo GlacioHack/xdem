@@ -1,15 +1,16 @@
 """
-Spatial propagation of errors
-=============================
+Spatial propagation of elevation errors
+=======================================
 
-Digital elevation models have errors that are spatially correlated due to instrument or processing effects. Here, we apply
-the framework of `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_ to estimate and model this
-spatial correlation in elevation error, using a sum of variogram forms to model this correlation, and stable terrain
-as an error proxy for moving terrain.
+Propagating elevation errors spatially accounting for heteroscedasticity and spatial correlation is complex. It
+requires computing the pairwise correlations between all points of an area of interest (be it for a sum, mean, or
+other operation), which is computationally intensive. Here, we rely on published formulations to perform
+computationally-efficient spatial propagation for the mean of elevation (or elevation differences) in an area.
 
 **References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_. Figure S16, Equations 17–19,
 `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, Equation 8.
 """
+# sphinx_gallery_thumbnail_number = 1
 import numpy as np
 
 import xdem
@@ -31,7 +32,7 @@ errors, df_binning, error_function = \
                                                          unstable_mask=glacier_outlines)
 
 # %%
-# We use the error map to standardize the elevation differences before variogram estimation, as in Equation 12 of
+# We use the error map to standardize the elevation differences before variogram estimation, following Equation 12 of
 # Hugonnet et al. (2022), which is more robust as it removes the variance variability due to heteroscedasticity.
 zscores = dh / errors
 emp_variogram, params_variogram_model, spatial_corr_function = \
@@ -42,15 +43,14 @@ emp_variogram, params_variogram_model, spatial_corr_function = \
 # With our estimated heteroscedasticity and spatial correlation, we can now perform the spatial propagation of errors.
 # We select two glaciers intersecting this elevation change map in Svalbard. The best estimation of their standard error
 # is done by directly providing the shapefile, which relies on Equation 18 of Hugonnet et al. (2022).
-
 areas = [glacier_outlines.ds[glacier_outlines.ds['NAME'] == 'Brombreen'],
                 glacier_outlines.ds[glacier_outlines.ds['NAME'] == 'Medalsbreen']]
 stderr_glaciers = xdem.spatialstats.spatial_error_propagation(areas=areas, errors=errors,
                                                               params_variogram_model=params_variogram_model)
 
-# When passing a numerical area value, we compute an approximation with disk shape from Equation 8 of Rolstad et al. (2009).
-# This approximation is practical to visualize changes in elevation error when averaging over different area sizes,
-# but is less accurate to estimate the standard error of a certain area shape.
+# When passing a numerical area value, we compute an approximation with disk shape from Equation 8 of Rolstad et al.
+# (2009). This approximation is practical to visualize changes in elevation error when averaging over different area
+# sizes, but is less accurate to estimate the standard error of a certain area shape.
 areas = 10**np.linspace(1, 12)
 stderrs = xdem.spatialstats.spatial_error_propagation(areas=areas, errors=errors,
                                                       params_variogram_model=params_variogram_model)

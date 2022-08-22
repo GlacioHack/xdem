@@ -2,12 +2,12 @@
 Elevation error map
 ===================
 
-Digital elevation models have a precision that can vary with terrain and instrument-related variables. Here, we apply
-the framework of `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_ to estimate and model this
-variability in elevation error, using terrain slope and maximum curvature as explanatory variables and stable terrain
-as an error proxy for moving terrain.
+Digital elevation models have a precision that can vary with terrain and instrument-related variables. Here, we
+rely on a non-stationary spatial statistics framework to estimate and model this variability in elevation error,
+using terrain slope and maximum curvature as explanatory variables, with stable terrain as an error proxy for moving
+terrain.
 
-**References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_. See in particular Figure 4.
+**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9.
 
 Errors in elevation difference can be converted in elevation errors following Equation 7 (equal if other source of much
 higher precision) or Equation 8 (divided by sqrt(2) if the two sources are of same precision).
@@ -54,4 +54,4 @@ print('Error for a slope of {:.0f} degrees and {:.0f} m-1 max. curvature: {:.1f}
 # This pipeline will not always work optimally with default parameters: spread estimates can be affected by skewed
 # distributions, the binning by extreme range of values, some DEMs do not have any error variability with terrain (e.g.,
 # terrestrial photogrammetry). **To learn how to tune more parameters and use the subfunctions, see the gallery example:**
-# :ref:`sphx_glr_auto_examples_heterosc_estimation_modelling.py`!
+# :ref:`sphx_glr_auto_examples_plot_heterosc_estimation_modelling.py`!

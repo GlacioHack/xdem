@@ -1,23 +1,21 @@
 """
-Non-stationarity of elevation measurement errors
-================================================
+Estimate and model elevation heteroscedasticity
+===============================================
 
-Digital elevation models have a precision that can vary with terrain and instrument-related variables. However, quantifying
-this precision is complex and non-stationarities, i.e. variability of the measurement error, has rarely been
-accounted for, with only some studies that used arbitrary filtering thresholds on the slope or other variables (see :ref:`intro`).
+Digital elevation models have a precision that can vary with terrain and instrument-related variables. This variability
+in variance is called `heteroscedasticy <https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity>`_,
+and rarely accounted for in DEM studies (see :ref:`intro`). Quantifying elevation heteroscedasticity is essential to
+use stable terrain as an error proxy for moving terrain, and standardize data towards a stationary variance, necessary
+to apply spatial statistics (see :ref:`spatialstats`).
 
-Quantifying the non-stationarities in elevation measurement errors is essential to use stable terrain as a proxy for
-assessing the precision on other types of terrain (Hugonnet et al., in prep) and allows to standardize the measurement
-errors to reach a stationary variance, an assumption necessary for spatial statistics (see :ref:`spatialstats`).
+Here, we show an advanced example in which we look for terrain-dependent explanatory variables to explain the
+heteroscedasticity for a DEM difference at Longyearbyen. We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_
+and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
+:func:`xdem.spatialstats.interp_nd_binning`, and scale our interpolant function by :func:`xdem.spatialstats.two_step_standardization`
+to produce an elevation error function.
 
-Here, we show an example in which we identify terrain-related non-stationarities for a DEM difference at Longyearbyen.
-We quantify those non-stationarities by `binning <https://en.wikipedia.org/wiki/Data_binning>`_ robustly
-in N-dimension using :func:`xdem.spatialstats.nd_binning` and applying a N-dimensional interpolation
-:func:`xdem.spatialstats.interp_nd_binning` to estimate a numerical function of the measurement error and derive the spatial
-distribution of elevation measurement errors of the difference of DEMs.
-
-**Reference**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, applied to the terrain slope
-and quality of stereo-correlation (Equation 1, Extended Data Fig. 3a).
+**References**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Equation 1, Extended Data Fig.
+3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9.
 """
 # sphinx_gallery_thumbnail_number = 8
 import matplotlib.pyplot as plt
