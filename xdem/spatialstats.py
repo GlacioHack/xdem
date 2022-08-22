@@ -1368,13 +1368,13 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
 
     :param dvalues: Proxy values as array or Raster
     :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
-    a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
-    spherical model "Sph", "Spherical" or skgstat.models.spherical).
+        a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
+        spherical model "Sph", "Spherical" or skgstat.models.spherical).
     :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
     :param unstable_mask: Vector shapefile of unstable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
     :param errors: Error values to account for heteroscedasticity (ignored if None).
     :param estimator: Estimator for the empirical variogram; default to Dowd's variogram (see skgstat.Variogram for
-    the list of available estimators).
+        the list of available estimators).
     :param gsd: Ground sampling distance
     :param coords: Coordinates
     :param subsample: Number of samples to randomly draw from the values
@@ -1821,7 +1821,7 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
     range to ensure a sufficiently fine grid for propagation of the shortest range.
 
     :param area: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
-    assume a circular shape), or as a vector (shapefile) of the area
+        assume a circular shape), or as a vector (shapefile) of the area
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
         sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
@@ -1898,10 +1898,9 @@ def spatial_error_propagation(areas: list[float | VectorType | gpd.GeoDataFrame]
     The standard error SE (1-sigma) is then computed as SE = mean(SD) / Neff, where mean(SD) is the mean of errors in
     the area of interest which accounts for heteroscedasticity, and Neff is the number of effective samples.
 
-
     :param areas: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
-    assume a circular shape), or as a vector (shapefile) of the area
-    :param errors: Errors from heteroscedasticity estimation and modelling, as an array or Raster
+        assume a circular shape), or as a vector (shapefile) of the area.
+    :param errors: Errors from heteroscedasticity estimation and modelling, as an array or Raster.
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
         sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,

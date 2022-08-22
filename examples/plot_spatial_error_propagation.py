@@ -7,19 +7,18 @@ requires computing the pairwise correlations between all points of an area of in
 other operation), which is computationally intensive. Here, we rely on published formulations to perform
 computationally-efficient spatial propagation for the mean of elevation (or elevation differences) in an area.
 
-**References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_. Figure S16, Equations 17–19,
+**References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure S16, Equations 17–19 and
 `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, Equation 8.
 """
 # sphinx_gallery_thumbnail_number = 1
 import numpy as np
-
 import xdem
 import geoutils as gu
 import matplotlib.pyplot as plt
 
 # %%
 # We load the same data, and perform the same calculations on heteroscedasticity and spatial correlations of errors as
-# in the :ref:`sphx_glr_auto_examples_infer_heterosc.py` and :ref:`sphx_glr_auto_examples_infer_spatial_correlation.py`
+# in the :ref:`sphx_glr_auto_examples_plot_infer_heterosc.py` and :ref:`sphx_glr_auto_examples_plot_infer_spatial_correlation.py`
 # examples.
 
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))

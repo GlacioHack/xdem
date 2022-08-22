@@ -969,8 +969,9 @@ class Deramp(Coreg):
 
         :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
         :param subsample: Factor for subsampling the input raster for speed-up.
-        If <= 1, will be considered a fraction of valid pixels to extract.
-        If > 1 will be considered the number of pixels to extract.
+            If <= 1, will be considered a fraction of valid pixels to extract.
+            If > 1 will be considered the number of pixels to extract.
+
         """
         self.degree = degree
         self.subsample = subsample

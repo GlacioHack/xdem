@@ -12,7 +12,7 @@ Here, we show an advanced example in which we look for terrain-dependent explana
 heteroscedasticity for a DEM difference at Longyearbyen. We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_
 and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
 :func:`xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
- :func:`xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
+:func:`xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
 
 **References**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Equation 1, Extended Data Fig.
 3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9.
@@ -55,7 +55,7 @@ profc_arr = profc[~mask_glacier]
 # %%
 # We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
 # bin length divided by 30. We use the NMAD as a robust measure of `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_
-#  (see :ref:`robuststats_meanstd`).
+# (see :ref:`robuststats_meanstd`).
 
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, aspect_arr, planc_arr, profc_arr],
                                   list_var_names=['slope','aspect','planc','profc'],
@@ -124,7 +124,7 @@ xdem.spatialstats.plot_1d_binning(df, 'planc', 'nmad', 'Planform curvature (100 
 # The plan curvature shows a similar relation. Those are symmetrical with 0, and almost equal for both types of curvature.
 # To simplify the analysis, we here combine those curvatures into the maximum absolute curvature:
 
-maxc_arr = np.maximum(np.abs(planc_arr),np.abs(profc_arr))
+maxc_arr = np.maximum(np.abs(planc_arr), np.abs(profc_arr))
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[maxc_arr], list_var_names=['maxc'],
                                   statistics=['count', np.nanmedian, xdem.spatialstats.nmad],
                                   list_var_bins=[np.nanquantile(maxc_arr, np.linspace(0,1,1000))])
@@ -200,7 +200,7 @@ print('The spread of elevation difference is {:.2f} '
 # Thus, we rescale the function to exactly match the spread on stable terrain using the
 # ``xdem.spatialstats.two_step_standardization`` function, and get our final error function.
 
-dh_err_fun = xdem.spatialstats.two_step_standardization(dh_arr, list_var=[slope_arr, maxc_arr],
+zscores, dh_err_fun = xdem.spatialstats.two_step_standardization(dh_arr, list_var=[slope_arr, maxc_arr],
                                                            unscaled_error_fun=unscaled_dh_err_fun)
 
 for s, c in [(0., 0.1), (50., 0.1), (0., 20.), (50., 20.)]:
