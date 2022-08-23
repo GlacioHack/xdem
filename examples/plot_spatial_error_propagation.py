@@ -47,6 +47,10 @@ areas = [glacier_outlines.ds[glacier_outlines.ds['NAME'] == 'Brombreen'],
 stderr_glaciers = xdem.spatialstats.spatial_error_propagation(areas=areas, errors=errors,
                                                               params_variogram_model=params_variogram_model)
 
+for glacier_name, stderr_gla in [('Brombreen', stderr_glaciers[0]), ('Medalsbreen', stderr_glaciers[1])]:
+    print('The error in mean elevation change for {} is {:.2f} meters (1-sigma).'.format(glacier_name, stderr_gla))
+
+# %%
 # When passing a numerical area value, we compute an approximation with disk shape from Equation 8 of Rolstad et al.
 # (2009). This approximation is practical to visualize changes in elevation error when averaging over different area
 # sizes, but is less accurate to estimate the standard error of a certain area shape.
@@ -56,10 +60,14 @@ stderrs = xdem.spatialstats.spatial_error_propagation(areas=areas, errors=errors
 plt.plot(areas / 10**6 , stderrs)
 plt.xlabel('Averaging area (km²)')
 plt.ylabel('Standard error (m)')
-plt.vlines(x=[np.pi*params_variogram_model['range'].values[0]**2 / 10**6,
-              np.pi*params_variogram_model['range'].values[1]**2 / 10**6],
+plt.vlines(x=np.pi*params_variogram_model['range'].values[0]**2 / 10**6,
            ymin=np.min(stderrs), ymax=np.max(stderrs), colors='red', linestyles='dashed',
-           label='Area of disk with radius the correlation range')
+           label='Disk area with radius the\n1st correlation range of {:,.0f} meters'
+           .format(params_variogram_model['range'].values[0]))
+plt.vlines(x=np.pi*params_variogram_model['range'].values[1]**2 / 10**6,
+           ymin=np.min(stderrs), ymax=np.max(stderrs), colors='blue', linestyles='dashed',
+           label='Disk area with radius the\n2nd correlation range of {:,.0f} meters'
+           .format(params_variogram_model['range'].values[1]))
 plt.xscale('log')
 plt.legend()
-
+plt.show()

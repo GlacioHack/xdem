@@ -46,7 +46,7 @@ df_binning
 
 # %%
 # The third output is the 2D binning interpolant, i.e. an error function with the slope and maximum curvature
-# (*Note: below we multiply the maximum curvature by 100 to convert it in m-1*):
+# (*Note: below we divide the maximum curvature by 100 to convert it in m-1*):
 for slope, maxc in [(0, 0), (40, 0), (0, 5), (40, 5)]:
     print('Error for a slope of {:.0f} degrees and'
           ' {:.0f} m-1 max. curvature: {:.1f} m'.format(slope, maxc/100, error_function((slope, maxc))))
