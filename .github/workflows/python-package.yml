@@ -10,7 +10,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  test:
     name: ${{ matrix.os }}, python ${{ matrix.python-version}}
     runs-on: ${{ matrix.os }}
 
@@ -56,4 +56,30 @@ jobs:
         python -c "from xdem.examples import *; download_longyearbyen_examples(overwrite=False)"
     - name: Test with pytest
       run: |
-        pytest -ra -n=auto
+        pip install pytest-cov coveralls
+        pytest -ra -n=auto --cov=xdem/
+
+    # We can skip the conversion step once this PR of pytest is merged: https://github.com/pytest-dev/pytest-cov/pull/536
+    # and replace pytest argument by --cov-report=lcov
+    - name: Converting coverage to LCOV format
+      run: |
+        pip install coveragepy-lcov
+        coveragepy-lcov --data_file_path .coverage --output_file_path coverage.info
+
+    - name: Upload coverage to Coveralls
+      uses: coverallsapp/github-action@master
+      with:
+        github-token: ${{ secrets.github_token }}
+        flag-name: run-${{ matrix.test_number }}
+        path-to-lcov: coverage.info
+        parallel: true
+
+  finish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Upload to Coveralls finished
+      uses: coverallsapp/github-action@master
+      with:
+        github-token: ${{ secrets.github_token }}
+        parallel-finished: true
