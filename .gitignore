@@ -139,8 +139,11 @@ dmypy.json
 # version file
 xdem/version.py
 
-examples/*/data/
-auto_examples/
-gen_modules/
-examples/*/processed
-examples/temp.tif
+# Example data downloaded/produced during tests
+examples/data/Longyearbyen/data/
+examples/data/Longyearbyen/processed/
+
+docs/source/basic_examples/
+docs/source/advanced_examples/
+docs/source/gen_modules/
+examples/basic/temp.tif
