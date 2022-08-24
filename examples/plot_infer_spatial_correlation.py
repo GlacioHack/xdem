@@ -21,18 +21,24 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 
 # %%
 # Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain (*Note: we pass a
-# random_state argument to ensure a fixed, reproducible random subsampling in this example*):
+# random_state argument to ensure a fixed, reproducible random subsampling in this example*). We ask for a fit with
+# a Gaussian model for short range (as it is passed first), and Spherical for long range (as it is passed second):
 df_empirical_variogram, df_model_params, spatial_corr_function = \
     xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=dh, list_models=['Gaussian', 'Spherical'],
                                                             unstable_mask=glacier_outlines, random_state=42)
 
 # %%
 # The first output corresponds to the dataframe of the empirical variogram, by default estimated using Dowd's estimator
-# and the circular sampling scheme of `skgstat.RasterEquidistantMetricSpace` (Fig. S13 of Hugonnet et al. (2022)):
+# and the circular sampling scheme of `skgstat.RasterEquidistantMetricSpace` (Fig. S13 of Hugonnet et al. (2022)). The
+# ``lags`` columns is the upper bound of spatial lag bins (lower bound of first bin being 0), the ``exp`` column is the
+# "experimental" variance value of the variogram in that bin, the ``count`` the number of pairwise samples, and
+# ``err_exp`` the 1-sigma error of the "experimental" variance, if more than one variogram is estimated with the
+# ``n_variograms`` parameter.
 df_empirical_variogram
 
 # %%
-# The second output is the dataframe of optimized model parameters for a sum of gaussian and spherical models:
+# The second output is the dataframe of optimized model parameters (``range``, ``sill``, and possibly ``smoothness``)
+# for a sum of gaussian and spherical models:
 df_model_params
 
 # %%

@@ -28,15 +28,14 @@ for when analyzing DEMs:
 - the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
 - the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
 
+*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, following
+`ISO 5725-1 <https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en>`_. Here, we used accuracy for systematic errors
+as, to our knowledge, it is more common in remote sensing applications.*
+
 .. figure:: imgs/precision_accuracy.png
     :width: 80%
 
-*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, following
-`ISO 5725-1 <https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en>`_. Here, we used accuracy for systematic errors
-as, to our knowledge, it is more common in remote sensing applications."
-
-Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-
-and-accuracy-glacial-geology/>`_, accessed 29.06.21.
+    Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-and-accuracy-glacial-geology/>`_, accessed 29.06.21.
 
 Absolute or relative accuracy
 -----------------------------
@@ -50,6 +49,12 @@ TODO: Add another little schematic!
 
 Optimizing DEM absolute accuracy
 --------------------------------
+
+.. figure:: https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
+    :witdh: 100%
+
+    Source: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
+
 
 Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM
 co-registration to precise and accurate, quality-controlled elevation data such as `ICESat <https://icesat.gsfc.nasa.
@@ -100,6 +105,6 @@ The tools for quantifying DEM precision are described in :ref:`spatialstats`.
     Functions that are used in several examples create duplicate examples intead of being merged into the list.
     Circumventing manually by selecting functions used only once in each example for now.
 
-.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.infer_spatial_correlation_from_stable
+.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.get_variogram_model_func xdem.spatialstats.sample_empirical_variogram
     :add-heading: Examples that use spatial statistics functions
 

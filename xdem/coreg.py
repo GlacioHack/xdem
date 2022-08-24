@@ -869,6 +869,7 @@ class BiasCorr(Coreg):
 class ICP(Coreg):
     """
     Iterative Closest Point DEM coregistration.
+    Based on 3D registration of Besl and McKay (1992), https://doi.org/10.1117/12.57955.
 
     Estimates a rigid transform (rotation + translation) between two DEMs.
 

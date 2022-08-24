@@ -15,7 +15,7 @@ In particular, these tools help to:
 
     - account for elevation heteroscedasticity (e.g., varying precision with terrain slope),
     - quantify the spatial correlation of errors in DEMs (e.g., native spatial resolution, instrument noise),
-    - estimate robust errors for observations integrated in space (e.g., average or sum of samples),
+    - estimate robust errors for observations analyzed in space (e.g., average or sum of elevation, or of elevation changes),
     - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
 .. contents:: Contents 

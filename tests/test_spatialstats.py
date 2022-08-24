@@ -40,7 +40,7 @@ class TestVariogram:
         """Verify that the default function runs, and its basic output"""
 
         # Load data
-        diff, mask = load_ref_and_diff()[1:3]
+        diff = load_ref_and_diff()[1]
 
         # Check the variogram output is consistent for a random state
         df0 = xdem.spatialstats.sample_empirical_variogram(
@@ -83,7 +83,7 @@ class TestVariogram:
         """Verify that all other methods run"""
 
         # Load data
-        diff, mask = load_ref_and_diff()[1:3]
+        diff = load_ref_and_diff()[1]
 
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
@@ -106,7 +106,7 @@ class TestVariogram:
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
 
         # Load data
-        diff, mask = load_ref_and_diff()[1:3]
+        diff = load_ref_and_diff()[1]
 
         pdist_args = {'pdist_multi_ranges':[0, diff.res[0]*5, diff.res[0]*10]}
         cdist_args = {'ratio_subsample': 0.5, 'samples': 50, 'runs': 10}
@@ -288,7 +288,7 @@ class TestVariogram:
 
         # Run wrapper infer from stable function with a Raster and the mask, and check the consistency there as well
         emp_vgm_3, params_model_vgm_3, _ = \
-            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff_on_stable, stable_mask=~mask_glacier.squeeze(),
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff, stable_mask=~mask_glacier.squeeze(),
                                                                     list_models=['Gau', 'Sph'], subsample=100, random_state=42)
         pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_3)
         pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_3)
@@ -296,7 +296,7 @@ class TestVariogram:
         # Run again with array instead of Raster as input
         diff_on_stable_arr = gu.spatial_tools.get_array_and_mask(diff_on_stable)[0]
         emp_vgm_4, params_model_vgm_4, _ = \
-            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff_on_stable_arr, gsd=diff_on_stable.res[0],
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=diff_on_stable_arr, gsd=diff.res[0],
                                                                     stable_mask=~mask_glacier.squeeze(),
                                                                     list_models=['Gau', 'Sph'], subsample=100,
                                                                     random_state=42)
@@ -461,8 +461,7 @@ class TestNeffEstimation:
     def test_number_effective_samples(self):
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
 
-        raster = load_ref_and_diff()[0]
-        outlines = load_ref_and_diff()[3]
+        raster, _, outlines = load_ref_and_diff()[1:]
 
         # The function should return the same result as neff_circular_approx_numerical when using a numerical area
         area = 10000
@@ -518,7 +517,7 @@ class TestNeffEstimation:
     def test_spatial_error_propagation(self):
         """Test that the spatial error propagation wrapper function runs properly"""
 
-        ref, diff, mask_glacier, vector_glacier = load_ref_and_diff()
+        ref, diff, vector_glacier = load_ref_and_diff()
 
         # Get the error map and variogram model with standardization
         slope, maxc = xdem.terrain.get_terrain_attribute(ref, attribute=['slope', 'maximum_curvature'])
@@ -823,7 +822,8 @@ class TestBinning:
         scale_fac = xdem.spatialstats.nmad(zscores)
         assert scale_fac != 1
 
-        # Filter with a factor of 5 and the standard deviation and check the function outputs the exact same array
+        # Filter with a factor of 3 and the standard deviation (not default values) and check the function outputs
+        # the exact same array
         zscores[np.abs(zscores) > 3*np.nanstd(zscores)] = np.nan
         scale_fac_std = np.nanstd(zscores)
         zscores /= scale_fac_std

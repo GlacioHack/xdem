@@ -78,8 +78,7 @@ df = xdem.spatialstats.sample_empirical_variogram(values=dh.data, gsd=dh.res[0],
 
 # %%
 # *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
-# the grid, and a* ``runs`` *argument to reduce the computing time of* ``sgstat.MetricSpace.RasterEquidistantMetricSpace``
-# *which, by default, samples more data for robustness.*
+# the grid.*
 
 # %%
 # We plot the empirical variogram:
@@ -88,7 +87,7 @@ xdem.spatialstats.plot_variogram(df)
 # %%
 # With this plot, it is hard to conclude anything! Properly visualizing the empirical variogram is one of the most
 # important step. With grid data, we expect short-range correlations close to the resolution of the grid (~20-200
-# meters), but also possibly longer range correlation due to instrument noise or alignment issues (~1-50 km) (Hugonnet et al., in prep).
+# meters), but also possibly longer range correlation due to instrument noise or alignment issues (~1-50 km).
 #
 # To better visualize the variogram, we can either change the axis to log-scale, but this might make it more difficult
 # to later compare to variogram models. # Another solution is to split the variogram plot into subpanels, each with
@@ -113,7 +112,7 @@ xdem.spatialstats.plot_variogram(df, xscale_range_split=[100, 1000, 10000])
 # is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
 func_sum_vgm1, params_vgm1 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Spherical'], empirical_variogram=df)
 
-func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Gaussian', 'Spherical'], empirical_variogram=df)
+func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Spherical', 'Spherical'], empirical_variogram=df)
 
 xdem.spatialstats.plot_variogram(df, list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
                                  list_fit_fun_label=['Single-range model', 'Double-range model'],
@@ -123,11 +122,11 @@ xdem.spatialstats.plot_variogram(df, list_fit_fun=[func_sum_vgm1, func_sum_vgm2]
 # The sum of two spherical models fits better, accouting for the small partial sill at longer ranges. Yet this longer
 # range partial sill (correlated variance) is quite small...
 #
-# **So one could ask himself: is it really important to account for this small additional "bump" in the variogram?**
+# **So one could wonder: is it really important to account for this small additional "bump" in the variogram?**
 #
 # To answer this, we compute the precision of the DEM integrated over a certain surface area based on spatial integration of the
 # variogram models using :func:`xdem.spatialstats.neff_circ`, with areas varying from pixel size to grid size.
-# Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas radidly.
+# Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas rapidly.
 
 areas = np.linspace(20**2, 10000**2, 1000)
 

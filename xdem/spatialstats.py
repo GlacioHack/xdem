@@ -291,7 +291,7 @@ def two_step_standardization(dvalues: np.ndarray, list_var: Iterable[np.ndarray]
     Standardize the proxy differenced values using the modelled heteroscedasticity, re-scaled to the spread statistic,
     and generate the final standardization function.
 
-    :param dvalues: Proxy values array of size (N,)
+    :param dvalues: Proxy values as array of size (N,) (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
     :param list_var: List of size (L) of explanatory variables array of size (N,)
     :param unscaled_error_fun: Function of the spread with explanatory variables not yet re-scaled
     :param spread_statistic: Statistic to be computed for the spread; defaults to nmad
@@ -339,7 +339,7 @@ def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np
 
     The functions used are `nd_binning`, `interp_nd_binning` and `two_step_standardization`.
 
-    :param dvalues: Proxy values array of size (N,)
+    :param dvalues: Proxy values as array of size (N,) (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
     :param list_var: List of size (L) of explanatory variables array of size (N,)
     :param list_var_names: List of size (L) of names of the explanatory variables
     :param spread_statistic: Statistic to be computed for the spread; defaults to nmad
@@ -410,7 +410,7 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
 
     If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
 
-    :param dvalues: Proxy values as array or Raster
+    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
     :param list_var: List of size (L) of explanatory variables as array or Raster of same shape as dvalues
     :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
     :param unstable_mask: Vector shapefile of unstable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
@@ -904,7 +904,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     :param coords: Coordinates
     :param subsample: Number of samples to randomly draw from the values
     :param subsample_method: Spatial subsampling method
-    :param n_variograms: Number of independent empirical variogram estimations
+    :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
     :param verbose: Print statements during processing
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
@@ -1310,10 +1310,13 @@ def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], l
     Estimate and model the spatial correlation of the input variable by empirical variogram sampling and fitting of a
     sum of variogram model.
 
+    The spatial correlation is returned as a function of spatial lags (in units of the input coordinates) which gives a
+    correlation value between 0 and 1.
+
     This function samples an empirical variogram using skgstat.Variogram, then optimizes by weighted least-squares the
     sum of a defined number of models, using the functions `sample_empirical_variogram` and `fit_sum_model_variogram`.
 
-    :param dvalues: Proxy values of studied variable
+    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
     :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
         a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
         spherical model "Sph", "Spherical" or skgstat.models.spherical).
@@ -1323,14 +1326,14 @@ def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], l
     :param coords: Coordinates
     :param subsample: Number of samples to randomly draw from the values
     :param subsample_method: Spatial subsampling method
-    :param n_variograms: Number of independent empirical variogram estimations
+    :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
     :param verbose: Print statements during processing
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
 
-    :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Spatial correlation function
+    :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
     """
 
     empirical_variogram = sample_empirical_variogram(values=dvalues, estimator=estimator, gsd=gsd, coords=coords,
@@ -1353,8 +1356,8 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
                                           estimator = 'dowd', gsd: float = None, coords: np.ndarray = None,
                                           subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
                                           n_variograms: int = 1, n_jobs: int = 1, verbose = False,
-                                          random_state: None | np.random.RandomState | np.random.Generator | int = None,
                                           bounds: list[tuple[float, float]] = None, p0: list[float] = None,
+                                          random_state: None | np.random.RandomState | np.random.Generator | int = None,
                                           **kwargs
                                           ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
     """
@@ -1362,13 +1365,14 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     as a sum.
 
     This function returns a dataframe of the empirical variogram, a dataframe of optimized model parameters, and a
-    spatial correlation function.
+    spatial correlation function. The spatial correlation is returned as a function of spatial lags
+    (in units of the input coordinates) which gives a correlation value between 0 and 1.
     It is a convenience wrapper for `estimate_model_spatial_correlation` to work on either Raster or array and compute
     the stable mask.
 
     If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
 
-    :param dvalues: Proxy values as array or Raster
+    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
     :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
         a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
         spherical model "Sph", "Spherical" or skgstat.models.spherical).
@@ -1381,14 +1385,14 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     :param coords: Coordinates
     :param subsample: Number of samples to randomly draw from the values
     :param subsample_method: Spatial subsampling method
-    :param n_variograms: Number of independent empirical variogram estimations
+    :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
     :param verbose: Print statements during processing
-    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
+    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
-    :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Spatial correlation function
+    :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
     """
 
     # Check inputs
@@ -1411,7 +1415,6 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     else:
         dvalues_arr = dvalues
 
-    # If the stable mask is not an array, create it
     # If the stable mask is not an array, create it
     if stable_mask is None:
         stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)

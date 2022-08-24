@@ -40,17 +40,16 @@ mask_glacier = glacier_outlines.create_mask(dh)
 # We derive terrain attributes from the reference DEM (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`),
 # which we will use to explore the variability in elevation error.
 slope, aspect, planc, profc = \
-    xdem.terrain.get_terrain_attribute(dem=ref_dem.data,
-                                       attribute=['slope','aspect', 'planform_curvature', 'profile_curvature'],
-                                       resolution=ref_dem.res)
+    xdem.terrain.get_terrain_attribute(dem=ref_dem,
+                                       attribute=['slope','aspect', 'planform_curvature', 'profile_curvature'])
 
 # %%
-# We keep only stable terrain for the analysis of variability
-dh_arr = dh.data[~mask_glacier]
-slope_arr = slope[~mask_glacier]
-aspect_arr = aspect[~mask_glacier]
-planc_arr = planc[~mask_glacier]
-profc_arr = profc[~mask_glacier]
+# We convert to arrays and keep only stable terrain for the analysis of variability
+dh_arr = gu.spatial_tools.get_array_and_mask(dh)[0][~mask_glacier]
+slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0][~mask_glacier]
+aspect_arr = gu.spatial_tools.get_array_and_mask(aspect)[0][~mask_glacier]
+planc_arr = gu.spatial_tools.get_array_and_mask(planc)[0][~mask_glacier]
+profc_arr = gu.spatial_tools.get_array_and_mask(profc)[0][~mask_glacier]
 
 # %%
 # We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
