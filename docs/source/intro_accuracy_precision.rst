@@ -51,7 +51,7 @@ Optimizing DEM absolute accuracy
 --------------------------------
 
 .. figure:: https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
-    :witdh: 100%
+    :width: 100%
 
     Source: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 

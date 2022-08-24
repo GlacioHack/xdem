@@ -34,7 +34,7 @@ import geoutils as gu
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-mask_glacier = glacier_outlines.create_mask(dh)
+mask_glacier = glacier_outlines.create_mask(dh).squeeze()
 
 # %%
 # We derive terrain attributes from the reference DEM (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`),

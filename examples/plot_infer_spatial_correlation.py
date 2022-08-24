@@ -29,7 +29,7 @@ df_empirical_variogram, df_model_params, spatial_corr_function = \
 
 # %%
 # The first output corresponds to the dataframe of the empirical variogram, by default estimated using Dowd's estimator
-# and the circular sampling scheme of `skgstat.RasterEquidistantMetricSpace` (Fig. S13 of Hugonnet et al. (2022)). The
+# and the circular sampling scheme of ``skgstat.RasterEquidistantMetricSpace`` (Fig. S13 of Hugonnet et al. (2022)). The
 # ``lags`` columns is the upper bound of spatial lag bins (lower bound of first bin being 0), the ``exp`` column is the
 # "experimental" variance value of the variogram in that bin, the ``count`` the number of pairwise samples, and
 # ``err_exp`` the 1-sigma error of the "experimental" variance, if more than one variogram is estimated with the
