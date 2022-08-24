@@ -20,8 +20,8 @@ dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # %%
-# Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain (*Note: we pass a
-# random_state argument to ensure a fixed, reproducible random subsampling in this example*). We ask for a fit with
+# Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain (*Note: we pass a*
+# ``random_state`` *argument to ensure a fixed, reproducible random subsampling in this example*). We ask for a fit with
 # a Gaussian model for short range (as it is passed first), and Spherical for long range (as it is passed second):
 df_empirical_variogram, df_model_params, spatial_corr_function = \
     xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=dh, list_models=['Gaussian', 'Spherical'],

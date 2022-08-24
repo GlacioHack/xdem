@@ -48,7 +48,7 @@ stderr_glaciers = xdem.spatialstats.spatial_error_propagation(areas=areas, error
                                                               params_variogram_model=params_variogram_model)
 
 for glacier_name, stderr_gla in [('Brombreen', stderr_glaciers[0]), ('Medalsbreen', stderr_glaciers[1])]:
-    print('The error in mean elevation change for {} is {:.2f} meters (1-sigma).'.format(glacier_name, stderr_gla))
+    print('The error (1-sigma) in mean elevation change for {} is {:.2f} meters.'.format(glacier_name, stderr_gla))
 
 # %%
 # When passing a numerical area value, we compute an approximation with disk shape from Equation 8 of Rolstad et al.

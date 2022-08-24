@@ -15,11 +15,8 @@ and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, 
 :func:`xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
 
 **References**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Equation 1, Extended Data Fig.
-3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9.
-
-Errors in elevation difference can be converted in elevation errors following Equation 7 (equal if other source of much
-higher precision) or Equation 8 (divided by sqrt(2) if the two sources are of same precision). Below we consider errors
-in elevation differences.
+3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7 or 8 can
+be used to convert elevation change errors into elevation errors.
 """
 # sphinx_gallery_thumbnail_number = 8
 import matplotlib.pyplot as plt

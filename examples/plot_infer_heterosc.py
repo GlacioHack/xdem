@@ -7,11 +7,8 @@ rely on a non-stationary spatial statistics framework to estimate and model this
 using terrain slope and maximum curvature as explanatory variables, with stable terrain as an error proxy for moving
 terrain.
 
-**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9.
-
-Errors in elevation difference can be converted in elevation errors following Equation 7 (equal if other source of much
-higher precision) or Equation 8 (divided by sqrt(2) if the two sources are of same precision). Below we consider errors
-in elevation differences.
+**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7
+or 8 can be used to convert elevation change errors into elevation errors.
 """
 # sphinx_gallery_thumbnail_number = 1
 import xdem
@@ -37,7 +34,7 @@ errors, df_binning, error_function = \
                                                            unstable_mask=glacier_outlines)
 
 # %%
-# The first output corresponds to the error map for the DEM (1-sigma):
+# The first output corresponds to the error map for the DEM (:math:`\pm` 1\ :math:`\sigma` level):
 errors.show(vmin=2, vmax=7, cmap='Reds', cb_title='Elevation error (1$\sigma$, m)')
 
 # %%
@@ -46,10 +43,10 @@ df_binning
 
 # %%
 # The third output is the 2D binning interpolant, i.e. an error function with the slope and maximum curvature
-# (*Note: below we divide the maximum curvature by 100 to convert it in m-1*):
+# (*Note: below we divide the maximum curvature by 100 to convert it in* m\ :sup:`-1` ):
 for slope, maxc in [(0, 0), (40, 0), (0, 5), (40, 5)]:
     print('Error for a slope of {:.0f} degrees and'
-          ' {:.0f} m-1 max. curvature: {:.1f} m'.format(slope, maxc/100, error_function((slope, maxc))))
+          ' {:.2f} m-1 max. curvature: {:.1f} m'.format(slope, maxc/100, error_function((slope, maxc))))
 
 # %%
 # This pipeline will not always work optimally with default parameters: spread estimates can be affected by skewed
