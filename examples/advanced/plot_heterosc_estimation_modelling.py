@@ -26,7 +26,7 @@ import geoutils as gu
 
 # %%
 # Here, we detail the steps used by ``xdem.spatialstats.infer_heteroscedasticity_from_stable`` exemplified in
-# :ref:`sphx_glr_auto_examples_plot_infer_heterosc.py`. First, we load example files and create a glacier mask.
+# :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`. First, we load example files and create a glacier mask.
 
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
@@ -34,7 +34,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 mask_glacier = glacier_outlines.create_mask(dh).squeeze()
 
 # %%
-# We derive terrain attributes from the reference DEM (see :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`),
+# We derive terrain attributes from the reference DEM (see :ref:`sphx_glr_basic_examples_plot_terrain_attributes.py`),
 # which we will use to explore the variability in elevation error.
 slope, aspect, planc, profc = \
     xdem.terrain.get_terrain_attribute(dem=ref_dem,

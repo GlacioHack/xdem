@@ -6,7 +6,7 @@ Terrain attributes generated from a DEM have a multitude of uses for analytic an
 Here is an example of how to generate these products.
 
 For more information, see the :ref:`terrain_attributes` chapter and the
-:ref:`sphx_glr_auto_examples_plot_slope_methods.py` example.
+:ref:`sphx_glr_advanced_examples_plot_slope_methods.py` example.
 """
 # sphinx_gallery_thumbnail_number = 12
 import matplotlib.pyplot as plt

@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 # %%
 # We load the same data, and perform the same calculations on heteroscedasticity and spatial correlations of errors as
-# in the :ref:`sphx_glr_auto_examples_plot_infer_heterosc.py` and :ref:`sphx_glr_auto_examples_plot_infer_spatial_correlation.py`
+# in the :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py` and :ref:`sphx_glr_basic_examples_plot_infer_spatial_correlation.py`
 # examples.
 
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))

@@ -16,7 +16,7 @@ import geoutils as gu
 
 # %%
 # We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration_nuthkaab` as shown in
-# the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We also load the reference DEM to derive terrain
+# the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example. We also load the reference DEM to derive terrain
 # attributes and the glacier outlines here corresponding to moving terrain.
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
@@ -52,4 +52,4 @@ for slope, maxc in [(0, 0), (40, 0), (0, 5), (40, 5)]:
 # This pipeline will not always work optimally with default parameters: spread estimates can be affected by skewed
 # distributions, the binning by extreme range of values, some DEMs do not have any error variability with terrain (e.g.,
 # terrestrial photogrammetry). **To learn how to tune more parameters and use the subfunctions, see the gallery example:**
-# :ref:`sphx_glr_auto_examples_plot_heterosc_estimation_modelling.py`!
+# :ref:`sphx_glr_advanced_examples_plot_heterosc_estimation_modelling.py`!
