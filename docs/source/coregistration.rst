@@ -153,7 +153,7 @@ ICP
 - **Does not support weights**
 - **Recommended for:** Data with low noise and a high relative rotation.
 
-Iterative Closest Point (ICP) coregistration works by iteratively moving the data until it fits the reference as well as possible.
+Iterative Closest Point (ICP) coregistration, which is based on `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_, works by iteratively moving the data until it fits the reference as well as possible.
 The DEMs are read as point clouds; collections of points with X/Y/Z coordinates, and a nearest neighbour analysis is made between the reference and the data to be aligned.
 After the distances are calculated, a rigid transform is estimated to minimise them.
 The transform is attempted, and then distances are calculated again.

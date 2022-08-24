@@ -1,6 +1,6 @@
 """
-Nuth & Kääb (2011) coregistration
-=================================
+Nuth and Kääb coregistration
+============================
 
 Nuth and Kääb (`2011 <https:https://doi.org/10.5194/tc-5-271-2011>`_) coregistration allows for horizontal and vertical shifts to be estimated and corrected for.
 In ``xdem``, this approach is implemented through the :class:`xdem.coreg.NuthKaab` class.

@@ -1,20 +1,17 @@
 """
-Standardization for stable terrain as proxy
-===========================================
+Standardization for stable terrain as error proxy
+=================================================
 
 Digital elevation models have both a precision that can vary with terrain or instrument-related variables, and
-a spatial correlation of measurement errors that can be due to effects of resolution, processing or instrument noise.
-Accouting for non-stationarities in elevation measurement errors is essential to use stable terrain as a proxy to
-infer the precision on other types of terrain (Hugonnet et al., in prep) and reliably use spatial statistics (see
-:ref:`spatialstats`).
+a spatial correlation of errors that can be due to effects of resolution, processing or instrument noise.
+Accouting for non-stationarities in elevation errors is essential to use stable terrain as a proxy to infer the
+precision on other types of terrain and reliably use spatial statistics (see :ref:`spatialstats`).
 
-Here, we show an example to use standardization of the data based on the terrain-dependent nonstationarity in measurement
-error (see :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py`) and combine it with an analysis of spatial
-correlation (see :ref:`sphx_glr_auto_examples_plot_vgm_error.py`) to derive spatially integrated errors for specific
-spatial ensembles.
+Here, we show an example of standardization of the data based on terrain-dependent explanatory variables
+(see :ref:`sphx_glr_auto_examples_plot_infer_heterosc.py`) and combine it with an analysis of spatial correlation
+(see :ref:`sphx_glr_auto_examples_plot_infer_spatial_correlation.py`) .
 
-**Reference**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, applied to the terrain slope
-and quality of stereo-correlation (Equation 1, Extended Data Fig. 3a).
+**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Equation 12.
 """
 # sphinx_gallery_thumbnail_number = 4
 import matplotlib.pyplot as plt
@@ -24,8 +21,8 @@ import geoutils as gu
 from xdem.spatialstats import nmad
 
 # %%
-# We start by estimating the non-stationarities and deriving a terrain-dependent measurement error as a function of both
-# slope and maximum curvature, as shown in the  :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py` example.
+# We start by estimating the elevation heteroscedasticity and deriving a terrain-dependent measurement error as a function of both
+# slope and maximum curvature, as shown in the :ref:`sphx_glr_auto_examples_plot_infer_heterosc.py` example.
 
 # Load the data
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
@@ -105,7 +102,7 @@ plt.legend(loc='lower right')
 plt.show()
 
 # %%
-# Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_auto_examples_plot_vgm_error.py`
+# Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_auto_examples_plot_variogram_estimation_modelling.py`
 # example, by estimating a variogram and fitting a sum of two models.
 df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=300,
                                                       n_variograms=10, random_state=42)

@@ -8,7 +8,7 @@ import os
 import warnings
 from functools import partial
 
-from typing import Callable, Union, Iterable, Optional, Sequence, Any
+from typing import Callable, Union, Iterable, Optional, Sequence, Any, overload
 
 import itertools
 import matplotlib
@@ -17,6 +17,7 @@ import matplotlib.colors as colors
 from numba import njit
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 from scipy import integrate
 from scipy.optimize import curve_fit
 from scipy.spatial.distance import pdist, squareform
@@ -25,6 +26,7 @@ from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, gri
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from geoutils.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
+from geoutils.geovector import VectorType, Vector
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -36,7 +38,7 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     Calculate the normalized median absolute deviation (NMAD) of an array.
     Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
     distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
-    e.g. http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
+    e.g. Höhle and Höhle (2009), http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
 
     :param data: Input data
     :param nfact: Normalization factor for the data
@@ -96,15 +98,15 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     list_df_1d = []
     for i, var in enumerate(list_var):
         df_stats_1d = pd.DataFrame()
-        # get statistics
+        # Get statistics
         for j, statistic in enumerate(statistics):
             stats_binned_1d, bedges_1d = binned_statistic(var,values,statistic=statistic,bins=list_var_bins[i],range=list_ranges)[:2]
-            # save in a dataframe
+            # Save in a dataframe
             df_stats_1d[statistics_name[j]] = stats_binned_1d
-        # we need to get the middle of the bins from the edges, to get the same dimension length
+        # We need to get the middle of the bins from the edges, to get the same dimension length
         df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d,closed='left')
-        # report number of dimensions used
-        df_stats_1d['nd'] = 1
+        # Report number of dimensions used
+        df_stats_1d.insert(0, 'nd', 1)
 
         list_df_1d.append(df_stats_1d)
 
@@ -114,22 +116,22 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
         combs = list(itertools.combinations(list_var_names, 2))
         for i, comb in enumerate(combs):
             var1_name, var2_name = comb
-            # corresponding variables indexes
+            # Corresponding variables indexes
             i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
             df_stats_2d = pd.DataFrame()
             for j, statistic in enumerate(statistics):
                 stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(list_var[i1],list_var[i2],values,statistic=statistic
                                                              ,bins=[list_var_bins[i1],list_var_bins[i2]]
                                                              ,range=list_ranges)[:3]
-                # get statistics
+                # Get statistics
                 df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
-            # derive interval indexes and convert bins into 2d indexes
+            # Derive interval indexes and convert bins into 2d indexes
             ii1 = pd.IntervalIndex.from_breaks(bedges_var1,closed='left')
             ii2 = pd.IntervalIndex.from_breaks(bedges_var2,closed='left')
             df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
             df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
-            # report number of dimensions used
-            df_stats_2d['nd'] = 2
+            # Report number of dimensions used
+            df_stats_2d.insert(0, 'nd', 2)
 
             list_df_2d.append(df_stats_2d)
 
@@ -151,7 +153,7 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
             df_stats_nd[var_name] = iind[i].flatten()
 
         # Report number of dimensions used
-        df_stats_nd['nd'] = len(list_var_names)
+        df_stats_nd.insert(0, 'nd', len(list_var_names))
 
     # Concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
@@ -162,7 +164,7 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     return df_concat
 
 
-def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
+def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str, Iterable[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
                       min_count: Optional[int] = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
@@ -244,7 +246,7 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
 
     # Remove statistic values calculated with a sample count under the minimum count
     if min_count is not None:
-        df_sub.loc[df_sub['count'] < min_count,statistic_name] = np.nan
+        df_sub.loc[df_sub['count'] < min_count, statistic_name] = np.nan
 
     values = df_sub[statistic_name].values
     ind_valid = np.isfinite(values)
@@ -280,10 +282,233 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str,list[str]], st
     return interp_fun
 
 
+def two_step_standardization(dvalues: np.ndarray, list_var: Iterable[np.ndarray],
+                unscaled_error_fun: Callable[[tuple[np.ndarray, ...]], np.ndarray],
+                spread_statistic: Callable = nmad,
+                fac_spread_outliers: float | None = 7
+                ) -> tuple[np.ndarray, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+    """
+    Standardize the proxy differenced values using the modelled heteroscedasticity, re-scaled to the spread statistic,
+    and generate the final standardization function.
+
+    :param dvalues: Proxy values as array of size (N,) (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
+    :param list_var: List of size (L) of explanatory variables array of size (N,)
+    :param unscaled_error_fun: Function of the spread with explanatory variables not yet re-scaled
+    :param spread_statistic: Statistic to be computed for the spread; defaults to nmad
+    :param fac_spread_outliers: Exclude outliers outside this spread after standardizing; pass None to ignore.
+
+    :return: Standardized values array of size (N,), Function to destandardize
+    """
+
+    # Standardize a first time with the function
+    zscores = dvalues / unscaled_error_fun(tuple(list_var))
+
+    # Set large outliers that might have been created by the standardization to NaN, central tendency should already be
+    # around zero so only need to take the absolute value
+    if fac_spread_outliers is not None:
+        zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.nan
+
+    # Re-compute the spread statistic to re-standardize, as dividing by the function will not necessarily bring the
+    # z-score exactly equal to one due to approximations of N-D binning, interpolating and due to the outlier filtering
+    zscore_nmad = spread_statistic(zscores)
+
+    # Re-standardize
+    zscores /= zscore_nmad
+
+    # Define the exact function for de-standardization to pass as output
+    def error_fun(*args):
+        return zscore_nmad * unscaled_error_fun(*args)
+
+    return zscores, error_fun
+
+
+def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np.ndarray], list_var_names: Iterable[str],
+                                      spread_statistic: Callable = nmad,
+                                      list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                                      min_count: Optional[int] = 100,
+                                      fac_spread_outliers: float | None = 7
+                                      ) -> tuple[pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+    """
+    Estimate and model the heteroscedasticity (i.e., variability in error) according to a list of explanatory variables
+    from a proxy of differenced values (e.g., elevation differences), if possible compared to a source of higher
+    precision.
+
+    This function performs N-D data binning with the list of explanatory variable for a spread statistic, then
+    performs N-D interpolation on this statistic, scales the output with a two-step standardization to return an error
+    function of the explanatory variables.
+
+    The functions used are `nd_binning`, `interp_nd_binning` and `two_step_standardization`.
+
+    :param dvalues: Proxy values as array of size (N,) (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
+    :param list_var: List of size (L) of explanatory variables array of size (N,)
+    :param list_var_names: List of size (L) of names of the explanatory variables
+    :param spread_statistic: Statistic to be computed for the spread; defaults to nmad
+    :param list_var_bins: Count of size (1), or list of size (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata)
+    :param fac_spread_outliers: Exclude outliers outside this spread after standardizing; pass None to ignore.
+
+    :return: Dataframe of binned spread statistic with explanatory variables, Error function with explanatory variables
+    """
+
+    # Perform N-D binning with the differenced values computing the spread statistic
+    df = nd_binning(values=dvalues, list_var=list_var, list_var_names=list_var_names, statistics=[spread_statistic],
+                    list_var_bins=list_var_bins)
+
+    # Perform N-D linear interpolation for the spread statistic
+    fun = interp_nd_binning(df, list_var_names=list_var_names, statistic=spread_statistic.__name__, min_count=min_count)
+
+    # Get the final function based on a two-step standardization
+    final_fun = two_step_standardization(dvalues=dvalues, list_var=list_var, unscaled_error_fun=fun,
+                                         spread_statistic=spread_statistic, fac_spread_outliers=fac_spread_outliers)[1]
+
+    return df, final_fun
+
+
+@overload
+def infer_heteroscedasticity_from_stable(dvalues: np.ndarray, list_var: list[np.ndarray | RasterType],
+                                         stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                         unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                         list_var_names: Iterable[str],
+                                         spread_statistic: Callable,
+                                         list_var_bins: Optional[Union[int,Iterable[Iterable]]],
+                                         min_count: Optional[int],
+                                         factor_spread_exclude_outliers: float | None,
+                                         ) -> tuple[np.ndarray,
+                                            pd.DataFrame,
+                                            Callable[[tuple[np.ndarray, ...]], np.ndarray]]: ...
+
+@overload
+def infer_heteroscedasticity_from_stable(dvalues: RasterType, list_var: list[np.ndarray | RasterType],
+                                         stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                         unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+                                         list_var_names: Iterable[str],
+                                         spread_statistic: Callable,
+                                         list_var_bins: Optional[Union[int,Iterable[Iterable]]],
+                                         min_count: Optional[int],
+                                         factor_spread_exclude_outliers: float | None,
+                                         ) -> tuple[RasterType,
+                                            pd.DataFrame,
+                                            Callable[[tuple[np.ndarray, ...]], np.ndarray]]: ...
+
+def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_var: list[np.ndarray | RasterType],
+                                         stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                         unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                         list_var_names: Iterable[str] = None,
+                                         spread_statistic: Callable = nmad,
+                                         list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+                                         min_count: Optional[int] = 100,
+                                         fac_spread_outliers: float | None = 7,
+                                         ) -> tuple[np.ndarray | RasterType,
+                                            pd.DataFrame,
+                                            Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+    """
+    Infer heteroscedasticity from differenced values on stable terrain and a list of explanatory variables.
+
+    This function returns an error map, a dataframe of spread values and the error function with explanatory variables.
+    It is a convenience wrapper for `estimate_model_heteroscedasticity` to work on either Raster or array, compute the
+    stable mask and return an error map.
+
+    If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
+
+    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
+    :param list_var: List of size (L) of explanatory variables as array or Raster of same shape as dvalues
+    :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param unstable_mask: Vector shapefile of unstable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param list_var_names: List of size (L) of names of the explanatory variables, otherwise named var1, var2, etc.
+    :param spread_statistic: Statistic to be computed for the spread; defaults to nmad
+    :param list_var_bins: Count of size (1), or list of size (L) of counts or custom bin edges for the explanatory variables; defaults to 10 bins
+    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata)
+    :param fac_spread_outliers: Exclude outliers outside this spread after standardizing; pass None to ignore.
+
+    :return: Inferred error map (array or Raster, same as input proxy values),
+        Dataframe of binned spread statistic with explanatory variables,
+        Error function with explanatory variables
+    """
+
+    # Check inputs
+    if not isinstance(dvalues, (Raster, np.ndarray)):
+        raise ValueError('The dvalues must be a Raster or NumPy array.')
+    if stable_mask is not None and not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
+    if unstable_mask is not None and not isinstance(unstable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
+
+    # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
+    if not isinstance(dvalues, Raster) and (isinstance(stable_mask, (Vector, gpd.GeoDataFrame)) or isinstance(unstable_mask,  (Vector, gpd.GeoDataFrame))):
+        raise ValueError('The stable mask can only passed as a Vector or GeoDataFrame if the input dvalues is a Raster.')
+
+    # Create placeholder variables names if those don't exist
+    if list_var_names is None:
+        list_var_names = ['var'+str(i+1) for i in range(len(list_var))]
+
+    # Get the arrays for proxy values and explanatory variables
+    if isinstance(dvalues, Raster):
+        dvalues_arr = get_array_and_mask(dvalues)[0]
+    else:
+        dvalues_arr = dvalues
+    list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var
+                    for var in list_var if isinstance(var, Raster)]
+
+    # If the stable mask is not an array, create it
+    if stable_mask is None:
+        stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(stable_mask, np.ndarray):
+
+        # If the stable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(stable_mask, gpd.GeoDataFrame):
+            stable_vector = Vector(stable_mask)
+        else:
+            stable_vector = stable_mask
+
+        # Create the mask
+        stable_mask_arr = stable_vector.create_mask(dvalues)
+    # If the mask is already an array, just pass it
+    else:
+        stable_mask_arr = stable_mask
+
+    # If the unstable mask is not an array, create it
+    if unstable_mask is None:
+        unstable_mask_arr = np.zeros(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(unstable_mask, np.ndarray):
+
+        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(unstable_mask, gpd.GeoDataFrame):
+            unstable_vector = Vector(unstable_mask)
+        else:
+            unstable_vector = unstable_mask
+
+        # Create the mask
+        unstable_mask_arr = unstable_vector.create_mask(dvalues)
+    # If the mask is already an array, just pass it
+    else:
+        unstable_mask_arr = unstable_mask
+
+    stable_mask_arr = np.logical_and(stable_mask_arr, ~unstable_mask_arr).squeeze()
+
+    # Get the subsets on stable terrain
+    dvalues_stable_arr = dvalues_arr[stable_mask_arr]
+    list_var_stable_arr = [var_arr[stable_mask_arr] for var_arr in list_var_arr]
+
+    # Estimate and model the heteroscedasticity using only stable terrain
+    df, fun = estimate_model_heteroscedasticity(dvalues=dvalues_stable_arr, list_var=list_var_stable_arr,
+                                                list_var_names=list_var_names, spread_statistic=spread_statistic,
+                                                list_var_bins=list_var_bins, min_count=min_count,
+                                                fac_spread_outliers=fac_spread_outliers)
+
+    # Use the standardization function to get the error array for the entire input array (not only stable)
+    error = fun(tuple(list_var_arr))
+
+    # Return the right type, depending on dvalues input
+    if isinstance(dvalues, Raster):
+        return dvalues.copy(new_array=error), df, fun
+    else:
+        return error, df, fun
+
+
 def _create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None,
                          radius: Optional[float] = None) -> np.ndarray:
     """
-    Create circular mask on a raster, defaults to the center of the array and it's half width
+    Create circular mask on a raster, defaults to the center of the array and its half width
 
     :param shape: shape of array
     :param center: center
@@ -679,7 +904,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     :param coords: Coordinates
     :param subsample: Number of samples to randomly draw from the values
     :param subsample_method: Spatial subsampling method
-    :param n_variograms: Number of independent empirical variogram estimations
+    :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
     :param verbose: Print statements during processing
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
@@ -693,17 +918,19 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     elif isinstance(values, (np.ndarray, np.ma.masked_array)):
         values, mask = get_array_and_mask(values)
     else:
-        raise TypeError('Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.')
+        raise ValueError('Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.')
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
     if (gsd is not None or subsample_method in ['cdist_equidistant', 'pdist_disk','pdist_ring']) and values.ndim == 1:
-        raise TypeError('Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
+        raise ValueError('Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
                         '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.')
     elif coords is not None and values.ndim != 1:
-        raise TypeError('Values array must be 1D when providing coordinates.')
+        raise ValueError('Values array must be 1D when providing coordinates.')
     elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
-        raise TypeError('The coordinates array must have one dimension with length equal to 2')
+        raise ValueError('The coordinates array must have one dimension with length equal to 2')
+    elif values.ndim == 2 and gsd is None:
+        raise ValueError('The ground sampling distance must be defined when passing a 2D values array.')
 
     # Check the subsample method provided exists, otherwise list options
     if subsample_method not in ['cdist_equidistant','cdist_point','pdist_point','pdist_disk','pdist_ring']:
@@ -836,6 +1063,10 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
         df_mean['count'] = df_count['count']
         df = df_mean
 
+    # Remove the last spatial lag bin which is always undersampled
+    # TODO: Solve this problem at the root: how the spatial lag binning is defined, probably?
+    df.drop(df.tail(1).index, inplace=True)
+
     return df
 
 def _get_skgstat_variogram_model_name(model: str | Callable) -> str:
@@ -957,9 +1188,9 @@ def correlation_from_variogram(params_variogram_model: pd.DataFrame)-> Callable[
     return rho
 
 
-def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_variogram: pd.DataFrame,
+def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogram: pd.DataFrame,
                             bounds: list[tuple[float, float]] = None,
-                            p0: list[float] = None) -> tuple[Callable, pd.DataFrame]:
+                            p0: list[float] = None) -> tuple[Callable[[np.ndarray], np.ndarray], pd.DataFrame]:
     """
     Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
     use preferably with the empirical variogram dataframe returned by the `sample_empirical_variogram` function.
@@ -1066,6 +1297,182 @@ def fit_sum_model_variogram(list_models: list[str] | list[Callable], empirical_v
     variogram_sum_fit = get_variogram_model_func(df_params)
 
     return variogram_sum_fit, df_params
+
+def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], list_models: list[str | Callable],
+                                       estimator = 'dowd', gsd: float = None, coords: np.ndarray = None, subsample: int = 1000,
+                                       subsample_method: str = 'cdist_equidistant', n_variograms: int = 1,
+                                       n_jobs: int = 1, verbose = False,
+                                       random_state: None | np.random.RandomState | np.random.Generator | int = None,
+                                       bounds: list[tuple[float, float]] = None, p0: list[float] = None,
+                                       **kwargs) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
+
+    """
+    Estimate and model the spatial correlation of the input variable by empirical variogram sampling and fitting of a
+    sum of variogram model.
+
+    The spatial correlation is returned as a function of spatial lags (in units of the input coordinates) which gives a
+    correlation value between 0 and 1.
+
+    This function samples an empirical variogram using skgstat.Variogram, then optimizes by weighted least-squares the
+    sum of a defined number of models, using the functions `sample_empirical_variogram` and `fit_sum_model_variogram`.
+
+    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
+    :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
+        a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
+        spherical model "Sph", "Spherical" or skgstat.models.spherical).
+    :param estimator: Estimator for the empirical variogram; default to Dowd's variogram (see skgstat.Variogram for
+        the list of available estimators).
+    :param gsd: Ground sampling distance
+    :param coords: Coordinates
+    :param subsample: Number of samples to randomly draw from the values
+    :param subsample_method: Spatial subsampling method
+    :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
+    :param n_jobs: Number of processing cores
+    :param verbose: Print statements during processing
+    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
+    :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper).
+    :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
+
+    :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
+    """
+
+    empirical_variogram = sample_empirical_variogram(values=dvalues, estimator=estimator, gsd=gsd, coords=coords,
+                                                     subsample=subsample, subsample_method=subsample_method,
+                                                     n_variograms=n_variograms, n_jobs=n_jobs, verbose=verbose,
+                                                     random_state=random_state, **kwargs)
+
+    params_variogram_model = fit_sum_model_variogram(list_models=list_models, empirical_variogram=empirical_variogram,
+                                             bounds=bounds, p0=p0)[1]
+
+    spatial_correlation_func = correlation_from_variogram(params_variogram_model=params_variogram_model)
+
+    return empirical_variogram, params_variogram_model, spatial_correlation_func
+
+def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
+                                          list_models: list[str | Callable],
+                                          stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                          unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                          errors: np.ndarray | RasterType = None,
+                                          estimator = 'dowd', gsd: float = None, coords: np.ndarray = None,
+                                          subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
+                                          n_variograms: int = 1, n_jobs: int = 1, verbose = False,
+                                          bounds: list[tuple[float, float]] = None, p0: list[float] = None,
+                                          random_state: None | np.random.RandomState | np.random.Generator | int = None,
+                                          **kwargs
+                                          ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
+    """
+    Infer spatial correlation of errors from differenced values on stable terrain and a list of variogram model to fit
+    as a sum.
+
+    This function returns a dataframe of the empirical variogram, a dataframe of optimized model parameters, and a
+    spatial correlation function. The spatial correlation is returned as a function of spatial lags
+    (in units of the input coordinates) which gives a correlation value between 0 and 1.
+    It is a convenience wrapper for `estimate_model_spatial_correlation` to work on either Raster or array and compute
+    the stable mask.
+
+    If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
+
+    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as elevation differences on stable terrain)
+    :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
+        a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
+        spherical model "Sph", "Spherical" or skgstat.models.spherical).
+    :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param unstable_mask: Vector shapefile of unstable terrain (if dvalues is Raster), or boolean array of same shape as dvalues
+    :param errors: Error values to account for heteroscedasticity (ignored if None).
+    :param estimator: Estimator for the empirical variogram; default to Dowd's variogram (see skgstat.Variogram for
+        the list of available estimators).
+    :param gsd: Ground sampling distance
+    :param coords: Coordinates
+    :param subsample: Number of samples to randomly draw from the values
+    :param subsample_method: Spatial subsampling method
+    :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
+    :param n_jobs: Number of processing cores
+    :param verbose: Print statements during processing
+    :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill lower, sill upper).
+    :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
+    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
+
+    :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
+    """
+
+    # Check inputs
+    if not isinstance(dvalues, (Raster, np.ndarray)):
+        raise ValueError('The dvalues must be a Raster or NumPy array.')
+    if stable_mask is not None and not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
+    if unstable_mask is not None and not isinstance(unstable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
+
+    # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
+    if not isinstance(dvalues, Raster) and isinstance(stable_mask, (Vector, gpd.GeoDataFrame)):
+        raise ValueError(
+            'The stable mask can only passed as a Vector or GeoDataFrame if the input dvalues is a Raster.')
+
+    # Get array if input is a Raster
+    if isinstance(dvalues, Raster):
+        dvalues_arr = get_array_and_mask(dvalues)[0]
+        gsd = dvalues.res[0]
+    else:
+        dvalues_arr = dvalues
+
+    # If the stable mask is not an array, create it
+    if stable_mask is None:
+        stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(stable_mask, np.ndarray):
+
+        # If the stable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(stable_mask, gpd.GeoDataFrame):
+            stable_vector = Vector(stable_mask)
+        else:
+            stable_vector = stable_mask
+
+        # Create the mask
+        stable_mask_arr = stable_vector.create_mask(dvalues)
+    # If the mask is already an array, just pass it
+    else:
+        stable_mask_arr = stable_mask
+
+    # If the unstable mask is not an array, create it
+    if unstable_mask is None:
+        unstable_mask_arr = np.zeros(np.shape(dvalues_arr), dtype=bool)
+    elif not isinstance(unstable_mask, np.ndarray):
+
+        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(unstable_mask, gpd.GeoDataFrame):
+            unstable_vector = Vector(unstable_mask)
+        else:
+            unstable_vector = unstable_mask
+
+        # Create the mask
+        unstable_mask_arr = unstable_vector.create_mask(dvalues)
+    # If the mask is already an array, just pass it
+    else:
+        unstable_mask_arr = unstable_mask
+
+    stable_mask_arr = np.logical_and(stable_mask_arr, ~unstable_mask_arr).squeeze()
+
+    # Need to preserve the shape, so setting as NaNs all points not on stable terrain
+    dvalues_stable_arr = dvalues_arr.copy()
+    dvalues_stable_arr[~stable_mask_arr] = np.nan
+
+    # Perform standardization if error array is provided
+    if errors is not None:
+        if isinstance(errors, Raster):
+            errors_arr = get_array_and_mask(errors)[0]
+        else:
+            errors_arr = errors
+
+        # Standardize
+        dvalues_stable_arr /= errors_arr
+
+    # Estimate and model spatial correlations
+    empirical_variogram, params_variogram_model, spatial_correlation_func = estimate_model_spatial_correlation(
+        dvalues=dvalues_stable_arr, list_models=list_models, estimator=estimator, gsd=gsd, coords=coords,
+        subsample=subsample, subsample_method=subsample_method, n_variograms=n_variograms, n_jobs=n_jobs,
+        verbose=verbose, random_state=random_state, bounds=bounds, p0=p0, **kwargs)
+
+    return empirical_variogram, params_variogram_model, spatial_correlation_func
+
 
 def _check_validity_params_variogram(params_variogram_model: pd.DataFrame):
     """Check the validity of the modelled variogram parameters dataframe (mostly in the case it is passed manually)."""
@@ -1259,17 +1666,18 @@ def neff_circular_approx_numerical(area: float, params_variogram_model: pd.DataF
     return neff
 
 
-def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, vectorized=True) -> float:
+def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, vectorized: bool = True) -> float:
     """
      Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
      the provided variogram parameters. This method works for any shape of area.
 
-    :param coords: Center coordinates with size (N,) for each spatial support (typically, pixel)
+    :param coords: Center coordinates with size (N,2) for each spatial support (typically, pixel)
     :param errors: Errors at the coordinates with size (N,) for each spatial support (typically, pixel)
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
         sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
         [None, 0.2]).
+    :param vectorized: Perform the vectorized calculation (used for testing).
 
     :return: Number of effective samples
     """
@@ -1318,13 +1726,13 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: p
     return neff
 
 def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, subsample: int = 1000,
-                         vectorized=True, random_state: None | np.random.RandomState | np.random.Generator | int = None) -> float:
+                         vectorized: bool = True, random_state: None | np.random.RandomState | np.random.Generator | int = None) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
     based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
     See Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922, in particular Supplementary Fig. S16.
 
-    :param coords: Center coordinates with size (N,) for each spatial support (typically, pixel)
+    :param coords: Center coordinates with size (N,2) for each spatial support (typically, pixel)
     :param errors: Errors at the coordinates with size (N,) for each spatial support (typically, pixel)
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
         (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
@@ -1355,8 +1763,11 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogra
     n = len(coords)
     pds = pdist(coords)
 
+    # At maximum, the number of subsamples has to be equal to number of points
+    subsample = min(subsample, n)
+
     # Get random subset of points for one of the sums
-    rand_points = rnd.choice(n, size=min(subsample, n), replace=False)
+    rand_points = rnd.choice(n, size=subsample, replace=False)
 
     # Now we compute the double covariance sum
     # Either using for-loop-version
@@ -1393,6 +1804,142 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogra
     neff = np.mean(errors)**2 / squared_se_dsc
 
     return neff
+
+def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, params_variogram_model: pd.DataFrame,
+                             rasterize_resolution: RasterType | float = None, **kwargs) -> float:
+    """
+    Compute the number of effective samples, i.e. the number of uncorrelated samples, in an area accounting for spatial
+    correlations described by a sum of variogram models.
+
+    This function wraps two methods:
+
+    - A discretized integration method that provides the exact estimate for any shape of area using a double sum of
+        covariance. By default, this method is approximated using Equation 18 of Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922
+        to decrease computing times while preserving a good approximation.
+
+    - A continuous integration method that provides a conservative (i.e., slightly overestimated) value for a disk
+        area shape, based on a generalization of the approach of Rolstad et al. (2009), http://dx.doi.org/10.3189/002214309789470950.
+
+    By default, if a numeric value is passed for an area, the continuous method is used considering a disk shape. If a
+    vector is passed, the discretized method is computed on that shape. If the discretized method is used, a resolution
+    for rasterization is generally expected, otherwise is arbitrarily chosen as a fifth of the shortest correlation
+    range to ensure a sufficiently fine grid for propagation of the shortest range.
+
+    :param area: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
+        assume a circular shape), or as a vector (shapefile) of the area
+    :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
+        [None, 0.2]).
+    :param rasterize_resolution: Resolution to rasterize the area if passed as a vector. Can be a float value or a Raster.
+    :param kwargs: Keyword argument to pass to the `neff_hugonnet_approx` function.
+
+    :return: Number of effective samples
+    """
+
+    # Check input for variogram parameters
+    _check_validity_params_variogram(params_variogram_model=params_variogram_model)
+
+    # If area is numeric, run the continuous circular approximation
+    if isinstance(area, (float, int, np.floating, np.integer)):
+        neff = neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
+
+    # Otherwise, run the discrete sum of covariance
+    elif isinstance(area, (Vector, gpd.GeoDataFrame)):
+
+        # If the input is a geopandas dataframe, put into a Vector object
+        if isinstance(area, gpd.GeoDataFrame):
+            V = Vector(area)
+        else:
+            V = area
+
+        if rasterize_resolution is None:
+            rasterize_resolution =  np.min(params_variogram_model['range'].values)/5.
+            warnings.warn('Resolution for vector rasterization is not defined and thus set at 20% of the shortest '
+                'correlation range, which might result in large memory usage.')
+
+        # Rasterize with numeric resolution or Raster metadata
+        if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
+
+            # We only need relative mask and coordinates, not absolute
+            mask = V.create_mask(xres=rasterize_resolution)
+            x = rasterize_resolution * np.arange(0, mask.shape[0])
+            y = rasterize_resolution * np.arange(0, mask.shape[1])
+            coords = np.array(np.meshgrid(y, x))
+            coords_on_mask = coords[:, mask].T
+
+        elif isinstance(rasterize_resolution, Raster):
+
+            # With a Raster we can get the coordinates directly
+            mask = V.create_mask(rst=rasterize_resolution).squeeze()
+            coords = np.array(rasterize_resolution.coords())
+            coords_on_mask = coords[:, mask].T
+
+        else:
+            raise ValueError('The rasterize resolution must be a float, integer or Raster subclass.')
+
+        # Here we don't care about heteroscedasticity, so all errors are standardized to one
+        errors_on_mask = np.ones(len(coords_on_mask))
+
+        neff = neff_hugonnet_approx(coords=coords_on_mask, errors=errors_on_mask,
+                                    params_variogram_model=params_variogram_model, **kwargs)
+
+    else:
+        raise ValueError('Area must be a float, integer, Vector subclass or geopandas dataframe.')
+
+    return neff
+
+def spatial_error_propagation(areas: list[float | VectorType | gpd.GeoDataFrame],
+                              errors: RasterType,
+                              params_variogram_model: pd.Dataframe,
+                              **kwargs) -> list[float]:
+    """
+    Spatial propagation of elevation errors to an area using the estimated heteroscedasticity and spatial correlations.
+
+    This function is based on the `number_effective_samples` function to estimate uncorrelated samples. If given a
+    vector area, it uses Equation 18 of Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922. If given
+    a numeric area, it uses a generalization of Rolstad et al. (2009), http://dx.doi.org/10.3189/002214309789470950.
+
+    The standard error SE (1-sigma) is then computed as SE = mean(SD) / Neff, where mean(SD) is the mean of errors in
+    the area of interest which accounts for heteroscedasticity, and Neff is the number of effective samples.
+
+    :param areas: Area of interest either as a numeric value of surface in the same unit as the variogram ranges (will
+        assume a circular shape), or as a vector (shapefile) of the area.
+    :param errors: Errors from heteroscedasticity estimation and modelling, as an array or Raster.
+    :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the model types
+        (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for the partial
+        sills (e.g., [0.8, 0.2]) and "smooth" for the smoothness parameter if it exists for this model (e.g.,
+        [None, 0.2]).
+    :param kwargs: Keyword argument to pass to the `neff_hugonnet_approx` function.
+
+    :return: List of standard errors (1-sigma) for the input areas
+    """
+
+    standard_errors = []
+    errors_arr = get_array_and_mask(errors)[0]
+    for area in areas:
+        # We estimate the number of effective samples in the area
+        neff = number_effective_samples(area=area, params_variogram_model=params_variogram_model,
+                                        rasterize_resolution=errors, **kwargs)
+
+        # We compute the average error in this area
+        # If the area is only a value, take the average error over the entire Raster
+        if isinstance(area, float):
+            average_spread = np.nanmean(errors_arr)
+        else:
+            if isinstance(area, gpd.GeoDataFrame):
+                area_vector = Vector(area)
+            else:
+                area_vector = area
+            area_mask = area_vector.create_mask(errors).squeeze()
+
+            average_spread = np.nanmean(errors_arr[area_mask])
+
+        # Compute the standard error from those two values
+        standard_error = average_spread / np.sqrt(neff)
+        standard_errors.append(standard_error)
+
+    return standard_errors
 
 
 def _std_err_finite(std: float, neff_tot: float, neff: float) -> float:
@@ -1571,7 +2118,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     return df_all
 
 
-def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float], float]]] = None,
+def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.ndarray], np.ndarray]]] = None,
                    list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None,
                    xscale='linear', xscale_range_split: Optional[list] = None,
                    xlabel = None, ylabel = None, xlim = None, ylim = None):
@@ -1722,12 +2269,15 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[float
         if ylim is not None:
             ax1.set_ylim(ylim)
         else:
-            ax1.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
+            if np.all(np.isnan(df.err_exp)):
+                ax1.set_ylim((0, 1.05*np.nanmax(df.exp)))
+            else:
+                ax1.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
 
         if k == int(nb_subpanels/2):
             ax1.set_xlabel(xlabel)
         if k == nb_subpanels - 1:
-            ax1.legend(loc='best')
+            ax1.legend(loc='lower right')
         if k == 0:
             ax1.set_ylabel(ylabel)
         else:

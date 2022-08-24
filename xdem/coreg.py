@@ -869,6 +869,7 @@ class BiasCorr(Coreg):
 class ICP(Coreg):
     """
     Iterative Closest Point DEM coregistration.
+    Based on 3D registration of Besl and McKay (1992), https://doi.org/10.1117/12.57955.
 
     Estimates a rigid transform (rotation + translation) between two DEMs.
 
@@ -969,8 +970,9 @@ class Deramp(Coreg):
 
         :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
         :param subsample: Factor for subsampling the input raster for speed-up.
-        If <= 1, will be considered a fraction of valid pixels to extract.
-        If > 1 will be considered the number of pixels to extract.
+            If <= 1, will be considered a fraction of valid pixels to extract.
+            If > 1 will be considered the number of pixels to extract.
+
         """
         self.degree = degree
         self.subsample = subsample
