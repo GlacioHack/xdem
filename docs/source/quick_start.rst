@@ -38,7 +38,7 @@ Load DEMs and calculate elevation difference
   # Save to file
   ddem.save("temp.tif")
 
-A detailed example on how to load raster data, reproject it to a different grid/projection, run simple arithmetic operations such as subtraction, plotting the data and saving to file can be found in the example gallery :ref:`sphx_glr_auto_examples_plot_dem_subtraction.py`.
+A detailed example on how to load raster data, reproject it to a different grid/projection, run simple arithmetic operations such as subtraction, plotting the data and saving to file can be found in the example gallery :ref:`sphx_glr_basic_examples_plot_dem_subtraction.py`.
 
 ..
    .. raw:: html

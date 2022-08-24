@@ -14,7 +14,7 @@ import geoutils as gu
 
 # %%
 # We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration_nuthkaab` as shown in
-# the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example. We also load the glacier outlines here corresponding to
+# the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example. We also load the glacier outlines here corresponding to
 # moving terrain.
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
@@ -59,4 +59,4 @@ xdem.spatialstats.plot_variogram(df=df_empirical_variogram,
 # This pipeline will not always work optimally with default parameters: variogram sampling is more robust with a lot of
 # samples but takes long computing times, and the fitting might require multiple tries for forms and possibly bounds
 # and first guesses to help the least-squares optimization. **To learn how to tune more parameters and use the
-# subfunctions, see the gallery example:** :ref:`sphx_glr_auto_examples_plot_variogram_estimation_modelling.py`!
+# subfunctions, see the gallery example:** :ref:`sphx_glr_advanced_examples_plot_variogram_estimation_modelling.py`!
