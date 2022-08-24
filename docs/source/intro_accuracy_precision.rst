@@ -22,20 +22,33 @@ calculations consistent, reproducible, and easy.
 Accuracy and precision
 ----------------------
 
-Both `accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precision>`_ are important factors to account
-for when analyzing DEMs:
+`Accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precision>`_ describe random and systematic errors,
+respectively.
 
-- the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
-- the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
-
-*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, following
-`ISO 5725-1 <https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en>`_. Here, we used accuracy for systematic errors
-as, to our knowledge, it is more common in remote sensing applications.*
+*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, as defined
+in* `ISO 5725-1 <https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en>`_ *. Here, we used accuracy for systematic
+errors as, to our knowledge, it is a more commonly used terminology in remote sensing applications.*
 
 .. figure:: imgs/precision_accuracy.png
     :width: 80%
 
     Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-and-accuracy-glacial-geology/>`_, accessed 29.06.21.
+
+
+For DEMs, we thus have:
+
+- **DEM accuracy** (systematic error) describes how close a DEM is to the true location of measured elevations on the Earth's surface,
+- **DEM precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
+
+The spatial structure of DEMs complexifies the notion of accuracy and precision, however. Spatially structured
+systematic errors are often related to the gridded nature of DEMs, creating **affine biases** while other, **specific
+biases** exist at the pixel scale. For random errors, a variability in error magnitude or **heteroscedasticity** exists
+across the DEM, while spatially structured patterns of errors are linked to **spatial correlations**.
+
+.. figure:: https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
+    :width: 100%
+
+    Source: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 
 Absolute or relative accuracy
 -----------------------------
@@ -50,10 +63,6 @@ TODO: Add another little schematic!
 Optimizing DEM absolute accuracy
 --------------------------------
 
-.. figure:: https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
-    :width: 100%
-
-    Source: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 
 
 Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM

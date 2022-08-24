@@ -517,7 +517,7 @@ class TestNeffEstimation:
     def test_spatial_error_propagation(self):
         """Test that the spatial error propagation wrapper function runs properly"""
 
-        ref, diff, vector_glacier = load_ref_and_diff()
+        ref, diff, _ , vector_glacier = load_ref_and_diff()
 
         # Get the error map and variogram model with standardization
         slope, maxc = xdem.terrain.get_terrain_attribute(ref, attribute=['slope', 'maximum_curvature'])

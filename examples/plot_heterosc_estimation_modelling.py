@@ -177,9 +177,10 @@ xdem.spatialstats.plot_2d_binning(df, 'slope', 'maxc', 'nmad', 'Slope (degrees)'
 # We also identify that, steep slopes (> 40°) only correspond to high curvature, while the opposite is not true, hence
 # the importance of mapping the variability in two dimensions.
 #
-# Now we need to account for the non-stationarities identified. For this, the simplest approach is a numerical
-# approximation i.e. a piecewise linear interpolation/extrapolation based on the binning results.
-# To ensure that only robust statistic values are used in the interpolation, we set a ``min_count`` value at 30 samples.
+# Now we need to account for the heteroscedasticity identified. For this, the simplest approach is a numerical
+# approximation i.e. a piecewise linear interpolation/extrapolation based on the binning results available through
+# the function :func:`xdem.spatialstats.interp_nd_binning`. To ensure that only robust statistic values are used
+# in the interpolation, we set a ``min_count`` value at 30 samples.
 
 unscaled_dh_err_fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'maxc'],
                                                            statistic='nmad', min_count=30)
@@ -197,7 +198,7 @@ print('The spread of elevation difference is {:.2f} '
 
 # %%
 # Thus, we rescale the function to exactly match the spread on stable terrain using the
-# ``xdem.spatialstats.two_step_standardization`` function, and get our final error function.
+# :func:`xdem.spatialstats.two_step_standardization` function, and get our final error function.
 
 zscores, dh_err_fun = xdem.spatialstats.two_step_standardization(dh_arr, list_var=[slope_arr, maxc_arr],
                                                            unscaled_error_fun=unscaled_dh_err_fun)
@@ -209,23 +210,6 @@ for s, c in [(0., 0.1), (50., 0.1), (0., 20.), (50., 20.)]:
 # %%
 # This function can be used to estimate the spatial distribution of the elevation error on the extent of our DEMs:
 maxc = np.maximum(np.abs(profc), np.abs(planc))
-errors = dh_err_fun((slope, maxc))
+errors = dh.copy(new_array= dh_err_fun((slope, maxc)))
 
-plt.figure(figsize=(8, 5))
-plt_extent = [
-    ref_dem.bounds.left,
-    ref_dem.bounds.right,
-    ref_dem.bounds.bottom,
-    ref_dem.bounds.top,
-]
-plt.imshow(errors.squeeze(), cmap="Reds", vmin=2, vmax=8, extent=plt_extent)
-cbar = plt.colorbar()
-cbar.set_label('Elevation error ($1\sigma$, m)')
-plt.show()
-
-# %%
-# These 3 steps can be done in one go using the ``xdem.spatialstats.estimate_model_heteroscedasticity`` function, which
-# wraps those three funtions, expecting ``np.ndarray`` inputs subset to stable terrain.
-
-df, dh_err_fun = xdem.spatialstats.estimate_model_heteroscedasticity(dvalues=dh_arr, list_var=[slope_arr, maxc_arr],
-                                                                     list_var_names=['slope', 'maxc'])
+errors.show(cmap='Reds', vmin=2, vmax=8, cb_title='Elevation error ($1\sigma$, m)')

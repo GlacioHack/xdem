@@ -33,12 +33,12 @@ mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
 # We exclude values on glacier terrain in order to isolate stable terrain, our proxy for elevation errors.
-dh.data[mask_glacier] = np.nan
+dh.set_mask(mask_glacier)
 
 # %%
 # We estimate the average per-pixel elevation error on stable terrain, using both the standard deviation
 # and normalized median absolute deviation. For this example, we do not account for elevation heteroscedasticity.
-print('STD: {:.2f} meters.'.format(np.nanstd(dh.data)))
+print('STD: {:.2f} meters.'.format(np.ma.std(dh.data)))
 print('NMAD: {:.2f} meters.'.format(xdem.spatialstats.nmad(dh.data)))
 
 # %%
