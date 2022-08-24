@@ -12,7 +12,7 @@ import numpy as np
 import geoutils as gu
 import xdem
 
-EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples"))
+EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples/data"))
 # Absolute filepaths to the example files.
 FILEPATHS_DATA = {
     "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","data","DEM_2009_ref.tif"),
