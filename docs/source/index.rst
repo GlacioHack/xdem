@@ -40,7 +40,8 @@ xDEM aims at simplifying the analysis of digital elevation models (DEMs). This m
    :maxdepth: 2
    :caption: Gallery of examples
 
-   auto_examples/index.rst
+   basic_examples/index.rst
+   advanced_examples/index.rst
 
 .. toctree::
    :maxdepth: 2
