@@ -1,4 +1,5 @@
 """Functions to test the example data."""
+from __future__ import annotations
 
 import geoutils as gu
 import geoutils.spatial_tools
