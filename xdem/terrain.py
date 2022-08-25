@@ -18,16 +18,15 @@ except ImportError:
     _has_rd = False
 
 
-def _rio_to_rda(ds: rio.DatasetReader) -> rd.rdarray:
+def _raster_to_rda(ds: gu.Raster) -> rd.rdarray:
     """
-    Get georeferenced richDEM array from rasterio dataset
+    Get georeferenced richDEM array from geoutils.Raster
     :param ds: DEM
     :return: DEM
     """
-    arr = ds.read(1)
-    rda = rd.rdarray(arr, no_data=ds.get_nodatavals()[0])
-    rda.geotransform = ds.get_transform()
-    rda.projection = ds.get_gcps()
+    arr = ds.data.filled(ds.nodata).squeeze()
+    rda = rd.rdarray(arr, no_data=ds.nodata)
+    rda.geotransform = ds.transform.to_gdal()
 
     return rda
 
@@ -40,7 +39,7 @@ def _get_terrainattr_richdem(ds: rio.DatasetReader, attribute='slope_radians') -
     :param attribute: RichDEM terrain attribute
     :return:
     """
-    rda = _rio_to_rda(ds)
+    rda = _raster_to_rda(ds)
     terrattr = rd.TerrainAttribute(rda, attrib=attribute)
 
     return np.array(terrattr)
@@ -768,10 +767,7 @@ def get_terrain_attribute(
         for attr in attributes_using_richdem:
             attributes_requiring_surface_fit.remove(attr)
 
-        if isinstance(dem, gu.Raster):
-            # Prepare rasterio.Dataset to pass to RichDEM
-            ds = dem.ds
-        else:
+        if not isinstance(dem, gu.Raster):
             # Here, maybe we could pass the geotransform based on the resolution, and add a "default" projection as
             # this is mandated but likely not used by the rdarray format of RichDEM...
             # For now, not supported
@@ -842,7 +838,7 @@ def get_terrain_attribute(
     if make_slope:
 
         if use_richdem:
-            terrain_attributes["slope"] = _get_terrainattr_richdem(ds, attribute="slope_radians")
+            terrain_attributes["slope"] = _get_terrainattr_richdem(dem, attribute="slope_radians")
 
         else:
             if slope_method == "Horn":
@@ -863,10 +859,10 @@ def get_terrain_attribute(
 
         if use_richdem:
             # The aspect of RichDEM is returned in degrees, we convert to radians to match the others
-            terrain_attributes["aspect"] = np.deg2rad(_get_terrainattr_richdem(ds, attribute="aspect"))
+            terrain_attributes["aspect"] = np.deg2rad(_get_terrainattr_richdem(dem, attribute="aspect"))
             # For flat slopes, RichDEM returns a 90° aspect by default, while GDAL return a 180° aspect
             # We stay consistent with GDAL
-            slope_tmp = _get_terrainattr_richdem(ds, attribute="slope_radians")
+            slope_tmp = _get_terrainattr_richdem(dem, attribute="slope_radians")
             terrain_attributes["aspect"][slope_tmp == 0] = np.pi
 
         else:
@@ -914,7 +910,7 @@ def get_terrain_attribute(
     if make_curvature:
 
         if use_richdem:
-            terrain_attributes["curvature"] = _get_terrainattr_richdem(ds, attribute="curvature")
+            terrain_attributes["curvature"] = _get_terrainattr_richdem(dem, attribute="curvature")
 
         else:
             # Curvature is the second derivative of the surface fit equation.
@@ -927,7 +923,7 @@ def get_terrain_attribute(
     if make_planform_curvature:
 
         if use_richdem:
-            terrain_attributes["planform_curvature"] = _get_terrainattr_richdem(ds, attribute="planform_curvature")
+            terrain_attributes["planform_curvature"] = _get_terrainattr_richdem(dem, attribute="planform_curvature")
 
         else:
             # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
@@ -953,7 +949,7 @@ def get_terrain_attribute(
     if make_profile_curvature:
 
         if use_richdem:
-            terrain_attributes["profile_curvature"] = _get_terrainattr_richdem(ds, attribute="profile_curvature")
+            terrain_attributes["profile_curvature"] = _get_terrainattr_richdem(dem, attribute="profile_curvature")
 
         else:
             # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
