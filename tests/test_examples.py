@@ -41,7 +41,7 @@ class TestExamples:
     @pytest.mark.parametrize('rst_and_truenodata',
                              [(ref_dem, 0),
                               (tba_dem, 0),
-                              (ddem, 0)])
+                              (ddem, 2316)])
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]):
         """Now that the data arrays have always the same number of not finite values"""
 
