@@ -33,6 +33,5 @@ dependencies:
   - sphinx-gallery
 
   - pip:
-    - geoutils==0.0.8
-#    - git+https://github.com/GlacioHack/GeoUtils.git
+    - git+https://github.com/GlacioHack/GeoUtils.git
 
