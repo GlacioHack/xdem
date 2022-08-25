@@ -18,28 +18,28 @@ except ImportError:
     _has_rd = False
 
 
-def _raster_to_rda(ds: gu.Raster) -> rd.rdarray:
+def _raster_to_rda(rst: RasterType) -> rd.rdarray:
     """
     Get georeferenced richDEM array from geoutils.Raster
-    :param ds: DEM
+    :param rst: DEM as raster
     :return: DEM
     """
-    arr = ds.data.filled(ds.nodata).squeeze()
-    rda = rd.rdarray(arr, no_data=ds.nodata)
-    rda.geotransform = ds.transform.to_gdal()
+    arr = rst.data.filled(rst.nodata).squeeze()
+    rda = rd.rdarray(arr, no_data=rst.nodata)
+    rda.geotransform = rst.transform.to_gdal()
 
     return rda
 
 
-def _get_terrainattr_richdem(ds: rio.DatasetReader, attribute='slope_radians') -> np.ndarray:
+def _get_terrainattr_richdem(rst: RasterType, attribute='slope_radians') -> np.ndarray:
     """
     Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
     "profile_curvature", "planform_curvature", "curvature" and others (see RichDEM documentation).
-    :param ds: DEM
+    :param rst: DEM as raster
     :param attribute: RichDEM terrain attribute
     :return:
     """
-    rda = _raster_to_rda(ds)
+    rda = _raster_to_rda(rst)
     terrattr = rd.TerrainAttribute(rda, attrib=attribute)
 
     return np.array(terrattr)
