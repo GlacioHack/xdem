@@ -285,7 +285,8 @@ def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
 def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                       bounds_amp_freq_phase: Optional[list[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
                       cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000, hop_length : Optional[float] = None,
-                      random_state: None | np.random.RandomState | np.random.Generator | int = None, verbose: bool = False) -> tuple[np.ndarray,int]:
+                      random_state: None | np.random.RandomState | np.random.Generator | int = None, verbose: bool = False,
+                      **kwargs) -> tuple[np.ndarray,int]:
     """
     Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
@@ -303,9 +304,21 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
     If > 1 will be considered the number of pixels to extract.
     :param random_state: random seed for testing purposes
     :param verbose: if text should be printed
+    :param kwargs: Keyword arguments to pass to scipy.optimize.basinhopping
 
-    :returns coefs, degree: polynomial coefficients and degree for the best-fit polynomial
+    :returns coefs, degree: sinusoid coefficients (amplitude, frequency, phase) x N, Number N of summed sinusoids
     """
+
+    # Check if there is a number of iterations to stop the run if the global minimum candidate remains the same.
+    if 'niter_success' not in kwargs.keys():
+        # Check if there is a number of basin-hopping iterations passed down to the function.
+        if 'niter' not in kwargs.keys():
+            niter_success = 40
+        else:
+            niter_success = min(40, kwargs.get('niter'))
+
+        kwargs.update({'niter_success': niter_success})
+
 
     def wrapper_costfun_sumofsin(p, x, y):
         return _costfun_sumofsin(p, x, y, cost_func=cost_func)
@@ -364,7 +377,8 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
         init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B",
                          bounds=scipy_bounds, options={"ftol": 1E-6})
         init_results = scipy.optimize.basinhopping(wrapper_costfun_sumofsin, p0, disp=verbose,
-                                                   T=hop_length, minimizer_kwargs=init_args, seed=random_state)
+                                                   T=hop_length, minimizer_kwargs=init_args, seed=random_state,
+                                                   **kwargs)
         init_results = init_results.lowest_optimization_result
 
         # Subsample the final raster
@@ -378,8 +392,8 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                                 bounds=scipy_bounds,
                                 options={"ftol": 1E-6})
         myresults = scipy.optimize.basinhopping(wrapper_costfun_sumofsin, init_results.x, disp=verbose,
-                                                T=5 * hop_length, niter_success=40,
-                                                minimizer_kwargs=minimizer_kwargs, seed=random_state)
+                                                T=5 * hop_length, minimizer_kwargs=minimizer_kwargs, seed=random_state,
+                                                **kwargs)
         myresults = myresults.lowest_optimization_result
         # Write results for this number of frequency
         costs[nb_freq-1] = wrapper_costfun_sumofsin(myresults.x,x,y)
