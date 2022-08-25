@@ -96,17 +96,17 @@ class TestRobustFitting:
         true_coefs = np.array([(5, 1, np.pi),(3, 0.3, 0)]).flatten()
         y = xdem.fit._sumofsinval(x, params=true_coefs)
 
-        # Check that the function runs
-        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42)
+        # Check that the function runs (we passed a small niter to reduce the computing time of the test)
+        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, niter=25)
 
         # Check that the estimated sum of sinusoid correspond to the input
-        for i in range(2):
-            assert coefs[3*i] == pytest.approx(true_coefs[3*i], abs=0.02)
+        for i in range(6):
+            assert coefs[i] == pytest.approx(true_coefs[i], abs=0.02)
 
         # Check that using custom arguments does not trigger an error
         bounds = [(3,7),(0.1,3),(0,2*np.pi),(1,7),(0.1,1),(0,2*np.pi),(0,1),(0.1,1),(0,2*np.pi)]
         coefs, deg = xdem.fit.robust_sumsin_fit(x, y, bounds_amp_freq_phase=bounds, nb_frequency_max=2,
-                                                          hop_length=0.01, random_state=42)
+                                                          hop_length=0.01, random_state=42, niter=1)
 
     def test_robust_simsin_fit_noise_and_outliers(self):
 
@@ -126,7 +126,7 @@ class TestRobustFitting:
 
         # Define first guess for bounds and run
         bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
-        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, bounds_amp_freq_phase=bounds)
+        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, bounds_amp_freq_phase=bounds, niter=5)
 
         # Should be less precise, but still on point
         # We need to re-order output coefficient to match input
