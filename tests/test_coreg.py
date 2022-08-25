@@ -566,9 +566,11 @@ class TestCoregClass:
         dem2_a = biascorr_a.apply(dem2.data, dem2.transform)
 
         # Validate that the return formats were the expected ones, and that they are equal.
+        # Issue - dem2_a does not have the same shape, the first dimension is being squeezed
+        # TODO - Fix coreg.apply?
         assert isinstance(dem2_r, xdem.DEM)
         assert isinstance(dem2_a, np.ma.masked_array)
-        assert np.array_equal(dem2_r, dem2_r)
+        assert gu.misc.array_equal(dem2_r.data.squeeze(), dem2_a, equal_nan=True)
 
         # If apply on a masked_array was given without a transform, it should fail.
         with pytest.raises(ValueError, match="'transform' must be given"):
