@@ -37,7 +37,7 @@ class TestExamples:
         np.random.seed(42)
         values = np.random.choice(rst.data.data.flatten(), size=5, replace=False)
 
-        assert np.allclose(values, truevals)
+        assert np.allclose(values, truevals, atol=0.0001)
 
     @pytest.mark.parametrize('rst_and_truenodata',
                              [(ref_dem, 0),
