@@ -189,6 +189,7 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
         return err
 
     # Estimate the a, b, and c parameters with least square minimisation
+    np.random.seed(seed=42)
     plsq = scipy.optimize.leastsq(func=residuals, x0=initial_guess, args=(y_medians, slice_bounds), full_output=1)
 
     a_parameter, b_parameter, c_parameter = plsq[0]
