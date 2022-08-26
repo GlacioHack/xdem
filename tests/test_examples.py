@@ -28,7 +28,8 @@ class TestExamples:
     @pytest.mark.parametrize('rst_and_truevals',
         [(ref_dem, np.array([868.6489, 623.42194, 180.57921, 267.30765, 601.67615], dtype=np.float32)),
         (tba_dem, np.array([875.2358, 625.0544, 182.9936, 272.6586, 606.2897], dtype=np.float32)),
-        (ddem, np.array([-0.02423096, -0.71899414, 0.14257812, 1.1018677, -5.9209595], dtype=np.float32))])
+        (ddem, np.array([-2.423095703125000000e-02, -7.189941406250000000e-01, 1.425781250000000000e-01,
+                         1.101867675781250000e+00, -5.920959472656250000e+00], dtype=np.float32))])
     def test_array_content(self, rst_and_truevals: tuple[Raster, np.ndarray]):
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
@@ -37,7 +38,7 @@ class TestExamples:
         np.random.seed(42)
         values = np.random.choice(rst.data.data.flatten(), size=5, replace=False)
 
-        assert np.allclose(values, truevals, atol=0.0001)
+        assert np.array_equal(values, truevals)
 
     @pytest.mark.parametrize('rst_and_truenodata',
                              [(ref_dem, 0),
