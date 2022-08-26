@@ -420,7 +420,8 @@ class Coreg:
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False) -> CoregType:
+            verbose: bool = False,
+            random_state: None | np.random.RandomState | np.random.Generator | int = None) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -431,6 +432,7 @@ class Coreg:
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
         """
 
         if weights is not None:
@@ -577,20 +579,18 @@ class Coreg:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Calculate final mask
-        final_mask = dem_mask + np.isnan(applied_dem)
+        final_mask = np.logical_or(dem_mask, np.isnan(applied_dem))
 
         # If the DEM was a masked_array, copy the mask to the new DEM
-        if hasattr(dem, "mask"):
-            applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
-        # If the DEM was a Raster with a mask, copy the mask to the new DEM
-        elif hasattr(dem, "data") and hasattr(dem.data, "mask"):
+        if isinstance(dem, (np.ma.masked_array)):
             applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
         else:
             applied_dem[final_mask] = np.nan
 
         # If the input was a Raster, return a Raster as well.
         if isinstance(dem, gu.Raster):
-            return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
+            return dem.copy(new_array=applied_dem)
+            # return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
 
         return applied_dem
 

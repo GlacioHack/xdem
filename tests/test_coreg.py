@@ -199,9 +199,15 @@ class TestCoregClass:
                       transform=self.ref.transform, verbose=self.fit_params["verbose"])
 
         # Make sure that the estimated offsets are similar to what was synthesized.
-        assert abs(nuth_kaab._meta["offset_east_px"] - pixel_shift) < 0.03
-        assert abs(nuth_kaab._meta["offset_north_px"]) < 0.03
-        assert abs(nuth_kaab._meta["bias"] + bias) < 0.03
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(pixel_shift, abs=0.03)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(0, abs=0.03)
+        assert nuth_kaab._meta["bias"] == pytest.approx(-bias, 0.03)
+
+        # Check that the random states forces always the same results
+        assert nuth_kaab._meta["offset_east_px"] == 2.000192638759735
+        assert nuth_kaab._meta["offset_north_px"] == -0.0001202906750811198
+        assert nuth_kaab._meta["bias"] == -5.0
+
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
