@@ -98,6 +98,7 @@ def process_coregistered_examples(overwrite: bool =False):
     aligned_raster = nuth_kaab.apply(to_be_aligned_raster)
 
     diff = reference_raster - aligned_raster
+    diff.set_ndv(-9999)  # Test with a nodata value that is not a long float
 
     # Save it so that future calls won't need to recreate the file
     os.makedirs(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']), exist_ok=True)
