@@ -45,7 +45,7 @@ class TestExamples:
                               (tba_dem, 0),
                               (ddem, 2316)])
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]):
-        """Now that the data arrays have always the same number of not finite values"""
+        """Let's also check that the data arrays have always the same number of not finite values"""
 
         rst = rst_and_truenodata[0]
         truenodata = rst_and_truenodata[1]
