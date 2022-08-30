@@ -44,10 +44,10 @@ class TestVariogram:
 
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42)
-        assert df['exp'][15] == pytest.approx(28.453863166360293)
+            values=diff, subsample=10, random_state=42)
+        assert df['exp'][15] == pytest.approx(5.112269592285156)
         assert df['lags'][15] == pytest.approx(5120)
-        assert df['count'][15] == 85
+        assert df['count'][15] == 5
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
