@@ -229,12 +229,42 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str, Iterable[str]
     if 'nd' in df_sub.columns:
         df_sub = df_sub[df_sub.nd == len(list_var_names)]
 
+    # Function to convert IntervalIndex written to str in csv back to pd.Interval
+    # from: https://github.com/pandas-dev/pandas/issues/28210
+    def to_interval(istr: str) -> float | pd.Interval:
+        if isinstance(istr, float):
+            return np.nan
+        else:
+            c_left = istr[0] == '['
+            c_right = istr[-1] == ']'
+            closed = {(True, False): 'left',
+                      (False, True): 'right',
+                      (True, True): 'both',
+                      (False, False): 'neither'
+                      }[c_left, c_right]
+            left, right = map(float, istr[1:-1].split(','))
+            try:
+                return pd.Interval(left, right, closed)
+            except:
+                return np.nan
+
     # Compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
-        check_any_interval = [isinstance(x, pd.Interval) for x in df_sub[var].values]
-        if any(check_any_interval):
+
+        # Check if all value are numeric (NaN counts as integer), if yes leave as is
+        if all([isinstance(x, (int, float, np.integer, np.floating)) for x in df_sub[var].values]):
+            pass
+        # Check if any value is a pandas interval (NaN do not count, so using any), if yes compute the middle values
+        elif any([isinstance(x, pd.Interval) for x in df_sub[var].values]):
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
-        # Otherwise, leave as is
+        # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
+        # pd.Interval into strings)
+        elif any([isinstance(to_interval(x), pd.Interval) for x in df_sub[var].values]):
+            intervalindex_vals = [to_interval(x) for x in df_sub[var].values]
+            df_sub[var] = pd.IntervalIndex(intervalindex_vals).mid.values
+        else:
+            raise ValueError('The variable columns must be provided as numerical mid values, or pd.Interval values.')
+
 
     # Check that explanatory variables have valid binning values which coincide along the dataframe
     df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in list_var_names])]
