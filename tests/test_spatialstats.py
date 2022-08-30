@@ -43,36 +43,30 @@ class TestVariogram:
         diff = load_ref_and_diff()[1]
 
         # Check the variogram output is consistent for a random state
-        df0 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42)
-        assert df0.exp[0] == pytest.approx(31.72, 0.01)
-
-        # Same check, using arguments "samples" and "runs" for historic reason which is to check if the output value
-        # is the same since the beginning of the package
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, samples=50, random_state=42, runs=2)
-
-        # With random state, results should always be the same
-        assert df.exp[0] == pytest.approx(2.38, 0.01)
+            values=diff, subsample=50, random_state=42)
+        assert df['exp'][15] == pytest.approx(28.453863166360293)
+        assert df['lags'][15] == pytest.approx(5120)
+        assert df['count'][15] == 85
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
         # Check that all type of coordinate inputs work
         # Only the array and the ground sampling distance
-        df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50,
-            random_state=42)
+        xdem.spatialstats.sample_empirical_variogram(
+            values=diff.data, gsd=diff.res[0], subsample=10,
+            random_state=42, verbose=True)
 
         # Test multiple runs
         df2 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42, n_variograms=2)
+            values=diff, subsample=10, random_state=42, n_variograms=2)
 
         # Check that an error is estimated
         assert any(~np.isnan(df2.err_exp.values))
 
         # Test that running on several cores does not trigger any error
-        df3 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42, n_variograms=2, n_jobs=2)
+        xdem.spatialstats.sample_empirical_variogram(
+            values=diff, subsample=10, random_state=42, n_variograms=2, n_jobs=2)
 
         # Test plotting of empirical variogram by itself
         if PLOT:
@@ -87,7 +81,7 @@ class TestVariogram:
 
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42,
+            values=diff, subsample=10, random_state=42,
             subsample_method=subsample_method)
 
         assert not df.empty
@@ -109,39 +103,40 @@ class TestVariogram:
         diff = load_ref_and_diff()[1]
 
         pdist_args = {'pdist_multi_ranges':[0, diff.res[0]*5, diff.res[0]*10]}
-        cdist_args = {'ratio_subsample': 0.5, 'samples': 50, 'runs': 10}
+        cdist_args = {'ratio_subsample': 0.5, 'runs': 10}
         nonsense_args = {'thisarg': 'shouldnotexist'}
 
         # Check the function raises a warning for optional arguments incorrect to the method
         with pytest.warns(UserWarning):
             # An argument only use by cdist with a pdist method
-            df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff, subsample=50, random_state=42,
+            xdem.spatialstats.sample_empirical_variogram(
+                values=diff, subsample=10, random_state=42,
                 subsample_method='pdist_ring', **cdist_args)
 
         with pytest.warns(UserWarning):
             # Same here
-            df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff, subsample=50, random_state=42,
+            xdem.spatialstats.sample_empirical_variogram(
+                values=diff, subsample=10, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **pdist_args)
 
         with pytest.warns(UserWarning):
             # Should also raise a warning for a nonsense argument
-            df = xdem.spatialstats.sample_empirical_variogram(
-                values=diff, subsample=50, random_state=42,
+            xdem.spatialstats.sample_empirical_variogram(
+                values=diff, subsample=10, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **nonsense_args)
 
         # Check the function passes optional arguments specific to pdist methods without warning
-        df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=50, random_state=42,
+        xdem.spatialstats.sample_empirical_variogram(
+            values=diff, subsample=10, random_state=42,
             subsample_method='pdist_ring', **pdist_args)
 
         # Check the function passes optional arguments specific to cdist methods without warning
-        df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, random_state=42, subsample_method='cdist_equidistant', **cdist_args)
+        xdem.spatialstats.sample_empirical_variogram(
+            values=diff, random_state=42, subsample=10,
+            subsample_method='cdist_equidistant', **cdist_args)
 
     # N is the number of samples in an ensemble
-    @pytest.mark.parametrize('subsample', [100, 1000, 10000])
+    @pytest.mark.parametrize('subsample', [10, 100, 1000, 10000])
     @pytest.mark.parametrize('shape', [(50, 50), (100, 100), (500, 500)])
     def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int]):
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
@@ -149,34 +144,38 @@ class TestVariogram:
         # Assign an arbitrary extent
         extent = (0, 1, 0, 1)
 
+        # The number of different pairwise combinations in a single ensemble (scipy.pdist function) is N*(N-1)/2
+        # which is approximately N**2/2
+        pdist_pairwise_combinations = subsample ** 2 / 2
+
+        # Run the function
+        keyword_arguments = {'subsample': subsample, 'extent': extent, 'shape': shape, 'verbose': False}
+        runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
+
+        # There is at least 2 samples
+        assert samples > 2
+        # Can only be maximum 100 runs
+        assert runs <= 100
+
         # Get maxdist
         maxdist = np.sqrt((extent[1] - extent[0]) ** 2 + (extent[3] - extent[2]) ** 2)
         res = np.mean([(extent[1] - extent[0]) / (shape[0] - 1), (extent[3] - extent[2]) / (shape[1] - 1)])
         # Then, we compute the radius from the center ensemble with the default value of subsample ratio in the function
         # skgstat.RasterEquidistantMetricSpace
-        ratio_subsample = 0.2
-        center_radius = np.sqrt(1. / ratio_subsample * subsample / np.pi) * res
-        # Now, we can derive the number of successive disks that are going to be sampled in the grid
-        equidistant_radii = [0.]
-        increasing_rad = center_radius
-        while increasing_rad < maxdist:
-            equidistant_radii.append(increasing_rad)
-            increasing_rad *= np.sqrt(2)
-        nb_disk_samples = len(equidistant_radii)
+        center_radius = np.sqrt(1. / ratio_subsample * samples / np.pi) * res
+        nb_rings_final = int(2 * np.log(maxdist / center_radius) / np.log(2))
+        cdist_pairwise_combinations = runs * samples ** 2 * nb_rings_final
 
-        # ms = skgstat.RasterEquidistantMetricSpace(coords=np.ones(subsample), shape=shape, extent=extent, samples=)
+        # Check the number of pairwise comparisons are the same (within 50%, due to rounding as integers)
+        assert pdist_pairwise_combinations == pytest.approx(cdist_pairwise_combinations, rel=0.5, abs=10)
 
-        # The number of different pairwise combinations in a single ensemble (scipy.pdist function) is N*(N-1)/2
-        # which is approximately N**2/2
-        pdist_pairwise_combinations = subsample**2 / 2
+    def test_errors_subsample_parameter(self):
+        """Tests that an error is raised when the subsample argument is too little"""
 
-        keyword_arguments = {'subsample':subsample , 'extent':extent, 'shape': shape, 'verbose': False}
-        runs, samples = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
-        cdist_pairwise_combinations = runs*samples**2*nb_disk_samples
+        keyword_arguments = {'subsample': 3, 'extent': (0, 1, 0, 1), 'shape': (10, 10), 'verbose': False}
 
-        # Check the number of pairwise comparisons are the same (within 30%, due to rounding as integers)
-        assert cdist_pairwise_combinations == pytest.approx(pdist_pairwise_combinations, rel=0.3)
-
+        with pytest.raises(ValueError, match='The number of subsamples needs to be at least 10.'):
+            xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
 
     def test_multirange_fit_performance(self):
         """Verify that the fitting works with artificial dataset"""
@@ -526,7 +525,7 @@ class TestNeffEstimation:
         # Standardize the differences
         zscores = diff / errors
         params_variogram_model = xdem.spatialstats.infer_spatial_correlation_from_stable(
-            dvalues=zscores, list_models=['Gaussian', 'Spherical'], unstable_mask=vector_glacier, subsample=100,
+            dvalues=zscores, list_models=['Gaussian', 'Spherical'], unstable_mask=vector_glacier, subsample=200,
             random_state=42)[1]
 
         # Run the function with vector areas
@@ -756,7 +755,6 @@ class TestBinning:
         # Check if it works with nd_binning output
         ref, diff, mask = load_ref_and_diff()[0:3]
         ref_arr = gu.spatial_tools.get_array_and_mask(ref)[0]
-
         slope, aspect = xdem.terrain.get_terrain_attribute(ref_arr, resolution=ref.res, attribute=['slope', 'aspect'])
 
         df = xdem.spatialstats.nd_binning(values=diff.data.flatten(), list_var=[slope.flatten(), ref.data.flatten(), aspect.flatten()], list_var_names=['slope', 'elevation', 'aspect'])

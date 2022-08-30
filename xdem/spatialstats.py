@@ -714,52 +714,77 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs):
     Add a little calculation to partition the "subsample" argument automatically into the "run" and "samples"
     arguments of RasterEquidistantMetricSpace, to have a similar number of points than with a classic pdist method.
 
+    We compute the arguments to match a N0**2/2 number of pairwise comparison, N0 being the "subsample" input, and
+    forcing the number of rings to 10 by default. This corresponds to 10 independent rings with equal number of samples
+    compared pairwise against a central disk. We force this number of sample to be at least 2 (skgstat raises an error
+    if there is only one). Additionally, if samples permit, we compute 10 independent runs, maximum 100 to limit
+    processing times when aggregating different runs in sparse matrixes. If even more sample permit (default case), we
+    increase the number of subsamples in rings and runs simultaneously.
+
     The number of pairwise samples for a classic pdist is N0(N0-1)/2 with N0 the number of samples of the ensemble. For
     the cdist equidistant calculation it is M*N*R where N are the subsamples in the center disk, M is the number of
     samples in the rings which amounts to X*N where X is the number of rings in the grid extent, as each ring draws N
     samples. And R is the number of runs with a different random center point.
-    X is fixed by the extent and ratio_subsample parameters, and so N0**2/(2X) = N**2*R, and we want at least 30 runs
-    with 10 subsamples.
+    X is fixed by the extent and ratio_subsample parameters, and so N0**2/2 = R*X*N**2, and we want at least 10 rings
+    and, if possible, 10 runs.
+
+    !! Different variables: !! The "samples" of RasterEquidistantMetricSpace is N, while the "subsample" passed is N0.
     """
 
     # First, we extract the extent, shape and subsample values from the keyword arguments
     extent = kwargs['extent']
     shape = kwargs['shape']
     subsample = kwargs['subsample']
-    # We derive the maximum distance and resolution automatically derived in skgstat.RasterEquidistantMetricSpace
-    maxdist = np.sqrt((extent[1] - extent[0]) ** 2 + (extent[3] - extent[2]) ** 2)
-    res = np.mean([(extent[1] - extent[0]) / (shape[0] - 1), (extent[3] - extent[2]) / (shape[1] - 1)])
-    # Then, we compute the radius from the center ensemble with the default value of subsample ratio in the function
-    # skgstat.RasterEquidistantMetricSpace
-    ratio_subsample = 0.2
-    center_radius = np.sqrt(1. / ratio_subsample * subsample / np.pi) * res
-    # Now, we can derive the number of successive disks that are going to be sampled in the grid
-    equidistant_radii = [0.]
-    increasing_rad = center_radius
-    while increasing_rad < maxdist:
-        equidistant_radii.append(increasing_rad)
-        increasing_rad *= np.sqrt(2)
-    nb_disk_samples = len(equidistant_radii)
 
-    # We divide the number of samples by the number of disks
-    pairwise_comp_per_disk = np.ceil(subsample**2 / (2*nb_disk_samples))
+    # We define the number of rings to 10 in order to get a decent equidistant sampling, we'll later adjust the
+    # ratio_sampling to force that number to 10
+    if 'nb_rings' in kwargs.keys():
+        nb_rings = kwargs['nb_rings']
+    else:
+        nb_rings = 10
+    # For one run (R=1), and two samples per disk/ring (N=2), and the number of rings X=10, this requires N0 to be at
+    # least 10:
+    min_subsample = np.ceil(np.sqrt(2*nb_rings*2**2)+1)
+    if subsample < min_subsample:
+        raise ValueError('The number of subsamples needs to be at least {:.0f}.'.format(min_subsample))
 
-    # Using the equation in the function description, we compute the number of runs (minimum 30)
-    runs = int(max(np.ceil(pairwise_comp_per_disk**(1/3)), 30))
-    # Then we deduce the number of samples per disk (and per ring)
+    # The pairwise comparisons can be deduced from the number of rings: R * N**2 = N0**2/(2*X)
+    pairwise_comp_per_disk = np.ceil(subsample ** 2 / (2 * nb_rings))
+
+    # With R*N**2 = N0**2/2, and minimum 2 samples N, we compute the number of runs R forcing at least
+    # 10 runs and maximum 100
+    if pairwise_comp_per_disk < 10:
+        runs = int(pairwise_comp_per_disk/ 2**2)
+    else:
+        runs = int(min(100, 10 * np.ceil((pairwise_comp_per_disk / (2**2 * 10)) ** (1 / 3))))
+
+    # Now we can derive the number of samples N, which will always be at least 2
     subsample_per_disk_per_run = int(np.ceil(np.sqrt(pairwise_comp_per_disk/runs)))
 
-    final_pairwise_comparisons = runs*subsample_per_disk_per_run**2*nb_disk_samples
+    # Finally, we need to force the ratio_subsample to get exactly 10 rings
+
+    # We first need to derive the maximum distance and resolution the same way as in skgstat.RasterEquidistantMetricSpace
+    maxdist = np.sqrt((extent[1] - extent[0]) ** 2 + (extent[3] - extent[2]) ** 2)
+    res = np.mean([(extent[1] - extent[0]) / (shape[0] - 1), (extent[3] - extent[2]) / (shape[1] - 1)])
+
+    # Then, we derive the subsample ratio. We have:
+    # 1) radius * sqrt(2)**X = maxdist, and
+    # 2) pi * radius**2 = res**2 * N / sub_ratio
+    # From which we can deduce: sub_ratio = res**2 * N / (pi * maxdist**2 / sqrt(2)**(2X) )
+    ratio_subsample = res**2 * subsample_per_disk_per_run / (np.pi * maxdist**2 / np.sqrt(2)**(2 * nb_rings))
+
+    # And the number of total pairwise comparison
+    total_pairwise_comparison = runs*subsample_per_disk_per_run**2*nb_rings
 
     if kwargs['verbose']:
         print('Equidistant circular sampling will be performed for {} runs (random center points) with pairwise '
               'comparison between {} samples (points) of the central disk and again {} samples times {} independent '
               'rings centered on the same center point. This results in approximately {} pairwise comparisons (duplicate'
               ' pairwise points randomly selected will be removed).'.format(runs, subsample_per_disk_per_run,
-                                                                            subsample_per_disk_per_run, nb_disk_samples,
-                                                                            final_pairwise_comparisons))
+                                                                            subsample_per_disk_per_run, nb_rings,
+                                                                            total_pairwise_comparison))
 
-    return runs, subsample_per_disk_per_run
+    return runs, subsample_per_disk_per_run, ratio_subsample
 
 def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample_method: str,
                                    **kwargs) -> pd.DataFrame:
@@ -777,11 +802,12 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
 
         # We define subparameters for the equidistant technique to match the number of pairwise comparison
         # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
-        runs, samples = _choose_cdist_equidistant_sampling_parameters(**kwargs)
+        runs, samples, ratio_subsample = _choose_cdist_equidistant_sampling_parameters(**kwargs)
 
         kwargs['runs'] = runs
         # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
         kwargs['samples'] = samples
+        kwargs['ratio_subsample'] = ratio_subsample
         kwargs.pop('subsample')
 
     elif subsample_method == 'cdist_point':
@@ -862,26 +888,26 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     Sample empirical variograms with binning adaptable to multiple ranges and spatial subsampling adapted for raster data.
     Returns an empirical variogram (empirical variance, upper bound of spatial lag bin, count of pairwise samples).
 
+    If values are provided as a Raster subclass, nothing else is required.
+    If values are provided as a 2D array (M,N), a ground sampling distance is sufficient to derive the pairwise distances.
+    If values are provided as a 1D array (N), an array of coordinates (N,2) or (2,N) is expected. If the coordinates
+    do not correspond to points of a grid, a ground sampling distance is needed to correctly get the grid size.
+
     By default, the subsampling is based on RasterEquidistantMetricSpace implemented in scikit-gstat. This method
     samples more effectively large grid data by isolating pairs of spatially equidistant ensembles for distributed
     pairwise comparison. In practice, two subsamples are drawn for pairwise comparison: one from a disk of certain
     radius within the grid, and another one from rings of larger radii that increase steadily between the pixel size
     and the extent of the raster. Those disks and rings are sampled several times across the grid using random centers.
-
     See more details in Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922, in particular on
     Supplementary Fig. 13. for the subsampling scheme.
 
     The "subsample" argument determines the number of samples for each method to yield a number of pairwise comparisons
     close to that of a pdist calculation, that is N*(N-1)/2 where N is the subsample argument.
     For the cdist equidistant method, the "runs" (random centers) and "samples" (subsample of a disk/ring) are set
-    automatically to get close to N*(N-1)/2 pairwise samples. But those can be more finely adjusted by passing the
-    argument "runs", "samples" and "ratio_subsample" to kwargs. Further details can be found in the description of
-    skgstat.MetricSpace.RasterEquidistantMetricSpace.
-
-    If values are provided as a Raster subclass, nothing else is required.
-    If values are provided as a 2D array (M,N), a ground sampling distance is sufficient to derive the pairwise distances.
-    If values are provided as a 1D array (N), an array of coordinates (N,2) or (2,N) is expected. If the coordinates
-    do not correspond to points of a grid, a ground sampling distance is needed to correctly get the grid size.
+    automatically to get close to N*(N-1)/2 pairwise samples, fixing a number of rings "nb_rings" to 10. Those can be
+    more finely adjusted by passing the argument "runs", "samples" and "nb_rings" to kwargs. Further details can be
+    found in the description of skgstat.MetricSpace.RasterEquidistantMetricSpace or
+    _choose_cdist_equidistant_sampling_parameters.
 
     Spatial subsampling method argument subsample_method can be one of "cdist_equidistant", "cdist_point", "pdist_point",
     "pdist_disk" and "pdist_ring".
