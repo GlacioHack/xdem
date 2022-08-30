@@ -37,6 +37,7 @@ def load_ref_and_diff() -> tuple[Raster, Raster, np.ndarray, Vector]:
 
 
 class TestBinning:
+
     # Load data for the entire test class
     ref, diff, mask, outlines = load_ref_and_diff()
 
@@ -47,57 +48,61 @@ class TestBinning:
     def test_nd_binning(self):
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
+        # Subsampler
+        indices = gu.spatial_tools.subsample_raster(self.diff.data.ravel(), subsample=10000, return_indices=True,
+                                                     random_state=42)
+
         # 1D binning, by default will create 10 bins
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten(), list_var=[self.slope.data.flatten()],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
+                                          list_var=[self.slope.data.ravel()[indices]],
                                           list_var_names=['slope'])
 
         # Check length matches
         assert df.shape[0] == 10
         # Check bin edges match the minimum and maximum of binning variable
-        assert np.nanmin(self.slope) == np.min(pd.IntervalIndex(df.slope).left)
-        assert np.nanmax(self.slope) == np.max(pd.IntervalIndex(df.slope).right)
+        assert np.nanmin(self.slope.data.ravel()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
+        assert np.nanmax(self.slope.data.ravel()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
-        # Save for later use
-        df.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, 'df_1d_binning_slope.csv'), index=False)
+        # NMAD should go up quite a bit with slope, more than 8 m between the two extreme bins
+        assert df.nmad.values[-1] - df.nmad.values[0] > 8
 
         # 1D binning with 20 bins
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten(), list_var=[self.slope.data.flatten()],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
+                                          list_var=[self.slope.data.ravel()[indices]],
                                           list_var_names=['slope'], list_var_bins=[[20]])
         # Check length matches
         assert df.shape[0] == 20
-
-        # NMAD goes up quite a bit with slope, we can expect a 10 m measurement error difference
-        assert df.nmad.values[-1] - df.nmad.values[0] > 10
 
         # Define function for custom stat
         def percentile_80(a):
             return np.nanpercentile(a, 80)
 
         # Check the function runs with custom functions
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten(), list_var=[self.slope.data.flatten()],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
+                                          list_var=[self.slope.data.ravel()[indices]],
                                           list_var_names=['slope'], statistics=[percentile_80])
         # Check that the count is added automatically by the function when not user-defined
         assert 'count' in df.columns.values
 
         # 2D binning
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten(), list_var=[self.slope.data.flatten(),
-                                                                                     self.ref.data.flatten()],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
+                                          list_var=[self.slope.data.ravel()[indices],
+                                                    self.ref.data.ravel()[indices]],
                                           list_var_names=['slope', 'elevation'])
 
         # Dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
         assert df.shape[0] == (10 + 10 + 100)
 
-        # Save for later use
-        df.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, 'df_2d_binning_slope_elevation.csv'), index=False)
-
-        # N-D binning
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten(),
-                                          list_var=[self.slope.data.flatten(), self.ref.data.flatten(),
-                                                    self.aspect.data.flatten()],
-                                          list_var_names=['slope', 'elevation', 'aspect'])
+        # 3D binning
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
+                                          list_var=[self.slope.data.ravel()[indices],
+                                                    self.ref.data.ravel()[indices],
+                                                    self.aspect.data.ravel()[indices]],
+                                          list_var_names=['slope', 'elevation', 'aspect'],
+                                          list_var_bins=4)
 
         # Dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
-        assert df.shape[0] == (1000 + 3 * 100 + 3 * 10)
+        assert df.shape[0] == (4**3 + 3 * 4**2 + 3 * 4)
 
         # Save for later use
         df.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, 'df_3d_binning_slope_elevation_aspect.csv'), index=False)
@@ -167,8 +172,8 @@ class TestBinning:
         vec2 = np.arange(1, 4)
         vec3 = np.arange(1, 5)
         x, y, z = np.meshgrid(vec1, vec2, vec3)
-        df = pd.DataFrame({"var1": x.flatten(), "var2": y.flatten(), "var3": z.flatten(),
-                           "statistic": np.arange(len(x.flatten()))})
+        df = pd.DataFrame({"var1": x.ravel(), "var2": y.ravel(), "var3": z.ravel(),
+                           "statistic": np.arange(len(x.ravel()))})
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["var1", "var2", "var3"], statistic="statistic",
                                                   min_count=None)
         for i in vec1:
@@ -204,7 +209,7 @@ class TestBinning:
         # Check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
         # Check the nmad increases with slope
-        assert fun([40, 800]) > fun([0, 800])
+        assert fun([30, 300]) > fun([10, 300])
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000]))))
 
@@ -214,7 +219,7 @@ class TestBinning:
         # Check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000, np.pi]))
         # Check the nmad increases with slope
-        assert fun([40, 500, np.pi]) > fun([0, 500, np.pi])
+        assert fun([30, 300, np.pi]) > fun([10, 300, np.pi])
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
 
@@ -340,12 +345,9 @@ class TestVariogram:
     def test_sample_multirange_variogram_default(self):
         """Verify that the default function runs, and its basic output"""
 
-        # Load data
-        diff = load_ref_and_diff()[1]
-
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=10, random_state=42)
+            values=self.diff, subsample=10, random_state=42)
         assert df['exp'][15] == pytest.approx(5.112269592285156)
         assert df['lags'][15] == pytest.approx(5120)
         assert df['count'][15] == 5
@@ -355,34 +357,111 @@ class TestVariogram:
         # Check that all type of coordinate inputs work
         # Only the array and the ground sampling distance
         xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=10,
+            values=self.diff.data, gsd=self.diff.res[0], subsample=10,
             random_state=42, verbose=True)
 
         # Test multiple runs
         df2 = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=10, random_state=42, n_variograms=2)
+            values=self.diff, subsample=10, random_state=42, n_variograms=2)
 
         # Check that an error is estimated
         assert any(~np.isnan(df2.err_exp.values))
 
         # Test that running on several cores does not trigger any error
         xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=10, random_state=42, n_variograms=2, n_jobs=2)
+            values=self.diff, subsample=10, random_state=42, n_variograms=2, n_jobs=2)
 
         # Test plotting of empirical variogram by itself
         if PLOT:
             xdem.spatialstats.plot_variogram(df2)
 
+    def test_sample_empirical_variogram_speed(self):
+        """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
+
+        values = self.diff
+        subsample = 10
+
+        # First, run the xDEM wrapper function
+        t0 = time.time()
+        df = xdem.spatialstats.sample_empirical_variogram(values=values, subsample=subsample, random_state=42)
+        t1 = time.time()
+
+        # Second, do it manually with skgstat
+
+        # Ground sampling distance
+        gsd = values.res[0]
+        # Coords
+        nx, ny = np.shape(values)
+        x, y = np.meshgrid(np.arange(0, values.shape[0] * gsd, gsd), np.arange(0, values.shape[1] * gsd, gsd))
+        coords = np.dstack((x.ravel(), y.ravel())).squeeze()
+
+        # Redefine parameters fed to skgstat manually
+        # Maxlag
+        maxlag = np.sqrt((np.max(coords[:, 0]) - np.min(coords[:, 0])) ** 2
+                         + (np.max(coords[:, 1]) - np.min(coords[:, 1])) ** 2)
+
+        # Binning function
+        bin_func = []
+        right_bin_edge = np.sqrt(2) * gsd
+        while right_bin_edge < maxlag:
+            bin_func.append(right_bin_edge)
+            # We use the default exponential increasing factor of RasterEquidistantMetricSpace, adapted for grids
+            right_bin_edge *= np.sqrt(2)
+        bin_func.append(maxlag)
+        # Extent
+        extent = (np.min(coords[:, 0]), np.max(coords[:, 0]), np.min(coords[:, 1]), np.max(coords[:, 1]))
+        # Shape
+        shape = np.shape(values)
+        # Random state
+        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(42)))
+
+        keyword_arguments = {'subsample': subsample, 'extent': extent, 'shape': shape, 'verbose': False}
+        runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
+
+        # Index of valid values
+        values_arr, mask_nodata = gu.spatial_tools.get_array_and_mask(values)
+
+        t3 = time.time()
+        rems = skgstat.RasterEquidistantMetricSpace(coords=coords[~mask_nodata.ravel(), :], shape=shape, extent=extent,
+                                                    samples=samples, ratio_subsample=ratio_subsample, runs=runs, rnd=rnd)
+        V = skgstat.Variogram(rems, values=values_arr[~mask_nodata].ravel(), normalize=False, fit_method=None,
+                              bin_func=bin_func, maxlag=maxlag)
+        t4 = time.time()
+
+        # Get bins, empirical variogram values, and bin count
+        bins, exp = V.get_empirical(bin_center=False)
+        count = V.bin_count
+
+        # Write to dataframe
+        df2 = pd.DataFrame()
+        df2 = df2.assign(exp=exp, bins=bins, count=count)
+        df2 = df2.rename(columns={'bins': 'lags'})
+        df2['err_exp'] = np.nan
+        df2.drop(df2.tail(1).index, inplace=True)
+
+        t2 = time.time()
+
+        # Check if the two frames are equal
+        pd.testing.assert_frame_equal(df, df2)
+
+        # Check that the two ways are taking the same time at 30%
+        time_method_1 = t1 - t0
+        time_method_2 = t2 - t1
+        assert time_method_1 == pytest.approx(time_method_2, rel=0.3)
+
+        # Check that all this time is based on variogram sampling at about 80%, even with the smallest number of
+        # samples of 10
+        time_metricspace_variogram = t4 - t3
+        assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.2)
+
+
     @pytest.mark.parametrize('subsample_method',['pdist_point','pdist_ring','pdist_disk','cdist_point'])
     def test_sample_multirange_variogram_methods(self, subsample_method):
         """Verify that all other methods run"""
 
-        # Load data
-        diff = load_ref_and_diff()[1]
-
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=10, random_state=42,
+            values=self.diff, subsample=10, random_state=42,
             subsample_method=subsample_method)
 
         assert not df.empty
@@ -400,10 +479,8 @@ class TestVariogram:
     def test_sample_multirange_variogram_args(self):
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
 
-        # Load data
-        diff = load_ref_and_diff()[1]
-
-        pdist_args = {'pdist_multi_ranges':[0, diff.res[0]*5, diff.res[0]*10]}
+        # Define parameters
+        pdist_args = {'pdist_multi_ranges':[0, self.diff.res[0]*5, self.diff.res[0]*10]}
         cdist_args = {'ratio_subsample': 0.5, 'runs': 10}
         nonsense_args = {'thisarg': 'shouldnotexist'}
 
@@ -411,29 +488,29 @@ class TestVariogram:
         with pytest.warns(UserWarning):
             # An argument only use by cdist with a pdist method
             xdem.spatialstats.sample_empirical_variogram(
-                values=diff, subsample=10, random_state=42,
+                values=self.diff, subsample=10, random_state=42,
                 subsample_method='pdist_ring', **cdist_args)
 
         with pytest.warns(UserWarning):
             # Same here
             xdem.spatialstats.sample_empirical_variogram(
-                values=diff, subsample=10, random_state=42,
+                values=self.diff, subsample=10, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **pdist_args)
 
         with pytest.warns(UserWarning):
             # Should also raise a warning for a nonsense argument
             xdem.spatialstats.sample_empirical_variogram(
-                values=diff, subsample=10, random_state=42,
+                values=self.diff, subsample=10, random_state=42,
                 subsample_method='cdist_equidistant', runs=2, **nonsense_args)
 
         # Check the function passes optional arguments specific to pdist methods without warning
         xdem.spatialstats.sample_empirical_variogram(
-            values=diff, subsample=10, random_state=42,
+            values=self.diff, subsample=10, random_state=42,
             subsample_method='pdist_ring', **pdist_args)
 
         # Check the function passes optional arguments specific to cdist methods without warning
         xdem.spatialstats.sample_empirical_variogram(
-            values=diff, random_state=42, subsample=10,
+            values=self.diff, random_state=42, subsample=10,
             subsample_method='cdist_equidistant', **cdist_args)
 
     # N is the number of samples in an ensemble
@@ -579,10 +656,10 @@ class TestVariogram:
         # Run wrapper estimate and model function
         emp_vgm_1, params_model_vgm_1, _ = \
             xdem.spatialstats.estimate_model_spatial_correlation(dvalues=zscores, list_models=['Gau', 'Sph'],
-                                                                 subsample=100, random_state=42)
+                                                                 subsample=10, random_state=42)
 
         # Check that the output matches that of the original function under the same random state
-        emp_vgm_2 = xdem.spatialstats.sample_empirical_variogram(values=zscores, estimator='dowd', subsample=100,
+        emp_vgm_2 = xdem.spatialstats.sample_empirical_variogram(values=zscores, estimator='dowd', subsample=10,
                                                                random_state=42)
         pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_2)
         params_model_vgm_2 = xdem.spatialstats.fit_sum_model_variogram(list_models=['Gau', 'Sph'],
@@ -592,7 +669,7 @@ class TestVariogram:
         # Run wrapper infer from stable function with a Raster and the mask, and check the consistency there as well
         emp_vgm_3, params_model_vgm_3, _ = \
             xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=zscores, stable_mask=~self.mask.squeeze(),
-                                                                    list_models=['Gau', 'Sph'], subsample=100, random_state=42)
+                                                                    list_models=['Gau', 'Sph'], subsample=10, random_state=42)
         pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_3)
         pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_3)
 
@@ -601,13 +678,19 @@ class TestVariogram:
         emp_vgm_4, params_model_vgm_4, _ = \
             xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=zscores_arr, gsd=self.diff.res[0],
                                                                     stable_mask=~self.mask.squeeze(),
-                                                                    list_models=['Gau', 'Sph'], subsample=100,
+                                                                    list_models=['Gau', 'Sph'], subsample=10,
                                                                     random_state=42)
         pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_4)
         pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_4)
 
+        # Run with a decent amount of samples to save to file
+        _, params_model_vgm_5, _ = \
+            xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=zscores_arr, gsd=self.diff.res[0],
+                                                                    stable_mask=~self.mask.squeeze(),
+                                                                    list_models=['Gau', 'Sph'], subsample=200,
+                                                                    random_state=42)
         # Save the modelled variogram for later used in TestNeffEstimation
-        params_model_vgm_1.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False)
+        params_model_vgm_5.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False)
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match='The dvalues must be a Raster or NumPy array.'):
@@ -632,12 +715,9 @@ class TestVariogram:
     def test_empirical_fit_plotting(self):
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
 
-        # Load data
-        diff, mask = load_ref_and_diff()[1:3]
-
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
-            values=diff.data, gsd=diff.res[0], subsample=50, random_state=42)
+            values=self.diff.data, gsd=self.diff.res[0], subsample=50, random_state=42)
 
         # Single model fit
         fun, _ = xdem.spatialstats.fit_sum_model_variogram(['spherical'], empirical_variogram=df)
@@ -728,8 +808,8 @@ class TestNeffEstimation:
         xx, yy = np.meshgrid(x, y)
 
         # Flatten everything
-        coords = np.dstack((xx.flatten(), yy.flatten())).squeeze()
-        errors = errors.flatten()
+        coords = np.dstack((xx.ravel(), yy.ravel())).squeeze()
+        errors = errors.ravel()
 
         # Create a list of variogram that, summed, represent the spatial correlation
         params_variogram_model = pd.DataFrame(data={'model':['spherical', 'gaussian'], 'range':[5, 50], 'psill':[0.5, 0.5]})
@@ -783,7 +863,7 @@ class TestNeffEstimation:
         res = 100.
         outlines_brom = Vector(self.outlines.ds[self.outlines.ds['NAME']=='Brombreen'])
         neff1 = xdem.spatialstats.number_effective_samples(area=outlines_brom, params_variogram_model=params_variogram_model,
-                                                           rasterize_resolution=res, random_state=42)
+                                                           rasterize_resolution=res, random_state=42, subsample=10)
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
         mask = outlines_brom.create_mask(xres=res)
         x = res * np.arange(0, mask.shape[0])
@@ -791,17 +871,17 @@ class TestNeffEstimation:
         coords = np.array(np.meshgrid(y, x))
         coords_on_mask = coords[:, mask].T
         errors_on_mask = np.ones(len(coords_on_mask))
-        neff2 = xdem.spatialstats.neff_hugonnet_approx(coords=coords_on_mask, errors=errors_on_mask,
+        neff2 = xdem.spatialstats.neff_hugonnet_approx(coords=coords_on_mask, errors=errors_on_mask, subsample=10,
                                                        params_variogram_model=params_variogram_model, random_state=42)
         # We can test the match between values accurately thanks to the random_state
         assert neff1 == pytest.approx(neff2, rel=0.00001)
 
         # Check that using a Raster as input for the resolution works
-        neff3 = xdem.spatialstats.number_effective_samples(area=outlines_brom,
+        neff3 = xdem.spatialstats.number_effective_samples(area=outlines_brom, subsample=10,
                                                            params_variogram_model=params_variogram_model,
                                                            rasterize_resolution=self.ref, random_state=42)
-        # The value should be nearly the same within 2% (the discretization grid is different so affects a tiny bit the result)
-        assert neff3 == pytest.approx(neff2, rel=0.02)
+        # The value should be nearly the same within 5% (the discretization grid is different so affects a tiny bit the result)
+        assert neff3 == pytest.approx(neff2, rel=0.05)
 
         # Check that the number of effective samples matches that of the circular approximation within 20%
         area_brom = np.sum(outlines_brom.ds.area.values)
@@ -826,13 +906,8 @@ class TestNeffEstimation:
         # Load the error map from TestBinning
         errors = Raster(os.path.join(examples.EXAMPLES_DIRECTORY, 'dh_error.tif'))
 
-        # Standardize the differences
-        zscores = self.diff / errors
-
         # Load the spatial correlation from TestVariogram
-        params_variogram_model = xdem.spatialstats.infer_spatial_correlation_from_stable(
-            dvalues=zscores, list_models=['Gaussian', 'Spherical'], unstable_mask=self.outlines, subsample=200,
-            random_state=42)[1]
+        params_variogram_model = pd.read_csv(os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None)
 
         # Run the function with vector areas
         areas_vector = [self.outlines.ds[self.outlines.ds['NAME']=='Brombreen'],
@@ -840,7 +915,7 @@ class TestNeffEstimation:
 
         list_stderr_vec = xdem.spatialstats.spatial_error_propagation(areas=areas_vector, errors=errors,
                                                                       params_variogram_model=params_variogram_model,
-                                                                      random_state=42)
+                                                                      random_state=42, subsample=10)
 
         # Run the function with numeric areas (sum needed for Medalsbreen that has two separate polygons)
         areas_numeric = [np.sum(area_vec.area.values) for area_vec in areas_vector]
