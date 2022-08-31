@@ -2082,7 +2082,8 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
                            statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
                            verbose: bool = False,
                            random_state: None | int | np.random.RandomState | np.random.Generator = None,
-                           ) -> tuple[float, float, float, pd.DataFrame]:
+                           return_in_patch_statistics : bool = False
+                           ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
     Patches method for empirical estimation of the standard error over an integration area
 
@@ -2099,6 +2100,7 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
     :param n_patches: Maximum number of patches to sample
     :param verbose: Print statement to console
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
+    :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
 
     :return: Statistic between patches, Number of patches, Exact discretized area, Dataframe of per-patch statistics
     """
@@ -2204,12 +2206,17 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
         nb_independent_patches = 0
         warnings.warn('No valid patch found covering this area size, returning NaN for statistic.')
 
-    return average_statistic, nb_independent_patches, exact_area, df_all
+    if return_in_patch_statistics:
+        return average_statistic, nb_independent_patches, exact_area, df_all
+    else:
+        return average_statistic, nb_independent_patches, exact_area
 
 def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_valid: float = 80.,
                          patch_shape: str = 'circular', method: str = 'scipy',
                          statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
-                         verbose: bool = False) -> tuple[float, float, float, pd.DataFrame]:
+                         verbose: bool = False,
+                         return_in_patch_statistics : bool = False
+                         ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
 
     :param values: Values as array of shape (N1, N2) with NaN for masked values
@@ -2221,8 +2228,11 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
     :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
         to the first in-patch statistic, which is typically the mean
     :param verbose: Print statement to console
+    :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
 
-    :return: Statistic between patches, Number of patches, Exact discretized area, Dataframe of per-patch statistics
+
+    :return: Statistic between patches, Number of patches, Exact discretized area, (Optional) Dataframe of per-patch
+        statistics
     """
 
     # Get kernel size to match area
@@ -2260,13 +2270,23 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
             list_statistic_estimates.append(statistic)
             list_nb_independent_patches.append(nb_patches)
 
+    if return_in_patch_statistics
+        # Create dataframe of independent patches for one independent setting
+        df = pd.DataFrame(data={statistic_between_patches.__name__ : mean_img[::kernel_size, ::kernel_size].ravel(),
+                                'count': nb_valid_img[::kernel_size, ::kernel_size].ravel()})
+
     # We then use the average of the statistic computed for different sets of independent patches to get a more robust
     # estimate
     average_statistic = np.nanmean(np.asarray(list_statistic_estimates))
     nb_independent_patches = np.nanmean(np.asarray(list_nb_independent_patches))
     exact_area = nb_pixel_per_kernel * gsd**2
 
-    return average_statistic, nb_independent_patches, exact_area,
+    if return_in_patch_statistics:
+        return average_statistic, nb_independent_patches, exact_area, df
+    else:
+        return average_statistic, nb_independent_patches, exact_area
+
+
 
 def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: float = None,
                    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
@@ -2275,12 +2295,30 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
                    statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
                    perc_min_valid: float = 80., patch_shape: str = 'circular', vectorized: bool = True,
                    convolution_method: str = 'scipy', n_patches: int = 1000, verbose: bool = False,
-                   return_dataframe_inpatch_statistic : bool = False,
-                   random_state: None | int | np.random.RandomState | np.random.Generator = None) -> pd.DataFrame:
+                   return_in_patch_statistics : bool = False,
+                   random_state: None | int | np.random.RandomState | np.random.Generator = None
+                   ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
 
     """
+    Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
+    computes a statistic in each patch. Then, another statistic is computed between all patches. Typically, a statistic
+    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g., the NMAD) is
+    computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
+    standard error of the mean.
+
+    The function returns the exact areas of the patches, which might differ from the input due to rasterization of the
+    shapes.
+
+    By default, the fast vectorized method based on a convolution of all pixels is used, but only works with the mean.
+    To compute other statistics (possibly a list), the non-vectorized method that randomly samples cadrants of the
+    input array up to a certain number of patches "n_patches" can be used.
+
+    The per-patch statistics can be returned as a concatenated dataframe using the "return_in_patch_statistics"
+    argument, not done by default due to large sizes.
+
     :param values: Values as array or Raster
-    :param areas: List of patch areas to process (squared unit of ground sampling distance in Raster or passed)
+    :param areas: List of patch areas to process (squared unit of ground sampling distance; exact patch areas might not
+    always match these accurately due to rasterization, and are returned as outputs)
     :param gsd: Ground sampling distance
     :param stable_mask: Vector shapefile of stable terrain (if values is Raster), or boolean array of same shape as
         values
@@ -2296,10 +2334,11 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
     :param convolution_method: Convolution method to use , either "scipy" or "numba" (only for vectorized)
     :param n_patches: Maximum number of patches to sample (only for non-vectorized)
     :param verbose: Print statement to console
-    :param return_dataframe_inpatch_statistic: Whether to return the dataframe of statistics for all patches and areas
+    :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
     :param random_state: Random state or seed number to use for calculations (only for non-vectorized, for testing)
 
-    :return: tile, mean, median, std and count of each patch
+    :return: Dataframe of statistic between patches with independent patches count and exact areas,
+        (Optional) Dataframe of per-patch statistics
     """
 
     # Get values with NaNs on unstable terrain, preserving the shape by default
@@ -2307,51 +2346,53 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
                                                             exclude_mask=unstable_mask, gsd=gsd)
 
     # Initialize list of dataframe for the statistic on all patches
-    list_statistic = []
+    list_stats = []
     list_nb_patches = []
     list_exact_areas = []
-    # Initialize a list to concatenate full dataframes if 
-    if return_dataframe_inpatch_statistic:
+
+    # Initialize a list to concatenate full dataframes if we want to return them
+    if return_in_patch_statistics:
         list_df = []
 
-
-    # Looping through areas
+    # Looping on areas
     for area in areas:
-
         # If vectorized, we run the convolution which only supports mean and count statistics
         if vectorized:
-
-            stat, nb_independent_patches, exact_area, df = \
-                _patches_convolution(values=values_arr, gsd=gsd, area=area, perc_min_valid=perc_min_valid,
-                                     patch_shape=patch_shape, method=convolution_method,
-                                     statistic_between_patches=statistic_between_patches, verbose=verbose)
+            outputs = _patches_convolution(values=values_arr, gsd=gsd, area=area, perc_min_valid=perc_min_valid,
+                                           patch_shape=patch_shape, method=convolution_method,
+                                           statistic_between_patches=statistic_between_patches, verbose=verbose,
+                                           return_in_patch_statistics=return_in_patch_statistics)
 
         # If not, we run the cadrant loop method that supports any statistic
         else:
-            stat, nb_independent_patches, exact_area, df = \
-                _patches_loop_cadrants(values=values_arr, gsd=gsd, area=area, patch_shape=patch_shape,
-                                       n_patches=n_patches, perc_min_valid=perc_min_valid,
-                                       statistics_in_patch=statistics_in_patch,
-                                       statistic_between_patches=statistic_between_patches,
-                                       verbose=verbose,
-                                       random_state=random_state)
+            outputs = _patches_loop_cadrants(values=values_arr, gsd=gsd, area=area, patch_shape=patch_shape,
+                                             n_patches=n_patches, perc_min_valid=perc_min_valid,
+                                             statistics_in_patch=statistics_in_patch,
+                                             statistic_between_patches=statistic_between_patches,
+                                             verbose=verbose, return_in_patch_statistics=return_in_patch_statistics,
+                                             random_state=random_state)
 
-        list_statistic.append(stat)
-        list_nb_patches.append(nb_independent_patches)
-        if return_dataframe_inpatch_statistic:
-            df['area'] = area
+        list_stats.append(outputs[0])
+        list_nb_patches.append(outputs[1])
+        list_exact_areas.append(outputs[2])
+        if return_in_patch_statistics:
+            df = outputs[3]
+            df['areas'] = area
+            df['exact_areas'] = outputs[2]
             list_df.append(df)
 
     # Produce final dataframe of statistic between patches per area
-    df_statistic = pd.DataFrame(data={'area'})
+    df_statistic = pd.DataFrame(data={statistic_between_patches.__name__ : list_stats,
+                                      'nb_indep_patches': list_nb_patches,
+                                      'exact_areas' : list_exact_areas,
+                                      'areas': areas})
 
-
-    if return_dataframe_inpatch_statistic:
+    if return_in_patch_statistics:
+        # Concatenate the complete dataframe
         df_tot = pd.concat(list_df)
-        return
-
-
-
+        return df_statistic, df_tot
+    else:
+        return df_statistic
 
 
 def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.ndarray], np.ndarray]]] = None,
