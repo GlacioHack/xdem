@@ -152,7 +152,7 @@ Owing to the large number of samples of elevation data, we can easily estimate t
 :ref:`robuststats_meanstd`) across several explanatory variables using :func:`xdem.spatialstats.nd_binning`.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 18-19
+        :lines: 27
         :language: python
 
 .. plot:: code/spatialstats_heterosc_slope.py
@@ -168,7 +168,7 @@ Once quantified, elevation heteroscedasticity can be modelled numerically by lin
 variables using :func:`xdem.spatialstats.interp_nd_binning`.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 22
+        :lines: 30
         :language: python
 
 Standardize elevation differences for further analysis
@@ -193,7 +193,7 @@ Code-wise, standardization is as simple as a division of the elevation differenc
 error:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 25
+        :lines: 33
         :language: python
 
 To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
@@ -280,7 +280,7 @@ The resulting pairwise differences are evenly distributed across the grid and ac
 means that lag classes separated by a factor of :math:`\sqrt{2}` have an equal number of pairwise differences computed).
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 28-29
+        :lines: 36
         :language: python
 
 The variogram is returned as a ``pd.Dataframe`` object.
@@ -304,7 +304,7 @@ This can be performed through the function :func:`xdem.spatialstats.fit_sum_mode
 ``pd.Dataframe`` variogram.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 31
+        :lines: 39-40
         :language: python
 
 .. minigallery:: xdem.spatialstats.infer_spatial_correlation_from_stable xdem.spatialstats.sample_empirical_variogram
@@ -319,7 +319,7 @@ Spatially integrated measurement errors
 After quantifying and modelling spatial correlations, those an effective sample size, and elevation measurement error:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 33
+        :lines: 43
 
 TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 
