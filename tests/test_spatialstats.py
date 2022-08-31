@@ -300,7 +300,7 @@ class TestBinning:
         errors_1.save(os.path.join(examples.EXAMPLES_DIRECTORY, 'dh_error.tif'))
 
         # Check that errors are raised with wrong input
-        with pytest.raises(ValueError, match='The dvalues must be a Raster or NumPy array.'):
+        with pytest.raises(ValueError, match='The values must be a Raster or NumPy array, or a list of those.'):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues='not_an_array',
                                                                    stable_mask=~self.mask.squeeze(),
                                                                    list_var=[slope_arr])
@@ -314,7 +314,7 @@ class TestBinning:
                                                                    list_var=[slope_arr])
 
         with pytest.raises(ValueError, match='The stable mask can only passed as a Vector or GeoDataFrame if the input '
-                                             'dvalues is a Raster.'):
+                                             'values contain a Raster.'):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(dvalues=diff_arr, stable_mask=self.outlines,
                                                                    list_var=[slope_arr])
 

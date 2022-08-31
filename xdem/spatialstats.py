@@ -28,12 +28,9 @@ from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
-import xdem.spatialstats
 from geoutils.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
 from geoutils.geovector import VectorType, Vector
-
-from xdem.misc import _preprocess_values_with_mask_to_array
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -406,6 +403,117 @@ def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np
     return df, final_fun
 
 
+def _preprocess_values_with_mask_to_array(values: np.ndarray | RasterType | list[np.ndarray | RasterType],
+                                          include_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                          exclude_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                                          gsd: float = None, preserve_shape: bool = True) -> tuple[np.ndarray, float]:
+    """
+    Preprocess input values provided as Raster or ndarray with a stable and/or unstable mask provided as Vector or
+    ndarray into an array of stable values.
+
+    By default, the shape is preserved and the masked values converted to NaNs.
+
+    :param values: Values or list of values as a Raster, array or a list of Raster/arrays
+    :param include_mask: Vector shapefile of mask to include (if values is Raster), or boolean array of same shape as
+        values
+    :param exclude_mask: Vector shapefile of mask to exclude (if values is Raster), or boolean array of same shape
+        as values
+    :param gsd: Ground sampling distance, if all the input values are provided as array
+    :param preserve_shape: If True, masks unstable values with NaN. If False, returns a 1D array of stable values.
+
+    :return: Array of stable terrain values, Ground sampling distance
+    """
+
+    # Check inputs: needs to be Raster, array or a list of those
+    if not isinstance(values, (Raster, np.ndarray, list)) or \
+            (isinstance(values, list) and not all([isinstance(val, (Raster, np.ndarray)) for val in values])):
+        raise ValueError('The values must be a Raster or NumPy array, or a list of those.')
+    # Masks need to be an array, Vector or GeoPandas dataframe
+    if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
+    if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
+        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
+
+    # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
+    if isinstance(values, list):
+        any_raster = any([isinstance(val, Raster) for val in values])
+    else:
+        any_raster = isinstance(values, Raster)
+    if not any_raster and isinstance(include_mask, (Vector, gpd.GeoDataFrame)):
+        raise ValueError(
+            'The stable mask can only passed as a Vector or GeoDataFrame if the input values contain a Raster.')
+
+    # If there is only one array or Raster, put alone in a list
+    if not isinstance(values, list):
+        return_unlist = True
+        values = [values]
+    else:
+        return_unlist = False
+
+    # Get the arrays
+    values_arr = [get_array_and_mask(val)[0] if isinstance(val, Raster) else val for val in values]
+
+    # Get the ground sampling distance from the first Raster if there is one
+    if any_raster:
+        indexes_raster = [i for i, x in enumerate(values) if x]
+        first_raster = values[indexes_raster[0]]
+        gsd = first_raster.res[0]
+    else:
+        gsd = gsd
+
+    # If the stable mask is not an array, create it
+    if include_mask is None:
+        include_mask_arr = np.ones(np.shape(values_arr[0]), dtype=bool)
+    elif isinstance(include_mask, (Vector, gpd.GeoDataFrame)):
+
+        # If the stable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(include_mask, gpd.GeoDataFrame):
+            stable_vector = Vector(include_mask)
+        else:
+            stable_vector = include_mask
+
+        # Create the mask
+        include_mask_arr = stable_vector.create_mask(first_raster)
+    # If the mask is already an array, just pass it
+    else:
+        include_mask_arr = include_mask
+
+    # If the unstable mask is not an array, create it
+    if exclude_mask is None:
+        exclude_mask_arr = np.zeros(np.shape(values_arr[0]), dtype=bool)
+    elif isinstance(exclude_mask, (Vector, gpd.GeoDataFrame)):
+
+        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
+        if isinstance(exclude_mask, gpd.GeoDataFrame):
+            unstable_vector = Vector(exclude_mask)
+        else:
+            unstable_vector = exclude_mask
+
+        # Create the mask
+        exclude_mask_arr = unstable_vector.create_mask(first_raster)
+    # If the mask is already an array, just pass it
+    else:
+        exclude_mask_arr = exclude_mask
+
+    include_mask_arr = np.logical_and(include_mask_arr, ~exclude_mask_arr).squeeze()
+
+    if preserve_shape:
+        # Need to preserve the shape, so setting as NaNs all points not on stable terrain
+        values_stable_arr = []
+        for val in values_arr:
+            val_stable = val.copy()
+            val_stable[include_mask_arr] = np.nan
+            values_stable_arr.append(val_stable)
+    else:
+        values_stable_arr = [val_arr[include_mask_arr] for val_arr in values_arr]
+
+    # If input was a list, give a list. If it was a single array, give a single array.
+    if return_unlist:
+        values_stable_arr  = values_stable_arr[0]
+
+    return values_stable_arr, gsd
+
+
 @overload
 def infer_heteroscedasticity_from_stable(dvalues: np.ndarray, list_var: list[np.ndarray | RasterType],
                                          stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
@@ -472,7 +580,7 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
         list_var_names = ['var'+str(i+1) for i in range(len(list_var))]
 
     # Get the arrays for proxy values and explanatory variables
-    list_all_arr, gsd = _preprocess_values_with_mask_to_array(values=[dvalues, list_var], include_mask=stable_mask,
+    list_all_arr, gsd = _preprocess_values_with_mask_to_array(values=[dvalues] + list_var, include_mask=stable_mask,
                                                               exclude_mask=unstable_mask, preserve_shape=False)
     dvalues_stable_arr = list_all_arr[0]
     list_var_stable_arr = list_all_arr[1:]
@@ -2079,7 +2187,7 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape="circular",
 def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_shape: str = 'circular',
                            n_patches: int = 1000, perc_min_valid: float = 80.,
                            statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
-                           statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
+                           statistic_between_patches: Callable[[np.ndarray], float] = nmad,
                            verbose: bool = False,
                            random_state: None | int | np.random.RandomState | np.random.Generator = None,
                            return_in_patch_statistics : bool = False
@@ -2213,7 +2321,7 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
 
 def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_valid: float = 80.,
                          patch_shape: str = 'circular', method: str = 'scipy',
-                         statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
+                         statistic_between_patches: Callable[[np.ndarray], float] = nmad,
                          verbose: bool = False,
                          return_in_patch_statistics : bool = False
                          ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
@@ -2270,7 +2378,7 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
             list_statistic_estimates.append(statistic)
             list_nb_independent_patches.append(nb_patches)
 
-    if return_in_patch_statistics
+    if return_in_patch_statistics:
         # Create dataframe of independent patches for one independent setting
         df = pd.DataFrame(data={statistic_between_patches.__name__ : mean_img[::kernel_size, ::kernel_size].ravel(),
                                 'count': nb_valid_img[::kernel_size, ::kernel_size].ravel()})
@@ -2292,7 +2400,7 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
                    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
                    unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
                    statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
-                   statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
+                   statistic_between_patches: Callable[[np.ndarray], float] = nmad,
                    perc_min_valid: float = 80., patch_shape: str = 'circular', vectorized: bool = True,
                    convolution_method: str = 'scipy', n_patches: int = 1000, verbose: bool = False,
                    return_in_patch_statistics : bool = False,
