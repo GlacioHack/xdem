@@ -14,19 +14,26 @@ import itertools
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from numba import njit
+import numba
+from numba import jit
+from numba import double
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from scipy import integrate
 from scipy.optimize import curve_fit
 from scipy.spatial.distance import pdist, squareform
+from scipy.signal import fftconvolve
 from skimage.draw import disk
 from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
+
+import xdem.spatialstats
 from geoutils.spatial_tools import subsample_raster, get_array_and_mask
 from geoutils.georaster import RasterType, Raster
 from geoutils.geovector import VectorType, Vector
+
+from xdem.misc import _preprocess_values_with_mask_to_array
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -52,9 +59,10 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
 
-def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str], list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
-                     statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian, nmad], list_ranges : Optional[Iterable[Sequence]] = None) \
-        -> pd.DataFrame:
+def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str],
+               list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
+               statistics: Iterable[Union[str, Callable[[np.ndarray], float], None]] = ['count', np.nanmedian, nmad],
+               list_ranges : Optional[Iterable[Sequence]] = None) -> pd.DataFrame:
     """
     N-dimensional binning of values according to one or several explanatory variables with computed statistics in
     each bin. By default, the sample count, the median and the normalized absolute median deviation (NMAD). The count
@@ -459,69 +467,15 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
         Error function with explanatory variables
     """
 
-    # Check inputs
-    if not isinstance(dvalues, (Raster, np.ndarray)):
-        raise ValueError('The dvalues must be a Raster or NumPy array.')
-    if stable_mask is not None and not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
-    if unstable_mask is not None and not isinstance(unstable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
-
-    # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
-    if not isinstance(dvalues, Raster) and (isinstance(stable_mask, (Vector, gpd.GeoDataFrame)) or isinstance(unstable_mask,  (Vector, gpd.GeoDataFrame))):
-        raise ValueError('The stable mask can only passed as a Vector or GeoDataFrame if the input dvalues is a Raster.')
-
     # Create placeholder variables names if those don't exist
     if list_var_names is None:
         list_var_names = ['var'+str(i+1) for i in range(len(list_var))]
 
     # Get the arrays for proxy values and explanatory variables
-    if isinstance(dvalues, Raster):
-        dvalues_arr = get_array_and_mask(dvalues)[0]
-    else:
-        dvalues_arr = dvalues
-    list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var
-                    for var in list_var if isinstance(var, Raster)]
-
-    # If the stable mask is not an array, create it
-    if stable_mask is None:
-        stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)
-    elif not isinstance(stable_mask, np.ndarray):
-
-        # If the stable mask is a geopandas dataframe, wrap it in a Vector object
-        if isinstance(stable_mask, gpd.GeoDataFrame):
-            stable_vector = Vector(stable_mask)
-        else:
-            stable_vector = stable_mask
-
-        # Create the mask
-        stable_mask_arr = stable_vector.create_mask(dvalues)
-    # If the mask is already an array, just pass it
-    else:
-        stable_mask_arr = stable_mask
-
-    # If the unstable mask is not an array, create it
-    if unstable_mask is None:
-        unstable_mask_arr = np.zeros(np.shape(dvalues_arr), dtype=bool)
-    elif not isinstance(unstable_mask, np.ndarray):
-
-        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
-        if isinstance(unstable_mask, gpd.GeoDataFrame):
-            unstable_vector = Vector(unstable_mask)
-        else:
-            unstable_vector = unstable_mask
-
-        # Create the mask
-        unstable_mask_arr = unstable_vector.create_mask(dvalues)
-    # If the mask is already an array, just pass it
-    else:
-        unstable_mask_arr = unstable_mask
-
-    stable_mask_arr = np.logical_and(stable_mask_arr, ~unstable_mask_arr).squeeze()
-
-    # Get the subsets on stable terrain
-    dvalues_stable_arr = dvalues_arr[stable_mask_arr]
-    list_var_stable_arr = [var_arr[stable_mask_arr] for var_arr in list_var_arr]
+    list_all_arr, gsd = _preprocess_values_with_mask_to_array(values=[dvalues, list_var], include_mask=stable_mask,
+                                                              exclude_mask=unstable_mask, preserve_shape=False)
+    dvalues_stable_arr = list_all_arr[0]
+    list_var_stable_arr = list_all_arr[1:]
 
     # Estimate and model the heteroscedasticity using only stable terrain
     df, fun = estimate_model_heteroscedasticity(dvalues=dvalues_stable_arr, list_var=list_var_stable_arr,
@@ -530,6 +484,7 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
                                                 fac_spread_outliers=fac_spread_outliers)
 
     # Use the standardization function to get the error array for the entire input array (not only stable)
+    list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var for var in list_var]
     error = fun(tuple(list_var_arr))
 
     # Return the right type, depending on dvalues input
@@ -1124,7 +1079,6 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
         df = df_mean
 
     # Remove the last spatial lag bin which is always undersampled
-    # TODO: Solve this problem at the root: how the spatial lag binning is defined, probably?
     df.drop(df.tail(1).index, inplace=True)
 
     return df
@@ -1441,7 +1395,7 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     :param errors: Error values to account for heteroscedasticity (ignored if None).
     :param estimator: Estimator for the empirical variogram; default to Dowd's variogram (see skgstat.Variogram for
         the list of available estimators).
-    :param gsd: Ground sampling distance
+    :param gsd: Ground sampling distance, if input values are provided as array
     :param coords: Coordinates
     :param subsample: Number of samples to randomly draw from the values
     :param subsample_method: Spatial subsampling method
@@ -1455,65 +1409,8 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
     """
 
-    # Check inputs
-    if not isinstance(dvalues, (Raster, np.ndarray)):
-        raise ValueError('The dvalues must be a Raster or NumPy array.')
-    if stable_mask is not None and not isinstance(stable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
-    if unstable_mask is not None and not isinstance(unstable_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
-
-    # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
-    if not isinstance(dvalues, Raster) and isinstance(stable_mask, (Vector, gpd.GeoDataFrame)):
-        raise ValueError(
-            'The stable mask can only passed as a Vector or GeoDataFrame if the input dvalues is a Raster.')
-
-    # Get array if input is a Raster
-    if isinstance(dvalues, Raster):
-        dvalues_arr = get_array_and_mask(dvalues)[0]
-        gsd = dvalues.res[0]
-    else:
-        dvalues_arr = dvalues
-
-    # If the stable mask is not an array, create it
-    if stable_mask is None:
-        stable_mask_arr = np.ones(np.shape(dvalues_arr), dtype=bool)
-    elif not isinstance(stable_mask, np.ndarray):
-
-        # If the stable mask is a geopandas dataframe, wrap it in a Vector object
-        if isinstance(stable_mask, gpd.GeoDataFrame):
-            stable_vector = Vector(stable_mask)
-        else:
-            stable_vector = stable_mask
-
-        # Create the mask
-        stable_mask_arr = stable_vector.create_mask(dvalues)
-    # If the mask is already an array, just pass it
-    else:
-        stable_mask_arr = stable_mask
-
-    # If the unstable mask is not an array, create it
-    if unstable_mask is None:
-        unstable_mask_arr = np.zeros(np.shape(dvalues_arr), dtype=bool)
-    elif not isinstance(unstable_mask, np.ndarray):
-
-        # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
-        if isinstance(unstable_mask, gpd.GeoDataFrame):
-            unstable_vector = Vector(unstable_mask)
-        else:
-            unstable_vector = unstable_mask
-
-        # Create the mask
-        unstable_mask_arr = unstable_vector.create_mask(dvalues)
-    # If the mask is already an array, just pass it
-    else:
-        unstable_mask_arr = unstable_mask
-
-    stable_mask_arr = np.logical_and(stable_mask_arr, ~unstable_mask_arr).squeeze()
-
-    # Need to preserve the shape, so setting as NaNs all points not on stable terrain
-    dvalues_stable_arr = dvalues_arr.copy()
-    dvalues_stable_arr[~stable_mask_arr] = np.nan
+    dvalues_stable_arr, gsd = _preprocess_values_with_mask_to_array(values=dvalues, include_mask=stable_mask,
+                                                                    exclude_mask=unstable_mask, gsd=gsd)
 
     # Perform standardization if error array is provided
     if errors is not None:
@@ -2052,27 +1949,165 @@ def _distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> fl
 
     return distance
 
-def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[np.ndarray] = None,
-                   perc_min_valid: float = 80., statistics: Iterable[Union[str, Callable, None]] = ['count', np.nanmedian ,nmad],
-                   patch_shape: str = 'circular', n_patches: int = 1000, verbose: bool = False,
-                   random_state: None | int | np.random.RandomState | np.random.Generator = None) -> pd.DataFrame:
+def _scipy_fftconvolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray):
+    """
+    Scipy convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
 
+    :param imgs: Input array of size (n_N, N1, N2) with n_N images of size N1 x N2
+    :param filters: Input array of filters of size (n_M, M1, M2) with n_M filters of size M1 x M2
+    :param output: Initialized output array of size (n_N, n_M, N1, N2)
+    """
+
+    for i_N in np.arange(imgs.shape[0]):
+        for i_M in np.arange(filters.shape[0]):
+            output[i_N, i_M, :, :] = fftconvolve(imgs[i_N, :, :], filters[i_M, :, :], mode='same')
+
+
+nd4type = numba.double[:,:,:,:]
+nd3type = numba.double[:,:,:]
+
+@jit((nd3type, nd3type, nd4type))
+def _numba_convolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray):
+    """
+    Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
+
+    :param imgs: Input array of size (n_N, N1, N2) with n_N images of size N1 x N2
+    :param filters: Input array of filters of size (n_M, M1, M2) with n_M filters of size M1 x M2
+    :param output: Initialized output array of size (n_N, n_M, N1, N2)
+    """
+    n_rows, n_cols, n_imgs = imgs.shape
+    height, width, n_filters = filters.shape
+
+    for ii in range(n_imgs):
+        for rr in range(n_rows - height + 1):
+            for cc in range(n_cols - width + 1):
+                for hh in range(height):
+                    for ww in range(width):
+                        for ff in range(n_filters):
+                            imgval = imgs[rr + hh, cc + ww, ii]
+                            filterval = filters[hh, ww, ff]
+                            output[rr, cc, ii, ff] += imgval * filterval
+
+
+def convolution(imgs: np.ndarray, filters: np.ndarray, method: str = 'scipy') -> np.ndarray:
+    """
+    Convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2, using
+    either scipy.signal.fftconvolve or accelerated numba loops.
+    Note that the indexes on n_M and n_N correspond to first axes on the array to speed up computations (prefetching).
+    Inspired by: https://laurentperrinet.github.io/sciblog/posts/2017-09-20-the-fastest-2d-convolution-in-the-world.html
+
+    :param imgs: Input array of size (n_N, N1, N2) with n_N images of size N1 x N2
+    :param filters: Input array of filters of size (n_M, M1, M2) with n_M filters of size M1 x M2
+    :param method: Method to perform the convolution: "scipy" or "numba"
+
+    :return: Filled array of outputs of size (n_N, n_M, N1, N2)
+    """
+
+    # Initialize output array according to input shapes
+    n_N, N1, N2 = imgs.shape
+    n_M, M1, M2 = filters.shape
+    output = np.zeros((n_N, n_M, N1, N2))
+
+    if method.lower() == "scipy":
+        _scipy_fftconvolution(imgs=imgs, filters=filters, output=output)
+    elif method.lower() == "numba":
+        _numba_convolution(imgs=imgs, filters=filters, output=output)
+    else:
+        raise ValueError('Method must be "scipy" or "numba".')
+
+    return output
+
+
+def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape="circular",
+                    method="scipy") -> tuple[np.ndarray, np.ndarray, int]:
+    """
+    Apply a mean filter to an image with a square or circular kernel of size p and with NaN values ignored.
+
+    :param img: Input array of size (N1, N2)
+    :param kernel_size: Size M of kernel, which will be a symmetrical (M, M) kernel
+    :param kernel_shape: Shape of kernel, either "square" or "circular"
+    :param method: Method to perform the convolution: "scipy" or "numba"
+
+    :return: Array of size (N1, N2) with mean values, Array of size (N1, N2) with number of valid pixels, Number of
+    pixels in the kernel
+    """
+
+    # Simplify kernel size notation
+    p = kernel_size
+
+    # Copy the array and replace NaNs by zeros before summing them in the convolution
+    img_zeroed = img.copy()
+    img_zeroed[np.isnan(img_zeroed)] = 0
+
+    # Define square kernel
+    if kernel_shape.lower() == 'square':
+        kernel = np.ones((p, p), dtype='f')
+
+    # Circle kernel
+    elif kernel_shape.lower() == 'circular':
+        center = [(p - 1) / 2., (p - 1) / 2.]
+        Y, X = np.ogrid[:p, :p]
+        dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+        kernel = 1 * (dist_from_center < p / 2.)
+
+    else:
+        raise ValueError('Kernel shape should be "square" or "circular".')
+
+    # Run convolution to compute the sum of img values
+    summed_img = convolution(imgs = img.reshape((1, img.shape[0], img.shape[1])),
+                             filters = kernel.reshape((1, kernel_shape[0], kernel_shape[1])),
+                             method=method).squeeze()
+
+    # Construct a boolean array for nodatas
+    nodata_img = np.ones(np.shape(img), dtype=np.int8)
+    nodata_img[~np.isfinite(nodata_img)] = 0
+
+    # Count the number of valid pixels in the kernel with a convolution
+    nb_valid_img = convolution(imgs = nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
+                               filters=kernel.reshape((1, kernel_shape[0], kernel_shape[1])),
+                               method=method).squeeze()
+
+    # Compute the final mean filter which accounts for no data
+    mean_img = summed_img / nb_valid_img
+
+    # Compute the number of pixel per kernel
+    nb_pixel_per_kernel = np.count_nonzero(kernel)
+
+    return mean_img, nb_valid_img, nb_pixel_per_kernel
+
+
+def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_shape: str = 'circular',
+                           n_patches: int = 1000, perc_min_valid: float = 80.,
+                           statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
+                           statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
+                           verbose: bool = False,
+                           random_state: None | int | np.random.RandomState | np.random.Generator = None,
+                           ) -> tuple[float, float, float, pd.DataFrame]:
     """
     Patches method for empirical estimation of the standard error over an integration area
 
-    :param values: Values
+
+    :param values: Values as array of shape (N1, N2) with NaN for masked values
     :param gsd: Ground sampling distance
-    :param mask: Mask of sampled terrain
-    :param area: Size of integration area
+    :param area: Size of integration area (squared unit of ground sampling distance)
     :param perc_min_valid: Minimum valid area in the patch
-    :param statistics: List of statistics to compute in the patch
-    :param patch_shape: Shape of patch ['circular' or 'rectangular']
+    :param statistics_in_patch: List of statistics to compute in each patch (count is computed by default; only the
+    first statistic is used by statistic_between_patches)
+    :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
+        to the first in-patch statistic, which is typically the mean
+    :param patch_shape: Shape of patch, either "circular" or "square".
     :param n_patches: Maximum number of patches to sample
     :param verbose: Print statement to console
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
-    :return: tile, mean, median, std and count of each patch
+    :return: Statistic between patches, Number of patches, Exact discretized area, Dataframe of per-patch statistics
     """
+
+    # Add count by default
+    statistics_in_patch = statistics_in_patch + ["count"]
+
+    # Get statistic name
+    statistics_name = [f if isinstance(f, str) else f.__name__ for f in statistics_in_patch]
 
     # Define state for random subsampling (to fix results during testing)
     if random_state is None:
@@ -2082,32 +2117,15 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
     else:
         rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
 
-    statistics_name = [f if isinstance(f, str) else f.__name__ for f in statistics]
-
-    values, mask_values = get_array_and_mask(values)
-
-    values = values.squeeze()
-
-    # Use all grid if no mask is provided
-    if mask is None:
-        mask = np.ones(np.shape(values),dtype=bool)
-
-    # First, remove non sampled area (but we need to keep the 2D shape of raster for patch sampling)
-    valid_mask = np.logical_and(~mask_values, mask)
-    values[~valid_mask] = np.nan
-
     # Divide raster in cadrants where we can sample
     nx, ny = np.shape(values)
-    valid_count = len(values[~np.isnan(values)])
     count = nx * ny
-    if verbose:
-        print('Number of valid pixels: ' + str(count))
     nb_cadrant = int(np.floor(np.sqrt((count * gsd ** 2) / area) + 1))
     # For rectangular quadrants
     nx_sub = int(np.floor((nx - 1) / nb_cadrant))
     ny_sub = int(np.floor((ny - 1) / nb_cadrant))
     # For circular patches
-    rad = np.sqrt(area/np.pi) / gsd
+    rad = np.sqrt(area / np.pi) / gsd
 
     # Create list of all possible cadrants
     list_cadrant = [[i, j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
@@ -2119,7 +2137,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
 
         # Draw a random coordinate from the list of cadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
-        list_idx_cadrant = rnd.choice(len(list_cadrant), size=min(len(list_cadrant), 10*remaining_nsamp))
+        list_idx_cadrant = rnd.choice(len(list_cadrant), size=min(len(list_cadrant), 10 * remaining_nsamp))
 
         for idx_cadrant in list_idx_cadrant:
 
@@ -2130,20 +2148,20 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
             i = list_cadrant[idx_cadrant][0]
             j = list_cadrant[idx_cadrant][1]
 
-            if patch_shape == 'rectangular':
+            if patch_shape.lower() == 'square':
                 patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
-            elif patch_shape == 'circular':
-                center_x = np.floor(nx_sub*(i+1/2))
-                center_y = np.floor(ny_sub*(j+1/2))
+            elif patch_shape.lower() == 'circular':
+                center_x = np.floor(nx_sub * (i + 1 / 2))
+                center_y = np.floor(ny_sub * (j + 1 / 2))
                 mask = _create_circular_mask((nx, ny), center=[center_x, center_y], radius=rad)
                 patch = values[mask]
             else:
-                raise ValueError('Patch method must be rectangular or circular.')
+                raise ValueError('Patch method must be square or circular.')
 
             nb_pixel_total = len(patch)
             nb_pixel_valid = len(patch[np.isfinite(patch)])
             if nb_pixel_valid >= np.ceil(perc_min_valid / 100. * nb_pixel_total):
-                u=u+1
+                u = u + 1
                 if u > n_patches:
                     break
                 if verbose:
@@ -2151,7 +2169,7 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
 
                 df = pd.DataFrame()
                 df = df.assign(tile=[str(i) + '_' + str(j)])
-                for j, statistic in enumerate(statistics):
+                for j, statistic in enumerate(statistics_in_patch):
                     if isinstance(statistic, str):
                         if statistic == 'count':
                             df[statistic] = [nb_pixel_valid]
@@ -2167,15 +2185,173 @@ def patches_method(values: np.ndarray, gsd: float, area: float, mask: Optional[n
         # Remove cadrants already sampled from list
         list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
 
-    if len(list_df)>0:
-        df_all = pd.concat(list_df)
-    else:
-        warnings.warn('No valid patch found covering this area: returning dataframe containing only nans' )
-        df_all = pd.DataFrame()
-        for j, statistic in enumerate(statistics):
-            df_all[statistics_name[j]] = [np.nan]
+    # Compute exact area to provide to return
+    if patch_shape.lower() == 'square':
+        exact_area = nx_sub * ny_sub * gsd**2
+    elif patch_shape.lower() == 'circular':
+        exact_area = np.sum(_create_circular_mask(shape=(rad, rad))) * gsd**2
 
-    return df_all
+    if len(list_df) > 0:
+        df_all = pd.concat(list_df)
+        # The average statistic is computed on the first in-patch statistic
+        average_statistic = statistic_between_patches(df_all[statistics_name[0]].values)
+        nb_independent_patches = np.count_nonzero(np.isfinite(df_all[statistics_name[0]].values))
+    else:
+        df_all = pd.DataFrame()
+        for j, statistic in enumerate(statistics_in_patch):
+            df_all[statistics_name[j]] = [np.nan]
+        average_statistic = np.nan
+        nb_independent_patches = 0
+        warnings.warn('No valid patch found covering this area size, returning NaN for statistic.')
+
+    return average_statistic, nb_independent_patches, exact_area, df_all
+
+def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_valid: float = 80.,
+                         patch_shape: str = 'circular', method: str = 'scipy',
+                         statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
+                         verbose: bool = False) -> tuple[float, float, float, pd.DataFrame]:
+    """
+
+    :param values: Values as array of shape (N1, N2) with NaN for masked values
+    :param gsd: Ground sampling distance
+    :param area: Size of integration area (squared unit of ground sampling distance)
+    :param perc_min_valid: Minimum valid area in the patch
+    :param patch_shape: Shape of patch, either "circular" or "square"
+    :param method: Method to perform the convolution: "scipy" or "numba"
+    :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
+        to the first in-patch statistic, which is typically the mean
+    :param verbose: Print statement to console
+
+    :return: Statistic between patches, Number of patches, Exact discretized area, Dataframe of per-patch statistics
+    """
+
+    # Get kernel size to match area
+    # If circular, it corresponds to the diameter
+    if patch_shape.lower() == 'circular':
+        kernel_size = int(np.floor(2 * np.sqrt(area / np.pi) / gsd))
+    # If square, to the side length
+    elif patch_shape.lower() == 'square':
+        kernel_size = int(np.floor(np.sqrt(area) / gsd))
+
+    else:
+        raise ValueError('Kernel shape should be "square" or "circular".')
+
+    if verbose:
+        print('Computing the convolution on the entire array...')
+    mean_img, nb_valid_img, nb_pixel_per_kernel = mean_filter_nan(img=values, kernel_size=kernel_size,
+                                                                  kernel_shape=patch_shape, method=method)
+
+    # Exclude mean values if number of valid pixels is less than a percentage of the kernel size
+    mean_img[nb_valid_img >= nb_pixel_per_kernel * perc_min_valid / 100.] = np.nan
+
+    # A problem with the convolution method compared to the cadrant one is that patches are not independent, which
+    # can bias the estimation of spread. To remedy this, we compute spread statistics on patches separated by the
+    # kernel size (i.e., the diameter of the circular patch, or side of the square patch) to ensure no dependency
+
+    # There are as many combinations for this calculation as the square of the kernel_size
+    if verbose:
+        print('Computing statistic between patches for all independent combinations...')
+    list_statistic_estimates = []
+    list_nb_independent_patches = []
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            statistic = statistic_between_patches(mean_img[i::kernel_size, j::kernel_size].ravel())
+            nb_patches = np.count_nonzero(np.isfinite(mean_img[i::kernel_size, j::kernel_size]))
+            list_statistic_estimates.append(statistic)
+            list_nb_independent_patches.append(nb_patches)
+
+    # We then use the average of the statistic computed for different sets of independent patches to get a more robust
+    # estimate
+    average_statistic = np.nanmean(np.asarray(list_statistic_estimates))
+    nb_independent_patches = np.nanmean(np.asarray(list_nb_independent_patches))
+    exact_area = nb_pixel_per_kernel * gsd**2
+
+    return average_statistic, nb_independent_patches, exact_area,
+
+def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: float = None,
+                   stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                   unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+                   statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
+                   statistic_between_patches: Callable[[np.ndarray], float] = xdem.spatialstats.nmad,
+                   perc_min_valid: float = 80., patch_shape: str = 'circular', vectorized: bool = True,
+                   convolution_method: str = 'scipy', n_patches: int = 1000, verbose: bool = False,
+                   return_dataframe_inpatch_statistic : bool = False,
+                   random_state: None | int | np.random.RandomState | np.random.Generator = None) -> pd.DataFrame:
+
+    """
+    :param values: Values as array or Raster
+    :param areas: List of patch areas to process (squared unit of ground sampling distance in Raster or passed)
+    :param gsd: Ground sampling distance
+    :param stable_mask: Vector shapefile of stable terrain (if values is Raster), or boolean array of same shape as
+        values
+    :param unstable_mask: Vector shapefile of unstable terrain (if values is Raster), or boolean array of same shape
+        as values
+    :param statistics_in_patch: List of statistics to compute in each patch (count is computed by default;
+        only mean and count supported for vectorized version)
+    :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
+        to the first in-patch statistic, which is typically the mean
+    :param perc_min_valid: Minimum valid area in the patch
+    :param patch_shape: Shape of patch, either "circular" or "square"
+    :param vectorized: Whether to use the vectorized (convolution) method or the for loop in cadrants
+    :param convolution_method: Convolution method to use , either "scipy" or "numba" (only for vectorized)
+    :param n_patches: Maximum number of patches to sample (only for non-vectorized)
+    :param verbose: Print statement to console
+    :param return_dataframe_inpatch_statistic: Whether to return the dataframe of statistics for all patches and areas
+    :param random_state: Random state or seed number to use for calculations (only for non-vectorized, for testing)
+
+    :return: tile, mean, median, std and count of each patch
+    """
+
+    # Get values with NaNs on unstable terrain, preserving the shape by default
+    values_arr, gsd = _preprocess_values_with_mask_to_array(values=values, include_mask=stable_mask,
+                                                            exclude_mask=unstable_mask, gsd=gsd)
+
+    # Initialize list of dataframe for the statistic on all patches
+    list_statistic = []
+    list_nb_patches = []
+    list_exact_areas = []
+    # Initialize a list to concatenate full dataframes if 
+    if return_dataframe_inpatch_statistic:
+        list_df = []
+
+
+    # Looping through areas
+    for area in areas:
+
+        # If vectorized, we run the convolution which only supports mean and count statistics
+        if vectorized:
+
+            stat, nb_independent_patches, exact_area, df = \
+                _patches_convolution(values=values_arr, gsd=gsd, area=area, perc_min_valid=perc_min_valid,
+                                     patch_shape=patch_shape, method=convolution_method,
+                                     statistic_between_patches=statistic_between_patches, verbose=verbose)
+
+        # If not, we run the cadrant loop method that supports any statistic
+        else:
+            stat, nb_independent_patches, exact_area, df = \
+                _patches_loop_cadrants(values=values_arr, gsd=gsd, area=area, patch_shape=patch_shape,
+                                       n_patches=n_patches, perc_min_valid=perc_min_valid,
+                                       statistics_in_patch=statistics_in_patch,
+                                       statistic_between_patches=statistic_between_patches,
+                                       verbose=verbose,
+                                       random_state=random_state)
+
+        list_statistic.append(stat)
+        list_nb_patches.append(nb_independent_patches)
+        if return_dataframe_inpatch_statistic:
+            df['area'] = area
+            list_df.append(df)
+
+    # Produce final dataframe of statistic between patches per area
+    df_statistic = pd.DataFrame(data={'area'})
+
+
+    if return_dataframe_inpatch_statistic:
+        df_tot = pd.concat(list_df)
+        return
+
+
+
 
 
 def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.ndarray], np.ndarray]]] = None,
@@ -2188,7 +2364,7 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.nd
     Input function model is expected to be the output of xdem.spatialstats.fit_sum_model_variogram.
 
     :param df: Empirical variogram, formatted as a dataframe with count (pairwise sample count), lags
-        (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance).
+        (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance)
     :param list_fit_fun: List of model function fits
     :param list_fit_fun_label: List of model function fits labels
     :param ax: Plotting ax to use, creates a new one by default
