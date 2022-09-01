@@ -204,8 +204,9 @@ class TestCoregClass:
         assert nuth_kaab._meta["bias"] == pytest.approx(-bias, 0.03)
 
         # Check that the random states forces always the same results
-        assert nuth_kaab._meta["offset_east_px"] == 2.000192638759735
-        assert nuth_kaab._meta["offset_north_px"] == -0.0001202906750811198
+        # Note: in practice, the values are not exactly equal for different OS/conda config
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(2.000192638759735, abs=1e-7)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.0001202906750811198, abs=1e-7)
         assert nuth_kaab._meta["bias"] == -5.0
 
 
