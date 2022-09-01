@@ -1032,7 +1032,21 @@ class TestPatchesMethod:
         gsd = diff.res[0]
         area = 100000
 
-        # Check the patches method runs
+        # First, the patches method runs with scipy
+        df = xdem.spatialstats.patches_method(
+            diff,
+            unstable_mask=mask.squeeze(),
+            gsd=gsd,
+            areas=[area, area*10],
+            random_state=42,
+            vectorized=True,
+            convolution_method='scipy')
+
+        assert df.shape == (2, 4)
+        assert all(df.columns == ['nmad', 'nb_indep_patches', 'exact_areas', 'areas'])
+        assert df['exact_areas'][0] == pytest.approx(df['areas'][0], rel=0.2)
+
+        # Second, with numba
         df, df_full = xdem.spatialstats.patches_method(
             diff,
             unstable_mask=mask.squeeze(),
@@ -1040,8 +1054,9 @@ class TestPatchesMethod:
             areas=[area],
             random_state=42,
             vectorized=True,
+            convolution_method='numba',
             return_in_patch_statistics=True)
 
-        # First, the summary dataframe
         assert df.shape == (1, 4)
         assert all(df.columns == ['nmad', 'nb_indep_patches', 'exact_areas', 'areas'])
+        assert df['exact_areas'][0] == pytest.approx(df['areas'][0], rel=0.2)

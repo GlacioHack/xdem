@@ -502,7 +502,7 @@ def _preprocess_values_with_mask_to_array(values: np.ndarray | RasterType | list
         values_stable_arr = []
         for val in values_arr:
             val_stable = val.copy()
-            val_stable[include_mask_arr] = np.nan
+            val_stable[~include_mask_arr] = np.nan
             values_stable_arr.append(val_stable)
     else:
         values_stable_arr = [val_arr[include_mask_arr] for val_arr in values_arr]
@@ -2057,7 +2057,7 @@ def _distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> fl
 
     return distance
 
-def _scipy_fftconvolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray):
+def _scipy_convolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray):
     """
     Scipy convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
 
@@ -2073,9 +2073,8 @@ def _scipy_fftconvolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndar
 
 nd4type = numba.double[:,:,:,:]
 nd3type = numba.double[:,:,:]
-
 @jit((nd3type, nd3type, nd4type))
-def _numba_convolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray):
+def _numba_convolution(imgs, filters, output):
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
 
@@ -2117,9 +2116,10 @@ def convolution(imgs: np.ndarray, filters: np.ndarray, method: str = 'scipy') ->
     output = np.zeros((n_N, n_M, N1, N2))
 
     if method.lower() == "scipy":
-        _scipy_fftconvolution(imgs=imgs, filters=filters, output=output)
+        _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif method.lower() == "numba":
-        _numba_convolution(imgs=imgs, filters=filters, output=output)
+        _numba_convolution(imgs=imgs.astype(dtype=np.double), filters=filters.astype(dtype=np.double),
+                           output=output.astype(dtype=np.double))
     else:
         raise ValueError('Method must be "scipy" or "numba".')
 
@@ -2144,32 +2144,23 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circ
     p = kernel_size
 
     # Copy the array and replace NaNs by zeros before summing them in the convolution
-    img_zeroed = np.copy(img).astype('float64')
+    img_zeroed = img.copy()
     img_zeroed[~np.isfinite(img_zeroed)] = 0
-    print(np.count_nonzero(np.isfinite(img)))
-    print(np.count_nonzero(np.isfinite(img_zeroed)))
-
 
     # Define square kernel
     if kernel_shape.lower() == 'square':
-        kernel = np.ones((p, p), dtype='float64')
+        kernel = np.ones((p, p), dtype='uint8')
 
     # Circle kernel
     elif kernel_shape.lower() == 'circular':
-        kernel = _create_circular_mask((p, p)).astype('float64')
+        kernel = _create_circular_mask((p, p)).astype('uint8')
     else:
         raise ValueError('Kernel shape should be "square" or "circular".')
-
-    print(kernel)
 
     # Run convolution to compute the sum of img values
     summed_img = convolution(imgs=img_zeroed.reshape((1, img_zeroed.shape[0], img_zeroed.shape[1])),
                              filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
                              method=method).squeeze()
-    print(np.count_nonzero(np.isfinite(summed_img)))
-    print(np.shape(summed_img))
-    print(img_zeroed[0:10, 0:10])
-    print(summed_img[0:10, 0:10])
 
     # Construct a boolean array for nodatas
     nodata_img = np.ones(np.shape(img), dtype=np.int8)
@@ -2179,7 +2170,6 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circ
     nb_valid_img = convolution(imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
                                filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
                                method=method).squeeze()
-    print(np.count_nonzero(np.isfinite(nb_valid_img)))
 
     # Compute the final mean filter which accounts for no data
     mean_img = summed_img / nb_valid_img

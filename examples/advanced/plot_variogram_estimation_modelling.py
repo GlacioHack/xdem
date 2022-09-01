@@ -151,18 +151,13 @@ for area in areas:
 # patches method to run over long processing times, increasing from areas of 5 pixels to areas of 10000 pixels exponentially.
 
 areas_emp = [10 * 400 * 2 ** i for i in range(10)]
-for area_emp in areas_emp:
+df_patches = xdem.spatialstats.patches_method(dh, gsd=dh.res[0], areas=areas_emp)
 
-    #  First, sample intensively circular patches of a given area, and derive the mean elevation differences
-    df_patches = xdem.spatialstats.patches_method(dh.data.data, gsd=dh.res[0], area=area_emp, n_patches=100, random_state=42)
-    # Second, estimate the dispersion of the means of each patch, i.e. the standard error of the mean
-    stderr_empirical = np.nanstd(df_patches['nanmedian'].values)
-    list_stderr_empirical.append(stderr_empirical)
 
 fig, ax = plt.subplots()
 plt.plot(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
 plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
-plt.scatter(np.asarray(areas_emp)/1000000, list_stderr_empirical, label='Empirical estimate', color='black', marker='x')
+plt.scatter(df_patches.exact_areas.values/1000000, df_patches.nmad.values, label='Empirical estimate', color='black', marker='x')
 plt.xlabel('Averaging area (km²)')
 plt.ylabel('Uncertainty in the mean elevation difference (m)')
 plt.xscale('log')
