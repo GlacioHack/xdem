@@ -2126,8 +2126,8 @@ def convolution(imgs: np.ndarray, filters: np.ndarray, method: str = 'scipy') ->
     return output
 
 
-def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape="circular",
-                    method="scipy") -> tuple[np.ndarray, np.ndarray, int]:
+def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circular",
+                    method: str = "scipy") -> tuple[np.ndarray, np.ndarray, int]:
     """
     Apply a mean filter to an image with a square or circular kernel of size p and with NaN values ignored.
 
@@ -2144,36 +2144,42 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape="circular",
     p = kernel_size
 
     # Copy the array and replace NaNs by zeros before summing them in the convolution
-    img_zeroed = img.copy()
-    img_zeroed[np.isnan(img_zeroed)] = 0
+    img_zeroed = np.copy(img).astype('float64')
+    img_zeroed[~np.isfinite(img_zeroed)] = 0
+    print(np.count_nonzero(np.isfinite(img)))
+    print(np.count_nonzero(np.isfinite(img_zeroed)))
+
 
     # Define square kernel
     if kernel_shape.lower() == 'square':
-        kernel = np.ones((p, p), dtype='f')
+        kernel = np.ones((p, p), dtype='float64')
 
     # Circle kernel
     elif kernel_shape.lower() == 'circular':
-        center = [(p - 1) / 2., (p - 1) / 2.]
-        Y, X = np.ogrid[:p, :p]
-        dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-        kernel = 1 * (dist_from_center < p / 2.)
-
+        kernel = _create_circular_mask((p, p)).astype('float64')
     else:
         raise ValueError('Kernel shape should be "square" or "circular".')
 
+    print(kernel)
+
     # Run convolution to compute the sum of img values
-    summed_img = convolution(imgs = img.reshape((1, img.shape[0], img.shape[1])),
-                             filters = kernel.reshape((1, kernel_shape[0], kernel_shape[1])),
+    summed_img = convolution(imgs=img_zeroed.reshape((1, img_zeroed.shape[0], img_zeroed.shape[1])),
+                             filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
                              method=method).squeeze()
+    print(np.count_nonzero(np.isfinite(summed_img)))
+    print(np.shape(summed_img))
+    print(img_zeroed[0:10, 0:10])
+    print(summed_img[0:10, 0:10])
 
     # Construct a boolean array for nodatas
     nodata_img = np.ones(np.shape(img), dtype=np.int8)
-    nodata_img[~np.isfinite(nodata_img)] = 0
+    nodata_img[~np.isfinite(img)] = 0
 
     # Count the number of valid pixels in the kernel with a convolution
-    nb_valid_img = convolution(imgs = nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
-                               filters=kernel.reshape((1, kernel_shape[0], kernel_shape[1])),
+    nb_valid_img = convolution(imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
+                               filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
                                method=method).squeeze()
+    print(np.count_nonzero(np.isfinite(nb_valid_img)))
 
     # Compute the final mean filter which accounts for no data
     mean_img = summed_img / nb_valid_img
@@ -2182,6 +2188,82 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape="circular",
     nb_pixel_per_kernel = np.count_nonzero(kernel)
 
     return mean_img, nb_valid_img, nb_pixel_per_kernel
+
+
+def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_valid: float = 80.,
+                         patch_shape: str = 'circular', method: str = 'scipy',
+                         statistic_between_patches: Callable[[np.ndarray], float] = nmad,
+                         verbose: bool = False,
+                         return_in_patch_statistics : bool = False
+                         ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
+    """
+
+    :param values: Values as array of shape (N1, N2) with NaN for masked values
+    :param gsd: Ground sampling distance
+    :param area: Size of integration area (squared unit of ground sampling distance)
+    :param perc_min_valid: Minimum valid area in the patch
+    :param patch_shape: Shape of patch, either "circular" or "square"
+    :param method: Method to perform the convolution: "scipy" or "numba"
+    :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
+        to the first in-patch statistic, which is typically the mean
+    :param verbose: Print statement to console
+    :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
+
+
+    :return: Statistic between patches, Number of patches, Exact discretized area, (Optional) Dataframe of per-patch
+        statistics
+    """
+
+    # Get kernel size to match area
+    # If circular, it corresponds to the diameter
+    if patch_shape.lower() == 'circular':
+        kernel_size = int(np.round(2 * np.sqrt(area / np.pi) / gsd, decimals=0))
+    # If square, to the side length
+    elif patch_shape.lower() == 'square':
+        kernel_size = int(np.round(np.sqrt(area) / gsd, decimals=0))
+
+    else:
+        raise ValueError('Kernel shape should be "square" or "circular".')
+
+    if verbose:
+        print('Computing the convolution on the entire array...')
+    mean_img, nb_valid_img, nb_pixel_per_kernel = mean_filter_nan(img=values, kernel_size=kernel_size,
+                                                                  kernel_shape=patch_shape, method=method)
+
+    # Exclude mean values if number of valid pixels is less than a percentage of the kernel size
+    mean_img[nb_valid_img < nb_pixel_per_kernel * perc_min_valid / 100.] = np.nan
+
+    # A problem with the convolution method compared to the cadrant one is that patches are not independent, which
+    # can bias the estimation of spread. To remedy this, we compute spread statistics on patches separated by the
+    # kernel size (i.e., the diameter of the circular patch, or side of the square patch) to ensure no dependency
+
+    # There are as many combinations for this calculation as the square of the kernel_size
+    if verbose:
+        print('Computing statistic between patches for all independent combinations...')
+    list_statistic_estimates = []
+    list_nb_independent_patches = []
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            statistic = statistic_between_patches(mean_img[i::kernel_size, j::kernel_size].ravel())
+            nb_patches = np.count_nonzero(np.isfinite(mean_img[i::kernel_size, j::kernel_size]))
+            list_statistic_estimates.append(statistic)
+            list_nb_independent_patches.append(nb_patches)
+
+    if return_in_patch_statistics:
+        # Create dataframe of independent patches for one independent setting
+        df = pd.DataFrame(data={'nanmean' : mean_img[::kernel_size, ::kernel_size].ravel(),
+                                'count': nb_valid_img[::kernel_size, ::kernel_size].ravel()})
+
+    # We then use the average of the statistic computed for different sets of independent patches to get a more robust
+    # estimate
+    average_statistic = np.nanmean(np.asarray(list_statistic_estimates))
+    nb_independent_patches = np.nanmean(np.asarray(list_nb_independent_patches))
+    exact_area = nb_pixel_per_kernel * gsd**2
+
+    if return_in_patch_statistics:
+        return average_statistic, nb_independent_patches, exact_area, df
+    else:
+        return average_statistic, nb_independent_patches, exact_area
 
 
 def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_shape: str = 'circular',
@@ -2229,16 +2311,25 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
 
     # Divide raster in cadrants where we can sample
     nx, ny = np.shape(values)
-    count = nx * ny
-    nb_cadrant = int(np.floor(np.sqrt((count * gsd ** 2) / area) + 1))
+
+    kernel_size = int(np.round(np.sqrt(area) / gsd, decimals=0))
+
     # For rectangular quadrants
-    nx_sub = int(np.floor((nx - 1) / nb_cadrant))
-    ny_sub = int(np.floor((ny - 1) / nb_cadrant))
+    nx_sub = int(np.floor((nx - 1) / kernel_size))
+    ny_sub = int(np.floor((ny - 1) / kernel_size))
     # For circular patches
-    rad = np.sqrt(area / np.pi) / gsd
+    rad = int(np.round(np.sqrt(area / np.pi) / gsd, decimals=0))
+
+    # Compute exact area to provide to checks and return
+    if patch_shape.lower() == 'square':
+        nb_pixel_exact = nx_sub * ny_sub
+        exact_area = nb_pixel_exact * gsd ** 2
+    elif patch_shape.lower() == 'circular':
+        nb_pixel_exact = np.count_nonzero(_create_circular_mask(shape=(nx, ny), radius=rad))
+        exact_area = nb_pixel_exact * gsd ** 2
 
     # Create list of all possible cadrants
-    list_cadrant = [[i, j] for i in range(nb_cadrant) for j in range(nb_cadrant)]
+    list_cadrant = [[i, j] for i in range(nx_sub) for j in range(ny_sub)]
     u = 0
     # Keep sampling while there is cadrants left and below maximum number of patch to sample
     remaining_nsamp = n_patches
@@ -2258,19 +2349,21 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
             i = list_cadrant[idx_cadrant][0]
             j = list_cadrant[idx_cadrant][1]
 
+            # Get patch by masking the square or circular cadrant
             if patch_shape.lower() == 'square':
-                patch = values[nx_sub * i:nx_sub * (i + 1), ny_sub * j:ny_sub * (j + 1)].flatten()
+                patch = values[kernel_size * i:kernel_size * (i + 1), kernel_size * j:kernel_size * (j + 1)].flatten()
             elif patch_shape.lower() == 'circular':
-                center_x = np.floor(nx_sub * (i + 1 / 2))
-                center_y = np.floor(ny_sub * (j + 1 / 2))
+                center_x = np.floor(kernel_size * (i + 1 / 2))
+                center_y = np.floor(kernel_size * (j + 1 / 2))
                 mask = _create_circular_mask((nx, ny), center=[center_x, center_y], radius=rad)
                 patch = values[mask]
             else:
                 raise ValueError('Patch method must be square or circular.')
 
+            # Check that the patch is complete and has the minimum number of valid values
             nb_pixel_total = len(patch)
             nb_pixel_valid = len(patch[np.isfinite(patch)])
-            if nb_pixel_valid >= np.ceil(perc_min_valid / 100. * nb_pixel_total):
+            if nb_pixel_valid >= np.ceil(perc_min_valid / 100. * nb_pixel_total) and nb_pixel_total == nb_pixel_exact:
                 u = u + 1
                 if u > n_patches:
                     break
@@ -2286,7 +2379,7 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
                         else:
                             raise ValueError('No other string than "count" are supported for named statistics.')
                     else:
-                        df[statistics_name[j]] = [statistic(patch)]
+                        df[statistics_name[j]] = [statistic(patch[np.isfinite(patch)].astype("float64"))]
 
                 list_df.append(df)
 
@@ -2294,12 +2387,6 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
         remaining_nsamp = n_patches - u
         # Remove cadrants already sampled from list
         list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
-
-    # Compute exact area to provide to return
-    if patch_shape.lower() == 'square':
-        exact_area = nx_sub * ny_sub * gsd**2
-    elif patch_shape.lower() == 'circular':
-        exact_area = np.sum(_create_circular_mask(shape=(rad, rad))) * gsd**2
 
     if len(list_df) > 0:
         df_all = pd.concat(list_df)
@@ -2318,82 +2405,6 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
         return average_statistic, nb_independent_patches, exact_area, df_all
     else:
         return average_statistic, nb_independent_patches, exact_area
-
-def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_valid: float = 80.,
-                         patch_shape: str = 'circular', method: str = 'scipy',
-                         statistic_between_patches: Callable[[np.ndarray], float] = nmad,
-                         verbose: bool = False,
-                         return_in_patch_statistics : bool = False
-                         ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
-    """
-
-    :param values: Values as array of shape (N1, N2) with NaN for masked values
-    :param gsd: Ground sampling distance
-    :param area: Size of integration area (squared unit of ground sampling distance)
-    :param perc_min_valid: Minimum valid area in the patch
-    :param patch_shape: Shape of patch, either "circular" or "square"
-    :param method: Method to perform the convolution: "scipy" or "numba"
-    :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
-        to the first in-patch statistic, which is typically the mean
-    :param verbose: Print statement to console
-    :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
-
-
-    :return: Statistic between patches, Number of patches, Exact discretized area, (Optional) Dataframe of per-patch
-        statistics
-    """
-
-    # Get kernel size to match area
-    # If circular, it corresponds to the diameter
-    if patch_shape.lower() == 'circular':
-        kernel_size = int(np.floor(2 * np.sqrt(area / np.pi) / gsd))
-    # If square, to the side length
-    elif patch_shape.lower() == 'square':
-        kernel_size = int(np.floor(np.sqrt(area) / gsd))
-
-    else:
-        raise ValueError('Kernel shape should be "square" or "circular".')
-
-    if verbose:
-        print('Computing the convolution on the entire array...')
-    mean_img, nb_valid_img, nb_pixel_per_kernel = mean_filter_nan(img=values, kernel_size=kernel_size,
-                                                                  kernel_shape=patch_shape, method=method)
-
-    # Exclude mean values if number of valid pixels is less than a percentage of the kernel size
-    mean_img[nb_valid_img >= nb_pixel_per_kernel * perc_min_valid / 100.] = np.nan
-
-    # A problem with the convolution method compared to the cadrant one is that patches are not independent, which
-    # can bias the estimation of spread. To remedy this, we compute spread statistics on patches separated by the
-    # kernel size (i.e., the diameter of the circular patch, or side of the square patch) to ensure no dependency
-
-    # There are as many combinations for this calculation as the square of the kernel_size
-    if verbose:
-        print('Computing statistic between patches for all independent combinations...')
-    list_statistic_estimates = []
-    list_nb_independent_patches = []
-    for i in range(kernel_size):
-        for j in range(kernel_size):
-            statistic = statistic_between_patches(mean_img[i::kernel_size, j::kernel_size].ravel())
-            nb_patches = np.count_nonzero(np.isfinite(mean_img[i::kernel_size, j::kernel_size]))
-            list_statistic_estimates.append(statistic)
-            list_nb_independent_patches.append(nb_patches)
-
-    if return_in_patch_statistics:
-        # Create dataframe of independent patches for one independent setting
-        df = pd.DataFrame(data={statistic_between_patches.__name__ : mean_img[::kernel_size, ::kernel_size].ravel(),
-                                'count': nb_valid_img[::kernel_size, ::kernel_size].ravel()})
-
-    # We then use the average of the statistic computed for different sets of independent patches to get a more robust
-    # estimate
-    average_statistic = np.nanmean(np.asarray(list_statistic_estimates))
-    nb_independent_patches = np.nanmean(np.asarray(list_nb_independent_patches))
-    exact_area = nb_pixel_per_kernel * gsd**2
-
-    if return_in_patch_statistics:
-        return average_statistic, nb_independent_patches, exact_area, df
-    else:
-        return average_statistic, nb_independent_patches, exact_area
-
 
 
 def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: float = None,

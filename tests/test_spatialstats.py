@@ -986,29 +986,62 @@ class TestSubSampling:
 
 class TestPatchesMethod:
 
-    def test_patches_method(self):
+    def test_patches_method_loop_cadrant(self):
+        """Check that the patches method with cadrant loops (vectorized=False) functions correctly"""
 
         diff, mask = load_ref_and_diff()[1:3]
 
         gsd = diff.res[0]
-        area = 10000
+        area = 100000
 
         # Check the patches method runs
-        df = xdem.spatialstats.patches_method(
-            diff.data,
-            mask=~mask.astype(bool).squeeze(),
+        df, df_full = xdem.spatialstats.patches_method(
+            diff,
+            unstable_mask=mask.squeeze(),
             gsd=gsd,
-            area=area,
+            areas=[area],
             random_state=42,
-            n_patches=100
-        )
+            n_patches=100,
+            vectorized=False,
+            return_in_patch_statistics=True)
 
-        # Check we get the expected shape
-        assert df.shape == (100, 4)
+        # First, the summary dataframe
+        assert df.shape == (1, 4)
+        assert all(df.columns == ['nmad', 'nb_indep_patches', 'exact_areas', 'areas'])
+
+        # Check the sampling is fixed for a random state
+        assert df['nmad'][0] == pytest.approx(6.509568971491435)
+        assert df['nb_indep_patches'][0] == 100
+        assert df['exact_areas'][0] == pytest.approx(df['areas'][0], rel=0.2)
+
+        # Then, the full dataframe
+        assert df_full.shape == (100, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df['tile'].values[0] == '31_184'
-        assert df['nanmedian'].values[0] == pytest.approx(2.3, abs=0.01)
+        assert df_full['tile'].values[0] == '46_37'
+        assert df_full['nanmean'].values[0] == pytest.approx(-7.291716681586371)
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
-        assert all(df['count'].values > 0.8*np.max(df['count'].values))
+        assert all(df_full['count'].values > 0.8*np.max(df_full['count'].values))
+
+    def test_patches_method_convolution(self):
+        """Check that the patches method with convolution (vectorized=True) functions correctly"""
+
+        diff, mask = load_ref_and_diff()[1:3]
+
+        gsd = diff.res[0]
+        area = 100000
+
+        # Check the patches method runs
+        df, df_full = xdem.spatialstats.patches_method(
+            diff,
+            unstable_mask=mask.squeeze(),
+            gsd=gsd,
+            areas=[area],
+            random_state=42,
+            vectorized=True,
+            return_in_patch_statistics=True)
+
+        # First, the summary dataframe
+        assert df.shape == (1, 4)
+        assert all(df.columns == ['nmad', 'nb_indep_patches', 'exact_areas', 'areas'])
