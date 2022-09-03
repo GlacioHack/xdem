@@ -42,6 +42,11 @@ def download_longyearbyen_examples(overwrite: bool = False):
         # print("Datasets exist")
         return
 
+    # If we ask for overwrite, also remove the processed test data
+    if overwrite:
+        for fn in list(FILEPATHS_PROCESSED.values()):
+            os.remove(fn)
+
     # Static commit hash to be bumped every time it needs to be.
     commit = "321f84d5a67666f45a196a31a2697e22bfaf3c59"
     # The URL from which to download the repository

@@ -53,7 +53,7 @@ jobs:
       # pytest will run asynchronously, so test data need to be downloaded first.
     - name: Download example data
       run: |
-        python -c "from xdem.examples import *; download_longyearbyen_examples(overwrite=False)"
+        python -c "from xdem.examples import *; download_longyearbyen_examples(overwrite=True)"
     - name: Test with pytest
       run: |
         pip install pytest-cov coveralls
