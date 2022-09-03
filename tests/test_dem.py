@@ -4,6 +4,7 @@ import os
 import warnings
 
 import geoutils.georaster as gr
+from geoutils.georaster.raster import _default_rio_attrs
 import geoutils.satimg as si
 import numpy as np
 import pyproj
@@ -44,7 +45,7 @@ class TestDEM:
         list_dem = [dem, dem2, dem3, dem4]
 
         # Check all attributes
-        attrs = [at for at in r._get_rio_attrs() if at not in ['name', 'dataset_mask', 'driver']]
+        attrs = [at for at in _default_rio_attrs if at not in ['name', 'dataset_mask', 'driver']]
         all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
@@ -83,7 +84,7 @@ class TestDEM:
         # dem_attrs = ['vref', 'vref_grid', 'ccrs']
 
         # using list directly available in Class
-        attrs = [at for at in r._get_rio_attrs() if at not in ['name', 'dataset_mask', 'driver']]
+        attrs = [at for at in _default_rio_attrs if at not in ['name', 'dataset_mask', 'driver']]
         all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)

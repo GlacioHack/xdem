@@ -1037,7 +1037,7 @@ def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
         gsd = values.res[0]
-        values, mask = get_array_and_mask(values.data)
+        values, mask = get_array_and_mask(values)
     elif isinstance(values, (np.ndarray, np.ma.masked_array)):
         values, mask = get_array_and_mask(values)
     else:
