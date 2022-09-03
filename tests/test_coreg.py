@@ -199,9 +199,16 @@ class TestCoregClass:
                       transform=self.ref.transform, verbose=self.fit_params["verbose"])
 
         # Make sure that the estimated offsets are similar to what was synthesized.
-        assert abs(nuth_kaab._meta["offset_east_px"] - pixel_shift) < 0.03
-        assert abs(nuth_kaab._meta["offset_north_px"]) < 0.03
-        assert abs(nuth_kaab._meta["bias"] + bias) < 0.03
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(pixel_shift, abs=0.03)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(0, abs=0.03)
+        assert nuth_kaab._meta["bias"] == pytest.approx(-bias, 0.03)
+
+        # Check that the random states forces always the same results
+        # Note: in practice, the values are not exactly equal for different OS/conda config
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(2.000192638759735, abs=1e-7)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.0001202906750811198, abs=1e-7)
+        assert nuth_kaab._meta["bias"] == -5.0
+
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
@@ -566,9 +573,11 @@ class TestCoregClass:
         dem2_a = biascorr_a.apply(dem2.data, dem2.transform)
 
         # Validate that the return formats were the expected ones, and that they are equal.
+        # Issue - dem2_a does not have the same shape, the first dimension is being squeezed
+        # TODO - Fix coreg.apply?
         assert isinstance(dem2_r, xdem.DEM)
         assert isinstance(dem2_a, np.ma.masked_array)
-        assert np.array_equal(dem2_r, dem2_r)
+        assert gu.misc.array_equal(dem2_r.data.squeeze(), dem2_a, equal_nan=True)
 
         # If apply on a masked_array was given without a transform, it should fail.
         with pytest.raises(ValueError, match="'transform' must be given"):

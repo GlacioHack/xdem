@@ -12,7 +12,7 @@ dependencies:
   - matplotlib
   - opencv
   - pyproj
-  - rasterio
+  - rasterio<=1.2.10
   - scipy
   - tqdm
   - scikit-image
@@ -33,6 +33,5 @@ dependencies:
   - sphinx-gallery
 
   - pip:
-    - geoutils==0.0.8
-#    - git+https://github.com/GlacioHack/GeoUtils.git
+    - git+https://github.com/GlacioHack/geoutils.git
 
