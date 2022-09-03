@@ -38,7 +38,7 @@ dh.set_mask(mask_glacier)
 # %%
 # We estimate the average per-pixel elevation error on stable terrain, using both the standard deviation
 # and normalized median absolute deviation. For this example, we do not account for elevation heteroscedasticity.
-print('STD: {:.2f} meters.'.format(np.ma.std(dh.data)))
+print('STD: {:.2f} meters.'.format(np.nanstd(dh.data)))
 print('NMAD: {:.2f} meters.'.format(xdem.spatialstats.nmad(dh.data)))
 
 # %%
@@ -58,7 +58,7 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # Additionally, we notice that the elevation differences are still polluted by unrealistically large elevation
 # differences near glaciers, probably because the glacier inventory is more recent than the data, hence with too small outlines.
 # To remedy this, we filter large elevation differences outside 4 NMAD.
-dh.data[np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data)] = np.nan
+dh.set_mask(np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data))
 
 # %%
 # We plot the elevation differences after filtering to check that we successively removed glacier signals.
@@ -128,16 +128,16 @@ xdem.spatialstats.plot_variogram(df, list_fit_fun=[func_sum_vgm1, func_sum_vgm2]
 # variogram models using :func:`xdem.spatialstats.neff_circ`, with areas varying from pixel size to grid size.
 # Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas rapidly.
 
-areas = np.linspace(20**2, 10000**2, 1000)
+areas = np.linspace(20, 10000, 50)**2
 
 list_stderr_singlerange, list_stderr_doublerange, list_stderr_empirical = ([] for i in range(3))
 for area in areas:
 
     # Number of effective samples integrated over the area for a single-range model
-    neff_singlerange = xdem.spatialstats.neff_circular_approx_numerical(area, params_vgm1)
+    neff_singlerange = xdem.spatialstats.number_effective_samples(area, params_vgm1)
 
     # For a double-range model
-    neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area, params_vgm2)
+    neff_doublerange = xdem.spatialstats.number_effective_samples(area, params_vgm2)
 
     # Convert into a standard error
     stderr_singlerange = np.nanstd(dh.data)/np.sqrt(neff_singlerange)
@@ -150,7 +150,7 @@ for area in areas:
 # This method is implemented in :func:`xdem.spatialstats.patches_method`. Here, we sample fewer areas to avoid for the
 # patches method to run over long processing times, increasing from areas of 5 pixels to areas of 10000 pixels exponentially.
 
-areas_emp = [10 * 400 * 2 ** i for i in range(10)]
+areas_emp = [4000 * 2 ** (i) for i in range(10)]
 df_patches = xdem.spatialstats.patches_method(dh, gsd=dh.res[0], areas=areas_emp)
 
 
@@ -188,7 +188,7 @@ print('Difference mean/median: {:.3f} meters.'.format(diff_med_mean))
 # %%
 # If we now express it as a percentage of the dispersion:
 
-print('{:.1f} % of STD.'.format(diff_med_mean/np.nanstd(dh.data.data)*100))
+print('{:.1f} % of STD.'.format(diff_med_mean/np.nanstd(dh.data)*100))
 
 # %%
 # There might be a significant bias of central tendency, i.e. almost fully correlated measurement error across the grid.
