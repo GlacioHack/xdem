@@ -2137,7 +2137,7 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circ
     :param method: Method to perform the convolution: "scipy" or "numba"
 
     :return: Array of size (N1, N2) with mean values, Array of size (N1, N2) with number of valid pixels, Number of
-    pixels in the kernel
+        pixels in the kernel
     """
 
     # Simplify kernel size notation
@@ -2193,7 +2193,7 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
     :param area: Size of integration area (squared unit of ground sampling distance)
     :param perc_min_valid: Minimum valid area in the patch
     :param patch_shape: Shape of patch, either "circular" or "square"
-    :param method: Method to perform the convolution: "scipy" or "numba"
+    :param method: Method to perform the convolution, "scipy" or "numba"
     :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
         to the first in-patch statistic, which is typically the mean
     :param verbose: Print statement to console
@@ -2427,7 +2427,7 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
 
     :param values: Values as array or Raster
     :param areas: List of patch areas to process (squared unit of ground sampling distance; exact patch areas might not
-    always match these accurately due to rasterization, and are returned as outputs)
+        always match these accurately due to rasterization, and are returned as outputs)
     :param gsd: Ground sampling distance
     :param stable_mask: Vector shapefile of stable terrain (if values is Raster), or boolean array of same shape as
         values
@@ -2440,7 +2440,7 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
     :param perc_min_valid: Minimum valid area in the patch
     :param patch_shape: Shape of patch, either "circular" or "square"
     :param vectorized: Whether to use the vectorized (convolution) method or the for loop in cadrants
-    :param convolution_method: Convolution method to use , either "scipy" or "numba" (only for vectorized)
+    :param convolution_method: Convolution method to use, either "scipy" or "numba" (only for vectorized)
     :param n_patches: Maximum number of patches to sample (only for non-vectorized)
     :param verbose: Print statement to console
     :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
