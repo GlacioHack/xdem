@@ -211,7 +211,7 @@ plt.plot(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range
 plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
 plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange_plus_fullycorrelated,
          label='5% fully correlated,\n 95% double-range spherical model')
-plt.scatter(np.asarray(areas_emp)/1000000, list_stderr_empirical, label='Empirical estimate', color='black', marker='x')
+plt.scatter(df_patches.exact_areas.values/1000000, df_patches.nmad.values, label='Empirical estimate', color='black', marker='x')
 plt.xlabel('Averaging area (km²)')
 plt.ylabel('Uncertainty in the mean elevation difference (m)')
 plt.xscale('log')
