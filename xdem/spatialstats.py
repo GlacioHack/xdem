@@ -2172,7 +2172,9 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circ
                                method=method).squeeze()
 
     # Compute the final mean filter which accounts for no data
-    mean_img = summed_img / nb_valid_img
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "divide by zero encountered in true_divide")
+        mean_img = summed_img / nb_valid_img
 
     # Compute the number of pixel per kernel
     nb_pixel_per_kernel = np.count_nonzero(kernel)
@@ -2625,7 +2627,7 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.nd
             ax1.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
         # Otherwise, plot the error estimates through multiple runs
         else:
-            ax1.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma s.d)', fmt='x')
+            ax1.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma std error)', fmt='x')
 
         # If a list of functions is passed, plot the modelled variograms
         if list_fit_fun is not None:
