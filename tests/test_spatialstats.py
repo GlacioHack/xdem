@@ -209,7 +209,7 @@ class TestBinning:
         # Check a value is returned inside the grid
         assert np.isfinite(fun([15, 1000]))
         # Check the nmad increases with slope
-        assert fun([30, 300]) > fun([10, 300])
+        assert fun([40, 300]) > fun([10, 300])
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000]))))
 
@@ -348,9 +348,9 @@ class TestVariogram:
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
             values=self.diff, subsample=10, random_state=42)
-        assert df['exp'][15] == pytest.approx(5.112269592285156)
+        assert df['exp'][15] == pytest.approx(23.574495315551758)
         assert df['lags'][15] == pytest.approx(5120)
-        assert df['count'][15] == 5
+        assert df['count'][15] == 2
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
@@ -1010,7 +1010,7 @@ class TestPatchesMethod:
         assert all(df.columns == ['nmad', 'nb_indep_patches', 'exact_areas', 'areas'])
 
         # Check the sampling is fixed for a random state
-        assert df['nmad'][0] == pytest.approx(1.9085693591382127)
+        assert df['nmad'][0] == pytest.approx(1.869804592329048)
         assert df['nb_indep_patches'][0] == 100
         assert df['exact_areas'][0] == pytest.approx(df['areas'][0], rel=0.2)
 
