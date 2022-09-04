@@ -20,7 +20,7 @@ dependencies:
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-  - gdal=3.5.0
+  - gstreamer=1.20.3=hd4edc92_0
 
   # Development-specific
   - pytest
