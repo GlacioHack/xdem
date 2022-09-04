@@ -11,10 +11,10 @@ try:
 except ImportError:
     _has_cv2 = False
 
-import geopandas as gpd
 import numpy as np
 
 import xdem.version
+
 
 def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
     """
