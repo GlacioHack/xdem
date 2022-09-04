@@ -580,10 +580,10 @@ class Coreg:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Calculate final mask
-        final_mask = np.logical_or(dem_mask, np.isnan(applied_dem))
+        final_mask = ~np.isfinite(applied_dem)
 
         # If the DEM was a masked_array, copy the mask to the new DEM
-        if isinstance(dem, (np.ma.masked_array)):
+        if isinstance(dem, (np.ma.masked_array, gu.Raster)):
             applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
         else:
             applied_dem[final_mask] = np.nan
