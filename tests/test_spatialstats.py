@@ -49,26 +49,26 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.spatial_tools.subsample_raster(self.diff.data.ravel(), subsample=10000, return_indices=True,
+        indices = gu.spatial_tools.subsample_raster(self.diff.data.flatten(), subsample=10000, return_indices=True,
                                                      random_state=42)
 
         # 1D binning, by default will create 10 bins
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
-                                          list_var=[self.slope.data.ravel()[indices]],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten()[indices],
+                                          list_var=[self.slope.data.flatten()[indices]],
                                           list_var_names=['slope'])
 
         # Check length matches
         assert df.shape[0] == 10
         # Check bin edges match the minimum and maximum of binning variable
-        assert np.nanmin(self.slope.data.ravel()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
-        assert np.nanmax(self.slope.data.ravel()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
+        assert np.nanmin(self.slope.data.flatten()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
+        assert np.nanmax(self.slope.data.flatten()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
         # NMAD should go up quite a bit with slope, more than 8 m between the two extreme bins
         assert df.nmad.values[-1] - df.nmad.values[0] > 8
 
         # 1D binning with 20 bins
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
-                                          list_var=[self.slope.data.ravel()[indices]],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten()[indices],
+                                          list_var=[self.slope.data.flatten()[indices]],
                                           list_var_names=['slope'], list_var_bins=[[20]])
         # Check length matches
         assert df.shape[0] == 20
@@ -78,26 +78,26 @@ class TestBinning:
             return np.nanpercentile(a, 80)
 
         # Check the function runs with custom functions
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
-                                          list_var=[self.slope.data.ravel()[indices]],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten()[indices],
+                                          list_var=[self.slope.data.flatten()[indices]],
                                           list_var_names=['slope'], statistics=[percentile_80])
         # Check that the count is added automatically by the function when not user-defined
         assert 'count' in df.columns.values
 
         # 2D binning
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
-                                          list_var=[self.slope.data.ravel()[indices],
-                                                    self.ref.data.ravel()[indices]],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten()[indices],
+                                          list_var=[self.slope.data.flatten()[indices],
+                                                    self.ref.data.flatten()[indices]],
                                           list_var_names=['slope', 'elevation'])
 
         # Dataframe should contain two 1D binning of length 10 and one 2D binning of length 100
         assert df.shape[0] == (10 + 10 + 100)
 
         # 3D binning
-        df = xdem.spatialstats.nd_binning(values=self.diff.data.ravel()[indices],
-                                          list_var=[self.slope.data.ravel()[indices],
-                                                    self.ref.data.ravel()[indices],
-                                                    self.aspect.data.ravel()[indices]],
+        df = xdem.spatialstats.nd_binning(values=self.diff.data.flatten()[indices],
+                                          list_var=[self.slope.data.flatten()[indices],
+                                                    self.ref.data.flatten()[indices],
+                                                    self.aspect.data.flatten()[indices]],
                                           list_var_names=['slope', 'elevation', 'aspect'],
                                           list_var_bins=4)
 
