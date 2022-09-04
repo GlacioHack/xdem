@@ -18,7 +18,7 @@ dh_arr = gu.spatial_tools.get_array_and_mask(dh)[0]
 slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0]
 
 # Subsample to run the snipped code faster
-indices = gu.spatial_tools.subsample_raster(dh_arr, subsample=100, return_indices=True,
+indices = gu.spatial_tools.subsample_raster(dh_arr, subsample=10000, return_indices=True,
                                             random_state=42)
 dh_arr = dh_arr[indices]
 slope_arr = slope_arr[indices]

@@ -348,7 +348,7 @@ class TestVariogram:
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
             values=self.diff, subsample=10, random_state=42)
-        assert df['exp'][15] == pytest.approx(23.574495315551758)
+        assert df['exp'][15] == pytest.approx(23.574527740478516)
         assert df['lags'][15] == pytest.approx(5120)
         assert df['count'][15] == 2
         # With a single run, no error can be estimated
@@ -1010,7 +1010,7 @@ class TestPatchesMethod:
         assert all(df.columns == ['nmad', 'nb_indep_patches', 'exact_areas', 'areas'])
 
         # Check the sampling is fixed for a random state
-        assert df['nmad'][0] == pytest.approx(1.869804592329048)
+        assert df['nmad'][0] == pytest.approx(1.8697986129910111)
         assert df['nb_indep_patches'][0] == 100
         assert df['exact_areas'][0] == pytest.approx(df['areas'][0], rel=0.2)
 
@@ -1019,7 +1019,7 @@ class TestPatchesMethod:
 
         # Check the sampling is always fixed for a random state
         assert df_full['tile'].values[0] == '8_16'
-        assert df_full['nanmean'].values[0] == pytest.approx(0.24109107327748494)
+        assert df_full['nanmean'].values[0] == pytest.approx(0.24107581448842244)
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full['count'].values > 0.8*np.max(df_full['count'].values))
