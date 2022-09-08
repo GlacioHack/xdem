@@ -2225,7 +2225,7 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
     # Exclude mean values if number of valid pixels is less than a percentage of the kernel size
     mean_img[nb_valid_img < nb_pixel_per_kernel * perc_min_valid / 100.] = np.nan
 
-    # A problem with the convolution method compared to the cadrant one is that patches are not independent, which
+    # A problem with the convolution method compared to the quadrant one is that patches are not independent, which
     # can bias the estimation of spread. To remedy this, we compute spread statistics on patches separated by the
     # kernel size (i.e., the diameter of the circular patch, or side of the square patch) to ensure no dependency
 
@@ -2258,7 +2258,7 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
         return average_statistic, nb_independent_patches, exact_area
 
 
-def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_shape: str = 'circular',
+def _patches_loop_quadrants(values: np.ndarray, gsd: float, area: float, patch_shape: str = 'circular',
                            n_patches: int = 1000, perc_min_valid: float = 80.,
                            statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
                            statistic_between_patches: Callable[[np.ndarray], float] = nmad,
@@ -2301,7 +2301,7 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
     else:
         rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
 
-    # Divide raster in cadrants where we can sample
+    # Divide raster in quadrants where we can sample
     nx, ny = np.shape(values)
 
     kernel_size = int(np.round(np.sqrt(area) / gsd, decimals=0))
@@ -2320,28 +2320,28 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
         nb_pixel_exact = np.count_nonzero(_create_circular_mask(shape=(nx, ny), radius=rad))
         exact_area = nb_pixel_exact * gsd ** 2
 
-    # Create list of all possible cadrants
-    list_cadrant = [[i, j] for i in range(nx_sub) for j in range(ny_sub)]
+    # Create list of all possible quadrants
+    list_quadrant = [[i, j] for i in range(nx_sub) for j in range(ny_sub)]
     u = 0
-    # Keep sampling while there is cadrants left and below maximum number of patch to sample
+    # Keep sampling while there is quadrants left and below maximum number of patch to sample
     remaining_nsamp = n_patches
     list_df = []
-    while len(list_cadrant) > 0 and u < n_patches:
+    while len(list_quadrant) > 0 and u < n_patches:
 
-        # Draw a random coordinate from the list of cadrants, select more than enough random points to avoid drawing
+        # Draw a random coordinate from the list of quadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
-        list_idx_cadrant = rnd.choice(len(list_cadrant), size=min(len(list_cadrant), 10 * remaining_nsamp))
+        list_idx_quadrant = rnd.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
 
-        for idx_cadrant in list_idx_cadrant:
+        for idx_quadrant in list_idx_quadrant:
 
             if verbose:
-                print('Working on a new cadrant')
+                print('Working on a new quadrant')
 
             # Select center coordinates
-            i = list_cadrant[idx_cadrant][0]
-            j = list_cadrant[idx_cadrant][1]
+            i = list_quadrant[idx_quadrant][0]
+            j = list_quadrant[idx_quadrant][1]
 
-            # Get patch by masking the square or circular cadrant
+            # Get patch by masking the square or circular quadrant
             if patch_shape.lower() == 'square':
                 patch = values[kernel_size * i:kernel_size * (i + 1), kernel_size * j:kernel_size * (j + 1)].flatten()
             elif patch_shape.lower() == 'circular':
@@ -2360,7 +2360,7 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
                 if u > n_patches:
                     break
                 if verbose:
-                    print('Found valid cadrant ' + str(u) + ' (maximum: ' + str(n_patches) + ')')
+                    print('Found valid quadrant ' + str(u) + ' (maximum: ' + str(n_patches) + ')')
 
                 df = pd.DataFrame()
                 df = df.assign(tile=[str(i) + '_' + str(j)])
@@ -2377,8 +2377,8 @@ def _patches_loop_cadrants(values: np.ndarray, gsd: float, area: float, patch_sh
 
         # Get remaining samples to draw
         remaining_nsamp = n_patches - u
-        # Remove cadrants already sampled from list
-        list_cadrant = [c for j, c in enumerate(list_cadrant) if j not in list_idx_cadrant]
+        # Remove quadrants already sampled from list
+        list_quadrant = [c for j, c in enumerate(list_quadrant) if j not in list_idx_quadrant]
 
     if len(list_df) > 0:
         df_all = pd.concat(list_df)
@@ -2421,7 +2421,7 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
     shapes.
 
     By default, the fast vectorized method based on a convolution of all pixels is used, but only works with the mean.
-    To compute other statistics (possibly a list), the non-vectorized method that randomly samples cadrants of the
+    To compute other statistics (possibly a list), the non-vectorized method that randomly samples quadrants of the
     input array up to a certain number of patches "n_patches" can be used.
 
     The per-patch statistics can be returned as a concatenated dataframe using the "return_in_patch_statistics"
@@ -2441,7 +2441,7 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
         to the first in-patch statistic, which is typically the mean
     :param perc_min_valid: Minimum valid area in the patch
     :param patch_shape: Shape of patch, either "circular" or "square"
-    :param vectorized: Whether to use the vectorized (convolution) method or the for loop in cadrants
+    :param vectorized: Whether to use the vectorized (convolution) method or the for loop in quadrants
     :param convolution_method: Convolution method to use, either "scipy" or "numba" (only for vectorized)
     :param n_patches: Maximum number of patches to sample (only for non-vectorized)
     :param verbose: Print statement to console
@@ -2474,9 +2474,9 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
                                            statistic_between_patches=statistic_between_patches, verbose=verbose,
                                            return_in_patch_statistics=return_in_patch_statistics)
 
-        # If not, we run the cadrant loop method that supports any statistic
+        # If not, we run the quadrant loop method that supports any statistic
         else:
-            outputs = _patches_loop_cadrants(values=values_arr, gsd=gsd, area=area, patch_shape=patch_shape,
+            outputs = _patches_loop_quadrants(values=values_arr, gsd=gsd, area=area, patch_shape=patch_shape,
                                              n_patches=n_patches, perc_min_valid=perc_min_valid,
                                              statistics_in_patch=statistics_in_patch,
                                              statistic_between_patches=statistic_between_patches,
