@@ -986,8 +986,8 @@ class TestSubSampling:
 
 class TestPatchesMethod:
 
-    def test_patches_method_loop_cadrant(self):
-        """Check that the patches method with cadrant loops (vectorized=False) functions correctly"""
+    def test_patches_method_loop_quadrant(self):
+        """Check that the patches method with quadrant loops (vectorized=False) functions correctly"""
 
         diff, mask = load_ref_and_diff()[1:3]
 
