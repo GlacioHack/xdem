@@ -190,13 +190,14 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
 
     # Estimate the a, b, and c parameters with least square minimisation
     np.random.seed(seed=42)
-    plsq = scipy.optimize.leastsq(func=residuals, x0=initial_guess, args=(y_medians, slice_bounds), full_output=1)
+    results = scipy.optimize.least_squares(fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds))
 
-    a_parameter, b_parameter, c_parameter = plsq[0]
+    a_parameter, b_parameter, c_parameter = results.x
+
 
     # Calculate the easting and northing offsets from the above parameters
-    east_offset = a_parameter * np.sin(b_parameter)
-    north_offset = a_parameter * np.cos(b_parameter)
+    east_offset = np.round(a_parameter * np.sin(b_parameter), 5)
+    north_offset = np.round(a_parameter * np.cos(b_parameter), 5)
 
     return east_offset, north_offset, c_parameter
 
@@ -579,10 +580,10 @@ class Coreg:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Calculate final mask
-        final_mask = np.logical_or(dem_mask, np.isnan(applied_dem))
+        final_mask = ~np.isfinite(applied_dem)
 
         # If the DEM was a masked_array, copy the mask to the new DEM
-        if isinstance(dem, (np.ma.masked_array)):
+        if isinstance(dem, (np.ma.masked_array, gu.Raster)):
             applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
         else:
             applied_dem[final_mask] = np.nan

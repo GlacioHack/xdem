@@ -142,6 +142,8 @@ xdem/version.py
 # Example data downloaded/produced during tests
 examples/data/Longyearbyen/data/
 examples/data/Longyearbyen/processed/
+examples/data/*.tif
+examples/data/*.csv
 
 docs/source/basic_examples/
 docs/source/advanced_examples/
