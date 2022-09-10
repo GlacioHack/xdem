@@ -391,7 +391,7 @@ class TestVariogram:
         # Ground sampling distance
         gsd = values.res[0]
         # Coords
-        nx, ny = np.shape(values)
+        nx, ny = values.shape
         x, y = np.meshgrid(np.arange(0, values.shape[0] * gsd, gsd), np.arange(0, values.shape[1] * gsd, gsd))
         coords = np.dstack((x.ravel(), y.ravel())).squeeze()
 
@@ -411,7 +411,7 @@ class TestVariogram:
         # Extent
         extent = (np.min(coords[:, 0]), np.max(coords[:, 0]), np.min(coords[:, 1]), np.max(coords[:, 1]))
         # Shape
-        shape = np.shape(values)
+        shape = values.shape
         # Random state
         rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(42)))
 
