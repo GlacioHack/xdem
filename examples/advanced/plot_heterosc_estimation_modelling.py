@@ -207,6 +207,6 @@ for s, c in [(0., 0.1), (50., 0.1), (0., 20.), (50., 20.)]:
 # %%
 # This function can be used to estimate the spatial distribution of the elevation error on the extent of our DEMs:
 maxc = np.maximum(np.abs(profc), np.abs(planc))
-errors = dh.copy(new_array= dh_err_fun((slope, maxc)))
+errors = dh.copy(new_array= dh_err_fun((slope.data, maxc.data)))
 
 errors.show(cmap='Reds', vmin=2, vmax=8, cb_title='Elevation error ($1\sigma$, m)')
