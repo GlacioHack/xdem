@@ -18,6 +18,7 @@ sys.path.append(os.path.abspath("../.."))
 sys.path.append(os.path.abspath("../../xdem/"))
 sys.path.append(os.path.abspath(".."))
 
+from sphinx_gallery.sorting import ExplicitOrder
 import xdem.version
 
 # -- Project information -----------------------------------------------------
@@ -61,8 +62,9 @@ intersphinx_mapping = {
 }
 
 sphinx_gallery_conf = {
-     "examples_dirs": os.path.join(os.path.dirname(__file__), "../", "../", "examples"),   # path to your example scripts
-     "gallery_dirs": "auto_examples",  # path to where to save gallery generated output
+     "examples_dirs": [os.path.join(os.path.dirname(__file__), "../", "../", "examples/basic"),
+                       os.path.join(os.path.dirname(__file__), "../", "../", "examples/advanced")],   # path to your example scripts
+     "gallery_dirs": ["basic_examples", "advanced_examples"],  # path to where to save gallery generated output
      "inspect_global_variables": True,  # Make links to the class/function definitions.
      "reference_url": {
          # The module you locally document uses None
@@ -70,7 +72,9 @@ sphinx_gallery_conf = {
     },
      # directory where function/class granular galleries are stored
     "backreferences_dir"  : "gen_modules/backreferences",
-    "doc_module": ("xdem", "geoutils")  # which function/class levels are used to create galleries
+    "doc_module": ("xdem", "geoutils"),  # which function/class levels are used to create galleries
+    # 'subsection_order': ExplicitOrder([os.path.join(os.path.dirname(__file__), "../", "../", "examples", "basic"),
+    #                                    os.path.join(os.path.dirname(__file__), "../", "../", "examples", "advanced")])
 }
 
 # Add any paths that contain templates here, relative to this directory.

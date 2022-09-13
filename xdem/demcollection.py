@@ -51,7 +51,7 @@ class DEMCollection:
         self.dems[:] = [dems[i] for i in indices]
         self.ddems: list[xdem.dDEM] = []
         # The reference index changes place when sorted
-        if isinstance(reference_dem, int):
+        if isinstance(reference_dem, (int, np.integer)):
             self.reference_index = np.argwhere(indices == reference_dem)[0][0]
         elif isinstance(reference_dem, gu.georaster.Raster):
             self.reference_index = [i for i, dem in enumerate(self.dems) if dem is reference_dem][0]

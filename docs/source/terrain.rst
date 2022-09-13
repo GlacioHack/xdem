@@ -21,10 +21,10 @@ The slope can be computed either by the method of `Horn (1981) <http://dx.doi.or
 based on a refined gradient formulation on a 3x3 pixel window, or by the method of `Zevenbergen and Thorne (1987)
 <http://dx.doi.org/10.1002/esp.3290120107>`_ based on a plane fit on a 3x3 pixel window.
 
-The differences between methods are illustrated in the :ref:`sphx_glr_auto_examples_plot_terrain_attributes.py`
+The differences between methods are illustrated in the :ref:`sphx_glr_basic_examples_plot_terrain_attributes.py`
 example.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_001.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_001.png
   :width: 600
 
 .. minigallery:: xdem.terrain.slope
@@ -41,7 +41,7 @@ aspect is 90°, south is 180° and west is 270°. By default, a flat slope is gi
 As the aspect is directly based on the slope, it varies between the method of `Horn (1981) <http://dx.doi.org/10.
 1109/PROC.1981.11918>`_ (default) and that of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_002.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_002.png
   :width: 600
 
 .. minigallery:: xdem.terrain.aspect
@@ -66,7 +66,7 @@ As the hillshade is directly based on the slope and aspect, it varies between th
 Note, however, that the hillshade is not a shadow map; no occlusion is taken into account so it does not represent "true" shading.
 It therefore has little analytic purpose, but it still constitutes a great visualization tool.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_003.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_003.png
   :width: 600
 
 .. minigallery:: xdem.terrain.hillshade
@@ -83,7 +83,7 @@ The curvature values in units of m\ :sup:`-1` are quite small, so they are by co
 
 The curvature is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_004.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_004.png
   :width: 600
 
 .. minigallery:: xdem.terrain.curvature
@@ -97,7 +97,7 @@ The planform curvature is the curvature perpendicular to the direction of slope,
 
 It is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_005.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_005.png
   :width: 600
 
 .. minigallery:: xdem.terrain.planform_curvature
@@ -111,7 +111,7 @@ The profile curvature is the curvature parallel to the direction of slope, repor
 
 It is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_006.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_006.png
   :width: 600
 
 .. minigallery:: xdem.terrain.profile_curvature
@@ -126,7 +126,7 @@ The Topographic Position Index (TPI) is a metric of slope position, based on the
 pixel with the average of that of neighbouring pixels. Its unit is that of the DEM (typically meters) and it can be
 computed for any window size (default 3x3 pixels).
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_007.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_007.png
   :width: 600
 
 .. minigallery:: xdem.terrain.topographic_position_index
@@ -147,7 +147,7 @@ neighbouring pixels.
 For bathymetry, the method of `Wilson et al. (2007) <http://dx.doi.org/10.1080/01490410701295962>`_ is generally used,
 where the TRI is defined by the mean absolute difference with neighbouring pixels
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_008.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_008.png
   :width: 600
 
 .. minigallery:: xdem.terrain.terrain_ruggedness_index
@@ -161,7 +161,7 @@ The roughness is a metric of terrain ruggedness, based on the maximum difference
 The roughness is based on the method of `Dartnell (2000) <http://dx.doi.org/10.14358/PERS.70.9.
 1081>`_. Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_009.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_009.png
   :width: 600
 
 .. minigallery:: xdem.terrain.roughness
@@ -175,7 +175,7 @@ The rugosity is a metric of terrain ruggedness, based on the ratio between plani
 rugosity is based on the method of `Jenness (2004) <https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>`_.
 It is unitless, and is only supported for a 3x3 window size.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_010.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_010.png
   :width: 600
 
 .. minigallery:: xdem.terrain.rugosity
@@ -191,7 +191,7 @@ The fractal roughness is computed by estimating the fractal dimension in 3D spac
 DEM pixels. Its unit is that of a dimension, and is always between 1 (dimension of a line in 3D space) and 3
 (dimension of a cube in 3D space). It can only be computed on window sizes larger than 5x5 pixels, and defaults to 13x13.
 
-.. image:: auto_examples/images/sphx_glr_plot_terrain_attributes_011.png
+.. image:: basic_examples/images/sphx_glr_plot_terrain_attributes_011.png
   :width: 600
 
 .. minigallery:: xdem.terrain.fractal_roughness

@@ -2,14 +2,17 @@ name: xdem-dev
 channels:
   - conda-forge
 dependencies:
-  - python>=3.7
+  - python>=3.8
   - proj>=7.2
-  - geopandas
+  - fiona
+  - shapely
+  - autovizwidget
   - numba
+  - numpy
   - matplotlib
   - opencv
   - pyproj
-  - rasterio
+  - rasterio<=1.2.10
   - scipy
   - tqdm
   - scikit-image
@@ -17,7 +20,6 @@ dependencies:
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-  - geoutils>=0.0.5
 
   # Development-specific
   - pytest
@@ -29,3 +31,7 @@ dependencies:
   - flake8
   - sphinx-autodoc-typehints
   - sphinx-gallery
+
+  - pip:
+    - git+https://github.com/GlacioHack/geoutils.git
+

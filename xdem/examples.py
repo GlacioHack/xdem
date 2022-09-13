@@ -12,7 +12,7 @@ import numpy as np
 import geoutils as gu
 import xdem
 
-EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples"))
+EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples/data"))
 # Absolute filepaths to the example files.
 FILEPATHS_DATA = {
     "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","data","DEM_2009_ref.tif"),
@@ -41,6 +41,12 @@ def download_longyearbyen_examples(overwrite: bool = False):
     if not overwrite and all(map(os.path.isfile, list(FILEPATHS_DATA.values()))):
         # print("Datasets exist")
         return
+
+    # If we ask for overwrite, also remove the processed test data
+    if overwrite:
+        for fn in list(FILEPATHS_PROCESSED.values()):
+            if os.path.exists(fn):
+                os.remove(fn)
 
     # Static commit hash to be bumped every time it needs to be.
     commit = "321f84d5a67666f45a196a31a2697e22bfaf3c59"
@@ -93,13 +99,11 @@ def process_coregistered_examples(overwrite: bool =False):
     inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
     nuth_kaab = xdem.coreg.NuthKaab()
-    nuth_kaab.fit(reference_raster.data, to_be_aligned_raster.data,
-                  inlier_mask=inlier_mask, transform=reference_raster.transform)
-    aligned_raster = nuth_kaab.apply(to_be_aligned_raster.data, transform=reference_raster.transform)
-    aligned_raster.data[~np.isfinite(aligned_raster)] = reference_raster.nodata
+    nuth_kaab.fit(reference_raster, to_be_aligned_raster,
+                  inlier_mask=inlier_mask)
+    aligned_raster = nuth_kaab.apply(to_be_aligned_raster)
 
-    diff = reference_raster - \
-           gu.Raster.from_array(aligned_raster.data, transform=reference_raster.transform, crs=reference_raster.crs, nodata=reference_raster.nodata)
+    diff = reference_raster - aligned_raster
 
     # Save it so that future calls won't need to recreate the file
     os.makedirs(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']), exist_ok=True)

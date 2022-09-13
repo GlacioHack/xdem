@@ -6,7 +6,7 @@ Terrain slope and aspect can be estimated using different methods.
 Here is an example of how to generate the two with each method, and understand their differences.
 
 For more information, see the :ref:`terrain_attributes` chapter and the
-:ref:`sphx_glr_auto_examples_plot_terrain_attributes.py` example.
+:ref:`sphx_glr_basic_examples_plot_terrain_attributes.py` example.
 """
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +23,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     plt.figure(figsize=(8, 5))
 
     if vlim is not None:
-        if isinstance(vlim, (int, float)):
+        if isinstance(vlim, (int, np.integer, float, np.floating)):
             vlims = {"vmin": -vlim, "vmax": vlim}
         elif len(vlim) == 2:
             vlims = {"vmin": vlim[0], "vmax": vlim[1]}

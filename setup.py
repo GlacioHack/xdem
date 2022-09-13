@@ -5,7 +5,7 @@ import sys
 from setuptools import setup
 from setuptools.command.install import install
 
-FULLVERSION = "0.0.5"
+FULLVERSION = "0.0.7"
 VERSION = FULLVERSION
 
 with open(os.path.join(os.path.dirname(__file__), "README.md")) as infile:
@@ -39,7 +39,7 @@ setup(
         "opencv": ["opencv"],
         "pytransform3d": ["pytransform3d"],
     },
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     scripts=[],
     zip_safe=False,
 )

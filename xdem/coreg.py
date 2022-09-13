@@ -186,13 +186,15 @@ def get_horizontal_shift(elevation_difference: np.ndarray, slope: np.ndarray, as
         return err
 
     # Estimate the a, b, and c parameters with least square minimisation
-    plsq = scipy.optimize.leastsq(func=residuals, x0=initial_guess, args=(y_medians, slice_bounds), full_output=1)
+    np.random.seed(seed=42)
+    results = scipy.optimize.least_squares(fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds))
 
-    a_parameter, b_parameter, c_parameter = plsq[0]
+    a_parameter, b_parameter, c_parameter = results.x
+
 
     # Calculate the easting and northing offsets from the above parameters
-    east_offset = a_parameter * np.sin(b_parameter)
-    north_offset = a_parameter * np.cos(b_parameter)
+    east_offset = np.round(a_parameter * np.sin(b_parameter), 5)
+    north_offset = np.round(a_parameter * np.cos(b_parameter), 5)
 
     return east_offset, north_offset, c_parameter
 
@@ -416,7 +418,8 @@ class Coreg:
             transform: Optional[rio.transform.Affine] = None,
             weights: Optional[np.ndarray] = None,
             subsample: Union[float, int] = 1.0,
-            verbose: bool = False) -> CoregType:
+            verbose: bool = False,
+            random_state: None | np.random.RandomState | np.random.Generator | int = None) -> CoregType:
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -427,6 +430,7 @@ class Coreg:
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
         """
 
         if weights is not None:
@@ -573,20 +577,18 @@ class Coreg:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Calculate final mask
-        final_mask = dem_mask + np.isnan(applied_dem)
+        final_mask = ~np.isfinite(applied_dem)
 
         # If the DEM was a masked_array, copy the mask to the new DEM
-        if hasattr(dem, "mask"):
-            applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
-        # If the DEM was a Raster with a mask, copy the mask to the new DEM
-        elif hasattr(dem, "data") and hasattr(dem.data, "mask"):
+        if isinstance(dem, (np.ma.masked_array, gu.Raster)):
             applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
         else:
             applied_dem[final_mask] = np.nan
 
         # If the input was a Raster, return a Raster as well.
         if isinstance(dem, gu.Raster):
-            return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
+            return dem.copy(new_array=applied_dem)
+            # return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
 
         return applied_dem
 
@@ -866,6 +868,7 @@ class BiasCorr(Coreg):
 class ICP(Coreg):
     """
     Iterative Closest Point DEM coregistration.
+    Based on 3D registration of Besl and McKay (1992), https://doi.org/10.1117/12.57955.
 
     Estimates a rigid transform (rotation + translation) between two DEMs.
 
@@ -966,8 +969,9 @@ class Deramp(Coreg):
 
         :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
         :param subsample: Factor for subsampling the input raster for speed-up.
-        If <= 1, will be considered a fraction of valid pixels to extract.
-        If > 1 will be considered the number of pixels to extract.
+            If <= 1, will be considered a fraction of valid pixels to extract.
+            If > 1 will be considered the number of pixels to extract.
+
         """
         self.degree = degree
         self.subsample = subsample
@@ -1348,7 +1352,7 @@ def apply_matrix(dem: np.ndarray, transform: rio.transform.Affine, matrix: np.nd
     :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
     # Parse the resampling argument given.
-    if isinstance(resampling, int):
+    if isinstance(resampling, (int, np.integer)):
         resampling_order = resampling
     elif resampling == "cubic":
         resampling_order = 3

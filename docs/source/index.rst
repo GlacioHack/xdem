@@ -3,40 +3,52 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to xdem's documentation!
-================================
-``xdem`` aims to make Digital Elevation Model (DEM) analysis easy.
-Coregistration, subtraction (and volume measurements), and error statistics should be available to anyone with the correct input data.
+xDEM: Analysis of digital elevation models for geosciences
+==========================================================
+xDEM aims at simplifying the analysis of digital elevation models (DEMs). This module provides typical post-processing steps such as coregistration, elevation/volume change measurements and error statistics.
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Getting started
 
-Simple usage
-==================
+   about_xdem
+   how_to_install
+   quick_start
 
-.. code-block:: python
+.. toctree::
+   :maxdepth: 2
+   :caption: Background
 
-        import xdem
-
-        dem1 = xdem.DEM("path/to/first_dem.tif")
-        dem2 = xdem.DEM("path/to/second_dem.tif")
-
-        difference = dem1 - dem2
-
+   intro_dems
+   intro_robuststats
+   intro_accuracy_precision
 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Features
 
-   intro
+   vertical_ref
+   terrain
    coregistration
    biascorr
    filters
    comparison
    spatialstats
-   robuststats
-   terrain
-   auto_examples/index.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Gallery of examples
+
+   basic_examples/index.rst
+   advanced_examples/index.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
    api.rst
+
 
 Indices and tables
 ==================

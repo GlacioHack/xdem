@@ -36,13 +36,13 @@ Examples are given using data close to Longyearbyen on Svalbard. These can be lo
 
 
 .. literalinclude:: code/coregistration.py
-        :lines: 5-27
+        :lines: 5-21
 
 The Coreg object
 ----------------
 :class:`xdem.coreg.Coreg`
 
-Each of the coregistration approaches in ``xdem`` inherit their interface from the ``Coreg`` class.
+Each of the coregistration approaches in xDEM inherit their interface from the ``Coreg`` class.
 It is written in a style that should resemble that of ``scikit-learn`` (see their `LinearRegression <https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression>`_ class for example).
 Each coregistration approach has the methods:
 
@@ -52,6 +52,8 @@ Each coregistration approach has the methods:
 * ``.to_matrix()`` to convert the transform to a 4x4 transformation matrix, if possible.
 
 First, ``.fit()`` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
+
+**Figure illustrating the different coregistration methods implemented**
 
 .. inheritance-diagram:: xdem.coreg
         :top-classes: xdem.coreg.Coreg
@@ -90,7 +92,7 @@ Example
 ^^^^^^^
 
 .. literalinclude:: code/coregistration.py
-        :lines: 31-36
+        :lines: 27-32
 
 
 .. minigallery:: xdem.coreg.NuthKaab
@@ -100,13 +102,13 @@ Deramping
 ---------
 :class:`xdem.coreg.Deramp`
 
-- **Performs:** Bias, linear or nonlinear height corrections.
+- **Performs:** Bias, linear or nonlinear vertical corrections.
 - **Supports weights** (soon)
 - **Recommended for:** Data with no horizontal offset and low to moderate rotational differences.
 
 Deramping works by estimating and correcting for an N-degree polynomial over the entire dDEM between a reference and the DEM to be aligned.
 This may be useful for correcting small rotations in the dataset, or nonlinear errors that for example often occur in structure-from-motion derived optical DEMs (e.g. Rosnell and Honkavaara `2012 <https://doi.org/10.3390/s120100453>`_; Javernick et al. `2014 <https://doi.org/10.1016/j.geomorph.2014.01.006>`_; Girod et al. `2017 <https://doi.org/10.5194/tc-11827-2017>`_).
-Applying a "0 degree deramping" is equivalent to a simple bias correction, and is recommended for e.g. vertical datum corrections.
+Applying a "0 degree deramping" is equivalent to a simple bias correction.
 
 Limitations
 ^^^^^^^^^^^
@@ -119,7 +121,7 @@ Example
 ^^^^^^^
 
 .. literalinclude:: code/coregistration.py
-        :lines: 42-48
+        :lines: 38-44
 
 
 Bias correction
@@ -141,7 +143,7 @@ Only performs vertical corrections, so it should be combined with another approa
 Example
 ^^^^^^^
 .. literalinclude:: code/coregistration.py
-        :lines: 54-64
+        :lines: 50-60
 
 ICP
 ---
@@ -151,7 +153,7 @@ ICP
 - **Does not support weights**
 - **Recommended for:** Data with low noise and a high relative rotation.
 
-Iterative Closest Point (ICP) coregistration works by iteratively moving the data until it fits the reference as well as possible.
+Iterative Closest Point (ICP) coregistration, which is based on `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_, works by iteratively moving the data until it fits the reference as well as possible.
 The DEMs are read as point clouds; collections of points with X/Y/Z coordinates, and a nearest neighbour analysis is made between the reference and the data to be aligned.
 After the distances are calculated, a rigid transform is estimated to minimise them.
 The transform is attempted, and then distances are calculated again.
@@ -171,7 +173,7 @@ Due to the repeated nearest neighbour calculations, ICP is often the slowest cor
 Example
 ^^^^^^^
 .. literalinclude:: code/coregistration.py
-        :lines: 70-76
+        :lines: 66-72
 
 .. minigallery:: xdem.coreg.ICP
         :add-heading:
@@ -184,7 +186,7 @@ Often, more than one coregistration approach is necessary to obtain the best res
 For example, ICP works poorly with large initial biases, so a ``CoregPipeline`` can be constructed to perform both sequentially:
 
 .. literalinclude:: code/coregistration.py
-        :lines: 82-87
+        :lines: 78-83
 
 The ``CoregPipeline`` object exposes the same interface as the ``Coreg`` object.
 The results of a pipeline can be used in other programs by exporting the combined transformation matrix:
@@ -221,6 +223,4 @@ For large biases, rotations and high amounts of noise:
 
 .. code-block:: python
 
-        coreg.VerticalShift() + coreg.ICP() + coreg.NuthKaab()
-        
-
+        coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()

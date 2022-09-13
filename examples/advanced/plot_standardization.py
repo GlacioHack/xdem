@@ -1,30 +1,28 @@
 """
-Standardization for stable terrain as proxy
-===========================================
+Standardization for stable terrain as error proxy
+=================================================
 
 Digital elevation models have both a precision that can vary with terrain or instrument-related variables, and
-a spatial correlation of measurement errors that can be due to effects of resolution, processing or instrument noise.
-Accouting for non-stationarities in elevation measurement errors is essential to use stable terrain as a proxy to
-infer the precision on other types of terrain (Hugonnet et al., in prep) and reliably use spatial statistics (see
-:ref:`spatialstats`).
+a spatial correlation of errors that can be due to effects of resolution, processing or instrument noise.
+Accouting for non-stationarities in elevation errors is essential to use stable terrain as a proxy to infer the
+precision on other types of terrain and reliably use spatial statistics (see :ref:`spatialstats`).
 
-Here, we show an example to use standardization of the data based on the terrain-dependent nonstationarity in measurement
-error (see :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py`) and combine it with an analysis of spatial
-correlation (see :ref:`sphx_glr_auto_examples_plot_vgm_error.py`) to derive spatially integrated errors for specific
-spatial ensembles.
+Here, we show an example of standardization of the data based on terrain-dependent explanatory variables
+(see :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`) and combine it with an analysis of spatial correlation
+(see :ref:`sphx_glr_basic_examples_plot_infer_spatial_correlation.py`) .
 
-**Reference**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, applied to the terrain slope
-and quality of stereo-correlation (Equation 1, Extended Data Fig. 3a).
+**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Equation 12.
 """
 # sphinx_gallery_thumbnail_number = 4
 import matplotlib.pyplot as plt
 import numpy as np
 import xdem
 import geoutils as gu
+from xdem.spatialstats import nmad
 
 # %%
-# We start by estimating the non-stationarities and deriving a terrain-dependent measurement error as a function of both
-# slope and maximum curvature, as shown in the  :ref:`sphx_glr_auto_examples_plot_nonstationary_error.py` example.
+# We start by estimating the elevation heteroscedasticity and deriving a terrain-dependent measurement error as a function of both
+# slope and maximum curvature, as shown in the :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py` example.
 
 # Load the data
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
@@ -59,11 +57,11 @@ custom_bin_curvature = np.unique(np.concatenate([np.nanquantile(maxc_arr,np.lins
 
 # Perform 2D binning to estimate the measurement error with slope and maximum curvature
 df = xdem.spatialstats.nd_binning(values=dh_arr, list_var=[slope_arr, maxc_arr], list_var_names=['slope', 'maxc'],
-                                  statistics=['count', np.nanmedian, np.nanstd],
+                                  statistics=['count', np.nanmedian, nmad],
                                   list_var_bins=[custom_bin_slope,custom_bin_curvature])
 
 # Estimate an interpolant of the measurement error with slope and maximum curvature
-slope_curv_to_dh_err = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'maxc'], statistic='nanstd', min_count=30)
+slope_curv_to_dh_err = xdem.spatialstats.interp_nd_binning(df, list_var_names=['slope', 'maxc'], statistic='nmad', min_count=30)
 maxc = np.maximum(np.abs(profc), np.abs(planc))
 
 # Estimate a measurement error per pixel
@@ -82,10 +80,10 @@ z_dh.data[np.abs(z_dh.data)>4] = np.nan
 
 # %%
 # We perform a scale-correction for the standardization, to ensure that the standard deviation of the data is exactly 1.
-print('Standard deviation before scale-correction: {:.1f}'.format(np.nanstd(z_dh.data)))
-scale_fac_std = np.nanstd(z_dh.data)
+print('Standard deviation before scale-correction: {:.1f}'.format(nmad(z_dh.data)))
+scale_fac_std = nmad(z_dh.data)
 z_dh = z_dh/scale_fac_std
-print('Standard deviation after scale-correction: {:.1f}'.format(np.nanstd(z_dh.data)))
+print('Standard deviation after scale-correction: {:.1f}'.format(nmad(z_dh.data)))
 
 plt.figure(figsize=(8, 5))
 plt_extent = [
@@ -104,14 +102,14 @@ plt.legend(loc='lower right')
 plt.show()
 
 # %%
-# Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_auto_examples_plot_vgm_error.py`
+# Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_advanced_examples_plot_variogram_estimation_modelling.py`
 # example, by estimating a variogram and fitting a sum of two models.
-df_vgm = xdem.spatialstats.sample_empirical_variogram(
-    values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=50, runs=30, n_variograms=10, random_state=42)
+df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=300,
+                                                      n_variograms=10, random_state=42)
 
-fun, params = xdem.spatialstats.fit_sum_model_variogram(['Sph', 'Sph'], empirical_variogram=df_vgm)
-xdem.spatialstats.plot_vgm(df_vgm, xscale_range_split=[100, 1000, 10000], list_fit_fun=[fun],
-                           list_fit_fun_label=['Standardized double-range variogram'])
+func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(['Gaussian', 'Spherical'], empirical_variogram=df_vgm)
+xdem.spatialstats.plot_variogram(df_vgm, xscale_range_split=[100, 1000, 10000], list_fit_fun=[func_sum_vgm],
+                                 list_fit_fun_label=['Standardized double-range variogram'])
 
 # %%
 # With standardized input, the variogram should converge towards one. With the input data close to a stationary
@@ -158,11 +156,11 @@ print('Average maximum curvature of Medalsbreen glacier : {:.1f}'.format(np.nanm
 
 # %%
 # We calculate the number of effective samples for each glacier based on the variogram
-svendsen_neff = xdem.spatialstats.neff_circ(np.sum(svendsen_shp.ds['Shape_Area'].values),  [(params[0], 'Sph', params[1]),
-                                                   (params[2], 'Sph', params[3])])
+svendsen_neff = xdem.spatialstats.neff_circular_approx_numerical(area=svendsen_shp.ds.area.values[0],
+                                                                 params_variogram_model=params_vgm)
 
-medals_neff = xdem.spatialstats.neff_circ(np.sum(medals_shp.ds['Shape_Area'].values),  [(params[0], 'Sph', params[1]),
-                                                   (params[2], 'Sph', params[3])])
+medals_neff = xdem.spatialstats.neff_circular_approx_numerical(area=medals_shp.ds.area.values[0],
+                                                               params_variogram_model=params_vgm)
 
 print('Number of effective samples of Svendsenbreen glacier: {:.1f}'.format(svendsen_neff))
 print('Number of effective samples of Medalsbreen glacier: {:.1f}'.format(medals_neff))

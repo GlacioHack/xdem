@@ -55,9 +55,10 @@ ddem = xdem.dDEM(
 )
 
 # The example DEMs are void-free, so let's make some random voids.
-ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)  # Reset the mask
 # Introduce 50000 nans randomly throughout the dDEM.
-ddem.data.mask.ravel()[np.random.choice(ddem.data.size, 50000, replace=False)] = True
+mask = np.zeros_like(ddem.data, dtype=bool)
+mask.ravel()[(np.random.choice(ddem.data.size, 50000, replace=False))] = True
+ddem.set_mask(mask)
 
 # SUBSECTION: Linear spatial interpolation
 

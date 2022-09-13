@@ -5,18 +5,17 @@ Spatial statistics
 
 Spatial statistics, also referred to as `geostatistics <https://en.wikipedia.org/wiki/Geostatistics>`_, are essential
 for the analysis of observations distributed in space.
-To analyze DEMs, ``xdem`` integrates spatial statistics tools specific to DEMs described in recent literature,
-in particular in `Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_,
-`Dehecq et al. (2020) <https://doi.org/10.3389/feart.2020.566802>`_ and
-`Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_. The implementation of these methods relies
-partly on the package `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
+To analyze DEMs, xDEM integrates spatial statistics tools specific to DEMs described in recent literature,
+in particular in `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_ and
+`Rolstad et al. (2009) <https://doi.org/10.3189/002214309789470950>`_. The implementation of these methods relies
+partially on the package `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_.
 
 The spatial statistics tools can be used to assess the precision of DEMs (see the definition of precision in :ref:`intro`).
 In particular, these tools help to:
 
-    - account for non-stationarities of elevation measurement errors (e.g., varying precision of DEMs with terrain slope),
-    - quantify the spatial correlation of measurement errors in DEMs (e.g., native spatial resolution, instrument noise),
-    - estimate robust errors for observations integrated in space (e.g., average or sum of samples),
+    - account for elevation heteroscedasticity (e.g., varying precision with terrain slope),
+    - quantify the spatial correlation of errors in DEMs (e.g., native spatial resolution, instrument noise),
+    - estimate robust errors for observations analyzed in space (e.g., average or sum of elevation, or of elevation changes),
     - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
 .. contents:: Contents 
@@ -73,7 +72,7 @@ Due to the sparsity of synchronous acquisitions, elevation data cannot be easily
 times. Thus, stable terrain is used a proxy to assess the precision of a DEM on all its terrain,
 including moving terrain that is generally of greater interest for analysis.
 
-As shown in Hugonnet et al. (in prep), accounting for :ref:`spatialstats_nonstationarity` is needed to reliably
+As shown in `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, accounting for :ref:`spatialstats_heterosc` is needed to reliably
 use stable terrain as a proxy for other types of terrain.
 
 .. _spatialstats_metrics:
@@ -99,7 +98,7 @@ To estimate the pixel-wise measurement error for elevation data, two issues aris
     1. The dispersion :math:`\sigma_{dh}` cannot be estimated directly on changing terrain,
     2. The dispersion :math:`\sigma_{dh}` can show important non-stationarities.
 
-The section :ref:`spatialstats_nonstationarity` describes how to quantify the measurement error as a function of
+The section :ref:`spatialstats_heterosc` describes how to quantify the measurement error as a function of
 several explanatory variables by using stable terrain as a proxy.
 
 Spatially-integrated elevation measurement error
@@ -129,23 +128,21 @@ and use those to integrate and propagate measurement errors in space.
 Workflow for DEM precision estimation
 -------------------------------------
 
-.. _spatialstats_nonstationarity:
+.. _spatialstats_heterosc:
 
-Non-stationarity in elevation measurement errors
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Elevation heteroscedasticity
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Elevation data contains significant non-stationarities in elevation measurement errors.
+Elevation data contains significant variability in measurement errors.
 
-``xdem`` provides tools to **quantify** these non-stationarities along several explanatory variables,
-**model** those numerically to estimate an elevation measurement error, and **standardize** them for further analysis.
+xDEM provides tools to **quantify** this variability using explanatory variables, **model** those numerically to
+estimate a function predicting elevation error, and **standardize** data for further analysis.
 
-Quantify and model non-stationarites
-""""""""""""""""""""""""""""""""""""
+Quantify and model heteroscedasticity
+"""""""""""""""""""""""""""""""""""""
 
-Non-stationarities in elevation measurement errors correspond to a variability of the precision in the elevation
-observations with certain explanatory variables that can be terrain- or instrument-related.
-In statistical terms, it corresponds to an `heteroscedasticity <https://en.wikipedia.org/wiki/Heteroscedasticity>`_
-of elevation observations.
+Elevation `heteroscedasticity <https://en.wikipedia.org/wiki/Heteroscedasticity>`_ corresponds to a variability in
+precision of elevation observations, that are linked to terrain or instrument variables.
 
 .. math::
     \sigma_{dh} = \sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...}) \neq \textrm{constant}
@@ -155,23 +152,23 @@ Owing to the large number of samples of elevation data, we can easily estimate t
 :ref:`robuststats_meanstd`) across several explanatory variables using :func:`xdem.spatialstats.nd_binning`.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 18-19
+        :lines: 27
         :language: python
 
-.. plot:: code/spatialstats_nonstationarity_slope.py
+.. plot:: code/spatialstats_heterosc_slope.py
     :width: 90%
 
 The most common explanatory variables are:
 
-    - the terrain slope and terrain curvature (see :ref:`terrain_attributes) that can explain a large part of the terrain-related variability in measurement error,
+    - the terrain slope and terrain curvature (see :ref:`terrain_attributes`) that can explain a large part of the terrain-related variability in measurement error,
     - the quality of stereo-correlation that can explain a large part of the measurement error of DEMs generated by stereophotogrammetry,
     - the interferometric coherence that can explain a large part of the measurement error of DEMs generated by `InSAR <https://en.wikipedia.org/wiki/Interferometric_synthetic-aperture_radar>`_.
 
-Once quantified, the non-stationarities can be modelled numerically by linear interpolation across several
+Once quantified, elevation heteroscedasticity can be modelled numerically by linear interpolation across several
 variables using :func:`xdem.spatialstats.interp_nd_binning`.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 22
+        :lines: 30
         :language: python
 
 Standardize elevation differences for further analysis
@@ -196,7 +193,7 @@ Code-wise, standardization is as simple as a division of the elevation differenc
 error:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 25
+        :lines: 33
         :language: python
 
 To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
@@ -219,8 +216,8 @@ average measurement error of the pixels in the subsample, evaluated through the 
 Estimating the standard error of the mean of the standardized data :math:`\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}`
 requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
 
-.. minigallery:: xdem.spatialstats.nd_binning
-        :add-heading: Examples that deal with non-stationarities
+.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.nd_binning
+        :add-heading: Examples that deal with elevation heteroscedasticity
         :heading-level: "
 
 .. _spatialstats_corr:
@@ -232,7 +229,7 @@ Spatial correlation of elevation measurement errors correspond to a dependency b
 close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
 instrument noise and deformations (mid- to long-range correlations).
 
-``xdem`` provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
+xDEM provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
 **model** correlations simultaneously at multiple ranges.
 
 Quantify spatial correlations
@@ -273,7 +270,7 @@ Random subsampling of the grid samples used is a solution, but often unsatisfact
 of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
 few at short distances and long distances).
 
-To remedy this issue, ``xdem`` provides :func:`xdem.spatialstats.sample_empirical_variogram`, an empirical variogram estimation tool
+To remedy this issue, xDEM provides :func:`xdem.spatialstats.sample_empirical_variogram`, an empirical variogram estimation tool
 that encapsulates a pairwise subsampling method described in ``skgstat.MetricSpace.RasterEquidistantMetricSpace``.
 This method compares pairwise distances between a center subset and equidistant subsets iteratively across a grid, based on
 `sparse matrices <https://en.wikipedia.org/wiki/Sparse_matrix>`_ routines computing pairwise distances of two separate
@@ -283,7 +280,7 @@ The resulting pairwise differences are evenly distributed across the grid and ac
 means that lag classes separated by a factor of :math:`\sqrt{2}` have an equal number of pairwise differences computed).
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 28-29
+        :lines: 36
         :language: python
 
 The variogram is returned as a ``pd.Dataframe`` object.
@@ -307,10 +304,10 @@ This can be performed through the function :func:`xdem.spatialstats.fit_sum_mode
 ``pd.Dataframe`` variogram.
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 31
+        :lines: 39-40
         :language: python
 
-.. minigallery:: xdem.spatialstats.sample_empirical_variogram
+.. minigallery:: xdem.spatialstats.infer_spatial_correlation_from_stable xdem.spatialstats.sample_empirical_variogram
         :add-heading: Examples that deal with spatial correlations
         :heading-level: "
 
@@ -322,7 +319,7 @@ Spatially integrated measurement errors
 After quantifying and modelling spatial correlations, those an effective sample size, and elevation measurement error:
 
 .. literalinclude:: code/spatialstats.py
-        :lines: 34-38
+        :lines: 43
 
 TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 

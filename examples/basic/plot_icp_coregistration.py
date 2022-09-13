@@ -1,12 +1,14 @@
 """
-Iterative Closest Point (ICP) coregistration.
-=============================================
+Iterative Closest Point coregistration
+======================================
 Some DEMs may for one or more reason be erroneously rotated in the X, Y or Z directions.
 Established coregistration approaches like :ref:`coregistration_nuthkaab` work great for X, Y and Z *translations*, but rotation is not accounted for at all.
 
-ICP is one method that takes both rotation and translation into account.
+Iterative Closest Point (ICP) is one method that takes both rotation and translation into account.
 It is however not as good as :ref:`coregistration_nuthkaab` when it comes to sub-pixel accuracy.
 Fortunately, ``xdem`` provides the best of two worlds by allowing a combination of the two.
+
+**Reference**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
 """
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
@@ -24,10 +26,7 @@ dem.crop(subset_extent)
 
 # %%
 # Let's plot a hillshade of the mountain for context.
-plt_extent = [subset_extent[0], subset_extent[2], subset_extent[1], subset_extent[3]]
-
-plt.imshow(xdem.terrain.hillshade(dem.data, resolution=dem.res).squeeze(), cmap="Greys_r", extent=plt_extent)
-plt.show()
+xdem.terrain.hillshade(dem).show(cmap='gray')
 
 # %%
 # To try the effects of rotation, we can artificially rotate the DEM using a transformation matrix.
@@ -45,15 +44,14 @@ rotation_matrix = np.array(
 )
 
 # This will apply the matrix along the center of the DEM
-rotated_dem = xdem.coreg.apply_matrix(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
-
+rotated_dem_data = xdem.coreg.apply_matrix(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
+rotated_dem = xdem.DEM.from_array(rotated_dem_data, transform=dem.transform, crs=dem.crs, nodata=-9999)
 
 # %%
 # We can plot the difference between the original and rotated DEM.
 # It is now artificially tilting from east down to the west.
-diff_before = dem.data - rotated_dem
-plt.imshow(diff_before.squeeze(), cmap="coolwarm_r", vmin=-20, vmax=20, extent=plt_extent)
-
+diff_before = dem - rotated_dem
+diff_before.show(cmap="coolwarm_r", vmin=-20, vmax=20)
 plt.show()
 
 # %%
@@ -75,18 +73,17 @@ plt.figure(figsize=(6, 12))
 
 for i, (approach, name) in enumerate(approaches):
     approach.fit(
-        reference_dem=dem.data,
+        reference_dem=dem,
         dem_to_be_aligned=rotated_dem,
-        transform=dem.transform,
     )
 
-    corrected_dem_data = approach.apply(dem=rotated_dem, transform=dem.transform)
+    corrected_dem = approach.apply(dem=rotated_dem)
 
-    diff = dem.data - corrected_dem_data
+    diff = dem - corrected_dem
 
-    plt.subplot(3, 1, i + 1)
+    ax = plt.subplot(3, 1, i + 1)
     plt.title(name)
-    plt.imshow(diff.squeeze(), cmap="coolwarm_r", vmin=-20, vmax=20, extent=plt_extent)
+    diff.show(cmap="coolwarm_r", vmin=-20, vmax=20, ax=ax)
 
 plt.tight_layout()
 plt.show()

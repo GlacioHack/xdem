@@ -231,11 +231,10 @@ class DEM(SatelliteImage):
 
         # Transform the grid
         transformer = Transformer.from_crs(ccrs_init, ccrs_dest)
-        meta = self.ds.meta
         zz = self.data
         xx, yy = self.coords(offset='center')
         zz_trans = transformer.transform(xx,yy,zz[0,:])[2]
         zz[0,:] = zz_trans
 
         # Update raster
-        self._update(metadata=meta,imgdata=zz)
+        self.data = zz
