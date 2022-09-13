@@ -440,7 +440,7 @@ class Coreg:
             raise NotImplementedError("Weights have not yet been implemented")
 
         # Validate that both inputs are valid array-like (or Raster) types.
-        if not all(isinstance(dem, (np.ndarray | gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
+        if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
             raise ValueError(
                 "Both DEMs need to be array-like (implement a numpy array interface)."
                 f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
