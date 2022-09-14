@@ -28,12 +28,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Ensure environment variables are correctly set
-      run: |
-        export LC_ALL=C
-        export LC_CTYPE="C"
-        export LC_MESSAGES="C"
-
     # Set up the conda-forge environment with mamba
     - name: Set up Python ${{ matrix.python-version }} and dependencies
       uses: conda-incubator/setup-miniconda@v2
