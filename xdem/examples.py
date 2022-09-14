@@ -98,6 +98,10 @@ def process_coregistered_examples(overwrite: bool =False):
     glacier_mask = gu.geovector.Vector(FILEPATHS_DATA["longyearbyen_glacier_outlines"])
     inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
+    # This is to avoid issues with floating point nodatas
+    reference_raster.set_ndv(-9999)
+    to_be_aligned_raster.set_ndv(-9999)
+
     nuth_kaab = xdem.coreg.NuthKaab()
     nuth_kaab.fit(reference_raster, to_be_aligned_raster,
                   inlier_mask=inlier_mask)
