@@ -579,6 +579,9 @@ class Coreg:
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
+        # Ensure the dtype is OK
+        applied_dem = applied_dem.astype("float32")
+
         # Calculate final mask
         final_mask = ~np.isfinite(applied_dem)
 
