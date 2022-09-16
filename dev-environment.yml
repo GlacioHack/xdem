@@ -12,7 +12,7 @@ dependencies:
   - matplotlib
   - opencv
   - pyproj
-  - rasterio<=1.2.10
+  - rasterio
   - scipy
   - tqdm
   - scikit-image
