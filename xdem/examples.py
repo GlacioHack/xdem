@@ -49,7 +49,7 @@ def download_longyearbyen_examples(overwrite: bool = False):
                 os.remove(fn)
 
     # Static commit hash to be bumped every time it needs to be.
-    commit = "321f84d5a67666f45a196a31a2697e22bfaf3c59"
+    commit = "fd832bc2e366cf2ba8b543f7e43f90ee02384f4f"
     # The URL from which to download the repository
     url = f"https://github.com/GlacioHack/xdem-data/tarball/main#commit={commit}"
 
@@ -97,10 +97,6 @@ def process_coregistered_examples(overwrite: bool =False):
     to_be_aligned_raster = gu.georaster.Raster(FILEPATHS_DATA["longyearbyen_tba_dem"])
     glacier_mask = gu.geovector.Vector(FILEPATHS_DATA["longyearbyen_glacier_outlines"])
     inlier_mask = ~glacier_mask.create_mask(reference_raster)
-
-    # This is to avoid issues with floating point nodatas
-    reference_raster.set_nodata(-9999)
-    to_be_aligned_raster.set_nodata(-9999)
 
     nuth_kaab = xdem.coreg.NuthKaab()
     nuth_kaab.fit(reference_raster, to_be_aligned_raster,
