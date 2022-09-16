@@ -578,7 +578,7 @@ class TestCoregClass:
         # TODO - Fix coreg.apply?
         assert isinstance(dem2_r, xdem.DEM)
         assert isinstance(dem2_a, np.ma.masked_array)
-        assert gu.misc.array_equal(dem2_r.data.squeeze(), dem2_a, equal_nan=True)
+        assert np.ma.allequal(dem2_r.data.squeeze(), dem2_a)
 
         # If apply on a masked_array was given without a transform, it should fail.
         with pytest.raises(ValueError, match="'transform' must be given"):
