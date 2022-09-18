@@ -1,6 +1,6 @@
 sphinx
 numpydoc
-sphinx_rtd_theme
+sphinx-book-theme
 sphinx_autodoc_typehints
 sphinxcontrib-programoutput
 numpy

@@ -25,7 +25,6 @@ dependencies:
   - pytest
   - pytest-xdist
   - sphinx
-  - sphinx_rtd_theme
   - numpydoc
   - sphinxcontrib-programoutput
   - flake8
@@ -33,5 +32,6 @@ dependencies:
   - sphinx-gallery
 
   - pip:
+    - sphinx-book-theme
     - git+https://github.com/GlacioHack/geoutils.git
 
