@@ -1,6 +1,7 @@
 """Test the xdem.misc functions."""
 from __future__ import annotations
 
+import os
 import warnings
 
 import pytest
@@ -8,7 +9,6 @@ import pytest
 import xdem
 import xdem.misc
 
-import os
 
 import yaml  # type: ignore
 
@@ -48,7 +48,7 @@ class TestMisc:
 
     @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])
     @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])
-    def test_deprecate(deprecation_increment: int | None, details: str | None) -> None:
+    def test_deprecate(self, deprecation_increment: int | None, details: str | None) -> None:
         """
         Test the deprecation warnings/errors.
 
