@@ -31,6 +31,7 @@ dependencies:
   - flake8
   - sphinx-autodoc-typehints
   - sphinx-gallery
+  - pyyaml
 
   - pip:
     - git+https://github.com/GlacioHack/geoutils.git
