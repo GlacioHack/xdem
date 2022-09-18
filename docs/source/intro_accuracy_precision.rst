@@ -111,7 +111,7 @@ statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
 ..
-    Functions that are used in several examples create duplicate examples intead of being merged into the list.
+    Functions that are used in several examples create duplicate examples instead of being merged into the list.
     Circumventing manually by selecting functions used only once in each example for now.
 
 .. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.get_variogram_model_func xdem.spatialstats.sample_empirical_variogram

@@ -240,7 +240,7 @@ class DEMCollection:
         else:
             raise ValueError("Invalid argument: '{dh=}'. Choices: ['dh', 'dv']")
 
-        # Simplify the index to just "year" (implictly still the same as above)
+        # Simplify the index to just "year" (implicitly still the same as above)
         cumulative_dh = pd.Series(dtype=d_series.dtype)
         cumulative_dh[self.reference_timestamp] = 0.0
         for i, value in zip(d_series.index, d_series.values):

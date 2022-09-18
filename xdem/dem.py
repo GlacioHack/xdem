@@ -223,7 +223,7 @@ class DEM(SatelliteImage):
             raise ValueError('The current DEM has not vertical reference: need to set one before attempting a conversion '
                              'towards another vertical reference.')
 
-        # Inital ccrs
+        # Initial ccrs
         ccrs_init = self.ccrs
 
         # Destination crs: first, set the new reference (before calculation doesn't change anything,

@@ -793,7 +793,7 @@ def get_terrain_attribute(
     if (hillshade_azimuth < 0.0) or (hillshade_azimuth > 360.0):
         raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {hillshade_azimuth})")
     if (hillshade_altitude < 0.0) or (hillshade_altitude > 90):
-        raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
+        raise ValueError("Altitude must be a value between 0 and 90 degrees (given value: {altitude})")
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 

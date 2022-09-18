@@ -281,7 +281,7 @@ to interpolate from. The default is 10.
                                                   max_search_distance=max_search_distance)
 
     # Remove extrapolated values: gaps up to the size of max_search_distance are kept,
-    # but surfaces that artifically grow on the edges are removed
+    # but surfaces that artificially grow on the edges are removed
     if not extrapolate:
         interp_mask = cv2.morphologyEx((~nan_mask).squeeze().astype('uint8'), cv2.MORPH_CLOSE,
                                        kernel=np.ones((max_search_distance - 1, )*2)).astype('bool')
@@ -378,7 +378,7 @@ def local_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array
 
     :param voided_ddem: A dDEM with voids (either an array with nans or a masked array).
     :param ref_dem: The reference DEM in the dDEM comparison.
-    :param mask: A raster of same shape as voided_ddem and ref_dem, containing a diferent non-0 pixel value for \
+    :param mask: A raster of same shape as voided_ddem and ref_dem, containing a different non-0 pixel value for \
 each geometry on which to loop.
     :param min_coverage: Optional. The minimum coverage fraction to be considered for interpolation.
     :param count_threshold: Optional. A pixel count threshold to exclude during the hypsometric curve fit.

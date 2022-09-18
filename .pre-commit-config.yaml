@@ -13,7 +13,7 @@ repos:
           rev: v2.0.0
           hooks:
                 - id: codespell
-                  args: [--ignore-words-list=alos, --ignore-regex=\bnin\b]
+                  args: [--ignore-words=codespell_ignore.txt, --ignore-regex=\bhist\b]
                   types_or: [python, rst, markdown]
                   files: ^(xdem|docs|tests)/
 

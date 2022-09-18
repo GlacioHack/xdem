@@ -85,7 +85,7 @@ single pixel, for example :math:`\pm 2` meters at the 1\ :math:`\sigma` `confide
 
 However, there is some limitations to this simple metric:
 
-    - the variability of the pixel-wise precision is not reported. The pixel-wise precision can vary depending on terrain- or instrument-related factors, such as the terrain slope. In rare occurences, part of this variability has been accounted in recent DEM products, such as TanDEM-X global DEM that partitions the precision between flat and steep slopes (`Rizzoli et al. (2017) <https://doi.org/10.1016/j.isprsjprs.2017.08.008>`_),
+    - the variability of the pixel-wise precision is not reported. The pixel-wise precision can vary depending on terrain- or instrument-related factors, such as the terrain slope. In rare occurrences, part of this variability has been accounted in recent DEM products, such as TanDEM-X global DEM that partitions the precision between flat and steep slopes (`Rizzoli et al. (2017) <https://doi.org/10.1016/j.isprsjprs.2017.08.008>`_),
     - the area-wise precision of a DEM is generally not reported. Depending on the inherent resolution of the DEM, and patterns of noise that might plague the observations, the precision of a DEM over a surface area can vary significantly.
 
 Pixel-wise elevation measurement error

@@ -276,7 +276,7 @@ def deramping(elevation_difference, x_coordinates: np.ndarray, y_coordinates: np
                                    y_coordinates ** j for k in range(degree + 1) for j in range(k + 1)], axis=0)
         return estimated_values  # type: ignore
 
-    # Creat the error function
+    # Create the error function
     def residuals(coefficients: np.ndarray, values: np.ndarray, x_coordinates: np.ndarray,
                   y_coordinates: np.ndarray, degree: int) -> np.ndarray:
         """
@@ -1659,7 +1659,7 @@ class BlockwiseCoreg(Coreg):
             if hasattr(coreg, "pipeline"):
                 meta["pipeline"] = [step._meta.copy() for step in coreg.pipeline]
 
-            # Copy all current metadata (except for the alreay existing keys like "i", "min_row", etc, and the "coreg_meta" key)
+            # Copy all current metadata (except for the already existing keys like "i", "min_row", etc, and the "coreg_meta" key)
             # This can then be iteratively restored when the apply function should be called.
             meta.update({key: value for key, value in coreg._meta.items() if key not in ["coreg_meta"] + list(meta.keys())})
 
@@ -1731,7 +1731,7 @@ class BlockwiseCoreg(Coreg):
         To acquire the first point's new position: points[0, :, 1]
         To acquire the first point's Z difference: points[0, 2, 1] - points[0, 2, 0]
 
-        :returns: An array of 3D source -> destionation points.
+        :returns: An array of 3D source -> destination points.
         """
         if len(self._meta["coreg_meta"]) == 0:
             raise AssertionError("No coreg results exist. Has '.fit()' been called?")

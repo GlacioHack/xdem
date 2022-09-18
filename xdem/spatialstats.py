@@ -1102,7 +1102,7 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
 
     if 'bin_func' not in kwargs.keys():
         # If no bin_func is provided, we provide an Iterable to provide a custom binning function to skgstat,
-        # because otherwise bins might be unconsistent across runs
+        # because otherwise bins might be inconsistent across runs
         bin_func = []
         right_bin_edge = np.sqrt(2) * gsd
         while right_bin_edge < kwargs.get('maxlag'):
@@ -1191,7 +1191,7 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
     return df
 
 def _get_skgstat_variogram_model_name(model: str | Callable) -> str:
-    """Fonction to identify a SciKit-GStat variogram model from a string or a function"""
+    """Function to identify a SciKit-GStat variogram model from a string or a function"""
 
     list_supported_models = ['spherical', 'gaussian', 'exponential', 'cubic', 'stable', 'matern']
 
