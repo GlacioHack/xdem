@@ -15,7 +15,7 @@ class TestFilters:
     dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
     dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
 
-    def test_gauss(self):
+    def test_gauss(self) -> None:
         """Test applying the various Gaussian filters on DEMs with/without NaNs"""
 
         # Test applying scipy's Gaussian filter
@@ -63,7 +63,7 @@ class TestFilters:
         pytest.raises(ValueError, xdem.filters.gaussian_filter_scipy, data, sigma=5)
         pytest.raises(ValueError, xdem.filters.gaussian_filter_cv, data, sigma=5)
 
-    def test_dist_filter(self):
+    def test_dist_filter(self) -> None:
         """Test that distance_filter works"""
 
         # Calculate dDEM

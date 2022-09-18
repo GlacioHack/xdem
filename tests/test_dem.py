@@ -15,7 +15,7 @@ DO_PLOT = False
 
 
 class TestDEM:
-    def test_init(self):
+    def test_init(self) -> None:
         """Test that inputs work properly in DEM class init."""
         fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
 
@@ -64,7 +64,7 @@ class TestDEM:
             )
         )
 
-    def test_copy(self):
+    def test_copy(self) -> None:
         """
         Test that the copy method works as expected for DEM. In particular
         when copying r to r2:
@@ -109,7 +109,7 @@ class TestDEM:
 
         assert np.array_equal(r3.data, r2.data)
 
-    def test_set_vref(self):
+    def test_set_vref(self) -> None:
         """Tests to set the vertical reference"""
 
         fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
@@ -143,7 +143,7 @@ class TestDEM:
         with pytest.raises(ValueError):
             img.set_vref(vref_grid="the best grid in the entire world, or any non-existing string")
 
-    def test_to_vref(self):
+    def test_to_vref(self) -> None:
         """Tests to convert vertical references"""
 
         # First, we use test points to test the vertical transform

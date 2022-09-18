@@ -18,8 +18,8 @@ class TestRobustFitting:
             ("sklearn", "RANSAC"),
             ("sklearn", "Huber"),
         ],
-    )
-    def test_robust_polynomial_fit(self, pkg_estimator: str):
+    ) # type: ignore
+    def test_robust_polynomial_fit(self, pkg_estimator: str) -> None:
 
         # Define x vector
         x = np.linspace(1, 10, 1000)
@@ -38,7 +38,7 @@ class TestRobustFitting:
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
-    def test_robust_polynomial_fit_noise_and_outliers(self):
+    def test_robust_polynomial_fit_noise_and_outliers(self) -> None:
 
         np.random.seed(42)
 
@@ -100,7 +100,7 @@ class TestRobustFitting:
         for i in range(3):
             assert coefs6[i + 1] == pytest.approx(true_coefs[i + 1], abs=1)
 
-    def test_robust_sumsin_fit(self):
+    def test_robust_sumsin_fit(self) -> None:
 
         # Define X vector
         x = np.linspace(0, 10, 1000)
@@ -121,7 +121,7 @@ class TestRobustFitting:
             x, y, bounds_amp_freq_phase=bounds, nb_frequency_max=2, hop_length=0.01, random_state=42, niter=1
         )
 
-    def test_robust_simsin_fit_noise_and_outliers(self):
+    def test_robust_simsin_fit_noise_and_outliers(self) -> None:
 
         # Check robustness to outliers
         np.random.seed(42)

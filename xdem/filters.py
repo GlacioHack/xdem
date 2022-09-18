@@ -53,7 +53,7 @@ def gaussian_filter_scipy(array: np.ndarray, sigma: float) -> np.ndarray:
         return gauss
 
 
-def gaussian_filter_cv(array: np.ndarray, sigma) -> np.ndarray:
+def gaussian_filter_cv(array: np.ndarray, sigma: float) -> np.ndarray:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
     Arguments are for now hard-coded to be identical to scipy.

@@ -44,7 +44,7 @@ class TestBinning:
         ref, attribute=["slope", "aspect", "maximum_curvature"]
     )
 
-    def test_nd_binning(self):
+    def test_nd_binning(self) -> None:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
@@ -121,7 +121,7 @@ class TestBinning:
         # Save for later use
         df.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
 
-    def test_interp_nd_binning_artificial_data(self):
+    def test_interp_nd_binning_artificial_data(self) -> None:
         """Check that the N-dimensional interpolation works correctly using artificial data"""
 
         # Check the function works with a classic input (see example)
@@ -212,7 +212,7 @@ class TestBinning:
                         ].values[0]
                     )
 
-    def test_interp_nd_binning_realdata(self):
+    def test_interp_nd_binning_realdata(self) -> None:
         """Check that the function works well with outputs from the nd_binning function"""
 
         # Read nd_binning output
@@ -253,7 +253,7 @@ class TestBinning:
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
 
-    def test_two_step_standardization(self):
+    def test_two_step_standardization(self) -> None:
         """Test two-step standardization function"""
 
         # Test this gives the same results as when using the base functions
@@ -300,7 +300,7 @@ class TestBinning:
             unscaled_fun((test_slopes, test_max_curvs)) * scale_fac_std, final_func((test_slopes, test_max_curvs))
         )
 
-    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self):
+    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of heteroscedasticity"""
 
         # Test infer function
@@ -356,7 +356,7 @@ class TestBinning:
                 dvalues=diff_arr, stable_mask=self.outlines, list_var=[slope_arr]
             )
 
-    def test_plot_binning(self):
+    def test_plot_binning(self) -> None:
 
         # Define placeholder data
         df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
@@ -382,7 +382,7 @@ class TestVariogram:
 
     ref, diff, mask, outlines = load_ref_and_diff()
 
-    def test_sample_multirange_variogram_default(self):
+    def test_sample_multirange_variogram_default(self) -> None:
         """Verify that the default function runs, and its basic output"""
 
         # Check the variogram output is consistent for a random state
@@ -416,7 +416,7 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df2)
 
-    def test_sample_empirical_variogram_speed(self):
+    def test_sample_empirical_variogram_speed(self) -> None:
         """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
 
         values = self.diff
@@ -511,8 +511,11 @@ class TestVariogram:
         time_metricspace_variogram = t4 - t3
         assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.2)
 
-    @pytest.mark.parametrize("subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"])
-    def test_sample_multirange_variogram_methods(self, subsample_method):
+    @pytest.mark.parametrize(
+        "subsample_method",
+        ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
+    ) # type: ignore
+    def test_sample_multirange_variogram_methods(self, subsample_method) -> None:
         """Verify that all other methods run"""
 
         # Check the variogram estimation runs for several methods
@@ -531,7 +534,7 @@ class TestVariogram:
             # Check that the column has the correct dtype
             assert df[col].dtype == expected_dtypes[expected_columns.index(col)]
 
-    def test_sample_multirange_variogram_args(self):
+    def test_sample_multirange_variogram_args(self) -> None:
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
 
         # Define parameters
@@ -579,9 +582,9 @@ class TestVariogram:
         )
 
     # N is the number of samples in an ensemble
-    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000])
-    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)])
-    def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int]):
+    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000]) # type: ignore
+    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)]) # type: ignore
+    def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
         # Assign an arbitrary extent
@@ -614,7 +617,7 @@ class TestVariogram:
         # Check the number of pairwise comparisons are the same (within 50%, due to rounding as integers)
         assert pdist_pairwise_combinations == pytest.approx(cdist_pairwise_combinations, rel=0.5, abs=10)
 
-    def test_errors_subsample_parameter(self):
+    def test_errors_subsample_parameter(self) -> None:
         """Tests that an error is raised when the subsample argument is too little"""
 
         keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10), "verbose": False}
@@ -622,7 +625,7 @@ class TestVariogram:
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
             xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
 
-    def test_multirange_fit_performance(self):
+    def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
 
         # First, generate a sum of modelled variograms: ranges and  partial sills for three models
@@ -655,7 +658,7 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
-    def test_check_params_variogram_model(self):
+    def test_check_params_variogram_model(self) -> None:
         """Verify that the checking function for the modelled variogram parameters dataframe returns adequate errors"""
 
         # Check when missing a column
@@ -725,7 +728,7 @@ class TestVariogram:
                 pd.DataFrame(data={"model": ["stable"], "range": [100], "psill": [1], "smooth": [-1]})
             )
 
-    def test_estimate_model_spatial_correlation_and_infer_from_stable(self):
+    def test_estimate_model_spatial_correlation_and_infer_from_stable(self) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
 
         # Keep only data on stable
@@ -810,7 +813,7 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    def test_empirical_fit_plotting(self):
+    def test_empirical_fit_plotting(self) -> None:
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
 
         # Check the variogram estimation runs for a random state
@@ -854,11 +857,11 @@ class TestNeffEstimation:
 
     ref, diff, _, outlines = load_ref_and_diff()
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(3)])
-    @pytest.mark.parametrize("psill1", [0.1, 1, 10])
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
-    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])
-    def test_neff_circular_single_range(self, range1, psill1, model1, area):
+    @pytest.mark.parametrize("range1", [10**i for i in range(3)]) # type: ignore
+    @pytest.mark.parametrize("psill1", [0.1, 1, 10]) # type: ignore
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
+    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)]) # type: ignore
+    def test_neff_circular_single_range(self, range1, psill1, model1, area) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
         forms to get the number of effective samples"""
 
@@ -876,12 +879,12 @@ class TestNeffEstimation:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(2)])
-    @pytest.mark.parametrize("range2", [10**i for i in range(2)])
-    @pytest.mark.parametrize("range3", [10**i for i in range(2)])
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
-    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])
-    def test_neff_circular_three_ranges(self, range1, range2, range3, model1, model2):
+    @pytest.mark.parametrize("range1", [10**i for i in range(2)]) # type: ignore
+    @pytest.mark.parametrize("range2", [10**i for i in range(2)]) # type: ignore
+    @pytest.mark.parametrize("range3", [10**i for i in range(2)]) # type: ignore
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
+    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
+    def test_neff_circular_three_ranges(self, range1, range2, range3, model1, model2) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or
         exponential forms"""
 
@@ -911,7 +914,7 @@ class TestNeffEstimation:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    def test_neff_exact_and_approx_hugonnet(self):
+    def test_neff_exact_and_approx_hugonnet(self) -> None:
         """Test the exact and approximated calculation of the number of effective sample by double covariance sum"""
 
         # Generate a gridded dataset with varying errors associated to each pixel
@@ -974,7 +977,7 @@ class TestNeffEstimation:
         # Check that the approximation is about the same as the original estimate within 10%
         assert neff_approx == pytest.approx(neff_exact, rel=0.1)
 
-    def test_number_effective_samples(self):
+    def test_number_effective_samples(self) -> None:
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
 
         # The function should return the same result as neff_circular_approx_numerical when using a numerical area
@@ -1057,7 +1060,7 @@ class TestNeffEstimation:
                 area=outlines_brom, params_variogram_model=params_variogram_model, rasterize_resolution=(10, 10)
             )
 
-    def test_spatial_error_propagation(self):
+    def test_spatial_error_propagation(self) -> None:
         """Test that the spatial error propagation wrapper function runs properly"""
 
         # Load the error map from TestBinning
@@ -1095,7 +1098,7 @@ class TestNeffEstimation:
 
 
 class TestSubSampling:
-    def test_circular_masking(self):
+    def test_circular_masking(self) -> None:
         """Test that the circular masking works as intended"""
 
         # using default (center should be [2,2], radius 2)
@@ -1124,7 +1127,7 @@ class TestSubSampling:
         # should not be the same as radius = 1
         assert not np.array_equal(circ3, circ4)
 
-    def test_ring_masking(self):
+    def test_ring_masking(self) -> None:
         """Test that the ring masking works as intended"""
         warnings.simplefilter("error")
 
@@ -1149,7 +1152,7 @@ class TestSubSampling:
 
 
 class TestPatchesMethod:
-    def test_patches_method_loop_quadrant(self):
+    def test_patches_method_loop_quadrant(self) -> None:
         """Check that the patches method with quadrant loops (vectorized=False) functions correctly"""
 
         diff, mask = load_ref_and_diff()[1:3]
@@ -1188,7 +1191,7 @@ class TestPatchesMethod:
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))
 
-    def test_patches_method_convolution(self):
+    def test_patches_method_convolution(self) -> None:
         """Check that the patches method with convolution (vectorized=True) functions correctly"""
 
         diff, mask = load_ref_and_diff()[1:3]

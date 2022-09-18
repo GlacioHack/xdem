@@ -30,7 +30,7 @@ def _raster_to_rda(rst: RasterType) -> rd.rdarray:
     return rda
 
 
-def _get_terrainattr_richdem(rst: RasterType, attribute="slope_radians") -> np.ndarray:
+def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") -> np.ndarray:
     """
     Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
     "profile_curvature", "planform_curvature", "curvature" and others (see RichDEM documentation).
@@ -44,7 +44,7 @@ def _get_terrainattr_richdem(rst: RasterType, attribute="slope_radians") -> np.n
     return np.array(terrattr)
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True) # type: ignore
 def _get_quadric_coefficients(
     dem: np.ndarray,
     resolution: float,
@@ -336,7 +336,7 @@ def get_quadric_coefficients(
     return coeffs
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True) # type: ignore
 def _get_windowed_indexes(
     dem: np.ndarray,
     fill_method: str = "median",
@@ -875,7 +875,7 @@ def get_terrain_attribute(
 
     if make_surface_fit:
         if not isinstance(resolution, Sized):
-            resolution = (float(resolution), float(resolution))
+            resolution = (float(resolution), float(resolution)) # type: ignore
         if resolution[0] != resolution[1]:
             raise ValueError(
                 f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "

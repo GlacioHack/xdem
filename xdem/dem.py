@@ -5,14 +5,17 @@ import json
 import os
 import subprocess
 import warnings
+from typing import Any
 
 import numpy as np
 import pyproj
+import rasterio as rio
+from geoutils.georaster.raster import RasterType
 from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 
 
-def parse_vref_from_product(product: str) -> str:
+def parse_vref_from_product(product: str) -> str | None:
     """
 
     :param product: Product name (typically from satimg.parse_metadata_from_fn)
@@ -45,8 +48,14 @@ def parse_vref_from_product(product: str) -> str:
 dem_attrs = ["vref", "vref_grid", "_ccrs"]
 
 
-class DEM(SatelliteImage):
-    def __init__(self, filename_or_dataset, vref_name=None, vref_grid=None, silent=True, **kwargs):
+class DEM(SatelliteImage): # type: ignore
+    def __init__(
+            self,
+            filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
+            vref_name: str | None = None,
+            vref_grid: str | None = None,
+            silent: bool = True,
+            **kwargs: Any) -> None:
         """
         Load digital elevation model data through the Raster class, parse additional attributes from filename or
         metadata
@@ -54,11 +63,8 @@ class DEM(SatelliteImage):
         For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
 
         :param filename_or_dataset: The filename of the dataset.
-        :type filename_or_dataset: str, DEM, SatelliteImage, Raster, rio.io.Dataset, rio.io.MemoryFile
         :param vref_name: Vertical reference name
-        :type vref_name: str
         :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
-        :type vref_grid: str
         :param silent: Whether to display vertical reference setting
         :param silent: boolean
         """
@@ -94,9 +100,9 @@ class DEM(SatelliteImage):
         for attrs in dem_attrs:
             setattr(new_dem, attrs, getattr(self, attrs))
 
-        return new_dem
+        return new_dem # type: ignore
 
-    def __parse_vref_from_fn(self, silent: bool = False):
+    def __parse_vref_from_fn(self, silent: bool = False) -> None:
         """Attempts to pull vertical reference from product name identified by SatImg."""
 
         if self.product is not None:
@@ -119,7 +125,7 @@ class DEM(SatelliteImage):
                     print('Could not find a vertical reference based on product name: "' + str(self.product) + '"')
 
     @property
-    def ccrs(self):
+    def ccrs(self) -> pyproj.CRS:
         """Set compound CRS, i.e. horizontal and vertical references"""
 
         # Temporary fix for some CRS with proj < 7.2
@@ -154,7 +160,7 @@ class DEM(SatelliteImage):
 
         return self._ccrs
 
-    def set_vref(self, vref_name: str | None = None, vref_grid: str | None = None):
+    def set_vref(self, vref_name: str | None = None, vref_grid: str | None = None) -> None:
         """
         Set vertical reference with a name or with a grid.
 
@@ -209,7 +215,7 @@ class DEM(SatelliteImage):
         else:
             raise ValueError("Vertical reference name or vertical grid must be a string")
 
-    def to_vref(self, vref_name: str = "EGM96", vref_grid: str | None = None):
+    def to_vref(self, vref_name: str = "EGM96", vref_grid: str | None = None) -> None:
 
         """
         Convert between vertical references: ellipsoidal heights or geoid grids.

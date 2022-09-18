@@ -43,8 +43,8 @@ class TestExamples:
                 ),
             ),
         ],
-    )
-    def test_array_content(self, rst_and_truevals: tuple[Raster, np.ndarray]):
+    ) # type: ignore
+    def test_array_content(self, rst_and_truevals: tuple[Raster, np.ndarray]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
         rst = rst_and_truevals[0]
@@ -54,8 +54,8 @@ class TestExamples:
 
         assert values == pytest.approx(truevals)
 
-    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)])
-    def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]):
+    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)]) # type: ignore
+    def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
 
         rst = rst_and_truenodata[0]

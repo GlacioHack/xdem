@@ -14,7 +14,7 @@ class TestDEMCollection:
     outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     outlines_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
 
-    def test_init(self):
+    def test_init(self) -> None:
 
         timestamps = [datetime.datetime(1990, 8, 1), datetime.datetime(2009, 8, 1), datetime.datetime(2060, 8, 1)]
 
@@ -78,7 +78,7 @@ class TestDEMCollection:
 
         # raise NotImplementedError
 
-    def test_dem_datetimes(self):
+    def test_dem_datetimes(self) -> None:
         """Try to create the DEMCollection without the timestamps argument (instead relying on datetime attributes)."""
         self.dem_1990.datetime = datetime.datetime(1990, 8, 1)
         self.dem_2009.datetime = datetime.datetime(2009, 8, 1)
@@ -87,7 +87,7 @@ class TestDEMCollection:
 
         assert len(dems.timestamps) > 0
 
-    def test_ddem_interpolation(self):
+    def test_ddem_interpolation(self) -> None:
         """Test that dDEM interpolation works as it should."""
         # All warnings should raise errors from now on
         warnings.simplefilter("error")

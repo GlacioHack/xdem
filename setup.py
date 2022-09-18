@@ -47,7 +47,7 @@ setup(
 write_version = True
 
 
-def write_version_py(filename=None):
+def write_version_py(filename: str | None = None) -> None:
     cnt = """\
 version = '%s'
 short_version = '%s'

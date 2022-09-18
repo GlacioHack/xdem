@@ -23,7 +23,7 @@ class TestLocalHypsometric:
     # Create a mask where glacier areas are True
     mask = outlines.create_mask(dem_2009)
 
-    def test_bin_ddem(self):
+    def test_bin_ddem(self) -> None:
         """Test dDEM binning."""
         ddem = self.dem_2009.data - self.dem_1990.data
 
@@ -65,7 +65,7 @@ class TestLocalHypsometric:
         # Return the value so that they can be used in other tests.
         return interpolated_bins
 
-    def test_area_calculation(self):
+    def test_area_calculation(self) -> None:
         """Test the area calculation function."""
         ddem_bins = self.test_interpolate_ddem_bins()
 
@@ -112,7 +112,7 @@ class TestLocalHypsometric:
         # The area of Scott Turnerbreen was around 3.4 km² in 1990, so this should be close to that number.
         assert 2e6 < bin_area.sum() < 5e6
 
-    def test_ddem_bin_methods(self):
+    def test_ddem_bin_methods(self) -> None:
         """Test different dDEM binning methods."""
         ddem = self.dem_2009.data - self.dem_1990.data
 
@@ -152,7 +152,7 @@ class TestNormHypsometric:
     glacier_index_map = outlines.rasterize(dem_2009)
     ddem = dem_2009.data - dem_1990.data
 
-    @pytest.mark.parametrize("n_bins", [5, 10, 20])
+    @pytest.mark.parametrize("n_bins", [5, 10, 20]) # type: ignore
     def test_regional_signal(self, n_bins: int) -> None:
         warnings.simplefilter("error")
 
@@ -167,7 +167,7 @@ class TestNormHypsometric:
 
         assert np.all(np.isfinite(signal.values))
 
-    def test_interpolate_small(self):
+    def test_interpolate_small(self) -> None:
 
         dem = np.arange(16, dtype="float32").reshape(4, 4)
         ddem = dem / 10
@@ -207,7 +207,7 @@ class TestNormHypsometric:
         # Validate that values were interpolated within the measurement step-size
         assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1
 
-    def test_regional_hypsometric_interp(self):
+    def test_regional_hypsometric_interp(self) -> None:
 
         warnings.simplefilter("error")
 

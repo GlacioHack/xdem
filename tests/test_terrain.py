@@ -72,7 +72,7 @@ class TestTerrainAttribute:
             "tpi",
             "roughness",
         ],
-    )
+    ) # type: ignore
     def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
         """
         Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
@@ -174,7 +174,7 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
-    )
+    ) # type: ignore
     def test_attribute_functions_against_richdem(self, attribute: str) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
@@ -286,7 +286,10 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
-    @pytest.mark.parametrize("name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"])
+    @pytest.mark.parametrize(
+        "name",
+        ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
+    ) # type: ignore
     def test_curvatures(self, name: str) -> None:
         """Test the curvature functions"""
         warnings.simplefilter("error")
@@ -368,7 +371,7 @@ class TestTerrainAttribute:
         ):
             xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
 
-    def test_raster_argument(self):
+    def test_raster_argument(self) -> None:
 
         slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
 

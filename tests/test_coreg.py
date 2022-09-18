@@ -42,7 +42,7 @@ class TestCoregClass:
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
-    def test_from_classmethods(self):
+    def test_from_classmethods(self) -> None:
         warnings.simplefilter("error")
 
         # Check that the from_matrix function works as expected.
@@ -66,8 +66,8 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
-    @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab])
-    def test_copy(self, coreg_class: coreg.Coreg):
+    @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab]) # type: ignore
+    def test_copy(self, coreg_class: coreg.Coreg) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")
 
@@ -96,7 +96,7 @@ class TestCoregClass:
         assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
         assert pipeline_copy.pipeline[0]._meta["shouldexist"]
 
-    def test_bias(self):
+    def test_bias(self) -> None:
         warnings.simplefilter("error")
 
         # Create a bias correction instance
@@ -138,7 +138,7 @@ class TestCoregClass:
         # Check that the original model's bias has not changed (that the _meta dicts are two different objects)
         assert biascorr._meta["bias"] == bias
 
-    def test_all_nans(self):
+    def test_all_nans(self) -> None:
         """Check that the coregistration approaches fail gracefully when given only nans."""
         dem1 = np.ones((50, 50), dtype=float)
         dem2 = dem1.copy() + np.nan
@@ -156,7 +156,7 @@ class TestCoregClass:
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
-    def test_error_method(self):
+    def test_error_method(self) -> None:
         """Test different error measures."""
         dem1 = np.ones((50, 50), dtype=float)
         # Create a biased dem
@@ -179,7 +179,7 @@ class TestCoregClass:
         dem3 = dem1 + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
-    def test_nuth_kaab(self):
+    def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")
 
         nuth_kaab = coreg.NuthKaab(max_iterations=10)
@@ -227,7 +227,7 @@ class TestCoregClass:
         # Check that the z shift is close to the original bias.
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + bias) < 0.1
 
-    def test_deramping(self):
+    def test_deramping(self) -> None:
         warnings.simplefilter("error")
 
         # Try a 1st degree deramping.
@@ -265,7 +265,7 @@ class TestCoregClass:
         # Check that the apply_pts would apply a z shift equal to the bias
         assert deramp0.apply_pts(self.points)[0, 2] == bias
 
-    def test_icp_opencv(self):
+    def test_icp_opencv(self) -> None:
         warnings.simplefilter("error")
 
         # Do a fast an dirty 3 iteration ICP just to make sure it doesn't error out.
@@ -276,7 +276,7 @@ class TestCoregClass:
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
-    def test_pipeline(self):
+    def test_pipeline(self) -> None:
         warnings.simplefilter("error")
 
         # Create a pipeline from two coreg methods.
@@ -296,7 +296,7 @@ class TestCoregClass:
         # Assert that the combined bias is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
 
-    def test_coreg_add(self):
+    def test_coreg_add(self) -> None:
         warnings.simplefilter("error")
         # Test with a bias of 4
         bias = 4
@@ -327,7 +327,7 @@ class TestCoregClass:
         bias5 = bias3 + bias3
         assert bias5.to_matrix()[2, 3] == bias * 4
 
-    def test_subsample(self):
+    def test_subsample(self) -> None:
         warnings.simplefilter("error")
 
         # Test subsampled bias correction
@@ -371,7 +371,7 @@ class TestCoregClass:
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
 
-    def test_z_scale_corr(self):
+    def test_z_scale_corr(self) -> None:
         warnings.simplefilter("error")
 
         # Instantiate a Z scale correction object
@@ -442,15 +442,9 @@ class TestCoregClass:
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
-    @pytest.mark.parametrize("pipeline", [coreg.BiasCorr(), coreg.BiasCorr() + coreg.NuthKaab()])
-    @pytest.mark.parametrize(
-        "subdivision",
-        [
-            4,
-            10,
-        ],
-    )
-    def test_blockwise_coreg(self, pipeline, subdivision):
+    @pytest.mark.parametrize("pipeline", [coreg.BiasCorr(), coreg.BiasCorr() + coreg.NuthKaab()]) # type: ignore
+    @pytest.mark.parametrize("subdivision", [4, 10]) # type: ignore
+    def test_blockwise_coreg(self, pipeline, subdivision) -> None:
         warnings.simplefilter("error")
 
         blockwise = coreg.BlockwiseCoreg(coreg=pipeline, subdivision=subdivision)
@@ -496,7 +490,7 @@ class TestCoregClass:
         # Check that offsets were actually calculated.
         assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
 
-    def test_blockwise_coreg_large_gaps(self):
+    def test_blockwise_coreg_large_gaps(self) -> None:
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
         warnings.simplefilter("error")
         reference_dem = self.ref.reproject(dst_crs="EPSG:3413", dst_res=self.ref.res, resampling="bilinear")
@@ -537,7 +531,7 @@ class TestCoregClass:
         assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
         assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
 
-    def test_coreg_raster_and_ndarray_args(_) -> None:
+    def test_coreg_raster_and_ndarray_args(self) -> None:
 
         # Create a small sample-DEM
         dem1 = xdem.DEM.from_array(
@@ -614,8 +608,8 @@ class TestCoregClass:
             ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
-    )
-    def test_coreg_raises(_, combination: tuple[str, str, str, str, str, str]) -> None:
+    ) # type: ignore
+    def test_coreg_raises(self, combination: tuple[str, str, str, str, str, str]) -> None:
         """
         Assert that the expected warnings/errors are triggered under different circumstances.
 
@@ -669,7 +663,7 @@ class TestCoregClass:
                 if testing_step == "fit":  # If we're testing 'fit', 'apply' does not have to be run.
                     return
 
-    def test_coreg_oneliner(_) -> None:
+    def test_coreg_oneliner(self) -> None:
         """Test that a DEM can be coregistered in one line by chaining calls."""
         dem_arr = np.ones((5, 5), dtype="int32")
         dem_arr2 = dem_arr + 1
@@ -682,7 +676,7 @@ class TestCoregClass:
         assert np.array_equal(dem_arr, dem_arr2_fixed)
 
 
-def test_apply_matrix():
+def test_apply_matrix() -> None:
     warnings.simplefilter("error")
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     ref_arr = gu.spatial_tools.get_array_and_mask(ref)[0]
@@ -802,7 +796,7 @@ def test_apply_matrix():
     print(np.nanmedian(diff), spatialstats.nmad(diff))
 
 
-def test_warp_dem():
+def test_warp_dem() -> None:
     """Test that the warp_dem function works expectedly."""
     warnings.simplefilter("error")
 
