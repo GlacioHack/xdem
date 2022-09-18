@@ -1012,7 +1012,7 @@ def get_terrain_attribute(
     output_attributes = [terrain_attributes[key].reshape(dem.shape) for key in attribute]
 
     if isinstance(dem, gu.Raster):
-        output_attributes = [gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=None) for attr in output_attributes]
+        output_attributes = [gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=-99999) for attr in output_attributes]
 
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
 

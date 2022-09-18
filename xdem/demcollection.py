@@ -47,8 +47,7 @@ class DEMCollection:
 
         # Find the sort indices from the timestamps
         indices = np.argsort(self.timestamps.astype("int64"))
-        self.dems = np.empty(len(dems), dtype=object)
-        self.dems[:] = [dems[i] for i in indices]
+        self.dems = [dems[i] for i in indices]
         self.ddems: list[xdem.dDEM] = []
         # The reference index changes place when sorted
         if isinstance(reference_dem, (int, np.integer)):

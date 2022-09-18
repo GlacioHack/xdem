@@ -57,7 +57,7 @@ jobs:
     - name: Test with pytest
       run: |
         pip install pytest-cov coveralls
-        pytest -ra -n=auto --cov=xdem/
+        pytest -ra --cov=xdem/
 
     # We can skip the conversion step once this PR of pytest is merged: https://github.com/pytest-dev/pytest-cov/pull/536
     # and replace pytest argument by --cov-report=lcov

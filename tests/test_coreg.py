@@ -514,8 +514,9 @@ class TestCoregClass:
 
         # Copy the TBA DEM and set a square portion to nodata
         tba = self.tba.copy()
-        tba.data[0, 450:500, 450:500] = -9999
-        tba.set_ndv(-9999)
+        mask = np.zeros(np.shape(tba.data), dtype=bool)
+        mask[0, 450: 500, 450: 500] = True
+        tba.set_mask(mask=mask)
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
 
@@ -577,7 +578,7 @@ class TestCoregClass:
         # TODO - Fix coreg.apply?
         assert isinstance(dem2_r, xdem.DEM)
         assert isinstance(dem2_a, np.ma.masked_array)
-        assert gu.misc.array_equal(dem2_r.data.squeeze(), dem2_a, equal_nan=True)
+        assert np.ma.allequal(dem2_r.data.squeeze(), dem2_a)
 
         # If apply on a masked_array was given without a transform, it should fail.
         with pytest.raises(ValueError, match="'transform' must be given"):
@@ -618,7 +619,7 @@ class TestCoregClass:
         ref_dem, tba_dem, transform, testing_step, result, text = combination
         # Create a small sample-DEM
         dem1 = xdem.DEM.from_array(
-            np.arange(25, dtype="int32").reshape(5, 5),
+            np.arange(25, dtype="float64").reshape(5, 5),
             transform=rio.transform.from_origin(0, 5, 1, 1),
             crs=4326,
             nodata=-9999
