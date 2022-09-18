@@ -2,17 +2,13 @@
 from __future__ import annotations
 
 import copy
-import os
-import tempfile
 import time
 import warnings
-from typing import Any
 
 import cv2
 import geoutils as gu
 import numpy as np
 import pytest
-import pytransform3d.transformations
 import rasterio as rio
 
 with warnings.catch_warnings():
@@ -33,6 +29,7 @@ def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovec
 
 
 class TestCoregClass:
+
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
@@ -100,7 +97,6 @@ class TestCoregClass:
         assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
         assert pipeline_copy.pipeline[0]._meta["shouldexist"]
 
-
     def test_bias(self):
         warnings.simplefilter("error")
 
@@ -131,7 +127,8 @@ class TestCoregClass:
         # Check that this is indeed a new object
         assert biascorr is not biascorr2
         # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, transform=self.ref.transform, inlier_mask=self.inlier_mask)
+        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, transform=self.ref.transform,
+                      inlier_mask=self.inlier_mask)
         # Test the bias
         assert abs(biascorr2._meta.get("bias")) < 0.01
 
@@ -156,7 +153,6 @@ class TestCoregClass:
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
-
     def test_error_method(self):
         """Test different error measures."""
         dem1 = np.ones((50, 50), dtype=float)
@@ -179,7 +175,6 @@ class TestCoregClass:
         # Create random noise and see if the standard deviation is equal (it should)
         dem3 = dem1 + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
-
 
     def test_nuth_kaab(self):
         warnings.simplefilter("error")
@@ -208,7 +203,6 @@ class TestCoregClass:
         assert nuth_kaab._meta["offset_east_px"] == pytest.approx(2.00019, abs=1e-7)
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.00012, abs=1e-7)
         assert nuth_kaab._meta["bias"] == -5.0
-
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
@@ -296,7 +290,7 @@ class TestCoregClass:
         pipeline2.pipeline[1]._meta["bias"] = 1
 
         # Assert that the combined bias is 2
-        pipeline2.to_matrix()[2, 3] == 2.0
+        assert pipeline2.to_matrix()[2, 3] == 2.0
 
     def test_coreg_add(self):
         warnings.simplefilter("error")
@@ -356,23 +350,22 @@ class TestCoregClass:
         # Measure the start and stop time to get the duration
         start_time = time.time()
         nuthkaab_full.fit(**self.fit_params)
-        icp_full_duration = time.time() - start_time
+        # icp_full_duration = time.time() - start_time
 
         # Do the same with 50% subsampling
         start_time = time.time()
         nuthkaab_sub.fit(**self.fit_params, subsample=0.5)
-        icp_sub_duration = time.time() - start_time
+        # icp_sub_duration = time.time() - start_time
 
         # Make sure that the subsampling increased performance
         # Temporarily add a fallback assertion that if it's slower, it shouldn't be much slower (2021-05-17).
         # This doesn't work with GitHub's CI, but it works locally. I'm disabling this for now (2021-05-20).
-        #assert icp_full_duration > icp_sub_duration or (abs(icp_full_duration - icp_sub_duration) < 1)
+        # assert icp_full_duration > icp_sub_duration or (abs(icp_full_duration - icp_sub_duration) < 1)
 
         # Calculate the difference in the full vs. subsampled matrices
         matrix_diff = np.abs(nuthkaab_full.to_matrix() - nuthkaab_sub.to_matrix())
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
-
 
     def test_z_scale_corr(self):
         warnings.simplefilter("error")
@@ -534,7 +527,6 @@ class TestCoregClass:
         assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
         assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
 
-
     def test_coreg_raster_and_ndarray_args(_) -> None:
 
         # Create a small sample-DEM
@@ -587,7 +579,6 @@ class TestCoregClass:
         with pytest.warns(UserWarning, match="DEM .* overrides the given 'transform'"):
             biascorr_a.apply(dem2, transform=dem2.transform)
 
-
     @pytest.mark.parametrize("combination", [
         ("dem1", "dem2", "None", "fit", "passes", ""),
         ("dem1", "dem2", "None", "apply", "passes", ""),
@@ -624,7 +615,7 @@ class TestCoregClass:
             crs=4326,
             nodata=-9999
         )
-        dem2 = dem1.copy()
+        dem2 = dem1.copy() # type: ignore
 
         # Evaluate the parametrization (e.g. 'dem2.transform')
         ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
@@ -632,8 +623,11 @@ class TestCoregClass:
         # Use BiasCorr as a representative example.
         biascorr = xdem.coreg.BiasCorr()
 
-        fit_func = lambda: biascorr.fit(ref_dem, tba_dem, transform=transform)
-        apply_func = lambda: biascorr.apply(tba_dem, transform=transform)
+        def fit_func():
+            return biascorr.fit(ref_dem, tba_dem, transform=transform)
+
+        def apply_func():
+            return biascorr.apply(tba_dem, transform=transform)
 
         # Try running the methods in order and validate the result.
         for method, method_call in [("fit", fit_func), ("apply", apply_func)]:
@@ -653,17 +647,17 @@ class TestCoregClass:
                 if testing_step == "fit":   # If we're testing 'fit', 'apply' does not have to be run.
                     return
 
-
     def test_coreg_oneliner(_) -> None:
         """Test that a DEM can be coregistered in one line by chaining calls."""
         dem_arr = np.ones((5, 5), dtype="int32")
         dem_arr2 = dem_arr + 1
         transform = rio.transform.from_origin(0, 5, 1, 1)
 
-        dem_arr2_fixed = coreg.BiasCorr().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
+        dem_arr2_fixed = coreg.BiasCorr()\
+            .fit(dem_arr, dem_arr2, transform=transform)\
+            .apply(dem_arr2, transform=transform)
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
-
 
 def test_apply_matrix():
     warnings.simplefilter("error")
@@ -743,44 +737,44 @@ def test_apply_matrix():
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
 
-    if False:
-        import matplotlib.pyplot as plt
-
-        vmin = 0
-        vmax = 1500
-        extent = (ref.bounds.left, ref.bounds.right, ref.bounds.bottom, ref.bounds.top)
-        plot_params = dict(
-            extent=extent,
-            vmin=vmin,
-            vmax=vmax
-        )
-        plt.figure(figsize=(22, 4), dpi=100)
-        plt.subplot(151)
-        plt.title("Original")
-        plt.imshow(ref.data.squeeze(), **plot_params)
-        plt.xlim(*extent[:2])
-        plt.ylim(*extent[2:])
-        plt.subplot(152)
-        plt.title(f"Rotated {rotation} degrees")
-        plt.imshow(rotated_dem, **plot_params)
-        plt.xlim(*extent[:2])
-        plt.ylim(*extent[2:])
-        plt.subplot(153)
-        plt.title(f"De-rotated {-rotation} degrees")
-        plt.imshow(unrotated_dem, **plot_params)
-        plt.xlim(*extent[:2])
-        plt.ylim(*extent[2:])
-        plt.subplot(154)
-        plt.title("Original vs. de-rotated")
-        plt.imshow(diff, extent=extent, vmin=-10, vmax=10, cmap="coolwarm_r")
-        plt.colorbar()
-        plt.xlim(*extent[:2])
-        plt.ylim(*extent[2:])
-        plt.subplot(155)
-        plt.title("Original vs. de-rotated")
-        plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-10, 10, 100))
-        plt.tight_layout(w_pad=0.05)
-        plt.show()
+    # if False:
+    #     import matplotlib.pyplot as plt
+    #
+    #     vmin = 0
+    #     vmax = 1500
+    #     extent = (ref.bounds.left, ref.bounds.right, ref.bounds.bottom, ref.bounds.top)
+    #     plot_params = dict(
+    #         extent=extent,
+    #         vmin=vmin,
+    #         vmax=vmax
+    #     )
+    #     plt.figure(figsize=(22, 4), dpi=100)
+    #     plt.subplot(151)
+    #     plt.title("Original")
+    #     plt.imshow(ref.data.squeeze(), **plot_params)
+    #     plt.xlim(*extent[:2])
+    #     plt.ylim(*extent[2:])
+    #     plt.subplot(152)
+    #     plt.title(f"Rotated {rotation} degrees")
+    #     plt.imshow(rotated_dem, **plot_params)
+    #     plt.xlim(*extent[:2])
+    #     plt.ylim(*extent[2:])
+    #     plt.subplot(153)
+    #     plt.title(f"De-rotated {-rotation} degrees")
+    #     plt.imshow(unrotated_dem, **plot_params)
+    #     plt.xlim(*extent[:2])
+    #     plt.ylim(*extent[2:])
+    #     plt.subplot(154)
+    #     plt.title("Original vs. de-rotated")
+    #     plt.imshow(diff, extent=extent, vmin=-10, vmax=10, cmap="coolwarm_r")
+    #     plt.colorbar()
+    #     plt.xlim(*extent[:2])
+    #     plt.ylim(*extent[2:])
+    #     plt.subplot(155)
+    #     plt.title("Original vs. de-rotated")
+    #     plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-10, 10, 100))
+    #     plt.tight_layout(w_pad=0.05)
+    #     plt.show()
 
     # Check that the median is very close to zero
     assert np.abs(np.nanmedian(diff)) < 0.5

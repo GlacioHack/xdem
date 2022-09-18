@@ -15,7 +15,7 @@ repos:
                 - id: codespell
                   args: [--ignore-words-list=alos, --ignore-regex=\bnin\b]
                   types_or: [python, rst, markdown]
-                  files: ^(geoutils|doc|tests)/
+                  files: ^(xdem|docs|tests)/
 
         # Replace relative imports (e.g. 'from . import georaster' -> 'from geoutils import georaster')
         - repo: https://github.com/MarcoGorelli/absolufy-imports
@@ -24,11 +24,11 @@ repos:
                 - id: absolufy-imports
 
         # Format the code aggressively using black
-#        - repo: https://github.com/psf/black
-#          rev: 22.3.0
-#          hooks:
-#                  - id: black
-#                    args: [--line-length=120]
+        - repo: https://github.com/psf/black
+          rev: 22.3.0
+          hooks:
+                  - id: black
+                    args: [--line-length=120]
 
         # Lint the code using flake8
         - repo: https://gitlab.com/pycqa/flake8
@@ -42,7 +42,7 @@ repos:
                   additional_dependencies:
                           - flake8-comprehensions==3.1.0
                           - flake8-bugbear==21.3.2
-                  files: ^(geoutils|tests)
+                  files: ^(xdem|tests)
 
         # Lint the code using mypy
         - repo: https://github.com/pre-commit/mirrors-mypy

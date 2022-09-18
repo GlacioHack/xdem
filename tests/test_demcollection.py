@@ -78,7 +78,7 @@ class TestDEMCollection:
 
         # print(cumulative_dh)
 
-        #raise NotImplementedError
+        # raise NotImplementedError
 
     def test_dem_datetimes(self):
         """Try to create the DEMCollection without the timestamps argument (instead relying on datetime attributes)."""

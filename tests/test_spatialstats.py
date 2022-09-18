@@ -4,10 +4,8 @@ from __future__ import annotations
 import os
 import time
 import warnings
-from typing import Tuple
 
 import geoutils as gu
-import geoutils.spatial_tools
 import numpy as np
 import pandas as pd
 import pytest
@@ -107,7 +105,7 @@ class TestBinning:
         df.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, 'df_3d_binning_slope_elevation_aspect.csv'), index=False)
 
     def test_interp_nd_binning_artificial_data(self):
-        """Check that the N-dimensional interpolation works correctly using artifical data"""
+        """Check that the N-dimensional interpolation works correctly using artificial data"""
 
         # Check the function works with a classic input (see example)
         df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3],
