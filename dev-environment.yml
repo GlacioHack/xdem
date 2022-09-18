@@ -30,11 +30,8 @@ dependencies:
   - flake8
   - sphinx-autodoc-typehints
   - sphinx-gallery
-<<<<<<< Updated upstream
   - pyyaml
-=======
   - richdem
->>>>>>> Stashed changes
 
   - pip:
     - git+https://github.com/GlacioHack/geoutils.git
