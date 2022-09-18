@@ -25,6 +25,7 @@ dependencies:
   - pytest
   - pytest-xdist
   - sphinx
+  - myst-parser
   - numpydoc
   - sphinxcontrib-programoutput
   - flake8

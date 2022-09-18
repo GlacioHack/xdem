@@ -1,6 +1,7 @@
 sphinx
 numpydoc
 sphinx-book-theme
+myst-parser
 sphinx_autodoc_typehints
 sphinxcontrib-programoutput
 numpy
