@@ -11,6 +11,7 @@ The :func:`xdem.DEM.reproject` method takes care of this.
 """
 import geoutils as gu
 import matplotlib.pyplot as plt
+
 import xdem
 
 # %%

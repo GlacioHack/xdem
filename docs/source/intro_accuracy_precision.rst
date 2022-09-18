@@ -116,4 +116,3 @@ The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
 .. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.get_variogram_model_func xdem.spatialstats.sample_empirical_variogram
     :add-heading: Examples that use spatial statistics functions
-

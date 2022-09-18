@@ -1,16 +1,18 @@
 """DEM class and functions."""
 from __future__ import annotations
 
+import json
 import os
-import pyproj
+import subprocess
 import warnings
-from geoutils.georaster import Raster
-from geoutils.satimg import SatelliteImage
+
 import geoutils as gu
 import numpy as np
+import pyproj
+from geoutils.georaster import Raster
+from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
-import json
-import subprocess
+
 
 def parse_vref_from_product(product: str) -> str:
     """

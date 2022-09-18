@@ -10,11 +10,12 @@ computationally-efficient spatial propagation for the mean of elevation (or elev
 **References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure S16, Equations 17–19 and
 `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, Equation 8.
 """
-# sphinx_gallery_thumbnail_number = 1
-import numpy as np
-import xdem
 import geoutils as gu
 import matplotlib.pyplot as plt
+# sphinx_gallery_thumbnail_number = 1
+import numpy as np
+
+import xdem
 
 # %%
 # We load the same data, and perform the same calculations on heteroscedasticity and spatial correlations of errors as
@@ -48,7 +49,7 @@ stderr_glaciers = xdem.spatialstats.spatial_error_propagation(areas=areas, error
                                                               params_variogram_model=params_variogram_model)
 
 for glacier_name, stderr_gla in [('Brombreen', stderr_glaciers[0]), ('Medalsbreen', stderr_glaciers[1])]:
-    print('The error (1-sigma) in mean elevation change for {} is {:.2f} meters.'.format(glacier_name, stderr_gla))
+    print(f'The error (1-sigma) in mean elevation change for {glacier_name} is {stderr_gla:.2f} meters.')
 
 # %%
 # When passing a numerical area value, we compute an approximation with disk shape from Equation 8 of Rolstad et al.

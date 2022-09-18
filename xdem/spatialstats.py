@@ -2,35 +2,34 @@
 from __future__ import annotations
 
 import inspect
+import itertools
 import math as m
 import multiprocessing as mp
 import os
 import warnings
 from functools import partial
+from typing import Any, Callable, Iterable, Optional, Sequence, Union, overload
 
-from typing import Callable, Union, Iterable, Optional, Sequence, Any, overload
-
-import itertools
+import geopandas as gpd
 import matplotlib
-import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+import matplotlib.pyplot as plt
 import numba
-from numba import jit
-from numba import double
 import numpy as np
 import pandas as pd
-import geopandas as gpd
+from geoutils.georaster import Raster, RasterType
+from geoutils.geovector import Vector, VectorType
+from geoutils.spatial_tools import get_array_and_mask, subsample_raster
+from numba import double, jit
 from scipy import integrate
+from scipy.interpolate import (LinearNDInterpolator, RegularGridInterpolator,
+                               griddata)
 from scipy.optimize import curve_fit
-from scipy.spatial.distance import pdist, squareform
 from scipy.signal import fftconvolve
+from scipy.spatial.distance import pdist, squareform
+from scipy.stats import (binned_statistic, binned_statistic_2d,
+                         binned_statistic_dd)
 from skimage.draw import disk
-from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, griddata
-from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-
-from geoutils.spatial_tools import subsample_raster, get_array_and_mask
-from geoutils.georaster import RasterType, Raster
-from geoutils.geovector import VectorType, Vector
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -57,9 +56,9 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
 
 
 def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str],
-               list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
-               statistics: Iterable[Union[str, Callable[[np.ndarray], float], None]] = ['count', np.nanmedian, nmad],
-               list_ranges : Optional[Iterable[Sequence]] = None) -> pd.DataFrame:
+               list_var_bins: int |Iterable[Iterable] | None = None,
+               statistics: Iterable[str | Callable[[np.ndarray], float] | None] = ['count', np.nanmedian, nmad],
+               list_ranges : Iterable[Sequence] | None = None) -> pd.DataFrame:
     """
     N-dimensional binning of values according to one or several explanatory variables with computed statistics in
     each bin. By default, the sample count, the median and the normalized absolute median deviation (NMAD). The count
@@ -173,8 +172,8 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     return df_concat
 
 
-def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str, Iterable[str]], statistic : Union[str, Callable[[np.ndarray],float]] = nmad,
-                      min_count: Optional[int] = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
+def interp_nd_binning(df: pd.DataFrame, list_var_names: str | Iterable[str], statistic : str | Callable[[np.ndarray],float] = nmad,
+                      min_count: int | None = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
     For more details on the input dataframe, and associated list of variable name and statistic, see nd_binning.
@@ -306,10 +305,10 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: Union[str, Iterable[str]
     # Valid values
     values = values[ind_valid]
     # coordinates of valid values
-    points_valid = tuple([df_sub[var].values[ind_valid] for var in list_var_names])
+    points_valid = tuple(df_sub[var].values[ind_valid] for var in list_var_names)
     # Grid coordinates
     bmid_grid = np.meshgrid(*list_bmid, indexing='ij')
-    points_grid = tuple([bmid_grid[i].flatten() for i in range(len(list_var_names))])
+    points_grid = tuple(bmid_grid[i].flatten() for i in range(len(list_var_names)))
     # Fill grid no data with nearest neighbour
     values_grid = griddata(points_valid, values, points_grid, method='nearest')
     values_grid = values_grid.reshape(shape)
@@ -363,8 +362,8 @@ def two_step_standardization(dvalues: np.ndarray, list_var: Iterable[np.ndarray]
 
 def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np.ndarray], list_var_names: Iterable[str],
                                       spread_statistic: Callable = nmad,
-                                      list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
-                                      min_count: Optional[int] = 100,
+                                      list_var_bins: int |Iterable[Iterable] | None = None,
+                                      min_count: int | None = 100,
                                       fac_spread_outliers: float | None = 7
                                       ) -> tuple[pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
     """
@@ -520,8 +519,8 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray, list_var: list[np.
                                          unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
                                          list_var_names: Iterable[str],
                                          spread_statistic: Callable,
-                                         list_var_bins: Optional[Union[int,Iterable[Iterable]]],
-                                         min_count: Optional[int],
+                                         list_var_bins: int |Iterable[Iterable] | None,
+                                         min_count: int | None,
                                          factor_spread_exclude_outliers: float | None,
                                          ) -> tuple[np.ndarray,
                                             pd.DataFrame,
@@ -533,8 +532,8 @@ def infer_heteroscedasticity_from_stable(dvalues: RasterType, list_var: list[np.
                                          unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
                                          list_var_names: Iterable[str],
                                          spread_statistic: Callable,
-                                         list_var_bins: Optional[Union[int,Iterable[Iterable]]],
-                                         min_count: Optional[int],
+                                         list_var_bins: int |Iterable[Iterable] | None,
+                                         min_count: int | None,
                                          factor_spread_exclude_outliers: float | None,
                                          ) -> tuple[RasterType,
                                             pd.DataFrame,
@@ -545,8 +544,8 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
                                          unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
                                          list_var_names: Iterable[str] = None,
                                          spread_statistic: Callable = nmad,
-                                         list_var_bins: Optional[Union[int,Iterable[Iterable]]] = None,
-                                         min_count: Optional[int] = 100,
+                                         list_var_bins: int |Iterable[Iterable] | None = None,
+                                         min_count: int | None = 100,
                                          fac_spread_outliers: float | None = 7,
                                          ) -> tuple[np.ndarray | RasterType,
                                             pd.DataFrame,
@@ -602,8 +601,8 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
         return error, df, fun
 
 
-def _create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None,
-                         radius: Optional[float] = None) -> np.ndarray:
+def _create_circular_mask(shape: int | Sequence[int], center: list[float] | None = None,
+                         radius: float | None = None) -> np.ndarray:
     """
     Create circular mask on a raster, defaults to the center of the array and its half width
 
@@ -634,8 +633,8 @@ def _create_circular_mask(shape: Union[int, Sequence[int]], center: Optional[lis
 
     return mask
 
-def _create_ring_mask(shape: Union[int, Sequence[int]], center: Optional[list[float]] = None, in_radius: float = 0.,
-                     out_radius: Optional[float] = None) -> np.ndarray:
+def _create_ring_mask(shape: int | Sequence[int], center: list[float] | None = None, in_radius: float = 0.,
+                     out_radius: float | None = None) -> np.ndarray:
     """
     Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
 
@@ -706,7 +705,7 @@ def _subsample_wrapper(values: np.ndarray, coords: np.ndarray, shape: tuple[int,
 
 def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample: int, shape: tuple,
                                          subsample_method: str, gsd: float,
-                                         pdist_multi_ranges: Optional[list[float]] = None, **kwargs) -> pd.DataFrame:
+                                         pdist_multi_ranges: list[float] | None = None, **kwargs) -> pd.DataFrame:
     """
     (Not used by default)
     Aggregating subfunction of sample_empirical_variogram for pdist methods.
@@ -843,7 +842,7 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs):
     # least 10:
     min_subsample = np.ceil(np.sqrt(2*nb_rings*2**2)+1)
     if subsample < min_subsample:
-        raise ValueError('The number of subsamples needs to be at least {:.0f}.'.format(min_subsample))
+        raise ValueError(f'The number of subsamples needs to be at least {min_subsample:.0f}.')
 
     # The pairwise comparisons can be deduced from the number of rings: R * N**2 = N0**2/(2*X)
     pairwise_comp_per_disk = np.ceil(subsample ** 2 / (2 * nb_rings))
@@ -976,7 +975,7 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
     return get_variogram(**argdict)
 
 
-def sample_empirical_variogram(values: Union[np.ndarray, RasterType], gsd: float = None, coords: np.ndarray = None,
+def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = None, coords: np.ndarray = None,
                                subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
                                n_variograms: int = 1, n_jobs: int = 1, verbose = False,
                                random_state: None | np.random.RandomState | np.random.Generator | int = None,
@@ -1208,7 +1207,7 @@ def _get_skgstat_variogram_model_name(model: str | Callable) -> str:
             if model.lower() in [supp_model[0:3], supp_model]:
                 model_name = supp_model.lower()
         if model_name is None:
-            raise ValueError('Variogram model name {} not recognized. Supported models are: '.format(model)+
+            raise ValueError(f'Variogram model name {model} not recognized. Supported models are: '+
                              ', '.join(list_supported_models)+'.')
 
     else:
@@ -1420,7 +1419,7 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
 
     return variogram_sum_fit, df_params
 
-def estimate_model_spatial_correlation(dvalues: Union[np.ndarray, RasterType], list_models: list[str | Callable],
+def estimate_model_spatial_correlation(dvalues: np.ndarray | RasterType, list_models: list[str | Callable],
                                        estimator = 'dowd', gsd: float = None, coords: np.ndarray = None, subsample: int = 1000,
                                        subsample_method: str = 'cdist_equidistant', n_variograms: int = 1,
                                        n_jobs: int = 1, verbose = False,
@@ -1659,7 +1658,7 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
     squared_se = 0
     valid_models = ['spherical', 'exponential', 'gaussian', 'cubic']
     exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral, cubic_exact_integral]
-    for i in np.arange((len(params_variogram_model))):
+    for i in np.arange(len(params_variogram_model)):
         model_name = _get_skgstat_variogram_model_name(params_variogram_model['model'].values[i])
         r = params_variogram_model['range'].values[i]
         p = params_variogram_model['psill'].values[i]
@@ -2506,9 +2505,9 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
         return df_statistic
 
 
-def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.ndarray], np.ndarray]]] = None,
-                   list_fit_fun_label: Optional[list[str]] = None, ax: matplotlib.axes.Axes | None = None,
-                   xscale='linear', xscale_range_split: Optional[list] = None,
+def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], np.ndarray]] | None = None,
+                   list_fit_fun_label: list[str] | None = None, ax: matplotlib.axes.Axes | None = None,
+                   xscale='linear', xscale_range_split: list | None = None,
                    xlabel = None, ylabel = None, xlim = None, ylim = None):
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
@@ -2542,7 +2541,7 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.nd
     expected_values = ['exp', 'lags', 'count']
     for val in expected_values:
         if val not in df.columns.values:
-            raise ValueError('The expected variable "{}" is not part of the provided dataframe column names.'.format(val))
+            raise ValueError(f'The expected variable "{val}" is not part of the provided dataframe column names.')
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -2672,8 +2671,8 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: Optional[list[Callable[[np.nd
             ax1.set_yticks([])
 
 
-def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: Optional[str] = None,
-                    label_statistic: Optional[str] = None, min_count: int = 30, ax: matplotlib.axes.Axes | None = None):
+def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: str | None = None,
+                    label_statistic: str | None = None, min_count: int = 30, ax: matplotlib.axes.Axes | None = None):
     """
     Plot a statistic and its count along a single binning variable.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
@@ -2697,10 +2696,10 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None.")
 
     if var_name not in df.columns.values:
-        raise ValueError('The variable "{}" is not part of the provided dataframe column names.'.format(var_name))
+        raise ValueError(f'The variable "{var_name}" is not part of the provided dataframe column names.')
 
     if statistic_name not in df.columns.values:
-        raise ValueError('The statistic "{}" is not part of the provided dataframe column names.'.format(statistic_name))
+        raise ValueError(f'The statistic "{statistic_name}" is not part of the provided dataframe column names.')
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -2750,10 +2749,10 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
 
 
 def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statistic_name: str,
-                    label_var_name_1: Optional[str] = None, label_var_name_2: Optional[str] = None,
-                    label_statistic: Optional[str] = None, cmap: matplotlib.colors.Colormap = plt.cm.Reds, min_count: int = 30,
+                    label_var_name_1: str | None = None, label_var_name_2: str | None = None,
+                    label_statistic: str | None = None, cmap: matplotlib.colors.Colormap = plt.cm.Reds, min_count: int = 30,
                     scale_var_1: str = 'linear', scale_var_2: str = 'linear', vmin: float = None, vmax: float = None,
-                    nodata_color: Union[str,tuple[float,float,float,float]] = 'yellow', ax: matplotlib.axes.Axes | None = None):
+                    nodata_color: str |tuple[float,float,float,float] = 'yellow', ax: matplotlib.axes.Axes | None = None):
     """
     Plot one statistic and its count along two binning variables.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
@@ -2785,12 +2784,12 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None.")
 
     if var_name_1 not in df.columns.values:
-        raise ValueError('The variable "{}" is not part of the provided dataframe column names.'.format(var_name_1))
+        raise ValueError(f'The variable "{var_name_1}" is not part of the provided dataframe column names.')
     elif var_name_2 not in df.columns.values:
-        raise ValueError('The variable "{}" is not part of the provided dataframe column names.'.format(var_name_2))
+        raise ValueError(f'The variable "{var_name_2}" is not part of the provided dataframe column names.')
 
     if statistic_name not in df.columns.values:
-        raise ValueError('The statistic "{}" is not part of the provided dataframe column names.'.format(statistic_name))
+        raise ValueError(f'The statistic "{statistic_name}" is not part of the provided dataframe column names.')
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -2836,7 +2835,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     ax0.spines['right'].set_visible(False)
     # Try to identify if the count is always the same
     if np.sum(~(np.abs(list_counts[0] - np.array(list_counts)) < 5)) <= 2:
-        ax0.text(0.5, 0.5, "Fixed number of\nsamples: " + '{:,}'.format(int(list_counts[0])), ha='center', va='center',
+        ax0.text(0.5, 0.5, "Fixed number of\nsamples: " + f'{int(list_counts[0]):,}', ha='center', va='center',
                  fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
 
     # Second, a vertical axis on the right to plot the sample histogram of the second variable
@@ -2866,7 +2865,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     ax1.spines['right'].set_visible(False)
     # Try to identify if the count is always the same
     if np.sum(~(np.abs(list_counts[0] - np.array(list_counts)) < 5)) <= 2:
-        ax1.text(0.5, 0.5, "Fixed number of\nsamples: " + '{:,}'.format(int(list_counts[0])), ha='center', va='center',
+        ax1.text(0.5, 0.5, "Fixed number of\nsamples: " + f'{int(list_counts[0]):,}', ha='center', va='center',
                  fontweight='bold', transform=ax1.transAxes, rotation=90, bbox=dict(facecolor='white', alpha=0.8))
 
     # Third, an axis to plot the data as a colored grid

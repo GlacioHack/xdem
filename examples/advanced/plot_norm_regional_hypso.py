@@ -26,13 +26,13 @@ Normalized regional hypsometric interpolation solves the scale and elevation ran
 The consequence is a much more accurate interpolation approach that can be used in a multitude of glacierized settings.
 
 """
+import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
-
 import numpy as np
+
 import xdem
 import xdem.misc
-import geoutils as gu
 
 # %%
 # **Example files**

@@ -16,10 +16,11 @@ The ``BlockwiseCoreg`` class runs in five steps:
 5. Warp the DEM to apply the X/Y/Z shifts.
 
 """
+import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
-import geoutils as gu
 import numpy as np
+
 import xdem
 
 # %%

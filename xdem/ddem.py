@@ -6,9 +6,9 @@ import warnings
 from typing import Any, Optional, Union
 
 import geoutils as gu
-from geoutils import spatial_tools
 import numpy as np
 import shapely
+from geoutils import spatial_tools
 
 import xdem
 
@@ -17,7 +17,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
     """A difference-DEM object."""
 
     def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64,
-                 error: Optional[Any] = None):
+                 error: Any | None = None):
         """
         Create a dDEM object from a Raster.
 
@@ -34,7 +34,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         self.start_time = start_time
         self.end_time = end_time
         self.error = error
-        self._filled_data: Optional[np.ndarray] = None
+        self._filled_data: np.ndarray | None = None
         self._fill_method = ""
 
     def __str__(self) -> str:
@@ -47,7 +47,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         return new_ddem
 
     @property
-    def filled_data(self) -> Optional[np.ndarray]:
+    def filled_data(self) -> np.ndarray | None:
         """
         Get the filled data array if it exists, or else the original data if it has no nans.
 
@@ -107,8 +107,8 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         )
 
     def interpolate(self, method: str = "linear",
-                    reference_elevation: Optional[Union[np.ndarray, np.ma.masked_array, xdem.DEM]] = None,
-                    mask: Optional[Union[np.ndarray, xdem.DEM, gu.Vector]] = None):
+                    reference_elevation: np.ndarray | np.ma.masked_array | xdem.DEM | None = None,
+                    mask: np.ndarray | xdem.DEM | gu.Vector | None = None):
         """
         Interpolate the dDEM using the given method.
 

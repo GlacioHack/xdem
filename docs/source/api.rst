@@ -20,9 +20,9 @@ Full information about xdem's functionality is provided on this page.
 
 .. automodule:: xdem
 
-   .. contents:: Contents 
+   .. contents:: Contents
       :local:
-        
+
    DEM
    ---
    .. autoclass:: DEM
@@ -34,7 +34,7 @@ Full information about xdem's functionality is provided on this page.
 
    .. minigallery:: xdem.DEM
         :add-heading:
-        
+
    DEMCollection
    -------------
    .. autoclass:: DEMCollection

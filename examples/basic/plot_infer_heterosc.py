@@ -10,9 +10,10 @@ terrain.
 **Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7
 or 8 can be used to convert elevation change errors into elevation errors.
 """
+import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 1
 import xdem
-import geoutils as gu
 
 # %%
 # We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration_nuthkaab` as shown in
@@ -35,7 +36,7 @@ errors, df_binning, error_function = \
 
 # %%
 # The first output corresponds to the error map for the DEM (:math:`\pm` 1\ :math:`\sigma` level):
-errors.show(vmin=2, vmax=7, cmap='Reds', cb_title='Elevation error (1$\sigma$, m)')
+errors.show(vmin=2, vmax=7, cmap='Reds', cb_title=r'Elevation error (1$\sigma$, m)')
 
 # %%
 # The second output is the dataframe of 2D binning with slope and maximum curvature:

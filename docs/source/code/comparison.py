@@ -9,7 +9,6 @@ import numpy as np
 
 import xdem
 
-
 # Load a reference DEM from 2009
 dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
 # Load a DEM from 1990

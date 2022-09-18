@@ -1,6 +1,7 @@
 """Documentation plot illustrating stationarity of mean and variance"""
 import matplotlib.pyplot as plt
 import numpy as np
+
 import xdem
 
 # Example x vector

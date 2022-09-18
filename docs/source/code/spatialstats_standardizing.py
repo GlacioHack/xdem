@@ -1,6 +1,6 @@
 """Documentation plot illustrating standardization of a distribution"""
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Example x vector
 mu = 15
@@ -41,4 +41,3 @@ ax1.text(mu/2, 90, 'Standardization:\n$z = \\frac{x - \\mu}{\\sigma}$', color='b
 ax1.plot([], [], color='tab:gray', linestyle='dashed', label='Mean')
 ax1.plot([], [], color='tab:gray', linestyle='dotted', label='Standard\ndeviation (2$\\sigma$)')
 ax1.legend(loc='center right')
-

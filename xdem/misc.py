@@ -62,7 +62,7 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
     Trigger a DeprecationWarning for the decorated function.
 
     :param func: The function to be deprecated.
-    :param removal_version: Optional. The version at which this will be removed. 
+    :param removal_version: Optional. The version at which this will be removed.
                             If this version is reached, a ValueError is raised.
     :param details: Optional. A description for why the function was deprecated.
 
@@ -106,7 +106,7 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
                 warnings.warn(text, category=DeprecationWarning, stacklevel=2)
             else:
                 raise ValueError(text)
-            
+
             return func(*args, **kwargs)
 
         return new_func

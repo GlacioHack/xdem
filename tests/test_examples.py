@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import geoutils as gu
 import geoutils.spatial_tools
-from geoutils import Raster, Vector
 import numpy as np
 import pandas as pd
 import pytest
+from geoutils import Raster, Vector
 
 import xdem
 from xdem import examples
+
 
 def load_examples() -> tuple[Raster, Raster, Vector, Raster]:
     """Load example files to try coregistration methods with."""

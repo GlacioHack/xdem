@@ -1,10 +1,10 @@
 """Functions to test the filtering tools."""
 from __future__ import annotations
 
+import geoutils as gu
 import numpy as np
 import pytest
 
-import geoutils as gu
 import xdem
 
 
@@ -31,7 +31,7 @@ class TestFilters:
         assert np.min(dem_array) < np.min(dem_sm2)
         assert np.max(dem_array) > np.max(dem_sm2)
         assert dem_array.shape == dem_sm2.shape
-        
+
         # Assert that both implementations yield similar results
         assert np.nanmax(np.abs(dem_sm - dem_sm2)) < 1e-3
 
@@ -82,7 +82,7 @@ class TestFilters:
         assert np.all(np.isnan(filtered_ddem[0, rows, cols]))
 
         # Assert that non filtered pixels remain the same
-        assert ddem.data.shape == filtered_ddem.shape        
+        assert ddem.data.shape == filtered_ddem.shape
         assert np.all(ddem.data[np.isfinite(filtered_ddem)] == filtered_ddem[np.isfinite(filtered_ddem)])
 
         # Check that it works with NaNs too

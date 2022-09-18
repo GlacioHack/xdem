@@ -12,13 +12,13 @@ import cv2
 import geoutils as gu
 import numpy as np
 import pytest
-import rasterio as rio
 import pytransform3d.transformations
+import rasterio as rio
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import coreg, examples, spatialstats, misc
     import xdem
+    from xdem import coreg, examples, misc, spatialstats
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
@@ -146,7 +146,7 @@ class TestCoregClass:
 
         biascorr = coreg.BiasCorr()
         icp = coreg.ICP()
-        
+
         pytest.raises(ValueError, biascorr.fit, dem1, dem2, transform=affine)
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
@@ -155,7 +155,7 @@ class TestCoregClass:
         biascorr.fit(dem1, dem2, transform=affine)
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
-    
+
 
     def test_error_method(self):
         """Test different error measures."""
@@ -455,7 +455,7 @@ class TestCoregClass:
         # Results can not yet be extracted (since fit has not been called) and should raise an error
         with pytest.raises(AssertionError, match="No coreg results exist.*"):
             blockwise.to_points()
-    
+
         blockwise.fit(**self.fit_params)
         points = blockwise.to_points()
 
@@ -628,7 +628,7 @@ class TestCoregClass:
 
         # Evaluate the parametrization (e.g. 'dem2.transform')
         ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
-        
+
         # Use BiasCorr as a representative example.
         biascorr = xdem.coreg.BiasCorr()
 
@@ -902,5 +902,3 @@ def test_warp_dem():
         plt.subplot(144)
         plt.imshow(dem - untransformed_dem, cmap="coolwarm_r", vmin=-10, vmax=10)
         plt.show()
-
-

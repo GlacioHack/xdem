@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath("../../xdem/"))
 sys.path.append(os.path.abspath(".."))
 
 from sphinx_gallery.sorting import ExplicitOrder
+
 import xdem.version
 
 # -- Project information -----------------------------------------------------

@@ -1,6 +1,6 @@
 """Functions to test the documentation."""
-import os
 import concurrent.futures
+import os
 import shutil
 import subprocess
 import sys

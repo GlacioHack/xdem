@@ -4,11 +4,11 @@ import os
 import warnings
 
 import geoutils.georaster as gr
-from geoutils.georaster.raster import _default_rio_attrs
 import geoutils.satimg as si
 import numpy as np
 import pyproj
 import pytest
+from geoutils.georaster.raster import _default_rio_attrs
 
 import xdem
 from xdem.dem import DEM
@@ -226,4 +226,3 @@ class TestDEM:
         # Check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
         assert np.greater(mean_ellips, mean_geoid_96)
         assert np.less(np.abs(mean_ellips - mean_geoid_96), 35.)
-

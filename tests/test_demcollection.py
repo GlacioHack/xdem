@@ -7,6 +7,7 @@ import numpy as np
 
 import xdem
 
+
 class TestDEMCollection:
     dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
     dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))

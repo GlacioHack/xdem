@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-import tempfile
 import re
+import tempfile
 import warnings
 
 import geoutils as gu
@@ -146,7 +146,7 @@ class TestTerrainAttribute:
                 plt.colorbar()
                 plt.show()
 
-            
+
             raise exception
 
 

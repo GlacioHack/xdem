@@ -4,20 +4,20 @@ Functions to perform normal, weighted and robust fitting.
 from __future__ import annotations
 
 import inspect
-from typing import Callable, Union, Sized, Optional
 import warnings
+from typing import Callable, Optional, Sized, Union
 
 import numpy as np
 import pandas as pd
 import scipy.optimize
-
-from xdem.spatialstats import nd_binning
 from geoutils.spatial_tools import subsample_raster
 
+from xdem.spatialstats import nd_binning
+
 try:
+    from sklearn.linear_model import (HuberRegressor, LinearRegression,
+                                      RANSACRegressor, TheilSenRegressor)
     from sklearn.metrics import mean_squared_error, median_absolute_error
-    from sklearn.linear_model import (
-        LinearRegression, TheilSenRegressor, RANSACRegressor, HuberRegressor)
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import PolynomialFeatures, RobustScaler
     _has_sklearn = True
@@ -191,7 +191,7 @@ def _wrapper_sklearn_robustlinear(model, estimator_name, cost_func, x, y, **kwar
 
 def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, estimator_name: str  = 'Theil-Sen',
                           cost_func: Callable = median_absolute_error, margin_improvement : float = 20.,
-                          subsample: Union[float,int] = 25000, linear_pkg = 'sklearn', verbose: bool = False,
+                          subsample: float |int = 25000, linear_pkg = 'sklearn', verbose: bool = False,
                           random_state: None | np.random.RandomState | np.random.Generator | int = None, **kwargs) -> tuple[np.ndarray,int]:
     """
     Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
@@ -237,7 +237,7 @@ def robust_polynomial_fit(x: np.ndarray, y: np.ndarray, max_order: int = 6, esti
 
             # Define the residual function to optimize with scipy
             def fitfun_polynomial(xx, params):
-                return sum([p * (xx ** i) for i, p in enumerate(params)])
+                return sum(p * (xx ** i) for i, p in enumerate(params))
             def residual_func(p, xx, yy):
                 return fitfun_polynomial(xx, p) - yy
             # Define the initial guess
@@ -283,8 +283,8 @@ def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
     return val
 
 def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
-                      bounds_amp_freq_phase: Optional[list[tuple[float,float], tuple[float,float], tuple[float,float]]] = None,
-                      cost_func: Callable = soft_loss, subsample: Union[float,int] = 25000, hop_length : Optional[float] = None,
+                      bounds_amp_freq_phase: list[tuple[float,float], tuple[float,float], tuple[float,float]] | None = None,
+                      cost_func: Callable = soft_loss, subsample: float |int = 25000, hop_length : float | None = None,
                       random_state: None | np.random.RandomState | np.random.Generator | int = None, verbose: bool = False,
                       **kwargs) -> tuple[np.ndarray,int]:
     """
@@ -366,8 +366,8 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
                 b += [(lb_amp,ub_amp),(lb_frequency,ub_frequency),(lb_phase,ub_phase)]
 
         # Format lower and upper bounds for scipy
-        lb = np.asarray(([b[i][0] for i in range(3*nb_freq)]))
-        ub = np.asarray(([b[i][1] for i in range(3*nb_freq)]))
+        lb = np.asarray([b[i][0] for i in range(3*nb_freq)])
+        ub = np.asarray([b[i][1] for i in range(3*nb_freq)])
         # Insert in a scipy bounds object
         scipy_bounds = scipy.optimize.Bounds(lb, ub)
         # First guess for the mean parameters
@@ -413,4 +413,3 @@ def robust_sumsin_fit(x: np.ndarray, y: np.ndarray, nb_frequency_max: int = 3,
 
     # The number of frequencies corresponds to the final index plus one
     return final_coefs, final_degree
-

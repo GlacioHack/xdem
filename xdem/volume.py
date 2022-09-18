@@ -10,13 +10,13 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
+from geoutils import spatial_tools
 from tqdm import tqdm
 
 import xdem
-from geoutils import spatial_tools
 
 
-def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float, np.ndarray] = 50.0,
+def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: float | np.ndarray = 50.0,
                         kind: str = "fixed", aggregation_function: Callable = np.median) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
@@ -105,7 +105,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: Union[float
 
 
 def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="value", method="polynomial", order=3,
-                                 count_threshold: Optional[int] = None) -> pd.DataFrame:
+                                 count_threshold: int | None = None) -> pd.DataFrame:
     """
     Interpolate hypsometric bins using any valid Pandas interpolation technique.
 
@@ -151,7 +151,7 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
 
 
 def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str = "value", degree: int = 3,
-                              iterations: int = 1, count_threshold: Optional[int] = None) -> pd.Series:
+                              iterations: int = 1, count_threshold: int | None = None) -> pd.Series:
     """
     Fit a polynomial to the hypsometric bins.
 
@@ -204,8 +204,8 @@ def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str 
     return output
 
 
-def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem: np.ndarray,
-                              pixel_size: Union[float, tuple[float, float]],
+def calculate_hypsometry_area(ddem_bins: pd.Series | pd.DataFrame, ref_dem: np.ndarray,
+                              pixel_size: float | tuple[float, float],
                               timeframe: str = "reference") -> pd.Series:
     """
     Calculate the associated representative area of the given dDEM bins.
@@ -261,7 +261,7 @@ def calculate_hypsometry_area(ddem_bins: Union[pd.Series, pd.DataFrame], ref_dem
     return output
 
 
-def linear_interpolation(array: Union[np.ndarray, np.ma.masked_array], max_search_distance: int = 10,
+def linear_interpolation(array: np.ndarray | np.ma.masked_array, max_search_distance: int = 10,
                          extrapolate: bool = False, force_fill: bool = False) -> np.ndarray:
     """
     Interpolate a 2D array using rasterio's fillnodata.
@@ -305,8 +305,8 @@ to interpolate from. The default is 10.
     return interpolated_array.reshape(array.shape)
 
 
-def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
-                              ref_dem: Union[np.ndarray, np.ma.masked_array],
+def hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
+                              ref_dem: np.ndarray | np.ma.masked_array,
                               mask: np.ndarray) -> np.ma.masked_array:
     """
     Interpolate a dDEM using hypsometric interpolation within the given mask.
@@ -365,10 +365,10 @@ def hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array]
     return output
 
 
-def local_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
-                                    ref_dem: Union[np.ndarray, np.ma.masked_array],
+def local_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
+                                    ref_dem: np.ndarray | np.ma.masked_array,
                                     mask: np.ndarray, min_coverage: float = 0.2,
-                                    count_threshold: Optional[int] = 1, nodata: Union[float, int] = -9999,
+                                    count_threshold: int | None = 1, nodata: float | int = -9999,
                                     plot: bool = False) -> np.ma.masked_array:
     """
     Interpolate a dDEM using local hypsometric interpolation.
@@ -416,19 +416,19 @@ for areas filling the min_coverage criterion.
 
     # List of indexes to loop on
     geometry_index = np.unique(mask[mask != 0])
-    print("Found {:d} geometries".format(len(geometry_index)))
+    print(f"Found {len(geometry_index):d} geometries")
 
     # Get fraction of valid pixels for each geometry
     coverage = np.zeros(len(geometry_index))
     for k, index in enumerate(geometry_index):
         local_inlier_mask = inlier_mask & (mask == index)
-        total_pixels = np.count_nonzero((mask == index))
+        total_pixels = np.count_nonzero(mask == index)
         valid_pixels = np.count_nonzero(local_inlier_mask)
         coverage[k] = valid_pixels/float(total_pixels)
 
     # Filter geometries with too little coverage
     valid_geometry_index = geometry_index[coverage >= min_coverage]
-    print("Found {:d} geometries with sufficient coverage".format(len(valid_geometry_index)))
+    print(f"Found {len(valid_geometry_index):d} geometries with sufficient coverage")
 
     idealized_ddem = nodata * np.ones_like(dem)
 
@@ -457,7 +457,7 @@ for areas filling the min_coverage criterion.
         nvalues = len(interpolated_gradient['value'].values)
         if nvalues < 2:
             warnings.warn(
-                "Not enough valid bins for feature with index {:d} -> skipping interpolation".format(index),
+                f"Not enough valid bins for feature with index {index:d} -> skipping interpolation",
                 UserWarning
             )
             continue
@@ -482,7 +482,7 @@ for areas filling the min_coverage criterion.
             plt.imshow(local_ddem[rowmin:rowmax, colmin:colmax], cmap='RdYlBu',
                        vmin=-vmax, vmax=vmax, interpolation='none')
             plt.colorbar()
-            plt.title("ddem for geometry # {:d}".format(index))
+            plt.title(f"ddem for geometry # {index:d}")
 
             plt.subplot(122)
             plt.plot(gradient["value"], gradient.index.mid, label='raw')
@@ -522,8 +522,8 @@ for areas filling the min_coverage criterion.
     return output
 
 
-def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
-                                    ref_dem: Union[np.ndarray, np.ma.masked_array],
+def get_regional_hypsometric_signal(ddem: np.ndarray | np.ma.masked_array,
+                                    ref_dem: np.ndarray | np.ma.masked_array,
                                     glacier_index_map: np.ndarray, n_bins: int = 20,
                                     verbose: bool = False, min_coverage: float = 0.05) -> pd.DataFrame:
     """
@@ -613,11 +613,11 @@ def get_regional_hypsometric_signal(ddem: Union[np.ndarray, np.ma.masked_array],
     return output
 
 
-def norm_regional_hypsometric_interpolation(voided_ddem: Union[np.ndarray, np.ma.masked_array],
-                                            ref_dem: Union[np.ndarray, np.ma.masked_array],
+def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
+                                            ref_dem: np.ndarray | np.ma.masked_array,
                                             glacier_index_map: np.ndarray,
                                             min_coverage: float = 0.1,
-                                            regional_signal: Optional[pd.DataFrame] = None,
+                                            regional_signal: pd.DataFrame | None = None,
                                             verbose: bool = False,
                                             min_elevation_range: float = 0.33,
                                             idealized_ddem: bool = False) -> np.ndarray:

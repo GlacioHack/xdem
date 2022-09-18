@@ -7,9 +7,9 @@ import tempfile
 import urllib.request
 from distutils.dir_util import copy_tree
 
+import geoutils as gu
 import numpy as np
 
-import geoutils as gu
 import xdem
 
 EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples/data"))
@@ -138,4 +138,3 @@ def get_path(name: str) -> str:
         return FILEPATHS_PROCESSED[name]
     else:
         raise ValueError('Data name should be one of "'+'" , "'.join(list(FILEPATHS_DATA.keys())+list(FILEPATHS_PROCESSED.keys()))+'".')
-

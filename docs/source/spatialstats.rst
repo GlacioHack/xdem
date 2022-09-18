@@ -18,7 +18,7 @@ In particular, these tools help to:
     - estimate robust errors for observations analyzed in space (e.g., average or sum of elevation, or of elevation changes),
     - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
-.. contents:: Contents 
+.. contents:: Contents
    :local:
 
 .. _spatialstats_intro:
@@ -327,5 +327,3 @@ Propagation of correlated errors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 TODO: Add this section based on Krige's relation (Webster & Oliver, 2007), Hugonnet et al. (in prep)
-
-

@@ -18,11 +18,12 @@ and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, 
 3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7 or 8 can
 be used to convert elevation change errors into elevation errors.
 """
+import geoutils as gu
 # sphinx_gallery_thumbnail_number = 8
 import matplotlib.pyplot as plt
 import numpy as np
+
 import xdem
-import geoutils as gu
 
 # %%
 # Here, we detail the steps used by ``xdem.spatialstats.infer_heteroscedasticity_from_stable`` exemplified in
@@ -201,12 +202,12 @@ zscores, dh_err_fun = xdem.spatialstats.two_step_standardization(dh_arr, list_va
                                                            unscaled_error_fun=unscaled_dh_err_fun)
 
 for s, c in [(0., 0.1), (50., 0.1), (0., 20.), (50., 20.)]:
-    print('Elevation measurement error for slope of {0:.0f} degrees, '
-          'curvature of {1:.2f} m-1: {2:.1f}'.format(s, c/100, dh_err_fun((s, c)))+ ' meters.')
+    print('Elevation measurement error for slope of {:.0f} degrees, '
+          'curvature of {:.2f} m-1: {:.1f}'.format(s, c/100, dh_err_fun((s, c)))+ ' meters.')
 
 # %%
 # This function can be used to estimate the spatial distribution of the elevation error on the extent of our DEMs:
 maxc = np.maximum(np.abs(profc), np.abs(planc))
 errors = dh.copy(new_array= dh_err_fun((slope.data, maxc.data)))
 
-errors.show(cmap='Reds', vmin=2, vmax=8, cb_title='Elevation error ($1\sigma$, m)')
+errors.show(cmap='Reds', vmin=2, vmax=8, cb_title=r'Elevation error ($1\sigma$, m)')

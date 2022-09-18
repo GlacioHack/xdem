@@ -19,7 +19,7 @@ The MIT license (see LICENSE) applies to all contributions.
 When submitting bugs, please include the following information:
 * Operating system type and version (Windows 10 / Ubuntu 18.04 etc.).
 * The version and source of `xdem` (PyPi, Anaconda, GitHub or elsewhere?).
-* The version and source of `geoutils`, `rasterio` and `GDAL`. 
+* The version and source of `geoutils`, `rasterio` and `GDAL`.
 
 Please search existing issues, open and closed, before creating a new one.
 

@@ -1,8 +1,8 @@
 """Code example for spatial statistics"""
-import xdem
 import geoutils as gu
 import numpy as np
 
+import xdem
 
 # Load data
 dh = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ddem"))

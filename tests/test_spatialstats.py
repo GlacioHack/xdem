@@ -1,19 +1,18 @@
 """Functions to test the spatial statistics."""
 from __future__ import annotations
-from typing import Tuple
 
 import os
-import warnings
 import time
-
-import skgstat
+import warnings
+from typing import Tuple
 
 import geoutils as gu
 import geoutils.spatial_tools
-from geoutils import Raster, Vector
 import numpy as np
 import pandas as pd
 import pytest
+import skgstat
+from geoutils import Raster, Vector
 
 import xdem
 from xdem import examples

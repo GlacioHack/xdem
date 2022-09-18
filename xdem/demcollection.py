@@ -15,10 +15,10 @@ import xdem
 class DEMCollection:
     """A temporal collection of DEMs."""
 
-    def __init__(self, dems: Union[list[gu.georaster.Raster], list[xdem.DEM]],
-                 timestamps: Optional[list[datetime.datetime]] = None,
-                 outlines: Optional[Union[gu.geovector.Vector, dict[datetime.datetime, gu.geovector.Vector]]] = None,
-                 reference_dem: Union[int, gu.georaster.Raster] = 0):
+    def __init__(self, dems: list[gu.georaster.Raster] | list[xdem.DEM],
+                 timestamps: list[datetime.datetime] | None = None,
+                 outlines: gu.geovector.Vector | dict[datetime.datetime, gu.geovector.Vector] | None = None,
+                 reference_dem: int | gu.georaster.Raster = 0):
         """
         Create a new temporal DEM collection.
 
@@ -121,7 +121,7 @@ class DEMCollection:
 
         return [ddem.filled_data for ddem in self.ddems]
 
-    def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: Optional[str] = None) -> np.ndarray:
+    def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: str | None = None) -> np.ndarray:
         """
         Get a fitting dDEM mask for a provided dDEM.
 
@@ -164,7 +164,7 @@ class DEMCollection:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)
         return mask.reshape(ddem.data.shape)
 
-    def get_dh_series(self, outlines_filter: Optional[str] = None, mask: Optional[np.ndarray] = None,
+    def get_dh_series(self, outlines_filter: str | None = None, mask: np.ndarray | None = None,
                       nans_ok: bool = False) -> pd.DataFrame:
         """
         Return a dataframe of mean dDEM values and respective areas for every timestamp.
@@ -201,8 +201,8 @@ class DEMCollection:
 
         return dh_values
 
-    def get_dv_series(self, outlines_filter: Optional[str] = None,
-                      mask: Optional[np.ndarray] = None, nans_ok: bool = False) -> pd.Series:
+    def get_dv_series(self, outlines_filter: str | None = None,
+                      mask: np.ndarray | None = None, nans_ok: bool = False) -> pd.Series:
         """
         Return a series of mean volume change (dV) for every timestamp.
 
@@ -218,8 +218,8 @@ class DEMCollection:
 
         return dh_values["area"] * dh_values["dh"]
 
-    def get_cumulative_series(self, kind: str = "dh", outlines_filter: Optional[str] = None,
-                              mask: Optional[np.ndarray] = None,
+    def get_cumulative_series(self, kind: str = "dh", outlines_filter: str | None = None,
+                              mask: np.ndarray | None = None,
                               nans_ok: bool = False) -> pd.Series:
         """
         Get the cumulative dH (elevation) or dV (volume) since the first timestamp.

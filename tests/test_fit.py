@@ -3,10 +3,10 @@ Functions to test the fitting tools.
 """
 import numpy as np
 import pytest
+from sklearn.metrics import mean_squared_error, median_absolute_error
 
 import xdem
 
-from sklearn.metrics import mean_squared_error, median_absolute_error
 
 class TestRobustFitting:
 

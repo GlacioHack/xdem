@@ -8,9 +8,10 @@ We use a sum of variogram forms to model this correlation, with stable terrain a
 
 **Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
 """
+import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 1
 import xdem
-import geoutils as gu
 
 # %%
 # We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration_nuthkaab` as shown in

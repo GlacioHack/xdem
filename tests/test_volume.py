@@ -3,11 +3,12 @@ import warnings
 
 import geoutils as gu
 import numpy as np
-import scipy.ndimage
 import pandas as pd
 import pytest
+import scipy.ndimage
 
 import xdem
+
 
 class TestLocalHypsometric:
     """Test cases for the local hypsometric method."""
@@ -236,7 +237,7 @@ class TestNormHypsometric:
         )
 
         # Validate that values were interpolated within the measurement step-size
-        assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1 
+        assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1
 
     def test_regional_hypsometric_interp(self):
 
@@ -311,4 +312,3 @@ class TestNormHypsometric:
         # values on normal computers...
         #assert abs(changes.mean() - interp_changes.mean()) < 2
         #assert abs(changes.std() - interp_changes.std()) < 2
-

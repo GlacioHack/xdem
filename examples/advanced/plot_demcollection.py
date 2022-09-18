@@ -84,7 +84,7 @@ extent = [
 ]
 
 scott_extent = [
-        518600, 
+        518600,
         523800,
         8666600,
         8672300
@@ -108,4 +108,3 @@ for i in range(2):
     plt.ylim(scott_extent[2:])
 
 plt.show()
-

@@ -2,6 +2,7 @@
 import contextlib
 import io
 import sys
+
 import xdem
 
 sys.path.insert(0, "code/")  # The base directory is source/, so to find comparison.py, it has to be source/code/

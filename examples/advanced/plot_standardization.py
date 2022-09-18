@@ -13,11 +13,12 @@ Here, we show an example of standardization of the data based on terrain-depende
 
 **Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Equation 12.
 """
+import geoutils as gu
 # sphinx_gallery_thumbnail_number = 4
 import matplotlib.pyplot as plt
 import numpy as np
+
 import xdem
-import geoutils as gu
 from xdem.spatialstats import nmad
 
 # %%
@@ -80,10 +81,10 @@ z_dh.data[np.abs(z_dh.data)>4] = np.nan
 
 # %%
 # We perform a scale-correction for the standardization, to ensure that the standard deviation of the data is exactly 1.
-print('Standard deviation before scale-correction: {:.1f}'.format(nmad(z_dh.data)))
+print(f'Standard deviation before scale-correction: {nmad(z_dh.data):.1f}')
 scale_fac_std = nmad(z_dh.data)
 z_dh = z_dh/scale_fac_std
-print('Standard deviation after scale-correction: {:.1f}'.format(nmad(z_dh.data)))
+print(f'Standard deviation after scale-correction: {nmad(z_dh.data):.1f}')
 
 plt.figure(figsize=(8, 5))
 plt_extent = [
@@ -148,11 +149,11 @@ plt.plot([], [], color='tab:gray', label='Svendsenbreen')
 plt.legend(loc='lower left')
 plt.show()
 
-print('Average slope of Svendsenbreen glacier: {:.1f}'.format(np.nanmean(slope[svendsen_mask])))
-print('Average maximum curvature of Svendsenbreen glacier: {:.3f}'.format(np.nanmean(maxc[svendsen_mask])))
+print(f'Average slope of Svendsenbreen glacier: {np.nanmean(slope[svendsen_mask]):.1f}')
+print(f'Average maximum curvature of Svendsenbreen glacier: {np.nanmean(maxc[svendsen_mask]):.3f}')
 
-print('Average slope of Medalsbreen glacier: {:.1f}'.format(np.nanmean(slope[medals_mask])))
-print('Average maximum curvature of Medalsbreen glacier : {:.1f}'.format(np.nanmean(maxc[medals_mask])))
+print(f'Average slope of Medalsbreen glacier: {np.nanmean(slope[medals_mask]):.1f}')
+print(f'Average maximum curvature of Medalsbreen glacier : {np.nanmean(maxc[medals_mask]):.1f}')
 
 # %%
 # We calculate the number of effective samples for each glacier based on the variogram
@@ -162,8 +163,8 @@ svendsen_neff = xdem.spatialstats.neff_circular_approx_numerical(area=svendsen_s
 medals_neff = xdem.spatialstats.neff_circular_approx_numerical(area=medals_shp.ds.area.values[0],
                                                                params_variogram_model=params_vgm)
 
-print('Number of effective samples of Svendsenbreen glacier: {:.1f}'.format(svendsen_neff))
-print('Number of effective samples of Medalsbreen glacier: {:.1f}'.format(medals_neff))
+print(f'Number of effective samples of Svendsenbreen glacier: {svendsen_neff:.1f}')
+print(f'Number of effective samples of Medalsbreen glacier: {medals_neff:.1f}')
 
 # %%
 # Due to the long-range spatial correlations affecting the elevation differences, both glacier have a similar, low
@@ -172,8 +173,8 @@ print('Number of effective samples of Medalsbreen glacier: {:.1f}'.format(medals
 svendsen_z_err = 1/np.sqrt(svendsen_neff)
 medals_z_err = 1/np.sqrt(medals_neff)
 
-print('Standardized integrated error of Svendsenbreen glacier: {:.1f}'.format(svendsen_z_err))
-print('Standardized integrated error of Medalsbreen glacier: {:.1f}'.format(medals_z_err))
+print(f'Standardized integrated error of Svendsenbreen glacier: {svendsen_z_err:.1f}')
+print(f'Standardized integrated error of Medalsbreen glacier: {medals_z_err:.1f}')
 
 # %%
 # Finally, we destandardize the spatially integrated errors based on the measurement error dependent on slope and
@@ -200,10 +201,10 @@ medals_shp.ds.plot(ax=ax, fc='none', ec='tab:gray', lw=2)
 plt.plot([],[], color='tab:olive', label='Svendsenbreen glacier')
 plt.plot([],[], color='tab:gray', label='Medalsbreen glacier')
 ax.text(svendsen_shp.ds.centroid.x.values[0], svendsen_shp.ds.centroid.y.values[0]-1500,
-        '{:.2f} \n$\\pm$ {:.2f}'.format(svendsen_dh, svendsen_dh_err), color='tab:olive', fontweight='bold',
+        f'{svendsen_dh:.2f} \n$\\pm$ {svendsen_dh_err:.2f}', color='tab:olive', fontweight='bold',
         va='top', ha='center', fontsize=12)
 ax.text(medals_shp.ds.centroid.x.values[0], medals_shp.ds.centroid.y.values[0]+2000,
-        '{:.2f} \n$\\pm$ {:.2f}'.format(medals_dh, medals_dh_err), color='tab:gray', fontweight='bold',
+        f'{medals_dh:.2f} \n$\\pm$ {medals_dh_err:.2f}', color='tab:gray', fontweight='bold',
         va='bottom', ha='center', fontsize=12)
 plt.legend(loc='lower left')
 plt.show()

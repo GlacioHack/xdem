@@ -18,11 +18,12 @@ robustness of our results using :func:`xdem.spatialstats.patches_method`, an int
 
 **Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
 """
+import geoutils as gu
 # sphinx_gallery_thumbnail_number = 6
 import matplotlib.pyplot as plt
 import numpy as np
+
 import xdem
-import geoutils as gu
 
 # %%
 # We load example files.
@@ -38,8 +39,8 @@ dh.set_mask(mask_glacier)
 # %%
 # We estimate the average per-pixel elevation error on stable terrain, using both the standard deviation
 # and normalized median absolute deviation. For this example, we do not account for elevation heteroscedasticity.
-print('STD: {:.2f} meters.'.format(np.nanstd(dh.data)))
-print('NMAD: {:.2f} meters.'.format(xdem.spatialstats.nmad(dh.data)))
+print(f'STD: {np.nanstd(dh.data):.2f} meters.')
+print(f'NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.')
 
 # %%
 # The two measures of dispersion are quite similar showing that, on average, there is a small influence of outliers on the
@@ -183,12 +184,12 @@ plt.show()
 # tendency of our sample:
 
 diff_med_mean = np.nanmean(dh.data.data)-np.nanmedian(dh.data.data)
-print('Difference mean/median: {:.3f} meters.'.format(diff_med_mean))
+print(f'Difference mean/median: {diff_med_mean:.3f} meters.')
 
 # %%
 # If we now express it as a percentage of the dispersion:
 
-print('{:.1f} % of STD.'.format(diff_med_mean/np.nanstd(dh.data)*100))
+print(f'{diff_med_mean/np.nanstd(dh.data)*100:.1f} % of STD.')
 
 # %%
 # There might be a significant bias of central tendency, i.e. almost fully correlated measurement error across the grid.

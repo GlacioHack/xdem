@@ -1,11 +1,11 @@
 """Filters to remove outliers and reduce noise in DEMs."""
 from __future__ import annotations
 
+import warnings
+
 import cv2 as cv
 import numpy as np
 import scipy
-import warnings
-
 
 # Gaussian filters
 

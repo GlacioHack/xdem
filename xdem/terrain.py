@@ -4,12 +4,11 @@ from __future__ import annotations
 import warnings
 from typing import Sized, overload
 
+import geoutils as gu
 import numba
 import numpy as np
 import rasterio as rio
-
-import geoutils as gu
-from geoutils.georaster import RasterType, Raster
+from geoutils.georaster import Raster, RasterType
 
 try:
     import richdem as rd
