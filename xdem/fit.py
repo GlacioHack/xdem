@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import inspect
 import warnings
-from typing import Callable, Optional, Sized, Union
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -16,9 +16,9 @@ from xdem.spatialstats import nd_binning
 
 try:
     from sklearn.linear_model import HuberRegressor, LinearRegression, RANSACRegressor, TheilSenRegressor
-    from sklearn.metrics import mean_squared_error, median_absolute_error
+    from sklearn.metrics import median_absolute_error
     from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import PolynomialFeatures, RobustScaler
+    from sklearn.preprocessing import PolynomialFeatures
 
     _has_sklearn = True
 except ImportError:
@@ -393,7 +393,7 @@ def robust_sumsin_fit(
             ub_frequency = 1 / (5 * hop_length)
 
             b = []
-            for i in range(nb_freq):
+            for _i in range(nb_freq):
                 b += [(lb_amp, ub_amp), (lb_frequency, ub_frequency), (lb_phase, ub_phase)]
 
         # Format lower and upper bounds for scipy

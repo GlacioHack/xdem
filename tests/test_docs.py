@@ -1,9 +1,6 @@
 """Functions to test the documentation."""
-import concurrent.futures
 import os
 import shutil
-import subprocess
-import sys
 import warnings
 
 import sphinx.cmd.build

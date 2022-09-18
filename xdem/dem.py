@@ -6,10 +6,8 @@ import os
 import subprocess
 import warnings
 
-import geoutils as gu
 import numpy as np
 import pyproj
-from geoutils.georaster import Raster
 from geoutils.satimg import SatelliteImage
 from pyproj import Transformer
 
@@ -26,7 +24,7 @@ def parse_vref_from_product(product: str) -> str:
     # SRTMGL1: https://lpdaac.usgs.gov/documents/179/SRTM_User_Guide_V3.pdf
     # SRTMv4.1: http://www.cgiar-csi.org/data/srtm-90m-digital-elevation-database-v4-1
     # ASTGTM2/ASTGTM3: https://lpdaac.usgs.gov/documents/434/ASTGTM_User_Guide_V3.pdf
-    # NASADEM: https://lpdaac.usgs.gov/documents/592/NASADEM_User_Guide_V1.pdf !! HGTS is ellipsoid, HGT is EGM96 geoid !!
+    # NASADEM: https://lpdaac.usgs.gov/documents/592/NASADEM_User_Guide_V1.pdf, HGTS is ellipsoid, HGT is EGM96 geoid !!
     # ArcticDEM (mosaic and strips): https://www.pgc.umn.edu/data/arcticdem/
     # REMA (mosaic and strips): https://www.pgc.umn.edu/data/rema/
     # TanDEM-X 90m global: https://geoservice.dlr.de/web/dataguide/tdm90/
@@ -50,7 +48,8 @@ dem_attrs = ["vref", "vref_grid", "_ccrs"]
 class DEM(SatelliteImage):
     def __init__(self, filename_or_dataset, vref_name=None, vref_grid=None, silent=True, **kwargs):
         """
-        Load digital elevation model data through the Raster class, parse additional attributes from filename or metadata
+        Load digital elevation model data through the Raster class, parse additional attributes from filename or
+        metadata
         trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
         For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
 
@@ -146,7 +145,7 @@ class DEM(SatelliteImage):
         elif self.vref_grid is not None:
             # For other vrefs, keep same horizontal projection and add geoid grid (the "dirty" way: because init is so
             # practical and still going to be used for a while)
-            # see https://gis.stackexchange.com/questions/352277/including-geoidgrids-when-initializing-projection-via-epsg/352300#352300
+            # see https://gis.stackexchange.com/questions/352277/
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", module="pyproj")
                 self._ccrs = pyproj.Proj(init="EPSG:" + str(int(crs.to_epsg())), geoidgrids=self.vref_grid).crs

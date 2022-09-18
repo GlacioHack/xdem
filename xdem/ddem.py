@@ -1,9 +1,8 @@
 """Difference of DEMs classes and functions."""
 from __future__ import annotations
 
-import copy
 import warnings
-from typing import Any, Optional, Union
+from typing import Any
 
 import geoutils as gu
 import numpy as np

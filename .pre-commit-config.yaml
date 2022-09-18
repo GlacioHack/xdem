@@ -13,7 +13,11 @@ repos:
           rev: v2.0.0
           hooks:
                 - id: codespell
-                  args: [--ignore-words=codespell_ignore.txt, --ignore-regex=\bhist\b]
+                  args: [
+                    '--ignore-words-list', 'nd,alos',
+                    '--ignore-regex', '\bhist\b',
+                    '--'
+                  ]
                   types_or: [python, rst, markdown]
                   files: ^(xdem|docs|tests)/
 
@@ -35,9 +39,11 @@ repos:
           rev: 3.9.2
           hooks:
                 - id: flake8
+                  # More than one argument in the second list, so need to pass arguments as below (and -- to finish)
                   args: [
-                          --max-line-length=120,
-                          --extend-ignore=E203,   # flake8 disagrees with black, so this should be ignored.
+                          '--max-line-length', '120',  # we can write dicts however we want
+                          '--extend-ignore', 'E203,C408', # flake8 disagrees with black, so this should be ignored.
+                          '--'
                   ]
                   additional_dependencies:
                           - flake8-comprehensions==3.1.0

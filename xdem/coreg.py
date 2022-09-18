@@ -3,13 +3,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
-import json
-import os
-import subprocess
-import tempfile
 import warnings
-from enum import Enum
-from typing import Any, Callable, Optional, Sequence, TypeVar, Union, overload
+from typing import Any, Callable, TypeVar, overload
 
 try:
     import cv2
@@ -77,7 +72,6 @@ def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> np.ndarray:
     print("Y shift: ", dy)
 
     # Update geotransform
-    ds_meta = ds.meta
     gt_orig = ds.transform
     gt_align = Affine(gt_orig.a, gt_orig.b, gt_orig.c + dx, gt_orig.d, gt_orig.e, gt_orig.f + dy)
 
@@ -477,7 +471,7 @@ class Coreg:
         for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
             if hasattr(dem, "transform"):
                 if transform is None:
-                    transform = getattr(dem, "transform")
+                    transform = dem.transform
                 elif transform is not None:
                     warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
 
@@ -1061,8 +1055,10 @@ class Deramp(Coreg):
             """
             Estimate values from a 2D-polynomial.
 
-            :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference).
-            :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference).
+            :param x_coordinates: x-coordinates of the difference array (must have the same shape as
+                elevation_difference).
+            :param y_coordinates: y-coordinates of the difference array (must have the same shape as
+                elevation_difference).
             :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
             :param degree: The degree of the polynomial.
 
@@ -1752,7 +1748,8 @@ class BlockwiseCoreg(Coreg):
             if hasattr(coreg, "pipeline"):
                 meta["pipeline"] = [step._meta.copy() for step in coreg.pipeline]
 
-            # Copy all current metadata (except for the already existing keys like "i", "min_row", etc, and the "coreg_meta" key)
+            # Copy all current metadata (except for the already existing keys like "i", "min_row", etc, and the
+            # "coreg_meta" key)
             # This can then be iteratively restored when the apply function should be called.
             meta.update(
                 {key: value for key, value in coreg._meta.items() if key not in ["coreg_meta"] + list(meta.keys())}
@@ -1836,7 +1833,8 @@ class BlockwiseCoreg(Coreg):
         for meta in self._meta["coreg_meta"]:
             self._restore_metadata(meta)
 
-            # x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"], meta["representative_col"])
+            # x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"],
+            # meta["representative_col"])
             x_coord, y_coord = meta["representative_x"], meta["representative_y"]
 
             old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))

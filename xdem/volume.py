@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Callable, Optional, Union
+from typing import Callable
 
 import cv2
 import matplotlib.pyplot as plt
@@ -118,7 +118,8 @@ def interpolate_hypsometric_bins(
     :param value_column: The name of the column in 'hypsometric_bins' to use as values.
     :param method: Any valid Pandas interpolation technique (e.g. 'linear', 'polynomial', 'ffill', 'bfill').
     :param order: The polynomial order to use. Only used if method='polynomial'.
-    :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
+    :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count'
+        column).
     :returns: Bins interpolated with the chosen interpolation method.
     """
     # Copy the bins that will be filled.
@@ -168,21 +169,22 @@ def fit_hypsometric_bins_poly(
     :param degree: The degree of the polynomial to use.
     :param iterations: The number of iterations to run. \
  At each iteration, values with residuals larger than 3 times the residuals' standard deviation are excluded.
-    :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count' column).
+    :param count_threshold: Optional. A pixel count threshold to exclude during the curve fit (requires a 'count'
+        column).
     :returns: Bins replaced by the polynomial fit.
     """
     bins = hypsometric_bins.copy()
     bins.index = bins.index.mid
 
     if count_threshold is not None:
-        assert "count" in hypsometric_bins.columns, f"'count' not a column in the dataframe"
+        assert "count" in hypsometric_bins.columns, "'count' not a column in the dataframe"
         bins_under_threshold = bins["count"] < count_threshold
         bins.loc[bins_under_threshold, value_column] = np.nan
 
     # Remove invalid bins
     valids = np.isfinite(np.asarray(bins[value_column]))
 
-    for k in range(iterations):
+    for _k in range(iterations):
 
         # Fit polynomial
         x = bins.index[valids]
@@ -202,7 +204,9 @@ def fit_hypsometric_bins_poly(
 
     # Save as pandas' DataFrame
     output = pd.DataFrame(
-        index=hypsometric_bins.index, data=np.vstack([interpolated_values, bins["count"]]).T, columns=["value", "count"]
+        index=hypsometric_bins.index,
+        data=np.vstack([interpolated_values, bins["count"]]).T,
+        columns=["value", "count"]
     )
 
     return output
@@ -442,7 +446,7 @@ for areas filling the min_coverage criterion.
 
     idealized_ddem = nodata * np.ones_like(dem)
 
-    for k, index in enumerate(valid_geometry_index):
+    for _k, index in enumerate(valid_geometry_index):
 
         # Mask of valid pixel within geometry
         local_mask = mask == index
@@ -478,7 +482,7 @@ for areas filling the min_coverage criterion.
             vmax = max(np.abs(np.nanpercentile(local_ddem, [2, 98])))
             rowmin, rowmax, colmin, colmax = spatial_tools.get_valid_extent(mask == index)
 
-            fig = plt.figure(figsize=(12, 8))
+            plt.figure(figsize=(12, 8))
             plt.subplot(121)
             plt.imshow(
                 (mask == index)[rowmin:rowmax, colmin:colmax], cmap="Greys", vmin=0, vmax=2, interpolation="none"
@@ -589,7 +593,8 @@ def get_regional_hypsometric_signal(
         # Run the hypsometric binning.
         try:
             bins = hypsometric_binning(differences, elevations, bins=n_bins, kind="count")
-        except ValueError:  # ValueError: zero-size array to reduction operation minimum which has no identity on "zbins=" call
+        except ValueError:
+            # ValueError: zero-size array to reduction operation minimum which has no identity on "zbins=" call
             continue
 
         # Min-max scale by elevation.

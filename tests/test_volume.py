@@ -5,7 +5,6 @@ import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
-import scipy.ndimage
 
 import xdem
 
@@ -214,7 +213,6 @@ class TestNormHypsometric:
 
         # Extract a normalized regional hypsometric signal.
         ddem = self.dem_2009.data - self.dem_1990.data
-        ddem_full = ddem.copy().filled(np.nan)
 
         signal = xdem.volume.get_regional_hypsometric_signal(
             ddem=self.ddem, ref_dem=self.dem_2009.data, glacier_index_map=self.glacier_index_map

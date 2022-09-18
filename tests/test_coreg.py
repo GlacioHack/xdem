@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import time
 import warnings
 
 import cv2
@@ -353,12 +352,12 @@ class TestCoregClass:
         nuthkaab_sub = coreg.NuthKaab()
 
         # Measure the start and stop time to get the duration
-        start_time = time.time()
+        # start_time = time.time()
         nuthkaab_full.fit(**self.fit_params)
         # icp_full_duration = time.time() - start_time
 
         # Do the same with 50% subsampling
-        start_time = time.time()
+        # start_time = time.time()
         nuthkaab_sub.fit(**self.fit_params, subsample=0.5)
         # icp_sub_duration = time.time() - start_time
 
@@ -638,7 +637,7 @@ class TestCoregClass:
             crs=4326,
             nodata=-9999,
         )
-        dem2 = dem1.copy()  # type: ignore
+        dem2 = dem1.copy()  # noqa
 
         # Evaluate the parametrization (e.g. 'dem2.transform')
         ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))

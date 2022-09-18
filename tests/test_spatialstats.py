@@ -114,7 +114,8 @@ class TestBinning:
             list_var_bins=4,
         )
 
-        # Dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning of length 1000
+        # Dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning
+        # of length 1000
         assert df.shape[0] == (4**3 + 3 * 4**2 + 3 * 4)
 
         # Save for later use
@@ -1025,7 +1026,8 @@ class TestNeffEstimation:
             rasterize_resolution=self.ref,
             random_state=42,
         )
-        # The value should be nearly the same within 5% (the discretization grid is different so affects a tiny bit the result)
+        # The value should be nearly the same within 5% (the discretization grid is different so affects a tiny bit the
+        # result)
         assert neff3 == pytest.approx(neff2, rel=0.05)
 
         # Check that the number of effective samples matches that of the circular approximation within 20%

@@ -1,14 +1,11 @@
 """Utility functions to download and find example data."""
-import errno
 import os
-import shutil
 import tarfile
 import tempfile
 import urllib.request
 from distutils.dir_util import copy_tree
 
 import geoutils as gu
-import numpy as np
 
 import xdem
 

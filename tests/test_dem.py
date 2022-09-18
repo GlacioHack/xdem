@@ -1,6 +1,4 @@
 """ Functions to test the DEM tools."""
-import inspect
-import os
 import warnings
 
 import geoutils.georaster as gr

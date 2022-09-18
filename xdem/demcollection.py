@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import datetime
 import warnings
-from typing import Optional, Union
 
 import geoutils as gu
 import numpy as np
@@ -35,7 +34,7 @@ class DEMCollection:
         # If timestamps is not given, try to parse it from the (potential) 'datetime' attribute of each DEM.
         if timestamps is None:
             timestamp_attributes = [dem.datetime for dem in dems]
-            if any([stamp is None for stamp in timestamp_attributes]):
+            if any(stamp is None for stamp in timestamp_attributes):
                 raise ValueError("'timestamps' not provided and the given DEMs do not all have datetime attributes")
 
             timestamps = timestamp_attributes
@@ -183,7 +182,7 @@ class DEMCollection:
             raise ValueError("dDEMs have not yet been calculated")
 
         dh_values = pd.DataFrame(columns=["dh", "area"], dtype=float)
-        for i, ddem in enumerate(self.ddems):
+        for _, ddem in enumerate(self.ddems):
             # Skip if the dDEM is a self-comparison
             if float(ddem.time) == 0:
                 continue

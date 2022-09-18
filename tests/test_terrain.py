@@ -8,7 +8,6 @@ import warnings
 import geoutils as gu
 import numpy as np
 import pytest
-import rasterio as rio
 
 import xdem
 
@@ -304,7 +303,7 @@ class TestTerrainAttribute:
         assert curvature.shape == dem.data.shape
         try:
             assert np.all(np.isfinite(curvature))
-        except:
+        except Exception:
             import matplotlib.pyplot as plt
 
             plt.imshow(curvature.squeeze())
@@ -382,7 +381,10 @@ class TestTerrainAttribute:
         assert slope.crs == self.dem.crs == aspect.crs
 
     def test_rugosity_jenness(self) -> None:
-        """Test the rugosity with the same example as in Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2."""
+        """
+        Test the rugosity with the same example as in Jenness (2004),
+        https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+        """
 
         # Derive rugosity from the function
         dem = np.array([[190, 170, 155], [183, 165, 145], [175, 160, 122]], dtype="float32")

@@ -7,7 +7,6 @@ from typing import Sized, overload
 import geoutils as gu
 import numba
 import numpy as np
-import rasterio as rio
 from geoutils.georaster import Raster, RasterType
 
 try:
@@ -112,7 +111,6 @@ def _get_quadric_coefficients(
 
         # Get a mask of all invalid (nan or inf) values.
         invalids = ~np.isfinite(Z)
-        n_invalid = np.count_nonzero(invalids)
 
         # Skip the pixel if it and all of its neighbours are invalid
         if np.all(invalids):
@@ -174,8 +172,8 @@ def _get_quadric_coefficients(
             # Finally, the half-surface length of each segment
             hsl = np.sqrt(dzs**2 + dls**2) / 2
 
-            # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding pixels
-            # and 1 segment between surrounding pixels; pixel 4 is the center
+            # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding
+            # pixels and 1 segment between surrounding pixels; pixel 4 is the center
             # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
             # Triangle 1: pixels 3 and 0
             T1 = [hsl[3], hsl[0], hsl[12]]
@@ -406,7 +404,6 @@ def _get_windowed_indexes(
 
         # Get a mask of all invalid (nan or inf) values.
         invalids = ~np.isfinite(Z)
-        n_invalid = np.count_nonzero(invalids)
 
         # Skip the pixel if it and all of its neighbours are invalid
         if np.all(invalids):
@@ -430,8 +427,8 @@ def _get_windowed_indexes(
         count = 0
         index_middle_pixel = int((window_size**2 - 1) / 2)
         S = np.empty((window_size**2,))
-        for j in range(-hw, -hw + window_size):
-            for k in range(-hw, -hw + window_size):
+        for _j in range(-hw, -hw + window_size):
+            for _k in range(-hw, -hw + window_size):
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
                 count += 1
 
@@ -452,8 +449,8 @@ def _get_windowed_indexes(
                         V[hw + j, hw + k] = T
                     count += 1
 
-            # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window size,
-            # following Equation 5
+            # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window
+            # size, following Equation 5
 
             # Get all the divisors of the half window size
             list_box_sizes = []
@@ -462,14 +459,14 @@ def _get_windowed_indexes(
                     list_box_sizes.append(j)
 
             Ns = np.empty((len(list_box_sizes),))
-            for l in range(0, len(list_box_sizes)):
+            for l0 in range(0, len(list_box_sizes)):
                 # We loop over boxes of size q x q in the cube
-                q = list_box_sizes[l]
+                q = list_box_sizes[l0]
                 sumNs = 0
                 for j in range(0, int((window_size - 1) / q)):
                     for k in range(0, int((window_size - 1) / q)):
                         sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
-                Ns[l] = sumNs / q
+                Ns[l0] = sumNs / q
 
             # Finally, we calculate the slope of the logarithm of Ns with q
             # We do the linear regression manually, as np.polyfit is not supported by numba
@@ -521,7 +518,9 @@ def get_windowed_indexes(
 
     Includes:
 
-    - Terrain Ruggedness Index from Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
+    - Terrain Ruggedness Index from Riley et al. (1999),
+        http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson
+        et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
@@ -704,9 +703,11 @@ def get_terrain_attribute(
     The attributes are based on:
 
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
-    - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987),
+        http://dx.doi.org/10.1002/esp.3290120107.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
-    - Terrain Ruggedness Index (topography) from Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
+    - Terrain Ruggedness Index (topography) from Riley et al. (1999),
+        http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
@@ -726,8 +727,11 @@ def get_terrain_attribute(
     * 'profile_curvature': The curvature parallel to the direction of the slope, multiplied by 100.
     * 'maximum_curvature': The maximum curvature.
     * 'surface_fit': A quadric surface fit for each individual pixel.
-    * 'topographic_position_index': The topographic position index defined by a difference to the average of neighbouring pixels.
-    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
+    * 'topographic_position_index': The topographic position index defined by a difference to the average of
+        neighbouring pixels.
+    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the squareroot of squared
+        differences to neighbouring pixels. For bathymetry, defined by the mean absolute difference to neighbouring
+        pixels. Default method: "Riley" (topography).
     * 'roughness': The roughness, i.e. maximum difference between neighbouring pixels.
     * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
     * 'fractal_roughness': The roughness based on a volume box-counting estimate of the fractal dimension.
@@ -892,14 +896,16 @@ def get_terrain_attribute(
 
         else:
             if slope_method == "Horn":
-                # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
+                # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
+                # http://dx.doi.org/10.1109/PROC.1981.11918.
                 terrain_attributes["slope"] = np.arctan(
                     (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2)
                     ** 0.5
                 )
 
             elif slope_method == "ZevenbergThorne":
-                # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+                # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
+                # http://dx.doi.org/10.1002/esp.3290120107.
                 # SLOPE = ARCTAN((G²+H²)**(1/2))
                 terrain_attributes["slope"] = np.arctan(
                     (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
@@ -1537,8 +1543,10 @@ def terrain_ruggedness_index(
 
     Based either on:
 
-    * Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf that derives the squareroot of squared differences to neighbouring pixels, preferred for topography.
-    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 that derives the mean absolute difference to neighbouring pixels, preferred for bathymetry.
+    * Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf that derives
+        the squareroot of squared differences to neighbouring pixels, preferred for topography.
+    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 that derives the mean absolute difference to
+        neighbouring pixels, preferred for bathymetry.
 
     :param dem: The DEM to calculate the terrain ruggedness index from.
     :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry).
