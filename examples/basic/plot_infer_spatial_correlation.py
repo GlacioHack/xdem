@@ -24,9 +24,13 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain (*Note: we pass a*
 # ``random_state`` *argument to ensure a fixed, reproducible random subsampling in this example*). We ask for a fit with
 # a Gaussian model for short range (as it is passed first), and Spherical for long range (as it is passed second):
-df_empirical_variogram, df_model_params, spatial_corr_function = \
-    xdem.spatialstats.infer_spatial_correlation_from_stable(dvalues=dh, list_models=['Gaussian', 'Spherical'],
-                                                            unstable_mask=glacier_outlines, random_state=42)
+(
+    df_empirical_variogram,
+    df_model_params,
+    spatial_corr_function,
+) = xdem.spatialstats.infer_spatial_correlation_from_stable(
+    dvalues=dh, list_models=["Gaussian", "Spherical"], unstable_mask=glacier_outlines, random_state=42
+)
 
 # %%
 # The first output corresponds to the dataframe of the empirical variogram, by default estimated using Dowd's estimator
@@ -45,16 +49,21 @@ df_model_params
 # %%
 # The third output is the spatial correlation function with spatial lags, derived from the variogram:
 for spatial_lag in [0, 100, 1000, 10000, 30000]:
-    print('Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag'.
-          format(spatial_corr_function(spatial_lag)*100, spatial_lag))
+    print(
+        "Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag".format(
+            spatial_corr_function(spatial_lag) * 100, spatial_lag
+        )
+    )
 
 # %%
 # We can plot the empirical variogram and its model on a non-linear X-axis to identify the multi-scale correlations.
-xdem.spatialstats.plot_variogram(df=df_empirical_variogram,
-                                 list_fit_fun=[xdem.spatialstats.get_variogram_model_func(df_model_params)],
-                                 xlabel='Spatial lag (m)',
-                                 ylabel='Variance of\nelevation differences (m)',
-                                 xscale_range_split=[100, 1000])
+xdem.spatialstats.plot_variogram(
+    df=df_empirical_variogram,
+    list_fit_fun=[xdem.spatialstats.get_variogram_model_func(df_model_params)],
+    xlabel="Spatial lag (m)",
+    ylabel="Variance of\nelevation differences (m)",
+    xscale_range_split=[100, 1000],
+)
 
 # %%
 # This pipeline will not always work optimally with default parameters: variogram sampling is more robust with a lot of

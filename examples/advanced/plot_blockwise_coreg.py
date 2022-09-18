@@ -17,6 +17,7 @@ The ``BlockwiseCoreg`` class runs in five steps:
 
 """
 import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -82,8 +83,7 @@ z_correction = blockwise.apply(np.zeros_like(dem_to_be_aligned.data), transform=
 plt.title("Vertical correction")
 plt.imshow(z_correction, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
 for _, row in blockwise.stats().iterrows():
-    plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha
-="center")
+    plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha="center")
 
 # %%
 # Then, the new difference can be plotted to validate that it improved.

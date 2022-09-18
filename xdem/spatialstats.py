@@ -22,19 +22,18 @@ from geoutils.geovector import Vector, VectorType
 from geoutils.spatial_tools import get_array_and_mask, subsample_raster
 from numba import double, jit
 from scipy import integrate
-from scipy.interpolate import (LinearNDInterpolator, RegularGridInterpolator,
-                               griddata)
+from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
 from scipy.spatial.distance import pdist, squareform
-from scipy.stats import (binned_statistic, binned_statistic_2d,
-                         binned_statistic_dd)
+from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from skimage.draw import disk
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
     from skgstat import models
+
 
 def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     """
@@ -55,10 +54,14 @@ def nmad(data: np.ndarray, nfact: float = 1.4826) -> float:
     return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
 
-def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_names=Iterable[str],
-               list_var_bins: int |Iterable[Iterable] | None = None,
-               statistics: Iterable[str | Callable[[np.ndarray], float] | None] = ['count', np.nanmedian, nmad],
-               list_ranges : Iterable[Sequence] | None = None) -> pd.DataFrame:
+def nd_binning(
+    values: np.ndarray,
+    list_var: Iterable[np.ndarray],
+    list_var_names=Iterable[str],
+    list_var_bins: int | Iterable[Iterable] | None = None,
+    statistics: Iterable[str | Callable[[np.ndarray], float] | None] = ["count", np.nanmedian, nmad],
+    list_ranges: Iterable[Sequence] | None = None,
+) -> pd.DataFrame:
     """
     N-dimensional binning of values according to one or several explanatory variables with computed statistics in
     each bin. By default, the sample count, the median and the normalized absolute median deviation (NMAD). The count
@@ -87,14 +90,14 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     list_var = [var.ravel() for var in list_var]
 
     # Remove no data values
-    valid_data = np.logical_and.reduce([np.isfinite(values)]+[np.isfinite(var) for var in list_var])
+    valid_data = np.logical_and.reduce([np.isfinite(values)] + [np.isfinite(var) for var in list_var])
     values = values[valid_data]
     list_var = [var[valid_data] for var in list_var]
 
     statistics = list(statistics)
     # In case the statistics are user-defined, and they forget count, we add it for later calculation or plotting
-    if 'count' not in statistics:
-        statistics = ['count'] + statistics
+    if "count" not in statistics:
+        statistics = ["count"] + statistics
 
     statistics_name = [f if isinstance(f, str) else f.__name__ for f in statistics]
 
@@ -104,21 +107,21 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
         df_stats_1d = pd.DataFrame()
         # Get statistics
         for j, statistic in enumerate(statistics):
-            stats_binned_1d, bedges_1d = \
-                binned_statistic(x=var, values=values, statistic=statistic,
-                                 bins=list_var_bins[i], range=list_ranges)[:2]
+            stats_binned_1d, bedges_1d = binned_statistic(
+                x=var, values=values, statistic=statistic, bins=list_var_bins[i], range=list_ranges
+            )[:2]
             # Save in a dataframe
             df_stats_1d[statistics_name[j]] = stats_binned_1d
         # We need to get the middle of the bins from the edges, to get the same dimension length
-        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d, closed='left')
+        df_stats_1d[list_var_names[i]] = pd.IntervalIndex.from_breaks(bedges_1d, closed="left")
         # Report number of dimensions used
-        df_stats_1d.insert(0, 'nd', 1)
+        df_stats_1d.insert(0, "nd", 1)
 
         list_df_1d.append(df_stats_1d)
 
     # Get binned statistics in 2d: all possible 2d combinations
     list_df_2d = []
-    if len(list_var)>1:
+    if len(list_var) > 1:
         combs = list(itertools.combinations(list_var_names, 2))
         for i, comb in enumerate(combs):
             var1_name, var2_name = comb
@@ -126,34 +129,38 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
             i1, i2 = list_var_names.index(var1_name), list_var_names.index(var2_name)
             df_stats_2d = pd.DataFrame()
             for j, statistic in enumerate(statistics):
-                stats_binned_2d, bedges_var1, bedges_var2 = \
-                    binned_statistic_2d(x=list_var[i1], y=list_var[i2], values=values, statistic=statistic,
-                                        bins=[list_var_bins[i1], list_var_bins[i2]], range=list_ranges)[:3]
+                stats_binned_2d, bedges_var1, bedges_var2 = binned_statistic_2d(
+                    x=list_var[i1],
+                    y=list_var[i2],
+                    values=values,
+                    statistic=statistic,
+                    bins=[list_var_bins[i1], list_var_bins[i2]],
+                    range=list_ranges,
+                )[:3]
                 # Get statistics
                 df_stats_2d[statistics_name[j]] = stats_binned_2d.flatten()
             # Derive interval indexes and convert bins into 2d indexes
-            ii1 = pd.IntervalIndex.from_breaks(bedges_var1, closed='left')
-            ii2 = pd.IntervalIndex.from_breaks(bedges_var2, closed='left')
+            ii1 = pd.IntervalIndex.from_breaks(bedges_var1, closed="left")
+            ii2 = pd.IntervalIndex.from_breaks(bedges_var2, closed="left")
             df_stats_2d[var1_name] = [i1 for i1 in ii1 for i2 in ii2]
             df_stats_2d[var2_name] = [i2 for i1 in ii1 for i2 in ii2]
             # Report number of dimensions used
-            df_stats_2d.insert(0, 'nd', 2)
+            df_stats_2d.insert(0, "nd", 2)
 
             list_df_2d.append(df_stats_2d)
 
-
     # Get binned statistics in nd, without redoing the same stats
     df_stats_nd = pd.DataFrame()
-    if len(list_var)>2:
+    if len(list_var) > 2:
         for j, statistic in enumerate(statistics):
-            stats_binned_2d, list_bedges = \
-                binned_statistic_dd(sample=list_var, values=values, statistic=statistic, bins=list_var_bins,
-                                    range=list_ranges)[0:2]
+            stats_binned_2d, list_bedges = binned_statistic_dd(
+                sample=list_var, values=values, statistic=statistic, bins=list_var_bins, range=list_ranges
+            )[0:2]
             df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
         list_ii = []
         # Loop through the bin edges and create IntervalIndexes from them (to get both
         for bedges in list_bedges:
-            list_ii.append(pd.IntervalIndex.from_breaks(bedges,closed='left'))
+            list_ii.append(pd.IntervalIndex.from_breaks(bedges, closed="left"))
 
         # Create nd indexes in nd-array and flatten for each variable
         iind = np.meshgrid(*list_ii)
@@ -161,7 +168,7 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
             df_stats_nd[var_name] = iind[i].flatten()
 
         # Report number of dimensions used
-        df_stats_nd.insert(0, 'nd', len(list_var_names))
+        df_stats_nd.insert(0, "nd", len(list_var_names))
 
     # Concatenate everything
     list_all_dfs = list_df_1d + list_df_2d + [df_stats_nd]
@@ -172,8 +179,12 @@ def nd_binning(values: np.ndarray, list_var: Iterable[np.ndarray], list_var_name
     return df_concat
 
 
-def interp_nd_binning(df: pd.DataFrame, list_var_names: str | Iterable[str], statistic : str | Callable[[np.ndarray],float] = nmad,
-                      min_count: int | None = 100) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
+def interp_nd_binning(
+    df: pd.DataFrame,
+    list_var_names: str | Iterable[str],
+    statistic: str | Callable[[np.ndarray], float] = nmad,
+    min_count: int | None = 100,
+) -> Callable[[tuple[np.ndarray, ...]], np.ndarray]:
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
     For more details on the input dataframe, and associated list of variable name and statistic, see nd_binning.
@@ -222,19 +233,19 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: str | Iterable[str], sta
     # Check that the dataframe contains what we need
     for var in list_var_names:
         if var not in df.columns:
-            raise ValueError('Variable "'+var+'" does not exist in the provided dataframe.')
+            raise ValueError('Variable "' + var + '" does not exist in the provided dataframe.')
     statistic_name = statistic if isinstance(statistic, str) else statistic.__name__
     if statistic_name not in df.columns:
         raise ValueError('Statistic "' + statistic_name + '" does not exist in the provided dataframe.')
-    if min_count is not None and 'count' not in df.columns:
+    if min_count is not None and "count" not in df.columns:
         raise ValueError('Statistic "count" is not in the provided dataframe, necessary to use the min_count argument.')
     if df.empty:
-        raise ValueError('Dataframe is empty.')
+        raise ValueError("Dataframe is empty.")
 
     df_sub = df.copy()
 
     # If the dataframe is an output of nd_binning, keep only the dimension of interest
-    if 'nd' in df_sub.columns:
+    if "nd" in df_sub.columns:
         df_sub = df_sub[df_sub.nd == len(list_var_names)]
 
     # Function to convert IntervalIndex written to str in csv back to pd.Interval
@@ -243,14 +254,12 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: str | Iterable[str], sta
         if isinstance(istr, float):
             return np.nan
         else:
-            c_left = istr[0] == '['
-            c_right = istr[-1] == ']'
-            closed = {(True, False): 'left',
-                      (False, True): 'right',
-                      (True, True): 'both',
-                      (False, False): 'neither'
-                      }[c_left, c_right]
-            left, right = map(float, istr[1:-1].split(','))
+            c_left = istr[0] == "["
+            c_right = istr[-1] == "]"
+            closed = {(True, False): "left", (False, True): "right", (True, True): "both", (False, False): "neither"}[
+                c_left, c_right
+            ]
+            left, right = map(float, istr[1:-1].split(","))
             try:
                 return pd.Interval(left, right, closed)
             except:
@@ -271,27 +280,32 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: str | Iterable[str], sta
             intervalindex_vals = [to_interval(x) for x in df_sub[var].values]
             df_sub[var] = pd.IntervalIndex(intervalindex_vals).mid.values
         else:
-            raise ValueError('The variable columns must be provided as numerical mid values, or pd.Interval values.')
-
+            raise ValueError("The variable columns must be provided as numerical mid values, or pd.Interval values.")
 
     # Check that explanatory variables have valid binning values which coincide along the dataframe
     df_sub = df_sub[np.logical_and.reduce([np.isfinite(df_sub[var].values) for var in list_var_names])]
     if df_sub.empty:
-        raise ValueError('Dataframe does not contain a nd binning with the variables corresponding to the list of variables.')
+        raise ValueError(
+            "Dataframe does not contain a nd binning with the variables corresponding to the list of variables."
+        )
     # Check that the statistic data series contain valid data
     if all(~np.isfinite(df_sub[statistic_name].values)):
-        raise ValueError('Dataframe does not contain any valid statistic values.')
+        raise ValueError("Dataframe does not contain any valid statistic values.")
 
     # Remove statistic values calculated with a sample count under the minimum count
     if min_count is not None:
-        df_sub.loc[df_sub['count'] < min_count, statistic_name] = np.nan
+        df_sub.loc[df_sub["count"] < min_count, statistic_name] = np.nan
 
     values = df_sub[statistic_name].values
     ind_valid = np.isfinite(values)
 
     # Re-check that the statistic data series contain valid data after filtering with min_count
     if all(~ind_valid):
-        raise ValueError("Dataframe does not contain any valid statistic values after filtering with min_count = "+str(min_count)+".")
+        raise ValueError(
+            "Dataframe does not contain any valid statistic values after filtering with min_count = "
+            + str(min_count)
+            + "."
+        )
 
     # Get a list of middle values for the binning coordinates, to define a nd grid
     list_bmid = []
@@ -307,24 +321,28 @@ def interp_nd_binning(df: pd.DataFrame, list_var_names: str | Iterable[str], sta
     # coordinates of valid values
     points_valid = tuple(df_sub[var].values[ind_valid] for var in list_var_names)
     # Grid coordinates
-    bmid_grid = np.meshgrid(*list_bmid, indexing='ij')
+    bmid_grid = np.meshgrid(*list_bmid, indexing="ij")
     points_grid = tuple(bmid_grid[i].flatten() for i in range(len(list_var_names)))
     # Fill grid no data with nearest neighbour
-    values_grid = griddata(points_valid, values, points_grid, method='nearest')
+    values_grid = griddata(points_valid, values, points_grid, method="nearest")
     values_grid = values_grid.reshape(shape)
 
     # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
     # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
-    interp_fun = RegularGridInterpolator(tuple(list_bmid), values_grid, method='linear', bounds_error=False, fill_value=None)
+    interp_fun = RegularGridInterpolator(
+        tuple(list_bmid), values_grid, method="linear", bounds_error=False, fill_value=None
+    )
 
     return interp_fun
 
 
-def two_step_standardization(dvalues: np.ndarray, list_var: Iterable[np.ndarray],
-                unscaled_error_fun: Callable[[tuple[np.ndarray, ...]], np.ndarray],
-                spread_statistic: Callable = nmad,
-                fac_spread_outliers: float | None = 7
-                ) -> tuple[np.ndarray, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+def two_step_standardization(
+    dvalues: np.ndarray,
+    list_var: Iterable[np.ndarray],
+    unscaled_error_fun: Callable[[tuple[np.ndarray, ...]], np.ndarray],
+    spread_statistic: Callable = nmad,
+    fac_spread_outliers: float | None = 7,
+) -> tuple[np.ndarray, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
     """
     Standardize the proxy differenced values using the modelled heteroscedasticity, re-scaled to the spread statistic,
     and generate the final standardization function.
@@ -360,12 +378,15 @@ def two_step_standardization(dvalues: np.ndarray, list_var: Iterable[np.ndarray]
     return zscores, error_fun
 
 
-def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np.ndarray], list_var_names: Iterable[str],
-                                      spread_statistic: Callable = nmad,
-                                      list_var_bins: int |Iterable[Iterable] | None = None,
-                                      min_count: int | None = 100,
-                                      fac_spread_outliers: float | None = 7
-                                      ) -> tuple[pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+def estimate_model_heteroscedasticity(
+    dvalues: np.ndarray,
+    list_var: Iterable[np.ndarray],
+    list_var_names: Iterable[str],
+    spread_statistic: Callable = nmad,
+    list_var_bins: int | Iterable[Iterable] | None = None,
+    min_count: int | None = 100,
+    fac_spread_outliers: float | None = 7,
+) -> tuple[pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
     """
     Estimate and model the heteroscedasticity (i.e., variability in error) according to a list of explanatory variables
     from a proxy of differenced values (e.g., elevation differences), if possible compared to a source of higher
@@ -389,23 +410,36 @@ def estimate_model_heteroscedasticity(dvalues: np.ndarray, list_var: Iterable[np
     """
 
     # Perform N-D binning with the differenced values computing the spread statistic
-    df = nd_binning(values=dvalues, list_var=list_var, list_var_names=list_var_names, statistics=[spread_statistic],
-                    list_var_bins=list_var_bins)
+    df = nd_binning(
+        values=dvalues,
+        list_var=list_var,
+        list_var_names=list_var_names,
+        statistics=[spread_statistic],
+        list_var_bins=list_var_bins,
+    )
 
     # Perform N-D linear interpolation for the spread statistic
     fun = interp_nd_binning(df, list_var_names=list_var_names, statistic=spread_statistic.__name__, min_count=min_count)
 
     # Get the final function based on a two-step standardization
-    final_fun = two_step_standardization(dvalues=dvalues, list_var=list_var, unscaled_error_fun=fun,
-                                         spread_statistic=spread_statistic, fac_spread_outliers=fac_spread_outliers)[1]
+    final_fun = two_step_standardization(
+        dvalues=dvalues,
+        list_var=list_var,
+        unscaled_error_fun=fun,
+        spread_statistic=spread_statistic,
+        fac_spread_outliers=fac_spread_outliers,
+    )[1]
 
     return df, final_fun
 
 
-def _preprocess_values_with_mask_to_array(values: np.ndarray | RasterType | list[np.ndarray | RasterType],
-                                          include_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                                          exclude_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                                          gsd: float = None, preserve_shape: bool = True) -> tuple[np.ndarray, float]:
+def _preprocess_values_with_mask_to_array(
+    values: np.ndarray | RasterType | list[np.ndarray | RasterType],
+    include_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    gsd: float = None,
+    preserve_shape: bool = True,
+) -> tuple[np.ndarray, float]:
     """
     Preprocess input values provided as Raster or ndarray with a stable and/or unstable mask provided as Vector or
     ndarray into an array of stable values.
@@ -424,14 +458,15 @@ def _preprocess_values_with_mask_to_array(values: np.ndarray | RasterType | list
     """
 
     # Check inputs: needs to be Raster, array or a list of those
-    if not isinstance(values, (Raster, np.ndarray, list)) or \
-            (isinstance(values, list) and not all([isinstance(val, (Raster, np.ndarray)) for val in values])):
-        raise ValueError('The values must be a Raster or NumPy array, or a list of those.')
+    if not isinstance(values, (Raster, np.ndarray, list)) or (
+        isinstance(values, list) and not all([isinstance(val, (Raster, np.ndarray)) for val in values])
+    ):
+        raise ValueError("The values must be a Raster or NumPy array, or a list of those.")
     # Masks need to be an array, Vector or GeoPandas dataframe
     if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError('The stable mask must be a Vector, GeoDataFrame or NumPy array.')
+        raise ValueError("The stable mask must be a Vector, GeoDataFrame or NumPy array.")
     if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError('The unstable mask must be a Vector, GeoDataFrame or NumPy array.')
+        raise ValueError("The unstable mask must be a Vector, GeoDataFrame or NumPy array.")
 
     # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
     if isinstance(values, list):
@@ -440,7 +475,8 @@ def _preprocess_values_with_mask_to_array(values: np.ndarray | RasterType | list
         any_raster = isinstance(values, Raster)
     if not any_raster and isinstance(include_mask, (Vector, gpd.GeoDataFrame)):
         raise ValueError(
-            'The stable mask can only passed as a Vector or GeoDataFrame if the input values contain a Raster.')
+            "The stable mask can only passed as a Vector or GeoDataFrame if the input values contain a Raster."
+        )
 
     # If there is only one array or Raster, put alone in a list
     if not isinstance(values, list):
@@ -508,48 +544,52 @@ def _preprocess_values_with_mask_to_array(values: np.ndarray | RasterType | list
 
     # If input was a list, give a list. If it was a single array, give a single array.
     if return_unlist:
-        values_stable_arr  = values_stable_arr[0]
+        values_stable_arr = values_stable_arr[0]
 
     return values_stable_arr, gsd
 
 
 @overload
-def infer_heteroscedasticity_from_stable(dvalues: np.ndarray, list_var: list[np.ndarray | RasterType],
-                                         stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
-                                         unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
-                                         list_var_names: Iterable[str],
-                                         spread_statistic: Callable,
-                                         list_var_bins: int |Iterable[Iterable] | None,
-                                         min_count: int | None,
-                                         factor_spread_exclude_outliers: float | None,
-                                         ) -> tuple[np.ndarray,
-                                            pd.DataFrame,
-                                            Callable[[tuple[np.ndarray, ...]], np.ndarray]]: ...
+def infer_heteroscedasticity_from_stable(
+    dvalues: np.ndarray,
+    list_var: list[np.ndarray | RasterType],
+    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+    unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+    list_var_names: Iterable[str],
+    spread_statistic: Callable,
+    list_var_bins: int | Iterable[Iterable] | None,
+    min_count: int | None,
+    factor_spread_exclude_outliers: float | None,
+) -> tuple[np.ndarray, pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+    ...
+
 
 @overload
-def infer_heteroscedasticity_from_stable(dvalues: RasterType, list_var: list[np.ndarray | RasterType],
-                                         stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
-                                         unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
-                                         list_var_names: Iterable[str],
-                                         spread_statistic: Callable,
-                                         list_var_bins: int |Iterable[Iterable] | None,
-                                         min_count: int | None,
-                                         factor_spread_exclude_outliers: float | None,
-                                         ) -> tuple[RasterType,
-                                            pd.DataFrame,
-                                            Callable[[tuple[np.ndarray, ...]], np.ndarray]]: ...
+def infer_heteroscedasticity_from_stable(
+    dvalues: RasterType,
+    list_var: list[np.ndarray | RasterType],
+    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+    unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame,
+    list_var_names: Iterable[str],
+    spread_statistic: Callable,
+    list_var_bins: int | Iterable[Iterable] | None,
+    min_count: int | None,
+    factor_spread_exclude_outliers: float | None,
+) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+    ...
 
-def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_var: list[np.ndarray | RasterType],
-                                         stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                                         unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                                         list_var_names: Iterable[str] = None,
-                                         spread_statistic: Callable = nmad,
-                                         list_var_bins: int |Iterable[Iterable] | None = None,
-                                         min_count: int | None = 100,
-                                         fac_spread_outliers: float | None = 7,
-                                         ) -> tuple[np.ndarray | RasterType,
-                                            pd.DataFrame,
-                                            Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
+
+def infer_heteroscedasticity_from_stable(
+    dvalues: np.ndarray | RasterType,
+    list_var: list[np.ndarray | RasterType],
+    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    list_var_names: Iterable[str] = None,
+    spread_statistic: Callable = nmad,
+    list_var_bins: int | Iterable[Iterable] | None = None,
+    min_count: int | None = 100,
+    fac_spread_outliers: float | None = 7,
+) -> tuple[np.ndarray | RasterType, pd.DataFrame, Callable[[tuple[np.ndarray, ...]], np.ndarray]]:
     """
     Infer heteroscedasticity from differenced values on stable terrain and a list of explanatory variables.
 
@@ -576,19 +616,25 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
 
     # Create placeholder variables names if those don't exist
     if list_var_names is None:
-        list_var_names = ['var'+str(i+1) for i in range(len(list_var))]
+        list_var_names = ["var" + str(i + 1) for i in range(len(list_var))]
 
     # Get the arrays for proxy values and explanatory variables
-    list_all_arr, gsd = _preprocess_values_with_mask_to_array(values=[dvalues] + list_var, include_mask=stable_mask,
-                                                              exclude_mask=unstable_mask, preserve_shape=False)
+    list_all_arr, gsd = _preprocess_values_with_mask_to_array(
+        values=[dvalues] + list_var, include_mask=stable_mask, exclude_mask=unstable_mask, preserve_shape=False
+    )
     dvalues_stable_arr = list_all_arr[0]
     list_var_stable_arr = list_all_arr[1:]
 
     # Estimate and model the heteroscedasticity using only stable terrain
-    df, fun = estimate_model_heteroscedasticity(dvalues=dvalues_stable_arr, list_var=list_var_stable_arr,
-                                                list_var_names=list_var_names, spread_statistic=spread_statistic,
-                                                list_var_bins=list_var_bins, min_count=min_count,
-                                                fac_spread_outliers=fac_spread_outliers)
+    df, fun = estimate_model_heteroscedasticity(
+        dvalues=dvalues_stable_arr,
+        list_var=list_var_stable_arr,
+        list_var_names=list_var_names,
+        spread_statistic=spread_statistic,
+        list_var_bins=list_var_bins,
+        min_count=min_count,
+        fac_spread_outliers=fac_spread_outliers,
+    )
 
     # Use the standardization function to get the error array for the entire input array (not only stable)
     list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var for var in list_var]
@@ -601,8 +647,9 @@ def infer_heteroscedasticity_from_stable(dvalues: np.ndarray | RasterType, list_
         return error, df, fun
 
 
-def _create_circular_mask(shape: int | Sequence[int], center: list[float] | None = None,
-                         radius: float | None = None) -> np.ndarray:
+def _create_circular_mask(
+    shape: int | Sequence[int], center: list[float] | None = None, radius: float | None = None
+) -> np.ndarray:
     """
     Create circular mask on a raster, defaults to the center of the array and its half width
 
@@ -623,7 +670,7 @@ def _create_circular_mask(shape: int | Sequence[int], center: list[float] | None
     mask = np.zeros(shape, dtype=bool)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
-        rr, cc = disk(center=center,radius=radius,shape=shape)
+        rr, cc = disk(center=center, radius=radius, shape=shape)
     mask[rr, cc] = True
 
     # manual solution
@@ -633,8 +680,13 @@ def _create_circular_mask(shape: int | Sequence[int], center: list[float] | None
 
     return mask
 
-def _create_ring_mask(shape: int | Sequence[int], center: list[float] | None = None, in_radius: float = 0.,
-                     out_radius: float | None = None) -> np.ndarray:
+
+def _create_ring_mask(
+    shape: int | Sequence[int],
+    center: list[float] | None = None,
+    in_radius: float = 0.0,
+    out_radius: float | None = None,
+) -> np.ndarray:
     """
     Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
 
@@ -653,17 +705,24 @@ def _create_ring_mask(shape: int | Sequence[int], center: list[float] | None = N
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
-        mask_inside = _create_circular_mask((w,h),center=center,radius=in_radius)
-        mask_outside = _create_circular_mask((w,h),center=center,radius=out_radius)
+        mask_inside = _create_circular_mask((w, h), center=center, radius=in_radius)
+        mask_outside = _create_circular_mask((w, h), center=center, radius=out_radius)
 
-    mask_ring = np.logical_and(~mask_inside,mask_outside)
+    mask_ring = np.logical_and(~mask_inside, mask_outside)
 
     return mask_ring
 
 
-def _subsample_wrapper(values: np.ndarray, coords: np.ndarray, shape: tuple[int,int] = None, subsample: int = 10000,
-                       subsample_method: str = 'pdist_ring', inside_radius = None, outside_radius = None,
-                       random_state: None | np.random.RandomState | np.random.Generator | int = None) -> tuple[np.ndarray, np.ndarray]:
+def _subsample_wrapper(
+    values: np.ndarray,
+    coords: np.ndarray,
+    shape: tuple[int, int] = None,
+    subsample: int = 10000,
+    subsample_method: str = "pdist_ring",
+    inside_radius=None,
+    outside_radius=None,
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     (Not used by default)
     Wrapper for subsampling pdist methods
@@ -679,13 +738,14 @@ def _subsample_wrapper(values: np.ndarray, coords: np.ndarray, shape: tuple[int,
         rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
 
     # Subsample spatially for disk/ring methods
-    if subsample_method in ['pdist_disk', 'pdist_ring']:
+    if subsample_method in ["pdist_disk", "pdist_ring"]:
         # Select random center coordinates
         center_x = rnd.choice(nx, 1)[0]
         center_y = rnd.choice(ny, 1)[0]
-        if subsample_method == 'pdist_ring':
-            subindex = _create_ring_mask((nx, ny), center=[center_x, center_y], in_radius=inside_radius,
-                                          out_radius=outside_radius)
+        if subsample_method == "pdist_ring":
+            subindex = _create_ring_mask(
+                (nx, ny), center=[center_x, center_y], in_radius=inside_radius, out_radius=outside_radius
+            )
         else:
             subindex = _create_circular_mask((nx, ny), center=[center_x, center_y], radius=inside_radius)
 
@@ -703,9 +763,17 @@ def _subsample_wrapper(values: np.ndarray, coords: np.ndarray, shape: tuple[int,
 
     return values_sub, coords_sub
 
-def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample: int, shape: tuple,
-                                         subsample_method: str, gsd: float,
-                                         pdist_multi_ranges: list[float] | None = None, **kwargs) -> pd.DataFrame:
+
+def _aggregate_pdist_empirical_variogram(
+    values: np.ndarray,
+    coords: np.ndarray,
+    subsample: int,
+    shape: tuple,
+    subsample_method: str,
+    gsd: float,
+    pdist_multi_ranges: list[float] | None = None,
+    **kwargs,
+) -> pd.DataFrame:
     """
     (Not used by default)
     Aggregating subfunction of sample_empirical_variogram for pdist methods.
@@ -713,7 +781,7 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
     """
 
     # If no multi_ranges are provided, define a logical default behaviour with the pixel size and grid size
-    if subsample_method in ['pdist_disk', 'pdist_ring']:
+    if subsample_method in ["pdist_disk", "pdist_ring"]:
 
         if pdist_multi_ranges is None:
 
@@ -721,11 +789,10 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
             pdist_multi_ranges = []
             # We start at 10 times the ground sampling distance
             new_range = gsd * 10
-            while new_range < kwargs.get('maxlag') / 2:
+            while new_range < kwargs.get("maxlag") / 2:
                 pdist_multi_ranges.append(new_range)
                 new_range *= 2
-            pdist_multi_ranges.append(kwargs.get('maxlag'))
-
+            pdist_multi_ranges.append(kwargs.get("maxlag"))
 
         # Define subsampling parameters
         list_inside_radius, list_outside_radius = ([] for i in range(2))
@@ -733,9 +800,9 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
         for i in range(len(binned_ranges) - 1):
 
             # Radiuses need to be passed as pixel sizes, dividing by ground sampling distance
-            outside_radius = binned_ranges[i + 1]/gsd
-            if subsample_method == 'pdist_ring':
-                inside_radius = binned_ranges[i]/gsd
+            outside_radius = binned_ranges[i + 1] / gsd
+            if subsample_method == "pdist_ring":
+                inside_radius = binned_ranges[i] / gsd
             else:
                 inside_radius = None
 
@@ -743,7 +810,7 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
             list_inside_radius.append(inside_radius)
     else:
         # For random point selection, no need for multi-range parameters
-        pdist_multi_ranges = [kwargs.get('maxlag')]
+        pdist_multi_ranges = [kwargs.get("maxlag")]
         list_outside_radius = [None]
         list_inside_radius = [None]
 
@@ -751,11 +818,16 @@ def _aggregate_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray,
     list_df_range = []
     for j in range(len(pdist_multi_ranges)):
 
-        values_sub, coords_sub = _subsample_wrapper(values, coords, shape = shape, subsample = subsample,
-                                                    subsample_method = subsample_method,
-                                                    inside_radius = list_inside_radius[j],
-                                                    outside_radius = list_outside_radius[j],
-                                                    random_state= kwargs.get('random_state'))
+        values_sub, coords_sub = _subsample_wrapper(
+            values,
+            coords,
+            shape=shape,
+            subsample=subsample,
+            subsample_method=subsample_method,
+            inside_radius=list_inside_radius[j],
+            outside_radius=list_outside_radius[j],
+            random_state=kwargs.get("random_state"),
+        )
         if len(values_sub) == 0:
             continue
         df_range = _get_pdist_empirical_variogram(values=values_sub, coords=coords_sub, **kwargs)
@@ -779,18 +851,18 @@ def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwa
     """
 
     # Remove random_state keyword argument that is not used
-    kwargs.pop('random_state')
+    kwargs.pop("random_state")
 
     # Get arguments of Variogram class init function
-    variogram_args = skg.Variogram.__init__.__code__.co_varnames[:skg.Variogram.__init__.__code__.co_argcount]
+    variogram_args = skg.Variogram.__init__.__code__.co_varnames[: skg.Variogram.__init__.__code__.co_argcount]
     # Check no other argument is left to be passed
     remaining_kwargs = kwargs.copy()
     for arg in variogram_args:
         remaining_kwargs.pop(arg, None)
     if len(remaining_kwargs) != 0:
-        warnings.warn('Keyword arguments: '+','.join(list(remaining_kwargs.keys()))+ ' were not used.')
+        warnings.warn("Keyword arguments: " + ",".join(list(remaining_kwargs.keys())) + " were not used.")
     # Filter corresponding arguments before passing
-    filtered_kwargs =  {k:kwargs[k] for k in variogram_args if k in kwargs}
+    filtered_kwargs = {k: kwargs[k] for k in variogram_args if k in kwargs}
 
     # Derive variogram with default MetricSpace (equivalent to scipy.pdist)
     V = skg.Variogram(coordinates=coords, values=values, normalize=False, fit_method=None, **filtered_kwargs)
@@ -804,6 +876,7 @@ def _get_pdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, **kwa
     df = df.assign(exp=exp, bins=bins, count=count)
 
     return df
+
 
 def _choose_cdist_equidistant_sampling_parameters(**kwargs):
     """
@@ -828,34 +901,34 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs):
     """
 
     # First, we extract the extent, shape and subsample values from the keyword arguments
-    extent = kwargs['extent']
-    shape = kwargs['shape']
-    subsample = kwargs['subsample']
+    extent = kwargs["extent"]
+    shape = kwargs["shape"]
+    subsample = kwargs["subsample"]
 
     # We define the number of rings to 10 in order to get a decent equidistant sampling, we'll later adjust the
     # ratio_sampling to force that number to 10
-    if 'nb_rings' in kwargs.keys():
-        nb_rings = kwargs['nb_rings']
+    if "nb_rings" in kwargs.keys():
+        nb_rings = kwargs["nb_rings"]
     else:
         nb_rings = 10
     # For one run (R=1), and two samples per disk/ring (N=2), and the number of rings X=10, this requires N0 to be at
     # least 10:
-    min_subsample = np.ceil(np.sqrt(2*nb_rings*2**2)+1)
+    min_subsample = np.ceil(np.sqrt(2 * nb_rings * 2**2) + 1)
     if subsample < min_subsample:
-        raise ValueError(f'The number of subsamples needs to be at least {min_subsample:.0f}.')
+        raise ValueError(f"The number of subsamples needs to be at least {min_subsample:.0f}.")
 
     # The pairwise comparisons can be deduced from the number of rings: R * N**2 = N0**2/(2*X)
-    pairwise_comp_per_disk = np.ceil(subsample ** 2 / (2 * nb_rings))
+    pairwise_comp_per_disk = np.ceil(subsample**2 / (2 * nb_rings))
 
     # With R*N**2 = N0**2/2, and minimum 2 samples N, we compute the number of runs R forcing at least
     # 10 runs and maximum 100
     if pairwise_comp_per_disk < 10:
-        runs = int(pairwise_comp_per_disk/ 2**2)
+        runs = int(pairwise_comp_per_disk / 2**2)
     else:
         runs = int(min(100, 10 * np.ceil((pairwise_comp_per_disk / (2**2 * 10)) ** (1 / 3))))
 
     # Now we can derive the number of samples N, which will always be at least 2
-    subsample_per_disk_per_run = int(np.ceil(np.sqrt(pairwise_comp_per_disk/runs)))
+    subsample_per_disk_per_run = int(np.ceil(np.sqrt(pairwise_comp_per_disk / runs)))
 
     # Finally, we need to force the ratio_subsample to get exactly 10 rings
 
@@ -867,23 +940,27 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs):
     # 1) radius * sqrt(2)**X = maxdist, and
     # 2) pi * radius**2 = res**2 * N / sub_ratio
     # From which we can deduce: sub_ratio = res**2 * N / (pi * maxdist**2 / sqrt(2)**(2X) )
-    ratio_subsample = res**2 * subsample_per_disk_per_run / (np.pi * maxdist**2 / np.sqrt(2)**(2 * nb_rings))
+    ratio_subsample = res**2 * subsample_per_disk_per_run / (np.pi * maxdist**2 / np.sqrt(2) ** (2 * nb_rings))
 
     # And the number of total pairwise comparison
-    total_pairwise_comparison = runs*subsample_per_disk_per_run**2*nb_rings
+    total_pairwise_comparison = runs * subsample_per_disk_per_run**2 * nb_rings
 
-    if kwargs['verbose']:
-        print('Equidistant circular sampling will be performed for {} runs (random center points) with pairwise '
-              'comparison between {} samples (points) of the central disk and again {} samples times {} independent '
-              'rings centered on the same center point. This results in approximately {} pairwise comparisons (duplicate'
-              ' pairwise points randomly selected will be removed).'.format(runs, subsample_per_disk_per_run,
-                                                                            subsample_per_disk_per_run, nb_rings,
-                                                                            total_pairwise_comparison))
+    if kwargs["verbose"]:
+        print(
+            "Equidistant circular sampling will be performed for {} runs (random center points) with pairwise "
+            "comparison between {} samples (points) of the central disk and again {} samples times {} independent "
+            "rings centered on the same center point. This results in approximately {} pairwise comparisons (duplicate"
+            " pairwise points randomly selected will be removed).".format(
+                runs, subsample_per_disk_per_run, subsample_per_disk_per_run, nb_rings, total_pairwise_comparison
+            )
+        )
 
     return runs, subsample_per_disk_per_run, ratio_subsample
 
-def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsample_method: str,
-                                   **kwargs) -> pd.DataFrame:
+
+def _get_cdist_empirical_variogram(
+    values: np.ndarray, coords: np.ndarray, subsample_method: str, **kwargs
+) -> pd.DataFrame:
     """
     Get empirical variogram from skgstat.Variogram object calculating pairwise distances between two sample collections
     of a MetricSpace (see scikit-gstat documentation for more details)
@@ -894,44 +971,48 @@ def _get_cdist_empirical_variogram(values: np.ndarray, coords: np.ndarray, subsa
 
     """
 
-    if subsample_method == 'cdist_equidistant' and 'runs' not in kwargs.keys() and 'samples' not in kwargs.keys():
+    if subsample_method == "cdist_equidistant" and "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
 
         # We define subparameters for the equidistant technique to match the number of pairwise comparison
         # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
         runs, samples, ratio_subsample = _choose_cdist_equidistant_sampling_parameters(**kwargs)
 
-        kwargs['runs'] = runs
+        kwargs["runs"] = runs
         # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
-        kwargs['samples'] = samples
-        kwargs['ratio_subsample'] = ratio_subsample
-        kwargs.pop('subsample')
+        kwargs["samples"] = samples
+        kwargs["ratio_subsample"] = ratio_subsample
+        kwargs.pop("subsample")
 
-    elif subsample_method == 'cdist_point':
+    elif subsample_method == "cdist_point":
 
         # We set the samples to match the subsample argument if the method is random points
-        kwargs['samples'] = kwargs.pop('subsample')
+        kwargs["samples"] = kwargs.pop("subsample")
 
     # Rename the "random_state" argument into "rnd", also used by skgstat Metric subclasses
-    kwargs['rnd'] = kwargs.pop('random_state')
+    kwargs["rnd"] = kwargs.pop("random_state")
 
     # Define MetricSpace function to be used, fetch possible keywords arguments
-    if subsample_method == 'cdist_point':
+    if subsample_method == "cdist_point":
         # List keyword arguments of the Probabilistic class init function
-        ms_args = skg.ProbabalisticMetricSpace.__init__.__code__.co_varnames[:skg.ProbabalisticMetricSpace.__init__.__code__.co_argcount]
+        ms_args = skg.ProbabalisticMetricSpace.__init__.__code__.co_varnames[
+            : skg.ProbabalisticMetricSpace.__init__.__code__.co_argcount
+        ]
         ms = skg.ProbabalisticMetricSpace
     else:
         # List keyword arguments of the RasterEquidistant class init function
-        ms_args = skg.RasterEquidistantMetricSpace.__init__.__code__.co_varnames[:skg.RasterEquidistantMetricSpace.__init__.__code__.co_argcount]
+        ms_args = skg.RasterEquidistantMetricSpace.__init__.__code__.co_varnames[
+            : skg.RasterEquidistantMetricSpace.__init__.__code__.co_argcount
+        ]
         ms = skg.RasterEquidistantMetricSpace
 
     # Get arguments of Variogram class init function
-    variogram_args = skg.Variogram.__init__.__code__.co_varnames[:skg.Variogram.__init__.__code__.co_argcount]
+    variogram_args = skg.Variogram.__init__.__code__.co_varnames[: skg.Variogram.__init__.__code__.co_argcount]
     # Check no other argument is left to be passed, accounting for MetricSpace arguments
     remaining_kwargs = kwargs.copy()
     for arg in variogram_args + ms_args:
         remaining_kwargs.pop(arg, None)
     if len(remaining_kwargs) != 0:
-        warnings.warn('Keyword arguments: ' + ', '.join(list(remaining_kwargs.keys())) + ' were not used.')
+        warnings.warn("Keyword arguments: " + ", ".join(list(remaining_kwargs.keys())) + " were not used.")
 
     # Filter corresponding arguments before passing to MetricSpace function
     filtered_ms_kwargs = {k: kwargs[k] for k in ms_args if k in kwargs}
@@ -960,12 +1041,12 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
-    if argdict['verbose']:
-        print('Working on run '+str(argdict['i']) + ' out of '+str(argdict['imax']))
-    argdict.pop('i')
-    argdict.pop('imax')
+    if argdict["verbose"]:
+        print("Working on run " + str(argdict["i"]) + " out of " + str(argdict["imax"]))
+    argdict.pop("i")
+    argdict.pop("imax")
 
-    if argdict['subsample_method'] in ['cdist_equidistant', 'cdist_point']:
+    if argdict["subsample_method"] in ["cdist_equidistant", "cdist_point"]:
         # Simple wrapper for the skgstat Variogram function for cdist methods
         get_variogram = _get_cdist_empirical_variogram
     else:
@@ -975,11 +1056,18 @@ def _wrapper_get_empirical_variogram(argdict: dict) -> pd.DataFrame:
     return get_variogram(**argdict)
 
 
-def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = None, coords: np.ndarray = None,
-                               subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
-                               n_variograms: int = 1, n_jobs: int = 1, verbose = False,
-                               random_state: None | np.random.RandomState | np.random.Generator | int = None,
-                               **kwargs) -> pd.DataFrame:
+def sample_empirical_variogram(
+    values: np.ndarray | RasterType,
+    gsd: float = None,
+    coords: np.ndarray = None,
+    subsample: int = 1000,
+    subsample_method: str = "cdist_equidistant",
+    n_variograms: int = 1,
+    n_jobs: int = 1,
+    verbose=False,
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    **kwargs,
+) -> pd.DataFrame:
     """
     Sample empirical variograms with binning adaptable to multiple ranges and spatial subsampling adapted for raster data.
     Returns an empirical variogram (empirical variance, upper bound of spatial lag bin, count of pairwise samples).
@@ -1040,30 +1128,36 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
     elif isinstance(values, (np.ndarray, np.ma.masked_array)):
         values, mask = get_array_and_mask(values)
     else:
-        raise ValueError('Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.')
+        raise ValueError("Values must be of type np.ndarray, np.ma.masked_array or Raster subclass.")
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
-    if (gsd is not None or subsample_method in ['cdist_equidistant', 'pdist_disk','pdist_ring']) and values.ndim == 1:
-        raise ValueError('Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
-                        '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.')
+    if (gsd is not None or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]) and values.ndim == 1:
+        raise ValueError(
+            'Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
+            '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.'
+        )
     elif coords is not None and values.ndim != 1:
-        raise ValueError('Values array must be 1D when providing coordinates.')
+        raise ValueError("Values array must be 1D when providing coordinates.")
     elif coords is not None and (coords.shape[0] != 2 and coords.shape[1] != 2):
-        raise ValueError('The coordinates array must have one dimension with length equal to 2')
+        raise ValueError("The coordinates array must have one dimension with length equal to 2")
     elif values.ndim == 2 and gsd is None:
-        raise ValueError('The ground sampling distance must be defined when passing a 2D values array.')
+        raise ValueError("The ground sampling distance must be defined when passing a 2D values array.")
 
     # Check the subsample method provided exists, otherwise list options
-    if subsample_method not in ['cdist_equidistant','cdist_point','pdist_point','pdist_disk','pdist_ring']:
-        raise TypeError('The subsampling method must be one of "cdist_equidistant, "cdist_point", "pdist_point", '
-                        '"pdist_disk" or "pdist_ring".')
+    if subsample_method not in ["cdist_equidistant", "cdist_point", "pdist_point", "pdist_disk", "pdist_ring"]:
+        raise TypeError(
+            'The subsampling method must be one of "cdist_equidistant, "cdist_point", "pdist_point", '
+            '"pdist_disk" or "pdist_ring".'
+        )
     # Check that, for several runs, the binning function is an Iterable, otherwise skgstat might provide variogram
     # values over slightly different binnings due to randomly changing subsample maximum lags
-    if n_variograms > 1 and 'bin_func' in kwargs.keys() and not isinstance(kwargs.get('bin_func'), Iterable):
-        warnings.warn('Using a named binning function of scikit-gstat might provide different binnings for each '
-                      'independent run. To remediate that issue, pass bin_func as an Iterable of right bin edges, '
-                      '(or use default bin_func).')
+    if n_variograms > 1 and "bin_func" in kwargs.keys() and not isinstance(kwargs.get("bin_func"), Iterable):
+        warnings.warn(
+            "Using a named binning function of scikit-gstat might provide different binnings for each "
+            "independent run. To remediate that issue, pass bin_func as an Iterable of right bin edges, "
+            "(or use default bin_func)."
+        )
 
     # Defaulting to coordinates if those are provided
     if coords is not None:
@@ -1087,42 +1181,48 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
     extent = (np.min(coords[:, 0]), np.max(coords[:, 0]), np.min(coords[:, 1]), np.max(coords[:, 1]))
 
     # Get the maximum lag from the coordinates before keeping only valid data, if it was not provided
-    if 'maxlag' not in kwargs.keys():
+    if "maxlag" not in kwargs.keys():
         # We define maximum lag as the maximum distance between coordinates (needed to provide custom bins, otherwise
         # skgstat rewrites the maxlag with the subsample of coordinates provided)
-        maxlag = np.sqrt((np.max(coords[:, 0])-np.min(coords[:, 0]))**2
-                         + (np.max(coords[:, 1]) - np.min(coords[:, 1]))**2)
-        kwargs.update({'maxlag': maxlag})
+        maxlag = np.sqrt(
+            (np.max(coords[:, 0]) - np.min(coords[:, 0])) ** 2 + (np.max(coords[:, 1]) - np.min(coords[:, 1])) ** 2
+        )
+        kwargs.update({"maxlag": maxlag})
 
     # Keep only valid data for cdist methods, remove later for pdist methods
-    if 'cdist' in subsample_method:
+    if "cdist" in subsample_method:
         ind_valid = np.isfinite(values)
         values = values[ind_valid]
         coords = coords[ind_valid, :]
 
-    if 'bin_func' not in kwargs.keys():
+    if "bin_func" not in kwargs.keys():
         # If no bin_func is provided, we provide an Iterable to provide a custom binning function to skgstat,
         # because otherwise bins might be inconsistent across runs
         bin_func = []
         right_bin_edge = np.sqrt(2) * gsd
-        while right_bin_edge < kwargs.get('maxlag'):
+        while right_bin_edge < kwargs.get("maxlag"):
             bin_func.append(right_bin_edge)
             # We use the default exponential increasing factor of RasterEquidistantMetricSpace, adapted for grids
             right_bin_edge *= np.sqrt(2)
-        bin_func.append(kwargs.get('maxlag'))
-        kwargs.update({'bin_func': bin_func})
+        bin_func.append(kwargs.get("maxlag"))
+        kwargs.update({"bin_func": bin_func})
 
     # Prepare necessary arguments to pass to variogram subfunctions
-    args = {'values': values, 'coords': coords, 'subsample_method': subsample_method, 'subsample': subsample,
-            'verbose': verbose}
-    if subsample_method in ['cdist_equidistant','pdist_ring','pdist_disk', 'pdist_point']:
+    args = {
+        "values": values,
+        "coords": coords,
+        "subsample_method": subsample_method,
+        "subsample": subsample,
+        "verbose": verbose,
+    }
+    if subsample_method in ["cdist_equidistant", "pdist_ring", "pdist_disk", "pdist_point"]:
         # The shape is needed for those three methods
-        args.update({'shape': (nx, ny)})
-        if subsample_method == 'cdist_equidistant':
+        args.update({"shape": (nx, ny)})
+        if subsample_method == "cdist_equidistant":
             # The coordinate extent is needed for this method
-            args.update({'extent':extent})
+            args.update({"extent": extent})
         else:
-            args.update({'gsd': gsd})
+            args.update({"gsd": gsd})
 
     # If a random_state is passed, each run needs to be passed an independent child random state, otherwise they will
     # provide exactly the same sampling and results
@@ -1148,21 +1248,24 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
     # All variogram runs have random sampling inherent to their subfunctions, so we provide the same input arguments
     if n_jobs == 1:
         if verbose:
-            print('Using 1 core...')
+            print("Using 1 core...")
 
         list_df_run = []
         for i in range(n_variograms):
 
-            argdict = {'i': i, 'imax': n_variograms, 'random_state': list_random_state[i], **args, **kwargs}
+            argdict = {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs}
             df_run = _wrapper_get_empirical_variogram(argdict=argdict)
 
             list_df_run.append(df_run)
     else:
         if verbose:
-            print('Using ' + str(n_jobs) + ' cores...')
+            print("Using " + str(n_jobs) + " cores...")
 
         pool = mp.Pool(n_jobs, maxtasksperchild=1)
-        argdict = [{'i': i, 'imax': n_variograms, 'random_state': list_random_state[i], **args, **kwargs} for i in range(n_variograms)]
+        argdict = [
+            {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs}
+            for i in range(n_variograms)
+        ]
         list_df_run = pool.map(_wrapper_get_empirical_variogram, argdict, chunksize=1)
         pool.close()
         pool.join()
@@ -1172,17 +1275,17 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
 
     # For a single run, no multi-run sigma estimated
     if n_variograms == 1:
-        df = df.rename(columns={'bins': 'lags'})
-        df['err_exp'] = np.nan
+        df = df.rename(columns={"bins": "lags"})
+        df["err_exp"] = np.nan
     # For several runs, group results, use mean as empirical variogram, estimate sigma, and sum the counts
     else:
-        df_grouped = df.groupby('bins', dropna=False)
-        df_mean = df_grouped[['exp']].mean()
-        df_std = df_grouped[['exp']].std()
-        df_count = df_grouped[['count']].sum()
-        df_mean['lags'] = df_mean.index.values
-        df_mean['err_exp'] = df_std['exp'] / np.sqrt(n_variograms)
-        df_mean['count'] = df_count['count']
+        df_grouped = df.groupby("bins", dropna=False)
+        df_mean = df_grouped[["exp"]].mean()
+        df_std = df_grouped[["exp"]].std()
+        df_count = df_grouped[["count"]].sum()
+        df_mean["lags"] = df_mean.index.values
+        df_mean["err_exp"] = df_std["exp"] / np.sqrt(n_variograms)
+        df_mean["count"] = df_count["count"]
         df = df_mean
 
     # Remove the last spatial lag bin which is always undersampled
@@ -1190,16 +1293,17 @@ def sample_empirical_variogram(values: np.ndarray | RasterType, gsd: float = Non
 
     return df
 
+
 def _get_skgstat_variogram_model_name(model: str | Callable) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
 
-    list_supported_models = ['spherical', 'gaussian', 'exponential', 'cubic', 'stable', 'matern']
+    list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
     if callable(model):
-        if inspect.getmodule(model).__name__ == 'skgstat.models':
+        if inspect.getmodule(model).__name__ == "skgstat.models":
             model_name = model.__name__
         else:
-            raise ValueError('Variogram models can only be passed as functions of the skgstat.models package.')
+            raise ValueError("Variogram models can only be passed as functions of the skgstat.models package.")
 
     elif isinstance(model, str):
         model_name = None
@@ -1207,14 +1311,20 @@ def _get_skgstat_variogram_model_name(model: str | Callable) -> str:
             if model.lower() in [supp_model[0:3], supp_model]:
                 model_name = supp_model.lower()
         if model_name is None:
-            raise ValueError(f'Variogram model name {model} not recognized. Supported models are: '+
-                             ', '.join(list_supported_models)+'.')
+            raise ValueError(
+                f"Variogram model name {model} not recognized. Supported models are: "
+                + ", ".join(list_supported_models)
+                + "."
+            )
 
     else:
-        raise ValueError('Variogram models can be passed as strings or skgstat.models function. '
-                         'Supported models are: '+', '.join(list_supported_models)+'.')
+        raise ValueError(
+            "Variogram models can be passed as strings or skgstat.models function. "
+            "Supported models are: " + ", ".join(list_supported_models) + "."
+        )
 
     return model_name
+
 
 def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[np.ndarray], np.ndarray]:
     """
@@ -1238,20 +1348,21 @@ def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[
 
         for i in range(len(params_variogram_model)):
             # Get scikit-gstat model from name or Callable
-            model_name = _get_skgstat_variogram_model_name(params_variogram_model['model'].values[i])
+            model_name = _get_skgstat_variogram_model_name(params_variogram_model["model"].values[i])
             model_function = getattr(skg.models, model_name)
-            r = params_variogram_model['range'].values[i]
-            p = params_variogram_model['psill'].values[i]
+            r = params_variogram_model["range"].values[i]
+            p = params_variogram_model["psill"].values[i]
             # For models that expect 2 parameters
-            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+            if model_name in ["spherical", "gaussian", "exponential", "cubic"]:
                 fn += model_function(h, r, p)
             # For models that expect 3 parameters
-            elif model_name in ['stable', 'matern']:
-                s = params_variogram_model['smooth'].values[i]
+            elif model_name in ["stable", "matern"]:
+                s = params_variogram_model["smooth"].values[i]
                 fn += model_function(h, r, p, s)
         return fn
 
     return sum_model
+
 
 def covariance_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[[np.ndarray], np.ndarray]:
     """
@@ -1271,7 +1382,7 @@ def covariance_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[
     _check_validity_params_variogram(params_variogram_model)
 
     # Get total sill
-    total_sill = np.sum(params_variogram_model['psill'])
+    total_sill = np.sum(params_variogram_model["psill"])
 
     # Get function from sum of variogram
     sum_variogram = get_variogram_model_func(params_variogram_model)
@@ -1281,7 +1392,8 @@ def covariance_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[
 
     return cov
 
-def correlation_from_variogram(params_variogram_model: pd.DataFrame)-> Callable[[np.ndarray], np.ndarray]:
+
+def correlation_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[[np.ndarray], np.ndarray]:
     """
     Construct the spatial correlation function from a dataframe of variogram parameters.
     The correlation function is the covariance function "C" divided by the sum of partial sills "PS": rho = C / PS
@@ -1298,20 +1410,23 @@ def correlation_from_variogram(params_variogram_model: pd.DataFrame)-> Callable[
     _check_validity_params_variogram(params_variogram_model)
 
     # Get total sill
-    total_sill = np.sum(params_variogram_model['psill'].values)
+    total_sill = np.sum(params_variogram_model["psill"].values)
 
     # Get covariance from sum of variogram
     cov = covariance_from_variogram(params_variogram_model)
 
     def rho(h):
-        return cov(h)/total_sill
+        return cov(h) / total_sill
 
     return rho
 
 
-def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogram: pd.DataFrame,
-                            bounds: list[tuple[float, float]] = None,
-                            p0: list[float] = None) -> tuple[Callable[[np.ndarray], np.ndarray], pd.DataFrame]:
+def fit_sum_model_variogram(
+    list_models: list[str | Callable],
+    empirical_variogram: pd.DataFrame,
+    bounds: list[tuple[float, float]] = None,
+    p0: list[float] = None,
+) -> tuple[Callable[[np.ndarray], np.ndarray], pd.DataFrame]:
     """
     Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
     use preferably with the empirical variogram dataframe returned by the `sample_empirical_variogram` function.
@@ -1336,12 +1451,12 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
             model_name = _get_skgstat_variogram_model_name(model)
             model_function = getattr(skg.models, model_name)
             # For models that expect 2 parameters
-            if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
-                fn += model_function(h, args[i], args[i+1])
+            if model_name in ["spherical", "gaussian", "exponential", "cubic"]:
+                fn += model_function(h, args[i], args[i + 1])
                 i += 2
             # For models that expect 3 parameters
-            elif model_name in ['stable', 'matern']:
-                fn += model_function(h, args[i], args[i+1], args[i+2])
+            elif model_name in ["stable", "matern"]:
+                fn += model_function(h, args[i], args[i + 1], args[i + 2])
                 i += 3
 
         return fn
@@ -1351,7 +1466,7 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
 
     # Use shape of empirical variogram to assess rough boundaries/first estimates
     n_average = np.ceil(len(empirical_variogram.exp.values) / 10)
-    exp_movaverage = np.convolve(empirical_variogram.exp.values, np.ones(int(n_average)) / n_average, mode='valid')
+    exp_movaverage = np.convolve(empirical_variogram.exp.values, np.ones(int(n_average)) / n_average, mode="valid")
     grad = np.gradient(exp_movaverage, 2)
     # Maximum variance of the process
     max_var = np.max(exp_movaverage)
@@ -1372,13 +1487,13 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
         p0 = []
         for i in range(len(list_models)):
             # Use psill evenly distributed
-            psill_p0 = ((i+1)/len(list_models))*max_var
+            psill_p0 = ((i + 1) / len(list_models)) * max_var
 
             # Use corresponding ranges
             # !! This fails when no empirical value crosses this (too wide binning/nugget)
             # ind = np.array(np.abs(exp_movaverage-psill_p0)).argmin()
             # range_p0 = empirical_variogram.lags.values[ind]
-            range_p0 = ((i+1)/len(list_models)) * empirical_variogram.lags.values[-1]
+            range_p0 = ((i + 1) / len(list_models)) * empirical_variogram.lags.values[-1]
 
             p0.append(range_p0)
             p0.append(psill_p0)
@@ -1387,14 +1502,27 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
 
     # If the error provided is all NaNs (single variogram run), or all zeros (two variogram runs), run without weights
     if np.all(np.isnan(empirical_variogram.err_exp.values)) or np.all(empirical_variogram.err_exp.values == 0):
-        cof, cov = curve_fit(variogram_sum, empirical_variogram.lags.values, empirical_variogram.exp.values, method='trf',
-                             p0=p0, bounds=bounds)
+        cof, cov = curve_fit(
+            variogram_sum,
+            empirical_variogram.lags.values,
+            empirical_variogram.exp.values,
+            method="trf",
+            p0=p0,
+            bounds=bounds,
+        )
     # Otherwise, use a weighted fit
     else:
         # We need to filter for possible no data in the error
         valid = np.isfinite(empirical_variogram.err_exp.values)
-        cof, cov = curve_fit(variogram_sum, empirical_variogram.lags.values[valid], empirical_variogram.exp.values[valid],
-                             method='trf', p0=p0, bounds=bounds, sigma=empirical_variogram.err_exp.values[valid])
+        cof, cov = curve_fit(
+            variogram_sum,
+            empirical_variogram.lags.values[valid],
+            empirical_variogram.exp.values[valid],
+            method="trf",
+            p0=p0,
+            bounds=bounds,
+            sigma=empirical_variogram.err_exp.values[valid],
+        )
 
     # Store optimized parameters
     list_df = []
@@ -1402,14 +1530,14 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
     for model in list_models:
         model_name = _get_skgstat_variogram_model_name(model)
         # For models that expect 2 parameters
-        if model_name in ['spherical', 'gaussian', 'exponential', 'cubic']:
+        if model_name in ["spherical", "gaussian", "exponential", "cubic"]:
             df = pd.DataFrame()
-            df = df.assign(model=[model_name], range=[cof[i]], psill=[cof[i+1]])
+            df = df.assign(model=[model_name], range=[cof[i]], psill=[cof[i + 1]])
             i += 2
         # For models that expect 3 parameters
-        elif model_name in ['stable', 'matern']:
+        elif model_name in ["stable", "matern"]:
             df = pd.DataFrame()
-            df = df.assign(model=[model_name], range=[cof[i]], psill=[cof[i + 1]], smooth=[cof[i+2]])
+            df = df.assign(model=[model_name], range=[cof[i]], psill=[cof[i + 1]], smooth=[cof[i + 2]])
             i += 3
         list_df.append(df)
     df_params = pd.concat(list_df)
@@ -1419,13 +1547,23 @@ def fit_sum_model_variogram(list_models: list[str | Callable], empirical_variogr
 
     return variogram_sum_fit, df_params
 
-def estimate_model_spatial_correlation(dvalues: np.ndarray | RasterType, list_models: list[str | Callable],
-                                       estimator = 'dowd', gsd: float = None, coords: np.ndarray = None, subsample: int = 1000,
-                                       subsample_method: str = 'cdist_equidistant', n_variograms: int = 1,
-                                       n_jobs: int = 1, verbose = False,
-                                       random_state: None | np.random.RandomState | np.random.Generator | int = None,
-                                       bounds: list[tuple[float, float]] = None, p0: list[float] = None,
-                                       **kwargs) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
+
+def estimate_model_spatial_correlation(
+    dvalues: np.ndarray | RasterType,
+    list_models: list[str | Callable],
+    estimator="dowd",
+    gsd: float = None,
+    coords: np.ndarray = None,
+    subsample: int = 1000,
+    subsample_method: str = "cdist_equidistant",
+    n_variograms: int = 1,
+    n_jobs: int = 1,
+    verbose=False,
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    bounds: list[tuple[float, float]] = None,
+    p0: list[float] = None,
+    **kwargs,
+) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
 
     """
     Estimate and model the spatial correlation of the input variable by empirical variogram sampling and fitting of a
@@ -1457,30 +1595,48 @@ def estimate_model_spatial_correlation(dvalues: np.ndarray | RasterType, list_mo
     :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
     """
 
-    empirical_variogram = sample_empirical_variogram(values=dvalues, estimator=estimator, gsd=gsd, coords=coords,
-                                                     subsample=subsample, subsample_method=subsample_method,
-                                                     n_variograms=n_variograms, n_jobs=n_jobs, verbose=verbose,
-                                                     random_state=random_state, **kwargs)
+    empirical_variogram = sample_empirical_variogram(
+        values=dvalues,
+        estimator=estimator,
+        gsd=gsd,
+        coords=coords,
+        subsample=subsample,
+        subsample_method=subsample_method,
+        n_variograms=n_variograms,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        random_state=random_state,
+        **kwargs,
+    )
 
-    params_variogram_model = fit_sum_model_variogram(list_models=list_models, empirical_variogram=empirical_variogram,
-                                             bounds=bounds, p0=p0)[1]
+    params_variogram_model = fit_sum_model_variogram(
+        list_models=list_models, empirical_variogram=empirical_variogram, bounds=bounds, p0=p0
+    )[1]
 
     spatial_correlation_func = correlation_from_variogram(params_variogram_model=params_variogram_model)
 
     return empirical_variogram, params_variogram_model, spatial_correlation_func
 
-def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
-                                          list_models: list[str | Callable],
-                                          stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                                          unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                                          errors: np.ndarray | RasterType = None,
-                                          estimator = 'dowd', gsd: float = None, coords: np.ndarray = None,
-                                          subsample: int = 1000, subsample_method: str = 'cdist_equidistant',
-                                          n_variograms: int = 1, n_jobs: int = 1, verbose = False,
-                                          bounds: list[tuple[float, float]] = None, p0: list[float] = None,
-                                          random_state: None | np.random.RandomState | np.random.Generator | int = None,
-                                          **kwargs
-                                          ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
+
+def infer_spatial_correlation_from_stable(
+    dvalues: np.ndarray | RasterType,
+    list_models: list[str | Callable],
+    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    errors: np.ndarray | RasterType = None,
+    estimator="dowd",
+    gsd: float = None,
+    coords: np.ndarray = None,
+    subsample: int = 1000,
+    subsample_method: str = "cdist_equidistant",
+    n_variograms: int = 1,
+    n_jobs: int = 1,
+    verbose=False,
+    bounds: list[tuple[float, float]] = None,
+    p0: list[float] = None,
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    **kwargs,
+) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[np.ndarray], np.ndarray]]:
     """
     Infer spatial correlation of errors from differenced values on stable terrain and a list of variogram model to fit
     as a sum.
@@ -1516,8 +1672,9 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
     :return: Dataframe of empirical variogram, Dataframe of optimized model parameters, Function of spatial correlation (0 to 1) with spatial lags
     """
 
-    dvalues_stable_arr, gsd = _preprocess_values_with_mask_to_array(values=dvalues, include_mask=stable_mask,
-                                                                    exclude_mask=unstable_mask, gsd=gsd)
+    dvalues_stable_arr, gsd = _preprocess_values_with_mask_to_array(
+        values=dvalues, include_mask=stable_mask, exclude_mask=unstable_mask, gsd=gsd
+    )
 
     # Perform standardization if error array is provided
     if errors is not None:
@@ -1531,9 +1688,21 @@ def infer_spatial_correlation_from_stable(dvalues: np.ndarray | RasterType,
 
     # Estimate and model spatial correlations
     empirical_variogram, params_variogram_model, spatial_correlation_func = estimate_model_spatial_correlation(
-        dvalues=dvalues_stable_arr, list_models=list_models, estimator=estimator, gsd=gsd, coords=coords,
-        subsample=subsample, subsample_method=subsample_method, n_variograms=n_variograms, n_jobs=n_jobs,
-        verbose=verbose, random_state=random_state, bounds=bounds, p0=p0, **kwargs)
+        dvalues=dvalues_stable_arr,
+        list_models=list_models,
+        estimator=estimator,
+        gsd=gsd,
+        coords=coords,
+        subsample=subsample,
+        subsample_method=subsample_method,
+        n_variograms=n_variograms,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        random_state=random_state,
+        bounds=bounds,
+        p0=p0,
+        **kwargs,
+    )
 
     return empirical_variogram, params_variogram_model, spatial_correlation_func
 
@@ -1542,40 +1711,44 @@ def _check_validity_params_variogram(params_variogram_model: pd.DataFrame):
     """Check the validity of the modelled variogram parameters dataframe (mostly in the case it is passed manually)."""
 
     # Check that expected columns exists
-    expected_columns = ['model', 'range', 'psill']
+    expected_columns = ["model", "range", "psill"]
     if not all([c in params_variogram_model for c in expected_columns]):
-        raise ValueError('The dataframe with variogram parameters must contain the columns "model", "range" and "psill".')
+        raise ValueError(
+            'The dataframe with variogram parameters must contain the columns "model", "range" and "psill".'
+        )
 
     # Check that the format of variogram models are correct
-    for m in params_variogram_model['model'].values:
+    for m in params_variogram_model["model"].values:
         _get_skgstat_variogram_model_name(m)
 
     # Check that the format of ranges, sills are correct
-    for r in params_variogram_model['range'].values:
+    for r in params_variogram_model["range"].values:
         if not isinstance(r, (float, np.floating, int, np.integer)):
-            raise ValueError('The variogram ranges must be float or integer.')
+            raise ValueError("The variogram ranges must be float or integer.")
         if r <= 0:
-            raise ValueError('The variogram ranges must have non-zero, positive values.')
+            raise ValueError("The variogram ranges must have non-zero, positive values.")
 
     # Check that the format of ranges, sills are correct
-    for p in params_variogram_model['psill'].values:
+    for p in params_variogram_model["psill"].values:
         if not isinstance(p, (float, np.floating, int, np.integer)):
-            raise ValueError('The variogram partial sills must be float or integer.')
+            raise ValueError("The variogram partial sills must be float or integer.")
         if p <= 0:
-            raise ValueError('The variogram partial sills must have non-zero, positive values.')
+            raise ValueError("The variogram partial sills must have non-zero, positive values.")
 
     # Check that the mattern smoothness factor exist and is rightly formatted
-    if ['stable'] in params_variogram_model['model'].values or ['matern'] in params_variogram_model['model'].values:
-        if 'smooth' not in params_variogram_model:
-            raise ValueError('The dataframe with variogram parameters must contain the column "smooth" for '
-                             'the smoothness factor when using Matern or Stable models.')
+    if ["stable"] in params_variogram_model["model"].values or ["matern"] in params_variogram_model["model"].values:
+        if "smooth" not in params_variogram_model:
+            raise ValueError(
+                'The dataframe with variogram parameters must contain the column "smooth" for '
+                "the smoothness factor when using Matern or Stable models."
+            )
         for i in range(len(params_variogram_model)):
-            if params_variogram_model['model'].values[i] in ['stable', 'matern']:
-                s = params_variogram_model['smooth'].values[i]
+            if params_variogram_model["model"].values[i] in ["stable", "matern"]:
+                s = params_variogram_model["smooth"].values[i]
                 if not isinstance(s, (float, np.floating, int, np.integer)):
-                    raise ValueError('The variogram smoothness parameter must be float or integer.')
+                    raise ValueError("The variogram smoothness parameter must be float or integer.")
                 if s <= 0:
-                    raise ValueError('The variogram smoothness parameter must have non-zero, positive values.')
+                    raise ValueError("The variogram smoothness parameter must have non-zero, positive values.")
 
 
 def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.DataFrame) -> float:
@@ -1623,9 +1796,9 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
 
     def spherical_exact_integral(a1, c1, L):
         if l <= a1:
-            squared_se = c1 * (1 - L/a1 + 1/5 * (L/a1)**3)
+            squared_se = c1 * (1 - L / a1 + 1 / 5 * (L / a1) ** 3)
         else:
-            squared_se = c1 / 5 * (a1/L)**2
+            squared_se = c1 / 5 * (a1 / L) ** 2
         return squared_se
 
     # Exponential: h * covariance = c1 * h * exp(-h/a); a = a1/3
@@ -1633,7 +1806,7 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
 
     def exponential_exact_integral(a1, c1, L):
         a = a1 / 3
-        squared_se = 2 * c1 * (a/L)**2 * (1 - np.exp(-L/a) * (1 + L/a))
+        squared_se = 2 * c1 * (a / L) ** 2 * (1 - np.exp(-L / a) * (1 + L / a))
         return squared_se
 
     # Gaussian: h * covariance = c1 * h * exp(-h**2/a**2) ; a = a1/2
@@ -1641,7 +1814,7 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
 
     def gaussian_exact_integral(a1, c1, L):
         a = a1 / 2
-        squared_se = c1 * (a/L)**2 * (1 - np.exp(-L**2 / a**2))
+        squared_se = c1 * (a / L) ** 2 * (1 - np.exp(-(L**2) / a**2))
         return squared_se
 
     # Cubic: h * covariance = c1 * h * (1 - (7 * (h**2 / a**2)) + ((35 / 4) * (h**3 / a**3)) -
@@ -1650,18 +1823,27 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
 
     def cubic_exact_integral(a1, c1, L):
         if l <= a1:
-            squared_se = c1 * (6*a1**7 -21*a1**5*L**2 + 21*a1**4*L**3 - 6*a1**2*L**5 + L**7) / (6*a1**7)
+            squared_se = (
+                c1
+                * (6 * a1**7 - 21 * a1**5 * L**2 + 21 * a1**4 * L**3 - 6 * a1**2 * L**5 + L**7)
+                / (6 * a1**7)
+            )
         else:
-            squared_se = 1/6 * c1 * a1**2 / L**2
+            squared_se = 1 / 6 * c1 * a1**2 / L**2
         return squared_se
 
     squared_se = 0
-    valid_models = ['spherical', 'exponential', 'gaussian', 'cubic']
-    exact_integrals = [spherical_exact_integral, exponential_exact_integral, gaussian_exact_integral, cubic_exact_integral]
+    valid_models = ["spherical", "exponential", "gaussian", "cubic"]
+    exact_integrals = [
+        spherical_exact_integral,
+        exponential_exact_integral,
+        gaussian_exact_integral,
+        cubic_exact_integral,
+    ]
     for i in np.arange(len(params_variogram_model)):
-        model_name = _get_skgstat_variogram_model_name(params_variogram_model['model'].values[i])
-        r = params_variogram_model['range'].values[i]
-        p = params_variogram_model['psill'].values[i]
+        model_name = _get_skgstat_variogram_model_name(params_variogram_model["model"].values[i])
+        r = params_variogram_model["range"].values[i]
+        p = params_variogram_model["psill"].values[i]
         if model_name in valid_models:
             exact_integral = exact_integrals[valid_models.index(model_name)]
             squared_se += exact_integral(r, p, l)
@@ -1669,9 +1851,10 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
     # We sum all partial sill to get the total sill
     total_sill = np.nansum(params_variogram_model.psill)
     # The number of effective sample is the fraction of total sill by squared standard error
-    neff = total_sill/squared_se
+    neff = total_sill / squared_se
 
     return neff
+
 
 def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
     """
@@ -1683,6 +1866,7 @@ def _integrate_fun(fun: Callable, low_b: float, upp_b: float) -> float:
     :return: Integral between lower and upper bound
     """
     return integrate.quad(fun, low_b, upp_b)[0]
+
 
 def neff_circular_approx_numerical(area: float, params_variogram_model: pd.DataFrame) -> float:
     """
@@ -1722,15 +1906,17 @@ def neff_circular_approx_numerical(area: float, params_variogram_model: pd.DataF
     full_int = _integrate_fun(hcov_sum, 0, h_equiv)
 
     # Get the standard error, and return the number of effective samples
-    squared_se = 2*np.pi*full_int / area
+    squared_se = 2 * np.pi * full_int / area
 
     # The number of effective sample is the fraction of total sill by squared standard error
-    neff = total_sill/squared_se
+    neff = total_sill / squared_se
 
     return neff
 
 
-def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, vectorized: bool = True) -> float:
+def neff_exact(
+    coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, vectorized: bool = True
+) -> float:
     """
      Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
      the provided variogram parameters. This method works for any shape of area.
@@ -1781,16 +1967,25 @@ def neff_exact(coords: np.ndarray, errors: np.ndarray, params_variogram_model: p
         # Convert the compact pairwise distance into a square matrix
         pds_matrix = squareform(pds)
         # Vectorize calculation
-        var = np.sum(errors.reshape((-1, 1)) @ errors.reshape((1, -1)) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape))
+        var = np.sum(
+            errors.reshape((-1, 1)) @ errors.reshape((1, -1)) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
+        )
 
     # The number of effective sample is the fraction of total sill by squared standard error
-    squared_se_dsc = var / n ** 2
-    neff = np.mean(errors)**2/squared_se_dsc
+    squared_se_dsc = var / n**2
+    neff = np.mean(errors) ** 2 / squared_se_dsc
 
     return neff
 
-def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogram_model: pd.DataFrame, subsample: int = 1000,
-                         vectorized: bool = True, random_state: None | np.random.RandomState | np.random.Generator | int = None) -> float:
+
+def neff_hugonnet_approx(
+    coords: np.ndarray,
+    errors: np.ndarray,
+    params_variogram_model: pd.DataFrame,
+    subsample: int = 1000,
+    vectorized: bool = True,
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
     based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
@@ -1861,16 +2056,25 @@ def neff_hugonnet_approx(coords: np.ndarray, errors: np.ndarray, params_variogra
         pds_matrix = squareform(pds)
         pds_matrix_sub = pds_matrix[:, rand_points]
         # Vectorized calculation
-        var = np.sum(errors.reshape((-1, 1)) @ errors_sub.reshape((1, -1)) * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape))
+        var = np.sum(
+            errors.reshape((-1, 1))
+            @ errors_sub.reshape((1, -1))
+            * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape)
+        )
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / (n * subsample)
-    neff = np.mean(errors)**2 / squared_se_dsc
+    neff = np.mean(errors) ** 2 / squared_se_dsc
 
     return neff
 
-def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, params_variogram_model: pd.DataFrame,
-                             rasterize_resolution: RasterType | float = None, **kwargs) -> float:
+
+def number_effective_samples(
+    area: float | int | VectorType | gpd.GeoDataFrame,
+    params_variogram_model: pd.DataFrame,
+    rasterize_resolution: RasterType | float = None,
+    **kwargs,
+) -> float:
     """
     Compute the number of effective samples, i.e. the number of uncorrelated samples, in an area accounting for spatial
     correlations described by a sum of variogram models.
@@ -1918,9 +2122,11 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
             V = area
 
         if rasterize_resolution is None:
-            rasterize_resolution =  np.min(params_variogram_model['range'].values)/5.
-            warnings.warn('Resolution for vector rasterization is not defined and thus set at 20% of the shortest '
-                'correlation range, which might result in large memory usage.')
+            rasterize_resolution = np.min(params_variogram_model["range"].values) / 5.0
+            warnings.warn(
+                "Resolution for vector rasterization is not defined and thus set at 20% of the shortest "
+                "correlation range, which might result in large memory usage."
+            )
 
         # Rasterize with numeric resolution or Raster metadata
         if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
@@ -1940,23 +2146,27 @@ def number_effective_samples(area: float | int | VectorType | gpd.GeoDataFrame, 
             coords_on_mask = coords[:, mask].T
 
         else:
-            raise ValueError('The rasterize resolution must be a float, integer or Raster subclass.')
+            raise ValueError("The rasterize resolution must be a float, integer or Raster subclass.")
 
         # Here we don't care about heteroscedasticity, so all errors are standardized to one
         errors_on_mask = np.ones(len(coords_on_mask))
 
-        neff = neff_hugonnet_approx(coords=coords_on_mask, errors=errors_on_mask,
-                                    params_variogram_model=params_variogram_model, **kwargs)
+        neff = neff_hugonnet_approx(
+            coords=coords_on_mask, errors=errors_on_mask, params_variogram_model=params_variogram_model, **kwargs
+        )
 
     else:
-        raise ValueError('Area must be a float, integer, Vector subclass or geopandas dataframe.')
+        raise ValueError("Area must be a float, integer, Vector subclass or geopandas dataframe.")
 
     return neff
 
-def spatial_error_propagation(areas: list[float | VectorType | gpd.GeoDataFrame],
-                              errors: RasterType,
-                              params_variogram_model: pd.Dataframe,
-                              **kwargs) -> list[float]:
+
+def spatial_error_propagation(
+    areas: list[float | VectorType | gpd.GeoDataFrame],
+    errors: RasterType,
+    params_variogram_model: pd.Dataframe,
+    **kwargs,
+) -> list[float]:
     """
     Spatial propagation of elevation errors to an area using the estimated heteroscedasticity and spatial correlations.
 
@@ -1983,8 +2193,9 @@ def spatial_error_propagation(areas: list[float | VectorType | gpd.GeoDataFrame]
     errors_arr = get_array_and_mask(errors)[0]
     for area in areas:
         # We estimate the number of effective samples in the area
-        neff = number_effective_samples(area=area, params_variogram_model=params_variogram_model,
-                                        rasterize_resolution=errors, **kwargs)
+        neff = number_effective_samples(
+            area=area, params_variogram_model=params_variogram_model, rasterize_resolution=errors, **kwargs
+        )
 
         # We compute the average error in this area
         # If the area is only a value, take the average error over the entire Raster
@@ -2049,12 +2260,13 @@ def _distance_latlon(tup1: tuple, tup2: tuple, earth_rad: float = 6373000) -> fl
     dlon = lon2 - lon1
     dlat = lat2 - lat1
 
-    a = m.sin(dlat / 2)**2 + m.cos(lat1) * m.cos(lat2) * m.sin(dlon / 2)**2
+    a = m.sin(dlat / 2) ** 2 + m.cos(lat1) * m.cos(lat2) * m.sin(dlon / 2) ** 2
     c = 2 * m.atan2(m.sqrt(a), m.sqrt(1 - a))
 
     distance = earth_rad * c
 
     return distance
+
 
 def _scipy_convolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray):
     """
@@ -2067,11 +2279,13 @@ def _scipy_convolution(imgs: np.ndarray, filters: np.ndarray, output: np.ndarray
 
     for i_N in np.arange(imgs.shape[0]):
         for i_M in np.arange(filters.shape[0]):
-            output[i_N, i_M, :, :] = fftconvolve(imgs[i_N, :, :], filters[i_M, :, :], mode='same')
+            output[i_N, i_M, :, :] = fftconvolve(imgs[i_N, :, :], filters[i_M, :, :], mode="same")
 
 
-nd4type = numba.double[:,:,:,:]
-nd3type = numba.double[:,:,:]
+nd4type = numba.double[:, :, :, :]
+nd3type = numba.double[:, :, :]
+
+
 @jit((nd3type, nd3type, nd4type))
 def _numba_convolution(imgs, filters, output):
     """
@@ -2095,7 +2309,7 @@ def _numba_convolution(imgs, filters, output):
                             output[rr, cc, ii, ff] += imgval * filterval
 
 
-def convolution(imgs: np.ndarray, filters: np.ndarray, method: str = 'scipy') -> np.ndarray:
+def convolution(imgs: np.ndarray, filters: np.ndarray, method: str = "scipy") -> np.ndarray:
     """
     Convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2, using
     either scipy.signal.fftconvolve or accelerated numba loops.
@@ -2117,16 +2331,20 @@ def convolution(imgs: np.ndarray, filters: np.ndarray, method: str = 'scipy') ->
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif method.lower() == "numba":
-        _numba_convolution(imgs=imgs.astype(dtype=np.double), filters=filters.astype(dtype=np.double),
-                           output=output.astype(dtype=np.double))
+        _numba_convolution(
+            imgs=imgs.astype(dtype=np.double),
+            filters=filters.astype(dtype=np.double),
+            output=output.astype(dtype=np.double),
+        )
     else:
         raise ValueError('Method must be "scipy" or "numba".')
 
     return output
 
 
-def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circular",
-                    method: str = "scipy") -> tuple[np.ndarray, np.ndarray, int]:
+def mean_filter_nan(
+    img: np.ndarray, kernel_size: int, kernel_shape: str = "circular", method: str = "scipy"
+) -> tuple[np.ndarray, np.ndarray, int]:
     """
     Apply a mean filter to an image with a square or circular kernel of size p and with NaN values ignored.
 
@@ -2147,28 +2365,32 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circ
     img_zeroed[~np.isfinite(img_zeroed)] = 0
 
     # Define square kernel
-    if kernel_shape.lower() == 'square':
-        kernel = np.ones((p, p), dtype='uint8')
+    if kernel_shape.lower() == "square":
+        kernel = np.ones((p, p), dtype="uint8")
 
     # Circle kernel
-    elif kernel_shape.lower() == 'circular':
-        kernel = _create_circular_mask((p, p)).astype('uint8')
+    elif kernel_shape.lower() == "circular":
+        kernel = _create_circular_mask((p, p)).astype("uint8")
     else:
         raise ValueError('Kernel shape should be "square" or "circular".')
 
     # Run convolution to compute the sum of img values
-    summed_img = convolution(imgs=img_zeroed.reshape((1, img_zeroed.shape[0], img_zeroed.shape[1])),
-                             filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
-                             method=method).squeeze()
+    summed_img = convolution(
+        imgs=img_zeroed.reshape((1, img_zeroed.shape[0], img_zeroed.shape[1])),
+        filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
+        method=method,
+    ).squeeze()
 
     # Construct a boolean array for nodatas
     nodata_img = np.ones(np.shape(img), dtype=np.int8)
     nodata_img[~np.isfinite(img)] = 0
 
     # Count the number of valid pixels in the kernel with a convolution
-    nb_valid_img = convolution(imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
-                               filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
-                               method=method).squeeze()
+    nb_valid_img = convolution(
+        imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
+        filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
+        method=method,
+    ).squeeze()
 
     # Compute the final mean filter which accounts for no data
     with warnings.catch_warnings():
@@ -2181,12 +2403,17 @@ def mean_filter_nan(img: np.ndarray, kernel_size: int, kernel_shape: str = "circ
     return mean_img, nb_valid_img, nb_pixel_per_kernel
 
 
-def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_valid: float = 80.,
-                         patch_shape: str = 'circular', method: str = 'scipy',
-                         statistic_between_patches: Callable[[np.ndarray], float] = nmad,
-                         verbose: bool = False,
-                         return_in_patch_statistics : bool = False
-                         ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
+def _patches_convolution(
+    values: np.ndarray,
+    gsd: float,
+    area: float,
+    perc_min_valid: float = 80.0,
+    patch_shape: str = "circular",
+    method: str = "scipy",
+    statistic_between_patches: Callable[[np.ndarray], float] = nmad,
+    verbose: bool = False,
+    return_in_patch_statistics: bool = False,
+) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
 
     :param values: Values as array of shape (N1, N2) with NaN for masked values
@@ -2207,22 +2434,23 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
 
     # Get kernel size to match area
     # If circular, it corresponds to the diameter
-    if patch_shape.lower() == 'circular':
+    if patch_shape.lower() == "circular":
         kernel_size = int(np.round(2 * np.sqrt(area / np.pi) / gsd, decimals=0))
     # If square, to the side length
-    elif patch_shape.lower() == 'square':
+    elif patch_shape.lower() == "square":
         kernel_size = int(np.round(np.sqrt(area) / gsd, decimals=0))
 
     else:
         raise ValueError('Kernel shape should be "square" or "circular".')
 
     if verbose:
-        print('Computing the convolution on the entire array...')
-    mean_img, nb_valid_img, nb_pixel_per_kernel = mean_filter_nan(img=values, kernel_size=kernel_size,
-                                                                  kernel_shape=patch_shape, method=method)
+        print("Computing the convolution on the entire array...")
+    mean_img, nb_valid_img, nb_pixel_per_kernel = mean_filter_nan(
+        img=values, kernel_size=kernel_size, kernel_shape=patch_shape, method=method
+    )
 
     # Exclude mean values if number of valid pixels is less than a percentage of the kernel size
-    mean_img[nb_valid_img < nb_pixel_per_kernel * perc_min_valid / 100.] = np.nan
+    mean_img[nb_valid_img < nb_pixel_per_kernel * perc_min_valid / 100.0] = np.nan
 
     # A problem with the convolution method compared to the quadrant one is that patches are not independent, which
     # can bias the estimation of spread. To remedy this, we compute spread statistics on patches separated by the
@@ -2230,7 +2458,7 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
 
     # There are as many combinations for this calculation as the square of the kernel_size
     if verbose:
-        print('Computing statistic between patches for all independent combinations...')
+        print("Computing statistic between patches for all independent combinations...")
     list_statistic_estimates = []
     list_nb_independent_patches = []
     for i in range(kernel_size):
@@ -2242,8 +2470,12 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
 
     if return_in_patch_statistics:
         # Create dataframe of independent patches for one independent setting
-        df = pd.DataFrame(data={'nanmean' : mean_img[::kernel_size, ::kernel_size].ravel(),
-                                'count': nb_valid_img[::kernel_size, ::kernel_size].ravel()})
+        df = pd.DataFrame(
+            data={
+                "nanmean": mean_img[::kernel_size, ::kernel_size].ravel(),
+                "count": nb_valid_img[::kernel_size, ::kernel_size].ravel(),
+            }
+        )
 
     # We then use the average of the statistic computed for different sets of independent patches to get a more robust
     # estimate
@@ -2257,14 +2489,19 @@ def _patches_convolution(values: np.ndarray, gsd: float, area: float, perc_min_v
         return average_statistic, nb_independent_patches, exact_area
 
 
-def _patches_loop_quadrants(values: np.ndarray, gsd: float, area: float, patch_shape: str = 'circular',
-                           n_patches: int = 1000, perc_min_valid: float = 80.,
-                           statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
-                           statistic_between_patches: Callable[[np.ndarray], float] = nmad,
-                           verbose: bool = False,
-                           random_state: None | int | np.random.RandomState | np.random.Generator = None,
-                           return_in_patch_statistics : bool = False
-                           ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
+def _patches_loop_quadrants(
+    values: np.ndarray,
+    gsd: float,
+    area: float,
+    patch_shape: str = "circular",
+    n_patches: int = 1000,
+    perc_min_valid: float = 80.0,
+    statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
+    statistic_between_patches: Callable[[np.ndarray], float] = nmad,
+    verbose: bool = False,
+    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+    return_in_patch_statistics: bool = False,
+) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
     Patches method for empirical estimation of the standard error over an integration area
 
@@ -2312,12 +2549,12 @@ def _patches_loop_quadrants(values: np.ndarray, gsd: float, area: float, patch_s
     rad = int(np.round(np.sqrt(area / np.pi) / gsd, decimals=0))
 
     # Compute exact area to provide to checks and return
-    if patch_shape.lower() == 'square':
+    if patch_shape.lower() == "square":
         nb_pixel_exact = nx_sub * ny_sub
-        exact_area = nb_pixel_exact * gsd ** 2
-    elif patch_shape.lower() == 'circular':
+        exact_area = nb_pixel_exact * gsd**2
+    elif patch_shape.lower() == "circular":
         nb_pixel_exact = np.count_nonzero(_create_circular_mask(shape=(nx, ny), radius=rad))
-        exact_area = nb_pixel_exact * gsd ** 2
+        exact_area = nb_pixel_exact * gsd**2
 
     # Create list of all possible quadrants
     list_quadrant = [[i, j] for i in range(nx_sub) for j in range(ny_sub)]
@@ -2334,38 +2571,40 @@ def _patches_loop_quadrants(values: np.ndarray, gsd: float, area: float, patch_s
         for idx_quadrant in list_idx_quadrant:
 
             if verbose:
-                print('Working on a new quadrant')
+                print("Working on a new quadrant")
 
             # Select center coordinates
             i = list_quadrant[idx_quadrant][0]
             j = list_quadrant[idx_quadrant][1]
 
             # Get patch by masking the square or circular quadrant
-            if patch_shape.lower() == 'square':
-                patch = values[kernel_size * i:kernel_size * (i + 1), kernel_size * j:kernel_size * (j + 1)].flatten()
-            elif patch_shape.lower() == 'circular':
+            if patch_shape.lower() == "square":
+                patch = values[
+                    kernel_size * i : kernel_size * (i + 1), kernel_size * j : kernel_size * (j + 1)
+                ].flatten()
+            elif patch_shape.lower() == "circular":
                 center_x = np.floor(kernel_size * (i + 1 / 2))
                 center_y = np.floor(kernel_size * (j + 1 / 2))
                 mask = _create_circular_mask((nx, ny), center=[center_x, center_y], radius=rad)
                 patch = values[mask]
             else:
-                raise ValueError('Patch method must be square or circular.')
+                raise ValueError("Patch method must be square or circular.")
 
             # Check that the patch is complete and has the minimum number of valid values
             nb_pixel_total = len(patch)
             nb_pixel_valid = len(patch[np.isfinite(patch)])
-            if nb_pixel_valid >= np.ceil(perc_min_valid / 100. * nb_pixel_total) and nb_pixel_total == nb_pixel_exact:
+            if nb_pixel_valid >= np.ceil(perc_min_valid / 100.0 * nb_pixel_total) and nb_pixel_total == nb_pixel_exact:
                 u = u + 1
                 if u > n_patches:
                     break
                 if verbose:
-                    print('Found valid quadrant ' + str(u) + ' (maximum: ' + str(n_patches) + ')')
+                    print("Found valid quadrant " + str(u) + " (maximum: " + str(n_patches) + ")")
 
                 df = pd.DataFrame()
-                df = df.assign(tile=[str(i) + '_' + str(j)])
+                df = df.assign(tile=[str(i) + "_" + str(j)])
                 for j, statistic in enumerate(statistics_in_patch):
                     if isinstance(statistic, str):
-                        if statistic == 'count':
+                        if statistic == "count":
                             df[statistic] = [nb_pixel_valid]
                         else:
                             raise ValueError('No other string than "count" are supported for named statistics.')
@@ -2390,7 +2629,7 @@ def _patches_loop_quadrants(values: np.ndarray, gsd: float, area: float, patch_s
             df_all[statistics_name[j]] = [np.nan]
         average_statistic = np.nan
         nb_independent_patches = 0
-        warnings.warn('No valid patch found covering this area size, returning NaN for statistic.')
+        warnings.warn("No valid patch found covering this area size, returning NaN for statistic.")
 
     if return_in_patch_statistics:
         return average_statistic, nb_independent_patches, exact_area, df_all
@@ -2398,16 +2637,23 @@ def _patches_loop_quadrants(values: np.ndarray, gsd: float, area: float, patch_s
         return average_statistic, nb_independent_patches, exact_area
 
 
-def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: float = None,
-                   stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                   unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
-                   statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
-                   statistic_between_patches: Callable[[np.ndarray], float] = nmad,
-                   perc_min_valid: float = 80., patch_shape: str = 'circular', vectorized: bool = True,
-                   convolution_method: str = 'scipy', n_patches: int = 1000, verbose: bool = False,
-                   return_in_patch_statistics : bool = False,
-                   random_state: None | int | np.random.RandomState | np.random.Generator = None
-                   ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+def patches_method(
+    values: np.ndarray | RasterType,
+    areas: list[float],
+    gsd: float = None,
+    stable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: np.ndarray | VectorType | gpd.GeoDataFrame = None,
+    statistics_in_patch: list[Callable[[np.ndarray], float]] = [np.nanmean],
+    statistic_between_patches: Callable[[np.ndarray], float] = nmad,
+    perc_min_valid: float = 80.0,
+    patch_shape: str = "circular",
+    vectorized: bool = True,
+    convolution_method: str = "scipy",
+    n_patches: int = 1000,
+    verbose: bool = False,
+    return_in_patch_statistics: bool = False,
+    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
 
     """
     Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
@@ -2452,8 +2698,9 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
     """
 
     # Get values with NaNs on unstable terrain, preserving the shape by default
-    values_arr, gsd = _preprocess_values_with_mask_to_array(values=values, include_mask=stable_mask,
-                                                            exclude_mask=unstable_mask, gsd=gsd)
+    values_arr, gsd = _preprocess_values_with_mask_to_array(
+        values=values, include_mask=stable_mask, exclude_mask=unstable_mask, gsd=gsd
+    )
 
     # Initialize list of dataframe for the statistic on all patches
     list_stats = []
@@ -2468,34 +2715,52 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
     for area in areas:
         # If vectorized, we run the convolution which only supports mean and count statistics
         if vectorized:
-            outputs = _patches_convolution(values=values_arr, gsd=gsd, area=area, perc_min_valid=perc_min_valid,
-                                           patch_shape=patch_shape, method=convolution_method,
-                                           statistic_between_patches=statistic_between_patches, verbose=verbose,
-                                           return_in_patch_statistics=return_in_patch_statistics)
+            outputs = _patches_convolution(
+                values=values_arr,
+                gsd=gsd,
+                area=area,
+                perc_min_valid=perc_min_valid,
+                patch_shape=patch_shape,
+                method=convolution_method,
+                statistic_between_patches=statistic_between_patches,
+                verbose=verbose,
+                return_in_patch_statistics=return_in_patch_statistics,
+            )
 
         # If not, we run the quadrant loop method that supports any statistic
         else:
-            outputs = _patches_loop_quadrants(values=values_arr, gsd=gsd, area=area, patch_shape=patch_shape,
-                                             n_patches=n_patches, perc_min_valid=perc_min_valid,
-                                             statistics_in_patch=statistics_in_patch,
-                                             statistic_between_patches=statistic_between_patches,
-                                             verbose=verbose, return_in_patch_statistics=return_in_patch_statistics,
-                                             random_state=random_state)
+            outputs = _patches_loop_quadrants(
+                values=values_arr,
+                gsd=gsd,
+                area=area,
+                patch_shape=patch_shape,
+                n_patches=n_patches,
+                perc_min_valid=perc_min_valid,
+                statistics_in_patch=statistics_in_patch,
+                statistic_between_patches=statistic_between_patches,
+                verbose=verbose,
+                return_in_patch_statistics=return_in_patch_statistics,
+                random_state=random_state,
+            )
 
         list_stats.append(outputs[0])
         list_nb_patches.append(outputs[1])
         list_exact_areas.append(outputs[2])
         if return_in_patch_statistics:
             df = outputs[3]
-            df['areas'] = area
-            df['exact_areas'] = outputs[2]
+            df["areas"] = area
+            df["exact_areas"] = outputs[2]
             list_df.append(df)
 
     # Produce final dataframe of statistic between patches per area
-    df_statistic = pd.DataFrame(data={statistic_between_patches.__name__ : list_stats,
-                                      'nb_indep_patches': list_nb_patches,
-                                      'exact_areas' : list_exact_areas,
-                                      'areas': areas})
+    df_statistic = pd.DataFrame(
+        data={
+            statistic_between_patches.__name__: list_stats,
+            "nb_indep_patches": list_nb_patches,
+            "exact_areas": list_exact_areas,
+            "areas": areas,
+        }
+    )
 
     if return_in_patch_statistics:
         # Concatenate the complete dataframe
@@ -2505,10 +2770,18 @@ def patches_method(values: np.ndarray | RasterType,  areas: list[float], gsd: fl
         return df_statistic
 
 
-def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], np.ndarray]] | None = None,
-                   list_fit_fun_label: list[str] | None = None, ax: matplotlib.axes.Axes | None = None,
-                   xscale='linear', xscale_range_split: list | None = None,
-                   xlabel = None, ylabel = None, xlim = None, ylim = None):
+def plot_variogram(
+    df: pd.DataFrame,
+    list_fit_fun: list[Callable[[np.ndarray], np.ndarray]] | None = None,
+    list_fit_fun_label: list[str] | None = None,
+    ax: matplotlib.axes.Axes | None = None,
+    xscale="linear",
+    xscale_range_split: list | None = None,
+    xlabel=None,
+    ylabel=None,
+    xlim=None,
+    ylim=None,
+):
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_empirical_variogram.
@@ -2538,7 +2811,7 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
         raise ValueError("ax must be a matplotlib.axes.Axes instance or None")
 
     # Check format of input dataframe
-    expected_values = ['exp', 'lags', 'count']
+    expected_values = ["exp", "lags", "count"]
     for val in expected_values:
         if val not in df.columns.values:
             raise ValueError(f'The expected variable "{val}" is not part of the provided dataframe column names.')
@@ -2547,17 +2820,17 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
     ax.axis("off")
 
     if ylabel is None:
-        ylabel = r'Variance [$\mu$ $\pm \sigma$]'
+        ylabel = r"Variance [$\mu$ $\pm \sigma$]"
     if xlabel is None:
-        xlabel = 'Spatial lag (m)'
+        xlabel = "Spatial lag (m)"
 
     init_gridsize = [10, 10]
     # Create parameters to split x axis into different linear scales
     # If there is no split, get parameters for a single subplot
     if xscale_range_split is None:
-        nb_subpanels=1
-        if xscale == 'log':
-            xmin = [np.min(df.lags)/2]
+        nb_subpanels = 1
+        if xscale == "log":
+            xmin = [np.min(df.lags) / 2]
         else:
             xmin = [0]
         xmax = [np.max(df.lags)]
@@ -2568,8 +2841,8 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
     else:
         # Add initial zero if not in input
         if xscale_range_split[0] != 0:
-            if xscale == 'log':
-                first_xmin = np.min(df.lags)/2
+            if xscale == "log":
+                first_xmin = np.min(df.lags) / 2
             else:
                 first_xmin = 0
             xscale_range_split = [first_xmin] + xscale_range_split
@@ -2578,16 +2851,16 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
             xscale_range_split.append(np.max(df.lags))
 
         # Scale grid size by the number of subpanels
-        nb_subpanels = len(xscale_range_split)-1
+        nb_subpanels = len(xscale_range_split) - 1
         gridsize = init_gridsize.copy()
         gridsize[0] *= nb_subpanels
         # Create list of parameters to pass to ax/grid objects of subpanels
         xmin, xmax, xgridmin, xgridmax = ([] for i in range(4))
         for i in range(nb_subpanels):
             xmin.append(xscale_range_split[i])
-            xmax.append(xscale_range_split[i+1])
-            xgridmin.append(init_gridsize[0]*i)
-            xgridmax.append(init_gridsize[0]*(i+1))
+            xmax.append(xscale_range_split[i + 1])
+            xgridmin.append(init_gridsize[0] * i)
+            xgridmax.append(init_gridsize[0] * (i + 1))
 
     # Need a grid plot to show the sample count and the statistic
     grid = plt.GridSpec(gridsize[1], gridsize[0], wspace=0.5, hspace=0.5)
@@ -2595,38 +2868,44 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
     # Loop over each subpanel
     for k in range(nb_subpanels):
         # First, an axis to plot the sample histogram
-        ax0 = ax.inset_axes(grid[:3, xgridmin[k]:xgridmax[k]].get_position(fig).bounds)
+        ax0 = ax.inset_axes(grid[:3, xgridmin[k] : xgridmax[k]].get_position(fig).bounds)
         ax0.set_xscale(xscale)
         ax0.set_xticks([])
 
         # Plot the histogram manually with fill_between
         interval_var = [0] + list(df.lags)
         for i in range(len(df)):
-            count = df['count'].values[i]
-            ax0.fill_between([interval_var[i], interval_var[i+1]], [0] * 2, [count] * 2,
-                             facecolor=plt.cm.Greys(0.75), alpha=1,
-                             edgecolor='white', linewidth=0.5)
+            count = df["count"].values[i]
+            ax0.fill_between(
+                [interval_var[i], interval_var[i + 1]],
+                [0] * 2,
+                [count] * 2,
+                facecolor=plt.cm.Greys(0.75),
+                alpha=1,
+                edgecolor="white",
+                linewidth=0.5,
+            )
         if k == 0:
-            ax0.set_ylabel('Sample count')
-        # Scientific format to avoid undesired additional space on the label side
-            ax0.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+            ax0.set_ylabel("Sample count")
+            # Scientific format to avoid undesired additional space on the label side
+            ax0.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
         else:
             ax0.set_yticks([])
         # Ignore warnings for log scales
         ax0.set_xlim((xmin[k], xmax[k]))
 
         # Now, plot the statistic of the data
-        ax1 = ax.inset_axes(grid[3:, xgridmin[k]:xgridmax[k]].get_position(fig).bounds)
+        ax1 = ax.inset_axes(grid[3:, xgridmin[k] : xgridmax[k]].get_position(fig).bounds)
 
         # Get the lags bin centers
         bins_center = np.subtract(df.lags, np.diff([0] + df.lags.tolist()) / 2)
 
         # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
         if np.all(np.isnan(df.err_exp)):
-            ax1.scatter(bins_center, df.exp, label='Empirical variogram', color='blue', marker='x')
+            ax1.scatter(bins_center, df.exp, label="Empirical variogram", color="blue", marker="x")
         # Otherwise, plot the error estimates through multiple runs
         else:
-            ax1.errorbar(bins_center, df.exp, yerr=df.err_exp, label='Empirical variogram (1-sigma std error)', fmt='x')
+            ax1.errorbar(bins_center, df.exp, yerr=df.err_exp, label="Empirical variogram (1-sigma std error)", fmt="x")
 
         # If a list of functions is passed, plot the modelled variograms
         if list_fit_fun is not None:
@@ -2635,18 +2914,18 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
                 y = fit_fun(x)
 
                 if list_fit_fun_label is not None:
-                    ax1.plot(x, y, linestyle='dashed', label=list_fit_fun_label[i], zorder=30)
+                    ax1.plot(x, y, linestyle="dashed", label=list_fit_fun_label[i], zorder=30)
                 else:
-                    ax1.plot(x, y, linestyle='dashed', color='black', zorder=30)
+                    ax1.plot(x, y, linestyle="dashed", color="black", zorder=30)
 
             if list_fit_fun_label is None:
-                ax1.plot([],[],linestyle='dashed',color='black',label='Model fit')
+                ax1.plot([], [], linestyle="dashed", color="black", label="Model fit")
 
         ax1.set_xscale(xscale)
-        if nb_subpanels>1 and k == (nb_subpanels-1):
+        if nb_subpanels > 1 and k == (nb_subpanels - 1):
             ax1.xaxis.set_ticks(np.linspace(xmin[k], xmax[k], 3))
-        elif nb_subpanels>1:
-            ax1.xaxis.set_ticks(np.linspace(xmin[k],xmax[k],3)[:-1])
+        elif nb_subpanels > 1:
+            ax1.xaxis.set_ticks(np.linspace(xmin[k], xmax[k], 3)[:-1])
 
         if xlim is None:
             ax1.set_xlim((xmin[k], xmax[k]))
@@ -2657,22 +2936,29 @@ def plot_variogram(df: pd.DataFrame, list_fit_fun: list[Callable[[np.ndarray], n
             ax1.set_ylim(ylim)
         else:
             if np.all(np.isnan(df.err_exp)):
-                ax1.set_ylim((0, 1.05*np.nanmax(df.exp)))
+                ax1.set_ylim((0, 1.05 * np.nanmax(df.exp)))
             else:
-                ax1.set_ylim((0, np.nanmax(df.exp)+np.nanmean(df.err_exp)))
+                ax1.set_ylim((0, np.nanmax(df.exp) + np.nanmean(df.err_exp)))
 
-        if k == int(nb_subpanels/2):
+        if k == int(nb_subpanels / 2):
             ax1.set_xlabel(xlabel)
         if k == nb_subpanels - 1:
-            ax1.legend(loc='lower right')
+            ax1.legend(loc="lower right")
         if k == 0:
             ax1.set_ylabel(ylabel)
         else:
             ax1.set_yticks([])
 
 
-def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_var: str | None = None,
-                    label_statistic: str | None = None, min_count: int = 30, ax: matplotlib.axes.Axes | None = None):
+def plot_1d_binning(
+    df: pd.DataFrame,
+    var_name: str,
+    statistic_name: str,
+    label_var: str | None = None,
+    label_statistic: str | None = None,
+    min_count: int = 30,
+    ax: matplotlib.axes.Axes | None = None,
+):
     """
     Plot a statistic and its count along a single binning variable.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
@@ -2712,7 +2998,7 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
     # Subsample to 1D and for the variable of interest
     df_sub = df[np.logical_and(df.nd == 1, np.isfinite(pd.IntervalIndex(df[var_name]).mid))].copy()
     # Remove statistic calculated in bins with too low count
-    df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
+    df_sub.loc[df_sub["count"] < min_count, statistic_name] = np.nan
 
     # Need a grid plot to show the sample count and the statistic
     grid = plt.GridSpec(10, 10, wspace=0.5, hspace=0.5)
@@ -2723,36 +3009,63 @@ def plot_1d_binning(df: pd.DataFrame, var_name: str, statistic_name: str, label_
 
     # Plot the histogram manually with fill_between
     interval_var = pd.IntervalIndex(df_sub[var_name])
-    for i in range(len(df_sub) ):
-        count = df_sub['count'].values[i]
-        ax0.fill_between([interval_var[i].left, interval_var[i].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
-                         edgecolor='white',linewidth=0.5)
-    ax0.set_ylabel('Sample count')
+    for i in range(len(df_sub)):
+        count = df_sub["count"].values[i]
+        ax0.fill_between(
+            [interval_var[i].left, interval_var[i].right],
+            [0] * 2,
+            [count] * 2,
+            facecolor=plt.cm.Greys(0.75),
+            alpha=1,
+            edgecolor="white",
+            linewidth=0.5,
+        )
+    ax0.set_ylabel("Sample count")
     # Scientific format to avoid undesired additional space on the label side
-    ax0.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
+    ax0.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
 
     # Try to identify if the count is always the same
     # (np.quantile can have a couple undesired effet, so leave an error margin of 2 wrong bins and 5 count difference)
-    if np.sum(~(np.abs(df_sub['count'].values[0] - df_sub['count'].values) < 5)) <= 2:
-        ax0.text(0.5, 0.5, "Fixed number of\n samples: "+'{:,}'.format(int(df_sub['count'].values[0])), ha='center', va='center',
-                 fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
+    if np.sum(~(np.abs(df_sub["count"].values[0] - df_sub["count"].values) < 5)) <= 2:
+        ax0.text(
+            0.5,
+            0.5,
+            "Fixed number of\n samples: " + "{:,}".format(int(df_sub["count"].values[0])),
+            ha="center",
+            va="center",
+            fontweight="bold",
+            transform=ax0.transAxes,
+            bbox=dict(facecolor="white", alpha=0.8),
+        )
 
-    ax0.set_ylim((0,1.1*np.max(df_sub['count'].values)))
-    ax0.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
+    ax0.set_ylim((0, 1.1 * np.max(df_sub["count"].values)))
+    ax0.set_xlim((np.min(interval_var.left), np.max(interval_var.right)))
 
     # Now, plot the statistic of the data
     ax1 = ax.inset_axes(grid[3:, :].get_position(fig).bounds)
-    ax1.scatter(interval_var.mid, df_sub[statistic_name],marker='x')
+    ax1.scatter(interval_var.mid, df_sub[statistic_name], marker="x")
     ax1.set_xlabel(label_var)
     ax1.set_ylabel(label_statistic)
-    ax1.set_xlim((np.min(interval_var.left),np.max(interval_var.right)))
+    ax1.set_xlim((np.min(interval_var.left), np.max(interval_var.right)))
 
 
-def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statistic_name: str,
-                    label_var_name_1: str | None = None, label_var_name_2: str | None = None,
-                    label_statistic: str | None = None, cmap: matplotlib.colors.Colormap = plt.cm.Reds, min_count: int = 30,
-                    scale_var_1: str = 'linear', scale_var_2: str = 'linear', vmin: float = None, vmax: float = None,
-                    nodata_color: str |tuple[float,float,float,float] = 'yellow', ax: matplotlib.axes.Axes | None = None):
+def plot_2d_binning(
+    df: pd.DataFrame,
+    var_name_1: str,
+    var_name_2: str,
+    statistic_name: str,
+    label_var_name_1: str | None = None,
+    label_var_name_2: str | None = None,
+    label_statistic: str | None = None,
+    cmap: matplotlib.colors.Colormap = plt.cm.Reds,
+    min_count: int = 30,
+    scale_var_1: str = "linear",
+    scale_var_2: str = "linear",
+    vmin: float = None,
+    vmax: float = None,
+    nodata_color: str | tuple[float, float, float, float] = "yellow",
+    ax: matplotlib.axes.Axes | None = None,
+):
     """
     Plot one statistic and its count along two binning variables.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
@@ -2776,7 +3089,7 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
 
     # Create axes
     if ax is None:
-        fig = plt.figure(figsize=(8,6))
+        fig = plt.figure(figsize=(8, 6))
         ax = plt.subplot(111)
     elif isinstance(ax, matplotlib.axes.Axes):
         fig = ax.figure
@@ -2795,10 +3108,17 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     ax.axis("off")
 
     # Subsample to 2D and for the variables of interest
-    df_sub = df[np.logical_and.reduce((df.nd == 2, np.isfinite(pd.IntervalIndex(df[var_name_1]).mid),
-                                       np.isfinite(pd.IntervalIndex(df[var_name_2]).mid)))].copy()
+    df_sub = df[
+        np.logical_and.reduce(
+            (
+                df.nd == 2,
+                np.isfinite(pd.IntervalIndex(df[var_name_1]).mid),
+                np.isfinite(pd.IntervalIndex(df[var_name_2]).mid),
+            )
+        )
+    ].copy()
     # Remove statistic calculated in bins with too low count
-    df_sub.loc[df_sub['count']<min_count, statistic_name] = np.nan
+    df_sub.loc[df_sub["count"] < min_count, statistic_name] = np.nan
 
     # Let's do a 4 panel figure:
     # two histograms for the binning variables
@@ -2815,28 +3135,43 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
 
     # Plot the histogram manually with fill_between
     interval_var_1 = pd.IntervalIndex(df_sub[var_name_1])
-    df_sub['var1_mid'] = interval_var_1.mid.values
+    df_sub["var1_mid"] = interval_var_1.mid.values
     unique_var_1 = np.unique(df_sub.var1_mid)
     list_counts = []
     for i in range(len(unique_var_1)):
         df_var1 = df_sub[df_sub.var1_mid == unique_var_1[i]]
-        count = np.nansum(df_var1['count'].values)
+        count = np.nansum(df_var1["count"].values)
         list_counts.append(count)
-        ax0.fill_between([df_var1[var_name_1].values[0].left, df_var1[var_name_1].values[0].right], [0] * 2, [count] * 2, facecolor=plt.cm.Greys(0.75), alpha=1,
-                         edgecolor='white', linewidth=0.5)
-    ax0.set_ylabel('Sample count')
+        ax0.fill_between(
+            [df_var1[var_name_1].values[0].left, df_var1[var_name_1].values[0].right],
+            [0] * 2,
+            [count] * 2,
+            facecolor=plt.cm.Greys(0.75),
+            alpha=1,
+            edgecolor="white",
+            linewidth=0.5,
+        )
+    ax0.set_ylabel("Sample count")
     # In case the axis value does not agree with the scale (e.g., 0 for log scale)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        ax0.set_ylim((0,1.1*np.max(list_counts)))
-        ax0.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
-    ax0.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
-    ax0.spines['top'].set_visible(False)
-    ax0.spines['right'].set_visible(False)
+        ax0.set_ylim((0, 1.1 * np.max(list_counts)))
+        ax0.set_xlim((np.min(interval_var_1.left), np.max(interval_var_1.right)))
+    ax0.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    ax0.spines["top"].set_visible(False)
+    ax0.spines["right"].set_visible(False)
     # Try to identify if the count is always the same
     if np.sum(~(np.abs(list_counts[0] - np.array(list_counts)) < 5)) <= 2:
-        ax0.text(0.5, 0.5, "Fixed number of\nsamples: " + f'{int(list_counts[0]):,}', ha='center', va='center',
-                 fontweight='bold', transform=ax0.transAxes, bbox=dict(facecolor='white', alpha=0.8))
+        ax0.text(
+            0.5,
+            0.5,
+            "Fixed number of\nsamples: " + f"{int(list_counts[0]):,}",
+            ha="center",
+            va="center",
+            fontweight="bold",
+            transform=ax0.transAxes,
+            bbox=dict(facecolor="white", alpha=0.8),
+        )
 
     # Second, a vertical axis on the right to plot the sample histogram of the second variable
     ax1 = ax.inset_axes(grid[3:, -3:].get_position(fig).bounds)
@@ -2845,28 +3180,44 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
 
     # Plot the histogram manually with fill_between
     interval_var_2 = pd.IntervalIndex(df_sub[var_name_2])
-    df_sub['var2_mid'] = interval_var_2.mid.values
+    df_sub["var2_mid"] = interval_var_2.mid.values
     unique_var_2 = np.unique(df_sub.var2_mid)
     list_counts = []
     for i in range(len(unique_var_2)):
         df_var2 = df_sub[df_sub.var2_mid == unique_var_2[i]]
-        count = np.nansum(df_var2['count'].values)
+        count = np.nansum(df_var2["count"].values)
         list_counts.append(count)
-        ax1.fill_between([0, count], [df_var2[var_name_2].values[0].left] * 2, [df_var2[var_name_2].values[0].right] * 2, facecolor=plt.cm.Greys(0.75),
-                         alpha=1, edgecolor='white', linewidth=0.5)
-    ax1.set_xlabel('Sample count')
+        ax1.fill_between(
+            [0, count],
+            [df_var2[var_name_2].values[0].left] * 2,
+            [df_var2[var_name_2].values[0].right] * 2,
+            facecolor=plt.cm.Greys(0.75),
+            alpha=1,
+            edgecolor="white",
+            linewidth=0.5,
+        )
+    ax1.set_xlabel("Sample count")
     # In case the axis value does not agree with the scale (e.g., 0 for log scale)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        ax1.set_xlim((0,1.1*np.max(list_counts)))
-        ax1.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
-    ax1.ticklabel_format(axis='x',style='sci',scilimits=(0,0))
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
+        ax1.set_xlim((0, 1.1 * np.max(list_counts)))
+        ax1.set_ylim((np.min(interval_var_2.left), np.max(interval_var_2.right)))
+    ax1.ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
     # Try to identify if the count is always the same
     if np.sum(~(np.abs(list_counts[0] - np.array(list_counts)) < 5)) <= 2:
-        ax1.text(0.5, 0.5, "Fixed number of\nsamples: " + f'{int(list_counts[0]):,}', ha='center', va='center',
-                 fontweight='bold', transform=ax1.transAxes, rotation=90, bbox=dict(facecolor='white', alpha=0.8))
+        ax1.text(
+            0.5,
+            0.5,
+            "Fixed number of\nsamples: " + f"{int(list_counts[0]):,}",
+            ha="center",
+            va="center",
+            fontweight="bold",
+            transform=ax1.transAxes,
+            rotation=90,
+            bbox=dict(facecolor="white", alpha=0.8),
+        )
 
     # Third, an axis to plot the data as a colored grid
     ax2 = ax.inset_axes(grid[3:, :-3].get_position(fig).bounds)
@@ -2877,13 +3228,14 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
         vmin = np.nanpercentile(df_sub[statistic_name].values, 1)
 
     # Create custom colormap
-    col_bounds = np.array([vmin, np.mean([vmin,vmax]), vmax])
+    col_bounds = np.array([vmin, np.mean([vmin, vmax]), vmax])
     cb = []
     cb_val = np.linspace(0, 1, len(col_bounds))
     for j in range(len(cb_val)):
         cb.append(cmap(cb_val[j]))
-    cmap_cus = colors.LinearSegmentedColormap.from_list('my_cb', list(
-        zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000)
+    cmap_cus = colors.LinearSegmentedColormap.from_list(
+        "my_cb", list(zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000
+    )
 
     # Plot a 2D colored grid using fill_between
     for i in range(len(unique_var_1)):
@@ -2892,13 +3244,19 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
 
             stat = df_both[statistic_name].values[0]
             if np.isfinite(stat):
-                stat_col = max(0.0001,min(0.9999,(stat - min(col_bounds))/(max(col_bounds)-min(col_bounds))))
+                stat_col = max(0.0001, min(0.9999, (stat - min(col_bounds)) / (max(col_bounds) - min(col_bounds))))
                 col = cmap_cus(stat_col)
             else:
                 col = nodata_color
 
-            ax2.fill_between([df_both[var_name_1].values[0].left, df_both[var_name_1].values[0].right], [df_both[var_name_2].values[0].left] * 2,
-                            [df_both[var_name_2].values[0].right] * 2, facecolor=col, alpha=1, edgecolor='white')
+            ax2.fill_between(
+                [df_both[var_name_1].values[0].left, df_both[var_name_1].values[0].right],
+                [df_both[var_name_2].values[0].left] * 2,
+                [df_both[var_name_2].values[0].right] * 2,
+                facecolor=col,
+                alpha=1,
+                edgecolor="white",
+            )
 
     ax2.set_xlabel(label_var_name_1)
     ax2.set_ylabel(label_var_name_2)
@@ -2907,8 +3265,8 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     # In case the axis value does not agree with the scale (e.g., 0 for log scale)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        ax2.set_xlim((np.min(interval_var_1.left),np.max(interval_var_1.right)))
-        ax2.set_ylim((np.min(interval_var_2.left),np.max(interval_var_2.right)))
+        ax2.set_xlim((np.min(interval_var_1.left), np.max(interval_var_1.right)))
+        ax2.set_ylim((np.min(interval_var_2.left), np.max(interval_var_2.right)))
 
     # Fourth and finally, add a colormap and nodata color to the legend
     axcmap = ax.inset_axes(grid[:3, -3:].get_position(fig).bounds)
@@ -2916,24 +3274,24 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     # Remove ticks, labels, frame
     axcmap.set_xticks([])
     axcmap.set_yticks([])
-    axcmap.spines['top'].set_visible(False)
-    axcmap.spines['left'].set_visible(False)
-    axcmap.spines['right'].set_visible(False)
-    axcmap.spines['bottom'].set_visible(False)
+    axcmap.spines["top"].set_visible(False)
+    axcmap.spines["left"].set_visible(False)
+    axcmap.spines["right"].set_visible(False)
+    axcmap.spines["bottom"].set_visible(False)
 
     # Create an inset axis to manage the scale of the colormap
-    cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label='cmap')
+    cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label="cmap")
 
     # Create colormap object and plot
     norm = colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
     sm = plt.cm.ScalarMappable(cmap=cmap_cus, norm=norm)
     sm.set_array([])
-    cb = plt.colorbar(sm, cax=cbaxes, orientation='horizontal', extend='both', shrink=0.8)
+    cb = plt.colorbar(sm, cax=cbaxes, orientation="horizontal", extend="both", shrink=0.8)
     cb.ax.tick_params(width=0.5, length=2)
     cb.set_label(label_statistic)
 
     # Create an inset axis to manage the scale of the nodata legend
-    nodata = axcmap.inset_axes([0.4, 0.1, 0.2, 0.2], label='nodata')
+    nodata = axcmap.inset_axes([0.4, 0.1, 0.2, 0.2], label="nodata")
 
     # Plot a nodata legend
     nodata.fill_between([0, 1], [0, 0], [1, 1], facecolor=nodata_color)
@@ -2941,4 +3299,4 @@ def plot_2d_binning(df: pd.DataFrame, var_name_1: str, var_name_2: str, statisti
     nodata.set_ylim((0, 1))
     nodata.set_xticks([])
     nodata.set_yticks([])
-    nodata.text(0.5, -0.25, 'No data', ha='center',va='top')
+    nodata.text(0.5, -0.25, "No data", ha="center", va="top")

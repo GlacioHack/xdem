@@ -16,8 +16,13 @@ from tqdm import tqdm
 import xdem
 
 
-def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: float | np.ndarray = 50.0,
-                        kind: str = "fixed", aggregation_function: Callable = np.median) -> pd.DataFrame:
+def hypsometric_binning(
+    ddem: np.ndarray,
+    ref_dem: np.ndarray,
+    bins: float | np.ndarray = 50.0,
+    kind: str = "fixed",
+    aggregation_function: Callable = np.median,
+) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
     The elevation bins will be calculated based on all ref_dem valid pixels.
@@ -54,10 +59,7 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: float | np.
     elif kind == "quantile":
         # Make the percentile steps. The bins + 1 is explained above.
         steps = np.linspace(0, 100, num=int(bins) + 1)
-        zbins = np.fromiter(
-            (np.percentile(ref_dem, step) for step in steps),
-            dtype=float
-        )
+        zbins = np.fromiter((np.percentile(ref_dem, step) for step in steps), dtype=float)
         # The uppermost bin needs to be a tiny amount larger than the highest value to include it.
         zbins[-1] += 1e-6
     elif kind == "custom":
@@ -94,18 +96,19 @@ def hypsometric_binning(ddem: np.ndarray, ref_dem: np.ndarray, bins: float | np.
 
     # Collect the results in a dataframe
     output = pd.DataFrame(
-        index=pd.IntervalIndex.from_breaks(zbins),
-        data=np.vstack([
-            values, counts
-        ]).T,
-        columns=["value", "count"]
+        index=pd.IntervalIndex.from_breaks(zbins), data=np.vstack([values, counts]).T, columns=["value", "count"]
     )
 
     return output
 
 
-def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="value", method="polynomial", order=3,
-                                 count_threshold: int | None = None) -> pd.DataFrame:
+def interpolate_hypsometric_bins(
+    hypsometric_bins: pd.DataFrame,
+    value_column="value",
+    method="polynomial",
+    order=3,
+    count_threshold: int | None = None,
+) -> pd.DataFrame:
     """
     Interpolate hypsometric bins using any valid Pandas interpolation technique.
 
@@ -150,8 +153,13 @@ def interpolate_hypsometric_bins(hypsometric_bins: pd.DataFrame, value_column="v
     return bins
 
 
-def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str = "value", degree: int = 3,
-                              iterations: int = 1, count_threshold: int | None = None) -> pd.Series:
+def fit_hypsometric_bins_poly(
+    hypsometric_bins: pd.DataFrame,
+    value_column: str = "value",
+    degree: int = 3,
+    iterations: int = 1,
+    count_threshold: int | None = None,
+) -> pd.Series:
     """
     Fit a polynomial to the hypsometric bins.
 
@@ -188,25 +196,24 @@ def fit_hypsometric_bins_poly(hypsometric_bins: pd.DataFrame, value_column: str 
 
         # Filter outliers further than 3 std
         valids_old = np.copy(valids)
-        valids[np.abs(residuals.values) > 3*residuals_std] = False
+        valids[np.abs(residuals.values) > 3 * residuals_std] = False
         if np.array_equal(valids, valids_old):
             break
 
     # Save as pandas' DataFrame
     output = pd.DataFrame(
-        index=hypsometric_bins.index,
-        data=np.vstack([
-            interpolated_values, bins["count"]
-        ]).T,
-        columns=["value", "count"]
+        index=hypsometric_bins.index, data=np.vstack([interpolated_values, bins["count"]]).T, columns=["value", "count"]
     )
 
     return output
 
 
-def calculate_hypsometry_area(ddem_bins: pd.Series | pd.DataFrame, ref_dem: np.ndarray,
-                              pixel_size: float | tuple[float, float],
-                              timeframe: str = "reference") -> pd.Series:
+def calculate_hypsometry_area(
+    ddem_bins: pd.Series | pd.DataFrame,
+    ref_dem: np.ndarray,
+    pixel_size: float | tuple[float, float],
+    timeframe: str = "reference",
+) -> pd.Series:
     """
     Calculate the associated representative area of the given dDEM bins.
 
@@ -237,8 +244,9 @@ def calculate_hypsometry_area(ddem_bins: pd.Series | pd.DataFrame, ref_dem: np.n
         assert not np.any(np.isnan(ddem_bins.values)), "The dDEM bins cannot contain NaNs. Remove or fill them first."
 
         # Generate a continuous elevation vs. dDEM function
-        ddem_func = scipy.interpolate.interp1d(ddem_bins.index.mid, ddem_bins.values,
-                                               kind="linear", fill_value="extrapolate")
+        ddem_func = scipy.interpolate.interp1d(
+            ddem_bins.index.mid, ddem_bins.values, kind="linear", fill_value="extrapolate"
+        )
 
     # Generate average elevations by subtracting half of the dDEM's values to the reference DEM
     if timeframe == "mean":
@@ -253,7 +261,7 @@ def calculate_hypsometry_area(ddem_bins: pd.Series | pd.DataFrame, ref_dem: np.n
     bin_counts = np.histogram(elevations, bins=bins)[0]
 
     # Multiply the bin counts with the pixel area to get the full area.
-    bin_area = bin_counts * (pixel_size ** 2 if not isinstance(pixel_size, tuple) else pixel_size[0] * pixel_size[1])
+    bin_area = bin_counts * (pixel_size**2 if not isinstance(pixel_size, tuple) else pixel_size[0] * pixel_size[1])
 
     # Put this in a series which will be returned.
     output = pd.Series(index=ddem_bins.index, data=bin_area)
@@ -261,8 +269,12 @@ def calculate_hypsometry_area(ddem_bins: pd.Series | pd.DataFrame, ref_dem: np.n
     return output
 
 
-def linear_interpolation(array: np.ndarray | np.ma.masked_array, max_search_distance: int = 10,
-                         extrapolate: bool = False, force_fill: bool = False) -> np.ndarray:
+def linear_interpolation(
+    array: np.ndarray | np.ma.masked_array,
+    max_search_distance: int = 10,
+    extrapolate: bool = False,
+    force_fill: bool = False,
+) -> np.ndarray:
     """
     Interpolate a 2D array using rasterio's fillnodata.
 
@@ -277,14 +289,16 @@ to interpolate from. The default is 10.
     # Create a mask for where nans exist
     nan_mask = spatial_tools.get_mask(array)
 
-    interpolated_array = rasterio.fill.fillnodata(array.copy(), mask=(~nan_mask).astype("uint8"),
-                                                  max_search_distance=max_search_distance)
+    interpolated_array = rasterio.fill.fillnodata(
+        array.copy(), mask=(~nan_mask).astype("uint8"), max_search_distance=max_search_distance
+    )
 
     # Remove extrapolated values: gaps up to the size of max_search_distance are kept,
     # but surfaces that artificially grow on the edges are removed
     if not extrapolate:
-        interp_mask = cv2.morphologyEx((~nan_mask).squeeze().astype('uint8'), cv2.MORPH_CLOSE,
-                                       kernel=np.ones((max_search_distance - 1, )*2)).astype('bool')
+        interp_mask = cv2.morphologyEx(
+            (~nan_mask).squeeze().astype("uint8"), cv2.MORPH_CLOSE, kernel=np.ones((max_search_distance - 1,) * 2)
+        ).astype("bool")
         if np.ndim(array) == 3:
             interpolated_array[:, ~interp_mask] = np.nan
         else:
@@ -298,16 +312,16 @@ to interpolate from. The default is 10.
             interpolated_array[np.isnan(interpolated_array)] = np.nanmedian(array)
     else:
         # If input is masked array, return a masked array
-        extrap_mask = (interpolated_array != array.data)
+        extrap_mask = interpolated_array != array.data
         if isinstance(array, np.ma.masked_array):
             interpolated_array = np.ma.masked_array(interpolated_array, mask=(nan_mask & ~extrap_mask))
 
     return interpolated_array.reshape(array.shape)
 
 
-def hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
-                              ref_dem: np.ndarray | np.ma.masked_array,
-                              mask: np.ndarray) -> np.ma.masked_array:
+def hypsometric_interpolation(
+    voided_ddem: np.ndarray | np.ma.masked_array, ref_dem: np.ndarray | np.ma.masked_array, mask: np.ndarray
+) -> np.ma.masked_array:
     """
     Interpolate a dDEM using hypsometric interpolation within the given mask.
 
@@ -334,18 +348,13 @@ def hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
         return np.copy(ddem)
 
     # Estimate the elevation dependent gradient.
-    gradient = xdem.volume.hypsometric_binning(
-        ddem[inlier_mask],
-        dem[inlier_mask]
-    )
+    gradient = xdem.volume.hypsometric_binning(ddem[inlier_mask], dem[inlier_mask])
 
     # Interpolate possible missing elevation bins in 1D - no extrapolation done here
     interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(gradient)
 
     gradient_model = scipy.interpolate.interp1d(
-        interpolated_gradient.index.mid,
-        interpolated_gradient["value"].values,
-        fill_value="extrapolate"
+        interpolated_gradient.index.mid, interpolated_gradient["value"].values, fill_value="extrapolate"
     )
 
     # Create an idealized dDEM using the relationship between elevation and dDEM
@@ -355,21 +364,22 @@ def hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
     # Replace ddem gaps with idealized hypsometric ddem, but only within mask
     corrected_ddem = np.where(ddem_mask & mask, idealized_ddem, ddem)
 
-    output = np.ma.masked_array(
-        corrected_ddem,
-        mask=~np.isfinite(corrected_ddem)
-    )
+    output = np.ma.masked_array(corrected_ddem, mask=~np.isfinite(corrected_ddem))
 
     assert output is not None
 
     return output
 
 
-def local_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
-                                    ref_dem: np.ndarray | np.ma.masked_array,
-                                    mask: np.ndarray, min_coverage: float = 0.2,
-                                    count_threshold: int | None = 1, nodata: float | int = -9999,
-                                    plot: bool = False) -> np.ma.masked_array:
+def local_hypsometric_interpolation(
+    voided_ddem: np.ndarray | np.ma.masked_array,
+    ref_dem: np.ndarray | np.ma.masked_array,
+    mask: np.ndarray,
+    min_coverage: float = 0.2,
+    count_threshold: int | None = 1,
+    nodata: float | int = -9999,
+    plot: bool = False,
+) -> np.ma.masked_array:
     """
     Interpolate a dDEM using local hypsometric interpolation.
     The algorithm loops through each features in the vector file.
@@ -424,7 +434,7 @@ for areas filling the min_coverage criterion.
         local_inlier_mask = inlier_mask & (mask == index)
         total_pixels = np.count_nonzero(mask == index)
         valid_pixels = np.count_nonzero(local_inlier_mask)
-        coverage[k] = valid_pixels/float(total_pixels)
+        coverage[k] = valid_pixels / float(total_pixels)
 
     # Filter geometries with too little coverage
     valid_geometry_index = geometry_index[coverage >= min_coverage]
@@ -435,14 +445,11 @@ for areas filling the min_coverage criterion.
     for k, index in enumerate(valid_geometry_index):
 
         # Mask of valid pixel within geometry
-        local_mask = (mask == index)
+        local_mask = mask == index
         local_inlier_mask = inlier_mask & (local_mask)
 
         # Estimate the elevation dependent gradient
-        gradient = xdem.volume.hypsometric_binning(
-            ddem[local_mask],
-            dem[local_mask]
-        )
+        gradient = xdem.volume.hypsometric_binning(ddem[local_mask], dem[local_mask])
 
         # Remove bins with loo low count
         filt_gradient = gradient.copy()
@@ -454,19 +461,16 @@ for areas filling the min_coverage criterion.
         interpolated_gradient = xdem.volume.interpolate_hypsometric_bins(filt_gradient)
 
         # At least 2 points needed for interp1d, if not skip feature
-        nvalues = len(interpolated_gradient['value'].values)
+        nvalues = len(interpolated_gradient["value"].values)
         if nvalues < 2:
             warnings.warn(
-                f"Not enough valid bins for feature with index {index:d} -> skipping interpolation",
-                UserWarning
+                f"Not enough valid bins for feature with index {index:d} -> skipping interpolation", UserWarning
             )
             continue
 
         # Create a model for 2D interpolation
         gradient_model = scipy.interpolate.interp1d(
-            interpolated_gradient.index.mid,
-            interpolated_gradient['value'].values,
-            fill_value="extrapolate"
+            interpolated_gradient.index.mid, interpolated_gradient["value"].values, fill_value="extrapolate"
         )
 
         if plot:
@@ -476,19 +480,21 @@ for areas filling the min_coverage criterion.
 
             fig = plt.figure(figsize=(12, 8))
             plt.subplot(121)
-            plt.imshow((mask == index)[rowmin:rowmax, colmin:colmax], cmap='Greys',
-                       vmin=0, vmax=2, interpolation='none')
+            plt.imshow(
+                (mask == index)[rowmin:rowmax, colmin:colmax], cmap="Greys", vmin=0, vmax=2, interpolation="none"
+            )
 
-            plt.imshow(local_ddem[rowmin:rowmax, colmin:colmax], cmap='RdYlBu',
-                       vmin=-vmax, vmax=vmax, interpolation='none')
+            plt.imshow(
+                local_ddem[rowmin:rowmax, colmin:colmax], cmap="RdYlBu", vmin=-vmax, vmax=vmax, interpolation="none"
+            )
             plt.colorbar()
             plt.title(f"ddem for geometry # {index:d}")
 
             plt.subplot(122)
-            plt.plot(gradient["value"], gradient.index.mid, label='raw')
-            plt.plot(interpolated_gradient, gradient.index.mid, label='interpolated', ls='--')
-            plt.xlabel('ddem')
-            plt.ylabel('Elevation')
+            plt.plot(gradient["value"], gradient.index.mid, label="raw")
+            plt.plot(interpolated_gradient, gradient.index.mid, label="interpolated", ls="--")
+            plt.xlabel("ddem")
+            plt.ylabel("Elevation")
             plt.legend()
             plt.title("Average ddem per elevation bin")
             plt.tight_layout()
@@ -513,8 +519,7 @@ for areas filling the min_coverage criterion.
     corrected_ddem[~np.isfinite(corrected_ddem)] = nodata
 
     output = np.ma.masked_array(
-        corrected_ddem,
-        mask=(corrected_ddem == nodata)  # mask=((mask != 0) & (ddem_mask | dem_mask))
+        corrected_ddem, mask=(corrected_ddem == nodata)  # mask=((mask != 0) & (ddem_mask | dem_mask))
     ).reshape(orig_shape)
 
     assert output is not None
@@ -522,10 +527,14 @@ for areas filling the min_coverage criterion.
     return output
 
 
-def get_regional_hypsometric_signal(ddem: np.ndarray | np.ma.masked_array,
-                                    ref_dem: np.ndarray | np.ma.masked_array,
-                                    glacier_index_map: np.ndarray, n_bins: int = 20,
-                                    verbose: bool = False, min_coverage: float = 0.05) -> pd.DataFrame:
+def get_regional_hypsometric_signal(
+    ddem: np.ndarray | np.ma.masked_array,
+    ref_dem: np.ndarray | np.ma.masked_array,
+    glacier_index_map: np.ndarray,
+    n_bins: int = 20,
+    verbose: bool = False,
+    min_coverage: float = 0.05,
+) -> pd.DataFrame:
     """
     Get the normalized regional hypsometric elevation change signal, read "the general shape of it".
 
@@ -560,7 +569,7 @@ def get_regional_hypsometric_signal(ddem: np.ndarray | np.ma.masked_array,
         if i == 0:
             continue
         # Create a mask representing a particular glacier.
-        glacier_values = (glacier_index_map == i)
+        glacier_values = glacier_index_map == i
 
         # Stop if the "glacier" is tiny. It might be a cropped glacier outline for example.
         if np.count_nonzero(glacier_values) < 10:
@@ -587,8 +596,9 @@ def get_regional_hypsometric_signal(ddem: np.ndarray | np.ma.masked_array,
         bins.index = (bins.index.mid - bins.index.left.min()) / (bins.index.right.max() - bins.index.left.min())
 
         # Scale by difference.
-        bins["value"] = (bins["value"] - np.nanmin(bins["value"])) / \
-            (np.nanmax(bins["value"]) - np.nanmin(bins["value"]))
+        bins["value"] = (bins["value"] - np.nanmin(bins["value"])) / (
+            np.nanmax(bins["value"]) - np.nanmin(bins["value"])
+        )
 
         # Assign the values and counts to the output array.
         values[:, count] = bins["value"]
@@ -613,14 +623,16 @@ def get_regional_hypsometric_signal(ddem: np.ndarray | np.ma.masked_array,
     return output
 
 
-def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.masked_array,
-                                            ref_dem: np.ndarray | np.ma.masked_array,
-                                            glacier_index_map: np.ndarray,
-                                            min_coverage: float = 0.1,
-                                            regional_signal: pd.DataFrame | None = None,
-                                            verbose: bool = False,
-                                            min_elevation_range: float = 0.33,
-                                            idealized_ddem: bool = False) -> np.ndarray:
+def norm_regional_hypsometric_interpolation(
+    voided_ddem: np.ndarray | np.ma.masked_array,
+    ref_dem: np.ndarray | np.ma.masked_array,
+    glacier_index_map: np.ndarray,
+    min_coverage: float = 0.1,
+    regional_signal: pd.DataFrame | None = None,
+    verbose: bool = False,
+    min_elevation_range: float = 0.33,
+    idealized_ddem: bool = False,
+) -> np.ndarray:
     """
     Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
 
@@ -650,10 +662,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.mask
     # If the regional signal was not given as an argument, find it from the dDEM.
     if regional_signal is None:
         regional_signal = get_regional_hypsometric_signal(
-            ddem=ddem_arr,
-            ref_dem=ref_arr,
-            glacier_index_map=glacier_index_map,
-            verbose=verbose
+            ddem=ddem_arr, ref_dem=ref_arr, glacier_index_map=glacier_index_map, verbose=verbose
         )
 
     # The unique indices are the unique glaciers.
@@ -666,7 +675,7 @@ def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.mask
         if i == 0:  # i==0 is assumed to mean stable ground.
             continue
         # Create a mask representing a particular glacier.
-        glacier_values = (glacier_index_map == i)
+        glacier_values = glacier_index_map == i
 
         # The inlier mask is where that particular glacier is and where nans don't exist.
         inlier_mask = glacier_values & ~ddem_nans
@@ -698,14 +707,14 @@ def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.mask
             ddem=differences,
             ref_dem=elevations,
             bins=np.r_[[signal.index.left[0]], signal.index.right],  # This will generate the same steps as the signal.
-            kind="custom"
+            kind="custom",
         )
         bin_stds = hypsometric_binning(
             ddem=differences,
             ref_dem=elevations,
             bins=np.r_[[signal.index.left[0]], signal.index.right],
             kind="custom",
-            aggregation_function=np.nanstd
+            aggregation_function=np.nanstd,
         )
         # Check which of the bins were non-empty.
         non_empty_bins = np.isfinite(hypsometric_bins["value"])
@@ -721,8 +730,9 @@ def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.mask
             continue
 
         # The weights are the squared inverse of the standard deviation of each bin.
-        bin_weights = bin_stds["value"].values[non_empty_bins] / \
-            np.sqrt(hypsometric_bins["count"].values[non_empty_bins])
+        bin_weights = bin_stds["value"].values[non_empty_bins] / np.sqrt(
+            hypsometric_bins["count"].values[non_empty_bins]
+        )
         bin_weights[bin_weights == 0.0] = 1e-8  # Avoid divide by zero problems.
 
         # Fit linear coefficients to scale the regional signal to the hypsometric bins properly.
@@ -739,7 +749,9 @@ def norm_regional_hypsometric_interpolation(voided_ddem: np.ndarray | np.ma.mask
             )[0]
 
         # Create a linear model from the elevations and the scaled regional signal.
-        model = scipy.interpolate.interp1d(signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False, fill_value="extrapolate")
+        model = scipy.interpolate.interp1d(
+            signal.index.mid, np.poly1d(coeffs)(signal.values), bounds_error=False, fill_value="extrapolate"
+        )
 
         # Find which values to fill using the model (all nans within the glacier extent)
         if not idealized_ddem:

@@ -19,6 +19,7 @@ robustness of our results using :func:`xdem.spatialstats.patches_method`, an int
 **Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
 """
 import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 6
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,8 +40,8 @@ dh.set_mask(mask_glacier)
 # %%
 # We estimate the average per-pixel elevation error on stable terrain, using both the standard deviation
 # and normalized median absolute deviation. For this example, we do not account for elevation heteroscedasticity.
-print(f'STD: {np.nanstd(dh.data):.2f} meters.')
-print(f'NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.')
+print(f"STD: {np.nanstd(dh.data):.2f} meters.")
+print(f"NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.")
 
 # %%
 # The two measures of dispersion are quite similar showing that, on average, there is a small influence of outliers on the
@@ -48,7 +49,7 @@ print(f'NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.')
 # **Does this mean that every pixel has an independent measurement error of** :math:`\pm` **2.5 meters?**
 # Let's plot the elevation differences to visually check the quality of the data.
 plt.figure(figsize=(8, 5))
-_ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
+_ = dh.show(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cb_title="Elevation differences (m)")
 
 # %%
 # We clearly see that the residual elevation differences on stable terrain are not random. The positive and negative
@@ -64,7 +65,7 @@ dh.set_mask(np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data))
 # %%
 # We plot the elevation differences after filtering to check that we successively removed glacier signals.
 plt.figure(figsize=(8, 5))
-_ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation differences (m)')
+_ = dh.show(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cb_title="Elevation differences (m)")
 
 # %%
 # To quantify the spatial correlation of the data, we sample an empirical variogram.
@@ -75,7 +76,9 @@ _ = dh.show(ax=plt.gca(), cmap='RdYlBu', vmin=-4, vmax=4, cb_title='Elevation di
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
 # conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
 
-df = xdem.spatialstats.sample_empirical_variogram(values=dh.data, gsd=dh.res[0], subsample=100, n_variograms=10, random_state=42)
+df = xdem.spatialstats.sample_empirical_variogram(
+    values=dh.data, gsd=dh.res[0], subsample=100, n_variograms=10, random_state=42
+)
 
 # %%
 # *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
@@ -96,7 +99,7 @@ xdem.spatialstats.plot_variogram(df)
 
 # %%
 # **Log scale:**
-xdem.spatialstats.plot_variogram(df, xscale='log')
+xdem.spatialstats.plot_variogram(df, xscale="log")
 
 # %%
 # **Subpanels with linear scale:**
@@ -111,13 +114,20 @@ xdem.spatialstats.plot_variogram(df, xscale_range_split=[100, 1000, 10000])
 # long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
 # the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_model_variogram`, which
 # is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
-func_sum_vgm1, params_vgm1 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Spherical'], empirical_variogram=df)
+func_sum_vgm1, params_vgm1 = xdem.spatialstats.fit_sum_model_variogram(
+    list_models=["Spherical"], empirical_variogram=df
+)
 
-func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(list_models = ['Spherical', 'Spherical'], empirical_variogram=df)
+func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(
+    list_models=["Spherical", "Spherical"], empirical_variogram=df
+)
 
-xdem.spatialstats.plot_variogram(df, list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
-                                 list_fit_fun_label=['Single-range model', 'Double-range model'],
-                                 xscale_range_split=[100, 1000, 10000])
+xdem.spatialstats.plot_variogram(
+    df,
+    list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
+    list_fit_fun_label=["Single-range model", "Double-range model"],
+    xscale_range_split=[100, 1000, 10000],
+)
 
 # %%
 # The sum of two spherical models fits better, accouting for the small partial sill at longer ranges. Yet this longer
@@ -129,7 +139,7 @@ xdem.spatialstats.plot_variogram(df, list_fit_fun=[func_sum_vgm1, func_sum_vgm2]
 # variogram models using :func:`xdem.spatialstats.neff_circ`, with areas varying from pixel size to grid size.
 # Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas rapidly.
 
-areas = np.linspace(20, 10000, 50)**2
+areas = np.linspace(20, 10000, 50) ** 2
 
 list_stderr_singlerange, list_stderr_doublerange, list_stderr_empirical = ([] for i in range(3))
 for area in areas:
@@ -141,8 +151,8 @@ for area in areas:
     neff_doublerange = xdem.spatialstats.number_effective_samples(area, params_vgm2)
 
     # Convert into a standard error
-    stderr_singlerange = np.nanstd(dh.data)/np.sqrt(neff_singlerange)
-    stderr_doublerange = np.nanstd(dh.data)/np.sqrt(neff_doublerange)
+    stderr_singlerange = np.nanstd(dh.data) / np.sqrt(neff_singlerange)
+    stderr_doublerange = np.nanstd(dh.data) / np.sqrt(neff_doublerange)
     list_stderr_singlerange.append(stderr_singlerange)
     list_stderr_doublerange.append(stderr_doublerange)
 
@@ -156,13 +166,19 @@ df_patches = xdem.spatialstats.patches_method(dh, gsd=dh.res[0], areas=areas_emp
 
 
 fig, ax = plt.subplots()
-plt.plot(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
-plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
-plt.scatter(df_patches.exact_areas.values/1000000, df_patches.nmad.values, label='Empirical estimate', color='black', marker='x')
-plt.xlabel('Averaging area (km²)')
-plt.ylabel('Uncertainty in the mean elevation difference (m)')
-plt.xscale('log')
-plt.yscale('log')
+plt.plot(np.asarray(areas) / 1000000, list_stderr_singlerange, label="Single-range spherical model")
+plt.plot(np.asarray(areas) / 1000000, list_stderr_doublerange, label="Double-range spherical model")
+plt.scatter(
+    df_patches.exact_areas.values / 1000000,
+    df_patches.nmad.values,
+    label="Empirical estimate",
+    color="black",
+    marker="x",
+)
+plt.xlabel("Averaging area (km²)")
+plt.ylabel("Uncertainty in the mean elevation difference (m)")
+plt.xscale("log")
+plt.yscale("log")
 plt.legend()
 plt.show()
 
@@ -183,13 +199,13 @@ plt.show()
 # As a first guess for this, let's examine the difference between mean and median to gain some insight on the central
 # tendency of our sample:
 
-diff_med_mean = np.nanmean(dh.data.data)-np.nanmedian(dh.data.data)
-print(f'Difference mean/median: {diff_med_mean:.3f} meters.')
+diff_med_mean = np.nanmean(dh.data.data) - np.nanmedian(dh.data.data)
+print(f"Difference mean/median: {diff_med_mean:.3f} meters.")
 
 # %%
 # If we now express it as a percentage of the dispersion:
 
-print(f'{diff_med_mean/np.nanstd(dh.data)*100:.1f} % of STD.')
+print(f"{diff_med_mean/np.nanstd(dh.data)*100:.1f} % of STD.")
 
 # %%
 # There might be a significant bias of central tendency, i.e. almost fully correlated measurement error across the grid.
@@ -203,20 +219,29 @@ for area in areas:
     neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_variogram_model=params_vgm2)
 
     # About 5% of the variance might be fully correlated, the other 95% has the random part that we quantified
-    stderr_fullycorr = np.sqrt(0.05*np.nanvar(dh.data))
-    stderr_doublerange = np.sqrt(0.95*np.nanvar(dh.data))/np.sqrt(neff_doublerange)
+    stderr_fullycorr = np.sqrt(0.05 * np.nanvar(dh.data))
+    stderr_doublerange = np.sqrt(0.95 * np.nanvar(dh.data)) / np.sqrt(neff_doublerange)
     list_stderr_doublerange_plus_fullycorrelated.append(stderr_fullycorr + stderr_doublerange)
 
 fig, ax = plt.subplots()
-plt.plot(np.asarray(areas)/1000000, list_stderr_singlerange, label='Single-range spherical model')
-plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange, label='Double-range spherical model')
-plt.plot(np.asarray(areas)/1000000, list_stderr_doublerange_plus_fullycorrelated,
-         label='5% fully correlated,\n 95% double-range spherical model')
-plt.scatter(df_patches.exact_areas.values/1000000, df_patches.nmad.values, label='Empirical estimate', color='black', marker='x')
-plt.xlabel('Averaging area (km²)')
-plt.ylabel('Uncertainty in the mean elevation difference (m)')
-plt.xscale('log')
-plt.yscale('log')
+plt.plot(np.asarray(areas) / 1000000, list_stderr_singlerange, label="Single-range spherical model")
+plt.plot(np.asarray(areas) / 1000000, list_stderr_doublerange, label="Double-range spherical model")
+plt.plot(
+    np.asarray(areas) / 1000000,
+    list_stderr_doublerange_plus_fullycorrelated,
+    label="5% fully correlated,\n 95% double-range spherical model",
+)
+plt.scatter(
+    df_patches.exact_areas.values / 1000000,
+    df_patches.nmad.values,
+    label="Empirical estimate",
+    color="black",
+    marker="x",
+)
+plt.xlabel("Averaging area (km²)")
+plt.ylabel("Uncertainty in the mean elevation difference (m)")
+plt.xscale("log")
+plt.yscale("log")
 plt.legend()
 plt.show()
 

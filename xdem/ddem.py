@@ -13,11 +13,10 @@ from geoutils import spatial_tools
 import xdem
 
 
-class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
+class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     """A difference-DEM object."""
 
-    def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64,
-                 error: Any | None = None):
+    def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64, error: Any | None = None):
         """
         Create a dDEM object from a Raster.
 
@@ -66,7 +65,9 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
     def filled_data(self, array: np.ndarray):
         """Set the filled_data attribute and make sure that it is valid."""
 
-        assert self.data.size == array.size, f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
+        assert (
+            self.data.size == array.size
+        ), f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
 
         self._filled_data = np.asarray(array).reshape(self.data.shape)
 
@@ -95,20 +96,18 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         :returns: A new dDEM instance.
         """
         return dDEM(
-            gu.georaster.Raster.from_array(
-                data=data,
-                transform=transform,
-                crs=crs,
-                nodata=nodata
-            ),
+            gu.georaster.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
             start_time=start_time,
             end_time=end_time,
             error=error,
         )
 
-    def interpolate(self, method: str = "linear",
-                    reference_elevation: np.ndarray | np.ma.masked_array | xdem.DEM | None = None,
-                    mask: np.ndarray | xdem.DEM | gu.Vector | None = None):
+    def interpolate(
+        self,
+        method: str = "linear",
+        reference_elevation: np.ndarray | np.ma.masked_array | xdem.DEM | None = None,
+        mask: np.ndarray | xdem.DEM | gu.Vector | None = None,
+    ):
         """
         Interpolate the dDEM using the given method.
 
@@ -144,8 +143,9 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
 
             ddem_mask = nans.copy().squeeze()
             for i in entries.index:
-                feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(
-                    self)).reshape(interpolated_ddem.shape)
+                feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(self)).reshape(
+                    interpolated_ddem.shape
+                )
                 if np.count_nonzero(feature_mask) == 0:
                     continue
                 try:
@@ -153,9 +153,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
                         warnings.filterwarnings("ignore", "Not enough valid bins")
                         interpolated_ddem = np.asarray(
                             xdem.volume.hypsometric_interpolation(
-                                interpolated_ddem,
-                                reference_elevation.data,
-                                mask=feature_mask
+                                interpolated_ddem, reference_elevation.data, mask=feature_mask
                             )
                         )
                 except ValueError as exception:
@@ -182,9 +180,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             mask_array = xdem.coreg.mask_as_array(self, mask).reshape(self.data.shape)
 
             self.filled_data = xdem.volume.hypsometric_interpolation(
-                self.data,
-                reference_elevation.data,
-                mask=mask_array
+                self.data, reference_elevation.data, mask=mask_array
             ).data
 
         else:

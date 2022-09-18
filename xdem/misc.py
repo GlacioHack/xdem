@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 try:
     import cv2
+
     _has_cv2 = True
 except ImportError:
     _has_cv2 = False
@@ -72,8 +73,8 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
 
     :returns: The decorator to decorate the function.
     """
-    def deprecator_func(func):
 
+    def deprecator_func(func):
         @functools.wraps(func)
         def new_func(*args, **kwargs):
             # True if it should warn, False if it should raise an error

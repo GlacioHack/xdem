@@ -27,6 +27,7 @@ The consequence is a much more accurate interpolation approach that can be used 
 
 """
 import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -60,7 +61,7 @@ plt_extent = [
 np.random.seed(42)
 random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5) > 0.7) & (glacier_index_map > 0)
 
-plt.imshow(random_nans, interpolation='none')
+plt.imshow(random_nans, interpolation="none")
 plt.show()
 
 # %%
@@ -90,10 +91,7 @@ plt.show()
 # The signal can now be used (or simply estimated again if not provided) to interpolate the DEM.
 
 ddem_filled = xdem.volume.norm_regional_hypsometric_interpolation(
-    voided_ddem=ddem_voided,
-    ref_dem=dem_2009.data,
-    glacier_index_map=glacier_index_map,
-    regional_signal=signal
+    voided_ddem=ddem_voided, ref_dem=dem_2009.data, glacier_index_map=glacier_index_map, regional_signal=signal
 )
 
 

@@ -9,6 +9,7 @@ import scipy
 
 # Gaussian filters
 
+
 def gaussian_filter_scipy(array: np.ndarray, sigma: float) -> np.ndarray:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
@@ -23,9 +24,7 @@ def gaussian_filter_scipy(array: np.ndarray, sigma: float) -> np.ndarray:
     """
     # Check that array dimension is 2 or 3
     if np.ndim(array) not in [2, 3]:
-        raise ValueError(
-            f"Invalid array shape given: {array.shape}. Expected 2D or 3D array"
-        )
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array")
 
     # In case array does not contain NaNs, use scipy's gaussian filter directly
     if np.count_nonzero(np.isnan(array)) == 0:
@@ -76,9 +75,7 @@ def gaussian_filter_cv(array: np.ndarray, sigma) -> np.ndarray:
         else:
             raise NotImplementedError("Case of array of dimension 3 not implemented")
     else:
-        raise ValueError(
-            f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array"
-        )
+        raise ValueError(f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array")
 
     # In case array does not contain NaNs, use OpenCV's gaussian filter directly
     # With kernel size (0, 0), i.e. set to default, and borderType=BORDER_REFLECT, the output is equivalent to scipy

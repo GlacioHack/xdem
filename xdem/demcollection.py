@@ -15,10 +15,13 @@ import xdem
 class DEMCollection:
     """A temporal collection of DEMs."""
 
-    def __init__(self, dems: list[gu.georaster.Raster] | list[xdem.DEM],
-                 timestamps: list[datetime.datetime] | None = None,
-                 outlines: gu.geovector.Vector | dict[datetime.datetime, gu.geovector.Vector] | None = None,
-                 reference_dem: int | gu.georaster.Raster = 0):
+    def __init__(
+        self,
+        dems: list[gu.georaster.Raster] | list[xdem.DEM],
+        timestamps: list[datetime.datetime] | None = None,
+        outlines: gu.geovector.Vector | dict[datetime.datetime, gu.geovector.Vector] | None = None,
+        reference_dem: int | gu.georaster.Raster = 0,
+    ):
         """
         Create a new temporal DEM collection.
 
@@ -62,8 +65,10 @@ class DEMCollection:
         elif all(isinstance(value, gu.geovector.Vector) for value in outlines.values()):
             self.outlines = dict(zip(np.array(list(outlines.keys())).astype("datetime64[ns]"), outlines.values()))
         else:
-            raise ValueError(f"Invalid format on 'outlines': {type(outlines)},"
-                             " expected one of ['gu.geovector.Vector', 'dict[datetime.datetime, gu.geovector.Vector']")
+            raise ValueError(
+                f"Invalid format on 'outlines': {type(outlines)},"
+                " expected one of ['gu.geovector.Vector', 'dict[datetime.datetime, gu.geovector.Vector']"
+            )
 
     @property
     def reference_dem(self) -> gu.georaster.Raster:
@@ -102,7 +107,7 @@ class DEMCollection:
                     self.reference_dem - dem.reproject(resampling=resampling_method, silent=True),
                     start_time=min(self.reference_timestamp, self.timestamps[i]),
                     end_time=max(self.reference_timestamp, self.timestamps[i]),
-                    error=None
+                    error=None,
                 )
             ddems.append(ddem)
 
@@ -149,10 +154,7 @@ class DEMCollection:
 
         # If both the start and end time outlines exist, a mask is created from their union.
         if ddem.start_time in outlines and ddem.end_time in outlines:
-            mask = np.logical_or(
-                outlines[ddem.start_time].create_mask(ddem),
-                outlines[ddem.end_time].create_mask(ddem)
-            )
+            mask = np.logical_or(outlines[ddem.start_time].create_mask(ddem), outlines[ddem.end_time].create_mask(ddem))
         # If only start time outlines exist, these should be used as a mask
         elif ddem.start_time in outlines:
             mask = outlines[ddem.start_time].create_mask(ddem)
@@ -164,8 +166,9 @@ class DEMCollection:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)
         return mask.reshape(ddem.data.shape)
 
-    def get_dh_series(self, outlines_filter: str | None = None, mask: np.ndarray | None = None,
-                      nans_ok: bool = False) -> pd.DataFrame:
+    def get_dh_series(
+        self, outlines_filter: str | None = None, mask: np.ndarray | None = None, nans_ok: bool = False
+    ) -> pd.DataFrame:
         """
         Return a dataframe of mean dDEM values and respective areas for every timestamp.
 
@@ -201,8 +204,9 @@ class DEMCollection:
 
         return dh_values
 
-    def get_dv_series(self, outlines_filter: str | None = None,
-                      mask: np.ndarray | None = None, nans_ok: bool = False) -> pd.Series:
+    def get_dv_series(
+        self, outlines_filter: str | None = None, mask: np.ndarray | None = None, nans_ok: bool = False
+    ) -> pd.Series:
         """
         Return a series of mean volume change (dV) for every timestamp.
 
@@ -218,9 +222,13 @@ class DEMCollection:
 
         return dh_values["area"] * dh_values["dh"]
 
-    def get_cumulative_series(self, kind: str = "dh", outlines_filter: str | None = None,
-                              mask: np.ndarray | None = None,
-                              nans_ok: bool = False) -> pd.Series:
+    def get_cumulative_series(
+        self,
+        kind: str = "dh",
+        outlines_filter: str | None = None,
+        mask: np.ndarray | None = None,
+        nans_ok: bool = False,
+    ) -> pd.Series:
         """
         Get the cumulative dH (elevation) or dV (volume) since the first timestamp.
 

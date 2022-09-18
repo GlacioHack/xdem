@@ -47,11 +47,7 @@ ddem_raster = dem1 - dem2
 # SECTION: dDEM interpolation
 #############################
 
-ddem = xdem.dDEM(
-    raster=dem_2009 - dem_1990,
-    start_time=dem_1990.datetime,
-    end_time=dem_2009.datetime
-)
+ddem = xdem.dDEM(raster=dem_2009 - dem_1990, start_time=dem_1990.datetime, end_time=dem_2009.datetime)
 
 # The example DEMs are void-free, so let's make some random voids.
 # Introduce 50000 nans randomly throughout the dDEM.

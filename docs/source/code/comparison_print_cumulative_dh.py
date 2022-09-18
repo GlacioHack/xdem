@@ -14,7 +14,7 @@ with contextlib.redirect_stdout(io.StringIO()):  # Import the script without pri
 dems = xdem.DEMCollection(
     [comparison.dem_1990, comparison.dem_2009, comparison.dem_2060],
     outlines=comparison.outlines,
-    reference_dem=comparison.dem_2009
+    reference_dem=comparison.dem_2009,
 )
 
 dems.subtract_dems()

@@ -127,8 +127,12 @@ class TestCoregClass:
         # Check that this is indeed a new object
         assert biascorr is not biascorr2
         # Fit the corrected DEM to see if the bias will be close to or at zero
-        biascorr2.fit(reference_dem=self.ref.data, dem_to_be_aligned=tba_unbiased, transform=self.ref.transform,
-                      inlier_mask=self.inlier_mask)
+        biascorr2.fit(
+            reference_dem=self.ref.data,
+            dem_to_be_aligned=tba_unbiased,
+            transform=self.ref.transform,
+            inlier_mask=self.inlier_mask,
+        )
         # Test the bias
         assert abs(biascorr2._meta.get("bias")) < 0.01
 
@@ -190,8 +194,9 @@ class TestCoregClass:
         shifted_dem += bias
 
         # Fit the synthesized shifted DEM to the original
-        nuth_kaab.fit(self.ref.data.squeeze(), shifted_dem,
-                      transform=self.ref.transform, verbose=self.fit_params["verbose"])
+        nuth_kaab.fit(
+            self.ref.data.squeeze(), shifted_dem, transform=self.ref.transform, verbose=self.fit_params["verbose"]
+        )
 
         # Make sure that the estimated offsets are similar to what was synthesized.
         assert nuth_kaab._meta["offset_east_px"] == pytest.approx(pixel_shift, abs=0.03)
@@ -391,13 +396,25 @@ class TestCoregClass:
         corr_size = int(self.ref.data.shape[2] / 100)
         error_field = cv2.resize(
             cv2.GaussianBlur(
-                np.repeat(np.repeat(
-                    np.random.randint(0, 255, (self.ref.data.shape[1]//corr_size,
-                                               self.ref.data.shape[2]//corr_size), dtype='uint8'),
-                    corr_size, axis=0), corr_size, axis=1),
-                ksize=(2*corr_size + 1, 2*corr_size + 1),
-                sigmaX=corr_size) / 255,
-            dsize=(self.ref.data.shape[2], self.ref.data.shape[1])
+                np.repeat(
+                    np.repeat(
+                        np.random.randint(
+                            0,
+                            255,
+                            (self.ref.data.shape[1] // corr_size, self.ref.data.shape[2] // corr_size),
+                            dtype="uint8",
+                        ),
+                        corr_size,
+                        axis=0,
+                    ),
+                    corr_size,
+                    axis=1,
+                ),
+                ksize=(2 * corr_size + 1, 2 * corr_size + 1),
+                sigmaX=corr_size,
+            )
+            / 255,
+            dsize=(self.ref.data.shape[2], self.ref.data.shape[1]),
         )
 
         # Create 50000 random nans
@@ -415,7 +432,7 @@ class TestCoregClass:
         assert np.abs(np.nanmedian(diff)) < 0.05
 
         # Try a second-degree scaling
-        scaled_dem = 1e-4 * self.ref.data ** 2 + 300 + self.ref.data * factor
+        scaled_dem = 1e-4 * self.ref.data**2 + 300 + self.ref.data * factor
 
         # Try to correct using a nonlinear correction.
         zcorr_nonlinear = coreg.ZScaleCorr(degree=2)
@@ -426,19 +443,13 @@ class TestCoregClass:
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
-    @pytest.mark.parametrize(
-        "pipeline",
-        [
-            coreg.BiasCorr(),
-            coreg.BiasCorr() + coreg.NuthKaab()
-        ]
-    )
+    @pytest.mark.parametrize("pipeline", [coreg.BiasCorr(), coreg.BiasCorr() + coreg.NuthKaab()])
     @pytest.mark.parametrize(
         "subdivision",
         [
             4,
             10,
-        ]
+        ],
     )
     def test_blockwise_coreg(self, pipeline, subdivision):
         warnings.simplefilter("error")
@@ -489,8 +500,8 @@ class TestCoregClass:
     def test_blockwise_coreg_large_gaps(self):
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
         warnings.simplefilter("error")
-        reference_dem = self.ref.reproject(dst_crs='EPSG:3413', dst_res=self.ref.res, resampling='bilinear')
-        dem_to_be_aligned = self.tba.reproject(dst_ref=reference_dem, resampling='bilinear')
+        reference_dem = self.ref.reproject(dst_crs="EPSG:3413", dst_res=self.ref.res, resampling="bilinear")
+        dem_to_be_aligned = self.tba.reproject(dst_ref=reference_dem, resampling="bilinear")
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
 
@@ -508,7 +519,7 @@ class TestCoregClass:
         # Copy the TBA DEM and set a square portion to nodata
         tba = self.tba.copy()
         mask = np.zeros(np.shape(tba.data), dtype=bool)
-        mask[0, 450: 500, 450: 500] = True
+        mask[0, 450:500, 450:500] = True
         tba.set_mask(mask=mask)
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
@@ -534,7 +545,7 @@ class TestCoregClass:
             np.arange(25, dtype="int32").reshape(5, 5),
             transform=rio.transform.from_origin(0, 5, 1, 1),
             crs=4326,
-            nodata=-9999
+            nodata=-9999,
         )
         # Assign a funny value to one particular pixel. This is to validate that reprojection works perfectly.
         dem1.data[0, 1, 1] = 100
@@ -548,14 +559,9 @@ class TestCoregClass:
         biascorr_a = biascorr_r.copy()
 
         # Fit the data
-        biascorr_r.fit(
-            reference_dem=dem1,
-            dem_to_be_aligned=dem2
-        )
+        biascorr_r.fit(reference_dem=dem1, dem_to_be_aligned=dem2)
         biascorr_a.fit(
-            reference_dem=dem1.data,
-            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
-            transform=dem1.transform
+            reference_dem=dem1.data, dem_to_be_aligned=dem2.reproject(dem1, silent=True).data, transform=dem1.transform
         )
 
         # Validate that they ended up giving the same result.
@@ -579,20 +585,37 @@ class TestCoregClass:
         with pytest.warns(UserWarning, match="DEM .* overrides the given 'transform'"):
             biascorr_a.apply(dem2, transform=dem2.transform)
 
-    @pytest.mark.parametrize("combination", [
-        ("dem1", "dem2", "None", "fit", "passes", ""),
-        ("dem1", "dem2", "None", "apply", "passes", ""),
-        ("dem1.data", "dem2.data", "dem1.transform", "fit", "passes", ""),
-        ("dem1.data", "dem2.data", "dem1.transform", "apply", "passes", ""),
-        ("dem1", "dem2.data", "dem1.transform", "fit", "warns", "'reference_dem' .* overrides the given 'transform'"),
-        ("dem1.data", "dem2", "dem1.transform", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
-        ("dem1.data", "dem2.data", "None", "fit", "error", "'transform' must be given if both DEMs are array-like."),
-        ("dem1", "dem2.data", "None", "apply", "error", "'transform' must be given if DEM is array-like."),
-        ("dem1", "dem2", "dem2.transform", "apply", "warns", "DEM .* overrides the given 'transform'"),
-        ("None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
-        ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
-        ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
-    ])
+    @pytest.mark.parametrize(
+        "combination",
+        [
+            ("dem1", "dem2", "None", "fit", "passes", ""),
+            ("dem1", "dem2", "None", "apply", "passes", ""),
+            ("dem1.data", "dem2.data", "dem1.transform", "fit", "passes", ""),
+            ("dem1.data", "dem2.data", "dem1.transform", "apply", "passes", ""),
+            (
+                "dem1",
+                "dem2.data",
+                "dem1.transform",
+                "fit",
+                "warns",
+                "'reference_dem' .* overrides the given 'transform'",
+            ),
+            ("dem1.data", "dem2", "dem1.transform", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
+            (
+                "dem1.data",
+                "dem2.data",
+                "None",
+                "fit",
+                "error",
+                "'transform' must be given if both DEMs are array-like.",
+            ),
+            ("dem1", "dem2.data", "None", "apply", "error", "'transform' must be given if DEM is array-like."),
+            ("dem1", "dem2", "dem2.transform", "apply", "warns", "DEM .* overrides the given 'transform'"),
+            ("None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+            ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
+            ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
+        ],
+    )
     def test_coreg_raises(_, combination: tuple[str, str, str, str, str, str]) -> None:
         """
         Assert that the expected warnings/errors are triggered under different circumstances.
@@ -613,9 +636,9 @@ class TestCoregClass:
             np.arange(25, dtype="float64").reshape(5, 5),
             transform=rio.transform.from_origin(0, 5, 1, 1),
             crs=4326,
-            nodata=-9999
+            nodata=-9999,
         )
-        dem2 = dem1.copy() # type: ignore
+        dem2 = dem1.copy()  # type: ignore
 
         # Evaluate the parametrization (e.g. 'dem2.transform')
         ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
@@ -644,7 +667,7 @@ class TestCoregClass:
                 else:
                     method_call()
 
-                if testing_step == "fit":   # If we're testing 'fit', 'apply' does not have to be run.
+                if testing_step == "fit":  # If we're testing 'fit', 'apply' does not have to be run.
                     return
 
     def test_coreg_oneliner(_) -> None:
@@ -653,11 +676,12 @@ class TestCoregClass:
         dem_arr2 = dem_arr + 1
         transform = rio.transform.from_origin(0, 5, 1, 1)
 
-        dem_arr2_fixed = coreg.BiasCorr()\
-            .fit(dem_arr, dem_arr2, transform=transform)\
-            .apply(dem_arr2, transform=transform)
+        dem_arr2_fixed = (
+            coreg.BiasCorr().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
+        )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
+
 
 def test_apply_matrix():
     warnings.simplefilter("error")
@@ -687,13 +711,12 @@ def test_apply_matrix():
     matrix[0, 3] = pixel_shift * tba.res[0]
     matrix[2, 3] = -bias
 
-    transformed_dem = coreg.apply_matrix(shifted_dem,
-                                         ref.transform, matrix, resampling="bilinear")
+    transformed_dem = coreg.apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
 
     # Dilate the mask: this should remove the same edge pixels as done by skimage
     transformed_dem_dilated = coreg.apply_matrix(
-        shifted_dem,
-        ref.transform, matrix, resampling="bilinear", dilate_mask=True)
+        shifted_dem, ref.transform, matrix, resampling="bilinear", dilate_mask=True
+    )
     # Validate the same pixels were removed.
     assert np.count_nonzero(np.isfinite(transformed_dem)) == np.count_nonzero(np.isfinite(transformed_dem_dilated))
 
@@ -706,34 +729,31 @@ def test_apply_matrix():
 
     def rotation_matrix(rotation=30):
         rotation = np.deg2rad(rotation)
-        matrix = np.array([
-            [1, 0, 0, 0],
-            [0, np.cos(rotation), -np.sin(rotation), 0],
-            [0, np.sin(rotation), np.cos(rotation), 0],
-            [0, 0, 0, 1]
-        ])
+        matrix = np.array(
+            [
+                [1, 0, 0, 0],
+                [0, np.cos(rotation), -np.sin(rotation), 0],
+                [0, np.sin(rotation), np.cos(rotation), 0],
+                [0, 0, 0, 1],
+            ]
+        )
         return matrix
 
     rotation = 4
-    centroid = [np.mean([ref.bounds.left, ref.bounds.right]), np.mean(
-        [ref.bounds.top, ref.bounds.bottom]), ref.data.mean()]
-    rotated_dem = coreg.apply_matrix(
-        ref.data.squeeze(),
-        ref.transform,
-        rotation_matrix(rotation),
-        centroid=centroid
-    )
+    centroid = [
+        np.mean([ref.bounds.left, ref.bounds.right]),
+        np.mean([ref.bounds.top, ref.bounds.bottom]),
+        ref.data.mean(),
+    ]
+    rotated_dem = coreg.apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
     # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
     assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
     assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
 
     # Apply a rotation in the opposite direction
-    unrotated_dem = coreg.apply_matrix(
-        rotated_dem,
-        ref.transform,
-        rotation_matrix(-rotation * 0.99),
-        centroid=centroid
-    ) + 4.0  # TODO: Check why the 0.99 rotation and +4 biases were introduced.
+    unrotated_dem = (
+        coreg.apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
+    )  # TODO: Check why the 0.99 rotation and +4 biases were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
 
@@ -790,14 +810,7 @@ def test_warp_dem():
     small_dem = np.zeros((5, 10), dtype="float32")
     small_transform = rio.transform.from_origin(0, 5, 1, 1)
 
-    source_coords = np.array(
-        [
-            [0, 0, 0],
-            [0, 5, 0],
-            [10, 0, 0],
-            [10, 5, 0]
-        ]
-    ).astype(small_dem.dtype)
+    source_coords = np.array([[0, 0, 0], [0, 5, 0], [10, 0, 0], [10, 5, 0]]).astype(small_dem.dtype)
 
     dest_coords = source_coords.copy()
     dest_coords[0, 0] = -1e-5
@@ -808,7 +821,7 @@ def test_warp_dem():
         source_coords=source_coords,
         destination_coords=dest_coords,
         resampling="linear",
-        trim_border=False
+        trim_border=False,
     )
     assert np.nansum(np.abs(warped_dem - small_dem)) < 1e-6
 
@@ -852,7 +865,7 @@ def test_warp_dem():
 
     # Apply in the Z direction
     dest_coords[3, 2] += 5
-    test_shift = 6   # This shift will be validated below
+    test_shift = 6  # This shift will be validated below
     dest_coords[4, 2] += test_shift
 
     # Generate a semi-random DEM
@@ -862,11 +875,7 @@ def test_warp_dem():
 
     # Warp the DEM using the source-destination coordinates.
     transformed_dem = coreg.warp_dem(
-        dem=dem,
-        transform=transform,
-        source_coords=source_coords,
-        destination_coords=dest_coords,
-        resampling="linear"
+        dem=dem, transform=transform, source_coords=source_coords, destination_coords=dest_coords, resampling="linear"
     )
 
     # Try to undo the warp by reversing the source-destination coordinates.
@@ -875,7 +884,7 @@ def test_warp_dem():
         transform=transform,
         source_coords=dest_coords,
         destination_coords=source_coords,
-        resampling="linear"
+        resampling="linear",
     )
     # Validate that the DEM is now more or less the same as the original.
     # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
