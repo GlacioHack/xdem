@@ -1,9 +1,8 @@
+from __future__ import annotations
+
 import os
-import subprocess
-import sys
 
 from setuptools import setup
-from setuptools.command.install import install
 
 FULLVERSION = "0.0.7"
 VERSION = FULLVERSION
