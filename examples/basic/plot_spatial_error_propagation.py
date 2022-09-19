@@ -12,7 +12,6 @@ computationally-efficient spatial propagation for the mean of elevation (or elev
 """
 import geoutils as gu
 import matplotlib.pyplot as plt
-
 # sphinx_gallery_thumbnail_number = 1
 import numpy as np
 

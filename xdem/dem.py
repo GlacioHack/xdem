@@ -8,11 +8,11 @@ import warnings
 from typing import Any
 
 import numpy as np
-from numpy.typing import NDArray
 import pyproj
 import rasterio as rio
 from geoutils.georaster.raster import RasterType
 from geoutils.satimg import SatelliteImage
+from numpy.typing import NDArray
 from pyproj import Transformer
 
 

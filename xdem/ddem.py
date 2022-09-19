@@ -6,13 +6,13 @@ from typing import Any
 
 import geoutils as gu
 import numpy as np
-from numpy.typing import NDArray
 import shapely
 from geoutils import spatial_tools
 from geoutils.georaster import RasterType
-
-from rasterio.warp import Affine
+from numpy.typing import NDArray
 from rasterio.crs import CRS
+from rasterio.warp import Affine
+
 import xdem
 
 

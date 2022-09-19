@@ -4,17 +4,19 @@ from __future__ import annotations
 import os
 import time
 import warnings
+from typing import Any
 
 import geoutils as gu
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
 import pytest
 import skgstat
 from geoutils import Raster, Vector
+from numpy.typing import NDArray
 
 import xdem
 from xdem import examples
+from xdem.spatialstats import EmpiricalVariogramKArgs
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -74,13 +76,13 @@ class TestBinning:
             values=self.diff.data.flatten()[indices],
             list_var=[self.slope.data.flatten()[indices]],
             list_var_names=["slope"],
-            list_var_bins=[[20]],
+            list_var_bins=20,
         )
         # Check length matches
         assert df.shape[0] == 20
 
         # Define function for custom stat
-        def percentile_80(a):
+        def percentile_80(a: NDArray[np.floating[Any]]) -> np.floating[Any]:
             return np.nanpercentile(a, 80)
 
         # Check the function runs with custom functions
@@ -225,11 +227,11 @@ class TestBinning:
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="slope")
 
         # Check a value is returned inside the grid
-        assert np.isfinite(fun([15]))
+        assert np.isfinite(fun((15,)))
         # Check the nmad increases with slope
-        assert fun([20]) > fun([0])
+        assert fun((20,)) > fun((0,))
         # Check a value is returned outside the grid
-        assert all(np.isfinite(fun([-5, 50])))
+        assert all(np.isfinite(fun((-5, 50))))
 
         # Check when the first passed binning variable contains NaNs because of other binning variable
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="elevation")
@@ -238,21 +240,21 @@ class TestBinning:
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation"])
 
         # Check a value is returned inside the grid
-        assert np.isfinite(fun([15, 1000]))
+        assert np.isfinite(fun((15, 1000)))
         # Check the nmad increases with slope
-        assert fun([40, 300]) > fun([10, 300])
+        assert fun((40, 300)) > fun((10, 300))
         # Check a value is returned outside the grid
-        assert all(np.isfinite(fun(([-5, 50], [-500, 3000]))))
+        assert all(np.isfinite(fun(((-5, 50), (-500, 3000)))))
 
         # Then in 3D
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation", "aspect"])
 
         # Check a value is returned inside the grid
-        assert np.isfinite(fun([15, 1000, np.pi]))
+        assert np.isfinite(fun((15, 1000, np.pi)))
         # Check the nmad increases with slope
-        assert fun([30, 300, np.pi]) > fun([10, 300, np.pi])
+        assert fun((30, 300, np.pi)) > fun((10, 300, np.pi))
         # Check a value is returned outside the grid
-        assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
+        assert all(np.isfinite(fun(((-5, 50), (-500, 3000), (-2 * np.pi, 4 * np.pi)))))
 
     def test_two_step_standardization(self) -> None:
         """Test two-step standardization function"""
@@ -539,8 +541,8 @@ class TestVariogram:
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
 
         # Define parameters
-        pdist_args = {"pdist_multi_ranges": [0, self.diff.res[0] * 5, self.diff.res[0] * 10]}
-        cdist_args = {"ratio_subsample": 0.5, "runs": 10}
+        pdist_args: EmpiricalVariogramKArgs = {"pdist_multi_ranges": [0, self.diff.res[0] * 5, self.diff.res[0] * 10]}
+        cdist_args: EmpiricalVariogramKArgs = {"ratio_subsample": 0.5, "runs": 10}
         nonsense_args = {"thisarg": "shouldnotexist"}
 
         # Check the function raises a warning for optional arguments incorrect to the method
@@ -557,7 +559,6 @@ class TestVariogram:
                 subsample=10,
                 random_state=42,
                 subsample_method="cdist_equidistant",
-                runs=2,
                 **pdist_args,
             )
 
@@ -568,8 +569,7 @@ class TestVariogram:
                 subsample=10,
                 random_state=42,
                 subsample_method="cdist_equidistant",
-                runs=2,
-                **nonsense_args,
+                **nonsense_args, # type: ignore
             )
 
         # Check the function passes optional arguments specific to pdist methods without warning
@@ -585,7 +585,7 @@ class TestVariogram:
     # N is the number of samples in an ensemble
     @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000]) # type: ignore
     @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)]) # type: ignore
-    def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int]) -> None:
+    def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int, int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
         # Assign an arbitrary extent
@@ -862,7 +862,7 @@ class TestNeffEstimation:
     @pytest.mark.parametrize("psill1", [0.1, 1, 10]) # type: ignore
     @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
     @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)]) # type: ignore
-    def test_neff_circular_single_range(self, range1, psill1, model1, area) -> None:
+    def test_neff_circular_single_range(self, range1: float, psill1: float, model1: float, area: float) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
         forms to get the number of effective samples"""
 
@@ -885,7 +885,8 @@ class TestNeffEstimation:
     @pytest.mark.parametrize("range3", [10**i for i in range(2)]) # type: ignore
     @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
     @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
-    def test_neff_circular_three_ranges(self, range1, range2, range3, model1, model2) -> None:
+    def test_neff_circular_three_ranges(self, range1: float, range2: float, range3: float, model1: float,
+                                        model2: float) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or
         exponential forms"""
 
@@ -1104,7 +1105,7 @@ class TestSubSampling:
 
         # using default (center should be [2,2], radius 2)
         circ = xdem.spatialstats._create_circular_mask((5, 5))
-        circ2 = xdem.spatialstats._create_circular_mask((5, 5), center=[2, 2], radius=2)
+        circ2 = xdem.spatialstats._create_circular_mask((5, 5), center=(2, 2), radius=2)
 
         # check default center and radius are derived properly
         assert np.array_equal(circ, circ2)
@@ -1117,14 +1118,14 @@ class TestSubSampling:
 
         # check distance is not a multiple of pixels (more accurate subsampling)
         # will create a 1-pixel mask around the center
-        circ3 = xdem.spatialstats._create_circular_mask((5, 5), center=[1, 1], radius=1)
+        circ3 = xdem.spatialstats._create_circular_mask((5, 5), center=(1, 1), radius=1)
 
         eq_circ3 = np.zeros((5, 5), dtype=bool)
         eq_circ3[1, 1] = True
         assert np.array_equal(circ3, eq_circ3)
 
         # will create a square mask (<1.5 pixel) around the center
-        circ4 = xdem.spatialstats._create_circular_mask((5, 5), center=[1, 1], radius=1.5)
+        circ4 = xdem.spatialstats._create_circular_mask((5, 5), center=(1, 1), radius=1.5)
         # should not be the same as radius = 1
         assert not np.array_equal(circ3, circ4)
 

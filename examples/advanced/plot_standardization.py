@@ -14,7 +14,6 @@ Here, we show an example of standardization of the data based on terrain-depende
 **Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Equation 12.
 """
 import geoutils as gu
-
 # sphinx_gallery_thumbnail_number = 4
 import matplotlib.pyplot as plt
 import numpy as np

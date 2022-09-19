@@ -2,17 +2,17 @@
 from __future__ import annotations
 
 import warnings
-from typing import Callable, Any
-from _typing import MArrayf
+from typing import Any, Callable
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
+from _typing import MArrayf
 from geoutils import spatial_tools
+from numpy.typing import NDArray
 from tqdm import tqdm
 
 import xdem

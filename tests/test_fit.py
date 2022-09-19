@@ -25,7 +25,7 @@ class TestRobustFitting:
         x = np.linspace(1, 10, 1000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
-        y = np.polyval(np.flip(true_coefs), x)
+        y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
 
         # Run fit
         coefs, deg = xdem.fit.robust_polynomial_fit(
@@ -46,12 +46,12 @@ class TestRobustFitting:
         x = np.linspace(1, 10, 1000)
         # Define an exact polynomial
         true_coefs = [-100, 5, 3, 2]
-        y = np.polyval(np.flip(true_coefs), x)
+        y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
         # Add some noise on top
         y += np.random.normal(loc=0, scale=3, size=1000)
         # Add some outliers
-        y[50:75] = 0
-        y[900:925] = 1000
+        y[50:75] = 0.
+        y[900:925] = 1000.
 
         # Run with the "Linear" estimator
         coefs, deg = xdem.fit.robust_polynomial_fit(

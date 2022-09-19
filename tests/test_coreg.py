@@ -3,21 +3,22 @@ from __future__ import annotations
 
 import copy
 import warnings
+from typing import Any, Callable
 
-from typing import Callable
 import cv2
 import geoutils as gu
-from geoutils import Raster, Vector
-from geoutils.georaster.raster import RasterType
 import numpy as np
-from numpy.typing import NDArray
 import pytest
 import rasterio as rio
+from geoutils import Raster, Vector
+from geoutils.georaster.raster import RasterType
+from numpy.typing import NDArray
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import xdem
     from xdem import coreg, examples, misc, spatialstats
+    from xdem.coreg import CoregDict
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -137,7 +138,9 @@ class TestCoregClass:
             inlier_mask=self.inlier_mask,
         )
         # Test the bias
-        assert abs(biascorr2._meta.get("bias")) < 0.01
+        newmeta: CoregDict = biascorr2._meta
+        newbias = newmeta["bias"]
+        assert np.abs(newbias) < 0.01
 
         # Check that the original model's bias has not changed (that the _meta dicts are two different objects)
         assert biascorr._meta["bias"] == bias
@@ -162,9 +165,9 @@ class TestCoregClass:
 
     def test_error_method(self) -> None:
         """Test different error measures."""
-        dem1 = np.ones((50, 50), dtype=np.float_)
+        dem1: NDArray[np.floating[Any]] = np.ones((50, 50)).astype(np.float32)
         # Create a biased dem
-        dem2 = dem1 + 2.
+        dem2 = dem1.copy() + 2.
         affine = rio.transform.from_origin(0, 0, 1, 1)
 
         biascorr = coreg.BiasCorr()
@@ -180,7 +183,7 @@ class TestCoregClass:
         assert biascorr.error(dem1, dem2, transform=affine, error_type="median") == -2
 
         # Create random noise and see if the standard deviation is equal (it should)
-        dem3 = dem1 + np.random.random(size=dem1.size).reshape(dem1.shape)
+        dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
     def test_nuth_kaab(self) -> None:

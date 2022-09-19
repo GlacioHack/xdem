@@ -7,8 +7,8 @@ from typing import Any
 
 import geoutils as gu
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
+from numpy.typing import NDArray
 
 import xdem
 

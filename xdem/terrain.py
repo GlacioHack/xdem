@@ -9,7 +9,7 @@ import numba
 import numpy as np
 from geoutils.georaster import Raster, RasterType
 
-from xdem._typing import NDArrayf, MArrayf
+from xdem._typing import MArrayf, NDArrayf
 
 try:
     import richdem as rd

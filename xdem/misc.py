@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import functools
 import warnings
-from typing import Callable, Any
+from typing import Any, Callable
 
 try:
     import cv2

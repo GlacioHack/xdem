@@ -5,18 +5,19 @@ from __future__ import annotations
 
 import inspect
 import warnings
-from typing import Callable, Any
+from typing import Any, Callable
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
 import scipy.optimize
 from geoutils.spatial_tools import subsample_raster
+from numpy.typing import NDArray
 
 from xdem.spatialstats import nd_binning
 
 try:
-    from sklearn.linear_model import HuberRegressor, LinearRegression, RANSACRegressor, TheilSenRegressor
+    from sklearn.linear_model import (HuberRegressor, LinearRegression,
+                                      RANSACRegressor, TheilSenRegressor)
     from sklearn.metrics import median_absolute_error
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import PolynomialFeatures

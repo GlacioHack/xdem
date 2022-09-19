@@ -4,7 +4,9 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import warnings
-from typing import Any, Callable, TypeVar, overload, TypedDict, Generator
+from typing import (Any, Callable, Generator, TypedDict, TypeVar, Union,
+                    overload)
+
 try:
     import cv2
 
@@ -14,7 +16,6 @@ except ImportError:
 import fiona
 import geoutils as gu
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
@@ -24,13 +25,14 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 import skimage.transform
-from geoutils import spatial_tools, Raster
+from geoutils import Raster, spatial_tools
 from geoutils.georaster import RasterType
+from numpy.typing import NDArray
 from rasterio import Affine
 from tqdm import tqdm, trange
 
 import xdem
-from xdem._typing import NDArrayf, MArrayf
+from xdem._typing import MArrayf, NDArrayf
 
 try:
     import pytransform3d.transformations
@@ -413,9 +415,9 @@ class CoregDict(TypedDict, total=False):
     https://peps.python.org/pep-0655/) there is an easy way to specific Required or NotRequired for each key, if we
     want to change this in the future.
     """
-    bias_func: Callable[[NDArrayf], NDArrayf]
+    bias_func: Callable[[NDArrayf], np.floating[Any]]
     func: Callable[[NDArrayf, NDArrayf], NDArrayf]
-    bias: float
+    bias: np.floating[Any] | float | np.integer[Any] | int
     matrix: NDArrayf
     centroid: tuple[float, float, float]
     offset_east_px: float
@@ -743,6 +745,26 @@ class Coreg:
         # Return the difference values within the full inlier mask
         return diff[full_mask]
 
+    @overload
+    def error(
+        self,
+        reference_dem: NDArrayf,
+        dem_to_be_aligned: NDArrayf,
+        error_type: list[str],
+        inlier_mask: NDArrayf | None = None,
+        transform: rio.transform.Affine | None = None,
+    ) -> list[np.floating[Any] | float | np.integer[Any] | int]: ...
+
+    @overload
+    def error(
+        self,
+        reference_dem: NDArrayf,
+        dem_to_be_aligned: NDArrayf,
+        error_type: str = "nmad",
+        inlier_mask: NDArrayf | None = None,
+        transform: rio.transform.Affine | None = None,
+    ) -> np.floating[Any] | float | np.integer[Any] | int: ...
+
     def error(
         self,
         reference_dem: NDArrayf,
@@ -750,7 +772,7 @@ class Coreg:
         error_type: str | list[str] = "nmad",
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
-    ) -> float | list[float]:
+    ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
         """
         Calculate the error of a coregistration approach.
 
@@ -781,16 +803,17 @@ class Coreg:
             transform=transform,
         )
 
-        def rms(res: NDArrayf) -> float:
+        def rms(res: NDArrayf) -> np.floating[Any]:
             return np.sqrt(np.mean(np.square(res)))
 
-        def mae(res: NDArrayf) -> float:
+        def mae(res: NDArrayf) -> np.floating[Any]:
             return np.mean(np.abs(res))
 
         def count(res: NDArrayf) -> int:
             return res.size
 
-        error_functions = {
+        error_functions: dict[str, Callable[[NDArrayf], np.floating[Any] | float | np.integer[Any] | int]] \
+            = {
             "nmad": xdem.spatialstats.nmad,
             "median": np.median,
             "mean": np.mean,
@@ -902,7 +925,7 @@ class BiasCorr(Coreg):
     Estimates the mean (or median, weighted avg., etc.) offset between two DEMs.
     """
 
-    def __init__(self, bias_func: Callable[[NDArrayf], np.float_]=np.average) -> None:  # pylint:
+    def __init__(self, bias_func: Callable[[NDArrayf], np.floating[Any]]=np.average) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a bias correction object.
@@ -1270,7 +1293,7 @@ class CoregPipeline(Coreg):
 
             return transform_mgr.get_transform(0, len(self.pipeline))
 
-    def __iter__(self) -> Generator:
+    def __iter__(self) -> Generator[Coreg, None, None]:
         """Iterate over the pipeline steps."""
         yield from self.pipeline
 
@@ -1301,6 +1324,7 @@ class NuthKaab(Coreg):
         :param max_iterations: The maximum allowed iterations before stopping.
         :param offset_threshold: The residual offset threshold after which to stop the iterations.
         """
+        self._meta: CoregDict
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
@@ -1343,7 +1367,7 @@ class NuthKaab(Coreg):
         )
 
         # Initialise east and north pixel offset variables (these will be incremented up and down)
-        offset_east, offset_north, bias = 0.0, 0.0, 0.0
+        offset_east, offset_north = 0.0, 0.0
 
         # Calculate initial dDEM statistics
         elevation_difference = ref_dem - aligned_dem

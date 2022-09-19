@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import geoutils as gu
 import numpy as np
-from numpy.typing import NDArray
 import pytest
 from geoutils import Raster, Vector
+from numpy.typing import NDArray
 
 from xdem import examples
 

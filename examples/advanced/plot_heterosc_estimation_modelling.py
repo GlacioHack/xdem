@@ -19,7 +19,6 @@ and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, 
 be used to convert elevation change errors into elevation errors.
 """
 import geoutils as gu
-
 # sphinx_gallery_thumbnail_number = 8
 import matplotlib.pyplot as plt
 import numpy as np

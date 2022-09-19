@@ -5,8 +5,8 @@ import warnings
 
 import cv2 as cv
 import numpy as np
-from numpy.typing import NDArray
 import scipy
+from numpy.typing import NDArray
 
 # Gaussian filters
 
