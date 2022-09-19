@@ -28,7 +28,7 @@ FILEPATHS_PROCESSED = {
 }
 
 
-def download_longyearbyen_examples(overwrite: bool = False):
+def download_longyearbyen_examples(overwrite: bool = False) -> None:
     """
     Fetch the Longyearbyen example files.
 
@@ -77,7 +77,7 @@ def download_longyearbyen_examples(overwrite: bool = False):
     copy_tree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data"))
 
 
-def process_coregistered_examples(overwrite: bool = False):
+def process_coregistered_examples(overwrite: bool = False) -> None:
     """
     Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
 

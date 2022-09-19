@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import warnings
-from typing import Sized, overload
+from typing import Sized, overload, Any
 
 import geoutils as gu
 import numba
 import numpy as np
-from numpy.typing import NDArray
 from geoutils.georaster import Raster, RasterType
+
+from xdem._typing import NDArrayf, MArrayf
 
 try:
     import richdem as rd
@@ -31,7 +32,7 @@ def _raster_to_rda(rst: RasterType) -> rd.rdarray:
     return rda
 
 
-def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") -> NDArray[np.float_ | np.int_]:
+def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") -> NDArrayf:
     """
     Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
     "profile_curvature", "planform_curvature", "curvature" and others (see RichDEM documentation).
@@ -47,12 +48,12 @@ def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") 
 
 @numba.njit(parallel=True) # type: ignore
 def _get_quadric_coefficients(
-    dem: NDArray[np.float_ | np.int_],
+    dem: NDArrayf,
     resolution: float,
     fill_method: str = "none",
     edge_method: str = "none",
     make_rugosity: bool = False,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     """
     Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
 
@@ -230,12 +231,12 @@ def _get_quadric_coefficients(
 
 
 def get_quadric_coefficients(
-    dem: NDArray[np.float_ | np.int_],
+    dem: NDArrayf,
     resolution: float,
     fill_method: str = "none",
     edge_method: str = "none",
     make_rugosity: bool = False,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     """
     Computes quadric and other coefficients on a fixed 3x3 pixel window, and that depends on the resolution.
     Returns the 9 coefficients of a quadric surface fit to every pixel in the raster, the 2 coefficients of optimized
@@ -339,12 +340,12 @@ def get_quadric_coefficients(
 
 @numba.njit(parallel=True) # type: ignore
 def _get_windowed_indexes(
-    dem: NDArray[np.float_ | np.int_],
+    dem: NDArrayf,
     fill_method: str = "median",
     edge_method: str = "nearest",
     window_size: int = 3,
     make_fractal_roughness: bool = False,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     """
     Run the pixel-wise analysis in parallel for any window size without using the resolution.
 
@@ -508,12 +509,12 @@ def _get_windowed_indexes(
 
 
 def get_windowed_indexes(
-    dem: NDArray[np.float_ | np.int_],
+    dem: NDArrayf,
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
     make_fractal_roughness: bool = False,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     """
     Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
 
@@ -610,7 +611,7 @@ def get_windowed_indexes(
 
 @overload
 def get_terrain_attribute(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     attribute: str,
     resolution: tuple[float, float] | float | None,
     degrees: bool,
@@ -623,13 +624,13 @@ def get_terrain_attribute(
     edge_method: str,
     use_richdem: bool,
     window_size: int,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 @overload
 def get_terrain_attribute(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     attribute: list[str],
     resolution: tuple[float, float] | float | None,
     degrees: bool,
@@ -642,13 +643,13 @@ def get_terrain_attribute(
     edge_method: str,
     use_richdem: bool,
     window_size: int,
-) -> list[NDArray[np.float_ | np.int_]]:
+) -> list[NDArrayf]:
     ...
 
 
 @overload
 def get_terrain_attribute(
-    dem: RasterType,
+    dem: Any,
     attribute: str,
     resolution: tuple[float, float] | float | None,
     degrees: bool,
@@ -661,13 +662,13 @@ def get_terrain_attribute(
     edge_method: str,
     use_richdem: bool,
     window_size: int,
-) -> Raster:
+) -> Any:
     ...
 
 
 @overload
 def get_terrain_attribute(
-    dem: RasterType,
+    dem: Any,
     attribute: list[str],
     resolution: tuple[float, float] | float | None,
     degrees: bool,
@@ -680,12 +681,12 @@ def get_terrain_attribute(
     edge_method: str,
     use_richdem: bool,
     window_size: int,
-) -> list[Raster]:
+) -> list[Any]:
     ...
 
 
 def get_terrain_attribute(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     attribute: str | list[str],
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -698,7 +699,7 @@ def get_terrain_attribute(
     edge_method: str = "none",
     use_richdem: bool = False,
     window_size: int = 3,
-) -> NDArray[np.float_ | np.int_] | list[NDArray[np.float_ | np.int_]] | Raster | list[Raster]:
+) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
@@ -850,7 +851,7 @@ def get_terrain_attribute(
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
-    terrain_attributes: dict[str, NDArray[np.float_ | np.int_]] = {}
+    terrain_attributes: dict[str, NDArrayf] = {}
 
     # Check which products should be made to optimize the processing
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
@@ -1107,22 +1108,22 @@ def slope(
 
 @overload
 def slope(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None,
     method: str,
     degrees: bool,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def slope(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     degrees: bool = True,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | Raster:
     """
     Generate a slope map for a DEM, returned in degrees by default.
 
@@ -1155,11 +1156,11 @@ def slope(
 
 @overload
 def aspect(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     method: str,
     degrees: bool,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
@@ -1169,16 +1170,16 @@ def aspect(
     method: str,
     degrees: bool,
     use_richdem: bool,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 def aspect(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     method: str = "Horn",
     degrees: bool = True,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | Raster:
     """
     Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
     default (as in GDAL).
@@ -1223,32 +1224,32 @@ def hillshade(
     altitude: float,
     z_factor: float,
     use_richdem: bool,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def hillshade(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float],
     method: str,
     azimuth: float,
     altitude: float,
     z_factor: float,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def hillshade(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | RasterType:
     """
     Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
 
@@ -1285,24 +1286,24 @@ def curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
 
@@ -1339,24 +1340,24 @@ def planform_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def planform_curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def planform_curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
 
@@ -1392,24 +1393,24 @@ def profile_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def profile_curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def profile_curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
 
@@ -1443,24 +1444,24 @@ def maximum_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def maximum_curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None,
     use_richdem: bool,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def maximum_curvature(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> NDArray[np.float_ | np.int_] | Raster:
+) -> NDArrayf | RasterType:
     """
     Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
     multiplied by 100.
@@ -1482,21 +1483,21 @@ def maximum_curvature(
 def topographic_position_index(
     dem: RasterType,
     window_size: int,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def topographic_position_index(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     window_size: int,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def topographic_position_index(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType, window_size: int = 3
-) -> NDArray[np.float_ | np.int_] | Raster:
+    dem: NDArrayf | MArrayf | RasterType, window_size: int = 3
+) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1526,18 +1527,18 @@ def topographic_position_index(
 
 
 @overload
-def terrain_ruggedness_index(dem: RasterType, method: str, window_size: int) -> Raster:
+def terrain_ruggedness_index(dem: RasterType, method: str, window_size: int) -> RasterType:
     ...
 
 
 @overload
-def terrain_ruggedness_index(dem: NDArray[np.float_ | np.int_] | np.ma.masked_array, method: str, window_size: int) -> NDArray[np.float_ | np.int_]:
+def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str, window_size: int) -> NDArrayf:
     ...
 
 
 def terrain_ruggedness_index(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType, method: str = "Riley", window_size: int = 3
-) -> NDArray[np.float_ | np.int_] | Raster:
+    dem: NDArrayf | MArrayf | RasterType, method: str = "Riley", window_size: int = 3
+) -> NDArrayf | RasterType:
     """
     Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1575,16 +1576,16 @@ def terrain_ruggedness_index(
 
 
 @overload
-def roughness(dem: RasterType, window_size: int) -> Raster:
+def roughness(dem: RasterType, window_size: int) -> RasterType:
     ...
 
 
 @overload
-def roughness(dem: NDArray[np.float_ | np.int_] | np.ma.masked_array, window_size: int) -> NDArray[np.float_ | np.int_]:
+def roughness(dem: NDArrayf | MArrayf, window_size: int) -> NDArrayf:
     ...
 
 
-def roughness(dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType, window_size: int = 3) -> NDArray[np.float_ | np.int_] | Raster:
+def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
     """
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
     unit of the DEM (typically meters).
@@ -1617,21 +1618,21 @@ def roughness(dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterTyp
 def rugosity(
     dem: RasterType,
     resolution: float | tuple[float, float] | None,
-) -> Raster:
+) -> RasterType:
     ...
 
 
 @overload
 def rugosity(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None,
-) -> NDArray[np.float_ | np.int_]:
+) -> NDArrayf:
     ...
 
 
 def rugosity(
-    dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType, resolution: float | tuple[float, float] | None = None
-) -> NDArray[np.float_ | np.int_] | Raster:
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
+) -> NDArrayf | RasterType:
     """
     Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
     output is unitless.
@@ -1661,16 +1662,16 @@ def rugosity(
 
 
 @overload
-def fractal_roughness(dem: RasterType, window_size: int) -> Raster:
+def fractal_roughness(dem: RasterType, window_size: int) -> RasterType:
     ...
 
 
 @overload
-def fractal_roughness(dem: NDArray[np.float_ | np.int_] | np.ma.masked_array, window_size: int) -> NDArray[np.float_ | np.int_]:
+def fractal_roughness(dem: NDArrayf | MArrayf, window_size: int) -> NDArrayf:
     ...
 
 
-def fractal_roughness(dem: NDArray[np.float_ | np.int_] | np.ma.masked_array | RasterType, window_size: int = 13) -> NDArray[np.float_ | np.int_] | Raster:
+def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 13) -> NDArrayf | RasterType:
     """
     Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
     equal to 5x5, defaults to 13x13. Output unit is a fractal dimension between 1 and 3.

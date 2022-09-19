@@ -71,7 +71,7 @@ class DEM(SatelliteImage): # type: ignore
         :param silent: boolean
         """
 
-        self.data: NDArray[np.float_ | np.int_]
+        self.data: NDArray[np.floating[Any]]
 
         # If DEM is passed, simply point back to DEM
         if isinstance(filename_or_dataset, DEM):
@@ -96,7 +96,7 @@ class DEM(SatelliteImage): # type: ignore
         # trying to get vref from product name (priority to user input)
         self.__parse_vref_from_fn(silent=silent)
 
-    def copy(self, new_array: NDArray[np.float_ | np.int_] | None = None) -> DEM:
+    def copy(self, new_array: NDArray[np.floating[Any]] | None = None) -> DEM:
 
         new_dem = super().copy(new_array=new_array)  # type: ignore
         # The rest of attributes are immutable, including pyproj.CRS

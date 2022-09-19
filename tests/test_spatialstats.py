@@ -23,7 +23,7 @@ with warnings.catch_warnings():
 PLOT = False
 
 
-def load_ref_and_diff() -> tuple[Raster, Raster, NDArray[np.float_ | np.int_], Vector]:
+def load_ref_and_diff() -> tuple[Raster, Raster, NDArray[np.floating[Any]], Vector]:
     """Load example files to try coregistration methods with."""
 
     reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))

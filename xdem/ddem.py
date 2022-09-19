@@ -9,7 +9,10 @@ import numpy as np
 from numpy.typing import NDArray
 import shapely
 from geoutils import spatial_tools
+from geoutils.georaster import RasterType
 
+from rasterio.warp import Affine
+from rasterio.crs import CRS
 import xdem
 
 
@@ -33,20 +36,25 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         self.start_time = start_time
         self.end_time = end_time
         self.error = error
-        self._filled_data: NDArray[np.float_ | np.int_] | None = None
+        self._filled_data: NDArray[np.floating[Any]] | None = None
         self._fill_method = ""
+        self.nodata: int | float | None = None
 
     def __str__(self) -> str:
         """Return a summary of the dDEM."""
         return f"dDEM from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
 
-    def copy(self) -> dDEM:
+    def copy(self, new_array: NDArray[np.floating[Any]] = None) -> dDEM:
         """Return a copy of the DEM."""
-        new_ddem = dDEM.from_array(self.data.copy(), self.transform, self.crs, self.start_time, self.end_time)
+
+        if new_array is None:
+            new_array = self.data.copy()
+
+        new_ddem = dDEM.from_array(new_array, self.transform, self.crs, self.start_time, self.end_time)
         return new_ddem
 
     @property
-    def filled_data(self) -> NDArray[np.float_ | np.int_] | None:
+    def filled_data(self) -> NDArray[np.floating[Any]] | None:
         """
         Get the filled data array if it exists, or else the original data if it has no nans.
 
@@ -62,7 +70,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         return np.asarray(self.data)
 
     @filled_data.setter
-    def filled_data(self, array: NDArray[np.float_ | np.int_]) -> None:
+    def filled_data(self, array: NDArray[np.floating[Any]]) -> None:
         """Set the filled_data attribute and make sure that it is valid."""
 
         assert (
@@ -81,7 +89,15 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         """Get the time duration."""
         return self.end_time - self.start_time
 
-    def from_array(data: NDArray[np.float_ | np.int_], transform, crs, start_time, end_time, error=None, nodata=None) -> dDEM:
+    @classmethod
+    def from_array(cls: type[RasterType],
+                   data: NDArray[np.floating[Any]],
+                   transform: tuple[float, ...] | Affine,
+                   crs: CRS | int | None,
+                   start_time: np.datetime64,
+                   end_time: np.datetime64,
+                   error: float = None,
+                   nodata: int | float | None = None) -> dDEM:
         """
         Create a new dDEM object from an array.
 
@@ -105,9 +121,10 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     def interpolate(
         self,
         method: str = "linear",
-        reference_elevation: NDArray[np.float_ | np.int_] | np.ma.masked_array | xdem.DEM | None = None,
-        mask: NDArray[np.float_ | np.int_] | xdem.DEM | gu.Vector | None = None,
-    ) -> None:
+        reference_elevation: NDArray[np.floating[Any]] | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] |
+                             xdem.DEM  = None,
+        mask: NDArray[np.floating[Any]] | xdem.DEM | gu.Vector = None,
+    ) -> NDArray[np.floating[Any]] | None :
         """
         Interpolate the dDEM using the given method.
 
@@ -121,7 +138,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
                 if "object has no attribute 'reproject'" not in str(exception):
                     raise exception
 
-            if isinstance(reference_elevation, NDArray[np.float_ | np.int_]):
+            if isinstance(reference_elevation, np.ndarray):
                 reference_elevation = np.ma.masked_array(reference_elevation, mask=np.isnan(reference_elevation))
 
             assert reference_elevation.data.shape == self.data.shape, (

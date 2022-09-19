@@ -643,7 +643,7 @@ class TestCoregClass:
         def fit_func() -> coreg.Coreg:
             return biascorr.fit(ref_dem, tba_dem, transform=transform)
 
-        def apply_func() -> NDArray[np.float_ | np.int_]:
+        def apply_func() -> NDArray[np.floating[Any]]:
             return biascorr.apply(tba_dem, transform=transform)
 
         # Try running the methods in order and validate the result.
@@ -721,7 +721,7 @@ def test_apply_matrix() -> None:
     # Check that the NMAD is low
     assert spatialstats.nmad(diff) < 0.01
 
-    def rotation_matrix(rotation: float = 30) -> NDArray[np.float_ | np.int_]:
+    def rotation_matrix(rotation: float = 30) -> NDArray[np.floating[Any]]:
         rotation = np.deg2rad(rotation)
         matrix = np.array(
             [

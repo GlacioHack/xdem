@@ -4,9 +4,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import warnings
-from typing import Any, Callable, TypeVar, overload, TypedDict
-from geoutils._typing import AnyNumber
-
+from typing import Any, Callable, TypeVar, overload, TypedDict, Generator
 try:
     import cv2
 
@@ -26,12 +24,13 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 import skimage.transform
-from geoutils import spatial_tools
+from geoutils import spatial_tools, Raster
 from geoutils.georaster import RasterType
 from rasterio import Affine
 from tqdm import tqdm, trange
 
 import xdem
+from xdem._typing import NDArrayf, MArrayf
 
 try:
     import pytransform3d.transformations
@@ -42,7 +41,7 @@ except ImportError:
     _HAS_P3D = False
 
 
-def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]) -> np.ma.masked_array:
+def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]) -> MArrayf:
     """
     Function to filter values using a range.
     """
@@ -52,7 +51,7 @@ def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]) -> np.
     return out
 
 
-def filtered_slope(ds_slope, slope_lim=(0.1, 40)) -> np.ma.masked_array:
+def filtered_slope(ds_slope: rio.DatasetReader, slope_lim: tuple[float, float]=(0.1, 40)) -> MArrayf:
     print("Slope filter: %0.2f - %0.2f" % slope_lim)
     print("Initial count: %i" % ds_slope.count())
     flt_slope = filter_by_range(ds_slope, slope_lim)
@@ -60,7 +59,7 @@ def filtered_slope(ds_slope, slope_lim=(0.1, 40)) -> np.ma.masked_array:
     return flt_slope
 
 
-def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> NDArray[np.float_]:
+def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> NDArrayf:
     """
     Apply horizontal shift to rio dataset using Transform affine matrix
     :param ds: DEM
@@ -104,7 +103,7 @@ def apply_z_shift(ds: rio.DatasetReader, dz: float) -> float:
 
 
 def get_horizontal_shift(
-    elevation_difference: NDArray[np.float_], slope: NDArray[np.float_], aspect: NDArray[np.float_], min_count: int = 20
+    elevation_difference: NDArrayf, slope: NDArrayf, aspect: NDArrayf, min_count: int = 20
 ) -> tuple[float, float, float]:
     """
     Calculate the horizontal shift between two DEMs using the method presented in Nuth and Kääb (2011).
@@ -157,7 +156,7 @@ def get_horizontal_shift(
     # Make an initial guess of the a, b, and c parameters
     initial_guess: tuple[float, float, float] = (3 * np.std(y_medians) / (2**0.5), 0.0, np.mean(y_medians))
 
-    def estimate_ys(x_values: NDArray[np.float_], parameters: tuple[float, float, float]) -> NDArray[np.float_]:
+    def estimate_ys(x_values: NDArrayf, parameters: tuple[float, float, float]) -> NDArrayf:
         """
         Estimate y-values from x-values and the current parameters.
 
@@ -170,7 +169,7 @@ def get_horizontal_shift(
         """
         return parameters[0] * np.cos(parameters[1] - x_values) + parameters[2]
 
-    def residuals(parameters: tuple[float, float, float], y_values: NDArray[np.float_], x_values: NDArray[np.float_]) -> NDArray[np.float_]:
+    def residuals(parameters: tuple[float, float, float], y_values: NDArrayf, x_values: NDArrayf) -> NDArrayf:
         """
         Get the residuals between the estimated and measured values using the given parameters.
 
@@ -198,7 +197,7 @@ def get_horizontal_shift(
     return east_offset, north_offset, c_parameter
 
 
-def calculate_slope_and_aspect(dem: NDArray[np.float_]) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
+def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
     Calculate the slope and aspect of a DEM.
 
@@ -220,13 +219,13 @@ def calculate_slope_and_aspect(dem: NDArray[np.float_]) -> tuple[NDArray[np.floa
 
 
 def deramping(
-    elevation_difference,
-    x_coordinates: NDArray[np.float_],
-    y_coordinates: NDArray[np.float_],
+    elevation_difference: NDArrayf,
+    x_coordinates: NDArrayf,
+    y_coordinates: NDArrayf,
     degree: int,
     verbose: bool = False,
     metadata: dict[str, Any] | None = None,
-) -> Callable[[NDArray[np.float_], NDArray[np.float_]], NDArray[np.float_]]:
+) -> Callable[[NDArrayf, NDArrayf], NDArrayf]:
     """
     Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
 
@@ -254,8 +253,8 @@ def deramping(
 
     # Create a function whose residuals will be attempted to minimise
     def estimate_values(
-        x_coordinates: NDArray[np.float_], y_coordinates: NDArray[np.float_], coefficients: NDArray[np.float_], degree: int
-    ) -> NDArray[np.float_]:
+        x_coordinates: NDArrayf, y_coordinates: NDArrayf, coefficients: NDArrayf, degree: int
+    ) -> NDArrayf:
         """
         Estimate values from a 2D-polynomial.
 
@@ -286,8 +285,8 @@ def deramping(
 
     # Create the error function
     def residuals(
-        coefficients: NDArray[np.float_], values: NDArray[np.float_], x_coordinates: NDArray[np.float_], y_coordinates: NDArray[np.float_], degree: int
-    ) -> NDArray[np.float_]:
+        coefficients: NDArrayf, values: NDArrayf, x_coordinates: NDArrayf, y_coordinates: NDArrayf, degree: int
+    ) -> NDArrayf:
         """
         Calculate the difference between the estimated and measured values.
 
@@ -318,7 +317,7 @@ def deramping(
 
     # Generate the return-function which can correctly estimate the ramp
 
-    def ramp(x_coordinates: NDArray[np.float_], y_coordinates: NDArray[np.float_]) -> NDArray[np.float_]:
+    def ramp(x_coordinates: NDArrayf, y_coordinates: NDArrayf) -> NDArrayf:
         """
         Get the values of the ramp that corresponds to given coordinates.
 
@@ -343,7 +342,7 @@ def deramping(
 
 def mask_as_array(
     reference_raster: gu.georaster.Raster, mask: str | gu.geovector.Vector | gu.georaster.Raster
-) -> NDArray[np.float_]:
+) -> NDArrayf:
     """
     Convert a given mask into an array.
 
@@ -395,7 +394,7 @@ def _transform_to_bounds_and_res(
     return bounds, resolution
 
 
-def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine) -> tuple[NDArray[np.float_], NDArray[np.float_]]:
+def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine) -> tuple[NDArrayf, NDArrayf]:
     """Generate center coordinates from a transform and the shape of a DEM."""
     bounds, resolution = _transform_to_bounds_and_res(shape, transform)
     x_coords, y_coords = np.meshgrid(
@@ -414,15 +413,15 @@ class CoregDict(TypedDict, total=False):
     https://peps.python.org/pep-0655/) there is an easy way to specific Required or NotRequired for each key, if we
     want to change this in the future.
     """
-    bias_func: Callable[[NDArray[np.float_]], NDArray[np.float_]]
-    func: Callable[[tuple[NDArray[np.float_], NDArray[np.float_]]], NDArray[np.float_]]
-    bias: np.floating[Any]
-    matrix: NDArray[np.float_]
+    bias_func: Callable[[NDArrayf], NDArrayf]
+    func: Callable[[NDArrayf, NDArrayf], NDArrayf]
+    bias: float
+    matrix: NDArrayf
     centroid: tuple[float, float, float]
     offset_east_px: float
     offset_north_px: float
-    coefficients: NDArray[np.float_]
-    coreg_meta: list
+    coefficients: NDArrayf
+    coreg_meta: list[Any]
     resolution: float
     # The pipeline metadata can have any value of the above
     pipeline: list[Any]
@@ -438,7 +437,7 @@ class Coreg:
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
 
-    def __init__(self, meta: CoregDict | None = None, matrix: NDArray[np.float_] | None = None) -> None:
+    def __init__(self, meta: CoregDict | None = None, matrix: NDArrayf | None = None) -> None:
         """Instantiate a generic Coreg method."""
         self._meta: CoregDict = meta or {}  # All __init__ functions should instantiate an empty dict.
 
@@ -451,11 +450,11 @@ class Coreg:
 
     def fit(
         self: CoregType,
-        reference_dem: NDArray[np.float_] | np.ma.masked_array | RasterType,
-        dem_to_be_aligned: NDArray[np.float_] | np.ma.masked_array | RasterType,
-        inlier_mask: NDArray[np.float_] | None = None,
+        reference_dem: NDArrayf | MArrayf | RasterType,
+        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
-        weights: NDArray[np.float_] | None = None,
+        weights: NDArrayf | None = None,
         subsample: float | int = 1.0,
         verbose: bool = False,
         random_state: None | np.random.RandomState | np.random.Generator | int = None,
@@ -477,7 +476,7 @@ class Coreg:
             raise NotImplementedError("Weights have not yet been implemented")
 
         # Validate that both inputs are valid array-like (or Raster) types.
-        if not all(isinstance(dem, (NDArray[np.float_], gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
+        if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
             raise ValueError(
                 "Both DEMs need to be array-like (implement a numpy array interface)."
                 f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
@@ -491,7 +490,7 @@ class Coreg:
         # If 'transform' was given and any input is a Raster, trigger a warning.
         # Finally, extract only the data of the raster.
         for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
-            if hasattr(dem, "transform"):
+            if isinstance(dem, gu.Raster):
                 if transform is None:
                     transform = dem.transform
                 elif transform is not None:
@@ -553,23 +552,23 @@ class Coreg:
         return self
 
     @overload
-    def apply(self, dem: RasterType, transform: rio.transform.Affine | None, **kwargs) -> RasterType:
+    def apply(self, dem: RasterType, transform: rio.transform.Affine | None, **kwargs: Any) -> RasterType:
         ...
 
     @overload
-    def apply(self, dem: NDArray[np.float_], transform: rio.transform.Affine | None, **kwargs) -> NDArray[np.float_]:
+    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None, **kwargs: Any) -> NDArrayf:
         ...
 
     @overload
-    def apply(self, dem: np.ma.masked_array, transform: rio.transform.Affine | None, **kwargs) -> \
-            np.ma.masked_array:
+    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None, **kwargs: Any) -> \
+            MArrayf:
         ...
 
     def apply(
-        self, dem: NDArray[np.float_] | np.ma.masked_array | RasterType,
+        self, dem: RasterType | NDArrayf | MArrayf,
             transform: rio.transform.Affine | None = None,
-            **kwargs
-    ) -> RasterType | NDArray[np.float_] | np.ma.masked_array:
+            **kwargs: Any
+    ) -> RasterType | NDArrayf | MArrayf:
         """
         Apply the estimated transform to a DEM.
 
@@ -642,7 +641,7 @@ class Coreg:
 
         return applied_dem
 
-    def apply_pts(self, coords: NDArray[np.float_]) -> NDArray[np.float_]:
+    def apply_pts(self, coords: NDArrayf) -> NDArrayf:
         """
         Apply the estimated transform to a set of 3D points.
 
@@ -694,7 +693,7 @@ class Coreg:
 
         return self._is_affine
 
-    def to_matrix(self) -> NDArray[np.float_]:
+    def to_matrix(self) -> NDArrayf:
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
 
@@ -710,11 +709,11 @@ class Coreg:
 
     def residuals(
         self,
-        reference_dem: NDArray[np.float_],
-        dem_to_be_aligned: NDArray[np.float_],
-        inlier_mask: NDArray[np.float_] | None = None,
+        reference_dem: NDArrayf,
+        dem_to_be_aligned: NDArrayf,
+        inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
-    ) -> NDArray[np.float_]:
+    ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
 
@@ -749,10 +748,10 @@ class Coreg:
 
     def error(
         self,
-        reference_dem: NDArray[np.float_],
-        dem_to_be_aligned: NDArray[np.float_],
+        reference_dem: NDArrayf,
+        dem_to_be_aligned: NDArrayf,
         error_type: str | list[str] = "nmad",
-        inlier_mask: NDArray[np.float_] | None = None,
+        inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
     ) -> float | list[float]:
         """
@@ -785,14 +784,23 @@ class Coreg:
             transform=transform,
         )
 
+        def rms(res: NDArrayf) -> float:
+            return np.sqrt(np.mean(np.square(res)))
+
+        def mae(res: NDArrayf) -> float:
+            return np.mean(np.abs(res))
+
+        def count(res: NDArrayf) -> int:
+            return res.size
+
         error_functions = {
             "nmad": xdem.spatialstats.nmad,
             "median": np.median,
             "mean": np.mean,
             "std": np.std,
-            "rms": lambda residuals: np.sqrt(np.mean(np.square(residuals))),
-            "mae": lambda residuals: np.mean(np.abs(residuals)),
-            "count": lambda residuals: residuals.size,
+            "rms": rms,
+            "mae": mae,
+            "count": count,
         }
 
         try:
@@ -806,7 +814,7 @@ class Coreg:
         return errors if len(errors) > 1 else errors[0]
 
     @classmethod
-    def from_matrix(cls, matrix: NDArray[np.float_]) -> CoregType:
+    def from_matrix(cls, matrix: NDArrayf) -> Coreg:
         """
         Instantiate a generic Coreg class from a transformation matrix.
 
@@ -825,7 +833,7 @@ class Coreg:
         return cls(matrix=valid_matrix)
 
     @classmethod
-    def from_translation(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> CoregType:
+    def from_translation(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> Coreg:
         """
         Instantiate a generic Coreg class from a X/Y/Z translation.
 
@@ -860,16 +868,16 @@ class Coreg:
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This should have been implemented by subclassing")
 
-    def _to_matrix_func(self) -> NDArray[np.float_]:
+    def _to_matrix_func(self) -> NDArrayf:
         # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
 
         # Try to see if a matrix exists.
@@ -880,12 +888,12 @@ class Coreg:
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _apply_func(self, dem: NDArray[np.float_], transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
         np.float_ | np.int_]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
-    def _apply_pts_func(self, coords: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -897,7 +905,7 @@ class BiasCorr(Coreg):
     Estimates the mean (or median, weighted avg., etc.) offset between two DEMs.
     """
 
-    def __init__(self, bias_func: Callable[[NDArray[np.float_]], np.float_]=np.average) -> None:  # pylint:
+    def __init__(self, bias_func: Callable[[NDArrayf], np.float_]=np.average) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a bias correction object.
@@ -910,10 +918,10 @@ class BiasCorr(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Estimate the bias using the bias_func."""
@@ -926,14 +934,17 @@ class BiasCorr(Coreg):
             raise ValueError("No finite values in bias comparison.")
 
         # Use weights if those were provided.
-        bias = self._meta["bias_func"](diff) if weights is None else self._meta["bias_func"](diff, weights=weights)
+        bias = self._meta["bias_func"](diff) if weights is None \
+            else self._meta["bias_func"](diff, weights) # type: ignore
+        # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
+        # TODO: once we have the weights implemented
 
         if verbose:
             print("Bias estimated")
 
         self._meta["bias"] = bias
 
-    def _to_matrix_func(self) -> NDArray[np.float_]:
+    def _to_matrix_func(self) -> NDArrayf:
         """Convert the bias to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
@@ -953,7 +964,8 @@ class ICP(Coreg):
     See opencv docs for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
-    def __init__(self, max_iterations=100, tolerance=0.05, rejection_scale=2.5, num_levels=6) -> None:
+    def __init__(self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5,
+                 num_levels: int = 6) -> None:
         """
         Instantiate an ICP coregistration object.
 
@@ -973,10 +985,10 @@ class ICP(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Estimate the rigid transform from tba_dem to ref_dem."""
@@ -985,11 +997,11 @@ class ICP(Coreg):
             warnings.warn("ICP was given weights, but does not support it.")
 
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        points: dict[str, NDArray[np.float_]] = {}
+        points: dict[str, NDArrayf] = {}
         # Generate the x and y coordinates for the reference_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
 
-        centroid = np.array([np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0])
+        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= centroid[0]
         y_coords -= centroid[1]
@@ -1064,10 +1076,10 @@ class Deramp(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
@@ -1080,7 +1092,7 @@ class Deramp(Coreg):
         y_coords = y_coords[valid_mask]
 
         # Formulate the 2D polynomial whose coefficients will be solved for.
-        def poly2d(x_coordinates: NDArray[np.float_], y_coordinates: NDArray[np.float_], coefficients: NDArray[np.float_]) -> NDArray[np.float_]:
+        def poly2d(x_coordinates: NDArrayf, y_coordinates: NDArrayf, coefficients: NDArrayf) -> NDArrayf:
             """
             Estimate values from a 2D-polynomial.
 
@@ -1111,7 +1123,7 @@ class Deramp(Coreg):
             )
             return estimated_values  # type: ignore
 
-        def residuals(coefs: NDArray[np.float_], x_coords: NDArray[np.float_], y_coords: NDArray[np.float_], targets: NDArray[np.float_]):
+        def residuals(coefs: NDArrayf, x_coords: NDArrayf, y_coords: NDArrayf, targets: NDArrayf) -> NDArrayf:
             res = targets - poly2d(x_coords, y_coords, coefs)
             return res[np.isfinite(res)]
 
@@ -1141,10 +1153,13 @@ class Deramp(Coreg):
             args=(x_coords, y_coords, ddem),
         )
 
-        self._meta["coefficients"] = coefs[0]
-        self._meta["func"] = lambda x, y: poly2d(x, y, coefs[0])
+        def fit_func(x: NDArrayf, y: NDArrayf) -> NDArrayf:
+            return poly2d(x, y, coefs[0])
 
-    def _apply_func(self, dem: NDArray[np.float_], transform: rio.transform.Affine, **kwargs) -> NDArray[np.float_]:
+        self._meta["coefficients"] = coefs[0]
+        self._meta["func"] = fit_func
+
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
 
@@ -1152,7 +1167,7 @@ class Deramp(Coreg):
 
         return dem + ramp
 
-    def _apply_pts_func(self, coords: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the deramp function to a set of points."""
         new_coords = coords.copy()
 
@@ -1160,7 +1175,7 @@ class Deramp(Coreg):
 
         return new_coords
 
-    def _to_matrix_func(self) -> NDArray[np.float_]:
+    def _to_matrix_func(self) -> NDArrayf:
         """Return a transform matrix if possible."""
         if self.degree > 1:
             raise ValueError(
@@ -1207,10 +1222,10 @@ class CoregPipeline(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Fit each coregistration step with the previously transformed DEM."""
@@ -1224,7 +1239,7 @@ class CoregPipeline(Coreg):
 
             tba_dem_mod = coreg.apply(tba_dem_mod, transform)
 
-    def _apply_func(self, dem: NDArray[np.float_], transform: rio.transform.Affine, **kwargs) -> NDArray[np.float_]:
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
         """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
         for coreg in self.pipeline:
@@ -1232,7 +1247,7 @@ class CoregPipeline(Coreg):
 
         return dem_mod
 
-    def _apply_pts_func(self, coords: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the coregistration steps sequentially to a set of points."""
         coords_mod = coords.copy()
 
@@ -1241,7 +1256,7 @@ class CoregPipeline(Coreg):
 
         return coords_mod
 
-    def _to_matrix_func(self) -> NDArray[np.float_]:
+    def _to_matrix_func(self) -> NDArrayf:
         """Try to join the coregistration steps to a single transformation matrix."""
         if not _HAS_P3D:
             raise ValueError("Optional dependency needed. Install 'pytransform3d'")
@@ -1258,7 +1273,7 @@ class CoregPipeline(Coreg):
 
             return transform_mgr.get_transform(0, len(self.pipeline))
 
-    def __iter__(self):
+    def __iter__(self) -> Generator:
         """Iterate over the pipeline steps."""
         yield from self.pipeline
 
@@ -1296,10 +1311,10 @@ class NuthKaab(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Estimate the x/y/z offset between two DEMs."""
@@ -1409,7 +1424,7 @@ class NuthKaab(Coreg):
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
 
-    def _to_matrix_func(self) -> NDArray[np.float_]:
+    def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
@@ -1422,7 +1437,7 @@ class NuthKaab(Coreg):
         return matrix
 
 
-def invert_matrix(matrix: NDArray[np.float_]) -> NDArray[np.float_]:
+def invert_matrix(matrix: NDArrayf) -> NDArrayf:
     """Invert a transformation matrix."""
     with warnings.catch_warnings():
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
@@ -1434,14 +1449,14 @@ def invert_matrix(matrix: NDArray[np.float_]) -> NDArray[np.float_]:
 
 
 def apply_matrix(
-    dem: NDArray[np.float_],
+    dem: NDArrayf,
     transform: rio.transform.Affine,
-    matrix: NDArray[np.float_],
+    matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resampling: int | str = "bilinear",
     dilate_mask: bool = False,
-) -> NDArray[np.float_]:
+) -> NDArrayf:
     """
     Apply a 3D transformation matrix to a 2.5D DEM.
 
@@ -1602,10 +1617,10 @@ class ZScaleCorr(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Estimate the scale difference between the two DEMs."""
@@ -1618,14 +1633,14 @@ class ZScaleCorr(Coreg):
         coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
         self._meta["coefficients"] = coefficients
 
-    def _apply_func(self, dem: NDArray[np.float_], transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
         np.float_ | np.int_]:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
         return dem + model(dem)
 
-    def _apply_pts_func(self, coords: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the scaling model to a set of points."""
         model = np.poly1d(self._meta["coefficients"])
 
@@ -1633,7 +1648,7 @@ class ZScaleCorr(Coreg):
         new_coords[:, 2] += model(new_coords[:, 2])
         return new_coords
 
-    def _to_matrix_func(self) -> NDArray[np.float_]:
+    def _to_matrix_func(self) -> NDArrayf:
         """Convert the transform to a matrix, if possible."""
         if self.degree == 0:  # If it's just a bias correction.
             return self._meta["coefficients"][-1]
@@ -1688,10 +1703,10 @@ class BlockwiseCoreg(Coreg):
 
     def _fit_func(
         self,
-        ref_dem: NDArray[np.float_],
-        tba_dem: NDArray[np.float_],
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine,
-        weights: NDArray[np.float_] | None,
+        weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Fit the coreg approach for each subdivision."""
@@ -1841,7 +1856,7 @@ class BlockwiseCoreg(Coreg):
             for i, step in enumerate(self.coreg.pipeline):
                 step._meta.update(meta["pipeline"][i])
 
-    def to_points(self) -> NDArray[np.float_]:
+    def to_points(self) -> NDArrayf:
         """
         Convert the blockwise coregistration matrices to 3D (source -> destination) points.
 
@@ -1914,7 +1929,7 @@ class BlockwiseCoreg(Coreg):
 
         return stats_df
 
-    def subdivide_array(self, shape: tuple[int, ...]) -> NDArray[np.float_]:
+    def subdivide_array(self, shape: tuple[int, ...]) -> NDArrayf:
         """
         Return the grid subdivision for a given DEM shape.
 
@@ -1926,7 +1941,7 @@ class BlockwiseCoreg(Coreg):
             shape = (shape[1], shape[2])
         return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
-    def _apply_func(self, dem: NDArray[np.float_], transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
         np.float_ | np.int_]:
 
         points = self.to_points()
@@ -1957,7 +1972,7 @@ class BlockwiseCoreg(Coreg):
 
         return warped_dem
 
-    def _apply_pts_func(self, coords: NDArray[np.float_]) -> NDArray[np.float_]:
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the scaling model to a set of points."""
         points = self.to_points()
 
@@ -1980,14 +1995,14 @@ class BlockwiseCoreg(Coreg):
 
 
 def warp_dem(
-    dem: NDArray[np.float_],
+    dem: NDArrayf,
     transform: rio.transform.Affine,
-    source_coords: NDArray[np.float_],
-    destination_coords: NDArray[np.float_],
+    source_coords: NDArrayf,
+    destination_coords: NDArrayf,
     resampling: str = "cubic",
     trim_border: bool = True,
     dilate_mask: bool = True,
-) -> NDArray[np.float_]:
+) -> NDArrayf:
     """
     Warp a DEM using a set of source-destination 2D or 3D coordinates.
 

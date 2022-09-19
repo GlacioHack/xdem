@@ -45,7 +45,7 @@ class TestExamples:
             ),
         ],
     ) # type: ignore
-    def test_array_content(self, rst_and_truevals: tuple[Raster, NDArray[np.float_ | np.int_]]) -> None:
+    def test_array_content(self, rst_and_truevals: tuple[Raster, NDArray[np.floating[Any]]]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
         rst = rst_and_truevals[0]
