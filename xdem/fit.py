@@ -16,8 +16,12 @@ from numpy.typing import NDArray
 from xdem.spatialstats import nd_binning
 
 try:
-    from sklearn.linear_model import (HuberRegressor, LinearRegression,
-                                      RANSACRegressor, TheilSenRegressor)
+    from sklearn.linear_model import (
+        HuberRegressor,
+        LinearRegression,
+        RANSACRegressor,
+        TheilSenRegressor,
+    )
     from sklearn.metrics import median_absolute_error
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import PolynomialFeatures

@@ -25,8 +25,7 @@ from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
 from scipy.spatial.distance import pdist, squareform
-from scipy.stats import (binned_statistic, binned_statistic_2d,
-                         binned_statistic_dd)
+from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from skimage.draw import disk
 
 from xdem._typing import NDArrayf

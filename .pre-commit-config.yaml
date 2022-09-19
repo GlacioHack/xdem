@@ -78,6 +78,7 @@ repos:
           rev: 5.10.1
           hooks:
                   - id: isort
+                    args: ["--profile", "black"]
 
         # Automatically upgrade syntax to a minimum version
         - repo: https://github.com/asottile/pyupgrade

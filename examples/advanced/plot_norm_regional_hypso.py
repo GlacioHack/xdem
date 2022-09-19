@@ -27,6 +27,7 @@ The consequence is a much more accurate interpolation approach that can be used 
 
 """
 import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np

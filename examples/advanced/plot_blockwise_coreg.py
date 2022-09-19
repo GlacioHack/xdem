@@ -17,6 +17,7 @@ The ``BlockwiseCoreg`` class runs in five steps:
 
 """
 import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
