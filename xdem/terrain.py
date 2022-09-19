@@ -632,56 +632,56 @@ def get_terrain_attribute(
 def get_terrain_attribute(
     dem: NDArrayf | MArrayf,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int,
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
 ) -> list[NDArrayf]:
     ...
 
 
 @overload
 def get_terrain_attribute(
-    dem: Any,
+    dem: RasterType,
     attribute: str,
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int,
-) -> Any:
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> RasterType:
     ...
 
 
 @overload
 def get_terrain_attribute(
-    dem: Any,
+    dem: RasterType,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int,
-) -> list[Any]:
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> list[RasterType]:
     ...
 
 
