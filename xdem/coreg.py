@@ -958,8 +958,8 @@ class BiasCorr(Coreg):
 
         # Use weights if those were provided.
         bias = (
-            self._meta["bias_func"](diff) if weights is None else self._meta["bias_func"](diff, weights)
-        )  # type: ignore
+            self._meta["bias_func"](diff) if weights is None else self._meta["bias_func"](diff, weights) # type: ignore
+        )
         # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
         # TODO: once we have the weights implemented
 
