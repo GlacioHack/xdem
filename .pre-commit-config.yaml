@@ -70,7 +70,7 @@ repos:
 
                   ]
                   additional_dependencies: [tokenize-rt==3.2.0, numpy==1.22]
-
+                  files: ^(xdem|tests|docs/code)
 
 
         # Sort imports using isort

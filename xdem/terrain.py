@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Sized, overload, Any
+from typing import Sized, overload
 
 import geoutils as gu
 import numba
@@ -613,17 +613,17 @@ def get_windowed_indexes(
 def get_terrain_attribute(
     dem: NDArrayf | MArrayf,
     attribute: str,
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int,
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
 ) -> NDArrayf:
     ...
 
@@ -646,6 +646,23 @@ def get_terrain_attribute(
 ) -> list[NDArrayf]:
     ...
 
+@overload
+def get_terrain_attribute(
+    dem: RasterType,
+    attribute: list[str],
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> list[RasterType]:
+    ...
 
 @overload
 def get_terrain_attribute(
@@ -663,25 +680,6 @@ def get_terrain_attribute(
     use_richdem: bool = False,
     window_size: int = 3,
 ) -> RasterType:
-    ...
-
-
-@overload
-def get_terrain_attribute(
-    dem: RasterType,
-    attribute: list[str],
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    slope_method: str = "Horn",
-    tri_method: str = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
-    use_richdem: bool = False,
-    window_size: int = 3,
-) -> list[RasterType]:
     ...
 
 
@@ -1095,25 +1093,26 @@ def get_terrain_attribute(
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
 
 
+
 @overload
 def slope(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
-) -> Raster:
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> NDArrayf:
     ...
 
 
 @overload
 def slope(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
-) -> NDArrayf:
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> Raster:
     ...
 
 
@@ -1157,9 +1156,9 @@ def slope(
 @overload
 def aspect(
     dem: NDArrayf | MArrayf,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
 ) -> NDArrayf:
     ...
 
@@ -1167,9 +1166,9 @@ def aspect(
 @overload
 def aspect(
     dem: RasterType,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
 ) -> RasterType:
     ...
 
@@ -1214,32 +1213,30 @@ def aspect(
         dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees, use_richdem=use_richdem
     )
 
+@overload
+def hillshade(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    azimuth: float = 315.0,
+    altitude: float = 45.0,
+    z_factor: float = 1.0,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
+
 
 @overload
 def hillshade(
     dem: RasterType,
-    resolution: float | tuple[float, float],
-    method: str,
-    azimuth: float,
-    altitude: float,
-    z_factor: float,
-    use_richdem: bool,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    azimuth: float = 315.0,
+    altitude: float = 45.0,
+    z_factor: float = 1.0,
+    use_richdem: bool = False,
 ) -> RasterType:
     ...
-
-
-@overload
-def hillshade(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float],
-    method: str,
-    azimuth: float,
-    altitude: float,
-    z_factor: float,
-    use_richdem: bool,
-) -> NDArrayf:
-    ...
-
 
 def hillshade(
     dem: NDArrayf | MArrayf,
@@ -1283,19 +1280,19 @@ def hillshade(
 
 @overload
 def curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> RasterType:
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
     ...
 
 
 @overload
 def curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> NDArrayf:
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> RasterType:
     ...
 
 
@@ -1337,19 +1334,19 @@ def curvature(
 
 @overload
 def planform_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> RasterType:
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
     ...
 
 
 @overload
 def planform_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> NDArrayf:
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> RasterType:
     ...
 
 
@@ -1390,19 +1387,19 @@ def planform_curvature(
 
 @overload
 def profile_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> RasterType:
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
     ...
 
 
 @overload
 def profile_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> NDArrayf:
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> RasterType:
     ...
 
 
@@ -1439,21 +1436,22 @@ def profile_curvature(
     return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution, use_richdem=use_richdem)
 
 
+
 @overload
 def maximum_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> RasterType:
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
     ...
 
 
 @overload
 def maximum_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> NDArrayf:
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> RasterType:
     ...
 
 
@@ -1481,22 +1479,21 @@ def maximum_curvature(
 
 @overload
 def topographic_position_index(
-    dem: RasterType,
-    window_size: int,
-) -> RasterType:
-    ...
-
-
-@overload
-def topographic_position_index(
     dem: NDArrayf | MArrayf,
-    window_size: int,
+    window_size: int = 3
 ) -> NDArrayf:
     ...
 
+@overload
+def topographic_position_index(
+    dem: RasterType,
+    window_size: int = 3
+) -> RasterType:
+    ...
 
 def topographic_position_index(
-    dem: NDArrayf | MArrayf | RasterType, window_size: int = 3
+    dem: NDArrayf | MArrayf | RasterType,
+    window_size: int = 3
 ) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
@@ -1527,14 +1524,12 @@ def topographic_position_index(
 
 
 @overload
-def terrain_ruggedness_index(dem: RasterType, method: str, window_size: int) -> RasterType:
+def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str = "Riley", window_size: int = 3) -> NDArrayf:
     ...
-
 
 @overload
-def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str, window_size: int) -> NDArrayf:
+def terrain_ruggedness_index(dem: RasterType, method: str = "Riley", window_size: int = 3) -> RasterType:
     ...
-
 
 def terrain_ruggedness_index(
     dem: NDArrayf | MArrayf | RasterType, method: str = "Riley", window_size: int = 3
@@ -1576,14 +1571,12 @@ def terrain_ruggedness_index(
 
 
 @overload
-def roughness(dem: RasterType, window_size: int) -> RasterType:
+def roughness(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
     ...
-
 
 @overload
-def roughness(dem: NDArrayf | MArrayf, window_size: int) -> NDArrayf:
+def roughness(dem: RasterType, window_size: int = 3) -> RasterType:
     ...
-
 
 def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
     """
@@ -1616,19 +1609,17 @@ def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDA
 
 @overload
 def rugosity(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-) -> RasterType:
-    ...
-
-
-@overload
-def rugosity(
     dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None,
+    resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf:
     ...
 
+@overload
+def rugosity(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+) -> RasterType:
+    ...
 
 def rugosity(
     dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
@@ -1662,14 +1653,12 @@ def rugosity(
 
 
 @overload
-def fractal_roughness(dem: RasterType, window_size: int) -> RasterType:
+def fractal_roughness(dem: NDArrayf | MArrayf,  window_size: int = 13) -> NDArrayf:
     ...
-
 
 @overload
-def fractal_roughness(dem: NDArrayf | MArrayf, window_size: int) -> NDArrayf:
+def fractal_roughness(dem: RasterType,  window_size: int = 13) -> RasterType:
     ...
-
 
 def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 13) -> NDArrayf | RasterType:
     """

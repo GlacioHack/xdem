@@ -582,13 +582,13 @@ def _preprocess_values_with_mask_to_array(
 def infer_heteroscedasticity_from_stable(
     dvalues: NDArrayf,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame,
-    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame,
-    list_var_names: list[str],
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]],
-    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None,
-    min_count: int | None,
-    factor_spread_exclude_outliers: float | None,
+    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    list_var_names: list[str] = None,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
+    min_count: int | None = 100,
+    fac_spread_outliers: float | None = 7,
 ) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]:
     ...
 
@@ -597,13 +597,13 @@ def infer_heteroscedasticity_from_stable(
 def infer_heteroscedasticity_from_stable(
     dvalues: RasterType,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame,
-    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame,
-    list_var_names: list[str],
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]],
-    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None,
-    min_count: int | None,
-    factor_spread_exclude_outliers: float | None,
+    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    list_var_names: list[str] = None,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
+    min_count: int | None = 100,
+    fac_spread_outliers: float | None = 7,
 ) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]:
     ...
 

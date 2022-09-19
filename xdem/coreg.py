@@ -551,18 +551,15 @@ class Coreg:
 
         return self
 
-    @overload
-    def apply(self, dem: RasterType, transform: rio.transform.Affine | None = None, **kwargs: Any) -> RasterType:
-        ...
 
     @overload
-    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> NDArrayf:
-        ...
+    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf: ...
 
     @overload
-    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> \
-            MArrayf:
-        ...
+    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> NDArrayf: ...
+
+    @overload
+    def apply(self, dem: RasterType, transform: rio.transform.Affine | None = None, **kwargs: Any) -> RasterType: ...
 
     def apply(
         self, dem: RasterType | NDArrayf | MArrayf,
