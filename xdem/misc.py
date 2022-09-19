@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import functools
 import warnings
+from typing import Callable, Any
 
 try:
     import cv2
@@ -12,11 +13,12 @@ except ImportError:
     _has_cv2 = False
 
 import numpy as np
+from numpy.typing import NDArray
 
 import xdem.version
 
 
-def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
+def generate_random_field(shape: tuple[int, int], corr_size: int) -> NDArray[np.float_ | np.int_]:
     """
     Generate a semi-random gaussian field (to simulate a DEM or DEM error)
 
@@ -57,7 +59,7 @@ def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
     return field
 
 
-def deprecate(removal_version: str | None = None, details: str | None = None):
+def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any], Any]:
     """
     Trigger a DeprecationWarning for the decorated function.
 
@@ -73,9 +75,10 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
     :returns: The decorator to decorate the function.
     """
 
-    def deprecator_func(func):
-        @functools.wraps(func)
-        def new_func(*args, **kwargs):
+    def deprecator_func(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
+
+        @functools.wraps(func) # type: ignore
+        def new_func(*args: Any, **kwargs: Any) -> Any:
             # True if it should warn, False if it should raise an error
             should_warn = removal_version is None or removal_version > xdem.version.version
 

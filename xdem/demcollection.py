@@ -6,6 +6,7 @@ import warnings
 
 import geoutils as gu
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 
 import xdem
@@ -125,7 +126,7 @@ class DEMCollection:
 
         return [ddem.filled_data for ddem in self.ddems]
 
-    def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: str | None = None) -> np.ndarray:
+    def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: str | None = None) -> NDArray[np.float_ | np.int_]:
         """
         Get a fitting dDEM mask for a provided dDEM.
 
@@ -166,7 +167,7 @@ class DEMCollection:
         return mask.reshape(ddem.data.shape)
 
     def get_dh_series(
-        self, outlines_filter: str | None = None, mask: np.ndarray | None = None, nans_ok: bool = False
+        self, outlines_filter: str | None = None, mask: NDArray[np.float_ | np.int_] | None = None, nans_ok: bool = False
     ) -> pd.DataFrame:
         """
         Return a dataframe of mean dDEM values and respective areas for every timestamp.
@@ -204,7 +205,7 @@ class DEMCollection:
         return dh_values
 
     def get_dv_series(
-        self, outlines_filter: str | None = None, mask: np.ndarray | None = None, nans_ok: bool = False
+        self, outlines_filter: str | None = None, mask: NDArray[np.float_ | np.int_] | None = None, nans_ok: bool = False
     ) -> pd.Series:
         """
         Return a series of mean volume change (dV) for every timestamp.
@@ -225,7 +226,7 @@ class DEMCollection:
         self,
         kind: str = "dh",
         outlines_filter: str | None = None,
-        mask: np.ndarray | None = None,
+        mask: NDArray[np.float_ | np.int_] | None = None,
         nans_ok: bool = False,
     ) -> pd.Series:
         """

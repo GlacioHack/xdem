@@ -8,6 +8,7 @@ import warnings
 from typing import Callable
 
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 import scipy.optimize
 from geoutils.spatial_tools import subsample_raster
@@ -25,7 +26,7 @@ except ImportError:
     _has_sklearn = False
 
 
-def rmse(z: np.ndarray) -> float:
+def rmse(z: NDArray[np.float_ | np.int_]) -> float:
     """
     Return root mean square error
     :param z: Residuals between predicted and true value
@@ -34,7 +35,7 @@ def rmse(z: np.ndarray) -> float:
     return np.sqrt(np.nanmean(np.square(z)))
 
 
-def huber_loss(z: np.ndarray) -> float:
+def huber_loss(z: NDArray[np.float_ | np.int_]) -> float:
     """
     Huber loss cost (reduces the weight of outliers)
     :param z: Residuals between predicted and true values
@@ -45,7 +46,7 @@ def huber_loss(z: np.ndarray) -> float:
     return out.sum()
 
 
-def soft_loss(z: np.ndarray, scale=0.5) -> float:
+def soft_loss(z: NDArray[np.float_ | np.int_], scale=0.5) -> float:
     """
     Soft loss cost (reduces the weight of outliers)
     :param z: Residuals between predicted and true values
@@ -63,7 +64,7 @@ def _costfun_sumofsin(p, x, y, cost_func):
     return cost_func(z)
 
 
-def _choice_best_order(cost: np.ndarray, margin_improvement: float = 20.0, verbose: bool = False) -> int:
+def _choice_best_order(cost: NDArray[np.float_ | np.int_], margin_improvement: float = 20.0, verbose: bool = False) -> int:
     """
     Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
     not necessarily mean the best predictive fit because high-degree polynomials tend to overfit, and sum of sinusoids
@@ -202,8 +203,8 @@ def _wrapper_sklearn_robustlinear(model, estimator_name, cost_func, x, y, **kwar
 
 
 def robust_polynomial_fit(
-    x: np.ndarray,
-    y: np.ndarray,
+    x: NDArray[np.float_ | np.int_],
+    y: NDArray[np.float_ | np.int_],
     max_order: int = 6,
     estimator_name: str = "Theil-Sen",
     cost_func: Callable = median_absolute_error,
@@ -213,7 +214,7 @@ def robust_polynomial_fit(
     verbose: bool = False,
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
     **kwargs,
-) -> tuple[np.ndarray, int]:
+) -> tuple[NDArray[np.float_ | np.int_], int]:
     """
     Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
@@ -292,7 +293,7 @@ def robust_polynomial_fit(
     return np.trim_zeros(list_coeffs[final_index], "b"), final_index + 1
 
 
-def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
+def _sumofsinval(x: np.array, params: NDArray[np.float_ | np.int_]) -> NDArray[np.float_ | np.int_]:
     """
     Function for a sum of N frequency sinusoids
     :param x: array of coordinates (N,)
@@ -308,8 +309,8 @@ def _sumofsinval(x: np.array, params: np.ndarray) -> np.ndarray:
 
 
 def robust_sumsin_fit(
-    x: np.ndarray,
-    y: np.ndarray,
+    x: NDArray[np.float_ | np.int_],
+    y: NDArray[np.float_ | np.int_],
     nb_frequency_max: int = 3,
     bounds_amp_freq_phase: list[tuple[float, float], tuple[float, float], tuple[float, float]] | None = None,
     cost_func: Callable = soft_loss,
@@ -318,7 +319,7 @@ def robust_sumsin_fit(
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
     verbose: bool = False,
     **kwargs,
-) -> tuple[np.ndarray, int]:
+) -> tuple[NDArray[np.float_ | np.int_], int]:
     """
     Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.

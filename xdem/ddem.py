@@ -6,6 +6,7 @@ from typing import Any
 
 import geoutils as gu
 import numpy as np
+from numpy.typing import NDArray
 import shapely
 from geoutils import spatial_tools
 
@@ -32,7 +33,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         self.start_time = start_time
         self.end_time = end_time
         self.error = error
-        self._filled_data: np.ndarray | None = None
+        self._filled_data: NDArray[np.float_ | np.int_] | None = None
         self._fill_method = ""
 
     def __str__(self) -> str:
@@ -45,7 +46,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         return new_ddem
 
     @property
-    def filled_data(self) -> np.ndarray | None:
+    def filled_data(self) -> NDArray[np.float_ | np.int_] | None:
         """
         Get the filled data array if it exists, or else the original data if it has no nans.
 
@@ -61,7 +62,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         return np.asarray(self.data)
 
     @filled_data.setter
-    def filled_data(self, array: np.ndarray):
+    def filled_data(self, array: NDArray[np.float_ | np.int_]) -> None:
         """Set the filled_data attribute and make sure that it is valid."""
 
         assert (
@@ -80,7 +81,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         """Get the time duration."""
         return self.end_time - self.start_time
 
-    def from_array(data: np.ndarray, transform, crs, start_time, end_time, error=None, nodata=None) -> dDEM:
+    def from_array(data: NDArray[np.float_ | np.int_], transform, crs, start_time, end_time, error=None, nodata=None) -> dDEM:
         """
         Create a new dDEM object from an array.
 
@@ -104,9 +105,9 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     def interpolate(
         self,
         method: str = "linear",
-        reference_elevation: np.ndarray | np.ma.masked_array | xdem.DEM | None = None,
-        mask: np.ndarray | xdem.DEM | gu.Vector | None = None,
-    ):
+        reference_elevation: NDArray[np.float_ | np.int_] | np.ma.masked_array | xdem.DEM | None = None,
+        mask: NDArray[np.float_ | np.int_] | xdem.DEM | gu.Vector | None = None,
+    ) -> None:
         """
         Interpolate the dDEM using the given method.
 
@@ -120,7 +121,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
                 if "object has no attribute 'reproject'" not in str(exception):
                     raise exception
 
-            if isinstance(reference_elevation, np.ndarray):
+            if isinstance(reference_elevation, NDArray[np.float_ | np.int_]):
                 reference_elevation = np.ma.masked_array(reference_elevation, mask=np.isnan(reference_elevation))
 
             assert reference_elevation.data.shape == self.data.shape, (

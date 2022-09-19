@@ -4,9 +4,13 @@ from __future__ import annotations
 import copy
 import warnings
 
+from typing import Callable
 import cv2
 import geoutils as gu
+from geoutils import Raster, Vector
+from geoutils.georaster.raster import RasterType
 import numpy as np
+from numpy.typing import NDArray
 import pytest
 import rasterio as rio
 
@@ -16,13 +20,13 @@ with warnings.catch_warnings():
     from xdem import coreg, examples, misc, spatialstats
 
 
-def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
+def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        reference_raster = gu.georaster.Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = gu.georaster.Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = gu.geovector.Vector(examples.get_path("longyearbyen_glacier_outlines"))
+        reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
+        to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
@@ -67,7 +71,7 @@ class TestCoregClass:
                 raise exception
 
     @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab]) # type: ignore
-    def test_copy(self, coreg_class: coreg.Coreg) -> None:
+    def test_copy(self, coreg_class: Callable[[], coreg.Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")
 
@@ -75,26 +79,26 @@ class TestCoregClass:
         corr = coreg_class()
         corr_copy = corr.copy()
 
-        # Assign some attributes and metadata after copying
-        corr.foo = "bar"
-        corr._meta["hello"] = "there"
+        # Assign some attributes and metadata after copying, respecting the CoregDict type class
+        corr.bias = 1
+        corr._meta["resolution"] = 30
         # Make sure these don't appear in the copy
         assert corr_copy._meta != corr._meta
-        assert not hasattr(corr_copy, "foo")
+        assert not hasattr(corr_copy, "bias")
 
         # Create a pipeline, add some metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["shouldexist"] = True
+        pipeline.pipeline[0]._meta["bias"] = 1
 
         pipeline_copy = pipeline.copy()
 
         # Add some more metadata after copying (this should not be transferred)
-        pipeline._meta["hello"] = "there"
-        pipeline_copy.pipeline[0]._meta["foo"] = "bar"
+        pipeline._meta["resolution"] = 30
+        pipeline_copy.pipeline[0]._meta["offset_north_px"] = 0.5
 
         assert pipeline._meta != pipeline_copy._meta
         assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
-        assert pipeline_copy.pipeline[0]._meta["shouldexist"]
+        assert pipeline_copy.pipeline[0]._meta["bias"]
 
     def test_bias(self) -> None:
         warnings.simplefilter("error")
@@ -158,9 +162,9 @@ class TestCoregClass:
 
     def test_error_method(self) -> None:
         """Test different error measures."""
-        dem1 = np.ones((50, 50), dtype=float)
+        dem1 = np.ones((50, 50), dtype=np.float_)
         # Create a biased dem
-        dem2 = dem1 + 2
+        dem2 = dem1 + 2.
         affine = rio.transform.from_origin(0, 0, 1, 1)
 
         biascorr = coreg.BiasCorr()
@@ -313,11 +317,8 @@ class TestCoregClass:
         assert bias3.to_matrix()[2, 3] == bias * 2
 
         # Make sure the correct exception is raised on incorrect additions
-        try:
-            bias1 + 1
-        except ValueError as exception:
-            if "Incompatible add type" not in str(exception):
-                raise exception
+        with pytest.raises(ValueError, match='Incompatible add type'):
+            bias1 + 1 # type: ignore
 
         # Try to add a Coreg step to an already existing CoregPipeline
         bias4 = bias3 + bias1
@@ -444,7 +445,7 @@ class TestCoregClass:
 
     @pytest.mark.parametrize("pipeline", [coreg.BiasCorr(), coreg.BiasCorr() + coreg.NuthKaab()]) # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10]) # type: ignore
-    def test_blockwise_coreg(self, pipeline, subdivision) -> None:
+    def test_blockwise_coreg(self, pipeline: coreg.Coreg, subdivision: int) -> None:
         warnings.simplefilter("error")
 
         blockwise = coreg.BlockwiseCoreg(coreg=pipeline, subdivision=subdivision)
@@ -639,10 +640,10 @@ class TestCoregClass:
         # Use BiasCorr as a representative example.
         biascorr = xdem.coreg.BiasCorr()
 
-        def fit_func():
+        def fit_func() -> coreg.Coreg:
             return biascorr.fit(ref_dem, tba_dem, transform=transform)
 
-        def apply_func():
+        def apply_func() -> NDArray[np.float_ | np.int_]:
             return biascorr.apply(tba_dem, transform=transform)
 
         # Try running the methods in order and validate the result.
@@ -720,7 +721,7 @@ def test_apply_matrix() -> None:
     # Check that the NMAD is low
     assert spatialstats.nmad(diff) < 0.01
 
-    def rotation_matrix(rotation=30):
+    def rotation_matrix(rotation: float = 30) -> NDArray[np.float_ | np.int_]:
         rotation = np.deg2rad(rotation)
         matrix = np.array(
             [
@@ -733,11 +734,11 @@ def test_apply_matrix() -> None:
         return matrix
 
     rotation = 4
-    centroid = [
+    centroid = (
         np.mean([ref.bounds.left, ref.bounds.right]),
         np.mean([ref.bounds.top, ref.bounds.bottom]),
         ref.data.mean(),
-    ]
+    )
     rotated_dem = coreg.apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
     # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
     assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1

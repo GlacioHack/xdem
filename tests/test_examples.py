@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import geoutils as gu
 import numpy as np
+from numpy.typing import NDArray
 import pytest
 from geoutils import Raster, Vector
 
@@ -44,7 +45,7 @@ class TestExamples:
             ),
         ],
     ) # type: ignore
-    def test_array_content(self, rst_and_truevals: tuple[Raster, np.ndarray]) -> None:
+    def test_array_content(self, rst_and_truevals: tuple[Raster, NDArray[np.float_ | np.int_]]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
         rst = rst_and_truevals[0]

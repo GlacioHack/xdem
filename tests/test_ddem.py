@@ -61,7 +61,7 @@ class TestdDEM:
         ddem.interpolate(method="regional_hypsometric", reference_elevation=self.dem_2009, mask=self.outlines_1990)
 
         assert ddem._filled_data is not None
-        assert type(ddem.filled_data) == np.ndarray
+        assert isinstance(ddem.filled_data, np.ndarray)
 
         assert ddem.filled_data.shape == ddem.data.shape
 

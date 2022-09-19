@@ -7,6 +7,7 @@ import warnings
 
 import geoutils as gu
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 import pytest
 import skgstat
@@ -22,7 +23,7 @@ with warnings.catch_warnings():
 PLOT = False
 
 
-def load_ref_and_diff() -> tuple[Raster, Raster, np.ndarray, Vector]:
+def load_ref_and_diff() -> tuple[Raster, Raster, NDArray[np.float_ | np.int_], Vector]:
     """Load example files to try coregistration methods with."""
 
     reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
