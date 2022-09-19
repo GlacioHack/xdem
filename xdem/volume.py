@@ -10,12 +10,12 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
-from _typing import MArrayf
 from geoutils import spatial_tools
 from numpy.typing import NDArray
 from tqdm import tqdm
 
 import xdem
+from xdem._typing import MArrayf
 
 
 def hypsometric_binning(
