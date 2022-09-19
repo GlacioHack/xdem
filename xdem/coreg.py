@@ -4,8 +4,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import warnings
-from typing import (Any, Callable, Generator, TypedDict, TypeVar, Union,
-                    overload)
+from typing import Any, Callable, Generator, TypedDict, TypeVar, overload
 
 try:
     import cv2
@@ -25,7 +24,7 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 import skimage.transform
-from geoutils import Raster, spatial_tools
+from geoutils import spatial_tools
 from geoutils.georaster import RasterType
 from numpy.typing import NDArray
 from rasterio import Affine
@@ -53,7 +52,7 @@ def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]) -> MAr
     return out
 
 
-def filtered_slope(ds_slope: rio.DatasetReader, slope_lim: tuple[float, float]=(0.1, 40)) -> MArrayf:
+def filtered_slope(ds_slope: rio.DatasetReader, slope_lim: tuple[float, float] = (0.1, 40)) -> MArrayf:
     print("Slope filter: %0.2f - %0.2f" % slope_lim)
     print("Initial count: %i" % ds_slope.count())
     flt_slope = filter_by_range(ds_slope, slope_lim)
@@ -408,6 +407,7 @@ def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine)
 
 CoregType = TypeVar("CoregType", bound="Coreg")
 
+
 class CoregDict(TypedDict, total=False):
     """
     Defining the type of each possible key in the metadata dictionary of Coreg classes.
@@ -415,6 +415,7 @@ class CoregDict(TypedDict, total=False):
     https://peps.python.org/pep-0655/) there is an easy way to specific Required or NotRequired for each key, if we
     want to change this in the future.
     """
+
     bias_func: Callable[[NDArrayf], np.floating[Any]]
     func: Callable[[NDArrayf, NDArrayf], NDArrayf]
     bias: np.floating[Any] | float | np.integer[Any] | int
@@ -553,20 +554,20 @@ class Coreg:
 
         return self
 
+    @overload
+    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf:
+        ...
 
     @overload
-    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf: ...
+    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> NDArrayf:
+        ...
 
     @overload
-    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> NDArrayf: ...
-
-    @overload
-    def apply(self, dem: RasterType, transform: rio.transform.Affine | None = None, **kwargs: Any) -> RasterType: ...
+    def apply(self, dem: RasterType, transform: rio.transform.Affine | None = None, **kwargs: Any) -> RasterType:
+        ...
 
     def apply(
-        self, dem: RasterType | NDArrayf | MArrayf,
-            transform: rio.transform.Affine | None = None,
-            **kwargs: Any
+        self, dem: RasterType | NDArrayf | MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any
     ) -> RasterType | NDArrayf | MArrayf:
         """
         Apply the estimated transform to a DEM.
@@ -753,7 +754,8 @@ class Coreg:
         error_type: list[str],
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
-    ) -> list[np.floating[Any] | float | np.integer[Any] | int]: ...
+    ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
+        ...
 
     @overload
     def error(
@@ -763,7 +765,8 @@ class Coreg:
         error_type: str = "nmad",
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int: ...
+    ) -> np.floating[Any] | float | np.integer[Any] | int:
+        ...
 
     def error(
         self,
@@ -787,7 +790,7 @@ class Coreg:
 
         :param reference_dem: 2D array of elevation values acting reference.
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-        :param error_type: The type of error meaure to calculate. May be a list of error types.
+        :param error_type: The type of error measure to calculate. May be a list of error types.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
 
@@ -812,8 +815,7 @@ class Coreg:
         def count(res: NDArrayf) -> int:
             return res.size
 
-        error_functions: dict[str, Callable[[NDArrayf], np.floating[Any] | float | np.integer[Any] | int]] \
-            = {
+        error_functions: dict[str, Callable[[NDArrayf], np.floating[Any] | float | np.integer[Any] | int]] = {
             "nmad": xdem.spatialstats.nmad,
             "median": np.median,
             "mean": np.mean,
@@ -908,8 +910,9 @@ class Coreg:
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
-        np.float_ | np.int_]:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
+    ) -> NDArray[np.float_ | np.int_]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -925,7 +928,7 @@ class BiasCorr(Coreg):
     Estimates the mean (or median, weighted avg., etc.) offset between two DEMs.
     """
 
-    def __init__(self, bias_func: Callable[[NDArrayf], np.floating[Any]]=np.average) -> None:  # pylint:
+    def __init__(self, bias_func: Callable[[NDArrayf], np.floating[Any]] = np.average) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a bias correction object.
@@ -954,8 +957,9 @@ class BiasCorr(Coreg):
             raise ValueError("No finite values in bias comparison.")
 
         # Use weights if those were provided.
-        bias = self._meta["bias_func"](diff) if weights is None \
-            else self._meta["bias_func"](diff, weights) # type: ignore
+        bias = (
+            self._meta["bias_func"](diff) if weights is None else self._meta["bias_func"](diff, weights)
+        )  # type: ignore
         # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
         # TODO: once we have the weights implemented
 
@@ -984,8 +988,9 @@ class ICP(Coreg):
     See opencv docs for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
-    def __init__(self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5,
-                 num_levels: int = 6) -> None:
+    def __init__(
+        self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5, num_levels: int = 6
+    ) -> None:
         """
         Instantiate an ICP coregistration object.
 
@@ -1654,8 +1659,9 @@ class ZScaleCorr(Coreg):
         coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
         self._meta["coefficients"] = coefficients
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
-        np.float_ | np.int_]:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
+    ) -> NDArray[np.float_ | np.int_]:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
@@ -1962,8 +1968,9 @@ class BlockwiseCoreg(Coreg):
             shape = (shape[1], shape[2])
         return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArray[
-        np.float_ | np.int_]:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
+    ) -> NDArray[np.float_ | np.int_]:
 
         points = self.to_points()
 

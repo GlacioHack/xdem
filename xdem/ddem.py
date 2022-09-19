@@ -90,14 +90,16 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         return self.end_time - self.start_time
 
     @classmethod
-    def from_array(cls: type[RasterType],
-                   data: NDArray[np.floating[Any]],
-                   transform: tuple[float, ...] | Affine,
-                   crs: CRS | int | None,
-                   start_time: np.datetime64,
-                   end_time: np.datetime64,
-                   error: float = None,
-                   nodata: int | float | None = None) -> dDEM:
+    def from_array(
+        cls: type[RasterType],
+        data: NDArray[np.floating[Any]],
+        transform: tuple[float, ...] | Affine,
+        crs: CRS | int | None,
+        start_time: np.datetime64,
+        end_time: np.datetime64,
+        error: float = None,
+        nodata: int | float | None = None,
+    ) -> dDEM:
         """
         Create a new dDEM object from an array.
 
@@ -121,10 +123,11 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     def interpolate(
         self,
         method: str = "linear",
-        reference_elevation: NDArray[np.floating[Any]] | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] |
-                             xdem.DEM  = None,
+        reference_elevation: NDArray[np.floating[Any]]
+        | np.ma.masked_array[Any, np.dtype[np.floating[Any]]]
+        | xdem.DEM = None,
         mask: NDArray[np.floating[Any]] | xdem.DEM | gu.Vector = None,
-    ) -> NDArray[np.floating[Any]] | None :
+    ) -> NDArray[np.floating[Any]] | None:
         """
         Interpolate the dDEM using the given method.
 

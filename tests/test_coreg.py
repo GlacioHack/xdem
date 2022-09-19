@@ -71,7 +71,7 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
-    @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab]) # type: ignore
+    @pytest.mark.parametrize("coreg_class", [coreg.BiasCorr, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], coreg.Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")
@@ -167,7 +167,7 @@ class TestCoregClass:
         """Test different error measures."""
         dem1: NDArray[np.floating[Any]] = np.ones((50, 50)).astype(np.float32)
         # Create a biased dem
-        dem2 = dem1.copy() + 2.
+        dem2 = dem1.copy() + 2.0
         affine = rio.transform.from_origin(0, 0, 1, 1)
 
         biascorr = coreg.BiasCorr()
@@ -320,8 +320,8 @@ class TestCoregClass:
         assert bias3.to_matrix()[2, 3] == bias * 2
 
         # Make sure the correct exception is raised on incorrect additions
-        with pytest.raises(ValueError, match='Incompatible add type'):
-            bias1 + 1 # type: ignore
+        with pytest.raises(ValueError, match="Incompatible add type"):
+            bias1 + 1  # type: ignore
 
         # Try to add a Coreg step to an already existing CoregPipeline
         bias4 = bias3 + bias1
@@ -446,8 +446,8 @@ class TestCoregClass:
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
-    @pytest.mark.parametrize("pipeline", [coreg.BiasCorr(), coreg.BiasCorr() + coreg.NuthKaab()]) # type: ignore
-    @pytest.mark.parametrize("subdivision", [4, 10]) # type: ignore
+    @pytest.mark.parametrize("pipeline", [coreg.BiasCorr(), coreg.BiasCorr() + coreg.NuthKaab()])  # type: ignore
+    @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
     def test_blockwise_coreg(self, pipeline: coreg.Coreg, subdivision: int) -> None:
         warnings.simplefilter("error")
 
@@ -612,7 +612,7 @@ class TestCoregClass:
             ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
-    ) # type: ignore
+    )  # type: ignore
     def test_coreg_raises(self, combination: tuple[str, str, str, str, str, str]) -> None:
         """
         Assert that the expected warnings/errors are triggered under different circumstances.

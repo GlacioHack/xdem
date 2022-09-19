@@ -1,6 +1,8 @@
 """Functions to test the example data."""
 from __future__ import annotations
 
+from typing import Any
+
 import geoutils as gu
 import numpy as np
 import pytest
@@ -44,7 +46,7 @@ class TestExamples:
                 ),
             ),
         ],
-    ) # type: ignore
+    )  # type: ignore
     def test_array_content(self, rst_and_truevals: tuple[Raster, NDArray[np.floating[Any]]]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
@@ -55,7 +57,7 @@ class TestExamples:
 
         assert values == pytest.approx(truevals)
 
-    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)]) # type: ignore
+    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)])  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
 

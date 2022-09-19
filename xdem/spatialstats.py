@@ -6,8 +6,7 @@ import itertools
 import math as m
 import multiprocessing as mp
 import warnings
-from typing import (Any, Callable, Iterable, Literal, Sequence, TypedDict,
-                    overload)
+from typing import Any, Callable, Iterable, Literal, TypedDict, overload
 
 import geopandas as gpd
 import matplotlib
@@ -20,7 +19,7 @@ from geoutils.georaster import Raster, RasterType
 from geoutils.geovector import Vector, VectorType
 from geoutils.spatial_tools import get_array_and_mask, subsample_raster
 from numba import jit
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
@@ -102,7 +101,7 @@ def nd_binning(
     statistics = list(statistics)
     # In case the statistics are user-defined, and they forget count, we add it for later calculation or plotting
     if "count" not in statistics:
-        statistics.insert(0, 'count')
+        statistics.insert(0, "count")
 
     statistics_name = [f if isinstance(f, str) else f.__name__ for f in statistics]
 
@@ -339,7 +338,7 @@ def interp_nd_binning(
         tuple(list_bmid), values_grid, method="linear", bounds_error=False, fill_value=None
     )
 
-    return interp_fun # type: ignore
+    return interp_fun  # type: ignore
 
 
 def two_step_standardization(
@@ -441,14 +440,17 @@ def estimate_model_heteroscedasticity(
 
     return df, final_fun
 
+
 @overload
-def _preprocess_values_with_mask_to_array( # type: ignore
+def _preprocess_values_with_mask_to_array(  # type: ignore
     values: list[NDArrayf | RasterType],
     include_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     exclude_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
-) -> tuple[list[NDArrayf], float]: ...
+) -> tuple[list[NDArrayf], float]:
+    ...
+
 
 @overload
 def _preprocess_values_with_mask_to_array(
@@ -457,7 +459,9 @@ def _preprocess_values_with_mask_to_array(
     exclude_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
-) -> tuple[NDArrayf, float]: ...
+) -> tuple[NDArrayf, float]:
+    ...
+
 
 def _preprocess_values_with_mask_to_array(
     values: list[NDArrayf | RasterType] | NDArrayf | RasterType,
@@ -521,7 +525,7 @@ def _preprocess_values_with_mask_to_array(
                 first_raster = values[i]
                 break
         # Looks like mypy cannot trace the isinstance here... ignoring
-        gsd = first_raster.res[0] # type: ignore
+        gsd = first_raster.res[0]  # type: ignore
     elif gsd is not None:
         gsd = gsd
     else:
@@ -748,8 +752,10 @@ def _create_ring_mask(
 
     return mask_ring
 
-def _random_state_definition(random_state: None | np.random.RandomState | np.random.Generator | int = None) -> \
-        np.random.RandomState:
+
+def _random_state_definition(
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+) -> np.random.RandomState:
     """
     Define random state based on input
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
@@ -768,6 +774,7 @@ def _random_state_definition(random_state: None | np.random.RandomState | np.ran
         rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
 
     return rnd
+
 
 def _subsample_wrapper(
     values: NDArrayf,
@@ -841,15 +848,15 @@ def _aggregate_pdist_empirical_variogram(
             pdist_multi_ranges = []
             # We start at 10 times the ground sampling distance
             new_range = gsd * 10
-            while new_range < kwargs.get("maxlag") / 2: # type: ignore
+            while new_range < kwargs.get("maxlag") / 2:  # type: ignore
                 pdist_multi_ranges.append(new_range)
                 new_range *= 2
-            pdist_multi_ranges.append(kwargs.get("maxlag")) # type: ignore
+            pdist_multi_ranges.append(kwargs.get("maxlag"))  # type: ignore
 
         # Define subsampling parameters
         list_inside_radius = []
         list_outside_radius: list[float | None] = []
-        binned_ranges = [0.] + pdist_multi_ranges
+        binned_ranges = [0.0] + pdist_multi_ranges
         for i in range(len(binned_ranges) - 1):
 
             # Radiuses need to be passed as pixel sizes, dividing by ground sampling distance
@@ -857,15 +864,15 @@ def _aggregate_pdist_empirical_variogram(
             if subsample_method == "pdist_ring":
                 inside_radius = binned_ranges[i] / gsd
             else:
-                inside_radius = 0.
+                inside_radius = 0.0
 
             list_outside_radius.append(outside_radius)
             list_inside_radius.append(inside_radius)
     else:
         # For random point selection, no need for multi-range parameters
-        pdist_multi_ranges = [kwargs.get("maxlag")] # type: ignore
+        pdist_multi_ranges = [kwargs.get("maxlag")]  # type: ignore
         list_outside_radius = [None]
-        list_inside_radius = [0.]
+        list_inside_radius = [0.0]
 
     # Estimate variogram with specific subsampling at multiple ranges
     list_df_range = []
@@ -1321,8 +1328,13 @@ def sample_empirical_variogram(
         list_df_run = []
         for i in range(n_variograms):
 
-            argdict = {"i": i, "imax": n_variograms,
-                       "random_state": list_random_state[i], **args, **kwargs} # type: ignore
+            argdict = {
+                "i": i,
+                "imax": n_variograms,
+                "random_state": list_random_state[i],
+                **args,
+                **kwargs,  # type: ignore
+            }
             df_run = _wrapper_get_empirical_variogram(argdict=argdict)
 
             list_df_run.append(df_run)
@@ -1332,7 +1344,7 @@ def sample_empirical_variogram(
 
         pool = mp.Pool(n_jobs, maxtasksperchild=1)
         list_argdict = [
-            {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs} # type: ignore
+            {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs}  # type: ignore
             for i in range(n_variograms)
         ]
         list_df_run = pool.map(_wrapper_get_empirical_variogram, list_argdict, chunksize=1)
@@ -1369,17 +1381,17 @@ def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, fl
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
     if callable(model):
-        if inspect.getmodule(model).__name__ == "skgstat.models": # type: ignore
+        if inspect.getmodule(model).__name__ == "skgstat.models":  # type: ignore
             model_name = model.__name__
         else:
             raise ValueError("Variogram models can only be passed as functions of the skgstat.models package.")
 
     elif isinstance(model, str):
-        model_name = 'None'
+        model_name = "None"
         for supp_model in list_supported_models:
             if model.lower() in [supp_model[0:3], supp_model]:
                 model_name = supp_model.lower()
-        if model_name == 'None':
+        if model_name == "None":
             raise ValueError(
                 f"Variogram model name {model} not recognized. Supported models are: "
                 + ", ".join(list_supported_models)
@@ -1514,7 +1526,7 @@ def fit_sum_model_variogram(
 
     # Define a function of a sum of variogram model forms, with undetermined arguments
     def variogram_sum(h: float, *args: list[float]) -> float:
-        fn = 0.
+        fn = 0.0
         i = 0
         for model in list_models:
             # Get the model name and convert to SciKit-GStat function
@@ -1804,7 +1816,7 @@ def _check_validity_params_variogram(params_variogram_model: pd.DataFrame) -> No
         if p <= 0:
             raise ValueError("The variogram partial sills must have non-zero, positive values.")
 
-    # Check that the mattern smoothness factor exist and is rightly formatted
+    # Check that the matern smoothness factor exist and is rightly formatted
     if ["stable"] in params_variogram_model["model"].values or ["matern"] in params_variogram_model["model"].values:
         if "smooth" not in params_variogram_model:
             raise ValueError(
@@ -1904,7 +1916,7 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
             squared_se = 1 / 6 * c1 * a1**2 / L**2
         return squared_se
 
-    squared_se = 0.
+    squared_se = 0.0
     valid_models = ["spherical", "exponential", "gaussian", "cubic"]
     exact_integrals = [
         spherical_exact_integral,
@@ -2017,7 +2029,7 @@ def neff_exact(
     # Now we compute the double covariance sum
     # Either using for-loop-version
     if not vectorized:
-        var = 0.
+        var = 0.0
         for i in range(n):
             for j in range(n):
 
@@ -2032,7 +2044,7 @@ def neff_exact(
                     ind = n * j + i - ((j + 2) * (j + 1)) // 2
                     d = pds[ind]
 
-                var += rho(d) * errors[i] * errors[j] # type: ignore
+                var += rho(d) * errors[i] * errors[j]  # type: ignore
 
     # Or vectorized version
     else:
@@ -2098,7 +2110,7 @@ def neff_hugonnet_approx(
     # Now we compute the double covariance sum
     # Either using for-loop-version
     if not vectorized:
-        var = 0.
+        var = 0.0
         for ind_sub in range(subsample):
             for j in range(n):
 
@@ -2114,7 +2126,7 @@ def neff_hugonnet_approx(
                     ind = n * j + i - ((j + 2) * (j + 1)) // 2
                     d = pds[ind]
 
-                var += rho(d) * errors[i] * errors[j] # type: ignore
+                var += rho(d) * errors[i] * errors[j]  # type: ignore
 
     # Or vectorized version
     else:
@@ -2355,7 +2367,7 @@ nd4type = numba.double[:, :, :, :]
 nd3type = numba.double[:, :, :]
 
 
-@jit((nd3type, nd3type, nd4type)) # type: ignore
+@jit((nd3type, nd3type, nd4type))  # type: ignore
 def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> None:
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
@@ -2720,28 +2732,30 @@ def patches_method(
     *,
     return_in_patch_statistics: Literal[False] = False,
     random_state: None | int | np.random.RandomState | np.random.Generator = None,
-) -> pd.DataFrame: ...
+) -> pd.DataFrame:
+    ...
 
 
 @overload
 def patches_method(
-        values: NDArrayf | RasterType,
-        areas: list[float],
-        gsd: float = None,
-        stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-        unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-        statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-        statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
-        perc_min_valid: float = 80.0,
-        patch_shape: str = "circular",
-        vectorized: bool = True,
-        convolution_method: str = "scipy",
-        n_patches: int = 1000,
-        verbose: bool = False,
-        *,
-        return_in_patch_statistics: Literal[True],
-        random_state: None | int | np.random.RandomState | np.random.Generator = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]: ...
+    values: NDArrayf | RasterType,
+    areas: list[float],
+    gsd: float = None,
+    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    perc_min_valid: float = 80.0,
+    patch_shape: str = "circular",
+    vectorized: bool = True,
+    convolution_method: str = "scipy",
+    n_patches: int = 1000,
+    verbose: bool = False,
+    *,
+    return_in_patch_statistics: Literal[True],
+    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ...
 
 
 def patches_method(
@@ -2856,7 +2870,7 @@ def patches_method(
         if return_in_patch_statistics:
             # Here we'd need to write overload for all the patch subfunctions... maybe we can do this more easily with
             # the function behaviour, ignoring for now.
-            df: pd.DataFrame = outputs[3] # type: ignore
+            df: pd.DataFrame = outputs[3]  # type: ignore
             df["areas"] = area
             df["exact_areas"] = outputs[2]
             list_df.append(df)

@@ -46,7 +46,7 @@ def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") 
     return np.array(terrattr)
 
 
-@numba.njit(parallel=True) # type: ignore
+@numba.njit(parallel=True)  # type: ignore
 def _get_quadric_coefficients(
     dem: NDArrayf,
     resolution: float,
@@ -338,7 +338,7 @@ def get_quadric_coefficients(
     return coeffs
 
 
-@numba.njit(parallel=True) # type: ignore
+@numba.njit(parallel=True)  # type: ignore
 def _get_windowed_indexes(
     dem: NDArrayf,
     fill_method: str = "median",
@@ -646,6 +646,7 @@ def get_terrain_attribute(
 ) -> list[NDArrayf]:
     ...
 
+
 @overload
 def get_terrain_attribute(
     dem: RasterType,
@@ -663,6 +664,7 @@ def get_terrain_attribute(
     window_size: int = 3,
 ) -> list[RasterType]:
     ...
+
 
 @overload
 def get_terrain_attribute(
@@ -875,7 +877,7 @@ def get_terrain_attribute(
 
     if make_surface_fit:
         if not isinstance(resolution, Sized):
-            resolution = (float(resolution), float(resolution)) # type: ignore
+            resolution = (float(resolution), float(resolution))  # type: ignore
         if resolution[0] != resolution[1]:
             raise ValueError(
                 f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "
@@ -1093,7 +1095,6 @@ def get_terrain_attribute(
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
 
 
-
 @overload
 def slope(
     dem: NDArrayf | MArrayf,
@@ -1213,6 +1214,7 @@ def aspect(
         dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees, use_richdem=use_richdem
     )
 
+
 @overload
 def hillshade(
     dem: NDArrayf | MArrayf,
@@ -1237,6 +1239,7 @@ def hillshade(
     use_richdem: bool = False,
 ) -> RasterType:
     ...
+
 
 def hillshade(
     dem: NDArrayf | MArrayf,
@@ -1436,7 +1439,6 @@ def profile_curvature(
     return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution, use_richdem=use_richdem)
 
 
-
 @overload
 def maximum_curvature(
     dem: NDArrayf | MArrayf,
@@ -1478,23 +1480,16 @@ def maximum_curvature(
 
 
 @overload
-def topographic_position_index(
-    dem: NDArrayf | MArrayf,
-    window_size: int = 3
-) -> NDArrayf:
+def topographic_position_index(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
     ...
+
 
 @overload
-def topographic_position_index(
-    dem: RasterType,
-    window_size: int = 3
-) -> RasterType:
+def topographic_position_index(dem: RasterType, window_size: int = 3) -> RasterType:
     ...
 
-def topographic_position_index(
-    dem: NDArrayf | MArrayf | RasterType,
-    window_size: int = 3
-) -> NDArrayf | RasterType:
+
+def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1527,9 +1522,11 @@ def topographic_position_index(
 def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str = "Riley", window_size: int = 3) -> NDArrayf:
     ...
 
+
 @overload
 def terrain_ruggedness_index(dem: RasterType, method: str = "Riley", window_size: int = 3) -> RasterType:
     ...
+
 
 def terrain_ruggedness_index(
     dem: NDArrayf | MArrayf | RasterType, method: str = "Riley", window_size: int = 3
@@ -1574,9 +1571,11 @@ def terrain_ruggedness_index(
 def roughness(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
     ...
 
+
 @overload
 def roughness(dem: RasterType, window_size: int = 3) -> RasterType:
     ...
+
 
 def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
     """
@@ -1614,12 +1613,14 @@ def rugosity(
 ) -> NDArrayf:
     ...
 
+
 @overload
 def rugosity(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
 ) -> RasterType:
     ...
+
 
 def rugosity(
     dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
@@ -1653,12 +1654,14 @@ def rugosity(
 
 
 @overload
-def fractal_roughness(dem: NDArrayf | MArrayf,  window_size: int = 13) -> NDArrayf:
+def fractal_roughness(dem: NDArrayf | MArrayf, window_size: int = 13) -> NDArrayf:
     ...
 
+
 @overload
-def fractal_roughness(dem: RasterType,  window_size: int = 13) -> RasterType:
+def fractal_roughness(dem: RasterType, window_size: int = 13) -> RasterType:
     ...
+
 
 def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 13) -> NDArrayf | RasterType:
     """

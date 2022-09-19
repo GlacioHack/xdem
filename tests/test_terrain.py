@@ -73,7 +73,7 @@ class TestTerrainAttribute:
             "tpi",
             "roughness",
         ],
-    ) # type: ignore
+    )  # type: ignore
     def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
         """
         Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
@@ -175,7 +175,7 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
-    ) # type: ignore
+    )  # type: ignore
     def test_attribute_functions_against_richdem(self, attribute: str) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
@@ -288,9 +288,8 @@ class TestTerrainAttribute:
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
     @pytest.mark.parametrize(
-        "name",
-        ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
-    ) # type: ignore
+        "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
+    )  # type: ignore
     def test_curvatures(self, name: str) -> None:
         """Test the curvature functions"""
         warnings.simplefilter("error")
@@ -402,9 +401,9 @@ class TestTerrainAttribute:
         assert rugosity[1, 1] == pytest.approx(r, rel=10 ** (-4))
 
     # Loop for various elevation differences with the center
-    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10)) # type: ignore
+    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))  # type: ignore
     # Loop for different resolutions
-    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10)) # type: ignore
+    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
         warnings.simplefilter("error")

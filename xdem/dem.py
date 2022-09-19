@@ -49,15 +49,15 @@ def parse_vref_from_product(product: str) -> str | None:
 dem_attrs = ["vref", "vref_grid", "_ccrs"]
 
 
-class DEM(SatelliteImage): # type: ignore
-
+class DEM(SatelliteImage):  # type: ignore
     def __init__(
-            self,
-            filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-            vref_name: str | None = None,
-            vref_grid: str | None = None,
-            silent: bool = True,
-            **kwargs: Any) -> None:
+        self,
+        filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
+        vref_name: str | None = None,
+        vref_grid: str | None = None,
+        silent: bool = True,
+        **kwargs: Any,
+    ) -> None:
         """
         Load digital elevation model data through the Raster class, parse additional attributes from filename or
         metadata
@@ -104,7 +104,7 @@ class DEM(SatelliteImage): # type: ignore
         for attrs in dem_attrs:
             setattr(new_dem, attrs, getattr(self, attrs))
 
-        return new_dem # type: ignore
+        return new_dem  # type: ignore
 
     def __parse_vref_from_fn(self, silent: bool = False) -> None:
         """Attempts to pull vertical reference from product name identified by SatImg."""

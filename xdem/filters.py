@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import warnings
+from typing import Any
 
 import cv2 as cv
 import numpy as np
@@ -115,7 +116,9 @@ def gaussian_filter_cv(array: NDArray[np.floating[Any]], sigma: float) -> NDArra
 # To be added
 
 
-def distance_filter(array: NDArray[np.floating[Any]], radius: float, outlier_threshold: float) -> NDArray[np.floating[Any]]:
+def distance_filter(
+    array: NDArray[np.floating[Any]], radius: float, outlier_threshold: float
+) -> NDArray[np.floating[Any]]:
     """
     Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \
 pixels within a given radius.

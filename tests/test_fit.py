@@ -18,7 +18,7 @@ class TestRobustFitting:
             ("sklearn", "RANSAC"),
             ("sklearn", "Huber"),
         ],
-    ) # type: ignore
+    )  # type: ignore
     def test_robust_polynomial_fit(self, pkg_estimator: str) -> None:
 
         # Define x vector
@@ -50,8 +50,8 @@ class TestRobustFitting:
         # Add some noise on top
         y += np.random.normal(loc=0, scale=3, size=1000)
         # Add some outliers
-        y[50:75] = 0.
-        y[900:925] = 1000.
+        y[50:75] = 0.0
+        y[900:925] = 1000.0
 
         # Run with the "Linear" estimator
         coefs, deg = xdem.fit.robust_polynomial_fit(

@@ -152,7 +152,7 @@ class TestNormHypsometric:
     glacier_index_map = outlines.rasterize(dem_2009)
     ddem = dem_2009.data - dem_1990.data
 
-    @pytest.mark.parametrize("n_bins", [5, 10, 20]) # type: ignore
+    @pytest.mark.parametrize("n_bins", [5, 10, 20])  # type: ignore
     def test_regional_signal(self, n_bins: int) -> None:
         warnings.simplefilter("error")
 

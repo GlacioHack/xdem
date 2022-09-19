@@ -57,10 +57,12 @@ def soft_loss(z: NDArray[np.floating[Any]], scale: float = 0.5) -> float:
     return np.sum(np.square(scale) * 2 * (np.sqrt(1 + np.square(z / scale)) - 1))
 
 
-def _cost_sumofsin(p: NDArray[np.floating[Any]],
-                      x: NDArray[np.floating[Any]],
-                      y: NDArray[np.floating[Any]],
-                      cost_func: Callable[[NDArray[np.floating[Any]]], float]) -> float:
+def _cost_sumofsin(
+    p: NDArray[np.floating[Any]],
+    x: NDArray[np.floating[Any]],
+    y: NDArray[np.floating[Any]],
+    cost_func: Callable[[NDArray[np.floating[Any]]], float],
+) -> float:
     """
     Calculate robust cost function for sum of sinusoids
     """
@@ -103,14 +105,16 @@ def _choice_best_order(cost: NDArray[np.floating[Any]], margin_improvement: floa
     return ind
 
 
-def _wrapper_scipy_leastsquares(residual_func: Callable[[NDArray[np.floating[Any]], NDArray[np.floating[Any]],
-                                                         NDArray[np.floating[Any]]],
-                                                        NDArray[np.floating[Any]]],
-                                p0: NDArray[np.floating[Any]],
-                                x: NDArray[np.floating[Any]],
-                                y: NDArray[np.floating[Any]],
-                                verbose: bool = False,
-                                **kwargs: Any) -> tuple[float, NDArray[np.floating[Any]]]:
+def _wrapper_scipy_leastsquares(
+    residual_func: Callable[
+        [NDArray[np.floating[Any]], NDArray[np.floating[Any]], NDArray[np.floating[Any]]], NDArray[np.floating[Any]]
+    ],
+    p0: NDArray[np.floating[Any]],
+    x: NDArray[np.floating[Any]],
+    y: NDArray[np.floating[Any]],
+    verbose: bool = False,
+    **kwargs: Any,
+) -> tuple[float, NDArray[np.floating[Any]]]:
     """
     Wrapper function for scipy.optimize.least_squares: passes down keyword, extracts cost and final parameters, print
     statements in the console
@@ -148,12 +152,14 @@ def _wrapper_scipy_leastsquares(residual_func: Callable[[NDArray[np.floating[Any
     return cost, coefs
 
 
-def _wrapper_sklearn_robustlinear(model: PolynomialFeatures,
-                                  cost_func: Callable[[NDArray[np.floating[Any]], NDArray[np.floating[Any]]], float],
-                                  x: NDArray[np.floating[Any]],
-                                  y: NDArray[np.floating[Any]],
-                                  estimator_name: str = 'Linear',
-                                  **kwargs: Any) -> tuple[float, NDArray[np.floating[Any]]]:
+def _wrapper_sklearn_robustlinear(
+    model: PolynomialFeatures,
+    cost_func: Callable[[NDArray[np.floating[Any]], NDArray[np.floating[Any]]], float],
+    x: NDArray[np.floating[Any]],
+    y: NDArray[np.floating[Any]],
+    estimator_name: str = "Linear",
+    **kwargs: Any,
+) -> tuple[float, NDArray[np.floating[Any]]]:
     """
     Wrapper function of sklearn.linear_models: passes down keyword, extracts cost and final parameters, sets random
     states, scales input and de-scales output data, prints out statements
@@ -277,9 +283,9 @@ def robust_polynomial_fit(
             def fitfun_polynomial(xx: NDArray[np.floating[Any]], params: NDArray[np.floating[Any]]) -> float:
                 return sum(p * (xx**i) for i, p in enumerate(params))
 
-            def residual_func(p: NDArray[np.floating[Any]],
-                              xx: NDArray[np.floating[Any]],
-                              yy: NDArray[np.floating[Any]]) -> NDArray[np.floating[Any]]:
+            def residual_func(
+                p: NDArray[np.floating[Any]], xx: NDArray[np.floating[Any]], yy: NDArray[np.floating[Any]]
+            ) -> NDArray[np.floating[Any]]:
                 return fitfun_polynomial(xx, p) - yy
 
             # Define the initial guess
@@ -366,13 +372,13 @@ def robust_sumsin_fit(
         if "niter" not in kwargs.keys():
             niter_success = 40
         else:
-            niter_success = min(40, kwargs.get("niter")) # type: ignore
+            niter_success = min(40, kwargs.get("niter"))  # type: ignore
 
         kwargs.update({"niter_success": niter_success})
 
-    def wrapper_cost_sumofsin(p: NDArray[np.floating[Any]],
-                                 x: NDArray[np.floating[Any]],
-                                 y: NDArray[np.floating[Any]]) -> float:
+    def wrapper_cost_sumofsin(
+        p: NDArray[np.floating[Any]], x: NDArray[np.floating[Any]], y: NDArray[np.floating[Any]]
+    ) -> float:
         return _cost_sumofsin(p, x, y, cost_func=cost_func)
 
     # First, remove NaNs

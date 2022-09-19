@@ -515,9 +515,8 @@ class TestVariogram:
         assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.2)
 
     @pytest.mark.parametrize(
-        "subsample_method",
-        ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
-    ) # type: ignore
+        "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
+    )  # type: ignore
     def test_sample_multirange_variogram_methods(self, subsample_method) -> None:
         """Verify that all other methods run"""
 
@@ -569,7 +568,7 @@ class TestVariogram:
                 subsample=10,
                 random_state=42,
                 subsample_method="cdist_equidistant",
-                **nonsense_args, # type: ignore
+                **nonsense_args,  # type: ignore
             )
 
         # Check the function passes optional arguments specific to pdist methods without warning
@@ -583,8 +582,8 @@ class TestVariogram:
         )
 
     # N is the number of samples in an ensemble
-    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000]) # type: ignore
-    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)]) # type: ignore
+    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000])  # type: ignore
+    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)])  # type: ignore
     def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int, int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
@@ -858,10 +857,10 @@ class TestNeffEstimation:
 
     ref, diff, _, outlines = load_ref_and_diff()
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(3)]) # type: ignore
-    @pytest.mark.parametrize("psill1", [0.1, 1, 10]) # type: ignore
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
-    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)]) # type: ignore
+    @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
+    @pytest.mark.parametrize("psill1", [0.1, 1, 10])  # type: ignore
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
+    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])  # type: ignore
     def test_neff_circular_single_range(self, range1: float, psill1: float, model1: float, area: float) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
         forms to get the number of effective samples"""
@@ -880,13 +879,14 @@ class TestNeffEstimation:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(2)]) # type: ignore
-    @pytest.mark.parametrize("range2", [10**i for i in range(2)]) # type: ignore
-    @pytest.mark.parametrize("range3", [10**i for i in range(2)]) # type: ignore
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
-    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"]) # type: ignore
-    def test_neff_circular_three_ranges(self, range1: float, range2: float, range3: float, model1: float,
-                                        model2: float) -> None:
+    @pytest.mark.parametrize("range1", [10**i for i in range(2)])  # type: ignore
+    @pytest.mark.parametrize("range2", [10**i for i in range(2)])  # type: ignore
+    @pytest.mark.parametrize("range3", [10**i for i in range(2)])  # type: ignore
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
+    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
+    def test_neff_circular_three_ranges(
+        self, range1: float, range2: float, range3: float, model1: float, model2: float
+    ) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or
         exponential forms"""
 

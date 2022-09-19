@@ -206,9 +206,7 @@ def fit_hypsometric_bins_poly(
 
     # Save as pandas' DataFrame
     output = pd.DataFrame(
-        index=hypsometric_bins.index,
-        data=np.vstack([interpolated_values, bins["count"]]).T,
-        columns=["value", "count"]
+        index=hypsometric_bins.index, data=np.vstack([interpolated_values, bins["count"]]).T, columns=["value", "count"]
     )
 
     return output
@@ -327,8 +325,8 @@ to interpolate from. The default is 10.
 
 def hypsometric_interpolation(
     voided_ddem: NDArray[np.floating[Any]] | MArrayf,
-        ref_dem: NDArray[np.floating[Any]] | MArrayf,
-        mask: NDArray[np.floating[Any]]
+    ref_dem: NDArray[np.floating[Any]] | MArrayf,
+    mask: NDArray[np.floating[Any]],
 ) -> MArrayf:
     """
     Interpolate a dDEM using hypsometric interpolation within the given mask.
