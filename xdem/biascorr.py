@@ -1,7 +1,7 @@
 """Bias corrections for DEMs"""
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import rasterio as rio

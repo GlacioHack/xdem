@@ -1,9 +1,4 @@
-import copy
-import os
-import tempfile
-import time
 import warnings
-from typing import Any
 
 import geoutils as gu
 import numpy as np
@@ -12,16 +7,16 @@ import pytest
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import xdem
-    from xdem import biascorr, coreg, examples, misc, spatialstats
+    from xdem import biascorr, examples
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
     """Load example files to try coregistration methods with."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        reference_raster = gu.georaster.Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = gu.georaster.Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = gu.geovector.Vector(examples.get_path("longyearbyen_glacier_outlines"))
+        reference_raster = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
+        to_be_aligned_raster = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
+        glacier_mask = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
