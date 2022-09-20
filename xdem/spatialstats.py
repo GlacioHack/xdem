@@ -2186,7 +2186,7 @@ def number_effective_samples(
     _check_validity_params_variogram(params_variogram_model=params_variogram_model)
 
     # If area is numeric, run the continuous circular approximation
-    if isinstance(area, float | int):
+    if isinstance(area, (float, int)):
         neff = neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
 
     # Otherwise, run the discrete sum of covariance
