@@ -31,7 +31,7 @@ except ImportError:
     _has_sklearn = False
 
 
-def rmse(z: NDArray[np.floating[Any]]) -> float:
+def rmse(z: NDArrayf) -> float:
     """
     Return root mean square error
     :param z: Residuals between predicted and true value
@@ -40,7 +40,7 @@ def rmse(z: NDArray[np.floating[Any]]) -> float:
     return np.sqrt(np.nanmean(np.square(z)))
 
 
-def huber_loss(z: NDArray[np.floating[Any]]) -> float:
+def huber_loss(z: NDArrayf) -> float:
     """
     Huber loss cost (reduces the weight of outliers)
     :param z: Residuals between predicted and true values
@@ -51,7 +51,7 @@ def huber_loss(z: NDArray[np.floating[Any]]) -> float:
     return out.sum()
 
 
-def soft_loss(z: NDArray[np.floating[Any]], scale: float = 0.5) -> float:
+def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
     """
     Soft loss cost (reduces the weight of outliers)
     :param z: Residuals between predicted and true values
@@ -62,10 +62,10 @@ def soft_loss(z: NDArray[np.floating[Any]], scale: float = 0.5) -> float:
 
 
 def _cost_sumofsin(
-    p: NDArray[np.floating[Any]],
-    x: NDArray[np.floating[Any]],
-    y: NDArray[np.floating[Any]],
-    cost_func: Callable[[NDArray[np.floating[Any]]], float],
+    p: NDArrayf,
+    x: NDArrayf,
+    y: NDArrayf,
+    cost_func: Callable[[NDArrayf], float],
 ) -> float:
     """
     Calculate robust cost function for sum of sinusoids
@@ -74,7 +74,7 @@ def _cost_sumofsin(
     return cost_func(z)
 
 
-def _choice_best_order(cost: NDArray[np.floating[Any]], margin_improvement: float = 20.0, verbose: bool = False) -> int:
+def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose: bool = False) -> int:
     """
     Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
     not necessarily mean the best predictive fit because high-degree polynomials tend to overfit, and sum of sinusoids
@@ -111,14 +111,14 @@ def _choice_best_order(cost: NDArray[np.floating[Any]], margin_improvement: floa
 
 def _wrapper_scipy_leastsquares(
     residual_func: Callable[
-        [NDArray[np.floating[Any]], NDArray[np.floating[Any]], NDArray[np.floating[Any]]], NDArray[np.floating[Any]]
+        [NDArrayf, NDArrayf, NDArrayf], NDArrayf
     ],
-    p0: NDArray[np.floating[Any]],
-    x: NDArray[np.floating[Any]],
-    y: NDArray[np.floating[Any]],
+    p0: NDArrayf,
+    x: NDArrayf,
+    y: NDArrayf,
     verbose: bool = False,
     **kwargs: Any,
-) -> tuple[float, NDArray[np.floating[Any]]]:
+) -> tuple[float, NDArrayf]:
     """
     Wrapper function for scipy.optimize.least_squares: passes down keyword, extracts cost and final parameters, print
     statements in the console
@@ -158,12 +158,12 @@ def _wrapper_scipy_leastsquares(
 
 def _wrapper_sklearn_robustlinear(
     model: PolynomialFeatures,
-    cost_func: Callable[[NDArray[np.floating[Any]], NDArray[np.floating[Any]]], float],
-    x: NDArray[np.floating[Any]],
-    y: NDArray[np.floating[Any]],
+    cost_func: Callable[[NDArrayf, NDArrayf], float],
+    x: NDArrayf,
+    y: NDArrayf,
     estimator_name: str = "Linear",
     **kwargs: Any,
-) -> tuple[float, NDArray[np.floating[Any]]]:
+) -> tuple[float, NDArrayf]:
     """
     Wrapper function of sklearn.linear_models: passes down keyword, extracts cost and final parameters, sets random
     states, scales input and de-scales output data, prints out statements
@@ -229,18 +229,18 @@ def _wrapper_sklearn_robustlinear(
 
 
 def robust_polynomial_fit(
-    x: NDArray[np.floating[Any]],
-    y: NDArray[np.floating[Any]],
+    x: NDArrayf,
+    y: NDArrayf,
     max_order: int = 6,
     estimator_name: str = "Theil-Sen",
-    cost_func: Callable[[NDArray[np.floating[Any]], NDArray[np.floating[Any]]], float] = median_absolute_error,
+    cost_func: Callable[[NDArrayf, NDArrayf], float] = median_absolute_error,
     margin_improvement: float = 20.0,
     subsample: float | int = 25000,
     linear_pkg: str = "sklearn",
     verbose: bool = False,
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
     **kwargs: Any,
-) -> tuple[NDArray[np.floating[Any]], int]:
+) -> tuple[NDArrayf, int]:
     """
     Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
@@ -284,12 +284,12 @@ def robust_polynomial_fit(
         if estimator_name == "Linear" and linear_pkg == "scipy":
 
             # Define the residual function to optimize with scipy
-            def fitfun_polynomial(xx: NDArray[np.floating[Any]], params: NDArray[np.floating[Any]]) -> float:
+            def fitfun_polynomial(xx: NDArrayf, params: NDArrayf) -> float:
                 return sum(p * (xx**i) for i, p in enumerate(params))
 
             def residual_func(
-                p: NDArray[np.floating[Any]], xx: NDArray[np.floating[Any]], yy: NDArray[np.floating[Any]]
-            ) -> NDArray[np.floating[Any]]:
+                p: NDArrayf, xx: NDArrayf, yy: NDArrayf
+            ) -> NDArrayf:
                 return fitfun_polynomial(xx, p) - yy
 
             # Define the initial guess
@@ -321,7 +321,7 @@ def robust_polynomial_fit(
     return np.trim_zeros(list_coeffs[final_index], "b"), final_index + 1
 
 
-def _sumofsinval(x: NDArray[np.floating[Any]], params: NDArray[np.floating[Any]]) -> NDArray[np.floating[Any]]:
+def _sumofsinval(x: NDArrayf, params: NDArrayf) -> NDArrayf:
     """
     Function for a sum of N frequency sinusoids
     :param x: array of coordinates (N,)
@@ -337,17 +337,17 @@ def _sumofsinval(x: NDArray[np.floating[Any]], params: NDArray[np.floating[Any]]
 
 
 def robust_sumsin_fit(
-    x: NDArray[np.floating[Any]],
-    y: NDArray[np.floating[Any]],
+    x: NDArrayf,
+    y: NDArrayf,
     nb_frequency_max: int = 3,
     bounds_amp_freq_phase: list[tuple[float, float]] | None = None,
-    cost_func: Callable[[NDArray[np.floating[Any]]], float] = soft_loss,
+    cost_func: Callable[[NDArrayf], float] = soft_loss,
     subsample: float | int = 25000,
     hop_length: float | None = None,
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
     verbose: bool = False,
     **kwargs: Any,
-) -> tuple[NDArray[np.floating[Any]], int]:
+) -> tuple[NDArrayf, int]:
     """
     Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
@@ -381,7 +381,7 @@ def robust_sumsin_fit(
         kwargs.update({"niter_success": niter_success})
 
     def wrapper_cost_sumofsin(
-        p: NDArray[np.floating[Any]], x: NDArray[np.floating[Any]], y: NDArray[np.floating[Any]]
+        p: NDArrayf, x: NDArrayf, y: NDArrayf
     ) -> float:
         return _cost_sumofsin(p, x, y, cost_func=cost_func)
 

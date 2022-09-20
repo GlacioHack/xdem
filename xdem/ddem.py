@@ -36,7 +36,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         self.start_time = start_time
         self.end_time = end_time
         self.error = error
-        self._filled_data: NDArray[np.floating[Any]] | None = None
+        self._filled_data: NDArrayf | None = None
         self._fill_method = ""
         self.nodata: int | float | None = None
 
@@ -44,7 +44,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         """Return a summary of the dDEM."""
         return f"dDEM from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
 
-    def copy(self, new_array: NDArray[np.floating[Any]] = None) -> dDEM:
+    def copy(self, new_array: NDArrayf = None) -> dDEM:
         """Return a copy of the DEM."""
 
         if new_array is None:
@@ -54,7 +54,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         return new_ddem
 
     @property
-    def filled_data(self) -> NDArray[np.floating[Any]] | None:
+    def filled_data(self) -> NDArrayf | None:
         """
         Get the filled data array if it exists, or else the original data if it has no nans.
 
@@ -70,7 +70,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         return np.asarray(self.data)
 
     @filled_data.setter
-    def filled_data(self, array: NDArray[np.floating[Any]]) -> None:
+    def filled_data(self, array: NDArrayf) -> None:
         """Set the filled_data attribute and make sure that it is valid."""
 
         assert (
@@ -92,7 +92,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     @classmethod
     def from_array(
         cls: type[RasterType],
-        data: NDArray[np.floating[Any]],
+        data: NDArrayf,
         transform: tuple[float, ...] | Affine,
         crs: CRS | int | None,
         start_time: np.datetime64,
@@ -123,11 +123,11 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     def interpolate(
         self,
         method: str = "linear",
-        reference_elevation: NDArray[np.floating[Any]]
+        reference_elevation: NDArrayf
         | np.ma.masked_array[Any, np.dtype[np.floating[Any]]]
         | xdem.DEM = None,
-        mask: NDArray[np.floating[Any]] | xdem.DEM | gu.Vector = None,
-    ) -> NDArray[np.floating[Any]] | None:
+        mask: NDArrayf | xdem.DEM | gu.Vector = None,
+    ) -> NDArrayf | None:
         """
         Interpolate the dDEM using the given method.
 

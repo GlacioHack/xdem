@@ -11,19 +11,18 @@ import pandas as pd
 import rasterio.fill
 import scipy.interpolate
 from geoutils import spatial_tools
-from numpy.typing import NDArray
 from tqdm import tqdm
 
 import xdem
-from xdem._typing import MArrayf
+from xdem._typing import NDArrayf, MArrayf
 
 
 def hypsometric_binning(
-    ddem: NDArray[np.floating[Any]],
-    ref_dem: NDArray[np.floating[Any]],
-    bins: float | NDArray[np.floating[Any] | np.integer[Any]] = 50.0,
+    ddem: NDArrayf,
+    ref_dem: NDArrayf,
+    bins: float | np.ndarray[Any, np.dtype[np.floating[Any] | np.integer[Any]]] = 50.0,
     kind: str = "fixed",
-    aggregation_function: Callable[[NDArray[np.floating[Any]]], float] = np.median,
+    aggregation_function: Callable[[NDArrayf], float] = np.median,
 ) -> pd.DataFrame:
     """
     Separate the dDEM in discrete elevation bins.
@@ -214,7 +213,7 @@ def fit_hypsometric_bins_poly(
 
 def calculate_hypsometry_area(
     ddem_bins: pd.Series | pd.DataFrame,
-    ref_dem: NDArray[np.floating[Any]],
+    ref_dem: NDArrayf,
     pixel_size: float | tuple[float, float],
     timeframe: str = "reference",
 ) -> pd.Series:
@@ -274,11 +273,11 @@ def calculate_hypsometry_area(
 
 
 def linear_interpolation(
-    array: NDArray[np.floating[Any]] | MArrayf,
+    array: NDArrayf | MArrayf,
     max_search_distance: int = 10,
     extrapolate: bool = False,
     force_fill: bool = False,
-) -> NDArray[np.floating[Any]]:
+) -> NDArrayf:
     """
     Interpolate a 2D array using rasterio's fillnodata.
 
@@ -324,9 +323,9 @@ to interpolate from. The default is 10.
 
 
 def hypsometric_interpolation(
-    voided_ddem: NDArray[np.floating[Any]] | MArrayf,
-    ref_dem: NDArray[np.floating[Any]] | MArrayf,
-    mask: NDArray[np.floating[Any]],
+    voided_ddem: NDArrayf | MArrayf,
+    ref_dem: NDArrayf | MArrayf,
+    mask: NDArrayf,
 ) -> MArrayf:
     """
     Interpolate a dDEM using hypsometric interpolation within the given mask.
@@ -378,9 +377,9 @@ def hypsometric_interpolation(
 
 
 def local_hypsometric_interpolation(
-    voided_ddem: NDArray[np.floating[Any]] | MArrayf,
-    ref_dem: NDArray[np.floating[Any]] | MArrayf,
-    mask: NDArray[np.floating[Any]],
+    voided_ddem: NDArrayf | MArrayf,
+    ref_dem: NDArrayf | MArrayf,
+    mask: NDArrayf,
     min_coverage: float = 0.2,
     count_threshold: int | None = 1,
     nodata: float | int = -9999,
@@ -535,9 +534,9 @@ for areas filling the min_coverage criterion.
 
 
 def get_regional_hypsometric_signal(
-    ddem: NDArray[np.floating[Any]] | MArrayf,
-    ref_dem: NDArray[np.floating[Any]] | MArrayf,
-    glacier_index_map: NDArray[np.floating[Any]],
+    ddem: NDArrayf | MArrayf,
+    ref_dem: NDArrayf | MArrayf,
+    glacier_index_map: NDArrayf,
     n_bins: int = 20,
     verbose: bool = False,
     min_coverage: float = 0.05,
@@ -632,15 +631,15 @@ def get_regional_hypsometric_signal(
 
 
 def norm_regional_hypsometric_interpolation(
-    voided_ddem: NDArray[np.floating[Any]] | MArrayf,
-    ref_dem: NDArray[np.floating[Any]] | MArrayf,
-    glacier_index_map: NDArray[np.floating[Any]],
+    voided_ddem: NDArrayf | MArrayf,
+    ref_dem: NDArrayf | MArrayf,
+    glacier_index_map: NDArrayf,
     min_coverage: float = 0.1,
     regional_signal: pd.DataFrame | None = None,
     verbose: bool = False,
     min_elevation_range: float = 0.33,
     idealized_ddem: bool = False,
-) -> NDArray[np.floating[Any]]:
+) -> NDArrayf:
     """
     Interpolate missing values by scaling the normalized regional hypsometric signal to each glacier separately.
 

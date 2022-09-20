@@ -115,7 +115,7 @@ class DEMCollection:
         self.ddems = ddems
         return self.ddems
 
-    def interpolate_ddems(self, method: str = "linear") -> list[NDArray[np.floating[Any]]]:
+    def interpolate_ddems(self, method: str = "linear") -> list[NDArrayf]:
         """
         Interpolate all the dDEMs in the DEMCollection object using the chosen interpolation method.
 
@@ -127,7 +127,7 @@ class DEMCollection:
 
         return [ddem.filled_data for ddem in self.ddems]
 
-    def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: str | None = None) -> NDArray[np.floating[Any]]:
+    def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: str | None = None) -> NDArrayf:
         """
         Get a fitting dDEM mask for a provided dDEM.
 
@@ -168,7 +168,7 @@ class DEMCollection:
         return mask.reshape(ddem.data.shape)
 
     def get_dh_series(
-        self, outlines_filter: str | None = None, mask: NDArray[np.floating[Any]] | None = None, nans_ok: bool = False
+        self, outlines_filter: str | None = None, mask: NDArrayf | None = None, nans_ok: bool = False
     ) -> pd.DataFrame:
         """
         Return a dataframe of mean dDEM values and respective areas for every timestamp.
@@ -206,7 +206,7 @@ class DEMCollection:
         return dh_values
 
     def get_dv_series(
-        self, outlines_filter: str | None = None, mask: NDArray[np.floating[Any]] | None = None, nans_ok: bool = False
+        self, outlines_filter: str | None = None, mask: NDArrayf | None = None, nans_ok: bool = False
     ) -> pd.Series:
         """
         Return a series of mean volume change (dV) for every timestamp.
@@ -227,7 +227,7 @@ class DEMCollection:
         self,
         kind: str = "dh",
         outlines_filter: str | None = None,
-        mask: NDArray[np.floating[Any]] | None = None,
+        mask: NDArrayf | None = None,
         nans_ok: bool = False,
     ) -> pd.Series:
         """

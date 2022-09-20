@@ -912,7 +912,7 @@ class Coreg:
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
-    ) -> NDArray[np.float_ | np.int_]:
+    ) -> NDArrayf:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -1661,7 +1661,7 @@ class ZScaleCorr(Coreg):
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
-    ) -> NDArray[np.float_ | np.int_]:
+    ) -> NDArrayf:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
@@ -1970,7 +1970,7 @@ class BlockwiseCoreg(Coreg):
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
-    ) -> NDArray[np.float_ | np.int_]:
+    ) -> NDArrayf:
 
         points = self.to_points()
 

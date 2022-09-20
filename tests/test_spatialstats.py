@@ -25,7 +25,7 @@ with warnings.catch_warnings():
 PLOT = False
 
 
-def load_ref_and_diff() -> tuple[Raster, Raster, NDArray[np.floating[Any]], Vector]:
+def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
     """Load example files to try coregistration methods with."""
 
     reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
@@ -82,7 +82,7 @@ class TestBinning:
         assert df.shape[0] == 20
 
         # Define function for custom stat
-        def percentile_80(a: NDArray[np.floating[Any]]) -> np.floating[Any]:
+        def percentile_80(a: NDArrayf) -> np.floating[Any]:
             return np.nanpercentile(a, 80)
 
         # Check the function runs with custom functions

@@ -165,7 +165,7 @@ class TestCoregClass:
 
     def test_error_method(self) -> None:
         """Test different error measures."""
-        dem1: NDArray[np.floating[Any]] = np.ones((50, 50)).astype(np.float32)
+        dem1: NDArrayf = np.ones((50, 50)).astype(np.float32)
         # Create a biased dem
         dem2 = dem1.copy() + 2.0
         affine = rio.transform.from_origin(0, 0, 1, 1)
@@ -646,7 +646,7 @@ class TestCoregClass:
         def fit_func() -> coreg.Coreg:
             return biascorr.fit(ref_dem, tba_dem, transform=transform)
 
-        def apply_func() -> NDArray[np.floating[Any]]:
+        def apply_func() -> NDArrayf:
             return biascorr.apply(tba_dem, transform=transform)
 
         # Try running the methods in order and validate the result.
@@ -724,7 +724,7 @@ def test_apply_matrix() -> None:
     # Check that the NMAD is low
     assert spatialstats.nmad(diff) < 0.01
 
-    def rotation_matrix(rotation: float = 30) -> NDArray[np.floating[Any]]:
+    def rotation_matrix(rotation: float = 30) -> NDArrayf:
         rotation = np.deg2rad(rotation)
         matrix = np.array(
             [

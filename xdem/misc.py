@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 import xdem.version
 
 
-def generate_random_field(shape: tuple[int, int], corr_size: int) -> NDArray[np.floating[Any]]:
+def generate_random_field(shape: tuple[int, int], corr_size: int) -> NDArrayf:
     """
     Generate a semi-random gaussian field (to simulate a DEM or DEM error)
 

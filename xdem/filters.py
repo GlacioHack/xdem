@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 # Gaussian filters
 
 
-def gaussian_filter_scipy(array: NDArray[np.floating[Any]], sigma: float) -> NDArray[np.floating[Any]]:
+def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
     gaussian_filter_cv is recommended as it is usually faster, but this depends on the value of sigma.
@@ -55,7 +55,7 @@ def gaussian_filter_scipy(array: NDArray[np.floating[Any]], sigma: float) -> NDA
         return gauss
 
 
-def gaussian_filter_cv(array: NDArray[np.floating[Any]], sigma: float) -> NDArray[np.floating[Any]]:
+def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
     Arguments are for now hard-coded to be identical to scipy.
@@ -117,8 +117,8 @@ def gaussian_filter_cv(array: NDArray[np.floating[Any]], sigma: float) -> NDArra
 
 
 def distance_filter(
-    array: NDArray[np.floating[Any]], radius: float, outlier_threshold: float
-) -> NDArray[np.floating[Any]]:
+    array: NDArrayf, radius: float, outlier_threshold: float
+) -> NDArrayf:
     """
     Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \
 pixels within a given radius.
