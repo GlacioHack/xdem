@@ -8,7 +8,6 @@ import numpy as np
 import xdem
 from xdem import coreg
 
-
 # Load the data using xdem and geoutils (could be with rasterio and geopandas instead)
 # Load a reference DEM from 2009
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))

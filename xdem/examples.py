@@ -1,38 +1,34 @@
 """Utility functions to download and find example data."""
-import errno
 import os
-import shutil
 import tarfile
 import tempfile
 import urllib.request
 from distutils.dir_util import copy_tree
 
-import numpy as np
-
 import geoutils as gu
+
 import xdem
 
 EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples/data"))
 # Absolute filepaths to the example files.
 FILEPATHS_DATA = {
-    "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","data","DEM_2009_ref.tif"),
-    "longyearbyen_tba_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","data","DEM_1990.tif"),
+    "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
+    "longyearbyen_tba_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.tif"),
     "longyearbyen_glacier_outlines": os.path.join(
-        EXAMPLES_DIRECTORY,
-        "Longyearbyen","data","glacier_mask","CryoClim_GAO_SJ_1990.shp"
+        EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
     ),
     "longyearbyen_glacier_outlines_2010": os.path.join(
-        EXAMPLES_DIRECTORY,
-        "Longyearbyen","data","glacier_mask","CryoClim_GAO_SJ_2010.shp"
-    )}
+        EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
+    ),
+}
 
 FILEPATHS_PROCESSED = {
-    "longyearbyen_ddem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","processed","dDEM_2009_minus_1990.tif"),
-    "longyearbyen_tba_dem_coreg": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "DEM_1990_coreg.tif")
+    "longyearbyen_ddem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
+    "longyearbyen_tba_dem_coreg": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "DEM_1990_coreg.tif"),
 }
 
 
-def download_longyearbyen_examples(overwrite: bool = False):
+def download_longyearbyen_examples(overwrite: bool = False) -> None:
     """
     Fetch the Longyearbyen example files.
 
@@ -49,7 +45,7 @@ def download_longyearbyen_examples(overwrite: bool = False):
                 os.remove(fn)
 
     # Static commit hash to be bumped every time it needs to be.
-    commit = "321f84d5a67666f45a196a31a2697e22bfaf3c59"
+    commit = "fd832bc2e366cf2ba8b543f7e43f90ee02384f4f"
     # The URL from which to download the repository
     url = f"https://github.com/GlacioHack/xdem-data/tarball/main#commit={commit}"
 
@@ -73,18 +69,20 @@ def download_longyearbyen_examples(overwrite: bool = False):
     dir_name = os.path.join(
         temp_dir.name,
         [dirname for dirname in os.listdir(temp_dir.name) if os.path.isdir(os.path.join(temp_dir.name, dirname))][0],
-        "data","Longyearbyen"
+        "data",
+        "Longyearbyen",
     )
 
     # Copy the data to the examples directory.
-    copy_tree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen","data"))
+    copy_tree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data"))
 
-def process_coregistered_examples(overwrite: bool =False):
+
+def process_coregistered_examples(overwrite: bool = False) -> None:
     """
-       Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
+    Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
 
-       :param overwrite: Do not download the files again if they already exist.
-       """
+    :param overwrite: Do not download the files again if they already exist.
+    """
 
     if not overwrite and all(map(os.path.isfile, list(FILEPATHS_PROCESSED.values()))):
         # print("Processed data exists")
@@ -99,15 +97,14 @@ def process_coregistered_examples(overwrite: bool =False):
     inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
     nuth_kaab = xdem.coreg.NuthKaab()
-    nuth_kaab.fit(reference_raster, to_be_aligned_raster,
-                  inlier_mask=inlier_mask)
+    nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask)
     aligned_raster = nuth_kaab.apply(to_be_aligned_raster)
 
     diff = reference_raster - aligned_raster
 
     # Save it so that future calls won't need to recreate the file
-    os.makedirs(os.path.dirname(FILEPATHS_PROCESSED['longyearbyen_ddem']), exist_ok=True)
-    diff.save(FILEPATHS_PROCESSED['longyearbyen_ddem'])
+    os.makedirs(os.path.dirname(FILEPATHS_PROCESSED["longyearbyen_ddem"]), exist_ok=True)
+    diff.save(FILEPATHS_PROCESSED["longyearbyen_ddem"])
 
 
 def _get_longyearbyen_tba_coreg_dem() -> str:
@@ -118,7 +115,6 @@ def _get_longyearbyen_tba_coreg_dem() -> str:
         (dem_2009 - ddem).save(FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
 
     return FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]
-
 
 
 def get_path(name: str) -> str:
@@ -137,5 +133,8 @@ def get_path(name: str) -> str:
         process_coregistered_examples()
         return FILEPATHS_PROCESSED[name]
     else:
-        raise ValueError('Data name should be one of "'+'" , "'.join(list(FILEPATHS_DATA.keys())+list(FILEPATHS_PROCESSED.keys()))+'".')
-
+        raise ValueError(
+            'Data name should be one of "'
+            + '" , "'.join(list(FILEPATHS_DATA.keys()) + list(FILEPATHS_PROCESSED.keys()))
+            + '".'
+        )

@@ -45,9 +45,8 @@ class TestMisc:
         diff_conda_check = list(set(conda_dep_env) - set(conda_dep_devenv))
         assert len(diff_conda_check) == 0
 
-
-    @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])
-    @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])
+    @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])  # type: ignore
+    @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])  # type: ignore
     def test_deprecate(self, deprecation_increment: int | None, details: str | None) -> None:
         """
         Test the deprecation warnings/errors.
@@ -70,7 +69,7 @@ class TestMisc:
         )
 
         # Define a function with no use that is marked as deprecated.
-        @xdem.misc.deprecate(removal_version, details=details)
+        @xdem.misc.deprecate(removal_version, details=details)  # type: ignore
         def useless_func() -> int:
             return 1
 

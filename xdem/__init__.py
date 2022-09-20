@@ -1,4 +1,13 @@
-from . import coreg, dem, examples, spatialstats, volume, filters, fit, terrain
-from .ddem import dDEM
-from .dem import DEM
-from .demcollection import DEMCollection
+from xdem import (  # noqa
+    coreg,
+    dem,
+    examples,
+    filters,
+    fit,
+    spatialstats,
+    terrain,
+    volume,
+)
+from xdem.ddem import dDEM  # noqa
+from xdem.dem import DEM  # noqa
+from xdem.demcollection import DEMCollection  # noqa

@@ -11,8 +11,8 @@ xDEM comes with some sample data that is used throughout this documentation to d
 .. code-block:: python
 
         xdem.examples.download_longyearbyen_examples()
-        
-The dataset keys and paths can be found from 
+
+The dataset keys and paths can be found from
 
 .. code-block:: python
 
@@ -24,7 +24,7 @@ Load DEMs and calculate elevation difference
 .. code-block:: python
 
   import xdem
-  
+
   # Load data
   dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
   dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem_coreg"))

@@ -14,7 +14,7 @@ Yet, there is a downside to robust statistical measures. Those can yield less pr
 in some cases, hide patterns inherent to the data. This is why, when outliers exhibit idenfiable patterns, it is better
 to first resort to outlier filtering (see :ref:`filters`) and perform analysis using traditional statistical measures.
 
-.. contents:: Contents 
+.. contents:: Contents
    :local:
 
 .. _robuststats_meanstd:
@@ -120,4 +120,3 @@ The :ref:`coregistration` and :ref:`biascorr` methods encapsulate some of those 
 - The Random sample consensus estimator `RANSAC <https://en.wikipedia.org/wiki/Random_sample_consensus>`_,
 - The `Theil-Sen <https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator>`_ estimator,
 - The `Huber loss <https://en.wikipedia.org/wiki/Huber_loss>`_ estimator.
-

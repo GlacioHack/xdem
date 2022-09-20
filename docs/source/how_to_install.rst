@@ -9,7 +9,7 @@ Installing with conda (recommended)
 .. code-block:: bash
 
   conda install -c conda-forge --strict-channel-priority xdem
-        
+
 **Notes**
 
 - The ``--strict-channel-priority`` flag seems essential for Windows installs to function correctly, and is recommended for UNIX-based systems as well.
@@ -22,22 +22,22 @@ Installing with conda (recommended)
 
   Once installed, the same commands can be run by simply replacing ``conda`` by ``mamba``. More details available through the `mamba project <https://github.com/mamba-org/mamba>`_.
 
-- If running into the ``sklearn`` error ``ImportError: dlopen: cannot load any more object with static TLS``, your system 
+- If running into the ``sklearn`` error ``ImportError: dlopen: cannot load any more object with static TLS``, your system
   needs to update its ``glibc`` (see details `here <https://github.com/scikit-learn/scikit-learn/issues/14485#issuecomment-822678559>`_).
-  If you have no administrator right on the system, you might be able to circumvent this issue by installing a working 
+  If you have no administrator right on the system, you might be able to circumvent this issue by installing a working
   environment with specific downgraded versions of ``scikit-learn`` and ``numpy``:
 
   .. code-block:: bash
 
     conda create -n xdem-env -c conda-forge xdem scikit-learn==0.20.3 numpy==1.19.*
 
-  On very old systems, if the above install results in segmentation faults, try setting more specifically 
+  On very old systems, if the above install results in segmentation faults, try setting more specifically
   ``numpy==1.19.2=py37h54aff64_0`` (worked with Debian 8.11, GLIBC 2.19).
 
 Installing with pip
 -------------------
 
-.. code-block:: bash 
+.. code-block:: bash
 
   pip install xdem
 

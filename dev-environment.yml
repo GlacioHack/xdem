@@ -11,7 +11,7 @@ dependencies:
   - matplotlib
   - opencv
   - pyproj
-  - rasterio<=1.2.10
+  - rasterio
   - scipy
   - tqdm
   - scikit-image
@@ -35,4 +35,3 @@ dependencies:
 
   - pip:
     - git+https://github.com/GlacioHack/geoutils.git
-

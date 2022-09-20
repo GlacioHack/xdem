@@ -1,9 +1,6 @@
 """Functions to test the documentation."""
 import os
-import concurrent.futures
 import shutil
-import subprocess
-import sys
 import warnings
 
 import sphinx.cmd.build
@@ -13,7 +10,7 @@ class TestDocs:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "docs/")
     n_threads = os.getenv("N_CPUS")
 
-    def test_example_code(self):
+    def test_example_code(self) -> None:
         """Try running each python script in the docs/source/code\
                 directory and check that it doesn't raise an error."""
         current_dir = os.getcwd()
@@ -55,7 +52,7 @@ class TestDocs:
 
         os.chdir(current_dir)
 
-    def test_build(self):
+    def test_build(self) -> None:
         """Try building the docs and see if it works."""
         # Remove the build directory if it exists.
         if os.path.isdir(os.path.join(self.docs_dir, "build/")):
