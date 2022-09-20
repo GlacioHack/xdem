@@ -31,10 +31,14 @@ class TestRobustFitting:
 
         # Run fit
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='lbfgs failed to converge')
+            warnings.filterwarnings("ignore", message="lbfgs failed to converge")
             coefs, deg = xdem.fit.robust_polynomial_fit(
-                x, y, linear_pkg=pkg_estimator[0], estimator_name=pkg_estimator[1], random_state=42,
-                margin_improvement=50
+                x,
+                y,
+                linear_pkg=pkg_estimator[0],
+                estimator_name=pkg_estimator[1],
+                random_state=42,
+                margin_improvement=50,
             )
 
         # Check coefficients are constrained

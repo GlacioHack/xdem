@@ -96,7 +96,7 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
     below_margin = np.logical_and(perc_cost_improv < margin_improvement / 100.0, np.arange(len(cost)) <= ind_min)
 
     # Choose the good-performance cost with lowest degree
-    ind = next((i for i, j in enumerate(below_margin) if j), None)
+    ind = next((i for i, j in enumerate(below_margin) if j))
 
     if verbose:
         print("Order " + str(ind_min + 1) + " has the minimum cost value of " + str(min_cost))

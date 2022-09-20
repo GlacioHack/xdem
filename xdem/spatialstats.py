@@ -210,7 +210,7 @@ def interp_nd_binning(
     # Using a dataframe created from scratch
     >>> df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3],
     ... "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
-    
+
     # In 2 dimensions, the statistic array looks like this
     # array([
     #     [1, 2, 3],
@@ -755,7 +755,7 @@ def _create_ring_mask(
 
 def _random_state_definition(
     random_state: None | np.random.RandomState | int = None,
-) -> np.random.RandomState:
+) -> np.random.RandomState | np.random.Generator:
     """
     Define random state based on input
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
@@ -763,7 +763,7 @@ def _random_state_definition(
     """
 
     if random_state is None:
-        rnd = np.random.default_rng()
+        rnd: np.random.RandomState | np.random.Generator = np.random.default_rng()
     elif isinstance(random_state, np.random.RandomState):
         rnd = random_state
     else:
@@ -1948,7 +1948,7 @@ def _integrate_fun(fun: Callable[[NDArrayf], NDArrayf], low_b: float, upp_b: flo
     return integrate.quad(fun, low_b, upp_b)[0]
 
 
-def neff_circular_approx_numerical(area: float, params_variogram_model: pd.DataFrame) -> float:
+def neff_circular_approx_numerical(area: float | int, params_variogram_model: pd.DataFrame) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models over a circular area.
     This is a generalization of Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950, which is verified
@@ -2186,7 +2186,7 @@ def number_effective_samples(
     _check_validity_params_variogram(params_variogram_model=params_variogram_model)
 
     # If area is numeric, run the continuous circular approximation
-    if isinstance(area, float | int | np.floating | np.integer):
+    if isinstance(area, float | int):
         neff = neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
 
     # Otherwise, run the discrete sum of covariance
