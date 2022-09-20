@@ -51,7 +51,7 @@ extensions = [
     "sphinxcontrib.programoutput",
     "sphinx_gallery.gen_gallery",  # Examples gallery
     "sphinx.ext.intersphinx",
-    "myst_parser" # Form of Markdown that works with sphinx, used a lot by the Sphinx Book Theme
+    "myst_parser",  # Form of Markdown that works with sphinx, used a lot by the Sphinx Book Theme
 ]
 
 # autosummary_generate = True
@@ -90,12 +90,13 @@ templates_path = [os.path.join(os.path.dirname(__file__), "_templates")]
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_book_theme'
+html_theme = "sphinx_book_theme"
 
-html_theme_options = {"use_sidenotes": True,
-                      "repository_url": "https://github.com/GlacioHack/xdem",
-                      "use_repository_button": True,
-                      }
+html_theme_options = {
+    "use_sidenotes": True,
+    "repository_url": "https://github.com/GlacioHack/xdem",
+    "use_repository_button": True,
+}
 
 # html_logo = "path/to/myimage.png"
 html_title = "xDEM's documentation"

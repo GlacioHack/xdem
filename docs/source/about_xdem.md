@@ -3,8 +3,8 @@
 # About xDEM
 
 
-xDEM is a [Python](https://www.python.org/) package for the analysis of DEMs, with name standing for _cross-DEM analysis_[^sn1]  
-and echoing its dependency on [xarray](https://docs.xarray.dev/en/stable/). It is designed for all Earth and planetary 
+xDEM is a [Python](https://www.python.org/) package for the analysis of DEMs, with name standing for _cross-DEM analysis_[^sn1]
+and echoing its dependency on [xarray](https://docs.xarray.dev/en/stable/). It is designed for all Earth and planetary
 observation science, although our group currently has a strong focus on glaciological applications.
 
 [^sn1]: The core features of xDEM rely on cross-analysis of surface elevation, for example for DEM alignment or error analysis.
@@ -18,7 +18,7 @@ Additionally, xDEM aims to be **efficient**, **scalable** and **state-of-the-art
 
 ```{important}
 :class: margin
-xDEM is in early stages of development and its features might evolve rapidly. Note the version you are working on for 
+xDEM is in early stages of development and its features might evolve rapidly. Note the version you are working on for
 **reproducibility**!
 We are working on making features fully consistent for the first long-term release ``v0.1`` (likely sometime in 2023).
 ```
@@ -31,7 +31,8 @@ In details, those mean:
 
 - **Robustness:** all DEM methods should be tested within our continuous integration test-suite, to enforce that they always perform as expected;
 
-- **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependant packages and works;
+- **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependent
+  packages and works;
 
 - **Open-source:** all code should be accessible and re-usable to anyone in the community, for transparency and open governance.
 
@@ -70,5 +71,3 @@ We are not software developers but geoscientists, and we try our best to offer t
 documented, reliable and maintained. All development and maintenance is made on a voluntary basis and we welcome
 any new contributors. See some information on how to contribute in the dedicated page of our
 [GitHub repository](https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md).
-
-
