@@ -227,11 +227,11 @@ class TestBinning:
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="slope")
 
         # Check a value is returned inside the grid
-        assert np.isfinite(fun((15,)))
+        assert np.isfinite(fun(([15],)))
         # Check the nmad increases with slope
-        assert fun((20,)) > fun((0,))
+        assert fun(([20],)) > fun(([0],))
         # Check a value is returned outside the grid
-        assert all(np.isfinite(fun((-5, 50))))
+        assert all(np.isfinite(fun(([-5, 50],))))
 
         # Check when the first passed binning variable contains NaNs because of other binning variable
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="elevation")
@@ -240,21 +240,21 @@ class TestBinning:
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation"])
 
         # Check a value is returned inside the grid
-        assert np.isfinite(fun((15, 1000)))
+        assert np.isfinite(fun(([15], [1000])))
         # Check the nmad increases with slope
-        assert fun((40, 300)) > fun((10, 300))
+        assert fun(([40], [300])) > fun(([10], [300]))
         # Check a value is returned outside the grid
-        assert all(np.isfinite(fun(((-5, 50), (-500, 3000)))))
+        assert all(np.isfinite(fun(([-5, 50], [-500, 3000]))))
 
         # Then in 3D
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation", "aspect"])
 
         # Check a value is returned inside the grid
-        assert np.isfinite(fun((15, 1000, np.pi)))
+        assert np.isfinite(fun(([15], [1000], [np.pi])))
         # Check the nmad increases with slope
-        assert fun((30, 300, np.pi)) > fun((10, 300, np.pi))
+        assert fun(([30], [300], [np.pi])) > fun(([10], [300], [np.pi]))
         # Check a value is returned outside the grid
-        assert all(np.isfinite(fun(((-5, 50), (-500, 3000), (-2 * np.pi, 4 * np.pi)))))
+        assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
 
     def test_two_step_standardization(self) -> None:
         """Test two-step standardization function"""

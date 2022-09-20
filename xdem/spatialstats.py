@@ -209,7 +209,8 @@ def interp_nd_binning(
     :examples
     # Using a dataframe created from scratch
     >>> df = pd.DataFrame({"var1": [1, 2, 3, 1, 2, 3, 1, 2, 3], "var2": [1, 1, 1, 2, 2, 2, 3, 3, 3],
-    >>> "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+    ... "statistic": [1, 2, 3, 4, 5, 6, 7, 8, 9]})
+    
     # In 2 dimensions, the statistic array looks like this
     # array([
     #     [1, 2, 3],
@@ -753,7 +754,7 @@ def _create_ring_mask(
 
 
 def _random_state_definition(
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: None | np.random.RandomState | int = None,
 ) -> np.random.RandomState:
     """
     Define random state based on input
@@ -762,11 +763,7 @@ def _random_state_definition(
     """
 
     if random_state is None:
-        rnd_gen = np.random.default_rng()
-        rnd = np.random.RandomState(rnd_gen)
-    elif isinstance(random_state, np.random.Generator):
-        rnd_gen = random_state
-        rnd = np.random.RandomState(rnd_gen)
+        rnd = np.random.default_rng()
     elif isinstance(random_state, np.random.RandomState):
         rnd = random_state
     else:
@@ -783,7 +780,7 @@ def _subsample_wrapper(
     subsample_method: str = "pdist_ring",
     inside_radius: float = 0,
     outside_radius: float = None,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: None | np.random.RandomState | int = None,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
     (Not used by default)
@@ -803,7 +800,7 @@ def _subsample_wrapper(
                 (nx, ny), center=(center_x, center_y), in_radius=inside_radius, out_radius=outside_radius
             )
         else:
-            subindex = _create_circular_mask((nx, ny), center=(center_x, center_y), radius=inside_radius)
+            subindex = _create_circular_mask((nx, ny), center=(center_x, center_y), radius=outside_radius)
 
         index = subindex.flatten()
         values_sp = values[index]
@@ -1133,7 +1130,7 @@ def sample_empirical_variogram(
     n_variograms: int = 1,
     n_jobs: int = 1,
     verbose: bool = False,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: None | np.random.RandomState | int = None,
     # **kwargs: **EmpiricalVariogramKArgs, # This will work in Python 3.12, fails in the meantime, we'll be able to
     # remove some type ignores from this function in the future
     **kwargs: int | list[float] | float | str | Any,
@@ -1631,7 +1628,7 @@ def estimate_model_spatial_correlation(
     n_variograms: int = 1,
     n_jobs: int = 1,
     verbose: bool = False,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: None | np.random.RandomState | int = None,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
     **kwargs: Any,
@@ -1709,7 +1706,7 @@ def infer_spatial_correlation_from_stable(
     verbose: bool = False,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: None | np.random.RandomState | int = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[NDArrayf], NDArrayf]]:
     """
@@ -2067,7 +2064,7 @@ def neff_hugonnet_approx(
     params_variogram_model: pd.DataFrame,
     subsample: int = 1000,
     vectorized: bool = True,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: None | np.random.RandomState | int = None,
 ) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
@@ -2189,7 +2186,7 @@ def number_effective_samples(
     _check_validity_params_variogram(params_variogram_model=params_variogram_model)
 
     # If area is numeric, run the continuous circular approximation
-    if isinstance(area, float):
+    if isinstance(area, float | int | np.floating | np.integer):
         neff = neff_circular_approx_numerical(area=area, params_variogram_model=params_variogram_model)
 
     # Otherwise, run the discrete sum of covariance
@@ -2579,7 +2576,7 @@ def _patches_loop_quadrants(
     statistics_in_patch: Iterable[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
     statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
     verbose: bool = False,
-    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+    random_state: None | int | np.random.RandomState = None,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
@@ -2730,7 +2727,7 @@ def patches_method(
     verbose: bool = False,
     *,
     return_in_patch_statistics: Literal[False] = False,
-    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+    random_state: None | int | np.random.RandomState = None,
 ) -> pd.DataFrame:
     ...
 
@@ -2752,7 +2749,7 @@ def patches_method(
     verbose: bool = False,
     *,
     return_in_patch_statistics: Literal[True],
-    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+    random_state: None | int | np.random.RandomState = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     ...
 
@@ -2772,7 +2769,7 @@ def patches_method(
     n_patches: int = 1000,
     verbose: bool = False,
     return_in_patch_statistics: bool = False,
-    random_state: None | int | np.random.RandomState | np.random.Generator = None,
+    random_state: None | int | np.random.RandomState = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
 
     """
