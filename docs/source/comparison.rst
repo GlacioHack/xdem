@@ -1,7 +1,7 @@
 Differencing and volume change
 =================================
 
-.. contents:: Contents 
+.. contents:: Contents
    :local:
 
 **Example data**
@@ -38,7 +38,7 @@ Linear spatial interpolation (also often called bilinear interpolation) of dDEMs
         :lines: 65
 
 .. plot:: code/comparison_plot_spatial_interpolation.py
-        
+
 
 Local hypsometric interpolation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -54,9 +54,9 @@ Then, voids are interpolated by replacing them with what "should be there" at th
         :lines: 69
 
 .. plot:: code/comparison_plot_local_hypsometric_interpolation.py
-        
 
-*Caption: The elevation dependent elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard devation of the bin. The light blue background bars show the area distribution with elevation.*
+
+*Caption: The elevation dependent elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*
 
 
 Regional hypsometric interpolation
@@ -70,9 +70,9 @@ Of course, the accuracy of such an averaging is much lower than if the local hyp
         :lines: 73
 
 .. plot:: code/comparison_plot_regional_hypsometric_interpolation.py
-        
 
-*Caption: The regional elevation dependent elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard devation of the bin. The light blue background bars show the area distribution with elevation.*
+
+*Caption: The regional elevation dependent elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*
 
 The DEMCollection object
 ------------------------

@@ -26,7 +26,7 @@ dem.crop(subset_extent)
 
 # %%
 # Let's plot a hillshade of the mountain for context.
-xdem.terrain.hillshade(dem).show(cmap='gray')
+xdem.terrain.hillshade(dem).show(cmap="gray")
 
 # %%
 # To try the effects of rotation, we can artificially rotate the DEM using a transformation matrix.

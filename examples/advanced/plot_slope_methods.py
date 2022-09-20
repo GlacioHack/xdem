@@ -58,7 +58,7 @@ plot_attribute(slope_horn, "Reds", "Slope of Horn (1981) (°)")
 # %%
 # Slope with method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_, Equation 13.
 
-slope_zevenberg = xdem.terrain.slope(dem.data, resolution=dem.res, method='ZevenbergThorne')
+slope_zevenberg = xdem.terrain.slope(dem.data, resolution=dem.res, method="ZevenbergThorne")
 
 plot_attribute(slope_zevenberg, "Reds", "Slope of Zevenberg and Thorne (1987) (°)")
 
@@ -81,13 +81,21 @@ plot_attribute(maxc, "RdYlBu", "Maximum curvature (100 m $^{-1}$)", vlim=2)
 # We quantify the relationship by computing the median of slope differences in bins of curvatures, and plot the
 # result. We define custom bins for curvature, due to its skewed distribution.
 
-df_bin = xdem.spatialstats.nd_binning(values=diff_slope[:],list_var=[maxc[:]], list_var_names=["maxc"],
-                                      list_var_bins=30, statistics=[np.nanmedian, "count"])
+df_bin = xdem.spatialstats.nd_binning(
+    values=diff_slope[:],
+    list_var=[maxc[:]],
+    list_var_names=["maxc"],
+    list_var_bins=30,
+    statistics=[np.nanmedian, "count"],
+)
 
-xdem.spatialstats.plot_1d_binning(df_bin, var_name="maxc", statistic_name="nanmedian",
-                                  label_var="Maximum absolute curvature (100 m$^{-1}$)",
-                                  label_statistic="Slope of Horn (1981) minus\n "
-                                                  "slope of Zevenberg and Thorne (1987) (°)")
+xdem.spatialstats.plot_1d_binning(
+    df_bin,
+    var_name="maxc",
+    statistic_name="nanmedian",
+    label_var="Maximum absolute curvature (100 m$^{-1}$)",
+    label_statistic="Slope of Horn (1981) minus\n " "slope of Zevenberg and Thorne (1987) (°)",
+)
 
 
 # %%
@@ -95,13 +103,14 @@ xdem.spatialstats.plot_1d_binning(df_bin, var_name="maxc", statistic_name="nanme
 # to account for the circularity of aspect.
 
 aspect_horn = xdem.terrain.aspect(dem.data)
-aspect_zevenberg = xdem.terrain.aspect(dem.data, method='ZevenbergThorne')
+aspect_zevenberg = xdem.terrain.aspect(dem.data, method="ZevenbergThorne")
 
 diff_aspect = aspect_horn - aspect_zevenberg
 diff_aspect_mod = np.minimum(np.mod(diff_aspect, 360), 360 - np.mod(diff_aspect, 360))
 
-plot_attribute(diff_aspect_mod, "Spectral", "Aspect of Horn (1981) minus\n aspect of Zevenberg and Thorne (1987) (°)",
-               vlim=[0, 90])
+plot_attribute(
+    diff_aspect_mod, "Spectral", "Aspect of Horn (1981) minus\n aspect of Zevenberg and Thorne (1987) (°)", vlim=[0, 90]
+)
 
 # %%
 # Same as for slope, differences in aspect seem to coincide with high curvature areas. We observe also observe large

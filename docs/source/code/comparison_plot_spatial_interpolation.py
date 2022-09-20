@@ -9,11 +9,7 @@ dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
-ddem = xdem.dDEM(
-    dem_2009 - dem_1990,
-    start_time=np.datetime64("1990-08-01"),
-    end_time=np.datetime64("2009-08-01")
-)
+ddem = xdem.dDEM(dem_2009 - dem_1990, start_time=np.datetime64("1990-08-01"), end_time=np.datetime64("2009-08-01"))
 # The example DEMs are void-free, so let's make some random voids.
 ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)  # Reset the mask
 # Introduce 50000 nans randomly throughout the dDEM.

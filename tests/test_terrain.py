@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 import os
-import tempfile
 import re
+import tempfile
 import warnings
 
 import geoutils as gu
 import numpy as np
 import pytest
-import rasterio as rio
 
 import xdem
+from xdem._typing import MArrayf
 
 xdem.examples.download_longyearbyen_examples()
 
 PLOT = True
 
 
-def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> np.ma.masked_array:
+def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> MArrayf:
     """Run GDAL's DEMProcessing and return the read numpy array."""
     # Rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
@@ -30,7 +30,7 @@ def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> n
         "Zevenberg": gdal.DEMProcessingOptions(alg="ZevenbergenThorne"),
         "Horn": gdal.DEMProcessingOptions(alg="Horn"),
         "hillshade_Zevenberg": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="ZevenbergenThorne"),
-        "hillshade_Horn": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="Horn")
+        "hillshade_Horn": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="Horn"),
     }
 
     if options is None:
@@ -59,9 +59,21 @@ class TestTerrainAttribute:
         warnings.filterwarnings("ignore", message="Parse metadata")
         dem = xdem.DEM(filepath, silent=True)
 
-    @pytest.mark.parametrize("attribute", ["slope_Horn", "aspect_Horn", "hillshade_Horn",
-                                           "slope_Zevenberg", "aspect_Zevenberg", "hillshade_Zevenberg",
-                                           "tri_Riley", "tri_Wilson", "tpi", "roughness"])
+    @pytest.mark.parametrize(
+        "attribute",
+        [
+            "slope_Horn",
+            "aspect_Horn",
+            "hillshade_Horn",
+            "slope_Zevenberg",
+            "aspect_Zevenberg",
+            "hillshade_Zevenberg",
+            "tri_Riley",
+            "tri_Wilson",
+            "tpi",
+            "roughness",
+        ],
+    )  # type: ignore
     def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
         """
         Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
@@ -74,13 +86,15 @@ class TestTerrainAttribute:
             "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
             "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
-            "slope_Zevenberg": lambda dem: xdem.terrain.slope(dem.data, dem.res, method="ZevenbergThorne", degrees=True),
+            "slope_Zevenberg": lambda dem: xdem.terrain.slope(
+                dem.data, dem.res, method="ZevenbergThorne", degrees=True
+            ),
             "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
             "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(dem.data, dem.res, method="ZevenbergThorne"),
-            "tri_Riley": lambda  dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Riley'),
-            "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method='Wilson'),
+            "tri_Riley": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Riley"),
+            "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Wilson"),
             "tpi": lambda dem: xdem.terrain.topographic_position_index(dem.data),
-            "roughness": lambda dem: xdem.terrain.roughness(dem.data)
+            "roughness": lambda dem: xdem.terrain.roughness(dem.data),
         }
 
         # Writing dictionary options here to avoid importing gdal outside the dedicated function
@@ -94,7 +108,7 @@ class TestTerrainAttribute:
             "tri_Riley": ("TRI", "Riley"),
             "tri_Wilson": ("TRI", "Wilson"),
             "tpi": ("TPI", None),
-            "roughness": ("Roughness", None)
+            "roughness": ("Roughness", None),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -102,12 +116,15 @@ class TestTerrainAttribute:
 
         # Derive the attribute using both GDAL and xdem
         attr_xdem = functions[attribute](dem).squeeze()
-        attr_gdal = run_gdaldem(self.filepath, processing=gdal_processing_attr_option[attribute][0],
-                                options=gdal_processing_attr_option[attribute][1])
+        attr_gdal = run_gdaldem(
+            self.filepath,
+            processing=gdal_processing_attr_option[attribute][0],
+            options=gdal_processing_attr_option[attribute][1],
+        )
 
         # For hillshade, we round into an integer to match GDAL's output
         if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
-            attr_xdem = attr_xdem.astype('int').astype('float32')
+            attr_xdem = attr_xdem.astype("int").astype("float32")
 
         # We compute the difference and keep only valid values
         diff = (attr_xdem - attr_gdal).filled(np.nan)
@@ -122,15 +139,15 @@ class TestTerrainAttribute:
             # For instance, slopes have an average magnitude of around 30 deg, so the tolerance is 0.030 deg
             if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
                 # For hillshade, check 0 or 1 difference due to integer rounding
-                assert np.all(np.logical_or(diff_valid == 0., np.abs(diff_valid) == 1.))
+                assert np.all(np.logical_or(diff_valid == 0.0, np.abs(diff_valid) == 1.0))
 
             elif attribute in ["aspect_Horn", "aspect_Zevenberg"]:
                 # For aspect, check the tolerance within a 360 degree modulo due to the circularity of the variable
                 diff_valid = np.mod(np.abs(diff_valid), 360)
-                assert np.all(np.minimum(diff_valid, np.abs(360 - diff_valid)) < 10**(-3) * magn)
+                assert np.all(np.minimum(diff_valid, np.abs(360 - diff_valid)) < 10 ** (-3) * magn)
             else:
                 # All attributes other than hillshade and aspect are non-circular floats, so we check within a tolerance
-                assert np.all(np.abs(diff_valid < 10**(-3) * magn))
+                assert np.all(np.abs(diff_valid < 10 ** (-3) * magn))
 
         except Exception as exception:
 
@@ -146,9 +163,7 @@ class TestTerrainAttribute:
                 plt.colorbar()
                 plt.show()
 
-            
             raise exception
-
 
         # Introduce some nans
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
@@ -157,8 +172,10 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
 
-    @pytest.mark.parametrize("attribute", ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature",
-                                           "profile_curvature", "planform_curvature"])
+    @pytest.mark.parametrize(
+        "attribute",
+        ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
+    )  # type: ignore
     def test_attribute_functions_against_richdem(self, attribute: str) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
@@ -195,7 +212,7 @@ class TestTerrainAttribute:
         attr_richdem = gu.spatial_tools.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
 
         # We compute the difference and keep only valid values
-        diff = (attr_xdem - attr_richdem)
+        diff = attr_xdem - attr_richdem
         diff_valid = diff[np.isfinite(diff)]
 
         try:
@@ -270,8 +287,9 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
-    @pytest.mark.parametrize("name", ["curvature", "planform_curvature", "profile_curvature",
-                                      "maximum_curvature"])
+    @pytest.mark.parametrize(
+        "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
+    )  # type: ignore
     def test_curvatures(self, name: str) -> None:
         """Test the curvature functions"""
         warnings.simplefilter("error")
@@ -280,27 +298,28 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive curvature without any gaps
-        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res, edge_method='nearest')
+        curvature = xdem.terrain.get_terrain_attribute(
+            dem.data, attribute=name, resolution=dem.res, edge_method="nearest"
+        )
 
         # Validate that the array has the same shape as the input and that all values are finite.
         assert curvature.shape == dem.data.shape
         try:
             assert np.all(np.isfinite(curvature))
-        except:
+        except Exception:
             import matplotlib.pyplot as plt
 
             plt.imshow(curvature.squeeze())
             plt.show()
 
         with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
-            xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1., 2.))
+            xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
         dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
-
 
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
@@ -329,23 +348,30 @@ class TestTerrainAttribute:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
-        with pytest.raises(ValueError, match=re.escape("RichDEM can only compute the slope and aspect using the "
-                                                       "default method of Horn (1981)")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape("RichDEM can only compute the slope and aspect using the " "default method of Horn (1981)"),
+        ):
             xdem.terrain.slope(self.dem, method="ZevenbergThorne", use_richdem=True)
 
         with pytest.raises(ValueError, match="To derive RichDEM attributes, the DEM passed must be a Raster object"):
             xdem.terrain.slope(self.dem.data, resolution=self.dem.res, use_richdem=True)
 
-        with pytest.raises(ValueError, match=re.escape("Slope method 'DoesNotExist' is not supported. Must be one of: "
-                                             "['Horn', 'ZevenbergThorne']")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
+            ),
+        ):
             xdem.terrain.slope(self.dem.data, method="DoesNotExist")
 
-        with pytest.raises(ValueError, match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: "
-                                             "['Riley', 'Wilson']")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
+        ):
             xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
 
-
-    def test_raster_argument(self):
+    def test_raster_argument(self) -> None:
 
         slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
 
@@ -358,26 +384,26 @@ class TestTerrainAttribute:
         assert slope.crs == self.dem.crs == aspect.crs
 
     def test_rugosity_jenness(self) -> None:
-        """Test the rugosity with the same example as in Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2."""
+        """
+        Test the rugosity with the same example as in Jenness (2004),
+        https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
+        """
 
         # Derive rugosity from the function
-        dem = np.array([[190, 170, 155],
-                        [183, 165, 145],
-                        [175, 160, 122]], dtype="float32")
+        dem = np.array([[190, 170, 155], [183, 165, 145], [175, 160, 122]], dtype="float32")
 
         # Derive rugosity
-        rugosity = xdem.terrain.rugosity(dem, resolution=100.)
+        rugosity = xdem.terrain.rugosity(dem, resolution=100.0)
 
         # Rugosity of Jenness (2004) example
-        r = 10280.48 / 10000.
+        r = 10280.48 / 10000.0
 
-        assert rugosity[1, 1] == pytest.approx(r, rel=10**(-4))
-
+        assert rugosity[1, 1] == pytest.approx(r, rel=10 ** (-4))
 
     # Loop for various elevation differences with the center
-    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))
+    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))  # type: ignore
     # Loop for different resolutions
-    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))
+    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
         warnings.simplefilter("error")
@@ -386,39 +412,36 @@ class TestTerrainAttribute:
         # eight triangles have the same surface area, see Jenness (2004).
 
         # Derive rugosity from the function
-        dem = np.array([[1, 1, 1],
-                        [1, 1 + dh, 1],
-                        [1, 1, 1]], dtype="float32")
+        dem = np.array([[1, 1, 1], [1, 1 + dh, 1], [1, 1, 1]], dtype="float32")
 
         rugosity = xdem.terrain.rugosity(dem, resolution=resolution)
 
         # Half surface length between the center and a corner cell (in 3D: accounting for elevation changes)
-        side1 = np.sqrt(2 * resolution ** 2 + dh **2) / 2.
+        side1 = np.sqrt(2 * resolution**2 + dh**2) / 2.0
         # Half surface length between the center and a side cell (in 3D: accounting for elevation changes)
-        side2 = np.sqrt(resolution ** 2 + dh ** 2) / 2.
+        side2 = np.sqrt(resolution**2 + dh**2) / 2.0
         # Half surface length between the corner and side cell (no elevation changes on this side)
-        side3 = resolution / 2.
+        side3 = resolution / 2.0
 
         # Formula for area A of one triangle
-        s = (side1 + side2 + side3) / 2.
+        s = (side1 + side2 + side3) / 2.0
         A = np.sqrt(s * (s - side1) * (s - side2) * (s - side3))
 
         # We sum the area of the eight triangles, and divide by the planimetric area (resolution squared)
-        r = 8 * A / (resolution ** 2)
+        r = 8 * A / (resolution**2)
 
         # Check rugosity value is valid
-        assert r == pytest.approx(rugosity[1, 1], rel=10**(-6))
-
+        assert r == pytest.approx(rugosity[1, 1], rel=10 ** (-6))
 
     def test_get_quadric_coefficients(self) -> None:
         """Test the outputs and exceptions of the get_quadric_coefficients() function."""
         warnings.simplefilter("error")
 
-        dem = np.array([[1, 1, 1],
-                        [1, 2, 1],
-                        [1, 1, 1]], dtype="float32")
+        dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
 
-        coefficients = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method='nearest', make_rugosity=True)
+        coefficients = xdem.terrain.get_quadric_coefficients(
+            dem, resolution=1.0, edge_method="nearest", make_rugosity=True
+        )
 
         # Check all coefficients are finite with an edge method
         assert np.all(np.isfinite(coefficients))
@@ -434,7 +457,6 @@ class TestTerrainAttribute:
 
         with pytest.raises(ValueError, match="Invalid input array shape"):
             xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
-
 
         # Validate that when using the edge_method="none", only the one non-edge value is kept.
         coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="none")

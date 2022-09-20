@@ -14,18 +14,14 @@ class TestdDEM:
     dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
-    ddem = xdem.dDEM(
-        dem_2009 - dem_1990,
-        start_time=np.datetime64("1990-08-01"),
-        end_time=np.datetime64("2009-08-01")
-    )
+    ddem = xdem.dDEM(dem_2009 - dem_1990, start_time=np.datetime64("1990-08-01"), end_time=np.datetime64("2009-08-01"))
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test that the dDEM object was instantiated correctly."""
         assert isinstance(self.ddem, xdem.dDEM)
         assert isinstance(self.ddem.data, np.ma.masked_array)
 
-    def test_copy(self):
+    def test_copy(self) -> None:
         """Test that copying works as it should."""
         ddem2 = self.ddem.copy()
 
@@ -35,7 +31,7 @@ class TestdDEM:
 
         assert self.ddem != ddem2
 
-    def test_filled_data(self):
+    def test_filled_data(self) -> None:
         """Test that the filled_data property points to the right data."""
         ddem2 = self.ddem.copy()
 
@@ -53,7 +49,7 @@ class TestdDEM:
 
         assert ddem2.fill_method is not None
 
-    def test_regional_hypso(self):
+    def test_regional_hypso(self) -> None:
         """Test the regional hypsometric approach."""
         ddem = self.ddem.copy()
         ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)
@@ -62,20 +58,16 @@ class TestdDEM:
 
         assert ddem.filled_data is None
 
-        ddem.interpolate(
-            method="regional_hypsometric",
-            reference_elevation=self.dem_2009,
-            mask=self.outlines_1990
-        )
+        ddem.interpolate(method="regional_hypsometric", reference_elevation=self.dem_2009, mask=self.outlines_1990)
 
         assert ddem._filled_data is not None
-        assert type(ddem.filled_data) == np.ndarray
+        assert isinstance(ddem.filled_data, np.ndarray)
 
         assert ddem.filled_data.shape == ddem.data.shape
 
         assert np.abs(np.nanmean(self.ddem.data - ddem.filled_data)) < 1
 
-    def test_local_hypso(self):
+    def test_local_hypso(self) -> None:
         """Test the local hypsometric approach."""
         ddem = self.ddem.copy()
         scott_1990 = self.outlines_1990.query("NAME == 'Scott Turnerbreen'")
@@ -85,9 +77,5 @@ class TestdDEM:
 
         assert ddem.filled_data is None
 
-        ddem.interpolate(
-            method="local_hypsometric",
-            reference_elevation=self.dem_2009.data,
-            mask=self.outlines_1990
-        )
+        ddem.interpolate(method="local_hypsometric", reference_elevation=self.dem_2009.data, mask=scott_1990)
         assert np.abs(np.mean(self.ddem.data - ddem.filled_data)) < 1
