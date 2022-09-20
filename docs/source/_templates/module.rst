@@ -3,7 +3,7 @@
 
 .. automodule:: {{ fullname }}
 
-   .. contents:: Contents 
+   .. contents:: Contents
       :local:
 
    {% block functions %}

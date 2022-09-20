@@ -35,4 +35,3 @@ dependencies:
   - pip:
     - sphinx-book-theme
     - git+https://github.com/GlacioHack/geoutils.git
-

@@ -1,9 +1,8 @@
+from __future__ import annotations
+
 import os
-import subprocess
-import sys
 
 from setuptools import setup
-from setuptools.command.install import install
 
 FULLVERSION = "0.0.7"
 VERSION = FULLVERSION
@@ -47,7 +46,7 @@ setup(
 write_version = True
 
 
-def write_version_py(filename=None):
+def write_version_py(filename: str | None = None) -> None:
     cnt = """\
 version = '%s'
 short_version = '%s'

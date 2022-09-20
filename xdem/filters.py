@@ -1,15 +1,16 @@
 """Filters to remove outliers and reduce noise in DEMs."""
 from __future__ import annotations
 
+import warnings
+
 import cv2 as cv
 import numpy as np
 import scipy
-import warnings
+
+from xdem._typing import NDArrayf
 
 
-# Gaussian filters
-
-def gaussian_filter_scipy(array: np.ndarray, sigma: float) -> np.ndarray:
+def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
     gaussian_filter_cv is recommended as it is usually faster, but this depends on the value of sigma.
@@ -23,9 +24,7 @@ def gaussian_filter_scipy(array: np.ndarray, sigma: float) -> np.ndarray:
     """
     # Check that array dimension is 2 or 3
     if np.ndim(array) not in [2, 3]:
-        raise ValueError(
-            f"Invalid array shape given: {array.shape}. Expected 2D or 3D array"
-        )
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array")
 
     # In case array does not contain NaNs, use scipy's gaussian filter directly
     if np.count_nonzero(np.isnan(array)) == 0:
@@ -54,7 +53,7 @@ def gaussian_filter_scipy(array: np.ndarray, sigma: float) -> np.ndarray:
         return gauss
 
 
-def gaussian_filter_cv(array: np.ndarray, sigma) -> np.ndarray:
+def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
     Arguments are for now hard-coded to be identical to scipy.
@@ -76,9 +75,7 @@ def gaussian_filter_cv(array: np.ndarray, sigma) -> np.ndarray:
         else:
             raise NotImplementedError("Case of array of dimension 3 not implemented")
     else:
-        raise ValueError(
-            f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array"
-        )
+        raise ValueError(f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array")
 
     # In case array does not contain NaNs, use OpenCV's gaussian filter directly
     # With kernel size (0, 0), i.e. set to default, and borderType=BORDER_REFLECT, the output is equivalent to scipy
@@ -117,7 +114,7 @@ def gaussian_filter_cv(array: np.ndarray, sigma) -> np.ndarray:
 # To be added
 
 
-def distance_filter(array: np.ndarray, radius: float, outlier_threshold: float) -> np.ndarray:
+def distance_filter(array: NDArrayf, radius: float, outlier_threshold: float) -> NDArrayf:
     """
     Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \
 pixels within a given radius.
