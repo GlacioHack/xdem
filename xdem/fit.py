@@ -79,6 +79,7 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
     Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
     not necessarily mean the best predictive fit because high-degree polynomials tend to overfit, and sum of sinusoids
     as well. To mitigate this issue, we should choose the lesser order from which improvement becomes negligible.
+
     :param cost: cost function residuals to the polynomial
     :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
     :param verbose: if text should be printed
@@ -86,24 +87,22 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
     :return: degree: degree for the best-fit polynomial
     """
 
-    # get percentage of spread from the minimal cost
+    # Get percentage of spread from the minimal cost
     ind_min = cost.argmin()
     min_cost = cost[ind_min]
     perc_cost_improv = (cost - min_cost) / min_cost
 
-    # costs below threshold and lesser degrees
+    # Keep only good-performance costs that are within 20% of the minimal cost
     below_margin = np.logical_and(perc_cost_improv < margin_improvement / 100.0, np.arange(len(cost)) <= ind_min)
-    costs_below_thresh = cost[below_margin]
-    # minimal costs
-    subindex = costs_below_thresh.argmin()
-    # corresponding index (degree)
-    ind = np.arange(len(cost))[below_margin][subindex]
+
+    # Choose the good-performance cost with lowest degree
+    ind = next((i for i, j in enumerate(below_margin) if j), None)
 
     if verbose:
         print("Order " + str(ind_min + 1) + " has the minimum cost value of " + str(min_cost))
         print(
-            "Order " + str(ind + 1) + " is selected within a " + str(margin_improvement) + " % margin of"
-            " the minimum cost, with a cost value of " + str(min_cost)
+            "Order " + str(ind + 1) + " is selected as its cost is within a " + str(margin_improvement) + "% margin of"
+            " the minimum cost"
         )
 
     return ind

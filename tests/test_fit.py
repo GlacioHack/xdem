@@ -1,6 +1,8 @@
 """
 Functions to test the fitting tools.
 """
+import warnings
+
 import numpy as np
 import pytest
 from sklearn.metrics import mean_squared_error, median_absolute_error
@@ -28,9 +30,12 @@ class TestRobustFitting:
         y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
 
         # Run fit
-        coefs, deg = xdem.fit.robust_polynomial_fit(
-            x, y, linear_pkg=pkg_estimator[0], estimator_name=pkg_estimator[1], random_state=42
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='lbfgs failed to converge')
+            coefs, deg = xdem.fit.robust_polynomial_fit(
+                x, y, linear_pkg=pkg_estimator[0], estimator_name=pkg_estimator[1], random_state=42,
+                margin_improvement=50
+            )
 
         # Check coefficients are constrained
         assert deg == 3 or deg == 4
@@ -90,9 +95,9 @@ class TestRobustFitting:
         assert coefs4[2] == pytest.approx(true_coefs[2], abs=1)
         assert coefs4[3] == pytest.approx(true_coefs[3], abs=1)
 
-        # RANSAC is not always optimal, here it does not work well
+        # RANSAC also works
         coefs5, deg5 = xdem.fit.robust_polynomial_fit(x, y, estimator_name="RANSAC", random_state=42)
-        assert deg5 != 3
+        assert deg5 == 3
 
         # Huber should perform well, close to the scipy robust solution
         coefs6, deg6 = xdem.fit.robust_polynomial_fit(x, y, estimator_name="Huber")
