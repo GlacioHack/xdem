@@ -5,12 +5,10 @@ import os
 import warnings
 
 import pytest
+import yaml  # type: ignore
 
 import xdem
 import xdem.misc
-
-
-import yaml  # type: ignore
 
 
 class TestMisc:
