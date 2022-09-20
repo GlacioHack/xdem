@@ -12,7 +12,7 @@ Those transformations include for instance:
 - rotations, reflections,
 - scalings.
 
-.. contents:: Contents 
+.. contents:: Contents
    :local:
 
 Introduction

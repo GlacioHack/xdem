@@ -4,15 +4,16 @@ from __future__ import annotations
 import warnings
 from typing import Sized, overload
 
+import geoutils as gu
 import numba
 import numpy as np
-import rasterio as rio
+from geoutils.georaster import Raster, RasterType
 
-import geoutils as gu
-from geoutils.georaster import RasterType, Raster
+from xdem._typing import MArrayf, NDArrayf
 
 try:
     import richdem as rd
+
     _has_rd = True
 except ImportError:
     _has_rd = False
@@ -31,7 +32,7 @@ def _raster_to_rda(rst: RasterType) -> rd.rdarray:
     return rda
 
 
-def _get_terrainattr_richdem(rst: RasterType, attribute='slope_radians') -> np.ndarray:
+def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") -> NDArrayf:
     """
     Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
     "profile_curvature", "planform_curvature", "curvature" and others (see RichDEM documentation).
@@ -45,10 +46,14 @@ def _get_terrainattr_richdem(rst: RasterType, attribute='slope_radians') -> np.n
     return np.array(terrattr)
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True)  # type: ignore
 def _get_quadric_coefficients(
-    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none",
-        make_rugosity: bool = False) -> np.ndarray:
+    dem: NDArrayf,
+    resolution: float,
+    fill_method: str = "none",
+    edge_method: str = "none",
+    make_rugosity: bool = False,
+) -> NDArrayf:
     """
     Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
 
@@ -108,7 +113,6 @@ def _get_quadric_coefficients(
 
         # Get a mask of all invalid (nan or inf) values.
         invalids = ~np.isfinite(Z)
-        n_invalid = np.count_nonzero(invalids)
 
         # Skip the pixel if it and all of its neighbours are invalid
         if np.all(invalids):
@@ -149,7 +153,7 @@ def _get_quadric_coefficients(
                     # The first eight elevation differences from the cell center
                     dzs[count_without_center] = Z[4] - Z[count_all]
                     # The first eight planimetric length that can be diagonal or straight from the center
-                    dls[count_without_center] = np.sqrt(j ** 2 + k ** 2)*L
+                    dls[count_without_center] = np.sqrt(j**2 + k**2) * L
                     count_all += 1
                     count_without_center += 1
 
@@ -168,10 +172,10 @@ def _get_quadric_coefficients(
             dls[8:] = L
 
             # Finally, the half-surface length of each segment
-            hsl = np.sqrt(dzs ** 2 + dls ** 2) / 2
+            hsl = np.sqrt(dzs**2 + dls**2) / 2
 
-            # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding pixels
-            # and 1 segment between surrounding pixels; pixel 4 is the center
+            # Starting from up direction anticlockwise, every triangle has 2 segments between center and surrounding
+            # pixels and 1 segment between surrounding pixels; pixel 4 is the center
             # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
             # Triangle 1: pixels 3 and 0
             T1 = [hsl[3], hsl[0], hsl[12]]
@@ -205,12 +209,12 @@ def _get_quadric_coefficients(
         # Assign the A, B, C, D etc., factors to the output. This ugly syntax is needed to make parallel numba happy.
 
         # Coefficients of Zevenberg and Thorne (1987), Equations 3 to 11
-        output[0, row, col] = ((Z[0] + Z[2] + Z[6] + Z[8]) / 4 - (Z[1] + Z[3] + Z[5] + Z[7]) / 2 + Z[4]) / (L ** 4)  # A
-        output[1, row, col] = ((Z[0] + Z[2] - Z[6] - Z[8]) / 4 - (Z[1] - Z[7]) / 2) / (L ** 3)  # B
-        output[2, row, col] = ((-Z[0] + Z[2] - Z[6] + Z[8]) / 4 + (Z[3] - Z[5]) / 2) / (L ** 3)  # C
-        output[3, row, col] = ((Z[3] + Z[5]) / 2 - Z[4]) / (L ** 2)  # D
-        output[4, row, col] = ((Z[1] + Z[7]) / 2 - Z[4]) / (L ** 2)  # E
-        output[5, row, col] = (-Z[0] + Z[2] + Z[6] - Z[8]) / (4 * L ** 2)  # F
+        output[0, row, col] = ((Z[0] + Z[2] + Z[6] + Z[8]) / 4 - (Z[1] + Z[3] + Z[5] + Z[7]) / 2 + Z[4]) / (L**4)  # A
+        output[1, row, col] = ((Z[0] + Z[2] - Z[6] - Z[8]) / 4 - (Z[1] - Z[7]) / 2) / (L**3)  # B
+        output[2, row, col] = ((-Z[0] + Z[2] - Z[6] + Z[8]) / 4 + (Z[3] - Z[5]) / 2) / (L**3)  # C
+        output[3, row, col] = ((Z[3] + Z[5]) / 2 - Z[4]) / (L**2)  # D
+        output[4, row, col] = ((Z[1] + Z[7]) / 2 - Z[4]) / (L**2)  # E
+        output[5, row, col] = (-Z[0] + Z[2] + Z[6] - Z[8]) / (4 * L**2)  # F
         output[6, row, col] = (-Z[3] + Z[5]) / (2 * L)  # G
         output[7, row, col] = (Z[1] - Z[7]) / (2 * L)  # H
         output[8, row, col] = Z[4]  # I
@@ -227,8 +231,12 @@ def _get_quadric_coefficients(
 
 
 def get_quadric_coefficients(
-    dem: np.ndarray, resolution: float, fill_method: str = "none", edge_method: str = "none",
-        make_rugosity : bool = False) -> np.ndarray:
+    dem: NDArrayf,
+    resolution: float,
+    fill_method: str = "none",
+    edge_method: str = "none",
+    make_rugosity: bool = False,
+) -> NDArrayf:
     """
     Computes quadric and other coefficients on a fixed 3x3 pixel window, and that depends on the resolution.
     Returns the 9 coefficients of a quadric surface fit to every pixel in the raster, the 2 coefficients of optimized
@@ -318,17 +326,26 @@ def get_quadric_coefficients(
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
         coeffs = _get_quadric_coefficients(
-            dem_arr, resolution, fill_method=fill_method.lower(), edge_method=edge_method.lower(),
-            make_rugosity=make_rugosity)
+            dem_arr,
+            resolution,
+            fill_method=fill_method.lower(),
+            edge_method=edge_method.lower(),
+            make_rugosity=make_rugosity,
+        )
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
 
     return coeffs
 
-@numba.njit(parallel=True)
+
+@numba.njit(parallel=True)  # type: ignore
 def _get_windowed_indexes(
-    dem: np.ndarray, fill_method: str = "median", edge_method: str = "nearest", window_size: int = 3,
-    make_fractal_roughness: bool = False) -> np.ndarray:
+    dem: NDArrayf,
+    fill_method: str = "median",
+    edge_method: str = "nearest",
+    window_size: int = 3,
+    make_fractal_roughness: bool = False,
+) -> NDArrayf:
     """
     Run the pixel-wise analysis in parallel for any window size without using the resolution.
 
@@ -372,8 +389,8 @@ def _get_windowed_indexes(
             if (row < hw) or (row >= (dem.shape[0] - hw)) or (col < hw) or (col >= (dem.shape[1] - hw)):
                 continue
 
-        for j in range(-hw, -hw+window_size):
-            for k in range(-hw, -hw+window_size):
+        for j in range(-hw, -hw + window_size):
+            for k in range(-hw, -hw + window_size):
                 # Here the "nearest" edge_method is performed.
                 if edge_method_n == 0:
                     row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
@@ -389,7 +406,6 @@ def _get_windowed_indexes(
 
         # Get a mask of all invalid (nan or inf) values.
         invalids = ~np.isfinite(Z)
-        n_invalid = np.count_nonzero(invalids)
 
         # Skip the pixel if it and all of its neighbours are invalid
         if np.all(invalids):
@@ -411,10 +427,10 @@ def _get_windowed_indexes(
 
         # Difference pixels between specific cells: only useful for Terrain Ruggedness Index
         count = 0
-        index_middle_pixel = int((window_size**2 - 1)/2)
+        index_middle_pixel = int((window_size**2 - 1) / 2)
         S = np.empty((window_size**2,))
-        for j in range(-hw, -hw + window_size):
-            for k in range(-hw, -hw + window_size):
+        for _j in range(-hw, -hw + window_size):
+            for _k in range(-hw, -hw + window_size):
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
                 count += 1
 
@@ -425,7 +441,7 @@ def _get_windowed_indexes(
             V = np.empty((window_size, window_size))
             for j in range(-hw, -hw + window_size):
                 for k in range(-hw, -hw + window_size):
-                    T = (Z[count] - Z[index_middle_pixel])
+                    T = Z[count] - Z[index_middle_pixel]
                     # The following is the equivalent of np.clip, written like this for numba
                     if T < 0:
                         V[hw + j, hw + k] = 0
@@ -435,8 +451,8 @@ def _get_windowed_indexes(
                         V[hw + j, hw + k] = T
                     count += 1
 
-            # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window size,
-            # following Equation 5
+            # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window
+            # size, following Equation 5
 
             # Get all the divisors of the half window size
             list_box_sizes = []
@@ -445,14 +461,14 @@ def _get_windowed_indexes(
                     list_box_sizes.append(j)
 
             Ns = np.empty((len(list_box_sizes),))
-            for l in range(0, len(list_box_sizes)):
+            for l0 in range(0, len(list_box_sizes)):
                 # We loop over boxes of size q x q in the cube
-                q = list_box_sizes[l]
+                q = list_box_sizes[l0]
                 sumNs = 0
-                for j in range(0, int((window_size-1)/q)):
-                    for k in range(0, int((window_size-1)/q)):
-                        sumNs += np.max(V[slice(j*q, (j+1)*q), slice(k*q, (k+1)*q)].flatten())
-                Ns[l] = sumNs / q
+                for j in range(0, int((window_size - 1) / q)):
+                    for k in range(0, int((window_size - 1) / q)):
+                        sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
+                Ns[l0] = sumNs / q
 
             # Finally, we calculate the slope of the logarithm of Ns with q
             # We do the linear regression manually, as np.polyfit is not supported by numba
@@ -480,7 +496,7 @@ def _get_windowed_indexes(
         output[1, row, col] = np.sum(S) / (window_size**2 - 1)
         # Third output is the Topographic Position Index from Weiss (2001): difference between center and mean of
         # neighbouring pixels
-        output[2, row, col] =  Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
+        output[2, row, col] = Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
         # Fourth output is the Roughness from Dartnell (2000): difference between maximum and minimum of the window
         output[3, row, col] = np.max(Z) - np.min(Z)
 
@@ -493,14 +509,20 @@ def _get_windowed_indexes(
 
 
 def get_windowed_indexes(
-    dem: np.ndarray, fill_method: str = "none", edge_method: str = "none", window_size: int = 3,
-    make_fractal_roughness: bool = False) -> np.ndarray:
+    dem: NDArrayf,
+    fill_method: str = "none",
+    edge_method: str = "none",
+    window_size: int = 3,
+    make_fractal_roughness: bool = False,
+) -> NDArrayf:
     """
     Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
 
     Includes:
 
-    - Terrain Ruggedness Index from Riley et al. (1999),  http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
+    - Terrain Ruggedness Index from Riley et al. (1999),
+        http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson
+        et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
@@ -575,8 +597,11 @@ def get_windowed_indexes(
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
         indexes = _get_windowed_indexes(
-            dem_arr, fill_method=fill_method.lower(), edge_method=edge_method.lower(),
-            window_size=window_size, make_fractal_roughness=make_fractal_roughness
+            dem_arr,
+            fill_method=fill_method.lower(),
+            edge_method=edge_method.lower(),
+            window_size=window_size,
+            make_fractal_roughness=make_fractal_roughness,
         )
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
@@ -586,80 +611,82 @@ def get_windowed_indexes(
 
 @overload
 def get_terrain_attribute(
-    dem: np.ndarray | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     attribute: str,
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int
-) -> np.ndarray:
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> NDArrayf:
     ...
 
 
 @overload
 def get_terrain_attribute(
-    dem: np.ndarray | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int
-) -> list[np.ndarray]:
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> list[NDArrayf]:
     ...
 
-@overload
-def get_terrain_attribute(
-    dem: RasterType,
-    attribute: str,
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int
-) -> Raster:
-    ...
 
 @overload
 def get_terrain_attribute(
     dem: RasterType,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    slope_method: str,
-    tri_method: str,
-    fill_method: str,
-    edge_method: str,
-    use_richdem: bool,
-    window_size: int
-) -> list[Raster]:
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> list[RasterType]:
+    ...
+
+
+@overload
+def get_terrain_attribute(
+    dem: RasterType,
+    attribute: str,
+    resolution: tuple[float, float] | float | None = None,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    slope_method: str = "Horn",
+    tri_method: str = "Riley",
+    fill_method: str = "none",
+    edge_method: str = "none",
+    use_richdem: bool = False,
+    window_size: int = 3,
+) -> RasterType:
     ...
 
 
 def get_terrain_attribute(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
+    dem: NDArrayf | MArrayf | RasterType,
     attribute: str | list[str],
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -671,16 +698,18 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     use_richdem: bool = False,
-    window_size: int = 3
-) -> np.ndarray | list[np.ndarray] | Raster | list[Raster]:
+    window_size: int = 3,
+) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
 
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
-    - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987),
+        http://dx.doi.org/10.1002/esp.3290120107.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
-    - Terrain Ruggedness Index (topography) from Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
+    - Terrain Ruggedness Index (topography) from Riley et al. (1999),
+        http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
     - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
     - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
@@ -700,8 +729,11 @@ def get_terrain_attribute(
     * 'profile_curvature': The curvature parallel to the direction of the slope, multiplied by 100.
     * 'maximum_curvature': The maximum curvature.
     * 'surface_fit': A quadric surface fit for each individual pixel.
-    * 'topographic_position_index': The topographic position index defined by a difference to the average of neighbouring pixels.
-    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the squareroot of squared differences to neighbouring pixels. For bathymetry, defined by the mean absolute difference to neighbouring pixels. Default method: "Riley" (topography).
+    * 'topographic_position_index': The topographic position index defined by a difference to the average of
+        neighbouring pixels.
+    * 'terrain_ruggedness_index': The terrain ruggedness index. For topography, defined by the squareroot of squared
+        differences to neighbouring pixels. For bathymetry, defined by the mean absolute difference to neighbouring
+        pixels. Default method: "Riley" (topography).
     * 'roughness': The roughness, i.e. maximum difference between neighbouring pixels.
     * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
     * 'fractal_roughness': The roughness based on a volume box-counting estimate of the fractal dimension.
@@ -749,8 +781,17 @@ def get_terrain_attribute(
         attribute = [attribute]
 
     # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
-    list_requiring_surface_fit = ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature",
-                                  "slope", "hillshade", "aspect", "surface_fit", "rugosity"]
+    list_requiring_surface_fit = [
+        "curvature",
+        "planform_curvature",
+        "profile_curvature",
+        "maximum_curvature",
+        "slope",
+        "hillshade",
+        "aspect",
+        "surface_fit",
+        "rugosity",
+    ]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     if use_richdem:
@@ -758,11 +799,18 @@ def get_terrain_attribute(
         if not _has_rd:
             raise ValueError("Optional dependency needed. Install 'richdem'")
 
-        if ("slope" in attribute or "aspect" in attribute) and slope_method == 'ZevenbergThorne':
+        if ("slope" in attribute or "aspect" in attribute) and slope_method == "ZevenbergThorne":
             raise ValueError("RichDEM can only compute the slope and aspect using the default method of Horn (1981)")
 
-        list_requiring_richdem = ["slope", "aspect", "hillshade", "curvature", "planform_curvature",
-                                  "profile curvature", "maximum_curvature"]
+        list_requiring_richdem = [
+            "slope",
+            "aspect",
+            "hillshade",
+            "curvature",
+            "planform_curvature",
+            "profile curvature",
+            "maximum_curvature",
+        ]
         attributes_using_richdem = [attr for attr in attribute if attr in list_requiring_richdem]
         for attr in attributes_using_richdem:
             attributes_requiring_surface_fit.remove(attr)
@@ -773,11 +821,15 @@ def get_terrain_attribute(
             # For now, not supported
             raise ValueError("To derive RichDEM attributes, the DEM passed must be a Raster object")
 
-    list_requiring_windowed_index = ["terrain_ruggedness_index", "topographic_position_index", "roughness",
-                                     "fractal_roughness"]
+    list_requiring_windowed_index = [
+        "terrain_ruggedness_index",
+        "topographic_position_index",
+        "roughness",
+        "fractal_roughness",
+    ]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
 
-    if resolution is None and len(attributes_requiring_surface_fit)>1:
+    if resolution is None and len(attributes_requiring_surface_fit) > 1:
         raise ValueError(f"'resolution' must be provided as an argument for attributes: {list_requiring_surface_fit}")
 
     choices = list_requiring_surface_fit + list_requiring_windowed_index
@@ -794,24 +846,24 @@ def get_terrain_attribute(
     if (hillshade_azimuth < 0.0) or (hillshade_azimuth > 360.0):
         raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {hillshade_azimuth})")
     if (hillshade_altitude < 0.0) or (hillshade_altitude > 90):
-        raise ValueError("Altitude must be a value between 0 and 90 degress (given value: {altitude})")
+        raise ValueError("Altitude must be a value between 0 and 90 degrees (given value: {altitude})")
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
     # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
-    terrain_attributes: dict[str, np.ndarray] = {}
+    terrain_attributes: dict[str, NDArrayf] = {}
 
     # Check which products should be made to optimize the processing
     make_aspect = any(attr in attribute for attr in ["aspect", "hillshade"])
     make_slope = any(
-        attr in attribute for attr in ["slope", "hillshade", "planform_curvature", "aspect", "profile_curvature",
-                                       "maximum_curvature"]
+        attr in attribute
+        for attr in ["slope", "hillshade", "planform_curvature", "aspect", "profile_curvature", "maximum_curvature"]
     )
     make_hillshade = "hillshade" in attribute
     make_surface_fit = len(attributes_requiring_surface_fit) > 0
     make_curvature = "curvature" in attribute
     make_planform_curvature = "planform_curvature" in attribute or "maximum_curvature" in attribute
-    make_profile_curvature = "profile_curvature" in attribute or  "maximum_curvature" in attribute
+    make_profile_curvature = "profile_curvature" in attribute or "maximum_curvature" in attribute
     make_maximum_curvature = "maximum_curvature" in attribute
     make_windowed_index = len(attributes_requiring_windowed_index) > 0
     make_topographic_position = "topographic_position_index" in attribute
@@ -825,15 +877,19 @@ def get_terrain_attribute(
 
     if make_surface_fit:
         if not isinstance(resolution, Sized):
-            resolution = (float(resolution), float(resolution))
+            resolution = (float(resolution), float(resolution))  # type: ignore
         if resolution[0] != resolution[1]:
             raise ValueError(
                 f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "
                 f"This was required by: {attributes_requiring_surface_fit}"
             )
         terrain_attributes["surface_fit"] = get_quadric_coefficients(
-            dem=dem_arr, resolution=resolution[0], fill_method=fill_method, edge_method=edge_method,
-            make_rugosity=make_rugosity)
+            dem=dem_arr,
+            resolution=resolution[0],
+            fill_method=fill_method,
+            edge_method=edge_method,
+            make_rugosity=make_rugosity,
+        )
 
     if make_slope:
 
@@ -842,18 +898,21 @@ def get_terrain_attribute(
 
         else:
             if slope_method == "Horn":
-                # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
+                # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
+                # http://dx.doi.org/10.1109/PROC.1981.11918.
                 terrain_attributes["slope"] = np.arctan(
-                    (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2) ** 0.5
+                    (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2)
+                    ** 0.5
                 )
 
             elif slope_method == "ZevenbergThorne":
-                # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+                # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
+                # http://dx.doi.org/10.1002/esp.3290120107.
                 # SLOPE = ARCTAN((G²+H²)**(1/2))
                 terrain_attributes["slope"] = np.arctan(
-                    (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2) ** 0.5
+                    (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                    ** 0.5
                 )
-
 
     if make_aspect:
 
@@ -872,16 +931,19 @@ def get_terrain_attribute(
                 warnings.filterwarnings("ignore", "invalid value encountered in remainder")
                 if slope_method == "Horn":
                     # This uses the estimates from Horn (1981).
-                    terrain_attributes["aspect"] = (-
-                                                           np.arctan2(-terrain_attributes["surface_fit"][9, :, :],
-                                                                      terrain_attributes["surface_fit"][10, :, :])
-                                                           -  np.pi
-                                                   ) % (2 * np.pi)
+                    terrain_attributes["aspect"] = (
+                        -np.arctan2(
+                            -terrain_attributes["surface_fit"][9, :, :], terrain_attributes["surface_fit"][10, :, :]
+                        )
+                        - np.pi
+                    ) % (2 * np.pi)
 
                 elif slope_method == "ZevenbergThorne":
                     # This uses the slope estimate from Zevenbergen and Thorne (1987).
                     terrain_attributes["aspect"] = (
-                        np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
+                        np.arctan2(
+                            -terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :]
+                        )
                         + np.pi / 2
                     ) % (2 * np.pi)
 
@@ -898,7 +960,8 @@ def get_terrain_attribute(
         # The operation below yielded the closest hillshade to GDAL (multiplying by 255 did not work)
         # As 0 is generally no data for this uint8, we add 1 and then 0.5 for the rounding to occur between 1 and 255
         terrain_attributes["hillshade"] = np.clip(
-            1.5 + 254
+            1.5
+            + 254
             * (
                 np.sin(altitude_rad) * np.cos(slopemap)
                 + np.cos(altitude_rad) * np.sin(slopemap) * np.sin(azimuth_rad - terrain_attributes["aspect"])
@@ -930,7 +993,7 @@ def get_terrain_attribute(
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
                 terrain_attributes["planform_curvature"] = (
-                    - 2
+                    -2
                     * (
                         terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
                         + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
@@ -938,13 +1001,17 @@ def get_terrain_attribute(
                         * terrain_attributes["surface_fit"][6, :, :]
                         * terrain_attributes["surface_fit"][7, :, :]
                     )
-                    / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                    / (
+                        terrain_attributes["surface_fit"][6, :, :] ** 2
+                        + terrain_attributes["surface_fit"][7, :, :] ** 2
+                    )
                     * 100
                 )
 
             # Completely flat surfaces trigger the warning above. These need to be set to zero
-            terrain_attributes["planform_curvature"][terrain_attributes["surface_fit"][6, :, :] ** 2 +
-                                                     terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0] = 0.0
+            terrain_attributes["planform_curvature"][
+                terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0
+            ] = 0.0
 
     if make_profile_curvature:
 
@@ -964,23 +1031,31 @@ def get_terrain_attribute(
                         * terrain_attributes["surface_fit"][6, :, :]
                         * terrain_attributes["surface_fit"][7, :, :]
                     )
-                    / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                    / (
+                        terrain_attributes["surface_fit"][6, :, :] ** 2
+                        + terrain_attributes["surface_fit"][7, :, :] ** 2
+                    )
                     * 100
                 )
 
             # Completely flat surfaces trigger the warning above. These need to be set to zero
-            terrain_attributes["profile_curvature"][terrain_attributes["surface_fit"][6, :, :] ** 2 +
-                                                     terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0] = 0.0
+            terrain_attributes["profile_curvature"][
+                terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0
+            ] = 0.0
 
     if make_maximum_curvature:
         minc = np.minimum(terrain_attributes["profile_curvature"], terrain_attributes["planform_curvature"])
         maxc = np.maximum(terrain_attributes["profile_curvature"], terrain_attributes["planform_curvature"])
-        terrain_attributes["maximum_curvature"] = np.where(np.abs(minc)>maxc, minc, maxc)
+        terrain_attributes["maximum_curvature"] = np.where(np.abs(minc) > maxc, minc, maxc)
 
     if make_windowed_index:
-        terrain_attributes["windowed_indexes"] = \
-            get_windowed_indexes(dem=dem_arr, fill_method=fill_method, edge_method=edge_method,
-                                 window_size=window_size, make_fractal_roughness=make_fractal_roughness)
+        terrain_attributes["windowed_indexes"] = get_windowed_indexes(
+            dem=dem_arr,
+            fill_method=fill_method,
+            edge_method=edge_method,
+            window_size=window_size,
+            make_fractal_roughness=make_fractal_roughness,
+        )
 
     if make_topographic_position:
         terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
@@ -1012,35 +1087,43 @@ def get_terrain_attribute(
     output_attributes = [terrain_attributes[key].reshape(dem.shape) for key in attribute]
 
     if isinstance(dem, gu.Raster):
-        output_attributes = [gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=-99999) for attr in output_attributes]
+        output_attributes = [
+            gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=-99999)
+            for attr in output_attributes
+        ]
 
     return output_attributes if len(output_attributes) > 1 else output_attributes[0]
+
+
+@overload
+def slope(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
+
 
 @overload
 def slope(
     dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
-) -> Raster: ...
-
-@overload
-def slope(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float] | None,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
-) -> np.ndarray: ...
-
-def slope(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
     resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     degrees: bool = True,
-    use_richdem: bool = False
-) -> np.ndarray | Raster:
+    use_richdem: bool = False,
+) -> Raster:
+    ...
+
+
+def slope(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> NDArrayf | Raster:
     """
     Generate a slope map for a DEM, returned in degrees by default.
 
@@ -1066,30 +1149,37 @@ def slope(
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
-    return get_terrain_attribute(dem, attribute="slope", slope_method=method, resolution=resolution, degrees=degrees,
-                                 use_richdem=use_richdem)
+    return get_terrain_attribute(
+        dem, attribute="slope", slope_method=method, resolution=resolution, degrees=degrees, use_richdem=use_richdem
+    )
+
 
 @overload
 def aspect(
-    dem: np.ndarray | np.ma.masked_array,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
-) -> np.ndarray: ...
+    dem: NDArrayf | MArrayf,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
+
 
 @overload
 def aspect(
     dem: RasterType,
-    method: str,
-    degrees: bool,
-    use_richdem: bool,
-) -> Raster: ...
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> RasterType:
+    ...
 
-def aspect(dem: np.ndarray | np.ma.masked_array | RasterType,
-           method: str = "Horn",
-           degrees: bool = True,
-           use_richdem: bool = False,
-           ) -> np.ndarray | Raster:
+
+def aspect(
+    dem: NDArrayf | MArrayf | RasterType,
+    method: str = "Horn",
+    degrees: bool = True,
+    use_richdem: bool = False,
+) -> NDArrayf | Raster:
     """
     Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
     default (as in GDAL).
@@ -1120,40 +1210,46 @@ def aspect(dem: np.ndarray | np.ma.masked_array | RasterType,
         270.0
 
     """
-    return get_terrain_attribute(dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees,
-                                 use_richdem=use_richdem)
+    return get_terrain_attribute(
+        dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees, use_richdem=use_richdem
+    )
+
 
 @overload
 def hillshade(
-    dem: RasterType,
-    resolution: float | tuple[float, float],
-    method: str,
-    azimuth: float,
-    altitude: float,
-    z_factor: float,
-    use_richdem: bool,
-) -> Raster: ...
-
-@overload
-def hillshade(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float],
-    method: str,
-    azimuth: float,
-    altitude: float,
-    z_factor: float,
-    use_richdem: bool,
-) -> np.ndarray: ...
-
-def hillshade(
-    dem: np.ndarray | np.ma.masked_array,
+    dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
     use_richdem: bool = False,
-) -> np.ndarray | Raster:
+) -> NDArrayf:
+    ...
+
+
+@overload
+def hillshade(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    azimuth: float = 315.0,
+    altitude: float = 45.0,
+    z_factor: float = 1.0,
+    use_richdem: bool = False,
+) -> RasterType:
+    ...
+
+
+def hillshade(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    method: str = "Horn",
+    azimuth: float = 315.0,
+    altitude: float = 45.0,
+    z_factor: float = 1.0,
+    use_richdem: bool = False,
+) -> NDArrayf | RasterType:
     """
     Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
 
@@ -1181,28 +1277,33 @@ def hillshade(
         hillshade_azimuth=azimuth,
         hillshade_altitude=altitude,
         hillshade_z_factor=z_factor,
-        use_richdem=use_richdem
+        use_richdem=use_richdem,
     )
+
+
+@overload
+def curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
+
 
 @overload
 def curvature(
     dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> Raster: ...
-
-@overload
-def curvature(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> np.ndarray: ...
-
-def curvature(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> np.ndarray | Raster:
+) -> RasterType:
+    ...
+
+
+def curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
 
@@ -1236,23 +1337,27 @@ def curvature(
 
 @overload
 def planform_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> Raster: ...
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
+
 
 @overload
 def planform_curvature(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> np.ndarray: ...
-
-def planform_curvature(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
+    dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> np.ndarray | Raster:
+) -> RasterType:
+    ...
+
+
+def planform_curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
 
@@ -1278,28 +1383,34 @@ def planform_curvature(
 
     :returns: The planform curvature array of the DEM.
     """
-    return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution, use_richdem=use_richdem)
+    return get_terrain_attribute(
+        dem=dem, attribute="planform_curvature", resolution=resolution, use_richdem=use_richdem
+    )
+
+
+@overload
+def profile_curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
 
 
 @overload
 def profile_curvature(
     dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> Raster: ...
-
-@overload
-def profile_curvature(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> np.ndarray: ...
-
-def profile_curvature(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> np.ndarray | Raster:
+) -> RasterType:
+    ...
+
+
+def profile_curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
 
@@ -1330,23 +1441,27 @@ def profile_curvature(
 
 @overload
 def maximum_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> Raster: ...
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf:
+    ...
+
 
 @overload
 def maximum_curvature(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float] | None,
-    use_richdem: bool,
-) -> np.ndarray: ...
-
-def maximum_curvature(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
+    dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
-) -> np.ndarray | Raster:
+) -> RasterType:
+    ...
+
+
+def maximum_curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    use_richdem: bool = False,
+) -> NDArrayf | RasterType:
     """
     Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
     multiplied by 100.
@@ -1363,24 +1478,18 @@ def maximum_curvature(
     """
     return get_terrain_attribute(dem=dem, attribute="maximum_curvature", resolution=resolution, use_richdem=use_richdem)
 
-@overload
-def topographic_position_index(
-    dem: RasterType,
-    window_size: int,
-) -> Raster: ...
-
 
 @overload
-def topographic_position_index(
-    dem: np.ndarray | np.ma.masked_array,
-    window_size: int,
-) -> np.ndarray: ...
+def topographic_position_index(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
+    ...
 
 
-def topographic_position_index(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
-    window_size: int = 3
-) -> np.ndarray | Raster:
+@overload
+def topographic_position_index(dem: RasterType, window_size: int = 3) -> RasterType:
+    ...
+
+
+def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1410,32 +1519,28 @@ def topographic_position_index(
 
 
 @overload
-def terrain_ruggedness_index(
-    dem: RasterType,
-    method: str,
-    window_size: int
-) -> Raster: ...
+def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str = "Riley", window_size: int = 3) -> NDArrayf:
+    ...
+
 
 @overload
-def terrain_ruggedness_index(
-    dem: np.ndarray | np.ma.masked_array,
-    method: str,
-    window_size: int
-) -> np.ndarray: ...
+def terrain_ruggedness_index(dem: RasterType, method: str = "Riley", window_size: int = 3) -> RasterType:
+    ...
+
 
 def terrain_ruggedness_index(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
-    method: str = "Riley",
-    window_size: int = 3
-) -> np.ndarray | Raster:
+    dem: NDArrayf | MArrayf | RasterType, method: str = "Riley", window_size: int = 3
+) -> NDArrayf | RasterType:
     """
     Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
 
     Based either on:
 
-    * Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf that derives the squareroot of squared differences to neighbouring pixels, preferred for topography.
-    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 that derives the mean absolute difference to neighbouring pixels, preferred for bathymetry.
+    * Riley et al. (1999), http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf that derives
+        the squareroot of squared differences to neighbouring pixels, preferred for topography.
+    * Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962 that derives the mean absolute difference to
+        neighbouring pixels, preferred for bathymetry.
 
     :param dem: The DEM to calculate the terrain ruggedness index from.
     :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry).
@@ -1457,27 +1562,22 @@ def terrain_ruggedness_index(
 
     :returns: The terrain ruggedness index array of the DEM (unit of the DEM).
     """
-    return get_terrain_attribute(dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size)
+    return get_terrain_attribute(
+        dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size
+    )
 
 
 @overload
-def roughness(
-    dem: RasterType,
-    window_size: int
-) -> Raster: ...
+def roughness(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
+    ...
 
 
 @overload
-def roughness(
-    dem: np.ndarray | np.ma.masked_array,
-    window_size: int
-) -> np.ndarray: ...
+def roughness(dem: RasterType, window_size: int = 3) -> RasterType:
+    ...
 
 
-def roughness(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
-    window_size: int = 3
-) -> np.ndarray | Raster:
+def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
     """
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
     unit of the DEM (typically meters).
@@ -1508,22 +1608,23 @@ def roughness(
 
 @overload
 def rugosity(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None,
-) -> Raster: ...
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+) -> NDArrayf:
+    ...
 
 
 @overload
 def rugosity(
-    dem: np.ndarray | np.ma.masked_array,
-    resolution: float | tuple[float, float] | None,
-) -> np.ndarray: ...
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+) -> RasterType:
+    ...
 
 
 def rugosity(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
-    resolution: float | tuple[float, float] | None = None
-) -> np.ndarray | Raster:
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
+) -> NDArrayf | RasterType:
     """
     Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
     output is unitless.
@@ -1553,23 +1654,16 @@ def rugosity(
 
 
 @overload
-def fractal_roughness(
-    dem: RasterType,
-    window_size: int
-) -> Raster: ...
+def fractal_roughness(dem: NDArrayf | MArrayf, window_size: int = 13) -> NDArrayf:
+    ...
 
 
 @overload
-def fractal_roughness(
-    dem: np.ndarray | np.ma.masked_array,
-    window_size: int
-) -> np.ndarray: ...
+def fractal_roughness(dem: RasterType, window_size: int = 13) -> RasterType:
+    ...
 
 
-def fractal_roughness(
-    dem: np.ndarray | np.ma.masked_array | RasterType,
-    window_size: int = 13
-) -> np.ndarray | Raster:
+def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 13) -> NDArrayf | RasterType:
     """
     Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
     equal to 5x5, defaults to 13x13. Output unit is a fractal dimension between 1 and 3.

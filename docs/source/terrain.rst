@@ -78,7 +78,7 @@ Curvature
 
 The curvature map is the second derivative of elevation, which highlights the convexity or concavity of the terrain.
 If a surface is convex (like a mountain peak), it will have positive curvature.
-If a surface is concave (like a trough or a valley bottom), it will have negative curvature.
+If a surface is concave (like a through or a valley bottom), it will have negative curvature.
 The curvature values in units of m\ :sup:`-1` are quite small, so they are by convention multiplied by 100.
 
 The curvature is based on the method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.

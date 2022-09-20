@@ -9,7 +9,6 @@ import numpy as np
 
 import xdem
 
-
 # Load a reference DEM from 2009
 dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
 # Load a DEM from 1990
@@ -48,11 +47,7 @@ ddem_raster = dem1 - dem2
 # SECTION: dDEM interpolation
 #############################
 
-ddem = xdem.dDEM(
-    raster=dem_2009 - dem_1990,
-    start_time=dem_1990.datetime,
-    end_time=dem_2009.datetime
-)
+ddem = xdem.dDEM(raster=dem_2009 - dem_1990, start_time=dem_1990.datetime, end_time=dem_2009.datetime)
 
 # The example DEMs are void-free, so let's make some random voids.
 # Introduce 50000 nans randomly throughout the dDEM.

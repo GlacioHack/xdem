@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
      inputs:
         reason:
-          description: 'Reason for manual trigger'     
+          description: 'Reason for manual trigger'
           required: true
-          default: 'testing' 
+          default: 'testing'
 
 jobs:
   deploy:

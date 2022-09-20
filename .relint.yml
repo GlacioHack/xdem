@@ -1,0 +1,3 @@
+- name: Type hint in docstring
+  pattern: ':[r]?type '
+  filePattern: .*\.py
