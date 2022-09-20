@@ -11,8 +11,8 @@ import pytest
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import biascorr, coreg, examples, spatialstats, misc
     import xdem
+    from xdem import biascorr, coreg, examples, misc, spatialstats
 
 
 def load_examples() -> tuple[gu.georaster.Raster, gu.georaster.Raster, gu.geovector.Vector]:
@@ -62,5 +62,5 @@ class TestBiasCorrClass:
 
         # Try to run the correction using the elevation as external variable
         elev_fit_params = self.fit_params.copy()
-        elev_fit_params.update({'bias_var': self.ref.data})
+        elev_fit_params.update({"bias_var": self.ref.data})
         bcorr1d.fit(**elev_fit_params)

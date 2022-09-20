@@ -450,7 +450,6 @@ class Coreg:
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
             self._meta["matrix"] = valid_matrix
 
-
     def fit(
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType,
@@ -548,7 +547,9 @@ class Coreg:
             full_mask[rows, cols] = False
 
         # Run the associated fitting function
-        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose, **kwargs)
+        self._fit_func(
+            ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose, **kwargs
+        )
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -889,7 +890,6 @@ class Coreg:
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
         return CoregPipeline([self, other])
 
-
     def _fit_func(
         self,
         ref_dem: NDArrayf,
@@ -897,7 +897,7 @@ class Coreg:
         transform: rio.transform.Affine | None,
         weights: NDArrayf | None,
         verbose: bool = False,
-        **kwargs
+        **kwargs: Any,
     ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This step has to be implemented by subclassing.")
@@ -933,7 +933,7 @@ class VerticalShift(Coreg):
     """
 
     def __init__(self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average) -> None:  # pylint:
-# disable=super-init-not-called
+        # disable=super-init-not-called
         """
         Instantiate a vertical shift correction object.
 
@@ -944,13 +944,13 @@ class VerticalShift(Coreg):
         super().__init__(meta={"vshift_func": vshift_func})
 
     def _fit_func(
-            self,
-            ref_dem: NDArrayf,
-            tba_dem: NDArrayf,
-            transform: rio.transform.Affine | None,
-            weights: NDArrayf | None,
-            verbose: bool = False,
-            **kwargs
+        self,
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
+        transform: rio.transform.Affine | None,
+        weights: NDArrayf | None,
+        verbose: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Estimate the vertical shift using the vshift_func."""
         if verbose:
@@ -962,11 +962,11 @@ class VerticalShift(Coreg):
             raise ValueError("No finite values in vertical shift comparison.")
 
         # Use weights if those were provided.
-        vshift = self._meta["vshift_func"](diff) if weights is None \
-            else self._meta["vshift_func"](diff, weights=weights) # type: ignore
+        vshift = (
+            self._meta["vshift_func"](diff) if weights is None else self._meta["vshift_func"](diff, weights)
+        )  # type: ignore
         # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
         # TODO: once we have the weights implemented
-
 
         if verbose:
             print("Vertical shift estimated")
@@ -1020,7 +1020,7 @@ class ICP(Coreg):
         transform: rio.transform.Affine | None,
         weights: NDArrayf | None,
         verbose: bool = False,
-        **kwargs
+        **kwargs: Any,
     ) -> None:
         """Estimate the rigid transform from tba_dem to ref_dem."""
 
@@ -1112,7 +1112,7 @@ class Deramp(Coreg):
         transform: rio.transform.Affine | None,
         weights: NDArrayf | None,
         verbose: bool = False,
-        **kwargs
+        **kwargs: Any,
     ) -> None:
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
@@ -1259,7 +1259,7 @@ class CoregPipeline(Coreg):
         transform: rio.transform.Affine | None,
         weights: NDArrayf | None,
         verbose: bool = False,
-        **kwargs
+        **kwargs: Any,
     ) -> None:
         """Fit each coregistration step with the previously transformed DEM."""
         tba_dem_mod = tba_dem.copy()
@@ -1350,7 +1350,7 @@ class NuthKaab(Coreg):
         transform: rio.transform.Affine | None,
         weights: NDArrayf | None,
         verbose: bool = False,
-        **kwargs
+        **kwargs: Any,
     ) -> None:
         """Estimate the x/y/z offset between two DEMs."""
         if verbose:
@@ -1675,7 +1675,6 @@ class BlockwiseCoreg(Coreg):
 
         self._meta: CoregDict = {"coreg_meta": []}
 
-
     def _fit_func(
         self,
         ref_dem: NDArrayf,
@@ -1683,7 +1682,7 @@ class BlockwiseCoreg(Coreg):
         transform: rio.transform.Affine,
         weights: NDArrayf | None,
         verbose: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Fit the coreg approach for each subdivision."""
 

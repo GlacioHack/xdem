@@ -71,7 +71,6 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
-
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])
     def test_copy(self, coreg_class: Callable[[], coreg.Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
@@ -82,15 +81,15 @@ class TestCoregClass:
         corr_copy = corr.copy()
 
         # Assign some attributes and metadata after copying, respecting the CoregDict type class
-        corr.bias = 1
+        corr.vshift = 1
         corr._meta["resolution"] = 30
         # Make sure these don't appear in the copy
         assert corr_copy._meta != corr._meta
-        assert not hasattr(corr_copy, "bias")
+        assert not hasattr(corr_copy, "vshift")
 
         # Create a pipeline, add some metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["bias"] = 1
+        pipeline.pipeline[0]._meta["vshift"] = 1
 
         pipeline_copy = pipeline.copy()
 
@@ -100,8 +99,7 @@ class TestCoregClass:
 
         assert pipeline._meta != pipeline_copy._meta
         assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
-        assert pipeline_copy.pipeline[0]._meta["bias"]
-
+        assert pipeline_copy.pipeline[0]._meta["vshift"]
 
     def test_vertical_shift(self) -> None:
         warnings.simplefilter("error")
@@ -375,7 +373,6 @@ class TestCoregClass:
         matrix_diff = np.abs(nuthkaab_full.to_matrix() - nuthkaab_sub.to_matrix())
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
-
 
     @pytest.mark.parametrize("pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()])  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
@@ -681,7 +678,7 @@ def test_apply_matrix() -> None:
     # Apply a rotation in the opposite direction
     unrotated_dem = (
         coreg.apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
-    )  # TODO: Check why the 0.99 rotation and +4 biases were introduced.
+    )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
 
