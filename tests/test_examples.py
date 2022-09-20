@@ -1,15 +1,13 @@
 """Functions to test the example data."""
 from __future__ import annotations
 
-from typing import Any
-
 import geoutils as gu
 import numpy as np
 import pytest
 from geoutils import Raster, Vector
-from numpy.typing import NDArray
 
 from xdem import examples
+from xdem._typing import NDArrayf
 
 
 def load_examples() -> tuple[Raster, Raster, Vector, Raster]:

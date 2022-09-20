@@ -26,7 +26,6 @@ import scipy.optimize
 import skimage.transform
 from geoutils import spatial_tools
 from geoutils.georaster import RasterType
-from numpy.typing import NDArray
 from rasterio import Affine
 from tqdm import tqdm, trange
 
@@ -910,9 +909,7 @@ class Coreg:
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
-    ) -> NDArrayf:
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -1659,9 +1656,7 @@ class ZScaleCorr(Coreg):
         coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
         self._meta["coefficients"] = coefficients
 
-    def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
-    ) -> NDArrayf:
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
@@ -1968,9 +1963,7 @@ class BlockwiseCoreg(Coreg):
             shape = (shape[1], shape[2])
         return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
-    def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any
-    ) -> NDArrayf:
+    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
 
         points = self.to_points()
 

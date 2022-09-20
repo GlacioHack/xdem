@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 from geoutils.spatial_tools import subsample_raster
-from numpy.typing import NDArray
 
+from xdem._typing import NDArrayf
 from xdem.spatialstats import nd_binning
 
 try:
@@ -110,9 +110,7 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
 
 
 def _wrapper_scipy_leastsquares(
-    residual_func: Callable[
-        [NDArrayf, NDArrayf, NDArrayf], NDArrayf
-    ],
+    residual_func: Callable[[NDArrayf, NDArrayf, NDArrayf], NDArrayf],
     p0: NDArrayf,
     x: NDArrayf,
     y: NDArrayf,
@@ -287,9 +285,7 @@ def robust_polynomial_fit(
             def fitfun_polynomial(xx: NDArrayf, params: NDArrayf) -> float:
                 return sum(p * (xx**i) for i, p in enumerate(params))
 
-            def residual_func(
-                p: NDArrayf, xx: NDArrayf, yy: NDArrayf
-            ) -> NDArrayf:
+            def residual_func(p: NDArrayf, xx: NDArrayf, yy: NDArrayf) -> NDArrayf:
                 return fitfun_polynomial(xx, p) - yy
 
             # Define the initial guess
@@ -380,9 +376,7 @@ def robust_sumsin_fit(
 
         kwargs.update({"niter_success": niter_success})
 
-    def wrapper_cost_sumofsin(
-        p: NDArrayf, x: NDArrayf, y: NDArrayf
-    ) -> float:
+    def wrapper_cost_sumofsin(p: NDArrayf, x: NDArrayf, y: NDArrayf) -> float:
         return _cost_sumofsin(p, x, y, cost_func=cost_func)
 
     # First, remove NaNs

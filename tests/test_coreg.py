@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 import warnings
-from typing import Any, Callable
+from typing import Callable
 
 import cv2
 import geoutils as gu
@@ -12,12 +12,12 @@ import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.georaster.raster import RasterType
-from numpy.typing import NDArray
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import xdem
     from xdem import coreg, examples, misc, spatialstats
+    from xdem._typing import NDArrayf
     from xdem.coreg import CoregDict
 
 

@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any
 
 import cv2 as cv
 import numpy as np
 import scipy
-from numpy.typing import NDArray
 
-# Gaussian filters
+from xdem._typing import NDArrayf
 
 
 def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
@@ -116,9 +114,7 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
 # To be added
 
 
-def distance_filter(
-    array: NDArrayf, radius: float, outlier_threshold: float
-) -> NDArrayf:
+def distance_filter(array: NDArrayf, radius: float, outlier_threshold: float) -> NDArrayf:
     """
     Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \
 pixels within a given radius.

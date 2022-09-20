@@ -9,11 +9,11 @@ import numpy as np
 import shapely
 from geoutils import spatial_tools
 from geoutils.georaster import RasterType
-from numpy.typing import NDArray
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 
 import xdem
+from xdem._typing import NDArrayf
 
 
 class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
@@ -123,9 +123,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     def interpolate(
         self,
         method: str = "linear",
-        reference_elevation: NDArrayf
-        | np.ma.masked_array[Any, np.dtype[np.floating[Any]]]
-        | xdem.DEM = None,
+        reference_elevation: NDArrayf | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] | xdem.DEM = None,
         mask: NDArrayf | xdem.DEM | gu.Vector = None,
     ) -> NDArrayf | None:
         """

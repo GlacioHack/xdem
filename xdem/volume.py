@@ -14,7 +14,7 @@ from geoutils import spatial_tools
 from tqdm import tqdm
 
 import xdem
-from xdem._typing import NDArrayf, MArrayf
+from xdem._typing import MArrayf, NDArrayf
 
 
 def hypsometric_binning(
@@ -350,7 +350,7 @@ def hypsometric_interpolation(
     inlier_mask = mask & (~ddem_mask & ~dem_mask)
     if np.count_nonzero(inlier_mask) == 0:
         warnings.warn("No valid data found within mask, returning copy", UserWarning)
-        return np.copy(ddem)
+        return np.ma.masked_array(data=voided_ddem)
 
     # Estimate the elevation dependent gradient.
     gradient = xdem.volume.hypsometric_binning(ddem[inlier_mask], dem[inlier_mask])
@@ -422,7 +422,7 @@ for areas filling the min_coverage criterion.
     inlier_mask = (mask != 0) & (~ddem_mask & ~dem_mask)
     if np.count_nonzero(inlier_mask) == 0:
         warnings.warn("No valid data found within mask, returning copy", UserWarning)
-        return np.copy(ddem)
+        return np.ma.masked_array(voided_ddem)
 
     if plot:
         plt.matshow(inlier_mask)

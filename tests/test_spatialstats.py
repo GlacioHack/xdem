@@ -12,10 +12,10 @@ import pandas as pd
 import pytest
 import skgstat
 from geoutils import Raster, Vector
-from numpy.typing import NDArray
 
 import xdem
 from xdem import examples
+from xdem._typing import NDArrayf
 from xdem.spatialstats import EmpiricalVariogramKArgs
 
 with warnings.catch_warnings():

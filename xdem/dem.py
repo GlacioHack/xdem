@@ -7,13 +7,13 @@ import subprocess
 import warnings
 from typing import Any
 
-import numpy as np
 import pyproj
 import rasterio as rio
 from geoutils.georaster.raster import RasterType
 from geoutils.satimg import SatelliteImage
-from numpy.typing import NDArray
 from pyproj import Transformer
+
+from xdem._typing import NDArrayf
 
 
 def parse_vref_from_product(product: str) -> str | None:

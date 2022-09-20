@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import datetime
 import warnings
-from typing import Any
 
 import geoutils as gu
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
 
 import xdem
+from xdem._typing import NDArrayf
 
 
 class DEMCollection:

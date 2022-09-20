@@ -13,9 +13,9 @@ except ImportError:
     _has_cv2 = False
 
 import numpy as np
-from numpy.typing import NDArray
 
 import xdem.version
+from xdem._typing import NDArrayf
 
 
 def generate_random_field(shape: tuple[int, int], corr_size: int) -> NDArrayf:
