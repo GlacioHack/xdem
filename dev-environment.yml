@@ -6,7 +6,6 @@ dependencies:
   - proj>=7.2
   - fiona
   - shapely
-  - autovizwidget
   - numba
   - numpy
   - matplotlib
@@ -16,12 +15,12 @@ dependencies:
   - scipy
   - tqdm
   - scikit-image
-  - richdem
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
 
   # Development-specific
+  - autovizwidget
   - pytest
   - pytest-xdist
   - sphinx
@@ -31,6 +30,8 @@ dependencies:
   - flake8
   - sphinx-autodoc-typehints
   - sphinx-gallery
+  - pyyaml
+  - richdem
 
   - pip:
     - git+https://github.com/GlacioHack/geoutils.git
