@@ -1,7 +1,7 @@
 .. _intro:
 
-Introduction: why is it complex to assess DEM accuracy and precision?
-=====================================================================
+Analysis of accuracy and precision
+==================================
 
 Digital Elevation Models are numerical, gridded representations of elevation. They are generated from different
 instruments (e.g., optical sensors, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite)
@@ -16,23 +16,39 @@ While some complexities are specific to certain instruments and methods, all DEM
 These factors lead to difficulties in assessing the accuracy and precision of DEMs, which are necessary to perform
 further analysis.
 
-In ``xdem``, we provide a framework with state-of-the-art methods published in the scientific literature to make DEM
+In xDEM, we provide a framework with state-of-the-art methods published in the scientific literature to make DEM
 calculations consistent, reproducible, and easy.
 
 Accuracy and precision
 ----------------------
 
-Both `accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precision>`_ are important factors to account
-for when analyzing DEMs:
+`Accuracy and precision <https://en.wikipedia.org/wiki/Accuracy_and_precision>`_ describe random and systematic errors,
+respectively.
 
-- the **accuracy** (systematic error) of a DEM describes how close a DEM is to the true location of measured elevations on the Earth's surface,
-- the **precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
+*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, as defined
+in* `ISO 5725-1 <https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en>`_ *. Here, we used accuracy for systematic
+errors as, to our knowledge, it is a more commonly used terminology in remote sensing applications.*
 
 .. figure:: imgs/precision_accuracy.png
     :width: 80%
 
-Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-
-and-accuracy-glacial-geology/>`_, accessed 29.06.21.
+    Source: `antarcticglaciers.org <http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-and-accuracy-glacial-geology/>`_, accessed 29.06.21.
+
+
+For DEMs, we thus have:
+
+- **DEM accuracy** (systematic error) describes how close a DEM is to the true location of measured elevations on the Earth's surface,
+- **DEM precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
+
+The spatial structure of DEMs complexifies the notion of accuracy and precision, however. Spatially structured
+systematic errors are often related to the gridded nature of DEMs, creating **affine biases** while other, **specific
+biases** exist at the pixel scale. For random errors, a variability in error magnitude or **heteroscedasticity** exists
+across the DEM, while spatially structured patterns of errors are linked to **spatial correlations**.
+
+.. figure:: https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
+    :width: 100%
+
+    Source: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 
 Absolute or relative accuracy
 -----------------------------
@@ -46,6 +62,8 @@ TODO: Add another little schematic!
 
 Optimizing DEM absolute accuracy
 --------------------------------
+
+
 
 Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM
 co-registration to precise and accurate, quality-controlled elevation data such as `ICESat <https://icesat.gsfc.nasa.
@@ -87,15 +105,14 @@ ps://doi.org/10.3389/feart.2020.566802>`_ and `Hugonnet et al. (2021) <https://d
 have shown the limitations of such simple metrics and provide more statistically-advanced methods to account for
 potential variabilities in precision and related correlations in space.
 However, the lack of implementations of these methods in a modern programming language makes them hard to reproduce,
-validate, and apply consistently. This is why one of the main goals of ``xdem`` is to simplify state-of-the-art
+validate, and apply consistently. This is why one of the main goals of xDEM is to simplify state-of-the-art
 statistical measures, to allow accurate DEM uncertainty estimation for everyone.
 
 The tools for quantifying DEM precision are described in :ref:`spatialstats`.
 
 ..
-    Functions that are used in several examples create duplicate examples intead of being merged into the list.
+    Functions that are used in several examples create duplicate examples instead of being merged into the list.
     Circumventing manually by selecting functions used only once in each example for now.
 
-.. minigallery:: xdem.spatialstats.neff_circ xdem.spatialstats.plot_1d_binning
+.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.get_variogram_model_func xdem.spatialstats.sample_empirical_variogram
     :add-heading: Examples that use spatial statistics functions
-

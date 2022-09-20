@@ -7,22 +7,19 @@ import numpy as np
 
 import xdem
 
+
 class TestDEMCollection:
     dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
     dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     outlines_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
 
-    def test_init(self):
+    def test_init(self) -> None:
 
         timestamps = [datetime.datetime(1990, 8, 1), datetime.datetime(2009, 8, 1), datetime.datetime(2060, 8, 1)]
 
-        scott_1990 = gu.Vector(
-            self.outlines_1990.ds.loc[self.outlines_1990.ds["NAME"] == "Scott Turnerbreen"]
-        )
-        scott_2010 = gu.Vector(
-            self.outlines_2010.ds.loc[self.outlines_2010.ds["NAME"] == "Scott Turnerbreen"]
-        )
+        scott_1990 = gu.Vector(self.outlines_1990.ds.loc[self.outlines_1990.ds["NAME"] == "Scott Turnerbreen"])
+        scott_2010 = gu.Vector(self.outlines_2010.ds.loc[self.outlines_2010.ds["NAME"] == "Scott Turnerbreen"])
 
         # Make sure the glacier was bigger in 1990, since this is assumed later.
         assert scott_1990.ds.area.sum() > scott_2010.ds.area.sum()
@@ -36,7 +33,7 @@ class TestDEMCollection:
             [self.dem_1990, self.dem_2009, dem_2060],
             timestamps=timestamps,
             outlines=dict(zip(timestamps[:2], [self.outlines_1990, self.outlines_2010])),
-            reference_dem=1
+            reference_dem=1,
         )
 
         # Check that the first raster is the oldest one and
@@ -64,8 +61,10 @@ class TestDEMCollection:
         assert abs(cumulative_dv.iloc[-1]) > abs(cumulative_dh.iloc[-1])
 
         # Generate 10000 NaN values randomly in one of the dDEMs
-        dems.ddems[0].data[np.random.randint(0, dems.ddems[0].data.shape[0], 100),
-                           np.random.randint(0, dems.ddems[0].data.shape[1], 100)] = np.nan
+        dems.ddems[0].data[
+            np.random.randint(0, dems.ddems[0].data.shape[0], 100),
+            np.random.randint(0, dems.ddems[0].data.shape[1], 100),
+        ] = np.nan
         # Check that the cumulative_dh function warns for NaNs
         with warnings.catch_warnings():
             warnings.simplefilter("error")
@@ -77,28 +76,26 @@ class TestDEMCollection:
 
         # print(cumulative_dh)
 
-        #raise NotImplementedError
+        # raise NotImplementedError
 
-    def test_dem_datetimes(self):
+    def test_dem_datetimes(self) -> None:
         """Try to create the DEMCollection without the timestamps argument (instead relying on datetime attributes)."""
         self.dem_1990.datetime = datetime.datetime(1990, 8, 1)
         self.dem_2009.datetime = datetime.datetime(2009, 8, 1)
 
-        dems = xdem.DEMCollection(
-            [self.dem_1990, self.dem_2009]
-        )
+        dems = xdem.DEMCollection([self.dem_1990, self.dem_2009])
 
         assert len(dems.timestamps) > 0
 
-    def test_ddem_interpolation(self):
+    def test_ddem_interpolation(self) -> None:
         """Test that dDEM interpolation works as it should."""
         # All warnings should raise errors from now on
         warnings.simplefilter("error")
 
         # Create a DEMCollection object
         dems = xdem.DEMCollection(
-            [self.dem_2009, self.dem_1990],
-            timestamps=[datetime.datetime(year, 8, 1) for year in (2009, 1990)])
+            [self.dem_2009, self.dem_1990], timestamps=[datetime.datetime(year, 8, 1) for year in (2009, 1990)]
+        )
 
         # Create dDEMs
         dems.subtract_dems(resampling_method="nearest")
@@ -114,8 +111,10 @@ class TestDEMCollection:
                 raise exception
 
         # Generate 10000 NaN values randomly in one of the dDEMs
-        dems.ddems[0].data[np.random.randint(0, dems.ddems[0].data.shape[0], 100),
-                           np.random.randint(0, dems.ddems[0].data.shape[1], 100)] = np.nan
+        dems.ddems[0].data[
+            np.random.randint(0, dems.ddems[0].data.shape[0], 100),
+            np.random.randint(0, dems.ddems[0].data.shape[1], 100),
+        ] = np.nan
 
         # Make sure that filled_data is not available anymore, since the data now has nans
         assert dems.ddems[0].filled_data is None

@@ -3,7 +3,7 @@ Blockwise coregistration
 ========================
 
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
-In the :ref:`sphx_glr_auto_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
+In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
 One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
 
@@ -16,10 +16,12 @@ The ``BlockwiseCoreg`` class runs in five steps:
 5. Warp the DEM to apply the X/Y/Z shifts.
 
 """
+import geoutils as gu
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
-import geoutils as gu
 import numpy as np
+
 import xdem
 
 # %%
@@ -44,11 +46,9 @@ plt_extent = [
 # The product is a mosaic of multiple DEMs, so "seams" may exist in the data.
 # These can be visualized by plotting a change map:
 
-diff_before = (reference_dem - dem_to_be_aligned).data
+diff_before = reference_dem - dem_to_be_aligned
 
-plt.figure(figsize=(8, 5))
-plt.imshow(diff_before.squeeze(), cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
-plt.colorbar()
+diff_before.show(cmap="coolwarm_r", vmin=-10, vmax=10)
 plt.show()
 
 # %%
@@ -70,9 +70,9 @@ plt.show()
 # Coregistration is performed with the ``.fit()`` method.
 # This runs in multiple threads by default, so more CPU cores are preferable here.
 
-blockwise.fit(reference_dem.data, dem_to_be_aligned.data, transform=reference_dem.transform, inlier_mask=inlier_mask)
+blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
 
-aligned_dem_data = blockwise.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform)
+aligned_dem = blockwise.apply(dem_to_be_aligned)
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
@@ -83,17 +83,14 @@ z_correction = blockwise.apply(np.zeros_like(dem_to_be_aligned.data), transform=
 plt.title("Vertical correction")
 plt.imshow(z_correction, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
 for _, row in blockwise.stats().iterrows():
-    plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha
-="center")
+    plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha="center")
 
 # %%
 # Then, the new difference can be plotted to validate that it improved.
 
-diff_after = reference_dem.data - aligned_dem_data
+diff_after = reference_dem - aligned_dem
 
-plt.figure(figsize=(8, 5))
-plt.imshow(diff_after.squeeze(), cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
-plt.colorbar()
+diff_after.show(cmap="coolwarm_r", vmin=-10, vmax=10)
 plt.show()
 
 # %%

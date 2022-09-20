@@ -83,12 +83,7 @@ extent = [
     demcollection.dems[0].bounds.top,
 ]
 
-scott_extent = [
-        518600, 
-        523800,
-        8666600,
-        8672300
-]
+scott_extent = [518600, 523800, 8666600, 8672300]
 
 plt.figure(figsize=(8, 5))
 
@@ -108,4 +103,3 @@ for i in range(2):
     plt.ylim(scott_extent[2:])
 
 plt.show()
-

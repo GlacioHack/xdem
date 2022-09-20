@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 try:
     import cv2
+
     _has_cv2 = True
 except ImportError:
     _has_cv2 = False
@@ -14,9 +15,10 @@ except ImportError:
 import numpy as np
 
 import xdem.version
+from xdem._typing import NDArrayf
 
 
-def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
+def generate_random_field(shape: tuple[int, int], corr_size: int) -> NDArrayf:
     """
     Generate a semi-random gaussian field (to simulate a DEM or DEM error)
 
@@ -57,12 +59,12 @@ def generate_random_field(shape: tuple[int, int], corr_size: int) -> np.ndarray:
     return field
 
 
-def deprecate(removal_version: str | None = None, details: str | None = None):
+def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any], Any]:
     """
     Trigger a DeprecationWarning for the decorated function.
 
     :param func: The function to be deprecated.
-    :param removal_version: Optional. The version at which this will be removed. 
+    :param removal_version: Optional. The version at which this will be removed.
                             If this version is reached, a ValueError is raised.
     :param details: Optional. A description for why the function was deprecated.
 
@@ -72,10 +74,10 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
 
     :returns: The decorator to decorate the function.
     """
-    def deprecator_func(func):
 
-        @functools.wraps(func)
-        def new_func(*args, **kwargs):
+    def deprecator_func(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
+        @functools.wraps(func)  # type: ignore
+        def new_func(*args: Any, **kwargs: Any) -> Any:
             # True if it should warn, False if it should raise an error
             should_warn = removal_version is None or removal_version > xdem.version.version
 
@@ -106,7 +108,7 @@ def deprecate(removal_version: str | None = None, details: str | None = None):
                 warnings.warn(text, category=DeprecationWarning, stacklevel=2)
             else:
                 raise ValueError(text)
-            
+
             return func(*args, **kwargs)
 
         return new_func

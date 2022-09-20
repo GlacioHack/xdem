@@ -18,14 +18,16 @@ sys.path.append(os.path.abspath("../.."))
 sys.path.append(os.path.abspath("../../xdem/"))
 sys.path.append(os.path.abspath(".."))
 
+from sphinx_gallery.sorting import ExplicitOrder
+
 import xdem.version
 
 # -- Project information -----------------------------------------------------
 
-project = 'xdem'
-copyright = '2021, Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others'
+project = "xdem"
+copyright = "2021, Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
 
-author = 'Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others'
+author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
 release = xdem.version.version
@@ -42,7 +44,7 @@ os.environ["PYTHON"] = sys.executable
 extensions = [
     "sphinx.ext.autodoc",  # Create the API documentation automatically
     "sphinx.ext.viewcode",  # Create the "[source]" button in the API to show the source code.
-    'matplotlib.sphinxext.plot_directive',  # Render matplotlib figures from code.
+    "matplotlib.sphinxext.plot_directive",  # Render matplotlib figures from code.
     "sphinx.ext.autosummary",  # Create API doc summary texts from the docstrings.
     "sphinx.ext.inheritance_diagram",  # For class inheritance diagrams (see coregistration.rst).
     "sphinx_autodoc_typehints",  # Include type hints in the API documentation.
@@ -51,7 +53,7 @@ extensions = [
     "sphinx.ext.intersphinx",
 ]
 
-#autosummary_generate = True
+# autosummary_generate = True
 
 intersphinx_mapping = {
     "geoutils": ("https://geoutils.readthedocs.io/en/latest", None),
@@ -61,20 +63,25 @@ intersphinx_mapping = {
 }
 
 sphinx_gallery_conf = {
-     "examples_dirs": os.path.join(os.path.dirname(__file__), "../", "../", "examples"),   # path to your example scripts
-     "gallery_dirs": "auto_examples",  # path to where to save gallery generated output
-     "inspect_global_variables": True,  # Make links to the class/function definitions.
-     "reference_url": {
-         # The module you locally document uses None
+    "examples_dirs": [
+        os.path.join(os.path.dirname(__file__), "../", "../", "examples/basic"),
+        os.path.join(os.path.dirname(__file__), "../", "../", "examples/advanced"),
+    ],  # path to your example scripts
+    "gallery_dirs": ["basic_examples", "advanced_examples"],  # path to where to save gallery generated output
+    "inspect_global_variables": True,  # Make links to the class/function definitions.
+    "reference_url": {
+        # The module you locally document uses None
         "xdem": None,
     },
-     # directory where function/class granular galleries are stored
-    "backreferences_dir"  : "gen_modules/backreferences",
-    "doc_module": ("xdem", "geoutils")  # which function/class levels are used to create galleries
+    # directory where function/class granular galleries are stored
+    "backreferences_dir": "gen_modules/backreferences",
+    "doc_module": ("xdem", "geoutils"),  # which function/class levels are used to create galleries
+    # 'subsection_order': ExplicitOrder([os.path.join(os.path.dirname(__file__), "../", "../", "examples", "basic"),
+    #                                    os.path.join(os.path.dirname(__file__), "../", "../", "examples", "advanced")])
 }
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = [os.path.join(os.path.dirname(__file__), '_templates')]
+templates_path = [os.path.join(os.path.dirname(__file__), "_templates")]
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -82,14 +89,12 @@ templates_path = [os.path.join(os.path.dirname(__file__), '_templates')]
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_rtd_theme'
+html_theme = "sphinx_rtd_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['imgs']  # Commented out as we have no custom static data
+html_static_path = ["imgs"]  # Commented out as we have no custom static data
 
 
-exclude_patterns = [
-    "_templates"
-]
+exclude_patterns = ["_templates"]
