@@ -48,6 +48,8 @@ jobs:
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
       run: |
+        echo $PROJ_DATA
+        echo $PROJ_LIB
         python -c "import xdem"
 
     - name: Update environment with dev dependencies
@@ -64,11 +66,6 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Test PROJ env variables
-      run: |
-        echo $PROJ_DATA
-        echo $PROJ_LIB
 
     - name: Test with pytest
       run: |
