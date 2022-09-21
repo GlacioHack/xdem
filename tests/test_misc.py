@@ -6,6 +6,7 @@ import warnings
 
 import pytest
 import yaml  # type: ignore
+from packaging.version import Version
 
 import xdem
 import xdem.misc
@@ -55,6 +56,7 @@ class TestMisc:
         :param deprecation_increment: The version number relative to the current version.
         :param details: An optional explanation for the description.
         """
+
         warnings.simplefilter("error")
 
         current_version = xdem.version.version
@@ -71,8 +73,12 @@ class TestMisc:
         def useless_func() -> int:
             return 1
 
+        # Example of why Version needs to be used below
+        assert not "0.0.10" > "0.0.8"
+        assert Version("0.0.10") > Version("0.0.8")
+
         # If True, a warning is expected. If False, a ValueError is expected.
-        should_warn = removal_version is None or removal_version > current_version
+        should_warn = removal_version is None or Version(removal_version) > Version(current_version)
 
         # Add the expected text depending on the parametrization.
         text = (
