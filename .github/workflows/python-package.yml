@@ -54,7 +54,7 @@ jobs:
 
     - name: Update environment with dev dependencies
       run: |
-        mamba env update --name xdem --file dev-environment.yml --strict-channel-priority
+        mamba env update --strict-channel-priority --name xdem --file dev-environment.yml
 
     - name: Re-install project
       run: |
