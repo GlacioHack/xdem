@@ -2,7 +2,6 @@ name: xdem-dev
 channels:
   - conda-forge
 dependencies:
-  - geoutils=0.0.8
   - python>=3.8
   - proj>=7.2
   - geopandas >= 0.10.0
@@ -35,5 +34,5 @@ dependencies:
   - pyyaml
   - richdem
 
-#  - pip:
-#    - git+https://github.com/GlacioHack/geoutils.git
+  - pip:
+    - git+https://github.com/GlacioHack/geoutils.git
