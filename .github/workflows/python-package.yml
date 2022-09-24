@@ -19,7 +19,6 @@ jobs:
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
         python-version: ["3.8", "3.9", "3.10"]
 
-
     # Run all shells using bash (including Windows)
     defaults:
       run:
@@ -47,16 +46,13 @@ jobs:
     - name: Ensure PROJ path is properly set on Windows
       if: runner.os == 'Windows'
       run: |
-        export PROJ_DATA="C:\Miniconda\envs\xdem/Library/share/proj"
-        export PROJ_LIB="C:\Miniconda\envs\xdem/Library/share/proj"
+        export PROJ_LIB="/c/Miniconda/envs/xdem/Library/share/proj"
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
       run: |
-        echo $PROJ_DATA
         echo $PROJ_LIB
-        type python
         python -c "import xdem"
 
     - name: Update environment with dev dependencies
