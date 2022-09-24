@@ -50,8 +50,6 @@ jobs:
       run: |
         unset PROJ_DATA
         unset PROJ_LIB
-        echo $PROJ_DATA
-        echo $PROJ_LIB
         python -c "import xdem"
 
     - name: Update environment with dev dependencies
@@ -61,6 +59,8 @@ jobs:
     - name: Re-install project
       run: |
         pip install -e . --no-dependencies
+        unset PROJ_DATA
+        unset PROJ_LIB
 
     - name: Lint with flake8
       run: |
