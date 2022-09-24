@@ -54,6 +54,9 @@ jobs:
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
       run: |
+        echo $PROJ_DATA
+        echo $PROJ_LIB
+        type python
         python -c "import xdem"
 
     - name: Update environment with dev dependencies
