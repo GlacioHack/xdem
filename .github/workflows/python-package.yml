@@ -48,6 +48,8 @@ jobs:
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
       run: |
+        unset PROJ_DATA
+        unset PROJ_LIB
         echo $PROJ_DATA
         echo $PROJ_LIB
         python -c "import xdem"
