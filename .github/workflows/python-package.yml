@@ -47,7 +47,7 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         echo $PROJ_LIB
-C
+
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
