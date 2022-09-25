@@ -211,8 +211,8 @@ class TestCoregClass:
 
         # Check that the random states forces always the same results
         # Note: in practice, the values are not exactly equal for different OS/conda config
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(2.00019, abs=1e-7)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.00012, abs=1e-7)
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(2.00019, abs=1e-5)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.00012, abs=1e-5)
         assert nuth_kaab._meta["bias"] == -5.0
 
         # Apply the estimated shift to "revert the DEM" to its original state.
