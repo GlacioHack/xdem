@@ -186,7 +186,7 @@ def get_horizontal_shift(
 
     # Estimate the a, b, and c parameters with least square minimisation
     results = scipy.optimize.least_squares(fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds),
-                                           x_tol=1e-07, g_tol=None, ftol=None)
+                                           xtol=1e-07, gtol=None, ftol=None)
 
     a_parameter, b_parameter, c_parameter = results.x
     a_parameter = np.round(a_parameter, 5)
