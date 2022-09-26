@@ -498,6 +498,7 @@ class TestVariogram:
         df2 = df2.rename(columns={"bins": "lags"})
         df2["err_exp"] = np.nan
         df2.drop(df2.tail(1).index, inplace=True)
+        df2 = df2.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
 
         t2 = time.time()
 

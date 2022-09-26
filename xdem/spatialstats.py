@@ -1368,7 +1368,7 @@ def sample_empirical_variogram(
     # Remove the last spatial lag bin which is always undersampled
     df.drop(df.tail(1).index, inplace=True)
 
-    # Force output dtype
+    # Force output dtype (default differs on different OS)
     df = df.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
 
     return df
