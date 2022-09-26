@@ -43,17 +43,10 @@ jobs:
       run: |
         pip install --no-dependencies --editable .
 
-#    - name: Ensure PROJ path is properly set on Windows
-#      if: runner.os == 'Windows'
-#      run: |
-#        echo $PROJ_LIB
-
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
       run: |
-#        unset PROJ_LIB
-#        echo $PROJ_LIB
         python -c "import xdem"
 
     - name: Update environment with dev dependencies
@@ -73,7 +66,6 @@ jobs:
 
     - name: Test with pytest
       run: |
-#        unset PROJ_LIB
         pip install pytest-cov coveralls
         pytest -ra --cov=xdem/
 
