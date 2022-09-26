@@ -5,6 +5,8 @@ import functools
 import warnings
 from typing import Any, Callable
 
+from packaging.version import Version
+
 try:
     import cv2
 
@@ -79,7 +81,7 @@ def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any
         @functools.wraps(func)  # type: ignore
         def new_func(*args: Any, **kwargs: Any) -> Any:
             # True if it should warn, False if it should raise an error
-            should_warn = removal_version is None or removal_version > xdem.version.version
+            should_warn = removal_version is None or Version(removal_version) > Version(xdem.version.version)
 
             # Add text depending on the given arguments and 'should_warn'.
             text = (
