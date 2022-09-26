@@ -122,7 +122,7 @@ class TestRobustFitting:
 
         # Check that the estimated sum of sinusoid correspond to the input
         for i in range(6):
-            assert coefs[i] == pytest.approx(true_coefs[i], abs=0.02)
+            assert coefs[i] == pytest.approx(true_coefs[i], abs=0.05)
 
         # Check that using custom arguments does not trigger an error
         bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
