@@ -36,4 +36,5 @@ dependencies:
   - richdem
 
   - pip:
-    - git+https://github.com/GlacioHack/geoutils.git
+    - geoutils==0.0.9
+

@@ -22,4 +22,4 @@ dependencies:
   - pytransform3d
 
   - pip:
-      - git+https://github.com/GlacioHack/geoutils.git
+    - geoutils==0.0.9
