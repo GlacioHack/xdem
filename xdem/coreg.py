@@ -188,6 +188,7 @@ def get_horizontal_shift(
     results = scipy.optimize.least_squares(fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds),
                                            xtol=1e-07, gtol=None, ftol=None)
 
+    # Round results above the tolerance to get fixed results on different OS
     a_parameter, b_parameter, c_parameter = results.x
     a_parameter = np.round(a_parameter, 5)
     b_parameter = np.round(b_parameter, 5)
