@@ -185,8 +185,9 @@ def get_horizontal_shift(
         return err
 
     # Estimate the a, b, and c parameters with least square minimisation
-    results = scipy.optimize.least_squares(fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds),
-                                           xtol=1e-07, gtol=None, ftol=None)
+    results = scipy.optimize.least_squares(
+        fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds), xtol=1e-07, gtol=None, ftol=None
+    )
 
     # Round results above the tolerance to get fixed results on different OS
     a_parameter, b_parameter, c_parameter = results.x

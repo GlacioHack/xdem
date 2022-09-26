@@ -37,4 +37,3 @@ dependencies:
 
   - pip:
     - geoutils==0.0.9
-

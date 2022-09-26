@@ -3,7 +3,6 @@ Functions to perform normal, weighted and robust fitting.
 """
 from __future__ import annotations
 
-import decimal
 import inspect
 import warnings
 from typing import Any, Callable
@@ -141,8 +140,15 @@ def _wrapper_scipy_leastsquares(
     filtered_kwargs = {k: kwargs[k] for k in fun_args if k in kwargs}
 
     # Run function with associated keyword arguments
-    myresults = scipy.optimize.least_squares(residual_func, p0, args=(x, y), xtol=1e-7, gtol=None,
-                                             ftol=None, **filtered_kwargs,)
+    myresults = scipy.optimize.least_squares(
+        residual_func,
+        p0,
+        args=(x, y),
+        xtol=1e-7,
+        gtol=None,
+        ftol=None,
+        **filtered_kwargs,
+    )
 
     # Round results above the tolerance to get fixed results on different OS
     coefs = np.array([np.round(coef, 5) for coef in myresults.x])
