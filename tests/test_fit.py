@@ -118,10 +118,11 @@ class TestRobustFitting:
         y = xdem.fit._sumofsinval(x, params=true_coefs)
 
         # Check that the function runs (we passed a small niter to reduce the computing time of the test)
-        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, niter=25)
+        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, niter=40)
 
-        # Check that the estimated sum of sinusoid correspond to the input
-        for i in range(6):
+        # Check that the estimated sum of sinusoid correspond to the input, with better tolerance on the highest
+        # amplitude sinusoid
+        for i in np.arange(6):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=0.1)
 
         # Check that using custom arguments does not trigger an error
