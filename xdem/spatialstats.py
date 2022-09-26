@@ -1369,7 +1369,7 @@ def sample_empirical_variogram(
     df.drop(df.tail(1).index, inplace=True)
 
     # Force output dtype
-    df = df.astype({"exp": "float64", "err_exp": "float64", "bins": "float64", "count": "int64"})
+    df = df.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
 
     return df
 

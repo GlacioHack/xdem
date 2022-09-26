@@ -434,9 +434,7 @@ def robust_sumsin_fit(
         p0 = np.divide(lb + ub, 2)
 
         # Initialize with the first guess
-        init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds, options={"xtol": 1e-7,
-                                                                                             "ftol": None,
-                                                                                             "gtol": None})
+        init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-7})
         init_results = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             p0,
@@ -455,9 +453,7 @@ def robust_sumsin_fit(
         y = y[subsamp]
 
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds, options={"xtol": 1e-7,
-                                                                                             "ftol": None,
-                                                                                             "gtol": None})
+        minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-7})
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             init_x,

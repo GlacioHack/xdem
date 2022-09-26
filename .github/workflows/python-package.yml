@@ -47,6 +47,8 @@ jobs:
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check normal environment import
       run: |
+      # This line is to solve PROJ import errors on Windows
+        unset PROJ_LIB
         python -c "import xdem"
 
     - name: Update environment with dev dependencies
@@ -66,6 +68,8 @@ jobs:
 
     - name: Test with pytest
       run: |
+      # This line is to solve PROJ import errors on Windows
+        unset PROJ_LIB
         pip install pytest-cov coveralls
         pytest -ra --cov=xdem/
 
