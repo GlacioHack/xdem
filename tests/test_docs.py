@@ -53,7 +53,6 @@ class TestDocs:
 
         os.chdir(current_dir)
 
-    @pytest.mark.skip("Temporary skip")
     def test_build(self) -> None:
         """Try building the docs and see if it works."""
         # Remove the build directory if it exists.
