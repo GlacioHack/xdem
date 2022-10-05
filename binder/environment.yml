@@ -5,8 +5,11 @@ dependencies:
   - pip
   - python>=3.8
   - jupyter
+  - jupytext  # used to render example scripts as notebooks
   - numpy
   - matplotlib
-  - pip:
-      - git+https://github.com/GlacioHack/geoutils.git
-      - git+https://github.com/GlacioHack/xdem.git
+  - geoutils
+  - xdem
+  # - pip:
+  #     - git+https://github.com/GlacioHack/geoutils.git
+  #     - git+https://github.com/GlacioHack/xdem.git
