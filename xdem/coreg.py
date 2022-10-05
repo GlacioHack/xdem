@@ -2016,7 +2016,7 @@ def dem_coregistration(
     verbose: bool = False,
 ):
     """
-    Coregister a selected DEM to a reference DEM.
+    A one-line function to coregister a selected DEM to a reference DEM.
     Reads both DEMs, reproject DEM onto ref DEM grid, mask content of shpfile, run the coregistration and save the coregistered DEM as well as some optional figures and returns some statistics.
 
     :param src_dem_path: path to the input DEM to be coregistered
@@ -2046,6 +2046,7 @@ def dem_coregistration(
         raise ValueError(f"vmode must be in {list(vmodes_dict.keys())}")
 
     # Load both DEMs
+    # TODO: load data only in area of overlap
     if verbose:
         print("Loading and reprojecting input data")
     ref_dem = xdem.DEM(ref_dem_path)
