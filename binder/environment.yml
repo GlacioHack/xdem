@@ -1,15 +1,25 @@
-name: xdem-demo
+name: xdem-binder
 channels:
   - conda-forge
 dependencies:
-  - pip
   - python>=3.8
   - jupyter
-  - jupytext  # used to render example scripts as notebooks
+  - jupytext
+  - proj>=7.2
+  - fiona
+  - shapely
+  - numba
   - numpy
   - matplotlib
-  - geoutils
-  - xdem
-  # - pip:
-  #     - git+https://github.com/GlacioHack/geoutils.git
-  #     - git+https://github.com/GlacioHack/xdem.git
+  - opencv
+  - pyproj
+  - rasterio
+  - scipy
+  - tqdm
+  - scikit-image
+  - proj-data
+  - scikit-gstat>=0.6.8
+  - pytransform3d
+
+  - pip:
+      - git+https://github.com/GlacioHack/geoutils.git
