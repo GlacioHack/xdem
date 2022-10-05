@@ -1,0 +1,12 @@
+name: xdem-demo
+channels:
+  - conda-forge
+dependencies:
+  - pip
+  - python>=3.8
+  - jupyter
+  - numpy
+  - matplotlib
+  - pip:
+      - git+https://github.com/GlacioHack/geoutils.git
+      - git+https://github.com/GlacioHack/xdem.git
