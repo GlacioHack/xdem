@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e  # To avoid silent errors
 
+# ${MAMBA_EXE} env update -p ${NB_PYTHON_PREFIX} --file "environment.yml"
 # pip install -e .
-# ${MAMBA_EXE} env update -p ${NB_PYTHON_PREFIX} --file "binder/extra-environment.yml"
+${MAMBA_EXE} env update -p ${NB_PYTHON_PREFIX} --file "binder/extra-environment.yml"
