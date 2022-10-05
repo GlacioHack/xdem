@@ -1,3 +1,4 @@
 #!/bin/bash
 
 pip install -e .
+${MAMBA_EXE} env update -p ${NB_PYTHON_PREFIX} --file "binder/extra-environment.yml"
