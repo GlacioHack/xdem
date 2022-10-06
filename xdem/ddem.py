@@ -1,23 +1,25 @@
 """Difference of DEMs classes and functions."""
 from __future__ import annotations
 
-import copy
 import warnings
-from typing import Any, Optional, Union
+from typing import Any
 
 import geoutils as gu
-from geoutils import spatial_tools
 import numpy as np
 import shapely
+from geoutils import spatial_tools
+from geoutils.georaster import RasterType
+from rasterio.crs import CRS
+from rasterio.warp import Affine
 
 import xdem
+from xdem._typing import NDArrayf
 
 
-class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
+class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     """A difference-DEM object."""
 
-    def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64,
-                 error: Optional[Any] = None):
+    def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64, error: Any | None = None):
         """
         Create a dDEM object from a Raster.
 
@@ -34,20 +36,25 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         self.start_time = start_time
         self.end_time = end_time
         self.error = error
-        self._filled_data: Optional[np.ndarray] = None
+        self._filled_data: NDArrayf | None = None
         self._fill_method = ""
+        self.nodata: int | float | None = None
 
     def __str__(self) -> str:
         """Return a summary of the dDEM."""
         return f"dDEM from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
 
-    def copy(self) -> dDEM:
+    def copy(self, new_array: NDArrayf = None) -> dDEM:
         """Return a copy of the DEM."""
-        new_ddem = dDEM.from_array(self.data.copy(), self.transform, self.crs, self.start_time, self.end_time)
+
+        if new_array is None:
+            new_array = self.data.copy()
+
+        new_ddem = dDEM.from_array(new_array, self.transform, self.crs, self.start_time, self.end_time)
         return new_ddem
 
     @property
-    def filled_data(self) -> Optional[np.ndarray]:
+    def filled_data(self) -> NDArrayf | None:
         """
         Get the filled data array if it exists, or else the original data if it has no nans.
 
@@ -63,10 +70,12 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         return np.asarray(self.data)
 
     @filled_data.setter
-    def filled_data(self, array: np.ndarray):
+    def filled_data(self, array: NDArrayf) -> None:
         """Set the filled_data attribute and make sure that it is valid."""
 
-        assert self.data.size == array.size, f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
+        assert (
+            self.data.size == array.size
+        ), f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
 
         self._filled_data = np.asarray(array).reshape(self.data.shape)
 
@@ -80,7 +89,17 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         """Get the time duration."""
         return self.end_time - self.start_time
 
-    def from_array(data: np.ndarray, transform, crs, start_time, end_time, error=None, nodata=None) -> dDEM:
+    @classmethod
+    def from_array(
+        cls: type[RasterType],
+        data: NDArrayf,
+        transform: tuple[float, ...] | Affine,
+        crs: CRS | int | None,
+        start_time: np.datetime64,
+        end_time: np.datetime64,
+        error: float = None,
+        nodata: int | float | None = None,
+    ) -> dDEM:
         """
         Create a new dDEM object from an array.
 
@@ -95,20 +114,18 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
         :returns: A new dDEM instance.
         """
         return dDEM(
-            gu.georaster.Raster.from_array(
-                data=data,
-                transform=transform,
-                crs=crs,
-                nodata=nodata
-            ),
+            gu.georaster.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
             start_time=start_time,
             end_time=end_time,
             error=error,
         )
 
-    def interpolate(self, method: str = "linear",
-                    reference_elevation: Optional[Union[np.ndarray, np.ma.masked_array, xdem.DEM]] = None,
-                    mask: Optional[Union[np.ndarray, xdem.DEM, gu.Vector]] = None):
+    def interpolate(
+        self,
+        method: str = "linear",
+        reference_elevation: NDArrayf | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] | xdem.DEM = None,
+        mask: NDArrayf | xdem.DEM | gu.Vector = None,
+    ) -> NDArrayf | None:
         """
         Interpolate the dDEM using the given method.
 
@@ -144,8 +161,9 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
 
             ddem_mask = nans.copy().squeeze()
             for i in entries.index:
-                feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(
-                    self)).reshape(interpolated_ddem.shape)
+                feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(self)).reshape(
+                    interpolated_ddem.shape
+                )
                 if np.count_nonzero(feature_mask) == 0:
                     continue
                 try:
@@ -153,9 +171,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
                         warnings.filterwarnings("ignore", "Not enough valid bins")
                         interpolated_ddem = np.asarray(
                             xdem.volume.hypsometric_interpolation(
-                                interpolated_ddem,
-                                reference_elevation.data,
-                                mask=feature_mask
+                                interpolated_ddem, reference_elevation.data, mask=feature_mask
                             )
                         )
                 except ValueError as exception:
@@ -182,9 +198,7 @@ class dDEM(xdem.dem.DEM):   # pylint: disable=invalid-name
             mask_array = xdem.coreg.mask_as_array(self, mask).reshape(self.data.shape)
 
             self.filled_data = xdem.volume.hypsometric_interpolation(
-                self.data,
-                reference_elevation.data,
-                mask=mask_array
+                self.data, reference_elevation.data, mask=mask_array
             ).data
 
         else:

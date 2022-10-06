@@ -34,13 +34,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     else:
         vlims = {}
 
-    attribute.show(
-        ax=ax,
-        cmap=cmap,
-        add_cb=add_cb,
-        cb_title=label,
-        **vlims
-    )
+    attribute.show(ax=ax, cmap=cmap, add_cb=add_cb, cb_title=label, **vlims)
 
     plt.xticks([])
     plt.yticks([])
@@ -143,12 +137,12 @@ plot_attribute(fractal_roughness, "Reds", "Fractal roughness")
 attributes = xdem.terrain.get_terrain_attribute(
     dem.data,
     resolution=dem.res,
-    attribute=["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"]
+    attribute=["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"],
 )
 
 plt.figure(figsize=(8, 6.5))
 
-plt_extent=[dem.bounds.left, dem.bounds.right, dem.bounds.bottom, dem.bounds.top]
+plt_extent = [dem.bounds.left, dem.bounds.right, dem.bounds.bottom, dem.bounds.top]
 
 cmaps = ["Greys_r", "Reds", "twilight", "RdGy_r", "Purples", "YlOrRd"]
 labels = ["Hillshade", "Slope (°)", "Aspect (°)", "Curvature (100 / m)", "Terrain Ruggedness Index", "Rugosity"]
@@ -156,7 +150,7 @@ vlims = [(None, None) for i in range(6)]
 vlims[3] = [-2, 2]
 
 for i in range(6):
-    plt.subplot(3, 2, i+1)
+    plt.subplot(3, 2, i + 1)
     plt.imshow(attributes[i].squeeze(), cmap=cmaps[i], extent=plt_extent, vmin=vlims[i][0], vmax=vlims[i][1])
     cbar = plt.colorbar()
     cbar.set_label(labels[i])

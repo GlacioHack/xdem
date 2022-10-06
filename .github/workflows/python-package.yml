@@ -29,7 +29,7 @@ jobs:
     - uses: actions/checkout@v2
 
     # Set up the conda-forge environment with mamba
-    - name: Set up Python ${{ matrix.python-version }} and dependencies
+    - name: Set up Python ${{ matrix.python-version }} and base environment
       uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
@@ -37,12 +37,26 @@ jobs:
         mamba-version: "*"
         channels: conda-forge
         channel-priority: strict
-        environment-file: dev-environment.yml
-        activate-environment: xdem-dev
+        environment-file: environment.yml
+        activate-environment: xdem
 
     - name: Install project
       run: |
         pip install --no-dependencies --editable .
+
+    # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
+    # development-specific dependencies by differencing the env and dev-env yml files
+    - name: Check normal environment import
+      run: |
+        python -c "import xdem"
+
+    - name: Update environment with dev dependencies
+      run: |
+        mamba env update --name xdem --file dev-environment.yml
+
+    - name: Re-install project
+      run: |
+        pip install -e . --no-dependencies
 
     - name: Lint with flake8
       run: |
@@ -57,7 +71,7 @@ jobs:
     - name: Test with pytest
       run: |
         pip install pytest-cov coveralls
-        pytest -ra -n=auto --cov=xdem/
+        pytest -ra --cov=xdem/
 
     # We can skip the conversion step once this PR of pytest is merged: https://github.com/pytest-dev/pytest-cov/pull/536
     # and replace pytest argument by --cov-report=lcov

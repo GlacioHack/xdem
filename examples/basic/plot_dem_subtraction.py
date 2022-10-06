@@ -11,6 +11,7 @@ The :func:`xdem.DEM.reproject` method takes care of this.
 """
 import geoutils as gu
 import matplotlib.pyplot as plt
+
 import xdem
 
 # %%
@@ -61,7 +62,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # The xlim/ylim commands are necessary only because outlines extend further than the raster extent
 ax = plt.subplot(111)
 ddem.show(ax=ax, cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
-glacier_outlines.ds.plot(ax=ax, fc='none', ec='k')
+glacier_outlines.ds.plot(ax=ax, fc="none", ec="k")
 plt.xlim(ddem.bounds.left, ddem.bounds.right)
 plt.ylim(ddem.bounds.bottom, ddem.bounds.top)
 plt.title("With glacier outlines")

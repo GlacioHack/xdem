@@ -1,7 +1,8 @@
 """Code example for spatial statistics"""
-import xdem
 import geoutils as gu
 import numpy as np
+
+import xdem
 
 # Load data
 dh = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ddem"))
@@ -10,13 +11,18 @@ glacier_mask = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_
 mask = glacier_mask.create_mask(dh)
 
 # Get slope for non-stationarity
-slope = xdem.terrain.get_terrain_attribute(dem=ref_dem, attribute=['slope'])
+slope = xdem.terrain.get_terrain_attribute(dem=ref_dem, attribute=["slope"])
 
 # Keep only stable terrain data
 dh.set_mask(mask)
 
 # Estimate the measurement error by bin of slope, using the NMAD as robust estimator
-df_ns = xdem.spatialstats.nd_binning(dh.data.ravel(), list_var=[slope.data.ravel()], list_var_names=['slope'],
-                                     statistics=['count', xdem.spatialstats.nmad], list_var_bins=30)
+df_ns = xdem.spatialstats.nd_binning(
+    dh.data.ravel(),
+    list_var=[slope.data.ravel()],
+    list_var_names=["slope"],
+    statistics=["count", xdem.spatialstats.nmad],
+    list_var_bins=30,
+)
 
-xdem.spatialstats.plot_1d_binning(df_ns, 'slope', 'nmad', 'Slope (degrees)', 'Elevation error ($1\\sigma$, m)')
+xdem.spatialstats.plot_1d_binning(df_ns, "slope", "nmad", "Slope (degrees)", "Elevation error ($1\\sigma$, m)")

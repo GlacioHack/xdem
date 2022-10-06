@@ -9,6 +9,7 @@ For more information about the approach, see :ref:`coregistration_nuthkaab`.
 """
 import geoutils as gu
 import numpy as np
+
 import xdem
 
 # %%
