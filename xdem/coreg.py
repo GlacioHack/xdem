@@ -1481,6 +1481,7 @@ def apply_matrix(
     centroid: tuple[float, float, float] | None = None,
     resampling: int | str = "bilinear",
     dilate_mask: bool = False,
+    fill_max_search: int = 0,
 ) -> NDArrayf:
     """
     Apply a 3D transformation matrix to a 2.5D DEM.
@@ -1502,6 +1503,9 @@ def apply_matrix(
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
     :param dilate_mask: DEPRECATED - This option does not do anything anymore. Will be removed in the future.
+    :param fill_max_search: Set to > 0 value to fill the DEM before applying the transformation, to avoid spreading\
+    gaps. The DEM will be filled with rasterio.fill.fillnodata with max_search_distance set to fill_max_search.\
+    This is experimental, use at your own risk !
 
     :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
@@ -1534,8 +1538,11 @@ def apply_matrix(
 
     nan_mask = spatial_tools.get_mask(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
-    # Create a filled version of the DEM. (skimage doesn't like nans)
-    filled_dem = np.where(~nan_mask, demc, np.nan)
+    # Optionally, fill DEM around gaps to reduce spread of gaps
+    if fill_max_search > 0:
+        filled_dem = rio.fill.fillnodata(demc, mask=(~nan_mask).astype("uint8"), max_search_distance=fill_max_search)
+    else:
+        filled_dem = demc  # np.where(~nan_mask, demc, np.nan)  # I don't know why this was needed - to delete
 
     # Get the centre coordinates of the DEM pixels.
     x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
