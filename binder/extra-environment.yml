@@ -1,5 +1,4 @@
 channels:
   - conda-forge
 dependencies:
-  - jupyter
   - jupytext
