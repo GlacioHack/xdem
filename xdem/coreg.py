@@ -1501,7 +1501,7 @@ def apply_matrix(
     :param invert: Invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
-    :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
+    :param dilate_mask: DEPRECATED - This option does not do anything anymore. Will be removed in the future.
 
     :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
@@ -1577,9 +1577,11 @@ def apply_matrix(
     # Shift the elevation values of the soon-to-be-warped DEM.
     filled_dem -= deramp(x_coords, y_coords)
 
-    # Create gap-free arrays of x and y coordinates to be converted into index coordinates.
-    x_inds = rio.fill.fillnodata(transformed_points[:, :, 0].copy(), mask=(~nan_mask).astype("uint8"))
-    y_inds = rio.fill.fillnodata(transformed_points[:, :, 1].copy(), mask=(~nan_mask).astype("uint8"))
+    # Create arrays of x and y coordinates to be converted into index coordinates.
+    x_inds = transformed_points[:, :, 0].copy()
+    x_inds[x_inds == 0] = np.nan
+    y_inds = transformed_points[:, :, 1].copy()
+    y_inds[y_inds == 0] = np.nan
 
     # Divide the coordinates by the resolution to create index coordinates.
     x_inds /= resolution
@@ -1599,19 +1601,20 @@ def apply_matrix(
         transformed_dem = skimage.transform.warp(
             filled_dem, inds, order=resampling_order, mode="constant", cval=np.nan, preserve_range=True
         )
-        # Warp the NaN mask, setting true to all values outside the new frame.
-        tr_nan_mask = (
-            skimage.transform.warp(
-                nan_mask.astype("uint8"), inds, order=resampling_order, mode="constant", cval=1, preserve_range=True
-            )
-            > 0
-        )
+    # TODO: remove these lines when dilate_mask is deprecated
+    #    # Warp the NaN mask, setting true to all values outside the new frame.
+    #     tr_nan_mask = (
+    #         skimage.transform.warp(
+    #             nan_mask.astype("uint8"), inds, order=resampling_order, mode="constant", cval=1, preserve_range=True
+    #         )
+    #         > 0
+    #     )
 
-    if dilate_mask:
-        tr_nan_mask = scipy.ndimage.binary_dilation(tr_nan_mask, iterations=resampling_order)
+    # if dilate_mask:
+    #     tr_nan_mask = scipy.ndimage.binary_dilation(tr_nan_mask, iterations=resampling_order)
 
-    # Apply the transformed nan_mask
-    transformed_dem[tr_nan_mask] = np.nan
+    # # Apply the transformed nan_mask
+    # transformed_dem[tr_nan_mask] = np.nan
 
     assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
 
