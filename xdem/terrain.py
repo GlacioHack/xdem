@@ -991,7 +991,7 @@ def get_terrain_attribute(
         else:
             # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
                 terrain_attributes["planform_curvature"] = (
                     -2
                     * (
@@ -1021,7 +1021,7 @@ def get_terrain_attribute(
         else:
             # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
                 terrain_attributes["profile_curvature"] = (
                     2
                     * (
