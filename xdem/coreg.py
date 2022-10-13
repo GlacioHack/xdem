@@ -2167,8 +2167,8 @@ vmodes_dict = {
 def dem_coregistration(
     src_dem_path: str,
     ref_dem_path: str,
-    out_dem_path: str,
-    shpfile: str | None,
+    out_dem_path: str | None = None,
+    shpfile: str | None = None,
     coreg_method: Coreg | None = None,
     hmode: str = "nuth_kaab",
     vmode: str = "median",
@@ -2186,7 +2186,7 @@ def dem_coregistration(
 
     :param src_dem_path: path to the input DEM to be coregistered
     :param ref_dem: path to the reference DEM
-    :param out_dem_path: Path where to save the coregistered DEM
+    :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
     :param shpfile: path to a vector file containing areas to be masked for coregistration
     :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to ref grid and optionally filtered, but not coregistered.
     :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any of {list(vmodes_dict.keys())}.
@@ -2211,19 +2211,18 @@ def dem_coregistration(
         raise ValueError(f"vmode must be in {list(vmodes_dict.keys())}")
 
     # Load both DEMs
-    # TODO: load data only in area of overlap
     if verbose:
         print("Loading and reprojecting input data")
-    ref_dem = xdem.DEM(ref_dem_path)
-    src_dem = xdem.DEM(src_dem_path)
-
-    # Reproject to common grid
     if grid == "ref":
-        src_dem = src_dem.reproject(ref_dem, resampling="bilinear", silent=True)
+        ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
     elif grid == "src":
-        ref_dem = ref_dem.reproject(src_dem, resampling="bilinear", silent=True)
+        ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
     else:
         raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+
+    # Convert to DEM instance with Float32 dtype
+    ref_dem = xdem.DEM(ref_dem.astype(np.float32))
+    src_dem = xdem.DEM(src_dem.astype(np.float32))
 
     # Create raster mask
     if shpfile is not None:
