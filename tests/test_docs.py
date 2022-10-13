@@ -56,15 +56,15 @@ class TestDocs:
     def test_build(self) -> None:
         """Try building the docs and see if it works."""
         # Remove the build directory if it exists.
-        if os.path.isdir(os.path.join(self.docs_dir, "build/")):
-            shutil.rmtree(os.path.join(self.docs_dir, "build/"))
+        if os.path.isdir(os.path.join(self.docs_dir, "build")):
+            shutil.rmtree(os.path.join(self.docs_dir, "build"))
 
         return_code = sphinx.cmd.build.main(
             [
                 "-j",
                 "1",
-                os.path.join(self.docs_dir, "source/"),
-                os.path.join(self.docs_dir, "build/html"),
+                os.path.join(self.docs_dir, "source"),
+                os.path.join(self.docs_dir, "build", "html"),
             ]
         )
 
