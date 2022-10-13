@@ -51,7 +51,7 @@ class TestExamples:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
         # TODO: this currently fails on Mac while exactly the same on Linux and Windows... why?
-        if platform.system() in ['Linux', 'Windows']:
+        if platform.system() in ["Linux", "Windows"]:
             rst = rst_and_truevals[0]
             truevals = rst_and_truevals[1]
             np.random.seed(42)

@@ -57,7 +57,7 @@ class TestDocs:
         """Try building the docs and see if it works."""
 
         # Test only on Linux
-        if platform.system() == 'Linux':
+        if platform.system() == "Linux":
             # Remove the build directory if it exists.
             if os.path.isdir(os.path.join(self.docs_dir, "build")):
                 shutil.rmtree(os.path.join(self.docs_dir, "build"))
