@@ -2175,22 +2175,26 @@ def dem_coregistration(
     deramp_degree: int = 1,
     grid: str = "ref",
     filtering: bool = True,
-    slope_lim: list(AnyNumber) = (0.1, 40),
+    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
-):
+) -> tuple[xdem.DEM, pd.DataFrame]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
-    Reads both DEMs, reproject DEM onto ref DEM grid, mask content of shpfile, run the coregistration and save the coregistered DEM as well as some optional figures and returns some statistics.
+    Reads both DEMs, reproject DEM onto ref DEM grid, mask content of shpfile, run the coregistration and save \
+the coregistered DEM as well as some optional figures and returns some statistics.
 
     :param src_dem_path: path to the input DEM to be coregistered
     :param ref_dem: path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
     :param shpfile: path to a vector file containing areas to be masked for coregistration
-    :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to ref grid and optionally filtered, but not coregistered.
-    :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any of {list(vmodes_dict.keys())}.
-    :param vmode: The method to be used for vertically aligning the DEMs, e.g. mean/median bias correction or deramping. Can be any of {list(hmodes_dict.keys())}.
+    :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to \
+ref grid and optionally filtered, but not coregistered.
+    :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any \
+of {list(vmodes_dict.keys())}.
+    :param vmode: The method to be used for vertically aligning the DEMs, e.g. mean/median bias correction or \
+deramping. Can be any of {list(hmodes_dict.keys())}.
     :param deramp_degree: The degree of the polynomial for deramping.
     :param grid: the grid to be used during coregistration, set either to "ref" or "src".
     :param filtering: if set to True, filtering will be applied prior to coregistration
@@ -2198,7 +2202,8 @@ def dem_coregistration(
     :param out_fig: Path to the output figure. If None will display to screen.
     :param verbose: set to True to print details on screen during coregistration.
 
-    :returns: a tuple containing - basename of coregistered DEM, [count of obs, median and NMAD over stable terrain, coverage over roi] before coreg, [same stats] after coreg
+    :returns: a tuple containing - basename of coregistered DEM, [count of obs, median and NMAD over stable \
+terrain, coverage over roi] before coreg, [same stats] after coreg
     """
     # Check input arguments
     if (coreg_method is not None) and ((hmode is not None) or (vmode is not None)):
