@@ -139,18 +139,17 @@ class TestDEM:
 
         # Check that other existing grids are well detected in the pyproj.datadir
         # TODO: Figure out why CI cannot get the grids on Windows
-        if os.name != 'nt':
+        if os.name != "nt":
             img.set_vref(vref_grid="is_lmi_Icegeoid_ISN93.tif")
         else:
             with pytest.raises(ValueError):
                 img.set_vref(vref_grid="is_lmi_Icegeoid_ISN93.tif")
 
-
         # Check that non-existing grids raise errors
         with pytest.raises(ValueError):
             img.set_vref(vref_grid="the best grid in the entire world, or any non-existing string")
 
-    @pytest.mark.skip("This fails on Windows because the grids are not found")
+    @pytest.mark.skip("This fails on Windows because the grids are not found")  # type: ignore
     def test_to_vref(self) -> None:
         """Tests to convert vertical references"""
 

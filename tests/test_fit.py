@@ -124,7 +124,7 @@ class TestRobustFitting:
         # Check that the estimated sum of sinusoid correspond to the input, with better tolerance on the highest
         # amplitude sinusoid
         # TODO: Work on making results not random between OS with basinhopping, this currently fails on Windows
-        if os.name != 'nt':
+        if os.name != "nt":
             for i in np.arange(6):
                 assert coefs[i] == pytest.approx(true_coefs[i], abs=0.1)
 

@@ -3,7 +3,6 @@ import os
 import shutil
 import warnings
 
-import pytest
 import sphinx.cmd.build
 
 
@@ -55,6 +54,7 @@ class TestDocs:
 
     def test_build(self) -> None:
         """Try building the docs and see if it works."""
+
         # Remove the build directory if it exists.
         if os.path.isdir(os.path.join(self.docs_dir, "build")):
             shutil.rmtree(os.path.join(self.docs_dir, "build"))
