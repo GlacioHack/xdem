@@ -1144,7 +1144,7 @@ def slope(
                [2, 2, 2]])
         >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
         45.0
-        >>> np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.) # Slope in percentage
+        >>> np.round(np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.), 1) # Slope in percentage
         0.5
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
