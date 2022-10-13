@@ -1,5 +1,6 @@
 """Functions to test the documentation."""
 import os
+import platform
 import shutil
 import warnings
 
@@ -55,8 +56,8 @@ class TestDocs:
     def test_build(self) -> None:
         """Try building the docs and see if it works."""
 
-        # Don't test on Windows
-        if os.name != "nt":
+        # Test only on Linux
+        if platform.system() == 'Linux':
             # Remove the build directory if it exists.
             if os.path.isdir(os.path.join(self.docs_dir, "build")):
                 shutil.rmtree(os.path.join(self.docs_dir, "build"))

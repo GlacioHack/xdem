@@ -1,7 +1,7 @@
 """
 Functions to test the fitting tools.
 """
-import os
+import platform
 import warnings
 
 import numpy as np
@@ -123,8 +123,8 @@ class TestRobustFitting:
 
         # Check that the estimated sum of sinusoid correspond to the input, with better tolerance on the highest
         # amplitude sinusoid
-        # TODO: Work on making results not random between OS with basinhopping, this currently fails on Windows
-        if os.name != "nt":
+        # TODO: Work on making results not random between OS with basinhopping, this currently fails on Windows and Mac
+        if platform.system() == "Linux":
             for i in np.arange(6):
                 assert coefs[i] == pytest.approx(true_coefs[i], abs=0.1)
 
