@@ -2182,15 +2182,16 @@ def dem_coregistration(
 ) -> tuple[xdem.DEM, pd.DataFrame]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
-    Reads both DEMs, reproject DEM onto ref DEM grid, mask content of shpfile, run the coregistration and save \
-the coregistered DEM as well as some optional figures and returns some statistics.
+    Reads both DEMs, reprojects them on the same grid, mask content of shpfile, filter steep slopes and outliers, \
+run the coregistration, returns the coregistered DEM and some statistics.
+    Optionally, save the coregistered DEM to file and make a figure.
 
     :param src_dem_path: path to the input DEM to be coregistered
     :param ref_dem: path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
     :param shpfile: path to a vector file containing areas to be masked for coregistration
     :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to \
-ref grid and optionally filtered, but not coregistered.
+ref grid and optionally filtered, but not coregistered. Will be used in priority over hmode and vmode.
     :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any \
 of {list(vmodes_dict.keys())}.
     :param vmode: The method to be used for vertically aligning the DEMs, e.g. mean/median bias correction or \
@@ -2202,8 +2203,8 @@ deramping. Can be any of {list(hmodes_dict.keys())}.
     :param out_fig: Path to the output figure. If None will display to screen.
     :param verbose: set to True to print details on screen during coregistration.
 
-    :returns: a tuple containing - basename of coregistered DEM, [count of obs, median and NMAD over stable \
-terrain, coverage over roi] before coreg, [same stats] after coreg
+    :returns: a tuple containing 1) coregistered DEM as an xdem.DEM instance and 2) DataFrame of coregistration \
+statistics (count of obs, median and NMAD over stable terrain) before and after coreg.
     """
     # Check input arguments
     if (coreg_method is not None) and ((hmode is not None) or (vmode is not None)):
@@ -2311,7 +2312,8 @@ terrain, coverage over roi] before coreg, [same stats] after coreg
             plt.close()
 
     # Save coregistered DEM
-    dem_coreg.save(out_dem_path, tiled=True)
+    if out_dem_path is not None:
+        dem_coreg.save(out_dem_path, tiled=True)
 
     # Save stats to DataFrame
     out_stats = pd.DataFrame(
