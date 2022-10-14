@@ -708,7 +708,7 @@ def _create_circular_mask(
     # Skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
     mask = np.zeros(shape, dtype=bool)
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
         rr, cc = disk(center=center, radius=radius, shape=shape)
     mask[rr, cc] = True
 
@@ -744,7 +744,7 @@ def _create_ring_mask(
         out_radius = min(center[0], center[1], w - center[0], h - center[1])
 
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
         mask_inside = _create_circular_mask((w, h), center=center, radius=in_radius)
         mask_outside = _create_circular_mask((w, h), center=center, radius=out_radius)
 
@@ -1367,6 +1367,9 @@ def sample_empirical_variogram(
 
     # Remove the last spatial lag bin which is always undersampled
     df.drop(df.tail(1).index, inplace=True)
+
+    # Force output dtype (default differs on different OS)
+    df = df.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
 
     return df
 
@@ -2471,7 +2474,7 @@ def mean_filter_nan(
 
     # Compute the final mean filter which accounts for no data
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "divide by zero encountered in true_divide")
+        warnings.filterwarnings("ignore", "divide by zero encountered in *divide")
         mean_img = summed_img / nb_valid_img
 
     # Compute the number of pixel per kernel

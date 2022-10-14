@@ -390,7 +390,7 @@ class TestVariogram:
 
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
-        assert df["exp"][15] == pytest.approx(23.574527740478516)
+        assert df["exp"][15] == pytest.approx(23.574527740478516, abs=1e-3)
         assert df["lags"][15] == pytest.approx(5120)
         assert df["count"][15] == 2
         # With a single run, no error can be estimated
@@ -498,21 +498,22 @@ class TestVariogram:
         df2 = df2.rename(columns={"bins": "lags"})
         df2["err_exp"] = np.nan
         df2.drop(df2.tail(1).index, inplace=True)
+        df2 = df2.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
 
         t2 = time.time()
 
         # Check if the two frames are equal
         pd.testing.assert_frame_equal(df, df2)
 
-        # Check that the two ways are taking the same time at 30%
+        # Check that the two ways are taking the same time with 50% margin
         time_method_1 = t1 - t0
         time_method_2 = t2 - t1
-        assert time_method_1 == pytest.approx(time_method_2, rel=0.3)
+        assert time_method_1 == pytest.approx(time_method_2, rel=0.5)
 
-        # Check that all this time is based on variogram sampling at about 80%, even with the smallest number of
+        # Check that all this time is based on variogram sampling at about 70%, even with the smallest number of
         # samples of 10
         time_metricspace_variogram = t4 - t3
-        assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.2)
+        assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.3)
 
     @pytest.mark.parametrize(
         "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
@@ -1179,7 +1180,7 @@ class TestPatchesMethod:
         assert all(df.columns == ["nmad", "nb_indep_patches", "exact_areas", "areas"])
 
         # Check the sampling is fixed for a random state
-        assert df["nmad"][0] == pytest.approx(1.8697986129910111)
+        assert df["nmad"][0] == pytest.approx(1.8697986129910111, abs=1e-3)
         assert df["nb_indep_patches"][0] == 100
         assert df["exact_areas"][0] == pytest.approx(df["areas"][0], rel=0.2)
 
@@ -1188,7 +1189,7 @@ class TestPatchesMethod:
 
         # Check the sampling is always fixed for a random state
         assert df_full["tile"].values[0] == "8_16"
-        assert df_full["nanmean"].values[0] == pytest.approx(0.24107581448842244)
+        assert df_full["nanmean"].values[0] == pytest.approx(0.24107581448842244, abs=1e-3)
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))
