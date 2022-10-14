@@ -991,7 +991,7 @@ def get_terrain_attribute(
         else:
             # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
                 terrain_attributes["planform_curvature"] = (
                     -2
                     * (
@@ -1021,7 +1021,7 @@ def get_terrain_attribute(
         else:
             # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
                 terrain_attributes["profile_curvature"] = (
                     2
                     * (
@@ -1144,7 +1144,7 @@ def slope(
                [2, 2, 2]])
         >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
         45.0
-        >>> np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.) # Slope in percentage
+        >>> np.round(np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.), 1) # Slope in percentage
         0.5
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
