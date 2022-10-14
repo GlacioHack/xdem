@@ -505,15 +505,15 @@ class TestVariogram:
         # Check if the two frames are equal
         pd.testing.assert_frame_equal(df, df2)
 
-        # Check that the two ways are taking the same time at 30%
+        # Check that the two ways are taking the same time with 50% margin
         time_method_1 = t1 - t0
         time_method_2 = t2 - t1
-        assert time_method_1 == pytest.approx(time_method_2, rel=0.3)
+        assert time_method_1 == pytest.approx(time_method_2, rel=0.5)
 
-        # Check that all this time is based on variogram sampling at about 80%, even with the smallest number of
+        # Check that all this time is based on variogram sampling at about 70%, even with the smallest number of
         # samples of 10
         time_metricspace_variogram = t4 - t3
-        assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.2)
+        assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.3)
 
     @pytest.mark.parametrize(
         "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
