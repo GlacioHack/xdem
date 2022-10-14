@@ -144,16 +144,14 @@ def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -
     # Extract the dependencies values
     conda_dep_env = yaml_env["dependencies"]
     conda_dep_devenv = yaml_devenv["dependencies"]
-    if isinstance(conda_dep_env[-1], dict):
-        pip_dep_env = conda_dep_env.pop()
 
     # Check if there is any pip dependency, if yes pop it from the end of the list
     if isinstance(conda_dep_devenv[-1], dict):
-        pip_dep_devenv = conda_dep_devenv.pop()
+        pip_dep_devenv = conda_dep_devenv.pop()["pip"]
 
         # Check if there is a pip dependency in the normal env as well, if yes pop it also
         if isinstance(conda_dep_env[-1], dict):
-            pip_dep_env = conda_dep_env.pop()
+            pip_dep_env = conda_dep_env.pop()["pip"]
 
             # The diff below computes the dependencies that are in env but not in dev-env
             # It should be empty, otherwise we raise an error
@@ -172,7 +170,11 @@ def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -
 
     # If there is no pip dependency, we ignore this step
     else:
-        diff_pip_dep = ["None"]
+        diff_pip_dep = []
+
+    # If the diff is empty for pip, return a string saying None to read easily in bash
+    if len(diff_pip_dep) == 0:
+        diff_pip_dep = ['None']
 
     # We do the same for the conda dependency, first a sanity check that everything that is in env is also in dev-ev
     diff_conda_check = list(set(conda_dep_env) - set(conda_dep_devenv))
