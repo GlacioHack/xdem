@@ -174,7 +174,7 @@ def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -
 
     # If the diff is empty for pip, return a string saying None to read easily in bash
     if len(diff_pip_dep) == 0:
-        diff_pip_dep = ['None']
+        diff_pip_dep = ["None"]
 
     # We do the same for the conda dependency, first a sanity check that everything that is in env is also in dev-ev
     diff_conda_check = list(set(conda_dep_env) - set(conda_dep_devenv))
