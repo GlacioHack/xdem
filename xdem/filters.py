@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import warnings
 
-import cv2 as cv
+try:
+    import cv2
+
+    _has_cv2 = True
+except ImportError:
+    _has_cv2 = False
 import numpy as np
 import scipy
 
@@ -65,6 +70,9 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
 
     :returns: the filtered array (same shape as input)
     """
+    if not _has_cv2:
+        raise ValueError("Optional dependency needed. Install 'opencv'")
+
     # Check that array dimension is 2, or can be squeezed to 2D
     orig_shape = array.shape
     if len(orig_shape) == 2:
