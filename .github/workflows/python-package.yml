@@ -11,7 +11,7 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.os }}, python ${{ matrix.python-version}}
+    name: ${{ matrix.os }}, python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -27,37 +27,66 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    # Set up the conda-forge environment with mamba
-    - name: Set up Python ${{ matrix.python-version }} and base environment
+    # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
+    - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v2
       with:
+        miniforge-variant: Mambaforge
+        miniforge-version: latest
         auto-update-conda: true
-        python-version: ${{ matrix.python-version }}
-        mamba-version: "*"
-        channels: conda-forge
+        use-mamba: true
         channel-priority: strict
-        environment-file: environment.yml
-        activate-environment: xdem
+        activate-environment: xdem-dev
+
+    - name: Get month for resetting cache
+      id: get-date
+      run: echo "::set-output name=month::$(/bin/date -u '+%Y%m')"
+      shell: bash
+
+    - name: Cache conda env
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.CONDA }}/envs
+        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ steps.get-date.outputs.month }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
+      env:
+        CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
+      id: cache
+
+    # The trick below is necessary because the generic environment file does not specify a Python version, and only
+    # "conda env update" can be used to update with an environment file, which upgrades the Python version
+    - name: Install base environment with a fixed Python version
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        mamba install pyyaml python=${{ matrix.python-version }}
+        pkgs_conda_base=`python .github/get_yml_env_nopy.py "environment.yml" --p "conda"`
+        pkgs_pip_base=`python .github/get_yml_env_nopy.py "environment.yml" --p "pip"`
+        mamba install python=${{ matrix.python-version }} $pkgs_conda_base
+        if [[ "$pkgs_pip_base" != "None" ]]; then
+          pip install $pkgs_pip_base
+        fi
 
     - name: Install project
-      run: |
-        pip install --no-dependencies --editable .
+      run: pip install -e . --no-dependencies
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
-    - name: Check normal environment import
+    - name: Check import works with base environment
       run: |
         # We unset the PROJ_LIB environment variable to make PROJ work on Windows
         unset PROJ_LIB
         python -c "import xdem"
 
-    - name: Update environment with dev dependencies
+    # This time, the trick below is necessary because: 1/ "conda update" does not support a file -f as argument
+    # and also 2/ "conda env update" does not support --freeze-installed or --no-update-deps
+    - name: Update environment with development packages if cache does not exist
+      if: steps.cache.outputs.cache-hit != 'true'
       run: |
-        mamba env update --name xdem --file dev-environment.yml
-
-    - name: Re-install project
-      run: |
-        pip install -e . --no-dependencies
+        pkgs_conda_dev=`python -c "import xdem; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'conda')"`
+        pkgs_pip_dev=`python -c "import xdem; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'pip')"`
+        mamba install $pkgs_conda_dev --freeze-installed
+        if [[ "$pkgs_pip_dev" != "None" ]]; then
+          pip install $pkgs_pip_dev
+        fi
 
     - name: Lint with flake8
       run: |
@@ -66,19 +95,19 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
+    - name: Setup pip dependencies
+      run: pip install pytest-cov coveralls coveragepy-lcov
+
     - name: Test with pytest
       run: |
         # We unset the PROJ_LIB environment variable to make PROJ work on Windows
         unset PROJ_LIB
-        pip install pytest-cov coveralls
         pytest -ra --cov=xdem/
 
     # We can skip the conversion step once this PR of pytest is merged: https://github.com/pytest-dev/pytest-cov/pull/536
     # and replace pytest argument by --cov-report=lcov
     - name: Converting coverage to LCOV format
-      run: |
-        pip install coveragepy-lcov
-        coveragepy-lcov --data_file_path .coverage --output_file_path coverage.info
+      run: coveragepy-lcov --data_file_path .coverage --output_file_path coverage.info
 
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@master
