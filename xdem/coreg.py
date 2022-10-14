@@ -2242,8 +2242,10 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
 
     # Filter gross outliers in stable terrain
     if filtering:
-        # TO DO implement the NMAD filter in xdem
-        inlier_mask = stable_mask  # nmad_filter(ddem.data, stable_mask, verbose=False)
+        # Remove gross blunders where dh differ by 5 NMAD from the median
+        inlier_mask = stable_mask & (np.abs(ddem.data - np.median(ddem)) < 5 * xdem.spatialstats.nmad(ddem)).filled(
+            False
+        )
 
         # Exclude steep slopes for coreg
         slope = xdem.terrain.slope(ref_dem)
