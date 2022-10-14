@@ -14,12 +14,13 @@ def environment_yml_nopy(fn_env: str, print_dep: str = "both") -> None:
     # Load the yml as dictionary
     yaml_env = yaml.safe_load(open(fn_env))
     conda_dep_env = list(yaml_env["dependencies"])
-    conda_dep_env_without_python = [dep for dep in conda_dep_env if "python" not in dep]
 
     if isinstance(conda_dep_env[-1], dict):
         pip_dep_env = list(conda_dep_env.pop())
     else:
         pip_dep_env = ["None"]
+        
+    conda_dep_env_without_python = [dep for dep in conda_dep_env if "python" not in dep]
 
     # Join the lists
     joined_list_conda_dep = " ".join(conda_dep_env_without_python)
