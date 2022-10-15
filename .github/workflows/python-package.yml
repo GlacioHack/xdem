@@ -81,6 +81,8 @@ jobs:
     - name: Update environment with development packages if cache does not exist
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
+        # We unset the PROJ_LIB environment variable to make PROJ work on Windows
+        unset PROJ_LIB
         pkgs_conda_dev=`python -c "import xdem.misc; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'conda')"`
         pkgs_pip_dev=`python -c "import xdem.misc; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'pip')"`
         mamba install $pkgs_conda_dev --freeze-installed
