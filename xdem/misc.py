@@ -172,7 +172,7 @@ def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -
     else:
         diff_pip_dep = []
 
-    # If the diff is empty for pip, return a string saying None to read easily in bash
+    # If the diff is empty for pip, return a string "None" to read easily in bash
     if len(diff_pip_dep) == 0:
         diff_pip_dep = ["None"]
 
