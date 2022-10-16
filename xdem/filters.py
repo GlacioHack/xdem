@@ -4,7 +4,7 @@ from __future__ import annotations
 import warnings
 
 try:
-    import cv2
+    import cv2 as cv
 
     _has_cv2 = True
 except ImportError:
