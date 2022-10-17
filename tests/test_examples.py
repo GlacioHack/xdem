@@ -51,13 +51,13 @@ class TestExamples:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
         # TODO: this currently fails on Mac while exactly the same on Linux and Windows... why?
-        if platform.system() in ["Linux", "Windows"]:
-            rst = rst_and_truevals[0]
-            truevals = rst_and_truevals[1]
-            np.random.seed(42)
-            values = np.random.choice(rst.data.data.flatten(), size=5, replace=False)
+        # if platform.system() in ["Linux", "Windows"]:
+        rst = rst_and_truevals[0]
+        truevals = rst_and_truevals[1]
+        np.random.seed(42)
+        values = np.random.choice(rst.data.data.flatten(), size=5, replace=False)
 
-            assert values == pytest.approx(truevals)
+        assert values == pytest.approx(truevals)
 
     @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)])  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
