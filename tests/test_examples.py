@@ -1,8 +1,6 @@
 """Functions to test the example data."""
 from __future__ import annotations
 
-import platform
-
 import geoutils as gu
 import numpy as np
 import pytest
@@ -39,15 +37,14 @@ class TestExamples:
                         -2.484130859375000000e-02,
                         -7.205200195312500000e-01,
                         1.431121826171875000e-01,
-                        1.102233886718750000e+00,
-                        -5.920532226562500000e+00
+                        1.102233886718750000e00,
+                        -5.920532226562500000e00,
                     ],
                     dtype=np.float32,
                 ),
             ),
         ],
     )  # type: ignore
-
     def test_array_content(self, rst_and_truevals: tuple[Raster, NDArrayf]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
