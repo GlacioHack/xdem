@@ -8,6 +8,13 @@ from typing import Any, Callable
 from packaging.version import Version
 
 try:
+    import yaml  # type: ignore
+
+    _has_yaml = True
+except ImportError:
+    _has_yaml = False
+
+try:
     import cv2
 
     _has_cv2 = True
@@ -116,3 +123,78 @@ def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any
         return new_func
 
     return deprecator_func
+
+
+def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -> None:
+    """
+    Compute the difference between environment.yml and dev-environment.yml for setup of continuous integration,
+    while checking that all the dependencies listed in environment.yml are also in dev-environment.yml
+    :param fn_env: Filename path to environment.yml
+    :param fn_devenv: Filename path to dev-environment.yml
+    :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
+    """
+
+    if not _has_yaml:
+        raise ValueError("Test dependency needed. Install 'pyyaml'")
+
+    # Load the yml as dictionaries
+    yaml_env = yaml.safe_load(open(fn_env))
+    yaml_devenv = yaml.safe_load(open(fn_devenv))
+
+    # Extract the dependencies values
+    conda_dep_env = yaml_env["dependencies"]
+    conda_dep_devenv = yaml_devenv["dependencies"]
+
+    # Check if there is any pip dependency, if yes pop it from the end of the list
+    if isinstance(conda_dep_devenv[-1], dict):
+        pip_dep_devenv = conda_dep_devenv.pop()["pip"]
+
+        # Check if there is a pip dependency in the normal env as well, if yes pop it also
+        if isinstance(conda_dep_env[-1], dict):
+            pip_dep_env = conda_dep_env.pop()["pip"]
+
+            # The diff below computes the dependencies that are in env but not in dev-env
+            # It should be empty, otherwise we raise an error
+            diff_pip_check = list(set(pip_dep_env) - set(pip_dep_devenv))
+            if len(diff_pip_check) != 0:
+                raise ValueError(
+                    "The following pip dependencies are listed in env but not dev-env: " + ",".join(diff_pip_check)
+                )
+
+            # The diff below computes the dependencies that are in dev-env but not in env, to add during CI
+            diff_pip_dep = list(set(pip_dep_devenv) - set(pip_dep_env))
+
+        # If there is no pip dependency in env, all the ones of dev-env need to be added during CI
+        else:
+            diff_pip_dep = list(pip_dep_devenv["pip"])
+
+    # If there is no pip dependency, we ignore this step
+    else:
+        diff_pip_dep = []
+
+    # If the diff is empty for pip, return a string "None" to read easily in bash
+    if len(diff_pip_dep) == 0:
+        diff_pip_dep = ["None"]
+
+    # We do the same for the conda dependency, first a sanity check that everything that is in env is also in dev-ev
+    diff_conda_check = list(set(conda_dep_env) - set(conda_dep_devenv))
+    if len(diff_conda_check) != 0:
+        raise ValueError("The following dependencies are listed in env but not dev-env: " + ",".join(diff_conda_check))
+
+    # Then the difference to add during CI
+    diff_conda_dep = list(set(conda_dep_devenv) - set(conda_dep_env))
+
+    # Join the lists
+    joined_list_conda_dep = " ".join(diff_conda_dep)
+    joined_list_pip_dep = " ".join(diff_pip_dep)
+
+    # Print to be captured in bash
+    if print_dep == "both":
+        print(joined_list_conda_dep)
+        print(joined_list_pip_dep)
+    elif print_dep == "conda":
+        print(joined_list_conda_dep)
+    elif print_dep == "pip":
+        print(joined_list_pip_dep)
+    else:
+        raise ValueError('The argument "print_dep" can only be "conda", "pip" or "both".')
