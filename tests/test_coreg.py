@@ -186,7 +186,23 @@ class TestCoregClass:
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
-    def test_nuth_kaab(self) -> None:
+    def test_coreg_example(self) -> None:
+        """
+        Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
+        test_examples.py, but helps identify from where differences arise.
+        """
+
+        # Run co-registration
+        nuth_kaab = xdem.coreg.NuthKaab()
+        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask)
+
+        # Check the output metadata is always the same
+        assert nuth_kaab._meta['offset_east_px'] == pytest.approx(-0.46335901095748266)
+        assert nuth_kaab._meta['offset_north_px'] == pytest.approx(-0.1346441988809697)
+        assert nuth_kaab._meta['bias'] == pytest.approx(-1.9824688356643492)
+
+
+def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")
 
         nuth_kaab = coreg.NuthKaab(max_iterations=10)
