@@ -188,14 +188,14 @@ def get_horizontal_shift(
 
     # Estimate the a, b, and c parameters with least square minimisation
     results = scipy.optimize.least_squares(
-        fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds), xtol=1e-14, gtol=None, ftol=None
+        fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds), xtol=1e-8, gtol=None, ftol=None
     )
 
     # Round results above the tolerance to get fixed results on different OS
     a_parameter, b_parameter, c_parameter = results.x
     print(results.x)
-    a_parameter = np.round(a_parameter, 3)
-    b_parameter = np.round(b_parameter, 3)
+    a_parameter = np.round(a_parameter, 2)
+    b_parameter = np.round(b_parameter, 2)
 
     # Calculate the easting and northing offsets from the above parameters
     east_offset = a_parameter * np.sin(b_parameter)
