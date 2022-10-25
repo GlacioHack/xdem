@@ -385,6 +385,24 @@ class TestCoregClass:
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
 
+        # Test subsampled deramping
+        degree = 1
+        deramp_sub = coreg.Deramp(degree=degree)
+
+        # Fit the bias using 50% of the unmasked data using a fraction
+        deramp_sub.fit(**self.fit_params, subsample=0.5)
+        # Do the same but specify the pixel count instead.
+        # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
+        # But this would just repeat the subsample code, so that makes little sense to test.
+        deramp_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+
+        # Do full bias corr to compare
+        deramp_full = coreg.Deramp(degree=degree)
+        deramp_full.fit(**self.fit_params)
+
+        # Check that the estimated biases are similar
+        assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-2)
+
     def test_z_scale_corr(self) -> None:
         warnings.simplefilter("error")
 
