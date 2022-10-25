@@ -42,6 +42,7 @@ class TestCoregClass:
         dem_to_be_aligned=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
+        crs=ref.crs,
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
