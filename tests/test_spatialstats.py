@@ -122,7 +122,7 @@ class TestBinning:
         assert df.shape[0] == (4**3 + 3 * 4**2 + 3 * 4)
 
         # Save for later use
-        df.to_csv(os.path.join(examples.EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
+        df.to_csv(os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
 
     def test_interp_nd_binning_artificial_data(self) -> None:
         """Check that the N-dimensional interpolation works correctly using artificial data"""
@@ -220,7 +220,7 @@ class TestBinning:
 
         # Read nd_binning output
         df = pd.read_csv(
-            os.path.join(examples.EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
         )
 
         # First, in 1D
@@ -334,7 +334,7 @@ class TestBinning:
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
-        errors_1.save(os.path.join(examples.EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors_1.save(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
@@ -737,7 +737,7 @@ class TestVariogram:
         diff_on_stable.set_mask(self.mask)
 
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples.EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
 
         # Standardize the differences
         zscores = diff_on_stable / errors
@@ -788,7 +788,7 @@ class TestVariogram:
         )
         # Save the modelled variogram for later used in TestNeffEstimation
         params_model_vgm_5.to_csv(
-            os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False
         )
 
         # Check that errors are raised with wrong input
@@ -1067,11 +1067,11 @@ class TestNeffEstimation:
         """Test that the spatial error propagation wrapper function runs properly"""
 
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples.EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
 
         # Load the spatial correlation from TestVariogram
         params_variogram_model = pd.read_csv(
-            os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None
         )
 
         # Run the function with vector areas
