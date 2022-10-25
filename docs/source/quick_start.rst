@@ -16,7 +16,7 @@ The dataset keys and paths can be found from
 
 .. code-block:: python
 
-        xdem.examples.FILEPATHS_DATA
+        xdem.examples.available
 
 Load DEMs and calculate elevation difference
 ------------------------------------------------
