@@ -29,6 +29,7 @@ _FILEPATHS_PROCESSED = {
 
 available = list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys())
 
+
 def download_longyearbyen_examples(overwrite: bool = False) -> None:
     """
     Fetch the Longyearbyen example files.
