@@ -543,17 +543,8 @@ class Coreg:
             full_mask = (
                 ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
             ).squeeze()
-            # If subsample is less than one, it is parsed as a fraction (e.g. 0.8 => retain 80% of the values)
-            if subsample < 1.0:
-                subsample = int(np.count_nonzero(full_mask) * (1 - subsample))
-
-            # Randomly pick N inliers in the full_mask where N=subsample
-            random_falses = np.random.choice(np.argwhere(full_mask.flatten()).squeeze(), int(subsample), replace=False)
-            # Convert the 1D indices to 2D indices
-            cols = (random_falses // full_mask.shape[0]).astype(int)
-            rows = random_falses % full_mask.shape[0]
-            # Set the N random inliers to be parsed as outliers instead.
-            full_mask[rows, cols] = False
+            random_indices = gu.spatial_tools.subsample_raster(full_mask, subsample=subsample, return_indices=True)
+            full_mask[random_indices] = False
 
         # Run the associated fitting function
         self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose)
@@ -1167,20 +1158,10 @@ class Deramp(Coreg):
             print("Estimating deramp function...")
 
         # reduce number of elements for speed
-        # Get number of points to extract
-        max_points = np.size(x_coords)
-        if (self.subsample <= 1) & (self.subsample >= 0):
-            npoints = int(self.subsample * max_points)
-        elif self.subsample > 1:
-            npoints = int(self.subsample)
-        else:
-            raise ValueError("`subsample` must be >= 0")
-
-        if max_points > npoints:
-            indices = np.random.choice(max_points, npoints, replace=False)
-            x_coords = x_coords[indices]
-            y_coords = y_coords[indices]
-            ddem = ddem[indices]
+        rand_indices = gu.spatial_tools.subsample_raster(x_coords, subsample=self.subsample, return_indices=True)
+        x_coords = x_coords[rand_indices]
+        y_coords = y_coords[rand_indices]
+        ddem = ddem[rand_indices]
 
         # Optimize polynomial parameters
         coefs = scipy.optimize.leastsq(
