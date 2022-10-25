@@ -226,6 +226,49 @@ def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     return slope_tan, aspect
 
 
+def calculate_ddem_stats(
+    ddem: NDArrayf | MArrayf,
+    inlier_mask: NDArrayf | None = None,
+    stats_list: tuple[Callable[[NDArrayf], AnyNumber], ...] = (
+        np.size,
+        np.mean,
+        np.median,
+        xdem.spatialstats.nmad,
+        np.std,
+    ),
+    stats_labels: tuple[str, ...] = ("count", "mean", "median", "nmad", "std"),
+) -> dict[str, float]:
+    """
+    Calculate standard statistics of ddem, e.g., to be used to compare before/after coregistration.
+    Statistics are: count, mean, median, NMAD and std.
+
+    :param ddem: The DEM difference to be analyzed
+
+    Returns: a dictionary containing the statistics
+    """
+    # Check that stats_list and stats_labels are correct
+    if len(stats_list) != len(stats_labels):
+        raise ValueError("Number of items in `stats_list` and `stats_labels` should be identical.")
+    for stat, label in zip(stats_list, stats_labels):
+        if not callable(stat):
+            raise ValueError(f"Item {stat} in `stats_list` should be a callable/function.")
+        if not isinstance(label, str):
+            raise ValueError(f"Item {label} in `stats_labels` should be a string.")
+
+    # Get the mask of valid and inliers pixels
+    nan_mask = spatial_tools.get_mask(ddem)
+    if inlier_mask is None:
+        inlier_mask = np.ones(ddem.shape, dtype="bool")
+    valid_ddem = ddem[~nan_mask & inlier_mask]
+
+    # Calculate stats
+    stats = {}
+    for stat, label in zip(stats_list, stats_labels):
+        stats[label] = stat(valid_ddem)
+
+    return stats
+
+
 def deramping(
     ddem: NDArrayf | MArrayf,
     x_coords: NDArrayf | MArrayf,
