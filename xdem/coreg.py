@@ -205,23 +205,25 @@ def get_horizontal_shift(
 
 def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
-    Calculate the slope and aspect of a DEM.
+    Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
 
     :param dem: A numpy array of elevation values.
 
-    :returns:  The slope (in pixels??) and aspect (in radians) of the DEM.
+    :returns:  The tangent of slope and aspect (in radians) of the DEM.
     """
-    # TODO: Figure out why slope is called slope_px. What unit is it in?
-    # TODO: Change accordingly in the get_horizontal_shift docstring.
+    # Old implementation
+    # # Calculate the gradient of the slope
+    # gradient_y, gradient_x = np.gradient(dem)
+    # slope_px = np.sqrt(gradient_x**2 + gradient_y**2)
+    # aspect = np.arctan2(-gradient_x, gradient_y)
+    # aspect += np.pi
 
-    # Calculate the gradient of the slope
-    gradient_y, gradient_x = np.gradient(dem)
+    # xdem implementation
+    slope, aspect = xdem.terrain.get_terrain_attribute(dem, attribute=["slope", "aspect"], resolution=1, degrees=False)
+    slope_tan = np.tan(slope)
+    aspect = (aspect + np.pi) % (2 * np.pi)
 
-    slope_px = np.sqrt(gradient_x**2 + gradient_y**2)
-    aspect = np.arctan2(-gradient_x, gradient_y)
-    aspect += np.pi
-
-    return slope_px, aspect
+    return slope_tan, aspect
 
 
 def deramping(
@@ -1365,7 +1367,8 @@ class NuthKaab(Coreg):
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
             print("   Calculate slope and aspect")
-        slope, aspect = calculate_slope_and_aspect(ref_dem)
+
+        slope_tan, aspect = calculate_slope_and_aspect(ref_dem)
 
         # Make index grids for the east and north dimensions
         east_grid = np.arange(ref_dem.shape[1])
@@ -1409,7 +1412,7 @@ class NuthKaab(Coreg):
 
             # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
             east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
-                elevation_difference=elevation_difference, slope=slope, aspect=aspect
+                elevation_difference=elevation_difference, slope=slope_tan, aspect=aspect
             )
             if verbose:
                 pbar.write(f"      #{i + 1:d} - Offset in pixels : ({east_diff:.2f}, {north_diff:.2f})")
