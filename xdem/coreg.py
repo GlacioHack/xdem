@@ -193,7 +193,6 @@ def get_horizontal_shift(
 
     # Round results above the tolerance to get fixed results on different OS
     a_parameter, b_parameter, c_parameter = results.x
-    print(results.x)
     a_parameter = np.round(a_parameter, 2)
     b_parameter = np.round(b_parameter, 2)
 
