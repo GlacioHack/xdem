@@ -198,9 +198,9 @@ class TestCoregClass:
         nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask)
 
         # Check the output metadata is always the same
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.46255704521968716)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
-        assert nuth_kaab._meta["bias"] == pytest.approx(-1.9815309753424906)
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.45965390361250197)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.1385968399090204)
+        assert nuth_kaab._meta["bias"] == pytest.approx(-1.9813884733079021)
 
     def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")
