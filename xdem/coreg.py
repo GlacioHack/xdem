@@ -229,23 +229,22 @@ def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
 def calculate_ddem_stats(
     ddem: NDArrayf | MArrayf,
     inlier_mask: NDArrayf | None = None,
-    stats_list: tuple[Callable[[NDArrayf], AnyNumber], ...] = (
-        np.size,
-        np.mean,
-        np.median,
-        xdem.spatialstats.nmad,
-        np.std,
-    ),
-    stats_labels: tuple[str, ...] = ("count", "mean", "median", "nmad", "std"),
+    stats_list: tuple[Callable[[NDArrayf], AnyNumber], ...] | None = None,
+    stats_labels: tuple[str, ...] | None = None,
 ) -> dict[str, float]:
     """
     Calculate standard statistics of ddem, e.g., to be used to compare before/after coregistration.
-    Statistics are: count, mean, median, NMAD and std.
+    Default statistics are: count, mean, median, NMAD and std.
 
     :param ddem: The DEM difference to be analyzed
 
     Returns: a dictionary containing the statistics
     """
+    # Default stats - Cannot be put in default args due to circular import with xdem.spatialstats.nmad.
+    if (stats_list is None) or (stats_labels is None):
+        stats_list = (np.size, np.mean, np.median, xdem.spatialstats.nmad, np.std)
+        stats_labels = ("count", "mean", "median", "nmad", "std")
+
     # Check that stats_list and stats_labels are correct
     if len(stats_list) != len(stats_labels):
         raise ValueError("Number of items in `stats_list` and `stats_labels` should be identical.")
