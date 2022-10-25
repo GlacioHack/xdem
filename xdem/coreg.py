@@ -462,6 +462,7 @@ class Coreg:
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int = 1.0,
         verbose: bool = False,
@@ -473,7 +474,8 @@ class Coreg:
         :param reference_dem: 2D array of elevation values acting reference.
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param transform: Optional. Transform of the reference_dem. Mandatory if DEM provided as array.
+        :param crs: Optional. CRS of the reference_dem. Mandatory if DEM provided as array.
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
@@ -552,7 +554,7 @@ class Coreg:
             full_mask[rows, cols] = False
 
         # Run the associated fitting function
-        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose)
+        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -898,6 +900,7 @@ class Coreg:
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -947,6 +950,7 @@ class BiasCorr(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1016,6 +1020,7 @@ class ICP(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1107,6 +1112,7 @@ class Deramp(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1253,6 +1259,7 @@ class CoregPipeline(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1262,7 +1269,7 @@ class CoregPipeline(Coreg):
         for i, coreg in enumerate(self.pipeline):
             if verbose:
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
-            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, weights=weights, verbose=verbose)
+            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, crs=crs, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
             tba_dem_mod = coreg.apply(tba_dem_mod, transform)
@@ -1343,6 +1350,7 @@ class NuthKaab(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1659,6 +1667,7 @@ class ZScaleCorr(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine | None,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1744,6 +1753,7 @@ class BlockwiseCoreg(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine,
+        crs: rio.crs.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
