@@ -227,47 +227,41 @@ def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
 
 
 def deramping(
-    elevation_difference: NDArrayf,
-    x_coordinates: NDArrayf,
-    y_coordinates: NDArrayf,
+    ddem: NDArrayf | MArrayf,
+    x_coords: NDArrayf | MArrayf,
+    y_coords: NDArrayf | MArrayf,
     degree: int,
+    subsample: float | int = 1.0,
     verbose: bool = False,
-    metadata: dict[str, Any] | None = None,
-) -> Callable[[NDArrayf, NDArrayf], NDArrayf]:
+) -> tuple[Callable[[NDArrayf, NDArrayf], NDArrayf], tuple[NDArrayf, int]]:
     """
-    Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
+    Calculate a deramping function to remove spatially correlated elevation differences that can be explained by \
+    a polynomial of degree `degree`.
 
-    :param elevation_difference: The elevation difference array to analyse.
-    :param x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
-    :param y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
+    :param ddem: The elevation difference array to analyse.
+    :param x_coords: x-coordinates of the above array (must have the same shape as elevation_difference)
+    :param y_coords: y-coordinates of the above array (must have the same shape as elevation_difference)
     :param degree: The polynomial degree to estimate the ramp.
+    :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
     :param verbose: Print the least squares optimization progress.
-    :param metadata: Optional. A metadata dictionary that will be updated with the key "deramp".
 
-    :returns: A callable function to estimate the ramp.
+    :returns: A callable function to estimate the ramp and the output of scipy.optimize.leastsq
     """
-    # warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
-    # Extract only the finite values of the elevation difference and corresponding coordinates.
-    valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
-    valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
-    valid_y_coords = y_coordinates[np.isfinite(elevation_difference)]
+    # Extract only valid pixels
+    valid_mask = ~spatial_tools.get_mask(ddem)
+    ddem = ddem[valid_mask]
+    x_coords = x_coords[valid_mask]
+    y_coords = y_coords[valid_mask]
 
-    # Randomly subsample the values if there are more than 500,000 of them.
-    if valid_x_coords.shape[0] > 500_000:
-        random_indices = np.random.randint(0, valid_x_coords.shape[0] - 1, 500_000)
-        valid_diffs = valid_diffs[random_indices]
-        valid_x_coords = valid_x_coords[random_indices]
-        valid_y_coords = valid_y_coords[random_indices]
-
-    # Create a function whose residuals will be attempted to minimise
-    def estimate_values(
-        x_coordinates: NDArrayf, y_coordinates: NDArrayf, coefficients: NDArrayf, degree: int
-    ) -> NDArrayf:
+    # Formulate the 2D polynomial whose coefficients will be solved for.
+    def poly2d(x_coords: NDArrayf, y_coords: NDArrayf, coefficients: NDArrayf) -> NDArrayf:
         """
         Estimate values from a 2D-polynomial.
 
-        :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference).
-        :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference).
+        :param x_coords: x-coordinates of the difference array (must have the same shape as
+            elevation_difference).
+        :param y_coords: y-coordinates of the difference array (must have the same shape as
+            elevation_difference).
         :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
         :param degree: The degree of the polynomial.
 
@@ -280,10 +274,10 @@ def deramping(
         if len(coefficients) != coefficient_size:
             raise ValueError()
 
-        # Do Amaury's black magic to estimate the values.
+        # Build the polynomial of degree `degree`
         estimated_values = np.sum(
             [
-                coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) * y_coordinates**j
+                coefficients[k * (k + 1) // 2 + j] * x_coords ** (k - j) * y_coords**j
                 for k in range(degree + 1)
                 for j in range(k + 1)
             ],
@@ -291,61 +285,39 @@ def deramping(
         )
         return estimated_values  # type: ignore
 
-    # Create the error function
-    def residuals(
-        coefficients: NDArrayf, values: NDArrayf, x_coordinates: NDArrayf, y_coordinates: NDArrayf, degree: int
-    ) -> NDArrayf:
-        """
-        Calculate the difference between the estimated and measured values.
+    def residuals(coefs: NDArrayf, x_coords: NDArrayf, y_coords: NDArrayf, targets: NDArrayf) -> NDArrayf:
+        """Return the optimization residuals"""
+        res = targets - poly2d(x_coords, y_coords, coefs)
+        return res[np.isfinite(res)]
 
-        :param coefficients: Coefficients for the estimation.
-        :param values: The measured values.
-        :param x_coordinates: The x-coordinates of the values.
-        :param y_coordinates: The y-coordinates of the values.
-        :param degree: The degree of the polynomial to estimate.
-
-        :returns: An array of residuals.
-        """
-        error = estimate_values(x_coordinates, y_coordinates, coefficients, degree) - values
-        error = error[np.isfinite(error)]
-
-        return error
-
-    # Run a least-squares minimisation to estimate the correct coefficients.
-    # TODO: Maybe remove the full_output?
-    initial_guess = np.zeros(shape=((degree + 1) * (degree + 2) // 2))
     if verbose:
-        print("Deramping...")
-    coefficients = scipy.optimize.least_squares(
-        fun=residuals,
-        x0=initial_guess,
-        args=(valid_diffs, valid_x_coords, valid_y_coords, degree),
-        verbose=2 if verbose and degree > 1 else 0,
-    ).x
+        print("Estimating deramp function...")
 
-    # Generate the return-function which can correctly estimate the ramp
+    # reduce number of elements for speed
+    rand_indices = gu.spatial_tools.subsample_raster(x_coords, subsample=subsample, return_indices=True)
+    x_coords = x_coords[rand_indices]
+    y_coords = y_coords[rand_indices]
+    ddem = ddem[rand_indices]
 
-    def ramp(x_coordinates: NDArrayf, y_coordinates: NDArrayf) -> NDArrayf:
+    # Optimize polynomial parameters
+    coefs = scipy.optimize.leastsq(
+        func=residuals,
+        x0=np.zeros(shape=((degree + 1) * (degree + 2) // 2)),
+        args=(x_coords, y_coords, ddem),
+    )
+
+    def fit_func(x: NDArrayf, y: NDArrayf) -> NDArrayf:
         """
-        Get the values of the ramp that corresponds to given coordinates.
+        Get the elevation difference biases (ramp) at the given coordinates.
 
         :param x_coordinates: x-coordinates of interest.
         :param y_coordinates: y-coordinates of interest.
 
-        :returns: The estimated ramp offsets.
+        :returns: The estimated elevation difference bias.
         """
-        return estimate_values(x_coordinates, y_coordinates, coefficients, degree)
+        return poly2d(x, y, coefs[0])
 
-    if metadata is not None:
-        metadata["deramp"] = {
-            "coefficients": coefficients,
-            "nmad": xdem.spatialstats.nmad(
-                residuals(coefficients, valid_diffs, valid_x_coords, valid_y_coords, degree)
-            ),
-        }
-
-    # Return the function which can be used later.
-    return ramp
+    return fit_func, coefs
 
 
 def mask_as_array(
@@ -1110,68 +1082,11 @@ class Deramp(Coreg):
         verbose: bool = False,
     ) -> None:
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
-        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
-
         ddem = ref_dem - tba_dem
-        valid_mask = np.isfinite(ddem)
-        ddem = ddem[valid_mask]
-        x_coords = x_coords[valid_mask]
-        y_coords = y_coords[valid_mask]
-
-        # Formulate the 2D polynomial whose coefficients will be solved for.
-        def poly2d(x_coordinates: NDArrayf, y_coordinates: NDArrayf, coefficients: NDArrayf) -> NDArrayf:
-            """
-            Estimate values from a 2D-polynomial.
-
-            :param x_coordinates: x-coordinates of the difference array (must have the same shape as
-                elevation_difference).
-            :param y_coordinates: y-coordinates of the difference array (must have the same shape as
-                elevation_difference).
-            :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
-            :param degree: The degree of the polynomial.
-
-            :raises ValueError: If the length of the coefficients list is not compatible with the degree.
-
-            :returns: The values estimated by the polynomial.
-            """
-            # Check that the coefficient size is correct.
-            coefficient_size = (self.degree + 1) * (self.degree + 2) / 2
-            if len(coefficients) != coefficient_size:
-                raise ValueError()
-
-            # Do Amaury's black magic to formulate and calculate the polynomial equation.
-            estimated_values = np.sum(
-                [
-                    coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) * y_coordinates**j
-                    for k in range(self.degree + 1)
-                    for j in range(k + 1)
-                ],
-                axis=0,
-            )
-            return estimated_values  # type: ignore
-
-        def residuals(coefs: NDArrayf, x_coords: NDArrayf, y_coords: NDArrayf, targets: NDArrayf) -> NDArrayf:
-            res = targets - poly2d(x_coords, y_coords, coefs)
-            return res[np.isfinite(res)]
-
-        if verbose:
-            print("Estimating deramp function...")
-
-        # reduce number of elements for speed
-        rand_indices = gu.spatial_tools.subsample_raster(x_coords, subsample=self.subsample, return_indices=True)
-        x_coords = x_coords[rand_indices]
-        y_coords = y_coords[rand_indices]
-        ddem = ddem[rand_indices]
-
-        # Optimize polynomial parameters
-        coefs = scipy.optimize.leastsq(
-            func=residuals,
-            x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
-            args=(x_coords, y_coords, ddem),
+        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
+        fit_func, coefs = deramping(
+            ddem, x_coords, y_coords, degree=self.degree, subsample=self.subsample, verbose=verbose
         )
-
-        def fit_func(x: NDArrayf, y: NDArrayf) -> NDArrayf:
-            return poly2d(x, y, coefs[0])
 
         self._meta["coefficients"] = coefs[0]
         self._meta["func"] = fit_func
@@ -1571,7 +1486,7 @@ def apply_matrix(
     ).reshape(point_cloud.shape)
 
     # Estimate the vertical difference of old and new point cloud elevations.
-    deramp = deramping(
+    deramp, coeffs = deramping(
         (point_cloud[:, :, 2] - transformed_points[:, :, 2])[~nan_mask].flatten(),
         point_cloud[:, :, 0][~nan_mask].flatten(),
         point_cloud[:, :, 1][~nan_mask].flatten(),

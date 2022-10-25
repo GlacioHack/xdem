@@ -401,7 +401,7 @@ class TestCoregClass:
         deramp_full.fit(**self.fit_params)
 
         # Check that the estimated biases are similar
-        assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-2)
+        assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-1)
 
     def test_z_scale_corr(self) -> None:
         warnings.simplefilter("error")
