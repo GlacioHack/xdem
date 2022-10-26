@@ -789,14 +789,6 @@ def test_apply_matrix() -> None:
     matrix[2, 3] = -bias
 
     transformed_dem = coreg.apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
-
-    # Dilate the mask: this should remove the same edge pixels as done by skimage
-    transformed_dem_dilated = coreg.apply_matrix(
-        shifted_dem, ref.transform, matrix, resampling="bilinear", dilate_mask=True
-    )
-    # Validate the same pixels were removed.
-    assert np.count_nonzero(np.isfinite(transformed_dem)) == np.count_nonzero(np.isfinite(transformed_dem_dilated))
-
     diff = np.asarray(ref_arr - transformed_dem)
 
     # Check that the median is very close to zero

@@ -615,12 +615,6 @@ class Coreg:
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
             if self.is_affine:  # This only works on it's affine, however.
-                # If dilate_mask is not specified, set it to True by default
-                if "dilate_mask" in kwargs.keys():
-                    dilate_mask = kwargs["dilate_mask"]
-                    kwargs.pop("dilate_mask")
-                else:
-                    dilate_mask = True
 
                 # In this case, resampling is necessary
                 if not resample:
@@ -632,7 +626,6 @@ class Coreg:
                     transform=transform,
                     matrix=self.to_matrix(),
                     centroid=self._meta.get("centroid"),
-                    dilate_mask=dilate_mask,
                     **kwargs,
                 )
                 out_transform = transform
@@ -1499,7 +1492,6 @@ def apply_matrix(
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resampling: int | str = "bilinear",
-    dilate_mask: bool = False,
     fill_max_search: int = 0,
 ) -> NDArrayf:
     """
@@ -1521,7 +1513,6 @@ def apply_matrix(
     :param invert: Invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
-    :param dilate_mask: DEPRECATED - This option does not do anything anymore. Will be removed in the future.
     :param fill_max_search: Set to > 0 value to fill the DEM before applying the transformation, to avoid spreading\
     gaps. The DEM will be filled with rasterio.fill.fillnodata with max_search_distance set to fill_max_search.\
     This is experimental, use at your own risk !
@@ -1627,20 +1618,6 @@ def apply_matrix(
         transformed_dem = skimage.transform.warp(
             filled_dem, inds, order=resampling_order, mode="constant", cval=np.nan, preserve_range=True
         )
-    # TODO: remove these lines when dilate_mask is deprecated
-    #    # Warp the NaN mask, setting true to all values outside the new frame.
-    #     tr_nan_mask = (
-    #         skimage.transform.warp(
-    #             nan_mask.astype("uint8"), inds, order=resampling_order, mode="constant", cval=1, preserve_range=True
-    #         )
-    #         > 0
-    #     )
-
-    # if dilate_mask:
-    #     tr_nan_mask = scipy.ndimage.binary_dilation(tr_nan_mask, iterations=resampling_order)
-
-    # # Apply the transformed nan_mask
-    # transformed_dem[tr_nan_mask] = np.nan
 
     assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
 
@@ -2290,19 +2267,19 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     # Better strategy: calculate shift, update transform, resample
     if isinstance(coreg_method, xdem.coreg.Coreg):
         coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_coreg = coreg_method.apply(src_dem, dilate_mask=False)
+        dem_coreg = coreg_method.apply(src_dem)
     elif coreg_method is None:
         # Horizontal coregistration
         hcoreg_method = hmodes_dict[hmode]
         hcoreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_hcoreg = hcoreg_method.apply(src_dem, dilate_mask=False)
+        dem_hcoreg = hcoreg_method.apply(src_dem)
 
         # Vertical coregistration
         vcoreg_method = vmodes_dict[vmode]
         if vmode == "deramp":
             vcoreg_method.degree = deramp_degree
         vcoreg_method.fit(ref_dem, dem_hcoreg, inlier_mask, verbose=verbose)
-        dem_coreg = vcoreg_method.apply(dem_hcoreg, dilate_mask=False)
+        dem_coreg = vcoreg_method.apply(dem_hcoreg)
 
     ddem_coreg = dem_coreg - ref_dem
 
