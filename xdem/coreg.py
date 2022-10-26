@@ -1368,6 +1368,13 @@ class NuthKaab(Coreg):
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
 
+        # Check that DEM CRS is projected, otherwise slope is not correctly calculated
+        if not crs.is_projected:
+            raise NotImplementedError(
+                f"DEMs CRS is {crs}. NuthKaab coregistration only works with \
+projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, and re-run."
+            )
+
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
             print("   Calculate slope and aspect")
