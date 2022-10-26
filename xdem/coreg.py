@@ -27,7 +27,7 @@ import scipy.optimize
 import skimage.transform
 from geoutils import spatial_tools
 from geoutils._typing import AnyNumber
-from geoutils.georaster import RasterType
+from geoutils.georaster import RasterType, raster
 from rasterio import Affine
 from tqdm import tqdm, trange
 
@@ -61,35 +61,17 @@ def filtered_slope(ds_slope: rio.DatasetReader, slope_lim: tuple[float, float] =
     return flt_slope
 
 
-def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> NDArrayf:
+def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> NDArrayf:
     """
-    Apply horizontal shift to rio dataset using Transform affine matrix
-    :param ds: DEM
+    Apply horizontal shift to a rasterio Affine transform
+    :param transform: The Affine transform of the raster
     :param dx: dx shift value
     :param dy: dy shift value
 
-    Returns:
-    Rio Dataset with updated transform
+    Returns: Updated transform
     """
-    print("X shift: ", dx)
-    print("Y shift: ", dy)
-
-    # Update geotransform
-    gt_orig = ds.transform
-    gt_align = Affine(gt_orig.a, gt_orig.b, gt_orig.c + dx, gt_orig.d, gt_orig.e, gt_orig.f + dy)
-
-    print("Original transform:", gt_orig)
-    print("Updated transform:", gt_align)
-
-    # Update ds Geotransform
-    ds_align = ds
-    meta_update = ds.meta.copy()
-    meta_update({"driver": "GTiff", "height": ds.shape[1], "width": ds.shape[2], "transform": gt_align, "crs": ds.crs})
-    # to split this part in two?
-    with rasterio.open(ds_align, "w", **meta_update) as dest:
-        dest.write(ds_align)
-
-    return ds_align
+    transform_shifted = Affine(transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy)
+    return transform_shifted
 
 
 def apply_z_shift(ds: rio.DatasetReader, dz: float) -> float:
@@ -521,6 +503,10 @@ class Coreg:
                     transform = dem.transform
                 elif transform is not None:
                     warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+                if crs is None:
+                    crs = dem.crs
+                elif crs is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
 
                 """
                 if name == "reference_dem":
@@ -531,6 +517,9 @@ class Coreg:
 
         if transform is None:
             raise ValueError("'transform' must be given if both DEMs are array-like.")
+
+        if crs is None:
+            raise ValueError("'crs' must be given if both DEMs are array-like.")
 
         ref_dem, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
         tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
@@ -569,25 +558,54 @@ class Coreg:
         return self
 
     @overload
-    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf:
+    def apply(
+        self,
+        dem: MArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        same_grid: bool = True,
+        **kwargs: Any,
+    ) -> tuple[MArrayf, rio.transform.Affine]:
         ...
 
     @overload
-    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> NDArrayf:
+    def apply(
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        same_grid: bool = True,
+        **kwargs: Any,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         ...
 
     @overload
-    def apply(self, dem: RasterType, transform: rio.transform.Affine | None = None, **kwargs: Any) -> RasterType:
+    def apply(
+        self,
+        dem: RasterType,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        same_grid: bool = True,
+        **kwargs: Any,
+    ) -> RasterType:
         ...
 
     def apply(
-        self, dem: RasterType | NDArrayf | MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any
-    ) -> RasterType | NDArrayf | MArrayf:
+        self,
+        dem: RasterType | NDArrayf | MArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
+    ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
         """
         Apply the estimated transform to a DEM.
 
         :param dem: A DEM array or Raster to apply the transform on.
-        :param transform: The transform object of the DEM. Required if 'dem' is an array and not a Raster.
+        :param transform: Optional. The transform object of the DEM. Mandatory if 'dem' provided as array.
+        :param crs: Optional. CRS of the reference_dem. Mandatory if 'dem' provided as array.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
+        only the transform might be updatedn and no resampling is done.
         :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
 
         :returns: The transformed DEM.
@@ -600,9 +618,16 @@ class Coreg:
                 transform = dem.transform
             else:
                 warnings.warn(f"DEM of type {type(dem)} overrides the given 'transform'")
+            if crs is None:
+                crs = dem.crs
+            else:
+                warnings.warn(f"DEM of type {type(dem)} overrides the given 'crs'")
+
         else:
             if transform is None:
                 raise ValueError("'transform' must be given if DEM is array-like.")
+            if crs is None:
+                raise ValueError("'crs' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         dem_array, dem_mask = spatial_tools.get_array_and_mask(dem)
@@ -613,7 +638,10 @@ class Coreg:
         # See if a _apply_func exists
         try:
             # Run the associated apply function
-            applied_dem = self._apply_func(dem_array, transform, **kwargs)  # pylint: disable=assignment-from-no-return
+            applied_dem, out_transform = self._apply_func(
+                dem_array, transform, crs, **kwargs
+            )  # pylint: disable=assignment-from-no-return
+
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
             if self.is_affine:  # This only works on it's affine, however.
@@ -624,6 +652,10 @@ class Coreg:
                 else:
                     dilate_mask = True
 
+                # In this case, resampling is necessary
+                if not resample:
+                    raise NotImplementedError()
+
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
                 applied_dem = apply_matrix(
                     dem_array,
@@ -633,11 +665,31 @@ class Coreg:
                     dilate_mask=dilate_mask,
                     **kwargs,
                 )
+                out_transform = transform
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Ensure the dtype is OK
         applied_dem = applied_dem.astype("float32")
+
+        # Resample the array on the original grid
+        if resample:
+            if isinstance(dem, gu.Raster):
+                dst_nodata = dem.nodata
+            else:
+                dst_nodata = raster._default_nodata(applied_dem.dtype)
+
+            applied_dem, out_transform = rio.warp.reproject(
+                applied_dem,
+                destination=applied_dem,
+                src_transform=out_transform,
+                dst_transform=transform,
+                src_crs=crs,
+                dst_crs=crs,
+                resampling=rio.warp.Resampling.bilinear,  # Could make this an argument
+                dst_nodata=dst_nodata,
+            )
+            applied_dem[applied_dem == dst_nodata] = np.nan
 
         # Calculate final mask
         final_mask = ~np.isfinite(applied_dem)
@@ -648,12 +700,12 @@ class Coreg:
         else:
             applied_dem[final_mask] = np.nan
 
-        # If the input was a Raster, return a Raster as well.
+        # If the input was a Raster, returns a Raster, else returns array and transform
         if isinstance(dem, gu.Raster):
-            return dem.copy(new_array=applied_dem)
-            # return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
-
-        return applied_dem
+            out_dem = dem.from_array(applied_dem, out_transform, crs, nodata=dem.nodata)
+            return out_dem
+        else:
+            return applied_dem, out_transform
 
     def apply_pts(self, coords: NDArrayf) -> NDArrayf:
         """
@@ -727,6 +779,7 @@ class Coreg:
         dem_to_be_aligned: NDArrayf,
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
@@ -735,11 +788,12 @@ class Coreg:
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
 
         :returns: A 1D array of finite residuals.
         """
         # Use the transform to correct the DEM to be aligned.
-        aligned_dem = self.apply(dem_to_be_aligned, transform=transform)
+        aligned_dem, _ = self.apply(dem_to_be_aligned, transform=transform, crs=crs)
 
         # Format the reference DEM
         ref_arr, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
@@ -768,6 +822,7 @@ class Coreg:
         error_type: list[str],
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
         ...
 
@@ -779,6 +834,7 @@ class Coreg:
         error_type: str = "nmad",
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int:
         ...
 
@@ -789,6 +845,7 @@ class Coreg:
         error_type: str | list[str] = "nmad",
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
         """
         Calculate the error of a coregistration approach.
@@ -807,6 +864,7 @@ class Coreg:
         :param error_type: The type of error measure to calculate. May be a list of error types.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
 
         :returns: The error measure of choice for the residuals.
         """
@@ -818,6 +876,7 @@ class Coreg:
             dem_to_be_aligned=dem_to_be_aligned,
             inlier_mask=inlier_mask,
             transform=transform,
+            crs=crs,
         )
 
         def rms(res: NDArrayf) -> np.floating[Any]:
@@ -925,7 +984,9 @@ class Coreg:
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -1133,13 +1194,15 @@ class Deramp(Coreg):
         self._meta["coefficients"] = coefs[0]
         self._meta["func"] = fit_func
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
 
         ramp = self._meta["func"](x_coords, y_coords)
 
-        return dem + ramp
+        return dem + ramp, transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the deramp function to a set of points."""
@@ -1212,15 +1275,18 @@ class CoregPipeline(Coreg):
             coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, crs=crs, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
-            tba_dem_mod = coreg.apply(tba_dem_mod, transform)
+            tba_dem_mod, out_transform = coreg.apply(tba_dem_mod, transform, crs)
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
+        out_transform = copy.copy(transform)
         for coreg in self.pipeline:
-            dem_mod = coreg.apply(dem_mod, transform, **kwargs)
+            dem_mod, out_transform = coreg.apply(dem_mod, out_transform, crs, **kwargs)
 
-        return dem_mod
+        return dem_mod, out_transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the coregistration steps sequentially to a set of points."""
@@ -1413,6 +1479,29 @@ class NuthKaab(Coreg):
         matrix[2, 3] += self._meta["bias"]
 
         return matrix
+
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        """Apply the Nuth & Kaab shift to a DEM."""
+        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
+        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+
+        updated_transform = apply_xy_shift(transform, -offset_east, -offset_north)
+        bias = self._meta["bias"]
+        return dem + bias, updated_transform
+
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+        """Apply the Nuth & Kaab shift to a set of points."""
+        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
+        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+
+        new_coords = coords.copy()
+        new_coords[:, 0] += offset_east
+        new_coords[:, 1] += offset_north
+        new_coords[:, 2] += self._meta["bias"]
+
+        return new_coords
 
 
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
@@ -1622,11 +1711,13 @@ class ZScaleCorr(Coreg):
         coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
         self._meta["coefficients"] = coefficients
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
-        return dem + model(dem)
+        return dem + model(dem), transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the scaling model to a set of points."""
@@ -1739,14 +1830,15 @@ class BlockwiseCoreg(Coreg):
                     dem_to_be_aligned=tba_subset,
                     transform=transform_subset,
                     inlier_mask=mask_subset,
+                    crs=crs,
                 )
-
                 nmad, median = coreg.error(
                     reference_dem=ref_subset,
                     dem_to_be_aligned=tba_subset,
                     error_type=["nmad", "median"],
                     inlier_mask=mask_subset,
                     transform=transform_subset,
+                    crs=crs,
                 )
             except Exception as exception:
                 return exception
@@ -1930,7 +2022,9 @@ class BlockwiseCoreg(Coreg):
             shape = (shape[1], shape[2])
         return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         points = self.to_points()
 
@@ -1958,7 +2052,7 @@ class BlockwiseCoreg(Coreg):
             resampling="linear",
         )
 
-        return warped_dem
+        return warped_dem, transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the scaling model to a set of points."""
