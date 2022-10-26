@@ -43,24 +43,6 @@ except ImportError:
     _HAS_P3D = False
 
 
-def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]) -> MArrayf:
-    """
-    Function to filter values using a range.
-    """
-    print("Excluding values outside of range: {:f} to {:f}".format(*rangelim))
-    out = np.ma.masked_outside(ds, *rangelim)
-    out.set_fill_value(ds.fill_value)
-    return out
-
-
-def filtered_slope(ds_slope: rio.DatasetReader, slope_lim: tuple[float, float] = (0.1, 40)) -> MArrayf:
-    print("Slope filter: %0.2f - %0.2f" % slope_lim)
-    print("Initial count: %i" % ds_slope.count())
-    flt_slope = filter_by_range(ds_slope, slope_lim)
-    print(flt_slope.count())
-    return flt_slope
-
-
 def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> NDArrayf:
     """
     Apply horizontal shift to a rasterio Affine transform
@@ -72,18 +54,6 @@ def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> NDA
     """
     transform_shifted = Affine(transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy)
     return transform_shifted
-
-
-def apply_z_shift(ds: rio.DatasetReader, dz: float) -> float:
-    """
-    Apply vertical shift to rio dataset using Transform affine matrix
-    :param ds: DEM
-    :param dz: dz shift value
-    """
-    src_dem = rio.open(ds)
-    a = src_dem.read(1)
-    ds_shift = a + dz
-    return ds_shift
 
 
 def get_horizontal_shift(
