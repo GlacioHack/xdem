@@ -563,7 +563,7 @@ class Coreg:
         dem: MArrayf,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        same_grid: bool = True,
+        resample: bool = True,
         **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]:
         ...
@@ -574,7 +574,7 @@ class Coreg:
         dem: NDArrayf,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        same_grid: bool = True,
+        resample: bool = True,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         ...
@@ -585,7 +585,7 @@ class Coreg:
         dem: RasterType,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        same_grid: bool = True,
+        resample: bool = True,
         **kwargs: Any,
     ) -> RasterType:
         ...
@@ -965,8 +965,8 @@ class Coreg:
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1017,8 +1017,8 @@ class BiasCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1087,8 +1087,8 @@ class ICP(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1179,8 +1179,8 @@ class Deramp(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1261,8 +1261,8 @@ class CoregPipeline(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1355,8 +1355,8 @@ class NuthKaab(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1696,8 +1696,8 @@ class ZScaleCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
-        crs: rio.crs.CRS | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1785,7 +1785,7 @@ class BlockwiseCoreg(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine,
-        crs: rio.crs.CRS | None,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
