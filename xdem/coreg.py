@@ -43,17 +43,27 @@ except ImportError:
     _HAS_P3D = False
 
 
-def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> NDArrayf:
+def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
-    Apply horizontal shift to a rasterio Affine transform
-    :param transform: The Affine transform of the raster
-    :param dx: dx shift value
-    :param dy: dy shift value
+    Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
 
-    Returns: Updated transform
+    :param dem: A numpy array of elevation values.
+
+    :returns:  The tangent of slope and aspect (in radians) of the DEM.
     """
-    transform_shifted = Affine(transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy)
-    return transform_shifted
+    # Old implementation
+    # # Calculate the gradient of the slope
+    # gradient_y, gradient_x = np.gradient(dem)
+    # slope_px = np.sqrt(gradient_x**2 + gradient_y**2)
+    # aspect = np.arctan2(-gradient_x, gradient_y)
+    # aspect += np.pi
+
+    # xdem implementation
+    slope, aspect = xdem.terrain.get_terrain_attribute(dem, attribute=["slope", "aspect"], resolution=1, degrees=False)
+    slope_tan = np.tan(slope)
+    aspect = (aspect + np.pi) % (2 * np.pi)
+
+    return slope_tan, aspect
 
 
 def get_horizontal_shift(
@@ -155,27 +165,17 @@ def get_horizontal_shift(
     return east_offset, north_offset, c_parameter
 
 
-def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
+def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> NDArrayf:
     """
-    Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
+    Apply horizontal shift to a rasterio Affine transform
+    :param transform: The Affine transform of the raster
+    :param dx: dx shift value
+    :param dy: dy shift value
 
-    :param dem: A numpy array of elevation values.
-
-    :returns:  The tangent of slope and aspect (in radians) of the DEM.
+    Returns: Updated transform
     """
-    # Old implementation
-    # # Calculate the gradient of the slope
-    # gradient_y, gradient_x = np.gradient(dem)
-    # slope_px = np.sqrt(gradient_x**2 + gradient_y**2)
-    # aspect = np.arctan2(-gradient_x, gradient_y)
-    # aspect += np.pi
-
-    # xdem implementation
-    slope, aspect = xdem.terrain.get_terrain_attribute(dem, attribute=["slope", "aspect"], resolution=1, degrees=False)
-    slope_tan = np.tan(slope)
-    aspect = (aspect + np.pi) % (2 * np.pi)
-
-    return slope_tan, aspect
+    transform_shifted = Affine(transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy)
+    return transform_shifted
 
 
 def calculate_ddem_stats(
