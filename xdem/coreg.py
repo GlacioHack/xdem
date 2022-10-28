@@ -605,6 +605,9 @@ class Coreg:
         if np.all(dem_mask):
             raise ValueError("'dem' had only NaNs")
 
+        # arg `resample` must be passed to _apply_func, otherwise will be overwritten in CoregPipeline
+        kwargs["resample"] = resample
+
         # See if a _apply_func exists
         try:
             # Run the associated apply function
