@@ -43,7 +43,7 @@ except ImportError:
     _HAS_P3D = False
 
 
-def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
+def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
     Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
 
@@ -53,15 +53,15 @@ def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
     # Old implementation
     # # Calculate the gradient of the slope
-    # gradient_y, gradient_x = np.gradient(dem)
-    # slope_px = np.sqrt(gradient_x**2 + gradient_y**2)
-    # aspect = np.arctan2(-gradient_x, gradient_y)
-    # aspect += np.pi
+    gradient_y, gradient_x = np.gradient(dem)
+    slope_tan = np.sqrt(gradient_x**2 + gradient_y**2)
+    aspect = np.arctan2(-gradient_x, gradient_y)
+    aspect += np.pi
 
     # xdem implementation
-    slope, aspect = xdem.terrain.get_terrain_attribute(dem, attribute=["slope", "aspect"], resolution=1, degrees=False)
-    slope_tan = np.tan(slope)
-    aspect = (aspect + np.pi) % (2 * np.pi)
+    # slope, aspect = xdem.terrain.get_terrain_attribute(dem, attribute=["slope", "aspect"], resolution=1, degrees=False)
+    # slope_tan = np.tan(slope)
+    # aspect = (aspect + np.pi) % (2 * np.pi)
 
     return slope_tan, aspect
 
@@ -1346,7 +1346,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         if verbose:
             print("   Calculate slope and aspect")
 
-        slope_tan, aspect = calculate_slope_and_aspect(ref_dem)
+        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
 
         # Make index grids for the east and north dimensions
         east_grid = np.arange(ref_dem.shape[1])
