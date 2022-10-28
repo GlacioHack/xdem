@@ -605,11 +605,11 @@ class Coreg:
         if np.all(dem_mask):
             raise ValueError("'dem' had only NaNs")
 
-        # arg `resample` must be passed to _apply_func, otherwise will be overwritten in CoregPipeline
-        kwargs["resample"] = resample
-
         # See if a _apply_func exists
         try:
+            # arg `resample` must be passed to _apply_func, otherwise will be overwritten in CoregPipeline
+            kwargs["resample"] = resample
+
             # Run the associated apply function
             applied_dem, out_transform = self._apply_func(
                 dem_array, transform, crs, **kwargs
@@ -622,6 +622,7 @@ class Coreg:
                 # In this case, resampling is necessary
                 if not resample:
                     raise NotImplementedError()
+                kwargs.pop("resample")  # Need to removed before passing to apply_matrix
 
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
                 applied_dem = apply_matrix(
