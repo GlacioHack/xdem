@@ -140,15 +140,26 @@ def _wrapper_scipy_leastsquares(
     filtered_kwargs = {k: kwargs[k] for k in fun_args if k in kwargs}
 
     # Run function with associated keyword arguments
-    myresults = scipy.optimize.least_squares(residual_func, p0, args=(x, y), **filtered_kwargs)
+    myresults = scipy.optimize.least_squares(
+        residual_func,
+        p0,
+        args=(x, y),
+        xtol=1e-7,
+        gtol=None,
+        ftol=None,
+        **filtered_kwargs,
+    )
+
+    # Round results above the tolerance to get fixed results on different OS
+    coefs = np.array([np.round(coef, 5) for coef in myresults.x])
+
     if verbose:
         print("Initial Parameters: ", p0)
         print("Status: ", myresults.success, " - ", myresults.status)
         print(myresults.message)
         print("Lowest cost:", myresults.cost)
-        print("Parameters:", myresults.x)
+        print("Parameters:", coefs)
     cost = myresults.cost
-    coefs = myresults.x
 
     return cost, coefs
 
@@ -440,6 +451,7 @@ def robust_sumsin_fit(
             **kwargs,
         )
         init_results = init_results.lowest_optimization_result
+        init_x = np.array([np.round(ini, 5) for ini in init_results.x])
 
         # Subsample the final raster
         subsamp = subsample_raster(x, subsample=subsample, return_indices=True, random_state=random_state)
@@ -450,7 +462,7 @@ def robust_sumsin_fit(
         minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-6})
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
-            init_results.x,
+            init_x,
             disp=verbose,
             T=5 * hop_length,
             minimizer_kwargs=minimizer_kwargs,
@@ -458,9 +470,10 @@ def robust_sumsin_fit(
             **kwargs,
         )
         myresults = myresults.lowest_optimization_result
+        myresults_x = np.array([np.round(myres, 5) for myres in myresults.x])
         # Write results for this number of frequency
-        costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults.x, x, y)
-        amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults.x
+        costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, x, y)
+        amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults_x
 
     final_index = _choice_best_order(cost=costs)
 

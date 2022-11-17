@@ -1,5 +1,6 @@
 """Functions to test the documentation."""
 import os
+import platform
 import shutil
 import warnings
 
@@ -54,17 +55,20 @@ class TestDocs:
 
     def test_build(self) -> None:
         """Try building the docs and see if it works."""
-        # Remove the build directory if it exists.
-        if os.path.isdir(os.path.join(self.docs_dir, "build/")):
-            shutil.rmtree(os.path.join(self.docs_dir, "build/"))
 
-        return_code = sphinx.cmd.build.main(
-            [
-                "-j",
-                "1",
-                os.path.join(self.docs_dir, "source/"),
-                os.path.join(self.docs_dir, "build/html"),
-            ]
-        )
+        # Test only on Linux
+        if platform.system() == "Linux":
+            # Remove the build directory if it exists.
+            if os.path.isdir(os.path.join(self.docs_dir, "build")):
+                shutil.rmtree(os.path.join(self.docs_dir, "build"))
 
-        assert return_code == 0
+            return_code = sphinx.cmd.build.main(
+                [
+                    "-j",
+                    "1",
+                    os.path.join(self.docs_dir, "source"),
+                    os.path.join(self.docs_dir, "build", "html"),
+                ]
+            )
+
+            assert return_code == 0

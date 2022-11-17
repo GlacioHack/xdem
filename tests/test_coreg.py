@@ -186,6 +186,21 @@ class TestCoregClass:
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
+    def test_coreg_example(self) -> None:
+        """
+        Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
+        test_examples.py, but helps identify from where differences arise.
+        """
+
+        # Run co-registration
+        nuth_kaab = xdem.coreg.NuthKaab()
+        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask)
+
+        # Check the output metadata is always the same
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.46255704521968716)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
+        assert nuth_kaab._meta["bias"] == pytest.approx(-1.9815309753424906)
+
     def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")
 
@@ -208,12 +223,6 @@ class TestCoregClass:
         assert nuth_kaab._meta["offset_east_px"] == pytest.approx(pixel_shift, abs=0.03)
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(0, abs=0.03)
         assert nuth_kaab._meta["bias"] == pytest.approx(-bias, 0.03)
-
-        # Check that the random states forces always the same results
-        # Note: in practice, the values are not exactly equal for different OS/conda config
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(2.00019, abs=1e-7)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.00012, abs=1e-7)
-        assert nuth_kaab._meta["bias"] == -5.0
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
