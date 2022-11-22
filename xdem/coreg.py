@@ -2179,8 +2179,9 @@ def create_inlier_mask(
     shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] = (),
     inout: list[int | None] | tuple[int | None] = (),
     filtering: bool = True,
-    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
+    dh_max: AnyNumber = None,
     nmad_factor: AnyNumber = 5,
+    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
 ) -> NDArrayf:
     """
     Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
@@ -2188,7 +2189,8 @@ def create_inlier_mask(
 unstable terrain like glaciers.
     - pixels outside polygons of file in shp_list (with corresponding inout element set to -1) - useful to \
 delineate a known stable area.
-    - pixels where absolute dh (=src-ref) differ from the mean dh by more than a set threshold (with \
+    - pixels with absolute dh (=src-ref) are larger than a given threshold
+    - pixels where absolute dh differ from the mean dh by more than a set threshold (with \
 filtering=True and nmad_factor)
     - pixels with low/high slope (with filtering=True and set slope_lim values)
 
@@ -2198,9 +2200,10 @@ filtering=True and nmad_factor)
     :param inout: a list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
 to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
     :param filtering: if set to True, pixels will be removed based on dh values or slope (see next arguments).
+    :param dh_max: remove pixels for which abs(dh) is more than this value. Default is None.
+    :param nmad_factor: pixels where abs(dh) differ by nmad_factro * NMAD from the median
     :param slope_lim: a list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
 be excluded.
-    :param nmad_factor: pixels where abs(src - ref) differ by nmad_factro * NMAD from the median
 
     :returns: an boolean array of same shape as src_dem set to True for inlier pixels
     """
@@ -2260,9 +2263,14 @@ be excluded.
         # Calculate dDEM
         ddem = src_dem - ref_dem
 
-        # Remove gross blunders where dh differ by nmad_factor * NMAD from the median
+        # Remove gross blunders with absolute threshold
+        if dh_max is not None:
+            inlier_mask[np.abs(ddem.data) > dh_max] = False
+
+        # Remove blunders where dh differ by nmad_factor * NMAD from the median
         nmad = xdem.spatialstats.nmad(ddem.data[inlier_mask])
-        inlier_mask = inlier_mask & (np.abs(ddem.data - np.median(ddem)) < nmad_factor * nmad).filled(False)
+        med = np.ma.median(ddem.data[inlier_mask])
+        inlier_mask = inlier_mask & (np.abs(ddem.data - med) < nmad_factor * nmad).filled(False)
 
         # Exclude steep slopes for coreg
         slope = xdem.terrain.slope(ref_dem)
@@ -2284,8 +2292,9 @@ def dem_coregistration(
     deramp_degree: int = 1,
     grid: str = "ref",
     filtering: bool = True,
-    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
+    dh_max: AnyNumber = None,
     nmad_factor: AnyNumber = 5,
+    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
@@ -2313,9 +2322,10 @@ deramping. Can be any of {list(hmodes_dict.keys())}.
     :param deramp_degree: The degree of the polynomial for deramping.
     :param grid: the grid to be used during coregistration, set either to "ref" or "src".
     :param filtering: if set to True, filtering will be applied prior to coregistration
+    :param dh_max: remove pixels for which abs(dh) is more than this value. Default is None.
+    :param nmad_factor: pixels where abs(src - ref) differ by nmad_factro * NMAD from the median
     :param slope_lim: a list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
     be excluded.
-    :param nmad_factor: pixels where abs(src - ref) differ by nmad_factro * NMAD from the median
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration
     :param out_fig: Path to the output figure. If None will display to screen.
     :param verbose: set to True to print details on screen during coregistration.
@@ -2357,8 +2367,9 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
         shp_list=shp_list,
         inout=inout,
         filtering=filtering,
-        slope_lim=slope_lim,
+        dh_max=dh_max,
         nmad_factor=nmad_factor,
+        slope_lim=slope_lim,
     )
 
     # Calculate dDEM
