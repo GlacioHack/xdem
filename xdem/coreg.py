@@ -2381,7 +2381,7 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     med_orig, nmad_orig = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    # Better strategy: calculate shift, update transform, resample
+    # TODO - use option resample=False of coreg.apply
     if isinstance(coreg_method, xdem.coreg.Coreg):
         coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
         dem_coreg = coreg_method.apply(src_dem)
