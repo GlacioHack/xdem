@@ -59,7 +59,9 @@ def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArr
     aspect += np.pi
 
     # xdem implementation
-    # slope, aspect = xdem.terrain.get_terrain_attribute(dem, attribute=["slope", "aspect"], resolution=1, degrees=False)
+    # slope, aspect = xdem.terrain.get_terrain_attribute(
+    #     dem, attribute=["slope", "aspect"], resolution=1, degrees=False
+    # )
     # slope_tan = np.tan(slope)
     # aspect = (aspect + np.pi) % (2 * np.pi)
 
@@ -2217,7 +2219,7 @@ be excluded.
     if len(shp_list) > 0:
         if len(inout) == 0:
             # Fill inout with 1
-            inout = np.ones(len(shp_list))
+            inout = [1] * len(shp_list)
         elif len(inout) == len(shp_list):
             # Check that inout contains only 1 and -1
             not_valid = [el for el in np.unique(inout) if ((el != 1) & (el != -1))]
@@ -2347,7 +2349,15 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     src_dem = xdem.DEM(src_dem.astype(np.float32))
 
     # Create raster mask
-    inlier_mask = create_inlier_mask(src_dem, ref_dem, shp_list=shp_list, intout=inout, filtering=filtering, slope_lim=slope_lim, nmad_factor=nmad_factor)
+    inlier_mask = create_inlier_mask(
+        src_dem,
+        ref_dem,
+        shp_list=shp_list,
+        inout=inout,
+        filtering=filtering,
+        slope_lim=slope_lim,
+        nmad_factor=nmad_factor,
+    )
 
     # Calculate dDEM
     ddem = src_dem - ref_dem
