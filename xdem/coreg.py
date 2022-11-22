@@ -2260,10 +2260,9 @@ be excluded.
         # Calculate dDEM
         ddem = src_dem - ref_dem
 
-        # Remove gross blunders where dh differ by 5 NMAD from the median
-        inlier_mask = inlier_mask & (
-            np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)
-        ).filled(False)
+        # Remove gross blunders where dh differ by nmad_factor * NMAD from the median
+        nmad = xdem.spatialstats.nmad(ddem.data[inlier_mask])
+        inlier_mask = inlier_mask & (np.abs(ddem.data - np.median(ddem)) < nmad_factor * nmad).filled(False)
 
         # Exclude steep slopes for coreg
         slope = xdem.terrain.slope(ref_dem)
@@ -2349,6 +2348,9 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     src_dem = xdem.DEM(src_dem.astype(np.float32))
 
     # Create raster mask
+    if verbose:
+        print("Creating mask of inlier pixels")
+
     inlier_mask = create_inlier_mask(
         src_dem,
         ref_dem,
