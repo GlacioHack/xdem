@@ -2171,6 +2171,106 @@ vmodes_dict = {
 }
 
 
+def create_inlier_mask(
+    src_dem: RasterType,
+    ref_dem: RasterType,
+    shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] = (),
+    inout: list[int | None] | tuple[int | None] = (),
+    filtering: bool = True,
+    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
+    nmad_factor: AnyNumber = 5,
+) -> NDArrayf:
+    """
+    Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
+    - pixels within polygons of shpfile (with corresponding inout element set to 1) - useful for masking unstable \
+    terrain like glaciers.
+    - pixels outside polygons of shpfile (with corresponding inout element set to -1) - useful to delineate a \
+    known stable area.
+    - pixels where absolute dh (=src-ref) differ from the mean dh by more than a set threshold (with \
+    filtering=True and nmad_factor)
+    - pixels with low/high slope (with filtering=True and set slope_lim values)
+
+    :param src_dem: the source DEM to be coregistered, as a Raster or DEM instance.
+    :param ref_dem: the reference DEM, must have same grid as src_dem. To be used for filtering only.
+    :param shp_list: a list of one or several paths to shapefiles to use for masking. Default is none.
+    :param inout: a list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
+    to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
+    :param filtering: if set to True, pixels will be removed based on dh values or slope (see next arguments).
+    :param slope_lim: a list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
+    be excluded.
+    :param nmad_factor: pixels where abs(src - ref) differ by nmad_factro * NMAD from the median
+
+    :returns: an boolean array of same shape as src_dem set to True for inlier pixels
+    """
+    # - Sanity check on inputs - #
+    # Check correct input type of shp_list
+    if not isinstance(shp_list, (list, tuple)):
+        raise ValueError("`shp_list` must be a list/tuple")
+    for el in shp_list:
+        if not isinstance(el, (str, gu.Vector)):
+            raise ValueError("`shp_list` must be a list/tuple of strings or geoutils.Vector instance")
+
+    # Check correct input type of inout
+    if not isinstance(inout, (list, tuple)):
+        raise ValueError("`inout` must be a list/tuple")
+
+    if len(shp_list) > 0:
+        if len(inout) == 0:
+            # Fill inout with 1
+            inout = np.ones(len(shp_list))
+        elif len(inout) == len(shp_list):
+            # Check that inout contains only 1 and -1
+            not_valid = [el for el in np.unique(inout) if ((el != 1) & (el != -1))]
+            if len(not_valid) > 0:
+                raise ValueError("`inout` must contain only 1 and -1")
+        else:
+            raise ValueError("`inout` must be of same length as shp")
+
+    # Check slope_lim type
+    if not isinstance(slope_lim, (list, tuple)):
+        raise ValueError("`slope_lim` must be a list/tuple")
+    if len(slope_lim) != 2:
+        raise ValueError("`slope_lim` must contain 2 elements")
+    for el in slope_lim:
+        if (not isinstance(el, (int, float, np.integer, np.floating))) or (el < 0) or (el > 90):
+            raise ValueError("`slope_lim` must be a tuple/list of 2 elements in the range [0-90]")
+
+    # Initialize inlier_mask with no masked pixel
+    inlier_mask = np.ones(src_dem.data.shape, dtype="bool")
+
+    # - Create mask based on shapefiles - #
+    if len(shp_list) > 0:
+        for k, shp in enumerate(shp_list):
+            if isinstance(shp, str):
+                outlines = gu.Vector(shp)
+            else:
+                outlines = shp
+            mask_temp = outlines.create_mask(src_dem).astype("bool")
+
+            # Append mask for given shapefile to final mask
+            if inout[k] == 1:
+                inlier_mask[mask_temp] = False
+            elif inout[k] == -1:
+                inlier_mask[~mask_temp] = False
+
+    # - Filter possible outliers - #
+    if filtering:
+        # Calculate dDEM
+        ddem = src_dem - ref_dem
+
+        # Remove gross blunders where dh differ by 5 NMAD from the median
+        inlier_mask = inlier_mask & (
+            np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)
+        ).filled(False)
+
+        # Exclude steep slopes for coreg
+        slope = xdem.terrain.slope(ref_dem)
+        inlier_mask[slope.data < slope_lim[0]] = False
+        inlier_mask[slope.data > slope_lim[1]] = False
+
+    return inlier_mask
+
+
 def dem_coregistration(
     src_dem_path: str,
     ref_dem_path: str,
