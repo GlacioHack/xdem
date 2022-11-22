@@ -974,3 +974,153 @@ def test_warp_dem() -> None:
         plt.subplot(144)
         plt.imshow(dem - untransformed_dem, cmap="coolwarm_r", vmin=-10, vmax=10)
         plt.show()
+
+
+def test_create_inlier_mask() -> None:
+    """Test that the create_inlier_mask function works expectedly."""
+    warnings.simplefilter("error")
+
+    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and outlines
+
+    # - Assert that without filtering create_inlier_mask behaves as if calling Vector.create_mask - #
+    # Masking inside - using Vector
+    inlier_mask_comp = ~outlines.create_mask(ref)
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines,
+        ],
+        filtering=False,
+    )
+    assert np.all(inlier_mask_comp == inlier_mask)
+
+    # Masking inside - using string
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines.name,
+        ],
+        filtering=False,
+    )
+    assert np.all(inlier_mask_comp == inlier_mask)
+
+    # Masking outside - using Vector
+    inlier_mask_comp = outlines.create_mask(ref)
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines,
+        ],
+        inout=[
+            -1,
+        ],
+        filtering=False,
+    )
+    assert np.all(inlier_mask_comp == inlier_mask)
+
+    # Masking outside - using string
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines.name,
+        ],
+        inout=[-1],
+        filtering=False,
+    )
+    assert np.all(inlier_mask_comp == inlier_mask)
+
+    # - Test filtering options only - #
+    # Test the slope filter only
+    slope = xdem.terrain.slope(ref)
+    slope_lim = [1, 50]
+    inlier_mask_comp2 = np.ones(tba.data.shape, dtype=bool)
+    inlier_mask_comp2[slope.data < slope_lim[0]] = False
+    inlier_mask_comp2[slope.data > slope_lim[1]] = False
+    inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf)
+    assert np.all(inlier_mask == inlier_mask_comp2)
+
+    # Test the nmad_factor filter only
+    nmad_factor = 3
+    ddem = tba - ref
+    inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(False)
+    inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
+    assert np.all(inlier_mask == inlier_mask_comp3)
+
+    # Test the sum of both
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba, ref, shp_list=[], inout=[], filtering=True, slope_lim=slope_lim, nmad_factor=nmad_factor
+    )
+    inlier_mask_all = inlier_mask_comp2 & inlier_mask_comp3
+    assert np.all(inlier_mask == inlier_mask_all)
+
+    # - Test the sum of all - #
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        shp_list=[
+            outlines,
+        ],
+        inout=[
+            -1,
+        ],
+        filtering=True,
+        slope_lim=slope_lim,
+        nmad_factor=nmad_factor,
+    )
+    inlier_mask_all = inlier_mask_comp & inlier_mask_comp2 & inlier_mask_comp3
+    assert np.all(inlier_mask == inlier_mask_all)
+
+    # - Test that proper errors are raised for wrong inputs - #
+    with pytest.raises(ValueError, match="`shp_list` must be a list/tuple"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, shp_list=outlines)
+
+    with pytest.raises(ValueError, match="`shp_list` must be a list/tuple of strings or geoutils.Vector instance"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, shp_list=[1])
+
+    with pytest.raises(ValueError, match="`inout` must be a list/tuple"):
+        inlier_mask = xdem.coreg.create_inlier_mask(
+            tba,
+            ref,
+            shp_list=[
+                outlines,
+            ],
+            inout=1,
+        )
+
+    with pytest.raises(ValueError, match="`inout` must contain only 1 and -1"):
+        inlier_mask = xdem.coreg.create_inlier_mask(
+            tba,
+            ref,
+            shp_list=[
+                outlines,
+            ],
+            inout=[
+                0,
+            ],
+        )
+
+    with pytest.raises(ValueError, match="`inout` must be of same length as shp"):
+        inlier_mask = xdem.coreg.create_inlier_mask(
+            tba,
+            ref,
+            shp_list=[
+                outlines,
+            ],
+            inout=[1, 1],
+        )
+
+    with pytest.raises(ValueError, match="`slope_lim` must be a list/tuple"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=1)
+
+    with pytest.raises(ValueError, match="`slope_lim` must contain 2 elements"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[30])
+
+    with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[-1, 40])
+
+    with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
