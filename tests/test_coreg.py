@@ -630,16 +630,18 @@ class TestCoregClass:
             biascorr_a.apply(dem2, crs=dem2.crs)
 
     # Inputs contain: coregistration method, is implemented, comparison is "strict" or "approx"
-    @pytest.mark.parametrize("inputs", [
-        [xdem.coreg.BiasCorr(), True, "strict"],
-        [xdem.coreg.Deramp(), True, "strict"],
-        [xdem.coreg.ZScaleCorr(), True, "strict"],
-        [xdem.coreg.NuthKaab(), True, "approx"],
-        [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
-        [xdem.coreg.BlockwiseCoreg(coreg=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
-        [xdem.coreg.ICP(), False, ""],
-    ]
-                             )  # type: ignore
+    @pytest.mark.parametrize(
+        "inputs",
+        [
+            [xdem.coreg.BiasCorr(), True, "strict"],
+            [xdem.coreg.Deramp(), True, "strict"],
+            [xdem.coreg.ZScaleCorr(), True, "strict"],
+            [xdem.coreg.NuthKaab(), True, "approx"],
+            [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
+            [xdem.coreg.BlockwiseCoreg(coreg=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
+            [xdem.coreg.ICP(), False, ""],
+        ],
+    )  # type: ignore
     def test_apply_resample(self, inputs: list[Any]) -> None:
         """
         Test that the option resample of coreg.apply works as expected.
