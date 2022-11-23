@@ -2289,7 +2289,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = NuthKaab() + Deramp(degree=1),
+    coreg_method: Coreg | None = NuthKaab() + BiasCorr(),
     grid: str = "ref",
     resample: bool = False,
     shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] = (),
@@ -2301,7 +2301,7 @@ def dem_coregistration(
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
-) -> tuple[xdem.DEM, xdem.coreg.Coreg, pd.DataFrame]:
+) -> tuple[xdem.DEM, xdem.coreg.Coreg, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 
@@ -2329,9 +2329,9 @@ be excluded.
     :param out_fig: Path to the output figure. If None will display to screen.
     :param verbose: Set to True to print details on screen during coregistration.
 
-    :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method and \
+    :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
-coregistration.
+coregistration and 4) the inlier_mask used.
     """
     # Check inputs
     if not isinstance(coreg_method, xdem.coreg.Coreg):
@@ -2449,4 +2449,4 @@ coregistration.
         columns=("nstable_orig", "med_orig", "nmad_orig", "nstable_coreg", "med_coreg", "nmad_coreg"),
     )
 
-    return dem_coreg, coreg_method, out_stats
+    return dem_coreg, coreg_method, out_stats, inlier_mask
