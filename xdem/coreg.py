@@ -1014,6 +1014,18 @@ class BiasCorr(Coreg):
 
         self._meta["bias"] = bias
 
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        """Apply the BiasCorr function to a DEM."""
+        return dem + self._meta["bias"], transform
+
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+        """Apply the BiasCorr function to a set of points."""
+        new_coords = coords.copy()
+        new_coords[:, 2] += self._meta["bias"]
+        return new_coords
+
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the bias to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
