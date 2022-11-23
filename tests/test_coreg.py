@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 import warnings
-from typing import Callable
+from typing import Any, Callable
 
 import cv2
 import geoutils as gu
@@ -628,6 +628,54 @@ class TestCoregClass:
         # If crs provided with input Raster, should raise a warning
         with pytest.warns(UserWarning, match="DEM .* overrides the given 'crs'"):
             biascorr_a.apply(dem2, crs=dem2.crs)
+
+    # Inputs contain: coregistration method, is implemented, comparison is "strict" or "approx"
+    @pytest.mark.parametrize("inputs", [
+        [xdem.coreg.BiasCorr(), True, "strict"],
+        [xdem.coreg.Deramp(), True, "strict"],
+        [xdem.coreg.ZScaleCorr(), True, "strict"],
+        [xdem.coreg.NuthKaab(), True, "approx"],
+        [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
+        [xdem.coreg.BlockwiseCoreg(coreg=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
+        [xdem.coreg.ICP(), False, ""],
+    ]
+                             )  # type: ignore
+    def test_apply_resample(self, inputs: list[Any]) -> None:
+        """
+        Test that the option resample of coreg.apply works as expected.
+        For vertical correction only (BiasCorr, Deramp...), option True or False should yield same results.
+        For horizontal shifts (NuthKaab etc), georef should differ, but DEMs should be the same after resampling.
+        For others, the method is not implemented.
+        """
+        # Get test inputs
+        coreg_method, is_implemented, comp = inputs
+        ref_dem, tba_dem, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
+
+        # Prepare coreg
+        inlier_mask = ~outlines.create_mask(ref_dem)
+        coreg_method.fit(tba_dem, ref_dem, inlier_mask=inlier_mask)
+
+        # If not implemented, should raise an error
+        if not is_implemented:
+            with pytest.raises(NotImplementedError, match="Option `resample=False` not implemented for coreg method *"):
+                dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+            return
+        else:
+            dem_coreg_resample = coreg_method.apply(tba_dem)
+            dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+
+        if comp == "strict":
+            # Both methods should yield the exact same output
+            assert dem_coreg_resample == dem_coreg_noresample
+        elif comp == "approx":
+            # The georef should be different
+            assert dem_coreg_noresample.transform != dem_coreg_resample.transform
+
+            # After resampling, both results should be almost equal
+            dem_final = dem_coreg_noresample.reproject(dem_coreg_resample)
+            diff = dem_final - dem_coreg_resample
+            assert np.all(np.abs(diff.data) == pytest.approx(0, abs=1e-2))
+            # assert np.count_nonzero(diff.data) == 0
 
     @pytest.mark.parametrize(
         "combination",
