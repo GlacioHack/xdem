@@ -577,7 +577,7 @@ class Coreg:
         :param transform: Optional. The transform object of the DEM. Mandatory if 'dem' provided as array.
         :param crs: Optional. CRS of the reference_dem. Mandatory if 'dem' provided as array.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
-        only the transform might be updatedn and no resampling is done.
+        only the transform might be updated and no resampling is done.
         :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
 
         :returns: The transformed DEM.
@@ -623,7 +623,7 @@ class Coreg:
 
                 # In this case, resampling is necessary
                 if not resample:
-                    raise NotImplementedError()
+                    raise NotImplementedError(f"Option `resample=False` not implemented for coreg method {self.__class__}")
                 kwargs.pop("resample")  # Need to removed before passing to apply_matrix
 
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
@@ -2291,6 +2291,7 @@ def dem_coregistration(
     vmode: str = "median",
     deramp_degree: int = 1,
     grid: str = "ref",
+    resample: bool = False,
     filtering: bool = True,
     dh_max: AnyNumber = None,
     nmad_factor: AnyNumber = 5,
@@ -2321,6 +2322,8 @@ of {list(vmodes_dict.keys())}.
 deramping. Can be any of {list(hmodes_dict.keys())}.
     :param deramp_degree: The degree of the polynomial for deramping.
     :param grid: the grid to be used during coregistration, set either to "ref" or "src".
+    :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
+only the transform might be updated (if possible) and no resampling is done.
     :param filtering: if set to True, filtering will be applied prior to coregistration
     :param dh_max: remove pixels for which abs(dh) is more than this value. Default is None.
     :param nmad_factor: pixels where abs(src - ref) differ by nmad_factro * NMAD from the median
@@ -2381,24 +2384,24 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     med_orig, nmad_orig = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    # TODO - use option resample=False of coreg.apply
     if isinstance(coreg_method, xdem.coreg.Coreg):
         coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_coreg = coreg_method.apply(src_dem)
+        dem_coreg = coreg_method.apply(src_dem, resample=resample)
     elif coreg_method is None:
         # Horizontal coregistration
         hcoreg_method = hmodes_dict[hmode]
         hcoreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_hcoreg = hcoreg_method.apply(src_dem)
+        dem_hcoreg = hcoreg_method.apply(src_dem, resample=resample)
 
         # Vertical coregistration
         vcoreg_method = vmodes_dict[vmode]
         if vmode == "deramp":
             vcoreg_method.degree = deramp_degree
         vcoreg_method.fit(ref_dem, dem_hcoreg, inlier_mask, verbose=verbose)
-        dem_coreg = vcoreg_method.apply(dem_hcoreg)
+        dem_coreg = vcoreg_method.apply(dem_hcoreg, resample=resample)
 
-    ddem_coreg = dem_coreg - ref_dem
+    # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
+    ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
 
     # Calculate new stats
     inlier_data = ddem_coreg.data[inlier_mask].compressed()
