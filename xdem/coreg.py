@@ -623,7 +623,9 @@ class Coreg:
 
                 # In this case, resampling is necessary
                 if not resample:
-                    raise NotImplementedError(f"Option `resample=False` not implemented for coreg method {self.__class__}")
+                    raise NotImplementedError(
+                        f"Option `resample=False` not implemented for coreg method {self.__class__}"
+                    )
                 kwargs.pop("resample")  # Need to removed before passing to apply_matrix
 
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
@@ -2160,19 +2162,6 @@ def warp_dem(
     return warped.reshape(dem.shape)
 
 
-hmodes_dict = {
-    "nuth_kaab": NuthKaab(),
-    "nuth_kaab_block": BlockwiseCoreg(coreg=NuthKaab(), subdivision=16),
-    "icp": ICP(),
-}
-
-vmodes_dict = {
-    "median": BiasCorr(bias_func=np.median),
-    "mean": BiasCorr(bias_func=np.mean),
-    "deramp": Deramp(),
-}
-
-
 def create_inlier_mask(
     src_dem: RasterType,
     ref_dem: RasterType,
@@ -2284,14 +2273,11 @@ def dem_coregistration(
     src_dem_path: str,
     ref_dem_path: str,
     out_dem_path: str | None = None,
-    shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] = (),
-    inout: list[int | None] | tuple[int | None] = (),
-    coreg_method: Coreg | None = None,
-    hmode: str = "nuth_kaab",
-    vmode: str = "median",
-    deramp_degree: int = 1,
+    coreg_method: Coreg | None = NuthKaab() + Deramp(degree=1),
     grid: str = "ref",
     resample: bool = False,
+    shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] = (),
+    inout: list[int | None] | tuple[int | None] = (),
     filtering: bool = True,
     dh_max: AnyNumber = None,
     nmad_factor: AnyNumber = 5,
@@ -2299,52 +2285,41 @@ def dem_coregistration(
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
-) -> tuple[xdem.DEM, pd.DataFrame]:
+) -> tuple[xdem.DEM, xdem.coreg.Coreg, pd.DataFrame]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 
     Reads both DEMs, reprojects them on the same grid, mask pixels based on shapefile(s), filter steep slopes and \
-    outliers, run the coregistration, returns the coregistered DEM and some statistics.
+outliers, run the coregistration, returns the coregistered DEM and some statistics.
     Optionally, save the coregistered DEM to file and make a figure.
     For details on masking options, see `create_inlier_mask` function.
 
-    :param src_dem_path: path to the input DEM to be coregistered
-    :param ref_dem_path: path to the reference DEM
-    :param out_dem_path: path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param shp_list: a list of one or several paths to shapefiles to use for masking. Default is none.
-    :param inout: a list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
+    :param src_dem_path: Path to the input DEM to be coregistered
+    :param ref_dem_path: Path to the reference DEM
+    :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
+    :param coreg_method: The xdem coregistration method, or pipeline.
+    :param grid: The grid to be used during coregistration, set either to "ref" or "src".
+    :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
+the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
+    :param shp_list: A list of one or several paths to shapefiles to use for masking.
+    :param inout: A list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
 to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
-    :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to \
-ref grid and optionally filtered, but not coregistered. Will be used in priority over hmode and vmode.
-    :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any \
-of {list(vmodes_dict.keys())}.
-    :param vmode: The method to be used for vertically aligning the DEMs, e.g. mean/median bias correction or \
-deramping. Can be any of {list(hmodes_dict.keys())}.
-    :param deramp_degree: The degree of the polynomial for deramping.
-    :param grid: the grid to be used during coregistration, set either to "ref" or "src".
-    :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
-only the transform might be updated (if possible) and no resampling is done.
-    :param filtering: if set to True, filtering will be applied prior to coregistration
-    :param dh_max: remove pixels for which abs(dh) is more than this value. Default is None.
-    :param nmad_factor: pixels where abs(src - ref) differ by nmad_factro * NMAD from the median
-    :param slope_lim: a list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
-    be excluded.
-    :param plot: Set to True to plot a figure of elevation diff before/after coregistration
+    :param filtering: If set to True, filtering will be applied prior to coregistration.
+    :param dh_max: Remove pixels where abs(src - ref) is more than this value.
+    :param nmad_factor: Remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
+    :param slope_lim: A list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
+be excluded.
+    :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
-    :param verbose: set to True to print details on screen during coregistration.
+    :param verbose: Set to True to print details on screen during coregistration.
 
-    :returns: a tuple containing 1) coregistered DEM as an xdem.DEM instance and 2) DataFrame of coregistration \
-statistics (count of obs, median and NMAD over stable terrain) before and after coreg.
+    :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method and \
+3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
+coregistration.
     """
-    # Check input arguments
-    if (coreg_method is not None) and ((hmode is not None) or (vmode is not None)):
-        warnings.warn("Both `coreg_method` and `hmode/vmode` are set. Using coreg_method.")
-
-    if hmode not in list(hmodes_dict.keys()):
-        raise ValueError(f"vhmode must be in {list(hmodes_dict.keys())}")
-
-    if vmode not in list(vmodes_dict.keys()):
-        raise ValueError(f"vmode must be in {list(vmodes_dict.keys())}")
+    # Check inputs
+    if not isinstance(coreg_method, xdem.coreg.Coreg):
+        raise ValueError("`coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())")
 
     # Load both DEMs
     if verbose:
@@ -2384,21 +2359,8 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     med_orig, nmad_orig = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    if isinstance(coreg_method, xdem.coreg.Coreg):
-        coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_coreg = coreg_method.apply(src_dem, resample=resample)
-    elif coreg_method is None:
-        # Horizontal coregistration
-        hcoreg_method = hmodes_dict[hmode]
-        hcoreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_hcoreg = hcoreg_method.apply(src_dem, resample=resample)
-
-        # Vertical coregistration
-        vcoreg_method = vmodes_dict[vmode]
-        if vmode == "deramp":
-            vcoreg_method.degree = deramp_degree
-        vcoreg_method.fit(ref_dem, dem_hcoreg, inlier_mask, verbose=verbose)
-        dem_coreg = vcoreg_method.apply(dem_hcoreg, resample=resample)
+    coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
+    dem_coreg = coreg_method.apply(src_dem, resample=resample)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
     ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
@@ -2446,4 +2408,4 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
         columns=("nstable_orig", "med_orig", "nmad_orig", "nstable_coreg", "med_coreg", "nmad_coreg"),
     )
 
-    return dem_coreg, out_stats
+    return dem_coreg, coreg_method, out_stats
