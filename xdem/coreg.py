@@ -2270,8 +2270,8 @@ be excluded.
 
 
 def dem_coregistration(
-    src_dem_path: str,
-    ref_dem_path: str,
+    src_dem_path: str | RasterType,
+    ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
     coreg_method: Coreg | None = NuthKaab() + Deramp(degree=1),
     grid: str = "ref",
@@ -2321,15 +2321,40 @@ coregistration.
     if not isinstance(coreg_method, xdem.coreg.Coreg):
         raise ValueError("`coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())")
 
+    if isinstance(ref_dem_path, str):
+        if not isinstance(src_dem_path, str):
+            raise ValueError(
+                f"`ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
+                "Both must have same type."
+            )
+    elif isinstance(ref_dem_path, gu.Raster):
+        if not isinstance(src_dem_path, gu.Raster):
+            raise ValueError(
+                f"`ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
+                "Both must have same type."
+            )
+    else:
+        raise ValueError("`ref_dem_path` must be either a string or a Raster")
+
+    if grid not in ["ref", "src"]:
+        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+
     # Load both DEMs
     if verbose:
         print("Loading and reprojecting input data")
-    if grid == "ref":
-        ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
-    elif grid == "src":
-        ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
+
+    if isinstance(ref_dem_path, str):
+        if grid == "ref":
+            ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
+        elif grid == "src":
+            ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
     else:
-        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+        ref_dem = ref_dem_path
+        src_dem = src_dem_path
+        if grid == "ref":
+            src_dem = src_dem.reproject(ref_dem, silent=True)
+        elif grid == "src":
+            ref_dem = ref_dem.reproject(src_dem, silent=True)
 
     # Convert to DEM instance with Float32 dtype
     ref_dem = xdem.DEM(ref_dem.astype(np.float32))
