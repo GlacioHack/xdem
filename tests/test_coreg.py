@@ -1057,7 +1057,16 @@ def test_create_inlier_mask() -> None:
     inlier_mask_all = inlier_mask_comp2 & inlier_mask_comp3
     assert np.all(inlier_mask == inlier_mask_all)
 
-    # - Test the sum of all - #
+    # Test the dh_max filter only
+    dh_max = 200
+    inlier_mask_comp4 = (np.abs(ddem.data) < dh_max).filled(False)
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=np.inf, dh_max=dh_max
+    )
+    assert np.all(inlier_mask == inlier_mask_comp4)
+
+    # - Test the sum of outlines + dh_max + slope - #
+    # nmad_factor will have a different behavior because it calculates nmad from the inliers of previous filters
     inlier_mask = xdem.coreg.create_inlier_mask(
         tba,
         ref,
@@ -1069,9 +1078,10 @@ def test_create_inlier_mask() -> None:
         ],
         filtering=True,
         slope_lim=slope_lim,
-        nmad_factor=nmad_factor,
+        nmad_factor=np.inf,
+        dh_max=dh_max,
     )
-    inlier_mask_all = inlier_mask_comp & inlier_mask_comp2 & inlier_mask_comp3
+    inlier_mask_all = inlier_mask_comp & inlier_mask_comp2 & inlier_mask_comp4
     assert np.all(inlier_mask == inlier_mask_all)
 
     # - Test that proper errors are raised for wrong inputs - #
@@ -1088,7 +1098,7 @@ def test_create_inlier_mask() -> None:
             shp_list=[
                 outlines,
             ],
-            inout=1,
+            inout=1,  # type: ignore
         )
 
     with pytest.raises(ValueError, match="`inout` must contain only 1 and -1"):
@@ -1114,7 +1124,7 @@ def test_create_inlier_mask() -> None:
         )
 
     with pytest.raises(ValueError, match="`slope_lim` must be a list/tuple"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=1)
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=1)  # type: ignore
 
     with pytest.raises(ValueError, match="`slope_lim` must contain 2 elements"):
         inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[30])
