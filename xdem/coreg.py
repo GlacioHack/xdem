@@ -619,14 +619,13 @@ class Coreg:
 
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
-            if self.is_affine:  # This only works on it's affine, however.
 
-                # In this case, resampling is necessary
-                if not resample:
-                    raise NotImplementedError(
-                        f"Option `resample=False` not implemented for coreg method {self.__class__}"
-                    )
-                kwargs.pop("resample")  # Need to removed before passing to apply_matrix
+            # In this case, resampling is necessary
+            if not resample:
+                raise NotImplementedError(f"Option `resample=False` not implemented for coreg method {self.__class__}")
+            kwargs.pop("resample")  # Need to removed before passing to apply_matrix
+
+            if self.is_affine:  # This only works on it's affine, however.
 
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
                 applied_dem = apply_matrix(
@@ -1999,6 +1998,11 @@ class BlockwiseCoreg(Coreg):
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
     ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        # The option resample=False is not implemented for this case
+        if "resample" in list(kwargs.keys()):
+            if not kwargs["resample"]:
+                raise NotImplementedError()
 
         points = self.to_points()
 
