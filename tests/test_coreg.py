@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import copy
+import os
+import tempfile
 import warnings
 from typing import Any, Callable
 
 import cv2
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -1184,3 +1187,81 @@ def test_create_inlier_mask() -> None:
 
     with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
         inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
+
+
+def test_dem_coregistration() -> None:
+    """
+    Test that the dem_coregistration function works expectedly.
+    Tests the features that are specific to dem_coregistration.
+    For example, many features are tested in create_inlier_mask, so not tested again here.
+    TODO: Add DEMs with different projection/grid to test that regridding works as expected.
+    """
+    # Load example reference, to-be-aligned and outlines
+    ref_dem, tba_dem, outlines = load_examples()
+
+    # - Check that it works with default parameters - #
+    dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(tba_dem, ref_dem)
+
+    # Assert that outputs have expected format
+    assert isinstance(dem_coreg, xdem.DEM)
+    assert isinstance(coreg_method, xdem.coreg.Coreg)
+    assert isinstance(coreg_stats, pd.DataFrame)
+
+    # Assert that default coreg_method is as expected
+    assert hasattr(coreg_method, "pipeline")
+    assert isinstance(coreg_method.pipeline[0], xdem.coreg.NuthKaab)
+    assert isinstance(coreg_method.pipeline[1], xdem.coreg.BiasCorr)
+
+    # The result should be similar to applying the same coreg by hand with:
+    # - DEMs converted to Float32
+    # - default inlier_mask
+    # - no resampling
+    coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.BiasCorr()
+    inlier_mask = xdem.coreg.create_inlier_mask(tba_dem, ref_dem)
+    coreg_method_ref.fit(ref_dem.astype("float32"), tba_dem.astype("float32"), inlier_mask=inlier_mask)
+    dem_coreg_ref = coreg_method_ref.apply(tba_dem, resample=False)
+    assert dem_coreg == dem_coreg_ref
+
+    # Assert that coregistration improved the residuals
+    assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
+    assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values
+
+    # - Check some alternative arguments - #
+    # Test with filename instead of DEMs
+    dem_coreg2, _, _, _ = xdem.coreg.dem_coregistration(tba_dem.filename, ref_dem.filename)
+    assert dem_coreg2 == dem_coreg
+
+    # Test saving to file
+    outfile = tempfile.NamedTemporaryFile()
+    _, _, _, _ = xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
+    dem_coreg2 = xdem.DEM(outfile.name)
+    assert dem_coreg2 == dem_coreg
+    outfile.close()
+
+    # Test that shapefile is properly taken into account - inlier_mask should be False inside outlines
+    # Need to use resample=True, to ensure that dem_coreg has same georef as inlier_mask
+    dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(
+        tba_dem,
+        ref_dem,
+        shp_list=[
+            outlines,
+        ],
+        resample=True,
+    )
+    gl_mask = outlines.create_mask(dem_coreg)
+    assert np.all(~inlier_mask[gl_mask])
+
+    # Testing with plot
+    out_fig = tempfile.NamedTemporaryFile()
+    assert os.path.getsize(out_fig.name) == 0
+    _, _, _, _ = xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
+    assert os.path.getsize(out_fig.name) > 0
+    out_fig.close()
+
+    # Testing different coreg method
+    dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(
+        tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp(degree=1)
+    )
+    assert isinstance(coreg_method, xdem.coreg.Deramp)
+    assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
+    assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values
