@@ -77,7 +77,10 @@ jobs:
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check import works with base environment
-      run: python -c "import xdem"
+      run: |
+        echo $PROJ_DATA
+        unset PROJ_DATA
+        python -c "import xdem"
 
     # This time, the trick below is necessary because: 1/ "conda update" does not support a file -f as argument
     # and also 2/ "conda env update" does not support --freeze-installed or --no-update-deps
