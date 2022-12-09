@@ -68,6 +68,10 @@ jobs:
     - name: Install project
       run: pip install -e . --no-dependencies
 
+    # This steps allows making PROJ work correctly on Windows
+    - name: Set PROJ environment variable
+      run: conda env config vars unset PROJ_LIB -n xdem-dev
+
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check import works with base environment
@@ -79,7 +83,6 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         # We unset the PROJ_LIB environment variable to make PROJ work on Windows
-        unset PROJ_LIB
         pkgs_conda_dev=`python -c "import xdem.misc; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'conda')"`
         pkgs_pip_dev=`python -c "import xdem.misc; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'pip')"`
         mamba install $pkgs_conda_dev --freeze-installed
