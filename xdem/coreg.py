@@ -662,10 +662,10 @@ class Coreg:
                 resampling=rio.warp.Resampling.bilinear,  # Could make this an argument
                 dst_nodata=dst_nodata,
             )
-            applied_dem[applied_dem == dst_nodata] = np.nan
+
 
         # Calculate final mask
-        final_mask = ~np.isfinite(applied_dem)
+        final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == dst_nodata)
 
         # If the DEM was a masked_array, copy the mask to the new DEM
         if isinstance(dem, (np.ma.masked_array, gu.Raster)):
