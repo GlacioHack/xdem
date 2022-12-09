@@ -1060,7 +1060,6 @@ def test_create_inlier_mask() -> None:
     assert np.all(inlier_mask_comp == inlier_mask)
 
     # Masking outside - using Vector
-    inlier_mask_comp = outlines.create_mask(ref)
     inlier_mask = xdem.coreg.create_inlier_mask(
         tba,
         ref,
@@ -1072,7 +1071,7 @@ def test_create_inlier_mask() -> None:
         ],
         filtering=False,
     )
-    assert np.all(inlier_mask_comp == inlier_mask)
+    assert np.all(~inlier_mask_comp == inlier_mask)
 
     # Masking outside - using string
     inlier_mask = xdem.coreg.create_inlier_mask(
@@ -1084,7 +1083,7 @@ def test_create_inlier_mask() -> None:
         inout=[-1],
         filtering=False,
     )
-    assert np.all(inlier_mask_comp == inlier_mask)
+    assert np.all(~inlier_mask_comp == inlier_mask)
 
     # - Test filtering options only - #
     # Test the slope filter only
@@ -1134,7 +1133,7 @@ def test_create_inlier_mask() -> None:
         nmad_factor=np.inf,
         dh_max=dh_max,
     )
-    inlier_mask_all = inlier_mask_comp & inlier_mask_comp2 & inlier_mask_comp4
+    inlier_mask_all = ~inlier_mask_comp & inlier_mask_comp2 & inlier_mask_comp4
     assert np.all(inlier_mask == inlier_mask_all)
 
     # - Test that proper errors are raised for wrong inputs - #

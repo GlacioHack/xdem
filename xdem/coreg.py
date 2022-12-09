@@ -167,7 +167,7 @@ def get_horizontal_shift(
     return east_offset, north_offset, c_parameter
 
 
-def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> NDArrayf:
+def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> rio.transform.Affine:
     """
     Apply horizontal shift to a rasterio Affine transform
     :param transform: The Affine transform of the raster
@@ -190,7 +190,10 @@ def calculate_ddem_stats(
     Calculate standard statistics of ddem, e.g., to be used to compare before/after coregistration.
     Default statistics are: count, mean, median, NMAD and std.
 
-    :param ddem: The DEM difference to be analyzed
+    :param ddem: The DEM difference to be analyzed.
+    :param inlier_mask: 2D boolean array of areas to include in the analysis (inliers=True).
+    :param stats_list: Statistics to compute on the DEM difference.
+    :param stats_labels: Labels of the statistics to compute (same length as stats_list).
 
     Returns: a dictionary containing the statistics
     """
@@ -209,7 +212,7 @@ def calculate_ddem_stats(
             raise ValueError(f"Item {label} in `stats_labels` should be a string.")
 
     # Get the mask of valid and inliers pixels
-    nan_mask = spatial_tools.get_mask(ddem)
+    nan_mask = ~np.isfinite(ddem)
     if inlier_mask is None:
         inlier_mask = np.ones(ddem.shape, dtype="bool")
     valid_ddem = ddem[~nan_mask & inlier_mask]
@@ -244,7 +247,7 @@ def deramping(
     :returns: A callable function to estimate the ramp and the output of scipy.optimize.leastsq
     """
     # Extract only valid pixels
-    valid_mask = ~spatial_tools.get_mask(ddem)
+    valid_mask = np.isfinite(ddem)
     ddem = ddem[valid_mask]
     x_coords = x_coords[valid_mask]
     y_coords = y_coords[valid_mask]
@@ -1565,7 +1568,7 @@ def apply_matrix(
     if not _has_cv2:
         raise ValueError("Optional dependency needed. Install 'opencv'")
 
-    nan_mask = spatial_tools.get_mask(dem)
+    nan_mask = ~np.isfinite(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Optionally, fill DEM around gaps to reduce spread of gaps
     if fill_max_search > 0:
