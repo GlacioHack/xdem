@@ -70,7 +70,9 @@ jobs:
 
     # This steps allows making PROJ work correctly on Windows
     - name: Set PROJ environment variable
-      run: conda env config vars unset PROJ_LIB -n xdem-dev
+      run: |
+        conda env config vars unset PROJ_DATA -n xdem-dev
+        echo $PROJ_DATA
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
