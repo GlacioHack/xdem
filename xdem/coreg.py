@@ -663,7 +663,6 @@ class Coreg:
                 dst_nodata=dst_nodata,
             )
 
-
         # Calculate final mask
         final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == dst_nodata)
 
