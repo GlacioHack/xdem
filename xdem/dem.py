@@ -61,7 +61,7 @@ class DEM(SatelliteImage):  # type: ignore
         """
         Load digital elevation model data through the Raster class, parse additional attributes from filename or
         metadata
-        trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
+        trough the SatelliteImage class, and then parse vertical reference from DEM product name.
         For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
 
         :param filename_or_dataset: The filename of the dataset.
