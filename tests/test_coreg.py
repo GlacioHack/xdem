@@ -186,7 +186,7 @@ class TestCoregClass:
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
-    def test_coreg_example(self) -> None:
+    def test_coreg_example(self,verbose=False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
@@ -194,12 +194,46 @@ class TestCoregClass:
 
         # Run co-registration
         nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask)
+        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
 
         # Check the output metadata is always the same
         assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.46255704521968716)
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
         assert nuth_kaab._meta["bias"] == pytest.approx(-1.9815309753424906)
+
+    # TODO delete the function below after the test
+    def test_coreg_example_shift_test(self,shift_px,verbose=False,coreg='NuthKaab',downsampling=6000):
+        '''
+        For comparison of two coreg algorithm.
+        '''
+        res = self.ref.res[0]
+
+        # shift DEM by shift_px
+        shifted_ref = self.ref.copy()
+        shifted_ref.shift(shift_px[0]*res,shift_px[1]*res)
+
+        # Do coreg on shifted DEM
+        if coreg == 'NuthKaab':
+            nuth_kaab = xdem.coreg.NuthKaab()
+            nuth_kaab.fit(shifted_ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
+        if coreg == 'GradientDescending':
+            gds = xdem.coreg.GradientDescending(downsampling=downsampling)
+            gds.fit(shifted_ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
+
+
+    # TODO delete or edit the function below after the test
+    def test_coreg_example_gradiendescending(self,downsampling=6000,inlier_mask=True,verbose=False) -> None:
+        """
+        Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
+        test_examples.py, but helps identify from where differences arise.
+        """
+        if inlier_mask:
+            inlier_mask = self.inlier_mask
+
+        # Run co-registration
+        gds = xdem.coreg.GradientDescending(downsampling=downsampling)
+        gds.fit(self.ref, self.tba, inlier_mask=inlier_mask,verbose=verbose)
+
 
     def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")

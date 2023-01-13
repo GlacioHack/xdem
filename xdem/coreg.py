@@ -30,10 +30,10 @@ from geoutils._typing import AnyNumber
 from geoutils.georaster import RasterType
 from rasterio import Affine
 from tqdm import tqdm, trange
-
+from noisyopt import minimizeCompass
 import xdem
 from xdem._typing import MArrayf, NDArrayf
-
+import pyproj
 try:
     import pytransform3d.transformations
     from pytransform3d.transform_manager import TransformManager
@@ -102,6 +102,109 @@ def apply_z_shift(ds: rio.DatasetReader, dz: float) -> float:
     a = src_dem.read(1)
     ds_shift = a + dz
     return ds_shift
+
+def apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float,z_name:str) -> NDArrayf:
+    """
+    Apply vertical shift to rio dataset using Transform affine matrix
+    :param ds: DEM
+    :param dz: dz shift value
+    """
+
+    new_df = df.copy()
+    new_df['E'] += dx
+    new_df['N'] += dy
+    new_df[z_name] -= dz
+    
+    return new_df
+
+def subset_gdf(df: pd.DataFrame, dem: NDArrayf):
+    '''
+    Subset a datafram that has 'N','E' or 'latitude', 'longitude'.
+    
+    :param df: DataFrame or GeoDataFrame
+    :param dem: DEM
+
+    return a subseted dataframe.
+    '''
+    [L,B,R,T] = dem.bounds
+
+    # Turn in to dem.crs
+    if 'E' not in df.columns or 'N' not in df.columns:
+        assert 'latitude' in df.columns
+        assert 'longitude' in df.columns
+
+        transformer = pyproj.Transformer.from_crs(pyproj.CRS(4326),dem.crs)
+        df['E'],df['N'] = transformer.transform(df['latitude'],df['longitude'])
+
+    # Subset by DEM bonds
+    df_subset = df.query(f'{B} < N < {T} and {L} < E <{R}').copy()
+
+    return df_subset
+
+def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px:tuple, dz:float, z_name: str,**kwargs) -> NDArrayf:
+        """
+        Calculate the difference between the DEM and points (a dataframe has 'E','N','Z') after applying shift.
+
+        :param dem: DEM
+        :param df: A dataframe has 'E','N' and has been subseted acoording to DEM bonds and masks.
+        :param shift_px: The coordinates of shift pixels (e_px,n_px).
+        :param dz: The bias.
+        :param z_name: The column that be used to compare with dem_h.
+
+        :returns: An array of residuals.
+    
+        """
+
+        # shift ee,nn
+        ee,nn = [i * dem.res[0] for i in shift_px]
+        df_shifted = apply_xyz_shift_df(df,ee,nn,dz,z_name=z_name)
+
+        # prepare DEM
+        arr_ = dem.data[0, :, :]
+
+        # get residual error at the point on DEM. TODO may also use geoutils dem.value_at_coords
+        i, j = dem.xy2ij(df_shifted['E'].values, df_shifted['N'].values, op=np.float32)
+
+        # ndimage return
+        dem_h = scipy.ndimage.map_coordinates(arr_, [i, j],order=1,mode='nearest',**kwargs)
+
+        return df_shifted[z_name].values - dem_h
+
+def df_sampling_from_dem(dem:NDArrayf,tba_dem:NDArrayf,samples=5000,order=1,offset=None) -> pd.DataFrame:
+    '''
+    generate a datafram from a dem by random sampling.
+
+    :param offset: The pixel’s center is returned by default, but a corner can be returned by setting offset to one of ul, ur, ll, lr.
+    
+    :returns dataframe: N,E coordinates and z of DEM at sampling points.
+    '''
+    try:
+        if offset is None and (dem.tags['AREA_OR_POINT'] in ['Point','point']):
+            offset = 'center'
+        else:
+            offset = 'ul'
+    except KeyError:
+        offset = 'ul'
+
+    # Avoid edge, and mask-out-area in sampling
+    width,length = dem.shape
+    i,j = np.random.randint(10,width-10,samples),np.random.randint(10,length-10,samples)
+    mask = dem.data.mask[0]
+
+    # Get value
+    x, y = dem.ij2xy(i[~mask[i,j]], j[~mask[i,j]], offset=offset)
+    z = scipy.ndimage.map_coordinates(dem.data[0, :, :], [i[~mask[i,j]], j[~mask[i,j]]],order=order,mode="nearest")
+    df = pd.DataFrame({'Z': z,'N':y,'E':x})
+
+    # maks out from tba_dem
+    if tba_dem is not None:
+        pts = np.array((df['E'].values,df['N'].values)).T
+        final_mask = ~tba_dem.data.mask
+        mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
+        ref_inlier = mask_raster.interp_points(pts, input_latlon=False, order=0)
+        df = df[ref_inlier.astype(bool)].copy()
+
+    return df
 
 
 def get_horizontal_shift(
@@ -309,6 +412,7 @@ def deramping(
 
         return error
 
+
     # Run a least-squares minimisation to estimate the correct coefficients.
     # TODO: Maybe remove the full_output?
     initial_guess = np.zeros(shape=((degree + 1) * (degree + 2) // 2))
@@ -458,7 +562,7 @@ class Coreg:
 
     def fit(
         self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType,
+        reference_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
@@ -482,6 +586,31 @@ class Coreg:
 
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
+
+        if self.coreg_name == 'GradientDescending':
+
+            tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
+            if isinstance(reference_dem, pd.DataFrame):
+                assert 'N' in reference_dem.columns
+                assert 'E' in reference_dem.columns
+
+            if inlier_mask is not None:
+                inlier_mask = np.asarray(inlier_mask).squeeze()
+                assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+                full_mask = (~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
+                dem_to_be_aligned.set_mask(~full_mask)
+
+                if np.all(~inlier_mask):
+                    raise ValueError("'inlier_mask' had no inliers.")
+
+                if np.all(full_mask):
+                    raise ValueError("'dem_to_be_aligned' had only NaNs")
+
+            # Run the associated fitting function
+            self._fit_func(ref_dem=reference_dem, tba_dem=dem_to_be_aligned, transform=transform, weights=weights, verbose=verbose)
+            # Flag that the fitting function has been called.
+            self._fit_called = True
+            return self
 
         # Validate that both inputs are valid array-like (or Raster) types.
         if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
@@ -558,6 +687,7 @@ class Coreg:
         self._fit_called = True
 
         return self
+
 
     @overload
     def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf:
@@ -1315,7 +1445,113 @@ class CoregPipeline(Coreg):
         pipelines = self.pipeline + other
 
         return CoregPipeline(pipelines)
+        
+class GradientDescending(Coreg):
+    '''
+    Gradient Decending coregistration by Zhihao et al. (in preparation)
+    '''
+    def __init__(self, downsampling: int = 6000,z_name: str='Z',x0=(0,0),bounds=(-3,3),deltainit=2,deltatol=0.004,feps=0.0001) -> None:
+        """
+        Instantiate a new Nuth and Kääb (2011) coregistration object.
 
+        :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
+        :param x0: The initail point of gradient descending iteration.
+        :param bounds: The boundary of the maximum shift.
+        :param deltainit: Initial pattern size
+        :param deltatol: Target pattern size, or the percision you want achieve.
+        :param feps: Parametes for algorithm. Smallest difference in function value to resolve.
+        
+        The algorithm terminates when the current iterate is locally optimally ('deltatol') at the target pattern size 'deltatol' 
+        or when the function value differs by less than the tolerance 'feps' along all directions.
+
+        """
+        self._meta: CoregDict
+        self.coreg_name = 'GradientDescending'
+        self.downsampling = downsampling
+        self.bounds = bounds
+        self.x0 = x0
+        self.deltainit=deltainit
+        self.deltatol=deltatol
+        self.feps=feps
+        self.z_name=z_name
+
+        super().__init__()
+
+    def _fit_func(
+        self,ref_dem: NDArrayf | pd.DataFrame,
+        tba_dem: NDArrayf,
+        transform=rio.transform.Affine | None, 
+        weights= NDArrayf | None,
+        verbose: bool = False
+    ) -> None:
+
+        """Estimate the x/y/z offset between two DEMs."""
+
+        # DEM to df
+        if not isinstance(ref_dem,pd.DataFrame):
+            ref_dem = df_sampling_from_dem(ref_dem,tba_dem,samples=self.downsampling,order=1,offset=None).copy()
+            self.z_name = 'Z'
+
+        # downsampling if downsampling != None
+        if self.downsampling and len(ref_dem) > self.downsampling:
+            ref_dem = ref_dem.sample(frac=self.downsampling/len(ref_dem),random_state=42).copy()
+
+        resolution = tba_dem.res[0]
+
+        if verbose:
+            print("Running Gradient Decending Coreg - Zhihao (in preparation) ")
+            if self.downsampling:
+                print('Running on downsampling. The length of the gdf:',len(ref_dem))
+                print('Set downsampling = other value or None to make a change.')
+
+            elevation_difference = residuals_df(tba_dem,ref_dem,(0,0),0,z_name=self.z_name)
+            nmad_old = xdem.spatialstats.nmad(elevation_difference)
+            bias = np.nanmedian(elevation_difference)
+            print("   Statistics on initial dh:")
+            print(f"      Median = {bias:.4f} - NMAD = {nmad_old:.4f}")
+
+
+        # start iteration, find the best shifting px
+        func_x = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem,ref_dem,x,0,z_name=self.z_name))
+
+        if verbose:
+            disp = True
+        else:
+            disp = False
+
+        res = minimizeCompass(func_x, x0=self.x0, deltainit=self.deltainit,deltatol=self.deltatol,feps=self.feps,
+                              bounds=(self.bounds,self.bounds),disp=disp,errorcontrol=False)
+        
+        # Send the best solution to find all results
+        elevation_difference = residuals_df(tba_dem,ref_dem,(res.x[0],res.x[1]),0,z_name=self.z_name)
+
+        # results statistics
+        bias = np.nanmedian(elevation_difference)
+        nmad_new = xdem.spatialstats.nmad(elevation_difference)
+        
+        # Print final results
+        if verbose:
+            
+            print(f"\n   Final offset in pixels (east, north) : ({res.x[0]:f}, {res.x[1]:f})")
+            print("   Statistics on coregistered dh:")
+            print(f"      Median = {bias:.4f} - NMAD = {nmad_new:.4f}")
+
+        self._meta["offset_east_px"] = res.x[0]
+        self._meta["offset_north_px"] = res.x[1]
+        self._meta["bias"] = bias
+        self._meta["resolution"] = resolution
+
+    def _to_matrix_func(self) -> NDArrayf:
+        """Return a transformation matrix from the estimated offsets."""
+        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
+        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[0, 3] += offset_east
+        matrix[1, 3] += offset_north
+        matrix[2, 3] += self._meta["bias"]
+
+        return matrix  
 
 class NuthKaab(Coreg):
     """
@@ -1333,6 +1569,7 @@ class NuthKaab(Coreg):
         :param offset_threshold: The residual offset threshold after which to stop the iterations.
         """
         self._meta: CoregDict
+        self.coreg_name = 'NuthKaab'
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
@@ -1383,7 +1620,7 @@ class NuthKaab(Coreg):
         nmad_old = xdem.spatialstats.nmad(elevation_difference)
         if verbose:
             print("   Statistics on initial dh:")
-            print(f"      Median = {bias:.2f} - NMAD = {nmad_old:.2f}")
+            print(f"      Median = {bias:.4f} - NMAD = {nmad_old:.4f}")
 
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
         if verbose:
@@ -1427,7 +1664,7 @@ class NuthKaab(Coreg):
             nmad_gain = (nmad_new - nmad_old) / nmad_old * 100
 
             if verbose:
-                pbar.write(f"      Median = {bias:.2f} - NMAD = {nmad_new:.2f}  ==>  Gain = {nmad_gain:.2f}%")
+                pbar.write(f"      Median = {bias:.4f} - NMAD = {nmad_new:.4f}  ==>  Gain = {nmad_gain:.2f}%")
 
             # Stop if the NMAD is low and a few iterations have been made
             assert ~np.isnan(nmad_new), (offset_east, offset_north)
@@ -1446,7 +1683,7 @@ class NuthKaab(Coreg):
         if verbose:
             print(f"\n   Final offset in pixels (east, north) : ({offset_east:f}, {offset_north:f})")
             print("   Statistics on coregistered dh:")
-            print(f"      Median = {bias:.2f} - NMAD = {nmad_new:.2f}")
+            print(f"      Median = {bias:.4f} - NMAD = {nmad_new:.4f}")
 
         self._meta["offset_east_px"] = offset_east
         self._meta["offset_north_px"] = offset_north
@@ -2159,12 +2396,14 @@ hmodes_dict = {
     "nuth_kaab": NuthKaab(),
     "nuth_kaab_block": BlockwiseCoreg(coreg=NuthKaab(), subdivision=16),
     "icp": ICP(),
+    "gradientdescending": GradientDescending(),
 }
 
 vmodes_dict = {
     "median": BiasCorr(bias_func=np.median),
     "mean": BiasCorr(bias_func=np.mean),
     "deramp": Deramp(),
+    "gradientdescending": GradientDescending(),
 }
 
 
