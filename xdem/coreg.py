@@ -146,7 +146,7 @@ def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px:tuple, dz:float, z_na
         Calculate the difference between the DEM and points (a dataframe has 'E','N','Z') after applying shift.
 
         :param dem: DEM
-        :param df: A dataframe has 'E','N' and has been subseted acoording to DEM bonds and masks.
+        :param df: A dataframe has 'E','N' and has been subseted according to DEM bonds and masks.
         :param shift_px: The coordinates of shift pixels (e_px,n_px).
         :param dz: The bias.
         :param z_name: The column that be used to compare with dem_h.
@@ -196,7 +196,7 @@ def df_sampling_from_dem(dem:NDArrayf,tba_dem:NDArrayf,samples=5000,order=1,offs
     z = scipy.ndimage.map_coordinates(dem.data[0, :, :], [i[~mask[i,j]], j[~mask[i,j]]],order=order,mode="nearest")
     df = pd.DataFrame({'Z': z,'N':y,'E':x})
 
-    # maks out from tba_dem
+    # mask out from tba_dem
     if tba_dem is not None:
         pts = np.array((df['E'].values,df['N'].values)).T
         final_mask = ~tba_dem.data.mask
@@ -1448,18 +1448,27 @@ class CoregPipeline(Coreg):
         
 class GradientDescending(Coreg):
     '''
-    Gradient Decending coregistration by Zhihao et al. (in preparation)
+    Gradient Descending coregistration by Zhihao et al. (in preparation)
     '''
-    def __init__(self, downsampling: int = 6000,z_name: str='Z',x0=(0,0),bounds=(-3,3),deltainit=2,deltatol=0.004,feps=0.0001) -> None:
+    def __init__(
+        self, 
+        downsampling: int = 6000,
+        z_name: str='Z',
+        x0=(0,0),
+        bounds=(-3,3),
+        deltainit=2,
+        deltatol=0.004,
+        feps=0.0001
+    ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
-        :param x0: The initail point of gradient descending iteration.
+        :param x0: The initial point of gradient descending iteration.
         :param bounds: The boundary of the maximum shift.
         :param deltainit: Initial pattern size
-        :param deltatol: Target pattern size, or the percision you want achieve.
-        :param feps: Parametes for algorithm. Smallest difference in function value to resolve.
+        :param deltatol: Target pattern size, or the precision you want achieve.
+        :param feps: Parameters for algorithm. Smallest difference in function value to resolve.
         
         The algorithm terminates when the current iterate is locally optimally ('deltatol') at the target pattern size 'deltatol' 
         or when the function value differs by less than the tolerance 'feps' along all directions.
@@ -1499,7 +1508,7 @@ class GradientDescending(Coreg):
         resolution = tba_dem.res[0]
 
         if verbose:
-            print("Running Gradient Decending Coreg - Zhihao (in preparation) ")
+            print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
             if self.downsampling:
                 print('Running on downsampling. The length of the gdf:',len(ref_dem))
                 print('Set downsampling = other value or None to make a change.')
