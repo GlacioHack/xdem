@@ -5,7 +5,7 @@ import concurrent.futures
 import copy
 import warnings
 from typing import Any, Callable, Generator, TypedDict, TypeVar, overload
-
+import pyproj
 try:
     import cv2
 
@@ -29,11 +29,10 @@ from geoutils import spatial_tools
 from geoutils._typing import AnyNumber
 from geoutils.georaster import RasterType
 from rasterio import Affine
-from tqdm import tqdm, trange
 from noisyopt import minimizeCompass
+from tqdm import tqdm, trange
 import xdem
 from xdem._typing import MArrayf, NDArrayf
-import pyproj
 try:
     import pytransform3d.transformations
     from pytransform3d.transform_manager import TransformManager
@@ -103,7 +102,7 @@ def apply_z_shift(ds: rio.DatasetReader, dz: float) -> float:
     ds_shift = a + dz
     return ds_shift
 
-def apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float,z_name:str) -> NDArrayf:
+def apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float, z_name:str) -> NDArrayf:
     """
     Apply vertical shift to rio dataset using Transform affine matrix
     :param ds: DEM
@@ -117,7 +116,7 @@ def apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float,z_name:
     
     return new_df
 
-def subset_gdf(df: pd.DataFrame, dem: NDArrayf):
+def subset_gdf(df: pd.DataFrame, dem: NDArrayf) -> pd.DataFrame:
     '''
     Subset a datafram that has 'N','E' or 'latitude', 'longitude'.
     
@@ -126,7 +125,7 @@ def subset_gdf(df: pd.DataFrame, dem: NDArrayf):
 
     return a subseted dataframe.
     '''
-    [L,B,R,T] = dem.bounds
+    [L, B, R, T] = dem.bounds
 
     # Turn in to dem.crs
     if 'E' not in df.columns or 'N' not in df.columns:
@@ -141,36 +140,35 @@ def subset_gdf(df: pd.DataFrame, dem: NDArrayf):
 
     return df_subset
 
-def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px:tuple, dz:float, z_name: str,**kwargs) -> NDArrayf:
+def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str,**kwargs) -> pd.DataFrame:
+    """
+    Calculate the difference between the DEM and points (a dataframe has 'E','N','Z') after applying shift.
+
+    :param dem: DEM
+    :param df: A dataframe has 'E','N' and has been subseted according to DEM bonds and masks.
+    :param shift_px: The coordinates of shift pixels (e_px,n_px).
+    :param dz: The bias.
+    :param z_name: The column that be used to compare with dem_h.
+
+    :returns: An array of residuals.
         """
-        Calculate the difference between the DEM and points (a dataframe has 'E','N','Z') after applying shift.
 
-        :param dem: DEM
-        :param df: A dataframe has 'E','N' and has been subseted according to DEM bonds and masks.
-        :param shift_px: The coordinates of shift pixels (e_px,n_px).
-        :param dz: The bias.
-        :param z_name: The column that be used to compare with dem_h.
+    # shift ee,nn
+    ee,nn = [i * dem.res[0] for i in shift_px]
+    df_shifted = apply_xyz_shift_df(df,ee,nn,dz,z_name=z_name)
 
-        :returns: An array of residuals.
-    
-        """
+    # prepare DEM
+    arr_ = dem.data[0, :, :]
 
-        # shift ee,nn
-        ee,nn = [i * dem.res[0] for i in shift_px]
-        df_shifted = apply_xyz_shift_df(df,ee,nn,dz,z_name=z_name)
+    # get residual error at the point on DEM. TODO may also use geoutils dem.value_at_coords
+    i, j = dem.xy2ij(df_shifted['E'].values, df_shifted['N'].values, op=np.float32)
 
-        # prepare DEM
-        arr_ = dem.data[0, :, :]
+    # ndimage return
+    dem_h = scipy.ndimage.map_coordinates(arr_, [i, j],order=1,mode='nearest',**kwargs)
 
-        # get residual error at the point on DEM. TODO may also use geoutils dem.value_at_coords
-        i, j = dem.xy2ij(df_shifted['E'].values, df_shifted['N'].values, op=np.float32)
+    return df_shifted[z_name].values - dem_h
 
-        # ndimage return
-        dem_h = scipy.ndimage.map_coordinates(arr_, [i, j],order=1,mode='nearest',**kwargs)
-
-        return df_shifted[z_name].values - dem_h
-
-def df_sampling_from_dem(dem:NDArrayf,tba_dem:NDArrayf,samples=5000,order=1,offset=None) -> pd.DataFrame:
+def df_sampling_from_dem(dem: NDArrayf, tba_dem: NDArrayf, samples:int = 5000, order:int = 1, offset = None) -> pd.DataFrame:
     '''
     generate a datafram from a dem by random sampling.
 
@@ -188,24 +186,85 @@ def df_sampling_from_dem(dem:NDArrayf,tba_dem:NDArrayf,samples=5000,order=1,offs
 
     # Avoid edge, and mask-out-area in sampling
     width,length = dem.shape
-    i,j = np.random.randint(10,width-10,samples),np.random.randint(10,length-10,samples)
+    i,j = np.random.randint(10, width-10, samples),np.random.randint(10, length-10, samples)
     mask = dem.data.mask[0]
 
     # Get value
-    x, y = dem.ij2xy(i[~mask[i,j]], j[~mask[i,j]], offset=offset)
-    z = scipy.ndimage.map_coordinates(dem.data[0, :, :], [i[~mask[i,j]], j[~mask[i,j]]],order=order,mode="nearest")
+    x, y = dem.ij2xy(i[~mask[i,j]], j[~mask[i,j]], offset = offset)
+    z = scipy.ndimage.map_coordinates(dem.data[0, :, :], [i[~mask[i,j]], j[~mask[i,j]]], order=order, mode="nearest")
     df = pd.DataFrame({'Z': z,'N':y,'E':x})
 
     # mask out from tba_dem
     if tba_dem is not None:
-        pts = np.array((df['E'].values,df['N'].values)).T
-        final_mask = ~tba_dem.data.mask
-        mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
-        ref_inlier = mask_raster.interp_points(pts, input_latlon=False, order=0)
-        df = df[ref_inlier.astype(bool)].copy()
+        df = mask_dataframe_by_dem(df,tba_dem)
 
     return df
 
+def mask_dataframe_by_dem(df: pd.DataFrame or np.ndarray, dem: NDArrayf) -> pd.DataFrame or np.ndarray:
+    '''
+    mask out the dataframe (has 'E','N' columns), or np.ndarray ([E,N])  by DEM's mask
+    '''
+
+    final_mask = ~dem.data.mask
+    mask_raster = dem.copy(new_array = final_mask.astype(np.float32))
+
+    if isinstance(df, pd.DataFrame):
+        pts = np.array((df['E'].values, df['N'].values)).T
+    elif isinstance(df, np.ndarray):
+        pts = df
+
+    ref_inlier = mask_raster.interp_points(pts, input_latlon=False, order=0)
+
+    return df[ref_inlier.astype(bool)].copy()
+
+def fill_by_nearest(data: np.ndarray, invalid = None) -> np.ndarray:
+    """
+    https://stackoverflow.com/questions/3662361/fill-in-missing-values-with-nearest-neighbour-in-python-numpy-masked-arrays
+
+    Replace the value of invalid 'data' cells (indicated by 'invalid') 
+    by the value of the nearest valid data cell
+
+    :param data:    numpy array of any dimension
+    :param invalid: a binary array of same shape as 'data', 'mask'. 
+    True cells set where data value should be replaced. If None (default), use: invalid  = np.isnan(data)
+
+    Return a filled array. 
+    """
+
+    if invalid is None: invalid = np.isnan(data)
+
+    ind = scipy.ndimage.distance_transform_edt(invalid, return_distances=False, return_indices=True)
+    return data[tuple(ind)]
+
+def interp_points(
+    dem: xdem.DEM,
+    pts: np.ndarray,
+    input_latlon: bool = False,
+    mode: str = "nearest",
+    area_or_point: str = 'Area' or None,
+    order=1,
+    fillhole=False,
+    **kwargs: Any,
+    ) -> np.ndarray:
+
+    x, y = list(zip(*pts))
+    # if those are in latlon, convert to Raster crs
+    if input_latlon and isinstance(dem,xdem.DEM):
+        init_crs = pyproj.CRS(4326)
+        dest_crs = pyproj.CRS(dem.crs)
+        transformer = pyproj.Transformer.from_crs(init_crs, dest_crs)
+        x, y = transformer.transform(x, y)
+
+    if isinstance(dem,xdem.DEM):
+        i, j = dem.xy2ij(x, y, op = np.float32, area_or_point = area_or_point)
+        # prepare DEM
+        arr_ = dem.data[0, :, :]
+        if fillhole and (not np.all(~arr_.mask)):   
+        # if there is nodata, fill by nearest for interpolation(map_cordinate)
+            arr_ = fill_by_nearest(arr_, arr_.mask)
+
+    h_pts = scipy.ndimage.map_coordinates(arr_, [i, j], order = order,mode = mode)
+    return h_pts
 
 def get_horizontal_shift(
     elevation_difference: NDArrayf, slope: NDArrayf, aspect: NDArrayf, min_count: int = 20
@@ -574,7 +633,7 @@ class Coreg:
         """
         Estimate the coregistration transform on the given DEMs.
 
-        :param reference_dem: 2D array of elevation values acting reference.
+        :param reference_dem: 2D array of elevation values acting reference, or a dataframe with 'N','E' elevation values.
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
@@ -688,6 +747,127 @@ class Coreg:
 
         return self
 
+def fit_pts(self: CoregType, reference_dem: pd.DataFrame,
+            dem_to_be_aligned: RasterType,
+            inlier_mask: NDArrayf | None = None,
+            transform: rio.transform.Affine | None = None,
+            weights: NDArrayf | None = None,
+            subsample: float | int = 1.0,
+            verbose: bool = False,
+            input_latlon: bool = False,
+            mask_highcurv: bool = True,
+            order:int = 1,
+            moving_avrage:int | bool = False) -> CoregType:
+
+        """
+        Estimate the coregistration transform between a DEM and a reference point elevation data.
+
+        :param reference_dem: Point elevation data acting reference.
+        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
+        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param weights: Optional. Per-pixel weights for the coregistration.
+        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
+        :param verbose: Print progress messages to stdout.
+        :param order: interpolation 0=nearest, 1=linear, 2=cubic.
+        """
+
+        if weights is not None:
+            raise NotImplementedError("Weights have not yet been implemented")
+
+        # Validate that at least one input is a valid array-like (or Raster) types.
+        if not hasattr(dem_to_be_aligned, "__array_interface__"):
+            raise ValueError(
+                "The dem_to_be_aligned needs to be array-like (implement a numpy array interface)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
+        # Validate that at least one input is a valid point data type.
+        if not isinstance(reference_dem, pd.DataFrame):
+            raise ValueError(
+                "The reference_dem needs to be point data format (TBD, pd.Dataframe for now)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
+
+        # If any input is a Raster, use its transform if 'transform is None'.
+        # If 'transform' was given and any input is a Raster, trigger a warning.
+        # Finally, extract only the data of the raster.
+        for name, dem in [("dem_to_be_aligned", dem_to_be_aligned)]:
+            if hasattr(dem, "transform"):
+                if transform is None:
+                    transform = getattr(dem, "transform")
+                elif transform is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+
+        if transform is None:
+            raise ValueError("'transform' must be given if the dem_to_be_align DEM is array-like.")
+
+        _, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
+
+        if np.all(tba_mask):
+            raise ValueError("'dem_to_be_aligned' had only NaNs")
+
+        tba_dem = dem_to_be_aligned.copy()
+        ref_valid = np.isfinite(reference_dem['z'].values)
+
+        if np.all(~ref_valid):
+            raise ValueError("'reference_dem' point data only contains NaNs")
+
+        ref_dem = reference_dem[ref_valid]
+
+        if mask_highcurv:
+            planc, profc = xdem.terrain.get_terrain_attribute(tba_dem, attribute=['planform_curvature', 'profile_curvature'])
+            maxc = np.maximum(np.abs(planc), np.abs(profc))
+            # Mask very high curvatures to avoid resolution biases
+            mask_highcurv = maxc > 5.
+        else:
+            mask_highcurv = np.zeros(tba_dem.data.mask.shape, dtype=bool)
+            if 'planc' in ref_dem.columns and 'profc' in ref_dem.columns:
+                ref_dem = ref_dem.query('planc < 5 and profc < 5')
+            else:
+                print('Warning: There is no curvature in dataframe. Set mask_highcurv = True for more robust results and costs more time')
+
+
+        points = np.array((ref_dem['E'].values, ref_dem['N'].values)).T
+
+        # Make sure that the mask has an expected format.
+        if inlier_mask is not None:
+            inlier_mask = np.asarray(inlier_mask)
+            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+
+            if np.all(~inlier_mask):
+                raise ValueError("'inlier_mask' had no inliers.")
+
+            final_mask = np.logical_and.reduce((~tba_dem.data.mask, inlier_mask, ~mask_highcurv))
+        else:
+            final_mask = np.logical_and(~tba_dem.data.mask, ~mask_highcurv)
+
+        mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
+
+        ref_inlier = mask_raster.interp_points(points, input_latlon=input_latlon, order=0)
+        ref_inlier = ref_inlier.astype(bool)
+
+        if np.all(~ref_inlier):
+            raise ValueError("Intersection of 'reference_dem' and 'dem_to_be_aligned' had only NaNs")
+
+        ref_dem = ref_dem[ref_inlier]
+
+        # If subsample is not equal to one, subsampling should be performed.
+        if subsample != 1.0:
+
+            # Randomly pick N inliers in the full_mask where N=subsample
+            random_valids = spatial_tools.subsample_raster(ref_dem['z'].values, subsample=subsample, return_indices=True)
+
+            # Subset to the N random inliers
+            ref_dem = ref_dem.iloc[random_valids]
+
+        # Run the associated fitting function
+        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose,
+                           input_latlon=input_latlon,order=order,moving_avrage=moving_avrage)
+
+        # Flag that the fitting function has been called.
+        self._fit_called = True
+
+        return self
 
     @overload
     def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf:
@@ -1453,7 +1633,7 @@ class GradientDescending(Coreg):
     def __init__(
         self, 
         downsampling: int = 6000,
-        z_name: str='Z',
+        z_name: str='z',
         x0=(0,0),
         bounds=(-3,3),
         deltainit=2,
@@ -1498,8 +1678,8 @@ class GradientDescending(Coreg):
 
         # DEM to df
         if not isinstance(ref_dem,pd.DataFrame):
-            ref_dem = df_sampling_from_dem(ref_dem,tba_dem,samples=self.downsampling,order=1,offset=None).copy()
-            self.z_name = 'Z'
+            ref_dem = df_sampling_from_dem(ref_dem, tba_dem, samples = self.downsampling, order=1, offset=None).copy()
+            self.z_name = 'z'
 
         # downsampling if downsampling != None
         if self.downsampling and len(ref_dem) > self.downsampling:
@@ -1521,7 +1701,7 @@ class GradientDescending(Coreg):
 
 
         # start iteration, find the best shifting px
-        func_x = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem,ref_dem,x,0,z_name=self.z_name))
+        func_x = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = self.z_name))
 
         if verbose:
             disp = True
@@ -1532,7 +1712,7 @@ class GradientDescending(Coreg):
                               bounds=(self.bounds,self.bounds),disp=disp,errorcontrol=False)
         
         # Send the best solution to find all results
-        elevation_difference = residuals_df(tba_dem,ref_dem,(res.x[0],res.x[1]),0,z_name=self.z_name)
+        elevation_difference = residuals_df(tba_dem, ref_dem, (res.x[0],res.x[1]), 0, z_name = self.z_name)
 
         # results statistics
         bias = np.nanmedian(elevation_difference)
@@ -1698,6 +1878,130 @@ class NuthKaab(Coreg):
         self._meta["offset_north_px"] = offset_north
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
+
+    def _fit_pts_func(
+        self, 
+        ref_dem: pd.DataFrame, 
+        tba_dem: NDArrayf, 
+        transform: rio.transform.Affine | None,
+        weights: NDArrayf | None,
+        verbose: bool = False, 
+        order: int = 1,
+        z_name: str='z',
+    ) -> None:
+
+        """
+        Estimate the x/y/z offset between a DEM and ICESat pts. Zhihao's implement:
+        1. delete elevation_function and nodata_function, shifting pts instead of DEM.
+        2. do not support latitude and longitude as inputs.
+        """
+
+        if verbose:
+            print("Running Nuth and Kääb (2011) coregistration. Zhihao's implement, shift pts instead of shift dem")
+
+        tba_arr, _ = spatial_tools.get_array_and_mask(tba_dem)
+
+        resolution = tba_dem.res[0]
+        # Make a new DEM which will be modified inplace
+        aligned_dem = tba_dem.copy()
+
+        x_coords, y_coords = (ref_dem['E'].values, ref_dem['N'].values)
+        pts = np.array((x_coords, y_coords)).T
+
+        # Calculate slope and aspect maps from the reference DEM
+        if verbose:
+            print("   Calculate slope and aspect")
+        # slope, aspect = xdem.terrain.get_terrain_attribute(tba_dem, attribute=['slope', 'aspect'], degrees=False)
+        slope, aspect = calculate_slope_and_aspect(tba_arr)
+
+        slope_r = tba_dem.copy(new_array = np.ma.masked_array(slope[None, :, :], mask = ~np.isfinite(slope[None, :, :])))
+        aspect_r = tba_dem.copy(new_array = np.ma.masked_array(aspect[None, :, :], mask = ~np.isfinite(aspect[None, :, :])))
+        
+        # Initialise east and north pixel offset variables (these will be incremented up and down)
+        offset_east, offset_north, bias = 0.0, 0.0, 0.0
+
+        # Calculate initial DEM statistics
+        slope_pts = interp_points(slope_r, pts, order = order, mode = 'nearest')
+        aspect_pts = interp_points(aspect_r, pts, order = order, mode = 'nearest')
+        tba_pts = interp_points(aligned_dem, pts, order = order, mode = 'nearest')
+
+        # Treat new_pts as a window. Everytime we shift it a little bit to fit the correct view.
+        new_pts = pts.copy()
+
+        elevation_difference = ref_dem[z_name].values - tba_pts
+        bias = np.nanmedian(elevation_difference)
+        nmad_old = xdem.spatialstats.nmad(elevation_difference)
+        
+        if verbose:
+            print("   Statistics on initial dh:")
+            print("      Median = {:.3f} - NMAD = {:.3f}".format(bias, nmad_old))
+
+        # Iteratively run the analysis until the maximum iterations or until the error gets low enough
+        if verbose:
+            print("   Iteratively estimating horizontal shit:")
+
+        # If verbose is True, will use progressbar and print additional statements
+        pbar = trange(self.max_iterations, disable=not verbose, desc="   Progress")
+        for i in pbar:
+
+            # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
+            east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
+                elevation_difference=elevation_difference,
+                slope=slope_pts,
+                aspect=aspect_pts
+            )
+            if verbose:
+                pbar.write("      #{:d} - Offset in pixels : ({:.3f}, {:.3f})".format(i + 1, east_diff, north_diff))
+
+            # Increment the offsets with the overall offset
+            offset_east += east_diff
+            offset_north += north_diff
+
+            # assign offset to the coordinates of the pts
+            # Treat new_pts as a window. Everytime we shift it a little bit to fit the correct view.
+            new_pts += [east_diff*resolution, north_diff*resolution]
+
+            # mask out no data
+            new_pts = mask_dataframe_by_dem(new_pts,tba_dem)
+
+            # get new values
+            slope_pts = interp_points(slope_r,new_pts, order=order,mode='nearest')
+            aspect_pts = interp_points(aspect_r,new_pts, order=order,mode='nearest')
+            tba_pts = interp_points(aligned_dem,new_pts, order=order,mode='nearest')
+
+            # Update statistics
+            elevation_difference = ref_dem[z_name].values - tba_pts
+            bias = np.nanmedian(elevation_difference)
+            
+            elevation_difference -= bias
+            nmad_new = xdem.spatialstats.nmad(elevation_difference)
+            nmad_gain = (nmad_new - nmad_old) / nmad_old*100
+    
+            if verbose:
+                pbar.write("      Median = {:.3f} - NMAD = {:.3f}  ==>  Gain = {:.3f}%".format(bias, nmad_new, nmad_gain))
+
+            # Stop if the NMAD is low and a few iterations have been made
+            assert ~np.isnan(nmad_new), (offset_east, offset_north)
+
+            offset = np.sqrt(east_diff**2 + north_diff**2)
+            if i > 1 and offset < self.offset_threshold:
+                if verbose:
+                    pbar.write(f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping")
+                break
+
+            nmad_old = nmad_new
+            
+        # Print final results
+        if verbose:
+            print("\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(offset_east, offset_north,bias))
+            print("   Statistics on coregistered dh:")
+            print("      Median = {:.3f} - NMAD = {:.3f}".format(bias, nmad_new))
+
+        self._meta["offset_east_px"] = offset_east
+        self._meta["offset_north_px"] = offset_north
+        self._meta["bias"] = bias
+        self._meta["resolution"] = resolution
+
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

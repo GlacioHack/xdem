@@ -186,7 +186,7 @@ class TestCoregClass:
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
 
-    def test_coreg_example(self,verbose=False) -> None:
+    def test_coreg_example(self, verbose=False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
@@ -202,7 +202,7 @@ class TestCoregClass:
         assert nuth_kaab._meta["bias"] == pytest.approx(-1.9815309753424906)
 
     # TODO delete the function below after the test
-    def test_coreg_example_shift_test(self,shift_px,verbose=False,coreg='NuthKaab',downsampling=6000):
+    def test_coreg_example_shift_test(self, shift_px, verbose=False, coreg='NuthKaab', downsampling=6000):
         '''
         For comparison of two coreg algorithm.
         '''
@@ -222,7 +222,7 @@ class TestCoregClass:
 
 
     # TODO delete or edit the function below after the test
-    def test_coreg_example_gradiendescending(self,downsampling=6000,inlier_mask=True,verbose=False) -> None:
+    def test_coreg_example_gradiendescending(self, downsampling=6000, inlier_mask=True, verbose=False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
