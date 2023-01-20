@@ -1670,7 +1670,7 @@ class GradientDescending(Coreg):
         self,ref_dem: NDArrayf | pd.DataFrame,
         tba_dem: NDArrayf,
         transform=rio.transform.Affine or None, 
-        weights= NDArrayf or None,
+        weights= NDArrayf | None,
         verbose: bool = False
     ) -> None:
 

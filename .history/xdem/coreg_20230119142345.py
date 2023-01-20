@@ -747,127 +747,127 @@ class Coreg:
 
         return self
 
-    def fit_pts(self: CoregType, reference_dem: pd.DataFrame,
-                dem_to_be_aligned: RasterType,
-                inlier_mask: NDArrayf | None = None,
-                transform: rio.transform.Affine | None = None,
-                weights: NDArrayf | None = None,
-                subsample: float | int = 1.0,
-                verbose: bool = False,
-                input_latlon: bool = False,
-                mask_highcurv: bool = True,
-                order:int = 1,
-                moving_avrage:int | bool = False) -> CoregType:
+def fit_pts(self: CoregType, reference_dem: pd.DataFrame,
+            dem_to_be_aligned: RasterType,
+            inlier_mask: NDArrayf | None = None,
+            transform: rio.transform.Affine | None = None,
+            weights: NDArrayf | None = None,
+            subsample: float | int = 1.0,
+            verbose: bool = False,
+            input_latlon: bool = False,
+            mask_highcurv: bool = True,
+            order:int = 1,
+            moving_avrage:int | bool = False) -> CoregType:
 
-            """
-            Estimate the coregistration transform between a DEM and a reference point elevation data.
+        """
+        Estimate the coregistration transform between a DEM and a reference point elevation data.
 
-            :param reference_dem: Point elevation data acting reference.
-            :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-            :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-            :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-            :param weights: Optional. Per-pixel weights for the coregistration.
-            :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
-            :param verbose: Print progress messages to stdout.
-            :param order: interpolation 0=nearest, 1=linear, 2=cubic.
-            """
+        :param reference_dem: Point elevation data acting reference.
+        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
+        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param weights: Optional. Per-pixel weights for the coregistration.
+        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
+        :param verbose: Print progress messages to stdout.
+        :param order: interpolation 0=nearest, 1=linear, 2=cubic.
+        """
 
-            if weights is not None:
-                raise NotImplementedError("Weights have not yet been implemented")
+        if weights is not None:
+            raise NotImplementedError("Weights have not yet been implemented")
 
-            # Validate that at least one input is a valid array-like (or Raster) types.
-            if not hasattr(dem_to_be_aligned, "__array_interface__"):
-                raise ValueError(
-                    "The dem_to_be_aligned needs to be array-like (implement a numpy array interface)."
-                    f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
-                )
-            # Validate that at least one input is a valid point data type.
-            if not isinstance(reference_dem, pd.DataFrame):
-                raise ValueError(
-                    "The reference_dem needs to be point data format (TBD, pd.Dataframe for now)."
-                    f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
-                )
+        # Validate that at least one input is a valid array-like (or Raster) types.
+        if not hasattr(dem_to_be_aligned, "__array_interface__"):
+            raise ValueError(
+                "The dem_to_be_aligned needs to be array-like (implement a numpy array interface)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
+        # Validate that at least one input is a valid point data type.
+        if not isinstance(reference_dem, pd.DataFrame):
+            raise ValueError(
+                "The reference_dem needs to be point data format (TBD, pd.Dataframe for now)."
+                f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
+            )
 
-            # If any input is a Raster, use its transform if 'transform is None'.
-            # If 'transform' was given and any input is a Raster, trigger a warning.
-            # Finally, extract only the data of the raster.
-            for name, dem in [("dem_to_be_aligned", dem_to_be_aligned)]:
-                if hasattr(dem, "transform"):
-                    if transform is None:
-                        transform = getattr(dem, "transform")
-                    elif transform is not None:
-                        warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+        # If any input is a Raster, use its transform if 'transform is None'.
+        # If 'transform' was given and any input is a Raster, trigger a warning.
+        # Finally, extract only the data of the raster.
+        for name, dem in [("dem_to_be_aligned", dem_to_be_aligned)]:
+            if hasattr(dem, "transform"):
+                if transform is None:
+                    transform = getattr(dem, "transform")
+                elif transform is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
 
-            if transform is None:
-                raise ValueError("'transform' must be given if the dem_to_be_align DEM is array-like.")
+        if transform is None:
+            raise ValueError("'transform' must be given if the dem_to_be_align DEM is array-like.")
 
-            _, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
+        _, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
 
-            if np.all(tba_mask):
-                raise ValueError("'dem_to_be_aligned' had only NaNs")
+        if np.all(tba_mask):
+            raise ValueError("'dem_to_be_aligned' had only NaNs")
 
-            tba_dem = dem_to_be_aligned.copy()
-            ref_valid = np.isfinite(reference_dem['z'].values)
+        tba_dem = dem_to_be_aligned.copy()
+        ref_valid = np.isfinite(reference_dem['z'].values)
 
-            if np.all(~ref_valid):
-                raise ValueError("'reference_dem' point data only contains NaNs")
+        if np.all(~ref_valid):
+            raise ValueError("'reference_dem' point data only contains NaNs")
 
-            ref_dem = reference_dem[ref_valid]
+        ref_dem = reference_dem[ref_valid]
 
-            if mask_highcurv:
-                planc, profc = xdem.terrain.get_terrain_attribute(tba_dem, attribute=['planform_curvature', 'profile_curvature'])
-                maxc = np.maximum(np.abs(planc), np.abs(profc))
-                # Mask very high curvatures to avoid resolution biases
-                mask_highcurv = maxc > 5.
+        if mask_highcurv:
+            planc, profc = xdem.terrain.get_terrain_attribute(tba_dem, attribute=['planform_curvature', 'profile_curvature'])
+            maxc = np.maximum(np.abs(planc), np.abs(profc))
+            # Mask very high curvatures to avoid resolution biases
+            mask_highcurv = maxc > 5.
+        else:
+            mask_highcurv = np.zeros(tba_dem.data.mask.shape, dtype=bool)
+            if 'planc' in ref_dem.columns and 'profc' in ref_dem.columns:
+                ref_dem = ref_dem.query('planc < 5 and profc < 5')
             else:
-                mask_highcurv = np.zeros(tba_dem.data.mask.shape, dtype=bool)
-                if 'planc' in ref_dem.columns and 'profc' in ref_dem.columns:
-                    ref_dem = ref_dem.query('planc < 5 and profc < 5')
-                else:
-                    print('Warning: There is no curvature in dataframe. Set mask_highcurv = True for more robust results and costs more time')
+                print('Warning: There is no curvature in dataframe. Set mask_highcurv = True for more robust results and costs more time')
 
 
-            points = np.array((ref_dem['E'].values, ref_dem['N'].values)).T
+        points = np.array((ref_dem['E'].values, ref_dem['N'].values)).T
 
-            # Make sure that the mask has an expected format.
-            if inlier_mask is not None:
-                inlier_mask = np.asarray(inlier_mask)
-                assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+        # Make sure that the mask has an expected format.
+        if inlier_mask is not None:
+            inlier_mask = np.asarray(inlier_mask)
+            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
 
-                if np.all(~inlier_mask):
-                    raise ValueError("'inlier_mask' had no inliers.")
+            if np.all(~inlier_mask):
+                raise ValueError("'inlier_mask' had no inliers.")
 
-                final_mask = np.logical_and.reduce((~tba_dem.data.mask, inlier_mask, ~mask_highcurv))
-            else:
-                final_mask = np.logical_and(~tba_dem.data.mask, ~mask_highcurv)
+            final_mask = np.logical_and.reduce((~tba_dem.data.mask, inlier_mask, ~mask_highcurv))
+        else:
+            final_mask = np.logical_and(~tba_dem.data.mask, ~mask_highcurv)
 
-            mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
+        mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
 
-            ref_inlier = mask_raster.interp_points(points, input_latlon=input_latlon, order=0)
-            ref_inlier = ref_inlier.astype(bool)
+        ref_inlier = mask_raster.interp_points(points, input_latlon=input_latlon, order=0)
+        ref_inlier = ref_inlier.astype(bool)
 
-            if np.all(~ref_inlier):
-                raise ValueError("Intersection of 'reference_dem' and 'dem_to_be_aligned' had only NaNs")
+        if np.all(~ref_inlier):
+            raise ValueError("Intersection of 'reference_dem' and 'dem_to_be_aligned' had only NaNs")
 
-            ref_dem = ref_dem[ref_inlier]
+        ref_dem = ref_dem[ref_inlier]
 
-            # If subsample is not equal to one, subsampling should be performed.
-            if subsample != 1.0:
+        # If subsample is not equal to one, subsampling should be performed.
+        if subsample != 1.0:
 
-                # Randomly pick N inliers in the full_mask where N=subsample
-                random_valids = spatial_tools.subsample_raster(ref_dem['z'].values, subsample=subsample, return_indices=True)
+            # Randomly pick N inliers in the full_mask where N=subsample
+            random_valids = spatial_tools.subsample_raster(ref_dem['z'].values, subsample=subsample, return_indices=True)
 
-                # Subset to the N random inliers
-                ref_dem = ref_dem.iloc[random_valids]
+            # Subset to the N random inliers
+            ref_dem = ref_dem.iloc[random_valids]
 
-            # Run the associated fitting function
-            self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose,
-                            input_latlon=input_latlon,order=order,moving_avrage=moving_avrage)
+        # Run the associated fitting function
+        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose,
+                           input_latlon=input_latlon,order=order,moving_avrage=moving_avrage)
 
-            # Flag that the fitting function has been called.
-            self._fit_called = True
+        # Flag that the fitting function has been called.
+        self._fit_called = True
 
-            return self
+        return self
 
     @overload
     def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf:
@@ -1669,8 +1669,8 @@ class GradientDescending(Coreg):
     def _fit_func(
         self,ref_dem: NDArrayf | pd.DataFrame,
         tba_dem: NDArrayf,
-        transform=rio.transform.Affine or None, 
-        weights= NDArrayf or None,
+        transform=rio.transform.Affine | None, 
+        weights= NDArrayf | None,
         verbose: bool = False
     ) -> None:
 
