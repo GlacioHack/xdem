@@ -2190,9 +2190,9 @@ def create_inlier_mask(
 ) -> NDArrayf:
     """
     Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
-    - pixels within polygons of file in shp_list (with corresponding inout element set to 1) - useful for masking \
-unstable terrain like glaciers.
-    - pixels outside polygons of file in shp_list (with corresponding inout element set to -1) - useful to \
+    - pixels within polygons of file(s) in shp_list (with corresponding inout element set to 1) - useful for \
+    masking unstable terrain like glaciers.
+    - pixels outside polygons of file(s) in shp_list (with corresponding inout element set to -1) - useful to \
 delineate a known stable area.
     - pixels with absolute dh (=src-ref) are larger than a given threshold
     - pixels where absolute dh differ from the mean dh by more than a set threshold (with \
@@ -2205,8 +2205,8 @@ filtering=True and nmad_factor)
     :param inout: a list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
 to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
     :param filtering: if set to True, pixels will be removed based on dh values or slope (see next arguments).
-    :param dh_max: remove pixels for which abs(dh) is more than this value. Default is None.
-    :param nmad_factor: pixels where abs(dh) differ by nmad_factro * NMAD from the median
+    :param dh_max: remove pixels where abs(src - ref) is more than this value.
+    :param nmad_factor: remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
     :param slope_lim: a list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
 be excluded.
 
