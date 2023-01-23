@@ -647,13 +647,14 @@ class Coreg:
         # Ensure the dtype is OK
         applied_dem = applied_dem.astype("float32")
 
+        # Set default dst_nodata
+        if isinstance(dem, gu.Raster):
+            dst_nodata = dem.nodata
+        else:
+            dst_nodata = raster._default_nodata(applied_dem.dtype)
+
         # Resample the array on the original grid
         if resample:
-            if isinstance(dem, gu.Raster):
-                dst_nodata = dem.nodata
-            else:
-                dst_nodata = raster._default_nodata(applied_dem.dtype)
-
             # Set default resampling method if not specified in kwargs
             resampling = kwargs.get("resampling", rio.warp.Resampling.bilinear)
             if not isinstance(resampling, rio.warp.Resampling):
@@ -2383,6 +2384,7 @@ coregistration and 4) the inlier_mask used.
             ref_dem = ref_dem.reproject(src_dem, silent=True)
 
     # Convert to DEM instance with Float32 dtype
+    # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
     ref_dem = xdem.DEM(ref_dem.astype(np.float32))
     src_dem = xdem.DEM(src_dem.astype(np.float32))
 

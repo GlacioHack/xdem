@@ -1257,7 +1257,7 @@ def test_dem_coregistration() -> None:
     assert np.all(~inlier_mask[gl_mask])
 
     # Testing with plot
-    out_fig = tempfile.NamedTemporaryFile()
+    out_fig = tempfile.NamedTemporaryFile(suffix=".png")
     assert os.path.getsize(out_fig.name) == 0
     _, _, _, _ = xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
     assert os.path.getsize(out_fig.name) > 0
