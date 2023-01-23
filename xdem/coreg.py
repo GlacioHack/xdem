@@ -1999,10 +1999,9 @@ class BlockwiseCoreg(Coreg):
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
-        # The option resample=False is not implemented for this case
-        if "resample" in list(kwargs.keys()):
-            if not kwargs["resample"]:
-                raise NotImplementedError()
+        # Other option than resample=True is not implemented for this case
+        if "resample" in kwargs and kwargs["resample"] is not True:
+            raise NotImplementedError()
 
         points = self.to_points()
 
