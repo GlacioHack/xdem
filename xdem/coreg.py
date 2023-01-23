@@ -302,7 +302,7 @@ def deramping(
         args=(x_coords, y_coords, ddem),
     )
 
-    def fit_func(x: NDArrayf, y: NDArrayf) -> NDArrayf:
+    def fit_ramp(x: NDArrayf, y: NDArrayf) -> NDArrayf:
         """
         Get the elevation difference biases (ramp) at the given coordinates.
 
@@ -313,7 +313,7 @@ def deramping(
         """
         return poly2d(x, y, coefs[0])
 
-    return fit_func, coefs
+    return fit_ramp, coefs
 
 
 def mask_as_array(
@@ -1169,12 +1169,12 @@ class Deramp(Coreg):
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
         ddem = ref_dem - tba_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
-        fit_func, coefs = deramping(
+        fit_ramp, coefs = deramping(
             ddem, x_coords, y_coords, degree=self.degree, subsample=self.subsample, verbose=verbose
         )
 
         self._meta["coefficients"] = coefs[0]
-        self._meta["func"] = fit_func
+        self._meta["func"] = fit_ramp
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
