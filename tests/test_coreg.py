@@ -682,6 +682,12 @@ class TestCoregClass:
             assert np.all(np.abs(diff.data) == pytest.approx(0, abs=1e-2))
             # assert np.count_nonzero(diff.data) == 0
 
+        # Test it works with different resampling algorithms
+        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
+        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
+        with pytest.raises(ValueError, match="`resampling` must be a rio.warp.Resampling algorithm"):
+            dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=None)
+
     @pytest.mark.parametrize(
         "combination",
         [

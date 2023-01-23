@@ -579,6 +579,8 @@ class Coreg:
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
         only the transform might be updated and no resampling is done.
         :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
+        Kwarg `resampling` can be set to any rio.warp.Resampling to use a different resampling in case \
+        `resample` is True, default is bilinear.
 
         :returns: The transformed DEM.
         """
@@ -649,6 +651,11 @@ class Coreg:
             else:
                 dst_nodata = raster._default_nodata(applied_dem.dtype)
 
+            # Set default resampling method if not specified in kwargs
+            resampling = kwargs.get("resampling", rio.warp.Resampling.bilinear)
+            if not isinstance(resampling, rio.warp.Resampling):
+                raise ValueError("`resampling` must be a rio.warp.Resampling algorithm")
+
             applied_dem, out_transform = rio.warp.reproject(
                 applied_dem,
                 destination=applied_dem,
@@ -656,7 +663,7 @@ class Coreg:
                 dst_transform=transform,
                 src_crs=crs,
                 dst_crs=crs,
-                resampling=rio.warp.Resampling.bilinear,  # Could make this an argument
+                resampling=resampling,
                 dst_nodata=dst_nodata,
             )
             applied_dem[applied_dem == dst_nodata] = np.nan
@@ -2291,6 +2298,7 @@ def dem_coregistration(
     coreg_method: Coreg | None = NuthKaab() + BiasCorr(),
     grid: str = "ref",
     resample: bool = False,
+    resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
     shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] | tuple[()] = (),
     inout: list[int] | tuple[int] | tuple[()] = (),
     filtering: bool = True,
@@ -2316,6 +2324,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
+    :param resampling: The resampling algorithm to be used if `resample` is True. Default is bilinear.
     :param shp_list: A list of one or several paths to shapefiles to use for masking.
     :param inout: A list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
 to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
@@ -2400,7 +2409,7 @@ coregistration and 4) the inlier_mask used.
 
     # Coregister to reference - Note: this will spread NaN
     coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-    dem_coreg = coreg_method.apply(src_dem, resample=resample)
+    dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
     ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
