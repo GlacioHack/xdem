@@ -224,8 +224,8 @@ def calculate_ddem_stats(
 
 def deramping(
     ddem: NDArrayf | MArrayf,
-    x_coords: NDArrayf | MArrayf,
-    y_coords: NDArrayf | MArrayf,
+    x_coords: NDArrayf,
+    y_coords: NDArrayf,
     degree: int,
     subsample: float | int = 1.0,
     verbose: bool = False,
