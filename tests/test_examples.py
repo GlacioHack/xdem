@@ -55,7 +55,8 @@ class TestExamples:
 
         assert values == pytest.approx(truevals)
 
-    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)])  # type: ignore
+    # Note: Following PR #329, no gaps on DEM edges after coregistration
+    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0)])  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
 
