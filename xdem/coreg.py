@@ -27,7 +27,7 @@ import scipy.optimize
 import skimage.transform
 from geoutils import spatial_tools
 from geoutils._typing import AnyNumber
-from geoutils.georaster import RasterType
+from geoutils.georaster import RasterType, raster
 from rasterio import Affine
 from tqdm import tqdm, trange
 
@@ -43,65 +43,29 @@ except ImportError:
     _HAS_P3D = False
 
 
-def filter_by_range(ds: rio.DatasetReader, rangelim: tuple[float, float]) -> MArrayf:
+def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
-    Function to filter values using a range.
+    Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
+
+    :param dem: A numpy array of elevation values.
+
+    :returns:  The tangent of slope and aspect (in radians) of the DEM.
     """
-    print("Excluding values outside of range: {:f} to {:f}".format(*rangelim))
-    out = np.ma.masked_outside(ds, *rangelim)
-    out.set_fill_value(ds.fill_value)
-    return out
+    # Old implementation
+    # # Calculate the gradient of the slope
+    gradient_y, gradient_x = np.gradient(dem)
+    slope_tan = np.sqrt(gradient_x**2 + gradient_y**2)
+    aspect = np.arctan2(-gradient_x, gradient_y)
+    aspect += np.pi
 
+    # xdem implementation
+    # slope, aspect = xdem.terrain.get_terrain_attribute(
+    #     dem, attribute=["slope", "aspect"], resolution=1, degrees=False
+    # )
+    # slope_tan = np.tan(slope)
+    # aspect = (aspect + np.pi) % (2 * np.pi)
 
-def filtered_slope(ds_slope: rio.DatasetReader, slope_lim: tuple[float, float] = (0.1, 40)) -> MArrayf:
-    print("Slope filter: %0.2f - %0.2f" % slope_lim)
-    print("Initial count: %i" % ds_slope.count())
-    flt_slope = filter_by_range(ds_slope, slope_lim)
-    print(flt_slope.count())
-    return flt_slope
-
-
-def apply_xy_shift(ds: rio.DatasetReader, dx: float, dy: float) -> NDArrayf:
-    """
-    Apply horizontal shift to rio dataset using Transform affine matrix
-    :param ds: DEM
-    :param dx: dx shift value
-    :param dy: dy shift value
-
-    Returns:
-    Rio Dataset with updated transform
-    """
-    print("X shift: ", dx)
-    print("Y shift: ", dy)
-
-    # Update geotransform
-    gt_orig = ds.transform
-    gt_align = Affine(gt_orig.a, gt_orig.b, gt_orig.c + dx, gt_orig.d, gt_orig.e, gt_orig.f + dy)
-
-    print("Original transform:", gt_orig)
-    print("Updated transform:", gt_align)
-
-    # Update ds Geotransform
-    ds_align = ds
-    meta_update = ds.meta.copy()
-    meta_update({"driver": "GTiff", "height": ds.shape[1], "width": ds.shape[2], "transform": gt_align, "crs": ds.crs})
-    # to split this part in two?
-    with rasterio.open(ds_align, "w", **meta_update) as dest:
-        dest.write(ds_align)
-
-    return ds_align
-
-
-def apply_z_shift(ds: rio.DatasetReader, dz: float) -> float:
-    """
-    Apply vertical shift to rio dataset using Transform affine matrix
-    :param ds: DEM
-    :param dz: dz shift value
-    """
-    src_dem = rio.open(ds)
-    a = src_dem.read(1)
-    ds_shift = a + dz
-    return ds_shift
+    return slope_tan, aspect
 
 
 def get_horizontal_shift(
@@ -203,69 +167,100 @@ def get_horizontal_shift(
     return east_offset, north_offset, c_parameter
 
 
-def calculate_slope_and_aspect(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
+def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> rio.transform.Affine:
     """
-    Calculate the slope and aspect of a DEM.
+    Apply horizontal shift to a rasterio Affine transform
+    :param transform: The Affine transform of the raster
+    :param dx: dx shift value
+    :param dy: dy shift value
 
-    :param dem: A numpy array of elevation values.
-
-    :returns:  The slope (in pixels??) and aspect (in radians) of the DEM.
+    Returns: Updated transform
     """
-    # TODO: Figure out why slope is called slope_px. What unit is it in?
-    # TODO: Change accordingly in the get_horizontal_shift docstring.
+    transform_shifted = Affine(transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy)
+    return transform_shifted
 
-    # Calculate the gradient of the slope
-    gradient_y, gradient_x = np.gradient(dem)
 
-    slope_px = np.sqrt(gradient_x**2 + gradient_y**2)
-    aspect = np.arctan2(-gradient_x, gradient_y)
-    aspect += np.pi
+def calculate_ddem_stats(
+    ddem: NDArrayf | MArrayf,
+    inlier_mask: NDArrayf | None = None,
+    stats_list: tuple[Callable[[NDArrayf], AnyNumber], ...] | None = None,
+    stats_labels: tuple[str, ...] | None = None,
+) -> dict[str, float]:
+    """
+    Calculate standard statistics of ddem, e.g., to be used to compare before/after coregistration.
+    Default statistics are: count, mean, median, NMAD and std.
 
-    return slope_px, aspect
+    :param ddem: The DEM difference to be analyzed.
+    :param inlier_mask: 2D boolean array of areas to include in the analysis (inliers=True).
+    :param stats_list: Statistics to compute on the DEM difference.
+    :param stats_labels: Labels of the statistics to compute (same length as stats_list).
+
+    Returns: a dictionary containing the statistics
+    """
+    # Default stats - Cannot be put in default args due to circular import with xdem.spatialstats.nmad.
+    if (stats_list is None) or (stats_labels is None):
+        stats_list = (np.size, np.mean, np.median, xdem.spatialstats.nmad, np.std)
+        stats_labels = ("count", "mean", "median", "nmad", "std")
+
+    # Check that stats_list and stats_labels are correct
+    if len(stats_list) != len(stats_labels):
+        raise ValueError("Number of items in `stats_list` and `stats_labels` should be identical.")
+    for stat, label in zip(stats_list, stats_labels):
+        if not callable(stat):
+            raise ValueError(f"Item {stat} in `stats_list` should be a callable/function.")
+        if not isinstance(label, str):
+            raise ValueError(f"Item {label} in `stats_labels` should be a string.")
+
+    # Get the mask of valid and inliers pixels
+    nan_mask = ~np.isfinite(ddem)
+    if inlier_mask is None:
+        inlier_mask = np.ones(ddem.shape, dtype="bool")
+    valid_ddem = ddem[~nan_mask & inlier_mask]
+
+    # Calculate stats
+    stats = {}
+    for stat, label in zip(stats_list, stats_labels):
+        stats[label] = stat(valid_ddem)
+
+    return stats
 
 
 def deramping(
-    elevation_difference: NDArrayf,
-    x_coordinates: NDArrayf,
-    y_coordinates: NDArrayf,
+    ddem: NDArrayf | MArrayf,
+    x_coords: NDArrayf,
+    y_coords: NDArrayf,
     degree: int,
+    subsample: float | int = 1.0,
     verbose: bool = False,
-    metadata: dict[str, Any] | None = None,
-) -> Callable[[NDArrayf, NDArrayf], NDArrayf]:
+) -> tuple[Callable[[NDArrayf, NDArrayf], NDArrayf], tuple[NDArrayf, int]]:
     """
-    Calculate a deramping function to account for rotational and non-rigid components of the elevation difference.
+    Calculate a deramping function to remove spatially correlated elevation differences that can be explained by \
+    a polynomial of degree `degree`.
 
-    :param elevation_difference: The elevation difference array to analyse.
-    :param x_coordinates: x-coordinates of the above array (must have the same shape as elevation_difference)
-    :param y_coordinates: y-coordinates of the above array (must have the same shape as elevation_difference)
+    :param ddem: The elevation difference array to analyse.
+    :param x_coords: x-coordinates of the above array (must have the same shape as elevation_difference)
+    :param y_coords: y-coordinates of the above array (must have the same shape as elevation_difference)
     :param degree: The polynomial degree to estimate the ramp.
+    :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
     :param verbose: Print the least squares optimization progress.
-    :param metadata: Optional. A metadata dictionary that will be updated with the key "deramp".
 
-    :returns: A callable function to estimate the ramp.
+    :returns: A callable function to estimate the ramp and the output of scipy.optimize.leastsq
     """
-    # warnings.warn("This function is deprecated in favour of the new Coreg class.", DeprecationWarning)
-    # Extract only the finite values of the elevation difference and corresponding coordinates.
-    valid_diffs = elevation_difference[np.isfinite(elevation_difference)]
-    valid_x_coords = x_coordinates[np.isfinite(elevation_difference)]
-    valid_y_coords = y_coordinates[np.isfinite(elevation_difference)]
+    # Extract only valid pixels
+    valid_mask = np.isfinite(ddem)
+    ddem = ddem[valid_mask]
+    x_coords = x_coords[valid_mask]
+    y_coords = y_coords[valid_mask]
 
-    # Randomly subsample the values if there are more than 500,000 of them.
-    if valid_x_coords.shape[0] > 500_000:
-        random_indices = np.random.randint(0, valid_x_coords.shape[0] - 1, 500_000)
-        valid_diffs = valid_diffs[random_indices]
-        valid_x_coords = valid_x_coords[random_indices]
-        valid_y_coords = valid_y_coords[random_indices]
-
-    # Create a function whose residuals will be attempted to minimise
-    def estimate_values(
-        x_coordinates: NDArrayf, y_coordinates: NDArrayf, coefficients: NDArrayf, degree: int
-    ) -> NDArrayf:
+    # Formulate the 2D polynomial whose coefficients will be solved for.
+    def poly2d(x_coords: NDArrayf, y_coords: NDArrayf, coefficients: NDArrayf) -> NDArrayf:
         """
         Estimate values from a 2D-polynomial.
 
-        :param x_coordinates: x-coordinates of the difference array (must have the same shape as elevation_difference).
-        :param y_coordinates: y-coordinates of the difference array (must have the same shape as elevation_difference).
+        :param x_coords: x-coordinates of the difference array (must have the same shape as
+            elevation_difference).
+        :param y_coords: y-coordinates of the difference array (must have the same shape as
+            elevation_difference).
         :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
         :param degree: The degree of the polynomial.
 
@@ -278,10 +273,10 @@ def deramping(
         if len(coefficients) != coefficient_size:
             raise ValueError()
 
-        # Do Amaury's black magic to estimate the values.
+        # Build the polynomial of degree `degree`
         estimated_values = np.sum(
             [
-                coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) * y_coordinates**j
+                coefficients[k * (k + 1) // 2 + j] * x_coords ** (k - j) * y_coords**j
                 for k in range(degree + 1)
                 for j in range(k + 1)
             ],
@@ -289,61 +284,39 @@ def deramping(
         )
         return estimated_values  # type: ignore
 
-    # Create the error function
-    def residuals(
-        coefficients: NDArrayf, values: NDArrayf, x_coordinates: NDArrayf, y_coordinates: NDArrayf, degree: int
-    ) -> NDArrayf:
-        """
-        Calculate the difference between the estimated and measured values.
+    def residuals(coefs: NDArrayf, x_coords: NDArrayf, y_coords: NDArrayf, targets: NDArrayf) -> NDArrayf:
+        """Return the optimization residuals"""
+        res = targets - poly2d(x_coords, y_coords, coefs)
+        return res[np.isfinite(res)]
 
-        :param coefficients: Coefficients for the estimation.
-        :param values: The measured values.
-        :param x_coordinates: The x-coordinates of the values.
-        :param y_coordinates: The y-coordinates of the values.
-        :param degree: The degree of the polynomial to estimate.
-
-        :returns: An array of residuals.
-        """
-        error = estimate_values(x_coordinates, y_coordinates, coefficients, degree) - values
-        error = error[np.isfinite(error)]
-
-        return error
-
-    # Run a least-squares minimisation to estimate the correct coefficients.
-    # TODO: Maybe remove the full_output?
-    initial_guess = np.zeros(shape=((degree + 1) * (degree + 2) // 2))
     if verbose:
-        print("Deramping...")
-    coefficients = scipy.optimize.least_squares(
-        fun=residuals,
-        x0=initial_guess,
-        args=(valid_diffs, valid_x_coords, valid_y_coords, degree),
-        verbose=2 if verbose and degree > 1 else 0,
-    ).x
+        print("Estimating deramp function...")
 
-    # Generate the return-function which can correctly estimate the ramp
+    # reduce number of elements for speed
+    rand_indices = gu.spatial_tools.subsample_raster(x_coords, subsample=subsample, return_indices=True)
+    x_coords = x_coords[rand_indices]
+    y_coords = y_coords[rand_indices]
+    ddem = ddem[rand_indices]
 
-    def ramp(x_coordinates: NDArrayf, y_coordinates: NDArrayf) -> NDArrayf:
+    # Optimize polynomial parameters
+    coefs = scipy.optimize.leastsq(
+        func=residuals,
+        x0=np.zeros(shape=((degree + 1) * (degree + 2) // 2)),
+        args=(x_coords, y_coords, ddem),
+    )
+
+    def fit_ramp(x: NDArrayf, y: NDArrayf) -> NDArrayf:
         """
-        Get the values of the ramp that corresponds to given coordinates.
+        Get the elevation difference biases (ramp) at the given coordinates.
 
         :param x_coordinates: x-coordinates of interest.
         :param y_coordinates: y-coordinates of interest.
 
-        :returns: The estimated ramp offsets.
+        :returns: The estimated elevation difference bias.
         """
-        return estimate_values(x_coordinates, y_coordinates, coefficients, degree)
+        return poly2d(x, y, coefs[0])
 
-    if metadata is not None:
-        metadata["deramp"] = {
-            "coefficients": coefficients,
-            "nmad": xdem.spatialstats.nmad(
-                residuals(coefficients, valid_diffs, valid_x_coords, valid_y_coords, degree)
-            ),
-        }
-
-    # Return the function which can be used later.
-    return ramp
+    return fit_ramp, coefs
 
 
 def mask_as_array(
@@ -462,6 +435,7 @@ class Coreg:
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int = 1.0,
         verbose: bool = False,
@@ -473,7 +447,8 @@ class Coreg:
         :param reference_dem: 2D array of elevation values acting reference.
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param transform: Optional. Transform of the reference_dem. Mandatory if DEM provided as array.
+        :param crs: Optional. CRS of the reference_dem. Mandatory if DEM provided as array.
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
@@ -503,6 +478,10 @@ class Coreg:
                     transform = dem.transform
                 elif transform is not None:
                     warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+                if crs is None:
+                    crs = dem.crs
+                elif crs is not None:
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
 
                 """
                 if name == "reference_dem":
@@ -513,6 +492,9 @@ class Coreg:
 
         if transform is None:
             raise ValueError("'transform' must be given if both DEMs are array-like.")
+
+        if crs is None:
+            raise ValueError("'crs' must be given if both DEMs are array-like.")
 
         ref_dem, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
         tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
@@ -539,20 +521,11 @@ class Coreg:
             full_mask = (
                 ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
             ).squeeze()
-            # If subsample is less than one, it is parsed as a fraction (e.g. 0.8 => retain 80% of the values)
-            if subsample < 1.0:
-                subsample = int(np.count_nonzero(full_mask) * (1 - subsample))
-
-            # Randomly pick N inliers in the full_mask where N=subsample
-            random_falses = np.random.choice(np.argwhere(full_mask.flatten()).squeeze(), int(subsample), replace=False)
-            # Convert the 1D indices to 2D indices
-            cols = (random_falses // full_mask.shape[0]).astype(int)
-            rows = random_falses % full_mask.shape[0]
-            # Set the N random inliers to be parsed as outliers instead.
-            full_mask[rows, cols] = False
+            random_indices = gu.spatial_tools.subsample_raster(full_mask, subsample=subsample, return_indices=True)
+            full_mask[random_indices] = False
 
         # Run the associated fitting function
-        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose)
+        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -560,26 +533,57 @@ class Coreg:
         return self
 
     @overload
-    def apply(self, dem: MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> MArrayf:
+    def apply(
+        self,
+        dem: MArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
+    ) -> tuple[MArrayf, rio.transform.Affine]:
         ...
 
     @overload
-    def apply(self, dem: NDArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any) -> NDArrayf:
+    def apply(
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         ...
 
     @overload
-    def apply(self, dem: RasterType, transform: rio.transform.Affine | None = None, **kwargs: Any) -> RasterType:
+    def apply(
+        self,
+        dem: RasterType,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
+    ) -> RasterType:
         ...
 
     def apply(
-        self, dem: RasterType | NDArrayf | MArrayf, transform: rio.transform.Affine | None = None, **kwargs: Any
-    ) -> RasterType | NDArrayf | MArrayf:
+        self,
+        dem: RasterType | NDArrayf | MArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
+    ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
         """
         Apply the estimated transform to a DEM.
 
         :param dem: A DEM array or Raster to apply the transform on.
-        :param transform: The transform object of the DEM. Required if 'dem' is an array and not a Raster.
+        :param transform: Optional. The transform object of the DEM. Mandatory if 'dem' provided as array.
+        :param crs: Optional. CRS of the reference_dem. Mandatory if 'dem' provided as array.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
+        only the transform might be updated and no resampling is done.
         :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
+        Kwarg `resampling` can be set to any rio.warp.Resampling to use a different resampling in case \
+        `resample` is True, default is bilinear.
 
         :returns: The transformed DEM.
         """
@@ -591,9 +595,16 @@ class Coreg:
                 transform = dem.transform
             else:
                 warnings.warn(f"DEM of type {type(dem)} overrides the given 'transform'")
+            if crs is None:
+                crs = dem.crs
+            else:
+                warnings.warn(f"DEM of type {type(dem)} overrides the given 'crs'")
+
         else:
             if transform is None:
                 raise ValueError("'transform' must be given if DEM is array-like.")
+            if crs is None:
+                raise ValueError("'crs' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         dem_array, dem_mask = spatial_tools.get_array_and_mask(dem)
@@ -603,17 +614,23 @@ class Coreg:
 
         # See if a _apply_func exists
         try:
+            # arg `resample` must be passed to _apply_func, otherwise will be overwritten in CoregPipeline
+            kwargs["resample"] = resample
+
             # Run the associated apply function
-            applied_dem = self._apply_func(dem_array, transform, **kwargs)  # pylint: disable=assignment-from-no-return
+            applied_dem, out_transform = self._apply_func(
+                dem_array, transform, crs, **kwargs
+            )  # pylint: disable=assignment-from-no-return
+
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
+
+            # In this case, resampling is necessary
+            if not resample:
+                raise NotImplementedError(f"Option `resample=False` not implemented for coreg method {self.__class__}")
+            kwargs.pop("resample")  # Need to removed before passing to apply_matrix
+
             if self.is_affine:  # This only works on it's affine, however.
-                # If dilate_mask is not specified, set it to True by default
-                if "dilate_mask" in kwargs.keys():
-                    dilate_mask = kwargs["dilate_mask"]
-                    kwargs.pop("dilate_mask")
-                else:
-                    dilate_mask = True
 
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
                 applied_dem = apply_matrix(
@@ -621,17 +638,41 @@ class Coreg:
                     transform=transform,
                     matrix=self.to_matrix(),
                     centroid=self._meta.get("centroid"),
-                    dilate_mask=dilate_mask,
                     **kwargs,
                 )
+                out_transform = transform
             else:
                 raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
 
         # Ensure the dtype is OK
         applied_dem = applied_dem.astype("float32")
 
+        # Set default dst_nodata
+        if isinstance(dem, gu.Raster):
+            dst_nodata = dem.nodata
+        else:
+            dst_nodata = raster._default_nodata(applied_dem.dtype)
+
+        # Resample the array on the original grid
+        if resample:
+            # Set default resampling method if not specified in kwargs
+            resampling = kwargs.get("resampling", rio.warp.Resampling.bilinear)
+            if not isinstance(resampling, rio.warp.Resampling):
+                raise ValueError("`resampling` must be a rio.warp.Resampling algorithm")
+
+            applied_dem, out_transform = rio.warp.reproject(
+                applied_dem,
+                destination=applied_dem,
+                src_transform=out_transform,
+                dst_transform=transform,
+                src_crs=crs,
+                dst_crs=crs,
+                resampling=resampling,
+                dst_nodata=dst_nodata,
+            )
+
         # Calculate final mask
-        final_mask = ~np.isfinite(applied_dem)
+        final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == dst_nodata)
 
         # If the DEM was a masked_array, copy the mask to the new DEM
         if isinstance(dem, (np.ma.masked_array, gu.Raster)):
@@ -639,12 +680,12 @@ class Coreg:
         else:
             applied_dem[final_mask] = np.nan
 
-        # If the input was a Raster, return a Raster as well.
+        # If the input was a Raster, returns a Raster, else returns array and transform
         if isinstance(dem, gu.Raster):
-            return dem.copy(new_array=applied_dem)
-            # return dem.from_array(applied_dem, transform, dem.crs, nodata=dem.nodata)
-
-        return applied_dem
+            out_dem = dem.from_array(applied_dem, out_transform, crs, nodata=dem.nodata)
+            return out_dem
+        else:
+            return applied_dem, out_transform
 
     def apply_pts(self, coords: NDArrayf) -> NDArrayf:
         """
@@ -718,6 +759,7 @@ class Coreg:
         dem_to_be_aligned: NDArrayf,
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
@@ -726,11 +768,12 @@ class Coreg:
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
 
         :returns: A 1D array of finite residuals.
         """
         # Use the transform to correct the DEM to be aligned.
-        aligned_dem = self.apply(dem_to_be_aligned, transform=transform)
+        aligned_dem, _ = self.apply(dem_to_be_aligned, transform=transform, crs=crs)
 
         # Format the reference DEM
         ref_arr, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
@@ -759,6 +802,7 @@ class Coreg:
         error_type: list[str],
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
         ...
 
@@ -770,6 +814,7 @@ class Coreg:
         error_type: str = "nmad",
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int:
         ...
 
@@ -780,6 +825,7 @@ class Coreg:
         error_type: str | list[str] = "nmad",
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
         """
         Calculate the error of a coregistration approach.
@@ -798,6 +844,7 @@ class Coreg:
         :param error_type: The type of error measure to calculate. May be a list of error types.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
 
         :returns: The error measure of choice for the residuals.
         """
@@ -809,6 +856,7 @@ class Coreg:
             dem_to_be_aligned=dem_to_be_aligned,
             inlier_mask=inlier_mask,
             transform=transform,
+            crs=crs,
         )
 
         def rms(res: NDArrayf) -> np.floating[Any]:
@@ -897,7 +945,8 @@ class Coreg:
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -915,7 +964,9 @@ class Coreg:
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -946,7 +997,8 @@ class BiasCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -970,6 +1022,18 @@ class BiasCorr(Coreg):
             print("Bias estimated")
 
         self._meta["bias"] = bias
+
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        """Apply the BiasCorr function to a DEM."""
+        return dem + self._meta["bias"], transform
+
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+        """Apply the BiasCorr function to a set of points."""
+        new_coords = coords.copy()
+        new_coords[:, 2] += self._meta["bias"]
+        return new_coords
 
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the bias to a transform matrix."""
@@ -1015,7 +1079,8 @@ class ICP(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1106,94 +1171,30 @@ class Deramp(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
-        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
-
         ddem = ref_dem - tba_dem
-        valid_mask = np.isfinite(ddem)
-        ddem = ddem[valid_mask]
-        x_coords = x_coords[valid_mask]
-        y_coords = y_coords[valid_mask]
-
-        # Formulate the 2D polynomial whose coefficients will be solved for.
-        def poly2d(x_coordinates: NDArrayf, y_coordinates: NDArrayf, coefficients: NDArrayf) -> NDArrayf:
-            """
-            Estimate values from a 2D-polynomial.
-
-            :param x_coordinates: x-coordinates of the difference array (must have the same shape as
-                elevation_difference).
-            :param y_coordinates: y-coordinates of the difference array (must have the same shape as
-                elevation_difference).
-            :param coefficients: The coefficients (a, b, c, etc.) of the polynomial.
-            :param degree: The degree of the polynomial.
-
-            :raises ValueError: If the length of the coefficients list is not compatible with the degree.
-
-            :returns: The values estimated by the polynomial.
-            """
-            # Check that the coefficient size is correct.
-            coefficient_size = (self.degree + 1) * (self.degree + 2) / 2
-            if len(coefficients) != coefficient_size:
-                raise ValueError()
-
-            # Do Amaury's black magic to formulate and calculate the polynomial equation.
-            estimated_values = np.sum(
-                [
-                    coefficients[k * (k + 1) // 2 + j] * x_coordinates ** (k - j) * y_coordinates**j
-                    for k in range(self.degree + 1)
-                    for j in range(k + 1)
-                ],
-                axis=0,
-            )
-            return estimated_values  # type: ignore
-
-        def residuals(coefs: NDArrayf, x_coords: NDArrayf, y_coords: NDArrayf, targets: NDArrayf) -> NDArrayf:
-            res = targets - poly2d(x_coords, y_coords, coefs)
-            return res[np.isfinite(res)]
-
-        if verbose:
-            print("Estimating deramp function...")
-
-        # reduce number of elements for speed
-        # Get number of points to extract
-        max_points = np.size(x_coords)
-        if (self.subsample <= 1) & (self.subsample >= 0):
-            npoints = int(self.subsample * max_points)
-        elif self.subsample > 1:
-            npoints = int(self.subsample)
-        else:
-            raise ValueError("`subsample` must be >= 0")
-
-        if max_points > npoints:
-            indices = np.random.choice(max_points, npoints, replace=False)
-            x_coords = x_coords[indices]
-            y_coords = y_coords[indices]
-            ddem = ddem[indices]
-
-        # Optimize polynomial parameters
-        coefs = scipy.optimize.leastsq(
-            func=residuals,
-            x0=np.zeros(shape=((self.degree + 1) * (self.degree + 2) // 2)),
-            args=(x_coords, y_coords, ddem),
+        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
+        fit_ramp, coefs = deramping(
+            ddem, x_coords, y_coords, degree=self.degree, subsample=self.subsample, verbose=verbose
         )
 
-        def fit_func(x: NDArrayf, y: NDArrayf) -> NDArrayf:
-            return poly2d(x, y, coefs[0])
-
         self._meta["coefficients"] = coefs[0]
-        self._meta["func"] = fit_func
+        self._meta["func"] = fit_ramp
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
 
         ramp = self._meta["func"](x_coords, y_coords)
 
-        return dem + ramp
+        return dem + ramp, transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the deramp function to a set of points."""
@@ -1252,7 +1253,8 @@ class CoregPipeline(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1262,18 +1264,21 @@ class CoregPipeline(Coreg):
         for i, coreg in enumerate(self.pipeline):
             if verbose:
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
-            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, weights=weights, verbose=verbose)
+            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, crs=crs, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
-            tba_dem_mod = coreg.apply(tba_dem_mod, transform)
+            tba_dem_mod, out_transform = coreg.apply(tba_dem_mod, transform, crs)
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
+        out_transform = copy.copy(transform)
         for coreg in self.pipeline:
-            dem_mod = coreg.apply(dem_mod, transform, **kwargs)
+            dem_mod, out_transform = coreg.apply(dem_mod, out_transform, crs, **kwargs)
 
-        return dem_mod
+        return dem_mod, out_transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the coregistration steps sequentially to a set of points."""
@@ -1342,7 +1347,8 @@ class NuthKaab(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1354,10 +1360,18 @@ class NuthKaab(Coreg):
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
 
+        # Check that DEM CRS is projected, otherwise slope is not correctly calculated
+        if not crs.is_projected:
+            raise NotImplementedError(
+                f"DEMs CRS is {crs}. NuthKaab coregistration only works with \
+projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, and re-run."
+            )
+
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
             print("   Calculate slope and aspect")
-        slope, aspect = calculate_slope_and_aspect(ref_dem)
+
+        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
 
         # Make index grids for the east and north dimensions
         east_grid = np.arange(ref_dem.shape[1])
@@ -1401,7 +1415,7 @@ class NuthKaab(Coreg):
 
             # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
             east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
-                elevation_difference=elevation_difference, slope=slope, aspect=aspect
+                elevation_difference=elevation_difference, slope=slope_tan, aspect=aspect
             )
             if verbose:
                 pbar.write(f"      #{i + 1:d} - Offset in pixels : ({east_diff:.2f}, {north_diff:.2f})")
@@ -1465,6 +1479,29 @@ class NuthKaab(Coreg):
 
         return matrix
 
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        """Apply the Nuth & Kaab shift to a DEM."""
+        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
+        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+
+        updated_transform = apply_xy_shift(transform, -offset_east, -offset_north)
+        bias = self._meta["bias"]
+        return dem + bias, updated_transform
+
+    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+        """Apply the Nuth & Kaab shift to a set of points."""
+        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
+        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+
+        new_coords = coords.copy()
+        new_coords[:, 0] += offset_east
+        new_coords[:, 1] += offset_north
+        new_coords[:, 2] += self._meta["bias"]
+
+        return new_coords
+
 
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
     """Invert a transformation matrix."""
@@ -1484,7 +1521,6 @@ def apply_matrix(
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resampling: int | str = "bilinear",
-    dilate_mask: bool = False,
     fill_max_search: int = 0,
 ) -> NDArrayf:
     """
@@ -1506,7 +1542,6 @@ def apply_matrix(
     :param invert: Invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
-    :param dilate_mask: DEPRECATED - This option does not do anything anymore. Will be removed in the future.
     :param fill_max_search: Set to > 0 value to fill the DEM before applying the transformation, to avoid spreading\
     gaps. The DEM will be filled with rasterio.fill.fillnodata with max_search_distance set to fill_max_search.\
     This is experimental, use at your own risk !
@@ -1540,7 +1575,7 @@ def apply_matrix(
     if not _has_cv2:
         raise ValueError("Optional dependency needed. Install 'opencv'")
 
-    nan_mask = spatial_tools.get_mask(dem)
+    nan_mask = ~np.isfinite(dem)
     assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
     # Optionally, fill DEM around gaps to reduce spread of gaps
     if fill_max_search > 0:
@@ -1579,7 +1614,7 @@ def apply_matrix(
     ).reshape(point_cloud.shape)
 
     # Estimate the vertical difference of old and new point cloud elevations.
-    deramp = deramping(
+    deramp, coeffs = deramping(
         (point_cloud[:, :, 2] - transformed_points[:, :, 2])[~nan_mask].flatten(),
         point_cloud[:, :, 0][~nan_mask].flatten(),
         point_cloud[:, :, 1][~nan_mask].flatten(),
@@ -1612,20 +1647,6 @@ def apply_matrix(
         transformed_dem = skimage.transform.warp(
             filled_dem, inds, order=resampling_order, mode="constant", cval=np.nan, preserve_range=True
         )
-    # TODO: remove these lines when dilate_mask is deprecated
-    #    # Warp the NaN mask, setting true to all values outside the new frame.
-    #     tr_nan_mask = (
-    #         skimage.transform.warp(
-    #             nan_mask.astype("uint8"), inds, order=resampling_order, mode="constant", cval=1, preserve_range=True
-    #         )
-    #         > 0
-    #     )
-
-    # if dilate_mask:
-    #     tr_nan_mask = scipy.ndimage.binary_dilation(tr_nan_mask, iterations=resampling_order)
-
-    # # Apply the transformed nan_mask
-    # transformed_dem[tr_nan_mask] = np.nan
 
     assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
 
@@ -1658,7 +1679,8 @@ class ZScaleCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1672,11 +1694,13 @@ class ZScaleCorr(Coreg):
         coefficients = np.polyfit(medians.index.mid, medians.values, deg=self.degree)
         self._meta["coefficients"] = coefficients
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the scaling model to a DEM."""
         model = np.poly1d(self._meta["coefficients"])
 
-        return dem + model(dem)
+        return dem + model(dem), transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the scaling model to a set of points."""
@@ -1744,6 +1768,7 @@ class BlockwiseCoreg(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: NDArrayf | None,
         verbose: bool = False,
     ) -> None:
@@ -1788,14 +1813,15 @@ class BlockwiseCoreg(Coreg):
                     dem_to_be_aligned=tba_subset,
                     transform=transform_subset,
                     inlier_mask=mask_subset,
+                    crs=crs,
                 )
-
                 nmad, median = coreg.error(
                     reference_dem=ref_subset,
                     dem_to_be_aligned=tba_subset,
                     error_type=["nmad", "median"],
                     inlier_mask=mask_subset,
                     transform=transform_subset,
+                    crs=crs,
                 )
             except Exception as exception:
                 return exception
@@ -1979,7 +2005,13 @@ class BlockwiseCoreg(Coreg):
             shape = (shape[1], shape[2])
         return spatial_tools.subdivide_array(shape, count=self.subdivision)
 
-    def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine, **kwargs: Any) -> NDArrayf:
+    def _apply_func(
+        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        # Other option than resample=True is not implemented for this case
+        if "resample" in kwargs and kwargs["resample"] is not True:
+            raise NotImplementedError()
 
         points = self.to_points()
 
@@ -2007,7 +2039,7 @@ class BlockwiseCoreg(Coreg):
             resampling="linear",
         )
 
-        return warped_dem
+        return warped_dem, transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the scaling model to a set of points."""
@@ -2155,109 +2187,224 @@ def warp_dem(
     return warped.reshape(dem.shape)
 
 
-hmodes_dict = {
-    "nuth_kaab": NuthKaab(),
-    "nuth_kaab_block": BlockwiseCoreg(coreg=NuthKaab(), subdivision=16),
-    "icp": ICP(),
-}
-
-vmodes_dict = {
-    "median": BiasCorr(bias_func=np.median),
-    "mean": BiasCorr(bias_func=np.mean),
-    "deramp": Deramp(),
-}
-
-
-def dem_coregistration(
-    src_dem_path: str,
-    ref_dem_path: str,
-    out_dem_path: str | None = None,
-    shpfile: str | None = None,
-    coreg_method: Coreg | None = None,
-    hmode: str = "nuth_kaab",
-    vmode: str = "median",
-    deramp_degree: int = 1,
-    grid: str = "ref",
+def create_inlier_mask(
+    src_dem: RasterType,
+    ref_dem: RasterType,
+    shp_list: list[str | gu.Vector | None] | tuple[str | gu.Vector] | tuple[()] = (),
+    inout: list[int] | tuple[int] | tuple[()] = (),
     filtering: bool = True,
+    dh_max: AnyNumber = None,
+    nmad_factor: AnyNumber = 5,
     slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
-    plot: bool = False,
-    out_fig: str = None,
-    verbose: bool = False,
-) -> tuple[xdem.DEM, pd.DataFrame]:
+) -> NDArrayf:
     """
-    A one-line function to coregister a selected DEM to a reference DEM.
-    Reads both DEMs, reprojects them on the same grid, mask content of shpfile, filter steep slopes and outliers, \
-run the coregistration, returns the coregistered DEM and some statistics.
-    Optionally, save the coregistered DEM to file and make a figure.
+    Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
+    - pixels within polygons of file(s) in shp_list (with corresponding inout element set to 1) - useful for \
+    masking unstable terrain like glaciers.
+    - pixels outside polygons of file(s) in shp_list (with corresponding inout element set to -1) - useful to \
+delineate a known stable area.
+    - pixels with absolute dh (=src-ref) are larger than a given threshold
+    - pixels where absolute dh differ from the mean dh by more than a set threshold (with \
+filtering=True and nmad_factor)
+    - pixels with low/high slope (with filtering=True and set slope_lim values)
 
-    :param src_dem_path: path to the input DEM to be coregistered
-    :param ref_dem: path to the reference DEM
-    :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param shpfile: path to a vector file containing areas to be masked for coregistration
-    :param coreg_method: The xdem coregistration method, or pipeline. If set to None, DEMs will be resampled to \
-ref grid and optionally filtered, but not coregistered. Will be used in priority over hmode and vmode.
-    :param hmode: The method to be used for horizontally aligning the DEMs, e.g. Nuth & Kaab or ICP. Can be any \
-of {list(vmodes_dict.keys())}.
-    :param vmode: The method to be used for vertically aligning the DEMs, e.g. mean/median bias correction or \
-deramping. Can be any of {list(hmodes_dict.keys())}.
-    :param deramp_degree: The degree of the polynomial for deramping.
-    :param grid: the grid to be used during coregistration, set either to "ref" or "src".
-    :param filtering: if set to True, filtering will be applied prior to coregistration
-    :param plot: Set to True to plot a figure of elevation diff before/after coregistration
-    :param out_fig: Path to the output figure. If None will display to screen.
-    :param verbose: set to True to print details on screen during coregistration.
+    :param src_dem: the source DEM to be coregistered, as a Raster or DEM instance.
+    :param ref_dem: the reference DEM, must have same grid as src_dem. To be used for filtering only.
+    :param shp_list: a list of one or several paths to shapefiles to use for masking. Default is none.
+    :param inout: a list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
+to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
+    :param filtering: if set to True, pixels will be removed based on dh values or slope (see next arguments).
+    :param dh_max: remove pixels where abs(src - ref) is more than this value.
+    :param nmad_factor: remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
+    :param slope_lim: a list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
+be excluded.
 
-    :returns: a tuple containing 1) coregistered DEM as an xdem.DEM instance and 2) DataFrame of coregistration \
-statistics (count of obs, median and NMAD over stable terrain) before and after coreg.
+    :returns: an boolean array of same shape as src_dem set to True for inlier pixels
     """
-    # Check input arguments
-    if (coreg_method is not None) and ((hmode is not None) or (vmode is not None)):
-        warnings.warn("Both `coreg_method` and `hmode/vmode` are set. Using coreg_method.")
+    # - Sanity check on inputs - #
+    # Check correct input type of shp_list
+    if not isinstance(shp_list, (list, tuple)):
+        raise ValueError("`shp_list` must be a list/tuple")
+    for el in shp_list:
+        if not isinstance(el, (str, gu.Vector)):
+            raise ValueError("`shp_list` must be a list/tuple of strings or geoutils.Vector instance")
 
-    if hmode not in list(hmodes_dict.keys()):
-        raise ValueError(f"vhmode must be in {list(hmodes_dict.keys())}")
+    # Check correct input type of inout
+    if not isinstance(inout, (list, tuple)):
+        raise ValueError("`inout` must be a list/tuple")
 
-    if vmode not in list(vmodes_dict.keys()):
-        raise ValueError(f"vmode must be in {list(vmodes_dict.keys())}")
+    if len(shp_list) > 0:
+        if len(inout) == 0:
+            # Fill inout with 1
+            inout = [1] * len(shp_list)
+        elif len(inout) == len(shp_list):
+            # Check that inout contains only 1 and -1
+            not_valid = [el for el in np.unique(inout) if ((el != 1) & (el != -1))]
+            if len(not_valid) > 0:
+                raise ValueError("`inout` must contain only 1 and -1")
+        else:
+            raise ValueError("`inout` must be of same length as shp")
 
-    # Load both DEMs
-    if verbose:
-        print("Loading and reprojecting input data")
-    if grid == "ref":
-        ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
-    elif grid == "src":
-        ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
-    else:
-        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+    # Check slope_lim type
+    if not isinstance(slope_lim, (list, tuple)):
+        raise ValueError("`slope_lim` must be a list/tuple")
+    if len(slope_lim) != 2:
+        raise ValueError("`slope_lim` must contain 2 elements")
+    for el in slope_lim:
+        if (not isinstance(el, (int, float, np.integer, np.floating))) or (el < 0) or (el > 90):
+            raise ValueError("`slope_lim` must be a tuple/list of 2 elements in the range [0-90]")
 
-    # Convert to DEM instance with Float32 dtype
-    ref_dem = xdem.DEM(ref_dem.astype(np.float32))
-    src_dem = xdem.DEM(src_dem.astype(np.float32))
+    # Initialize inlier_mask with no masked pixel
+    inlier_mask = np.ones(src_dem.data.shape, dtype="bool")
 
-    # Create raster mask
-    if shpfile is not None:
-        outlines = gu.Vector(shpfile)
-        stable_mask = ~outlines.create_mask(src_dem)
-    else:
-        stable_mask = np.ones(src_dem.data.shape, dtype="bool")
+    # - Create mask based on shapefiles - #
+    if len(shp_list) > 0:
+        for k, shp in enumerate(shp_list):
+            if isinstance(shp, str):
+                outlines = gu.Vector(shp)
+            else:
+                outlines = shp
+            mask_temp = outlines.create_mask(src_dem).astype("bool")
 
-    # Calculate dDEM
-    ddem = src_dem - ref_dem
+            # Append mask for given shapefile to final mask
+            if inout[k] == 1:
+                inlier_mask[mask_temp] = False
+            elif inout[k] == -1:
+                inlier_mask[~mask_temp] = False
 
-    # Filter gross outliers in stable terrain
+    # - Filter possible outliers - #
     if filtering:
-        # Remove gross blunders where dh differ by 5 NMAD from the median
-        inlier_mask = stable_mask & (np.abs(ddem.data - np.median(ddem)) < 5 * xdem.spatialstats.nmad(ddem)).filled(
-            False
-        )
+        # Calculate dDEM
+        ddem = src_dem - ref_dem
+
+        # Remove gross blunders with absolute threshold
+        if dh_max is not None:
+            inlier_mask[np.abs(ddem.data) > dh_max] = False
+
+        # Remove blunders where dh differ by nmad_factor * NMAD from the median
+        nmad = xdem.spatialstats.nmad(ddem.data[inlier_mask])
+        med = np.ma.median(ddem.data[inlier_mask])
+        inlier_mask = inlier_mask & (np.abs(ddem.data - med) < nmad_factor * nmad).filled(False)
 
         # Exclude steep slopes for coreg
         slope = xdem.terrain.slope(ref_dem)
         inlier_mask[slope.data < slope_lim[0]] = False
         inlier_mask[slope.data > slope_lim[1]] = False
 
+    return inlier_mask
+
+
+def dem_coregistration(
+    src_dem_path: str | RasterType,
+    ref_dem_path: str | RasterType,
+    out_dem_path: str | None = None,
+    coreg_method: Coreg | None = NuthKaab() + BiasCorr(),
+    grid: str = "ref",
+    resample: bool = False,
+    resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
+    shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] | tuple[()] = (),
+    inout: list[int] | tuple[int] | tuple[()] = (),
+    filtering: bool = True,
+    dh_max: AnyNumber = None,
+    nmad_factor: AnyNumber = 5,
+    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
+    plot: bool = False,
+    out_fig: str = None,
+    verbose: bool = False,
+) -> tuple[xdem.DEM, xdem.coreg.Coreg, pd.DataFrame, NDArrayf]:
+    """
+    A one-line function to coregister a selected DEM to a reference DEM.
+
+    Reads both DEMs, reprojects them on the same grid, mask pixels based on shapefile(s), filter steep slopes and \
+outliers, run the coregistration, returns the coregistered DEM and some statistics.
+    Optionally, save the coregistered DEM to file and make a figure.
+    For details on masking options, see `create_inlier_mask` function.
+
+    :param src_dem_path: Path to the input DEM to be coregistered
+    :param ref_dem_path: Path to the reference DEM
+    :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
+    :param coreg_method: The xdem coregistration method, or pipeline.
+    :param grid: The grid to be used during coregistration, set either to "ref" or "src".
+    :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
+the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
+    :param resampling: The resampling algorithm to be used if `resample` is True. Default is bilinear.
+    :param shp_list: A list of one or several paths to shapefiles to use for masking.
+    :param inout: A list of same size as shp_list. For each shapefile, set to 1 (resp. -1) to specify whether \
+to mask inside (resp. outside) of the polygons. Defaults to masking inside polygons for all shapefiles.
+    :param filtering: If set to True, filtering will be applied prior to coregistration.
+    :param dh_max: Remove pixels where abs(src - ref) is more than this value.
+    :param nmad_factor: Remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
+    :param slope_lim: A list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
+be excluded.
+    :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
+    :param out_fig: Path to the output figure. If None will display to screen.
+    :param verbose: Set to True to print details on screen during coregistration.
+
+    :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
+3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
+coregistration and 4) the inlier_mask used.
+    """
+    # Check inputs
+    if not isinstance(coreg_method, xdem.coreg.Coreg):
+        raise ValueError("`coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())")
+
+    if isinstance(ref_dem_path, str):
+        if not isinstance(src_dem_path, str):
+            raise ValueError(
+                f"`ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
+                "Both must have same type."
+            )
+    elif isinstance(ref_dem_path, gu.Raster):
+        if not isinstance(src_dem_path, gu.Raster):
+            raise ValueError(
+                f"`ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
+                "Both must have same type."
+            )
     else:
-        inlier_mask = stable_mask
+        raise ValueError("`ref_dem_path` must be either a string or a Raster")
+
+    if grid not in ["ref", "src"]:
+        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+
+    # Load both DEMs
+    if verbose:
+        print("Loading and reprojecting input data")
+
+    if isinstance(ref_dem_path, str):
+        if grid == "ref":
+            ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
+        elif grid == "src":
+            ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
+    else:
+        ref_dem = ref_dem_path
+        src_dem = src_dem_path
+        if grid == "ref":
+            src_dem = src_dem.reproject(ref_dem, silent=True)
+        elif grid == "src":
+            ref_dem = ref_dem.reproject(src_dem, silent=True)
+
+    # Convert to DEM instance with Float32 dtype
+    # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
+    ref_dem = xdem.DEM(ref_dem.astype(np.float32))
+    src_dem = xdem.DEM(src_dem.astype(np.float32))
+
+    # Create raster mask
+    if verbose:
+        print("Creating mask of inlier pixels")
+
+    inlier_mask = create_inlier_mask(
+        src_dem,
+        ref_dem,
+        shp_list=shp_list,
+        inout=inout,
+        filtering=filtering,
+        dh_max=dh_max,
+        nmad_factor=nmad_factor,
+        slope_lim=slope_lim,
+    )
+
+    # Calculate dDEM
+    ddem = src_dem - ref_dem
 
     # Calculate dDEM statistics on pixels used for coreg
     inlier_data = ddem.data[inlier_mask].compressed()
@@ -2265,24 +2412,11 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
     med_orig, nmad_orig = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    # Better strategy: calculate shift, update transform, resample
-    if isinstance(coreg_method, xdem.coreg.Coreg):
-        coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_coreg = coreg_method.apply(src_dem, dilate_mask=False)
-    elif coreg_method is None:
-        # Horizontal coregistration
-        hcoreg_method = hmodes_dict[hmode]
-        hcoreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
-        dem_hcoreg = hcoreg_method.apply(src_dem, dilate_mask=False)
+    coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
+    dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
 
-        # Vertical coregistration
-        vcoreg_method = vmodes_dict[vmode]
-        if vmode == "deramp":
-            vcoreg_method.degree = deramp_degree
-        vcoreg_method.fit(ref_dem, dem_hcoreg, inlier_mask, verbose=verbose)
-        dem_coreg = vcoreg_method.apply(dem_hcoreg, dilate_mask=False)
-
-    ddem_coreg = dem_coreg - ref_dem
+    # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
+    ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
 
     # Calculate new stats
     inlier_data = ddem_coreg.data[inlier_mask].compressed()
@@ -2327,4 +2461,4 @@ statistics (count of obs, median and NMAD over stable terrain) before and after 
         columns=("nstable_orig", "med_orig", "nmad_orig", "nstable_coreg", "med_coreg", "nmad_coreg"),
     )
 
-    return dem_coreg, out_stats
+    return dem_coreg, coreg_method, out_stats, inlier_mask

@@ -103,7 +103,7 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
 
         nuth_kaab = xdem.coreg.NuthKaab()
         nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask)
-        aligned_raster = nuth_kaab.apply(to_be_aligned_raster)
+        aligned_raster = nuth_kaab.apply(to_be_aligned_raster, resample=True)
 
         diff = reference_raster - aligned_raster
 
