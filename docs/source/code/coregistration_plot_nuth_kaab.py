@@ -12,7 +12,7 @@ inlier_mask = ~outlines_1990.create_mask(dem_2009)
 
 nuth_kaab = xdem.coreg.NuthKaab()
 nuth_kaab.fit(dem_2009.data, dem_1990.data, transform=dem_2009.transform, inlier_mask=inlier_mask)
-dem_coreg = nuth_kaab.apply(dem_1990.data, transform=dem_1990.transform)
+dem_coreg = nuth_kaab.apply(dem_1990)
 
 ddem_pre = (dem_2009.data - dem_1990.data).filled(np.nan).squeeze()
 ddem_post = (dem_2009.data - dem_coreg).filled(np.nan).squeeze()
