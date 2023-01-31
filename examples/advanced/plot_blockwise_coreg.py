@@ -79,7 +79,9 @@ aligned_dem = blockwise.apply(dem_to_be_aligned)
 # This shows the estimated shifts that would be applied in elevation; additional horizontal shifts will also be applied if the method supports it.
 # The :func:`xdem.coreg.BlockwiseCoreg.stats` method can be used to annotate each block with its associated Z shift.
 
-z_correction = blockwise.apply(np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs)[0]
+z_correction = blockwise.apply(
+    np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs
+)[0]
 plt.title("Vertical correction")
 plt.imshow(z_correction, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
 for _, row in blockwise.stats().iterrows():
