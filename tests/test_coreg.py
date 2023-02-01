@@ -1237,11 +1237,10 @@ def test_dem_coregistration() -> None:
     assert dem_coreg2 == dem_coreg
 
     # Test saving to file
-    outfile = tempfile.NamedTemporaryFile()
-    _, _, _, _ = xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
-    dem_coreg2 = xdem.DEM(outfile.name)
-    assert dem_coreg2 == dem_coreg
-    outfile.close()
+    with tempfile.NamedTemporaryFile(dir=os.getcwd()) as outfile:
+        xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
+        dem_coreg2 = xdem.DEM(outfile.name)
+        assert dem_coreg2 == dem_coreg
 
     # Test that shapefile is properly taken into account - inlier_mask should be False inside outlines
     # Need to use resample=True, to ensure that dem_coreg has same georef as inlier_mask
