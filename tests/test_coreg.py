@@ -1236,10 +1236,10 @@ def test_dem_coregistration() -> None:
     dem_coreg2, _, _, _ = xdem.coreg.dem_coregistration(tba_dem.filename, ref_dem.filename)
     assert dem_coreg2 == dem_coreg
 
-    # Test saving to file
-    with tempfile.NamedTemporaryFile() as outfile:
-        xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name + ".tif")
-        dem_coreg2 = xdem.DEM(outfile.name + ".tif")
+    # Test saving to file (mode = "w" is necessary to work on Windows)
+    with tempfile.NamedTemporaryFile(suffix=".tif", mode="w") as outfile:
+        xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
+        dem_coreg2 = xdem.DEM(outfile.name)
         assert dem_coreg2 == dem_coreg
 
     # Test that shapefile is properly taken into account - inlier_mask should be False inside outlines
@@ -1256,10 +1256,10 @@ def test_dem_coregistration() -> None:
     assert np.all(~inlier_mask[gl_mask])
 
     # Testing with plot
-    with tempfile.NamedTemporaryFile() as out_fig:
-        assert os.path.getsize(out_fig.name + ".png") == 0
-        xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name + ".png")
-        assert os.path.getsize(out_fig.name + ".png") > 0
+    with tempfile.NamedTemporaryFile(suffix=".png", mode="w") as out_fig:
+        assert os.path.getsize(out_fig.name) == 0
+        xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
+        assert os.path.getsize(out_fig.name) > 0
 
     # Testing different coreg method
     dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(
