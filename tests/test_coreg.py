@@ -1238,8 +1238,8 @@ def test_dem_coregistration() -> None:
 
     # Test saving to file
     with tempfile.NamedTemporaryFile() as outfile:
-        xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name+'.tif')
-        dem_coreg2 = xdem.DEM(outfile.name+'.tif')
+        xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name + ".tif")
+        dem_coreg2 = xdem.DEM(outfile.name + ".tif")
         assert dem_coreg2 == dem_coreg
 
     # Test that shapefile is properly taken into account - inlier_mask should be False inside outlines
