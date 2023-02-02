@@ -1236,9 +1236,9 @@ def test_dem_coregistration() -> None:
     dem_coreg2, _, _, _ = xdem.coreg.dem_coregistration(tba_dem.filename, ref_dem.filename)
     assert dem_coreg2 == dem_coreg
 
-    # Test saving to file
-    outfile = tempfile.NamedTemporaryFile()
-    _, _, _, _ = xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
+    # Test saving to file (mode = "w" is necessary to work on Windows)
+    outfile = tempfile.NamedTemporaryFile(suffix=".tif", mode="w", delete=False)
+    xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
     dem_coreg2 = xdem.DEM(outfile.name)
     assert dem_coreg2 == dem_coreg
     outfile.close()
@@ -1257,9 +1257,9 @@ def test_dem_coregistration() -> None:
     assert np.all(~inlier_mask[gl_mask])
 
     # Testing with plot
-    out_fig = tempfile.NamedTemporaryFile(suffix=".png")
+    out_fig = tempfile.NamedTemporaryFile(suffix=".png", mode="w", delete=False)
     assert os.path.getsize(out_fig.name) == 0
-    _, _, _, _ = xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
+    xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
     assert os.path.getsize(out_fig.name) > 0
     out_fig.close()
 
