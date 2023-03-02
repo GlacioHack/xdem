@@ -1,4 +1,4 @@
-name: xdem
+name: xdem-dev
 channels:
   - conda-forge
 dependencies:
@@ -21,12 +21,21 @@ dependencies:
   - scikit-gstat>=0.6.8
   - pytransform3d
   - pip
-  
-  - pip:
-    - geoutils==0.0.9
-<<<<<<< Updated upstream
-    - noisyopt
 
-=======
+  # Development-specific
+  - autovizwidget
+  - pytest
+  - pytest-xdist
+  - sphinx
+  - sphinx_rtd_theme
+  - numpydoc
+  - sphinxcontrib-programoutput
+  - flake8
+  - sphinx-autodoc-typehints
+  - sphinx-gallery
+  - pyyaml
+  - richdem
+
+  - pip:
+    - geoutils==0.0.10
     - noisyopt
->>>>>>> Stashed changes
