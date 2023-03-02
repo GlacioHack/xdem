@@ -1401,7 +1401,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
         if verbose:
-            print("   Iteratively estimating horizontal shit:")
+            print("   Iteratively estimating horizontal shift:")
 
         # If verbose is True, will use progressbar and print additional statements
         pbar = trange(self.max_iterations, disable=not verbose, desc="   Progress")
