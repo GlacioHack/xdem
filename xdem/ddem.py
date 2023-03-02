@@ -169,6 +169,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
                 try:
                     with warnings.catch_warnings():
                         warnings.filterwarnings("ignore", "Not enough valid bins")
+                        warnings.filterwarnings("ignore", "invalid value encountered in divide")
                         interpolated_ddem = np.asarray(
                             xdem.volume.hypsometric_interpolation(
                                 interpolated_ddem, reference_elevation.data, mask=feature_mask

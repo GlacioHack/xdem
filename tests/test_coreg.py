@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import copy
+import os
+import tempfile
 import warnings
-from typing import Callable
+from typing import Any, Callable
 
 import cv2
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -42,6 +45,7 @@ class TestCoregClass:
         dem_to_be_aligned=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
+        crs=ref.crs,
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
@@ -124,7 +128,7 @@ class TestCoregClass:
         assert biascorr.apply_pts(self.points)[0, 2] == biascorr._meta["bias"]
 
         # Apply the model to correct the DEM
-        tba_unbiased = biascorr.apply(self.tba.data, self.ref.transform)
+        tba_unbiased, _ = biascorr.apply(self.tba.data, self.ref.transform, self.ref.crs)
 
         # Create a new bias correction model
         biascorr2 = coreg.BiasCorr()
@@ -135,6 +139,7 @@ class TestCoregClass:
             reference_dem=self.ref.data,
             dem_to_be_aligned=tba_unbiased,
             transform=self.ref.transform,
+            crs=self.ref.crs,
             inlier_mask=self.inlier_mask,
         )
         # Test the bias
@@ -150,6 +155,7 @@ class TestCoregClass:
         dem1 = np.ones((50, 50), dtype=float)
         dem2 = dem1.copy() + np.nan
         affine = rio.transform.from_origin(0, 0, 1, 1)
+        crs = rio.crs.CRS.from_epsg(4326)
 
         biascorr = coreg.BiasCorr()
         icp = coreg.ICP()
@@ -159,7 +165,7 @@ class TestCoregClass:
 
         dem2[[3, 20, 40], [2, 21, 41]] = 1.2
 
-        biascorr.fit(dem1, dem2, transform=affine)
+        biascorr.fit(dem1, dem2, transform=affine, crs=crs)
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
@@ -169,22 +175,23 @@ class TestCoregClass:
         # Create a biased dem
         dem2 = dem1.copy() + 2.0
         affine = rio.transform.from_origin(0, 0, 1, 1)
+        crs = rio.crs.CRS.from_epsg(4326)
 
         biascorr = coreg.BiasCorr()
         # Fit the bias
-        biascorr.fit(dem1, dem2, transform=affine)
+        biascorr.fit(dem1, dem2, transform=affine, crs=crs)
 
         # Check that the bias after coregistration is zero
-        assert biascorr.error(dem1, dem2, transform=affine, error_type="median") == 0
+        assert biascorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == 0
 
         # Remove the bias fit and see what happens.
         biascorr._meta["bias"] = 0
         # Now it should be equal to dem1 - dem2
-        assert biascorr.error(dem1, dem2, transform=affine, error_type="median") == -2
+        assert biascorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == -2
 
         # Create random noise and see if the standard deviation is equal (it should)
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
-        assert abs(biascorr.error(dem1, dem3, transform=affine, error_type="std") - np.std(dem3)) < 1e-6
+        assert abs(biascorr.error(dem1, dem3, transform=affine, crs=crs, error_type="std") - np.std(dem3)) < 1e-6
 
     def test_coreg_example(self, verbose=False) -> None:
         """
@@ -250,7 +257,11 @@ class TestCoregClass:
 
         # Fit the synthesized shifted DEM to the original
         nuth_kaab.fit(
-            self.ref.data.squeeze(), shifted_dem, transform=self.ref.transform, verbose=self.fit_params["verbose"]
+            self.ref.data.squeeze(),
+            shifted_dem,
+            transform=self.ref.transform,
+            crs=self.ref.crs,
+            verbose=self.fit_params["verbose"],
         )
 
         # Make sure that the estimated offsets are similar to what was synthesized.
@@ -259,7 +270,7 @@ class TestCoregClass:
         assert nuth_kaab._meta["bias"] == pytest.approx(-bias, 0.03)
 
         # Apply the estimated shift to "revert the DEM" to its original state.
-        unshifted_dem = nuth_kaab.apply(shifted_dem, transform=self.ref.transform)
+        unshifted_dem, _ = nuth_kaab.apply(shifted_dem, transform=self.ref.transform, crs=self.ref.crs)
         # Measure the difference (should be more or less zero)
         diff = self.ref.data.squeeze() - unshifted_dem
         diff = diff.compressed()  # turn into a 1D array with only unmasked values
@@ -286,8 +297,8 @@ class TestCoregClass:
         # Fit the data
         deramp.fit(**self.fit_params)
 
-        # Apply the deramping to a DEm
-        deramped_dem = deramp.apply(self.tba.data, self.ref.transform)
+        # Apply the deramping to a DEM
+        deramped_dem, _ = deramp.apply(self.tba.data, self.ref.transform, self.ref.crs)
 
         # Get the periglacial offset after deramping
         periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[self.inlier_mask.squeeze()]
@@ -322,7 +333,7 @@ class TestCoregClass:
         icp = coreg.ICP(max_iterations=3)
         icp.fit(**self.fit_params)
 
-        aligned_dem = icp.apply(self.tba.data, self.ref.transform)
+        aligned_dem, _ = icp.apply(self.tba.data, self.ref.transform, self.ref.crs)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
@@ -333,7 +344,7 @@ class TestCoregClass:
         pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.NuthKaab()])
         pipeline.fit(**self.fit_params)
 
-        aligned_dem = pipeline.apply(self.tba.data, self.ref.transform)
+        aligned_dem, _ = pipeline.apply(self.tba.data, self.ref.transform, self.ref.crs)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
@@ -418,6 +429,24 @@ class TestCoregClass:
         # Check that the x/y/z differences do not exceed 30cm
         assert np.count_nonzero(matrix_diff > 0.3) == 0
 
+        # Test subsampled deramping
+        degree = 1
+        deramp_sub = coreg.Deramp(degree=degree)
+
+        # Fit the bias using 50% of the unmasked data using a fraction
+        deramp_sub.fit(**self.fit_params, subsample=0.5)
+        # Do the same but specify the pixel count instead.
+        # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
+        # But this would just repeat the subsample code, so that makes little sense to test.
+        deramp_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+
+        # Do full bias corr to compare
+        deramp_full = coreg.Deramp(degree=degree)
+        deramp_full.fit(**self.fit_params)
+
+        # Check that the estimated biases are similar
+        assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-1)
+
     def test_z_scale_corr(self) -> None:
         warnings.simplefilter("error")
 
@@ -429,10 +458,10 @@ class TestCoregClass:
         scaled_dem = self.ref.data * factor
 
         # Fit the correction
-        zcorr.fit(self.ref.data, scaled_dem, transform=self.ref.transform)
+        zcorr.fit(self.ref.data, scaled_dem, transform=self.ref.transform, crs=self.ref.crs)
 
         # Apply the correction
-        unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
+        unscaled_dem, _ = zcorr.apply(scaled_dem, self.ref.transform, self.ref.crs)
 
         # Make sure the difference is now minimal
         diff = (self.ref.data - unscaled_dem).filled(np.nan)
@@ -472,8 +501,8 @@ class TestCoregClass:
         dem_with_nans += error_field * 3
 
         # Try the fit now with the messed up DEM as reference.
-        zcorr.fit(dem_with_nans, scaled_dem, transform=self.ref.transform)
-        unscaled_dem = zcorr.apply(scaled_dem, self.ref.transform)
+        zcorr.fit(dem_with_nans, scaled_dem, transform=self.ref.transform, crs=self.ref.crs)
+        unscaled_dem, _ = zcorr.apply(scaled_dem, self.ref.transform, self.ref.crs)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
@@ -482,10 +511,10 @@ class TestCoregClass:
 
         # Try to correct using a nonlinear correction.
         zcorr_nonlinear = coreg.ZScaleCorr(degree=2)
-        zcorr_nonlinear.fit(dem_with_nans, scaled_dem, transform=self.ref.transform)
+        zcorr_nonlinear.fit(dem_with_nans, scaled_dem, transform=self.ref.transform, crs=self.ref.crs)
 
         # Make sure the difference is minimal
-        unscaled_dem = zcorr_nonlinear.apply(scaled_dem, self.ref.transform)
+        unscaled_dem, _ = zcorr_nonlinear.apply(scaled_dem, self.ref.transform, self.ref.crs)
         diff = (dem_with_nans - unscaled_dem).filled(np.nan)
         assert np.abs(np.nanmedian(diff)) < 0.05
 
@@ -522,7 +551,7 @@ class TestCoregClass:
         chunk_numbers = [m["i"] for m in blockwise._meta["coreg_meta"]]
         assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
 
-        transformed_dem = blockwise.apply(self.tba.data, self.tba.transform)
+        transformed_dem, _ = blockwise.apply(self.tba.data, self.tba.transform, self.tba.crs)
 
         ddem_pre = (self.ref.data - self.tba.data)[~self.inlier_mask].squeeze().filled(np.nan)
         ddem_post = (self.ref.data.squeeze() - transformed_dem)[~self.inlier_mask.squeeze()].filled(np.nan)
@@ -566,7 +595,7 @@ class TestCoregClass:
 
         # Align the DEM and apply the blockwise to a zero-array (to get the zshift)
         aligned = blockwise.fit(self.ref, tba).apply(tba)
-        zshift = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform)
+        zshift, _ = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform, crs=tba.crs)
 
         # Validate that the zshift is not something crazy high and that no negative values exist in the data.
         assert np.nanmax(np.abs(zshift)) < 50
@@ -601,7 +630,10 @@ class TestCoregClass:
         # Fit the data
         biascorr_r.fit(reference_dem=dem1, dem_to_be_aligned=dem2)
         biascorr_a.fit(
-            reference_dem=dem1.data, dem_to_be_aligned=dem2.reproject(dem1, silent=True).data, transform=dem1.transform
+            reference_dem=dem1.data,
+            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
+            transform=dem1.transform,
+            crs=dem1.crs,
         )
 
         # Validate that they ended up giving the same result.
@@ -609,7 +641,7 @@ class TestCoregClass:
 
         # De-shift dem2
         dem2_r = biascorr_r.apply(dem2)
-        dem2_a = biascorr_a.apply(dem2.data, dem2.transform)
+        dem2_a, _ = biascorr_a.apply(dem2.data, dem2.transform, dem2.crs)
 
         # Validate that the return formats were the expected ones, and that they are equal.
         # Issue - dem2_a does not have the same shape, the first dimension is being squeezed
@@ -620,43 +652,136 @@ class TestCoregClass:
 
         # If apply on a masked_array was given without a transform, it should fail.
         with pytest.raises(ValueError, match="'transform' must be given"):
-            biascorr_a.apply(dem2.data)
+            biascorr_a.apply(dem2.data, crs=dem2.crs)
 
+        # If apply on a masked_array was given without a crs, it should fail.
+        with pytest.raises(ValueError, match="'crs' must be given"):
+            biascorr_a.apply(dem2.data, transform=dem2.transform)
+
+        # If transform provided with input Raster, should raise a warning
         with pytest.warns(UserWarning, match="DEM .* overrides the given 'transform'"):
             biascorr_a.apply(dem2, transform=dem2.transform)
+
+        # If crs provided with input Raster, should raise a warning
+        with pytest.warns(UserWarning, match="DEM .* overrides the given 'crs'"):
+            biascorr_a.apply(dem2, crs=dem2.crs)
+
+    # Inputs contain: coregistration method, is implemented, comparison is "strict" or "approx"
+    @pytest.mark.parametrize(
+        "inputs",
+        [
+            [xdem.coreg.BiasCorr(), True, "strict"],
+            [xdem.coreg.Deramp(), True, "strict"],
+            [xdem.coreg.ZScaleCorr(), True, "strict"],
+            [xdem.coreg.NuthKaab(), True, "approx"],
+            [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
+            [xdem.coreg.BlockwiseCoreg(coreg=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
+            [xdem.coreg.ICP(), False, ""],
+        ],
+    )  # type: ignore
+    def test_apply_resample(self, inputs: list[Any]) -> None:
+        """
+        Test that the option resample of coreg.apply works as expected.
+        For vertical correction only (BiasCorr, Deramp...), option True or False should yield same results.
+        For horizontal shifts (NuthKaab etc), georef should differ, but DEMs should be the same after resampling.
+        For others, the method is not implemented.
+        """
+        # Get test inputs
+        coreg_method, is_implemented, comp = inputs
+        ref_dem, tba_dem, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
+
+        # Prepare coreg
+        inlier_mask = ~outlines.create_mask(ref_dem)
+        coreg_method.fit(tba_dem, ref_dem, inlier_mask=inlier_mask)
+
+        # If not implemented, should raise an error
+        if not is_implemented:
+            with pytest.raises(NotImplementedError, match="Option `resample=False` not implemented for coreg method *"):
+                dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+            return
+        else:
+            dem_coreg_resample = coreg_method.apply(tba_dem)
+            dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+
+        if comp == "strict":
+            # Both methods should yield the exact same output
+            assert dem_coreg_resample == dem_coreg_noresample
+        elif comp == "approx":
+            # The georef should be different
+            assert dem_coreg_noresample.transform != dem_coreg_resample.transform
+
+            # After resampling, both results should be almost equal
+            dem_final = dem_coreg_noresample.reproject(dem_coreg_resample)
+            diff = dem_final - dem_coreg_resample
+            assert np.all(np.abs(diff.data) == pytest.approx(0, abs=1e-2))
+            # assert np.count_nonzero(diff.data) == 0
+
+        # Test it works with different resampling algorithms
+        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
+        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
+        with pytest.raises(ValueError, match="`resampling` must be a rio.warp.Resampling algorithm"):
+            dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=None)
 
     @pytest.mark.parametrize(
         "combination",
         [
-            ("dem1", "dem2", "None", "fit", "passes", ""),
-            ("dem1", "dem2", "None", "apply", "passes", ""),
-            ("dem1.data", "dem2.data", "dem1.transform", "fit", "passes", ""),
-            ("dem1.data", "dem2.data", "dem1.transform", "apply", "passes", ""),
+            ("dem1", "dem2", "None", "None", "fit", "passes", ""),
+            ("dem1", "dem2", "None", "None", "apply", "passes", ""),
+            ("dem1.data", "dem2.data", "dem1.transform", "dem1.crs", "fit", "passes", ""),
+            ("dem1.data", "dem2.data", "dem1.transform", "dem1.crs", "apply", "passes", ""),
             (
                 "dem1",
                 "dem2.data",
                 "dem1.transform",
+                "dem1.crs",
                 "fit",
                 "warns",
                 "'reference_dem' .* overrides the given 'transform'",
             ),
-            ("dem1.data", "dem2", "dem1.transform", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
+            ("dem1.data", "dem2", "dem1.transform", "None", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
             (
                 "dem1.data",
                 "dem2.data",
                 "None",
+                "dem1.crs",
                 "fit",
                 "error",
                 "'transform' must be given if both DEMs are array-like.",
             ),
-            ("dem1", "dem2.data", "None", "apply", "error", "'transform' must be given if DEM is array-like."),
-            ("dem1", "dem2", "dem2.transform", "apply", "warns", "DEM .* overrides the given 'transform'"),
-            ("None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
-            ("dem1 + np.nan", "dem2", "None", "fit", "error", "'reference_dem' had only NaNs"),
-            ("dem1", "dem2 + np.nan", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
+            (
+                "dem1.data",
+                "dem2.data",
+                "dem1.transform",
+                "None",
+                "fit",
+                "error",
+                "'crs' must be given if both DEMs are array-like.",
+            ),
+            (
+                "dem1",
+                "dem2.data",
+                "None",
+                "dem1.crs",
+                "apply",
+                "error",
+                "'transform' must be given if DEM is array-like.",
+            ),
+            (
+                "dem1",
+                "dem2.data",
+                "dem1.transform",
+                "None",
+                "apply",
+                "error",
+                "'crs' must be given if DEM is array-like.",
+            ),
+            ("dem1", "dem2", "dem2.transform", "None", "apply", "warns", "DEM .* overrides the given 'transform'"),
+            ("None", "None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+            ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
+            ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
     )  # type: ignore
-    def test_coreg_raises(self, combination: tuple[str, str, str, str, str, str]) -> None:
+    def test_coreg_raises(self, combination: tuple[str, str, str, str, str, str, str]) -> None:
         """
         Assert that the expected warnings/errors are triggered under different circumstances.
 
@@ -664,13 +789,15 @@ class TestCoregClass:
             1. The reference_dem (will be eval'd)
             2. The dem to be aligned (will be eval'd)
             3. The transform to use (will be eval'd)
-            4. Which coreg method to assess
-            5. The expected outcome of the test.
-            6. The error/warning message (if applicable)
+            4. The CRS to use (will be eval'd)
+            5. Which coreg method to assess
+            6. The expected outcome of the test.
+            7. The error/warning message (if applicable)
         """
         warnings.simplefilter("error")
 
-        ref_dem, tba_dem, transform, testing_step, result, text = combination
+        ref_dem, tba_dem, transform, crs, testing_step, result, text = combination
+
         # Create a small sample-DEM
         dem1 = xdem.DEM.from_array(
             np.arange(25, dtype="float64").reshape(5, 5),
@@ -681,16 +808,16 @@ class TestCoregClass:
         dem2 = dem1.copy()  # noqa
 
         # Evaluate the parametrization (e.g. 'dem2.transform')
-        ref_dem, tba_dem, transform = map(eval, (ref_dem, tba_dem, transform))
+        ref_dem, tba_dem, transform, crs = map(eval, (ref_dem, tba_dem, transform, crs))
 
         # Use BiasCorr as a representative example.
         biascorr = xdem.coreg.BiasCorr()
 
         def fit_func() -> coreg.Coreg:
-            return biascorr.fit(ref_dem, tba_dem, transform=transform)
+            return biascorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
 
         def apply_func() -> NDArrayf:
-            return biascorr.apply(tba_dem, transform=transform)
+            return biascorr.apply(tba_dem, transform=transform, crs=crs)
 
         # Try running the methods in order and validate the result.
         for method, method_call in [("fit", fit_func), ("apply", apply_func)]:
@@ -715,9 +842,12 @@ class TestCoregClass:
         dem_arr = np.ones((5, 5), dtype="int32")
         dem_arr2 = dem_arr + 1
         transform = rio.transform.from_origin(0, 5, 1, 1)
+        crs = rio.crs.CRS.from_epsg(4326)
 
-        dem_arr2_fixed = (
-            coreg.BiasCorr().fit(dem_arr, dem_arr2, transform=transform).apply(dem_arr2, transform=transform)
+        dem_arr2_fixed, _ = (
+            coreg.BiasCorr()
+            .fit(dem_arr, dem_arr2, transform=transform, crs=crs)
+            .apply(dem_arr2, transform=transform, crs=crs)
         )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
@@ -752,14 +882,6 @@ def test_apply_matrix() -> None:
     matrix[2, 3] = -bias
 
     transformed_dem = coreg.apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
-
-    # Dilate the mask: this should remove the same edge pixels as done by skimage
-    transformed_dem_dilated = coreg.apply_matrix(
-        shifted_dem, ref.transform, matrix, resampling="bilinear", dilate_mask=True
-    )
-    # Validate the same pixels were removed.
-    assert np.count_nonzero(np.isfinite(transformed_dem)) == np.count_nonzero(np.isfinite(transformed_dem_dilated))
-
     diff = np.asarray(ref_arr - transformed_dem)
 
     # Check that the median is very close to zero
@@ -945,3 +1067,240 @@ def test_warp_dem() -> None:
         plt.subplot(144)
         plt.imshow(dem - untransformed_dem, cmap="coolwarm_r", vmin=-10, vmax=10)
         plt.show()
+
+
+def test_create_inlier_mask() -> None:
+    """Test that the create_inlier_mask function works expectedly."""
+    warnings.simplefilter("error")
+
+    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and outlines
+
+    # - Assert that without filtering create_inlier_mask behaves as if calling Vector.create_mask - #
+    # Masking inside - using Vector
+    inlier_mask_comp = ~outlines.create_mask(ref)
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines,
+        ],
+        filtering=False,
+    )
+    assert np.all(inlier_mask_comp == inlier_mask)
+
+    # Masking inside - using string
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines.name,
+        ],
+        filtering=False,
+    )
+    assert np.all(inlier_mask_comp == inlier_mask)
+
+    # Masking outside - using Vector
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines,
+        ],
+        inout=[
+            -1,
+        ],
+        filtering=False,
+    )
+    assert np.all(~inlier_mask_comp == inlier_mask)
+
+    # Masking outside - using string
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        [
+            outlines.name,
+        ],
+        inout=[-1],
+        filtering=False,
+    )
+    assert np.all(~inlier_mask_comp == inlier_mask)
+
+    # - Test filtering options only - #
+    # Test the slope filter only
+    slope = xdem.terrain.slope(ref)
+    slope_lim = [1, 50]
+    inlier_mask_comp2 = np.ones(tba.data.shape, dtype=bool)
+    inlier_mask_comp2[slope.data < slope_lim[0]] = False
+    inlier_mask_comp2[slope.data > slope_lim[1]] = False
+    inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf)
+    assert np.all(inlier_mask == inlier_mask_comp2)
+
+    # Test the nmad_factor filter only
+    nmad_factor = 3
+    ddem = tba - ref
+    inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(False)
+    inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
+    assert np.all(inlier_mask == inlier_mask_comp3)
+
+    # Test the sum of both
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba, ref, shp_list=[], inout=[], filtering=True, slope_lim=slope_lim, nmad_factor=nmad_factor
+    )
+    inlier_mask_all = inlier_mask_comp2 & inlier_mask_comp3
+    assert np.all(inlier_mask == inlier_mask_all)
+
+    # Test the dh_max filter only
+    dh_max = 200
+    inlier_mask_comp4 = (np.abs(ddem.data) < dh_max).filled(False)
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=np.inf, dh_max=dh_max
+    )
+    assert np.all(inlier_mask == inlier_mask_comp4)
+
+    # - Test the sum of outlines + dh_max + slope - #
+    # nmad_factor will have a different behavior because it calculates nmad from the inliers of previous filters
+    inlier_mask = xdem.coreg.create_inlier_mask(
+        tba,
+        ref,
+        shp_list=[
+            outlines,
+        ],
+        inout=[
+            -1,
+        ],
+        filtering=True,
+        slope_lim=slope_lim,
+        nmad_factor=np.inf,
+        dh_max=dh_max,
+    )
+    inlier_mask_all = ~inlier_mask_comp & inlier_mask_comp2 & inlier_mask_comp4
+    assert np.all(inlier_mask == inlier_mask_all)
+
+    # - Test that proper errors are raised for wrong inputs - #
+    with pytest.raises(ValueError, match="`shp_list` must be a list/tuple"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, shp_list=outlines)
+
+    with pytest.raises(ValueError, match="`shp_list` must be a list/tuple of strings or geoutils.Vector instance"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, shp_list=[1])
+
+    with pytest.raises(ValueError, match="`inout` must be a list/tuple"):
+        inlier_mask = xdem.coreg.create_inlier_mask(
+            tba,
+            ref,
+            shp_list=[
+                outlines,
+            ],
+            inout=1,  # type: ignore
+        )
+
+    with pytest.raises(ValueError, match="`inout` must contain only 1 and -1"):
+        inlier_mask = xdem.coreg.create_inlier_mask(
+            tba,
+            ref,
+            shp_list=[
+                outlines,
+            ],
+            inout=[
+                0,
+            ],
+        )
+
+    with pytest.raises(ValueError, match="`inout` must be of same length as shp"):
+        inlier_mask = xdem.coreg.create_inlier_mask(
+            tba,
+            ref,
+            shp_list=[
+                outlines,
+            ],
+            inout=[1, 1],
+        )
+
+    with pytest.raises(ValueError, match="`slope_lim` must be a list/tuple"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=1)  # type: ignore
+
+    with pytest.raises(ValueError, match="`slope_lim` must contain 2 elements"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[30])
+
+    with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[-1, 40])
+
+    with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
+        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
+
+
+def test_dem_coregistration() -> None:
+    """
+    Test that the dem_coregistration function works expectedly.
+    Tests the features that are specific to dem_coregistration.
+    For example, many features are tested in create_inlier_mask, so not tested again here.
+    TODO: Add DEMs with different projection/grid to test that regridding works as expected.
+    """
+    # Load example reference, to-be-aligned and outlines
+    ref_dem, tba_dem, outlines = load_examples()
+
+    # - Check that it works with default parameters - #
+    dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(tba_dem, ref_dem)
+
+    # Assert that outputs have expected format
+    assert isinstance(dem_coreg, xdem.DEM)
+    assert isinstance(coreg_method, xdem.coreg.Coreg)
+    assert isinstance(coreg_stats, pd.DataFrame)
+
+    # Assert that default coreg_method is as expected
+    assert hasattr(coreg_method, "pipeline")
+    assert isinstance(coreg_method.pipeline[0], xdem.coreg.NuthKaab)
+    assert isinstance(coreg_method.pipeline[1], xdem.coreg.BiasCorr)
+
+    # The result should be similar to applying the same coreg by hand with:
+    # - DEMs converted to Float32
+    # - default inlier_mask
+    # - no resampling
+    coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.BiasCorr()
+    inlier_mask = xdem.coreg.create_inlier_mask(tba_dem, ref_dem)
+    coreg_method_ref.fit(ref_dem.astype("float32"), tba_dem.astype("float32"), inlier_mask=inlier_mask)
+    dem_coreg_ref = coreg_method_ref.apply(tba_dem, resample=False)
+    assert dem_coreg == dem_coreg_ref
+
+    # Assert that coregistration improved the residuals
+    assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
+    assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values
+
+    # - Check some alternative arguments - #
+    # Test with filename instead of DEMs
+    dem_coreg2, _, _, _ = xdem.coreg.dem_coregistration(tba_dem.filename, ref_dem.filename)
+    assert dem_coreg2 == dem_coreg
+
+    # Test saving to file (mode = "w" is necessary to work on Windows)
+    outfile = tempfile.NamedTemporaryFile(suffix=".tif", mode="w", delete=False)
+    xdem.coreg.dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
+    dem_coreg2 = xdem.DEM(outfile.name)
+    assert dem_coreg2 == dem_coreg
+    outfile.close()
+
+    # Test that shapefile is properly taken into account - inlier_mask should be False inside outlines
+    # Need to use resample=True, to ensure that dem_coreg has same georef as inlier_mask
+    dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(
+        tba_dem,
+        ref_dem,
+        shp_list=[
+            outlines,
+        ],
+        resample=True,
+    )
+    gl_mask = outlines.create_mask(dem_coreg)
+    assert np.all(~inlier_mask[gl_mask])
+
+    # Testing with plot
+    out_fig = tempfile.NamedTemporaryFile(suffix=".png", mode="w", delete=False)
+    assert os.path.getsize(out_fig.name) == 0
+    xdem.coreg.dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
+    assert os.path.getsize(out_fig.name) > 0
+    out_fig.close()
+
+    # Testing different coreg method
+    dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(
+        tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp(degree=1)
+    )
+    assert isinstance(coreg_method, xdem.coreg.Deramp)
+    assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
+    assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values

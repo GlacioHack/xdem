@@ -37,5 +37,5 @@ dependencies:
   - richdem
 
   - pip:
-    - geoutils==0.0.9
+    - geoutils==0.0.10
     - noisyopt
