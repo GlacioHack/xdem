@@ -140,16 +140,15 @@ def subset_gdf(df: pd.DataFrame, dem: NDArrayf) -> pd.DataFrame:
 
     return df_subset
 
-def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str, weight: str = None, **kwargs) -> pd.DataFrame:
+def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str,**kwargs) -> pd.DataFrame:
     """
-    Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying shift.
+    Calculate the difference between the DEM and points (a dataframe has 'E','N','Z') after applying shift.
 
     :param dem: DEM
     :param df: A dataframe has 'E','N' and has been subseted according to DEM bonds and masks.
     :param shift_px: The coordinates of shift pixels (e_px,n_px).
     :param dz: The bias.
     :param z_name: The column that be used to compare with dem_h.
-    :param weight: The column that be used as weights
 
     :returns: An array of residuals.
         """
@@ -161,14 +160,13 @@ def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_
     # prepare DEM
     arr_ = dem.data[0, :, :]
 
-    # get residual error at the point on DEM.
+    # get residual error at the point on DEM. TODO may also use geoutils dem.value_at_coords
     i, j = dem.xy2ij(df_shifted['E'].values, df_shifted['N'].values, op=np.float32)
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j],order=1,mode='nearest',**kwargs)
-    weight_ = df[weight] if weight else 1
 
-    return (df_shifted[z_name].values - dem_h) * weight_
+    return df_shifted[z_name].values - dem_h
 
 def df_sampling_from_dem(dem: NDArrayf, tba_dem: NDArrayf, samples:int = 5000, order:int = 1, offset = None) -> pd.DataFrame:
     '''
@@ -194,18 +192,17 @@ def df_sampling_from_dem(dem: NDArrayf, tba_dem: NDArrayf, samples:int = 5000, o
     # Get value
     x, y = dem.ij2xy(i[~mask[i,j]], j[~mask[i,j]], offset = offset)
     z = scipy.ndimage.map_coordinates(dem.data[0, :, :], [i[~mask[i,j]], j[~mask[i,j]]], order=order, mode="nearest")
-    df = pd.DataFrame({'z': z,'N':y,'E':x})
+    df = pd.DataFrame({'Z': z,'N':y,'E':x})
 
     # mask out from tba_dem
     if tba_dem is not None:
-        df, _ = mask_dataframe_by_dem(df,tba_dem)
+        df = mask_dataframe_by_dem(df,tba_dem)
 
     return df
 
 def mask_dataframe_by_dem(df: pd.DataFrame or np.ndarray, dem: NDArrayf) -> pd.DataFrame or np.ndarray:
     '''
     mask out the dataframe (has 'E','N' columns), or np.ndarray ([E,N])  by DEM's mask
-    return new dataframe and mask
     '''
 
     final_mask = ~dem.data.mask
@@ -217,9 +214,8 @@ def mask_dataframe_by_dem(df: pd.DataFrame or np.ndarray, dem: NDArrayf) -> pd.D
         pts = df
 
     ref_inlier = mask_raster.interp_points(pts, input_latlon=False, order=0)
-    new_df = df[ref_inlier.astype(bool)].copy()
 
-    return new_df, ref_inlier.astype(bool)
+    return df[ref_inlier.astype(bool)].copy()
 
 def fill_by_nearest(data: np.ndarray, invalid = None) -> np.ndarray:
     """
@@ -758,9 +754,10 @@ class Coreg:
                 weights: NDArrayf | None = None,
                 subsample: float | int = 1.0,
                 verbose: bool = False,
+                input_latlon: bool = False,
                 mask_highcurv: bool = True,
                 order:int = 1,
-                z_name: str = 'z') -> CoregType:
+                moving_avrage:int | bool = False) -> CoregType:
 
             """
             Estimate the coregistration transform between a DEM and a reference point elevation data.
@@ -779,16 +776,16 @@ class Coreg:
                 raise NotImplementedError("Weights have not yet been implemented")
 
             # Validate that at least one input is a valid array-like (or Raster) types.
-            if not isinstance(dem_to_be_aligned, (np.ndarray, gu.Raster)):
+            if not hasattr(dem_to_be_aligned, "__array_interface__"):
                 raise ValueError(
                     "The dem_to_be_aligned needs to be array-like (implement a numpy array interface)."
-                    f"'dem_to_be_aligned': {dem_to_be_aligned}"
+                    f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
                 )
             # Validate that at least one input is a valid point data type.
             if not isinstance(reference_dem, pd.DataFrame):
                 raise ValueError(
                     "The reference_dem needs to be point data format (TBD, pd.Dataframe for now)."
-                    f"'reference_dem': {reference_dem}"
+                    f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
                 )
 
             # If any input is a Raster, use its transform if 'transform is None'.
@@ -821,7 +818,7 @@ class Coreg:
                 planc, profc = xdem.terrain.get_terrain_attribute(tba_dem, attribute=['planform_curvature', 'profile_curvature'])
                 maxc = np.maximum(np.abs(planc), np.abs(profc))
                 # Mask very high curvatures to avoid resolution biases
-                mask_highcurv = maxc.data > 5.
+                mask_highcurv = maxc > 5.
             else:
                 mask_highcurv = np.zeros(tba_dem.data.mask.shape, dtype=bool)
                 if 'planc' in ref_dem.columns and 'profc' in ref_dem.columns:
@@ -846,7 +843,7 @@ class Coreg:
 
             mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
 
-            ref_inlier = mask_raster.interp_points(points, order=0)
+            ref_inlier = mask_raster.interp_points(points, input_latlon=input_latlon, order=0)
             ref_inlier = ref_inlier.astype(bool)
 
             if np.all(~ref_inlier):
@@ -858,13 +855,14 @@ class Coreg:
             if subsample != 1.0:
 
                 # Randomly pick N inliers in the full_mask where N=subsample
-                random_valids = spatial_tools.subsample_raster(ref_dem['z'].values, subsample = subsample, return_indices = True)
+                random_valids = spatial_tools.subsample_raster(ref_dem['z'].values, subsample=subsample, return_indices=True)
 
                 # Subset to the N random inliers
                 ref_dem = ref_dem.iloc[random_valids]
 
             # Run the associated fitting function
-            self._fit_pts_func(ref_dem = ref_dem, tba_dem = tba_dem, transform = transform, weights = weights, verbose = verbose,order = order,z_name = z_name)
+            self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, weights=weights, verbose=verbose,
+                            input_latlon=input_latlon,order=order,moving_avrage=moving_avrage)
 
             # Flag that the fitting function has been called.
             self._fit_called = True
@@ -1635,8 +1633,7 @@ class GradientDescending(Coreg):
     def __init__(
         self, 
         downsampling: int = 6000,
-        z_name: str ='z',
-        weight: str = None,
+        z_name: str='z',
         x0=(0,0),
         bounds=(-3,3),
         deltainit=2,
@@ -1645,9 +1642,7 @@ class GradientDescending(Coreg):
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
-        
-        :param z_name: the column name of dataframe used for elevation differencing
-        :param weight: the column name of dataframe used for weight
+
         :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
         :param x0: The initial point of gradient descending iteration.
         :param bounds: The boundary of the maximum shift.
@@ -1664,11 +1659,10 @@ class GradientDescending(Coreg):
         self.downsampling = downsampling
         self.bounds = bounds
         self.x0 = x0
-        self.deltainit = deltainit
-        self.deltatol = deltatol
-        self.feps = feps
-        self.z_name = z_name
-        self.weight = weight
+        self.deltainit=deltainit
+        self.deltatol=deltatol
+        self.feps=feps
+        self.z_name=z_name
 
         super().__init__()
 
@@ -1707,7 +1701,7 @@ class GradientDescending(Coreg):
 
 
         # start iteration, find the best shifting px
-        func_x = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = self.z_name, weight = self.weight))
+        func_x = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = self.z_name))
 
         if verbose:
             disp = True
@@ -1884,7 +1878,6 @@ class NuthKaab(Coreg):
         self._meta["offset_north_px"] = offset_north
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
-        self._meta["nmad"] = nmad_new
 
     def _fit_pts_func(
         self, 
@@ -1894,7 +1887,7 @@ class NuthKaab(Coreg):
         weights: NDArrayf | None,
         verbose: bool = False, 
         order: int = 1,
-        z_name: str = 'z',
+        z_name: str='z',
     ) -> None:
 
         """
@@ -1968,20 +1961,18 @@ class NuthKaab(Coreg):
             # Treat new_pts as a window. Everytime we shift it a little bit to fit the correct view.
             new_pts += [east_diff*resolution, north_diff*resolution]
 
+            # mask out no data
+            new_pts = mask_dataframe_by_dem(new_pts,tba_dem)
+
             # get new values
+            slope_pts = interp_points(slope_r,new_pts, order=order,mode='nearest')
+            aspect_pts = interp_points(aspect_r,new_pts, order=order,mode='nearest')
             tba_pts = interp_points(aligned_dem,new_pts, order=order,mode='nearest')
-            elevation_difference = ref_dem[z_name].values - tba_pts
-
-            # mask out no data by dem's mask
-            pts_, mask_ = mask_dataframe_by_dem(new_pts,tba_dem)
-
-            # update values relataed to shifted pts
-            elevation_difference = elevation_difference[mask_]
-            slope_pts = interp_points(slope_r, pts_, order=order,mode='nearest')
-            aspect_pts = interp_points(aspect_r, pts_, order=order,mode='nearest')
-            bias = np.nanmedian(elevation_difference)
 
             # Update statistics
+            elevation_difference = ref_dem[z_name].values - tba_pts
+            bias = np.nanmedian(elevation_difference)
+            
             elevation_difference -= bias
             nmad_new = xdem.spatialstats.nmad(elevation_difference)
             nmad_gain = (nmad_new - nmad_old) / nmad_old*100
@@ -2010,8 +2001,6 @@ class NuthKaab(Coreg):
         self._meta["offset_north_px"] = offset_north
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
-        self._meta["nmad"] = nmad_new
-
 
 
     def _to_matrix_func(self) -> NDArrayf:
