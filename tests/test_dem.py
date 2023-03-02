@@ -3,7 +3,7 @@ import os
 import warnings
 
 import geoutils.georaster as gr
-import geoutils.satimg as si
+import geoutils.georaster.satimg as si
 import numpy as np
 import pyproj
 import pytest
