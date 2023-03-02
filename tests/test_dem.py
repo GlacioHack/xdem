@@ -4,10 +4,10 @@ import warnings
 
 import geoutils.georaster as gr
 import geoutils.satimg as si
-import rasterio as rio
 import numpy as np
 import pyproj
 import pytest
+import rasterio as rio
 from geoutils.georaster.raster import _default_rio_attrs
 
 import xdem
@@ -68,7 +68,12 @@ class TestDEM:
 
         # Check that an error is raised when more than one band is provided
         with pytest.raises(ValueError, match="DEM rasters should be composed of one band only"):
-            xdem.DEM.from_array(data=np.zeros(shape=(2, 5, 5)), transform= rio.transform.from_bounds(0, 0, 1, 1, 5, 5), crs=None, nodata=None)
+            xdem.DEM.from_array(
+                data=np.zeros(shape=(2, 5, 5)),
+                transform=rio.transform.from_bounds(0, 0, 1, 1, 5, 5),
+                crs=None,
+                nodata=None,
+            )
 
     def test_copy(self) -> None:
         """
