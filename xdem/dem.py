@@ -84,7 +84,7 @@ class DEM(SatelliteImage):  # type: ignore
                 super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
         # self.indexes can be None when data is not loaded through the Raster class
-        if self.indexes is not None and self.indexes > 1:
+        if self.indexes is not None and len(self.indexes) > 1:
             raise ValueError("DEM rasters should be composed of one band only")
 
         # user input
