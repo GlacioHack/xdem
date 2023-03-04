@@ -1,12 +1,14 @@
-.. _api:
+(api)=
 
-API Reference
-=============
+# API Reference
 
 Full information about xdem's functionality is provided on this page.
 
+```{eval-rst}
 .. currentmodule:: xdem
+```
 
+```{eval-rst}
 .. autosummary::
         :toctree: gen_modules/
         :template: module.rst
@@ -17,7 +19,9 @@ Full information about xdem's functionality is provided on this page.
         spatialstats
         terrain
         volume
+```
 
+```{eval-rst}
 .. automodule:: xdem
 
    .. contents:: Contents
@@ -58,3 +62,4 @@ Full information about xdem's functionality is provided on this page.
 
    .. minigallery:: xdem.dDEM
         :add-heading:
+```

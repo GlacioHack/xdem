@@ -149,6 +149,10 @@ def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -
     if isinstance(conda_dep_devenv[-1], dict):
         pip_dep_devenv = conda_dep_devenv.pop()["pip"]
 
+        # Remove the package's self install for devs via pip, if it exists
+        if "-e ./" in pip_dep_devenv:
+            pip_dep_devenv.remove("-e ./")
+
         # Check if there is a pip dependency in the normal env as well, if yes pop it also
         if isinstance(conda_dep_env[-1], dict):
             pip_dep_env = conda_dep_env.pop()["pip"]
@@ -166,7 +170,7 @@ def diff_environment_yml(fn_env: str, fn_devenv: str, print_dep: str = "both") -
 
         # If there is no pip dependency in env, all the ones of dev-env need to be added during CI
         else:
-            diff_pip_dep = list(pip_dep_devenv["pip"])
+            diff_pip_dep = pip_dep_devenv
 
     # If there is no pip dependency, we ignore this step
     else:

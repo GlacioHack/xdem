@@ -20,22 +20,27 @@ dependencies:
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-  - pip
+  - geoutils==0.0.9
 
   # Development-specific
+  - pip
+  - sphinx-book-theme
   - autovizwidget
+  - graphviz
+  - python-graphviz
   - pytest
   - pytest-xdist
   - sphinx
-  - myst-parser
+  - myst-nb
   - numpydoc
   - sphinxcontrib-programoutput
   - flake8
+  - sphinx-design
+  - pylint
   - sphinx-autodoc-typehints
   - sphinx-gallery
   - pyyaml
   - richdem
 
   - pip:
-    - sphinx-book-theme
-    - geoutils==0.0.9
+    - -e ./
