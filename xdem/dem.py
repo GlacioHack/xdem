@@ -60,8 +60,7 @@ class DEM(SatelliteImage):  # type: ignore
     ) -> None:
         """
         Load digital elevation model data through the Raster class, parse additional attributes from filename or
-        metadata
-        trougth the SatelliteImage class, and then parse vertical reference from DEM product name.
+        metadata through the SatelliteImage class, and then parse vertical reference from DEM product name.
         For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
 
         :param filename_or_dataset: The filename of the dataset.
@@ -84,8 +83,8 @@ class DEM(SatelliteImage):  # type: ignore
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
                 super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
-        # self.nbands can be None when data is not loaded through the Raster class
-        if self.nbands is not None and self.nbands > 1:
+        # self.indexes can be None when data is not loaded through the Raster class
+        if self.indexes is not None and len(self.indexes) > 1:
             raise ValueError("DEM rasters should be composed of one band only")
 
         # user input
