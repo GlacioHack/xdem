@@ -1,12 +1,70 @@
-% xdem documentation master file, created by
-% sphinx-quickstart on Fri Mar 19 14:30:39 2021.
-% You can adapt this file completely to your liking, but it should at least
-% contain the root ``toctree`` directive.
+---
+title: xDEM
+---
 
-# xDEM: Analysis of digital elevation models
+::::{grid}
+:reverse:
+:gutter: 2 1 1 1
+:margin: 4 4 1 1
 
-xDEM aims at simplifying the analysis of digital elevation models (DEMs), including vertical referencing,
-terrain attributes, co-registration, bias corrections, error statistics, and more.
+:::{grid-item}
+:columns: 4
+
+```{image} ./_static/xdem_logo_only_v3.svg
+    :width: 300px
+    :class: dark-light
+```
+:::
+
+:::{grid-item}
+:columns: 8
+:class: sd-fs-3
+:child-align: center
+
+xDEM aims at making the analysis of digital elevation models **easy**, **modular** and **robust**.
+
+::::
+
+----------------
+
+# Where to start?
+
+::::{grid} 1 2 2 3
+:gutter: 1 1 1 2
+
+:::{grid-item-card} {material-regular}`edit_note;2em` About xDEM
+:link: about-xdem
+:link-type: ref
+
+Learn more about why we developed xDEM.
+
++++
+[Learn more »](about-xdem)
+:::
+
+:::{grid-item-card} {material-regular}`data_exploration;2em` Quick start
+:link: quick-start
+:link-type: ref
+
+Run a short example of the package functionalities.
+
++++
+[Learn more »](quick-start)
+:::
+
+:::{grid-item-card} {material-regular}`preview;2em` Features
+:link: vertical-ref
+:link-type: ref
+
+Dive into the full documentation.
+
++++
+[Learn more »](vertical-ref)
+:::
+
+::::
+
+----------------
 
 :::{important}
 xDEM is in early stages of development and its features might evolve rapidly. Note the version you are

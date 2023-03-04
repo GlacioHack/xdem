@@ -149,3 +149,6 @@ docs/source/basic_examples/
 docs/source/advanced_examples/
 docs/source/gen_modules/
 examples/basic/temp.tif
+
+# Directory where myst_nb executes jupyter code
+doc/jupyter_execute/
