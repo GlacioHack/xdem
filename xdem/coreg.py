@@ -1850,7 +1850,11 @@ class BlockwiseCoreg(Coreg):
             meta["representative_x"], meta["representative_y"] = rio.transform.xy(
                 transform_subset, representative_row, representative_col
             )
-            meta["representative_val"] = ref_subset[representative_row, representative_col]
+
+            repr_val = ref_subset[representative_row, representative_col]
+            if ~np.isfinite(repr_val):
+                repr_val = 0
+            meta["representative_val"] = repr_val
 
             # If the coreg is a pipeline, copy its metadatas to the output meta
             if hasattr(coreg, "pipeline"):
@@ -2008,6 +2012,9 @@ class BlockwiseCoreg(Coreg):
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
     ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        if np.count_nonzero(np.isfinite(dem)) == 0:
+            return dem, transform
 
         # Other option than resample=True is not implemented for this case
         if "resample" in kwargs and kwargs["resample"] is not True:
