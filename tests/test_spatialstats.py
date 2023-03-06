@@ -16,7 +16,7 @@ from geoutils import Raster, Vector
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
-from xdem.spatialstats import EmpiricalVariogramKArgs
+from xdem.spatialstats import EmpiricalVariogramKArgs, nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -35,6 +35,27 @@ def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
     mask = outlines.create_mask(ddem)
 
     return reference_raster, ddem, mask, outlines
+
+class TestStats:
+
+    # Load data for the entire test class
+    ref, diff, mask, outlines = load_ref_and_diff()
+
+    def test_nmad(self) -> None:
+        """Test NMAD functionality runs on any type of input"""
+
+        # Check that the NMAD is computed the same with a raster, masked array or NaN array
+        nmad_raster = nmad(self.diff)
+        nmad_ma = nmad(self.diff.data)
+        nmad_array = nmad(self.diff.get_nanarray())
+
+        assert nmad_raster == nmad_ma == nmad_array
+
+        # Check that the scaling factor works
+        nmad_1 = nmad(self.diff, nfact=1)
+        nmad_2 = nmad(self.diff, nfact=2)
+
+        assert nmad_1 * 2 == nmad_2
 
 
 class TestBinning:
