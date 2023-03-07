@@ -13,6 +13,7 @@ import scipy.interpolate
 from geoutils import spatial_tools
 from tqdm import tqdm
 
+from geoutils.georaster import RasterType
 import xdem
 from xdem._typing import MArrayf, NDArrayf
 
@@ -534,9 +535,9 @@ for areas filling the min_coverage criterion.
 
 
 def get_regional_hypsometric_signal(
-    ddem: NDArrayf | MArrayf,
-    ref_dem: NDArrayf | MArrayf,
-    glacier_index_map: NDArrayf,
+    ddem: NDArrayf | MArrayf | RasterType,
+    ref_dem: NDArrayf | MArrayf | RasterType,
+    glacier_index_map: NDArrayf | RasterType,
     n_bins: int = 20,
     verbose: bool = False,
     min_coverage: float = 0.05,
@@ -554,8 +555,9 @@ def get_regional_hypsometric_signal(
     :returns: A DataFrame of bin statistics, scaled by elevation and elevation change.
     """
     # Extract the array and mask representations of the arrays.
-    ddem_arr, ddem_mask = spatial_tools.get_array_and_mask(ddem.squeeze())
-    ref_arr, ref_mask = spatial_tools.get_array_and_mask(ref_dem.squeeze())
+    ddem_arr, ddem_mask = spatial_tools.get_array_and_mask(ddem)
+    ref_arr, ref_mask = spatial_tools.get_array_and_mask(ref_dem)
+    glacier_index_map, _ = spatial_tools.get_array_and_mask(glacier_index_map)
 
     # The reference DEM should be void free
     assert np.count_nonzero(ref_mask) == 0, "Reference DEM has voids"
@@ -631,9 +633,9 @@ def get_regional_hypsometric_signal(
 
 
 def norm_regional_hypsometric_interpolation(
-    voided_ddem: NDArrayf | MArrayf,
-    ref_dem: NDArrayf | MArrayf,
-    glacier_index_map: NDArrayf,
+    voided_ddem: NDArrayf | MArrayf | RasterType,
+    ref_dem: NDArrayf | MArrayf | RasterType,
+    glacier_index_map: NDArrayf | RasterType,
     min_coverage: float = 0.1,
     regional_signal: pd.DataFrame | None = None,
     verbose: bool = False,
@@ -662,6 +664,7 @@ def norm_regional_hypsometric_interpolation(
     # Extract the array and nan parts of the inputs.
     ddem_arr, ddem_nans = spatial_tools.get_array_and_mask(voided_ddem)
     ref_arr, ref_nans = spatial_tools.get_array_and_mask(ref_dem)
+    glacier_index_map, _ = spatial_tools.get_array_and_mask(glacier_index_map)
 
     # The reference DEM should be void free
     assert np.count_nonzero(ref_nans) == 0, "Reference DEM has voids"

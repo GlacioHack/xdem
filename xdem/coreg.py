@@ -27,7 +27,7 @@ import scipy.optimize
 import skimage.transform
 from geoutils import spatial_tools
 from geoutils._typing import AnyNumber
-from geoutils.georaster import RasterType, raster
+from geoutils.georaster import RasterType, Mask, raster
 from rasterio import Affine
 from tqdm import tqdm, trange
 
@@ -349,7 +349,7 @@ def mask_as_array(
     # At this point, the mask variable is either a Raster or a Vector
     # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
     if isinstance(mask, gu.geovector.Vector):
-        mask_array = mask.create_mask(reference_raster)
+        mask_array = mask.create_mask(reference_raster, as_array=True)
     elif isinstance(mask, gu.georaster.Raster):
         # The true value is the maximum value in the raster, unless the maximum value is 0 or False
         true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
@@ -433,7 +433,7 @@ class Coreg:
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType,
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-        inlier_mask: NDArrayf | None = None,
+        inlier_mask: NDArrayf | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         weights: NDArrayf | None = None,
@@ -501,8 +501,11 @@ class Coreg:
 
         # Make sure that the mask has an expected format.
         if inlier_mask is not None:
-            inlier_mask = np.asarray(inlier_mask).squeeze()
-            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+            if isinstance(inlier_mask, Mask):
+                inlier_mask = inlier_mask.data.filled(False).squeeze()
+            else:
+                inlier_mask = np.asarray(inlier_mask).squeeze()
+                assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
 
             if np.all(~inlier_mask):
                 raise ValueError("'inlier_mask' had no inliers.")
@@ -2262,7 +2265,7 @@ be excluded.
             raise ValueError("`slope_lim` must be a tuple/list of 2 elements in the range [0-90]")
 
     # Initialize inlier_mask with no masked pixel
-    inlier_mask = np.ones(src_dem.data.shape, dtype="bool")
+    inlier_mask = np.ones(src_dem.shape, dtype="bool")
 
     # - Create mask based on shapefiles - #
     if len(shp_list) > 0:
@@ -2271,7 +2274,7 @@ be excluded.
                 outlines = gu.Vector(shp)
             else:
                 outlines = shp
-            mask_temp = outlines.create_mask(src_dem).astype("bool")
+            mask_temp = outlines.create_mask(src_dem, as_array=True)
 
             # Append mask for given shapefile to final mask
             if inout[k] == 1:

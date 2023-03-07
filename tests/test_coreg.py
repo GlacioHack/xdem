@@ -264,12 +264,12 @@ class TestCoregClass:
         deramp.fit(**self.fit_params)
 
         # Apply the deramping to a DEM
-        deramped_dem, _ = deramp.apply(self.tba.data, self.ref.transform, self.ref.crs)
+        deramped_dem = deramp.apply(self.tba)
 
         # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[self.inlier_mask.squeeze()]
+        periglacial_offset = (self.ref - deramped_dem)[self.inlier_mask]
         # Get the periglacial offset before deramping
-        pre_offset = ((self.ref.data - self.tba.data)[self.inlier_mask]).squeeze()
+        pre_offset = (self.ref - self.tba)[self.inlier_mask]
 
         # Check that the error improved
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
@@ -517,13 +517,13 @@ class TestCoregClass:
         chunk_numbers = [m["i"] for m in blockwise._meta["coreg_meta"]]
         assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
 
-        transformed_dem, _ = blockwise.apply(self.tba.data, self.tba.transform, self.tba.crs)
+        transformed_dem = blockwise.apply(self.tba)
 
-        ddem_pre = (self.ref.data - self.tba.data)[~self.inlier_mask].squeeze().filled(np.nan)
-        ddem_post = (self.ref.data.squeeze() - transformed_dem)[~self.inlier_mask.squeeze()].filled(np.nan)
+        ddem_pre = (self.ref - self.tba)[~self.inlier_mask]
+        ddem_post = (self.ref - transformed_dem)[~self.inlier_mask]
 
         # Check that the periglacial difference is lower after coregistration.
-        assert abs(np.nanmedian(ddem_post)) < abs(np.nanmedian(ddem_pre))
+        assert abs(np.ma.median(ddem_post)) < abs(np.ma.median(ddem_pre))
 
         stats = blockwise.stats()
 
@@ -1043,7 +1043,7 @@ def test_create_inlier_mask() -> None:
 
     # - Assert that without filtering create_inlier_mask behaves as if calling Vector.create_mask - #
     # Masking inside - using Vector
-    inlier_mask_comp = ~outlines.create_mask(ref)
+    inlier_mask_comp = ~outlines.create_mask(ref, as_array=True)
     inlier_mask = xdem.coreg.create_inlier_mask(
         tba,
         ref,
@@ -1253,7 +1253,7 @@ def test_dem_coregistration() -> None:
         ],
         resample=True,
     )
-    gl_mask = outlines.create_mask(dem_coreg)
+    gl_mask = outlines.create_mask(dem_coreg, as_array=True)
     assert np.all(~inlier_mask[gl_mask])
 
     # Testing with plot
