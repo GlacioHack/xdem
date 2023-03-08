@@ -24,10 +24,10 @@ class TestDEMCollection:
         # Make sure the glacier was bigger in 1990, since this is assumed later.
         assert scott_1990.ds.area.sum() > scott_2010.ds.area.sum()
 
-        mask_2010 = scott_2010.create_mask(self.dem_2009, as_array=True).reshape(self.dem_2009.data.shape)
+        mask_2010 = scott_2010.create_mask(self.dem_2009)
 
         dem_2060 = self.dem_2009.copy()
-        dem_2060.data[mask_2010] -= 30
+        dem_2060[mask_2010] -= 30
 
         dems = xdem.DEMCollection(
             [self.dem_1990, self.dem_2009, dem_2060],
@@ -36,7 +36,7 @@ class TestDEMCollection:
             reference_dem=1,
         )
 
-        # Check that the first raster is the oldest one and
+        # Check that the first raster is the oldest one
         assert dems.dems[0].data.max() == self.dem_1990.data.max()
         assert dems.reference_dem.data.max() == self.dem_2009.data.max()
 

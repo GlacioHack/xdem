@@ -768,7 +768,7 @@ class TestVariogram:
 
         # Run wrapper infer from stable function with a Raster and the mask, and check the consistency there as well
         emp_vgm_3, params_model_vgm_3, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
-            dvalues=zscores, stable_mask=~self.mask.squeeze(), list_models=["Gau", "Sph"], subsample=10, random_state=42
+            dvalues=zscores, stable_mask=~self.mask, list_models=["Gau", "Sph"], subsample=10, random_state=42
         )
         pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_3)
         pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_3)
@@ -778,7 +778,7 @@ class TestVariogram:
         emp_vgm_4, params_model_vgm_4, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
             dvalues=zscores_arr,
             gsd=self.diff.res[0],
-            stable_mask=~self.mask.squeeze(),
+            stable_mask=~self.mask,
             list_models=["Gau", "Sph"],
             subsample=10,
             random_state=42,
@@ -790,7 +790,7 @@ class TestVariogram:
         _, params_model_vgm_5, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
             dvalues=zscores_arr,
             gsd=self.diff.res[0],
-            stable_mask=~self.mask.squeeze(),
+            stable_mask=~self.mask,
             list_models=["Gau", "Sph"],
             subsample=200,
             random_state=42,
@@ -803,13 +803,13 @@ class TestVariogram:
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
-                dvalues="not_an_array", stable_mask=~self.mask.squeeze(), list_models=["Gau", "Sph"], random_state=42
+                dvalues="not_an_array", stable_mask=~self.mask, list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, stable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
@@ -1017,7 +1017,7 @@ class TestNeffEstimation:
             subsample=10,
         )
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_brom.create_mask(xres=res)
+        mask = outlines_brom.create_mask(xres=res, as_array=True)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))
@@ -1175,7 +1175,7 @@ class TestPatchesMethod:
         # Check the patches method runs
         df, df_full = xdem.spatialstats.patches_method(
             diff,
-            unstable_mask=mask.squeeze(),
+            unstable_mask=mask,
             gsd=gsd,
             areas=[area],
             random_state=42,
@@ -1214,7 +1214,7 @@ class TestPatchesMethod:
         # First, the patches method runs with scipy
         df = xdem.spatialstats.patches_method(
             diff,
-            unstable_mask=mask.squeeze(),
+            unstable_mask=mask,
             gsd=gsd,
             areas=[area, area * 10],
             random_state=42,

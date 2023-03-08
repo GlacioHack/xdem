@@ -2265,7 +2265,7 @@ be excluded.
             raise ValueError("`slope_lim` must be a tuple/list of 2 elements in the range [0-90]")
 
     # Initialize inlier_mask with no masked pixel
-    inlier_mask = np.ones(src_dem.shape, dtype="bool")
+    inlier_mask = np.ones(src_dem.data.shape, dtype="bool")
 
     # - Create mask based on shapefiles - #
     if len(shp_list) > 0:
@@ -2274,8 +2274,7 @@ be excluded.
                 outlines = gu.Vector(shp)
             else:
                 outlines = shp
-            mask_temp = outlines.create_mask(src_dem, as_array=True)
-
+            mask_temp = outlines.create_mask(src_dem, as_array=True).reshape(np.shape(inlier_mask))
             # Append mask for given shapefile to final mask
             if inout[k] == 1:
                 inlier_mask[mask_temp] = False

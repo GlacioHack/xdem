@@ -1254,7 +1254,7 @@ def test_dem_coregistration() -> None:
         resample=True,
     )
     gl_mask = outlines.create_mask(dem_coreg, as_array=True)
-    assert np.all(~inlier_mask[gl_mask])
+    assert np.all(~inlier_mask[:, gl_mask])
 
     # Testing with plot
     out_fig = tempfile.NamedTemporaryFile(suffix=".png", mode="w", delete=False)
