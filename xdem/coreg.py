@@ -106,7 +106,7 @@ def subset_gdf(df: pd.DataFrame, dem: NDArrayf) -> pd.DataFrame:
 
 def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str, weight: str = None, **kwargs) -> pd.DataFrame:
     """
-    Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying shift.
+    Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying a shift.
 
     :param dem: DEM
     :param df: A dataframe has 'E','N' and has been subseted according to DEM bonds and masks.
@@ -223,16 +223,15 @@ def interp_points(
         transformer = pyproj.Transformer.from_crs(init_crs, dest_crs)
         x, y = transformer.transform(x, y)
 
-    if isinstance(dem,xdem.DEM):
-        i, j = dem.xy2ij(x, y, op = np.float32, area_or_point = area_or_point)
-        # prepare DEM
-        arr_ = dem.data[0, :, :]
-        if fillhole and (not np.all(~arr_.mask)):   
-        # if there is nodata, fill by nearest for interpolation(map_cordinate)
-            arr_ = fill_by_nearest(arr_, arr_.mask)
+    # prepare DEM
+    arr_ = dem.data[0, :, :]
+    i, j = dem.xy2ij(x, y, op = np.float32)
 
-    h_pts = scipy.ndimage.map_coordinates(arr_, [i, j], order = order,mode = mode)
-    return h_pts
+    if fillhole and (not np.all(~arr_.mask)):   
+        # if there is nodata, fill by nearest for interpolation(map_cordinate)
+        arr_ = fill_by_nearest(arr_,arr_.mask)
+    
+    return scipy.ndimage.map_coordinates(arr_, [i, j],order=order,mode=mode,**kwargs)
 
 def get_horizontal_shift(
     elevation_difference: NDArrayf, slope: NDArrayf, aspect: NDArrayf, min_count: int = 20
@@ -597,7 +596,7 @@ class Coreg:
 
     def fit(
         self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
+        reference_dem: NDArrayf | MArrayf | RasterType,
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
@@ -623,31 +622,6 @@ class Coreg:
 
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
-
-        if self.coreg_name == 'GradientDescending':
-
-            tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
-            if isinstance(reference_dem, pd.DataFrame):
-                assert 'N' in reference_dem.columns
-                assert 'E' in reference_dem.columns
-
-            if inlier_mask is not None:
-                inlier_mask = np.asarray(inlier_mask).squeeze()
-                assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
-                full_mask = (~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
-                dem_to_be_aligned.set_mask(~full_mask)
-
-                if np.all(~inlier_mask):
-                    raise ValueError("'inlier_mask' had no inliers.")
-
-                if np.all(full_mask):
-                    raise ValueError("'dem_to_be_aligned' had only NaNs")
-
-            # Run the associated fitting function
-            self._fit_func(ref_dem=reference_dem, tba_dem=dem_to_be_aligned, transform=transform, weights=weights, verbose=verbose)
-            # Flag that the fitting function has been called.
-            self._fit_called = True
-            return self
 
         # Validate that both inputs are valid array-like (or Raster) types.
         if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
@@ -723,16 +697,19 @@ class Coreg:
 
         return self
 
-    def fit_pts(self: CoregType, reference_dem: pd.DataFrame,
+    def fit_pts(self: CoregType, 
+                reference_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
                 dem_to_be_aligned: RasterType,
                 inlier_mask: NDArrayf | None = None,
                 transform: rio.transform.Affine | None = None,
-                weights: NDArrayf | None = None,
+                samples: int = 10000,
                 subsample: float | int = 1.0,
                 verbose: bool = False,
-                mask_highcurv: bool = True,
+                mask_highcurv: bool = False,
                 order:int = 1,
-                z_name: str = 'z') -> CoregType:
+                z_name: str = 'z',
+                weights: str | None = None,
+            ) -> CoregType:
 
             """
             Estimate the coregistration transform between a DEM and a reference point elevation data.
@@ -741,21 +718,25 @@ class Coreg:
             :param dem_to_be_aligned: 2D array of elevation values to be aligned.
             :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
             :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-            :param weights: Optional. Per-pixel weights for the coregistration.
             :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
             :param verbose: Print progress messages to stdout.
             :param order: interpolation 0=nearest, 1=linear, 2=cubic.
+            :param z_name: the column name of dataframe used for elevation differencing
+            :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
             """
-
-            if weights is not None:
-                raise NotImplementedError("Weights have not yet been implemented")
-
+    
             # Validate that at least one input is a valid array-like (or Raster) types.
             if not isinstance(dem_to_be_aligned, (np.ndarray, gu.Raster)):
                 raise ValueError(
                     "The dem_to_be_aligned needs to be array-like (implement a numpy array interface)."
                     f"'dem_to_be_aligned': {dem_to_be_aligned}"
                 )
+
+            # DEM to dataframe if ref_dem is in raster
+            # How to make sure sample point locates in stable terrain?
+            if isinstance(reference_dem, (np.ndarray, gu.Raster)):
+                reference_dem = df_sampling_from_dem(reference_dem, dem_to_be_aligned, samples = samples, order=1, offset=None)
+
             # Validate that at least one input is a valid point data type.
             if not isinstance(reference_dem, pd.DataFrame):
                 raise ValueError(
@@ -821,6 +802,7 @@ class Coreg:
             ref_inlier = mask_raster.interp_points(points, order=0)
             ref_inlier = ref_inlier.astype(bool)
 
+            
             if np.all(~ref_inlier):
                 raise ValueError("Intersection of 'reference_dem' and 'dem_to_be_aligned' had only NaNs")
 
@@ -842,6 +824,33 @@ class Coreg:
             self._fit_called = True
 
             return self
+    
+    '''
+                if self.coreg_name == 'GradientDescending':
+
+                tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
+                if isinstance(reference_dem, pd.DataFrame):
+                    assert 'N' in reference_dem.columns
+                    assert 'E' in reference_dem.columns
+
+                if inlier_mask is not None:
+                    inlier_mask = np.asarray(inlier_mask).squeeze()
+                    assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+                    full_mask = (~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
+                    dem_to_be_aligned.set_mask(~full_mask)
+
+                    if np.all(~inlier_mask):
+                        raise ValueError("'inlier_mask' had no inliers.")
+
+                    if np.all(full_mask):
+                        raise ValueError("'dem_to_be_aligned' had only NaNs")
+
+                # Run the associated fitting function
+                self._fit_func(ref_dem=reference_dem, tba_dem=dem_to_be_aligned, transform=transform, weights=weights, verbose=verbose)
+                # Flag that the fitting function has been called.
+                self._fit_called = True
+                return self
+    '''
 
     @overload
     def apply(
@@ -1634,7 +1643,7 @@ class CoregPipeline(Coreg):
         
 class GradientDescending(Coreg):
     '''
-    Gradient Descending coregistration by Zhihao et al. (in preparation)
+    Gradient Descending coregistration by Zhihao
     '''
     def __init__(
         self, 
@@ -1650,8 +1659,6 @@ class GradientDescending(Coreg):
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
         
-        :param z_name: the column name of dataframe used for elevation differencing
-        :param weight: the column name of dataframe used for weight
         :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
         :param x0: The initial point of gradient descending iteration.
         :param bounds: The boundary of the maximum shift.
@@ -1671,26 +1678,25 @@ class GradientDescending(Coreg):
         self.deltainit = deltainit
         self.deltatol = deltatol
         self.feps = feps
-        self.z_name = z_name
-        self.weight = weight
 
         super().__init__()
 
-    def _fit_func(
+    def _fit_pts_func(
         self,ref_dem: NDArrayf | pd.DataFrame,
         tba_dem: NDArrayf,
-        transform=rio.transform.Affine or None, 
-        weights= NDArrayf or None,
-        verbose: bool = False
+        transform: rio.transform.Affine or None, 
+        verbose: bool = False,
+        order : int = 1,
+        z_name: str = 'z',
+        weights: str | None = None,
     ) -> None:
 
-        """Estimate the x/y/z offset between two DEMs."""
+        """Estimate the x/y/z offset between two DEMs.
 
-        # DEM to df
-        if not isinstance(ref_dem,pd.DataFrame):
-            ref_dem = df_sampling_from_dem(ref_dem, tba_dem, samples = self.downsampling, order=1, offset=None).copy()
-            self.z_name = 'z'
-
+        :param z_name: the column name of dataframe used for elevation differencing
+        :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
+        """
+        
         # downsampling if downsampling != None
         if self.downsampling and len(ref_dem) > self.downsampling:
             ref_dem = ref_dem.sample(frac=self.downsampling/len(ref_dem),random_state=42).copy()
@@ -1703,7 +1709,7 @@ class GradientDescending(Coreg):
                 print('Running on downsampling. The length of the gdf:',len(ref_dem))
                 print('Set downsampling = other value or None to make a change.')
 
-            elevation_difference = residuals_df(tba_dem,ref_dem,(0,0),0,z_name=self.z_name)
+            elevation_difference = residuals_df(tba_dem,ref_dem,(0,0),0,z_name=z_name)
             nmad_old = xdem.spatialstats.nmad(elevation_difference)
             bias = np.nanmedian(elevation_difference)
             print("   Statistics on initial dh:")
@@ -1711,18 +1717,13 @@ class GradientDescending(Coreg):
 
 
         # start iteration, find the best shifting px
-        func_x = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = self.z_name, weight = self.weight))
+        func_cost = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = z_name, weight = weights))
 
-        if verbose:
-            disp = True
-        else:
-            disp = False
-
-        res = minimizeCompass(func_x, x0=self.x0, deltainit=self.deltainit,deltatol=self.deltatol,feps=self.feps,
-                              bounds=(self.bounds,self.bounds),disp=disp,errorcontrol=False)
+        res = minimizeCompass(func_cost, x0=self.x0, deltainit=self.deltainit,deltatol=self.deltatol,feps=self.feps,
+                              bounds=(self.bounds,self.bounds),disp=verbose,errorcontrol=False)
         
         # Send the best solution to find all results
-        elevation_difference = residuals_df(tba_dem, ref_dem, (res.x[0],res.x[1]), 0, z_name = self.z_name)
+        elevation_difference = residuals_df(tba_dem, ref_dem, (res.x[0],res.x[1]), 0, z_name = z_name)
 
         # results statistics
         bias = np.nanmedian(elevation_difference)
@@ -1912,8 +1913,11 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
         """
         Estimate the x/y/z offset between a DEM and ICESat pts. Zhihao's implement:
-        1. delete elevation_function and nodata_function, shifting pts instead of DEM.
+        1. delete elevation_function and nodata_function, shifting dataframe (points) instead of DEM.
         2. do not support latitude and longitude as inputs.
+
+        :param z_name: the column name of dataframe used for elevation differencing
+
         """
 
         if verbose:

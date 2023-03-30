@@ -209,7 +209,7 @@ class TestCoregClass:
         assert nuth_kaab._meta["bias"] == pytest.approx(-1.9815309753424906)
 
     # TODO delete the function below after the test
-    def test_coreg_example_shift_test(self, shift_px, verbose=False, coreg='NuthKaab', downsampling=6000):
+    def test_coreg_example_shift_test(self, shift_px, verbose=False, coreg='NuthKaab', downsampling=8000):
         '''
         For comparison of two coreg algorithm.
         '''
@@ -225,7 +225,10 @@ class TestCoregClass:
             nuth_kaab.fit(shifted_ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
         if coreg == 'GradientDescending':
             gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-            gds.fit(shifted_ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
+            gds.fit_pts(shifted_ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
+        if coreg == 'NuthKaab_pts':
+            gds = xdem.coreg.NuthKaab()
+            gds.fit_pts(shifted_ref, self.tba, inlier_mask=self.inlier_mask,verbose=verbose)
 
 
     # TODO delete or edit the function below after the test
@@ -239,7 +242,7 @@ class TestCoregClass:
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-        gds.fit(self.ref, self.tba, inlier_mask=inlier_mask,verbose=verbose)
+        gds.fit_pts(self.ref, self.tba, inlier_mask=inlier_mask,verbose=verbose)
 
 
     def test_nuth_kaab(self) -> None:
