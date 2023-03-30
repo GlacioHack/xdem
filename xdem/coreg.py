@@ -185,53 +185,6 @@ def mask_dataframe_by_dem(df: pd.DataFrame or np.ndarray, dem: NDArrayf) -> pd.D
 
     return new_df, ref_inlier.astype(bool)
 
-def fill_by_nearest(data: np.ndarray, invalid = None) -> np.ndarray:
-    """
-    https://stackoverflow.com/questions/3662361/fill-in-missing-values-with-nearest-neighbour-in-python-numpy-masked-arrays
-
-    Replace the value of invalid 'data' cells (indicated by 'invalid') 
-    by the value of the nearest valid data cell
-
-    :param data:    numpy array of any dimension
-    :param invalid: a binary array of same shape as 'data', 'mask'. 
-    True cells set where data value should be replaced. If None (default), use: invalid  = np.isnan(data)
-
-    Return a filled array. 
-    """
-
-    if invalid is None: invalid = np.isnan(data)
-
-    ind = scipy.ndimage.distance_transform_edt(invalid, return_distances=False, return_indices=True)
-    return data[tuple(ind)]
-
-def interp_points(
-    dem: xdem.DEM,
-    pts: np.ndarray,
-    input_latlon: bool = False,
-    mode: str = "nearest",
-    area_or_point: str = 'Area' or None,
-    order=1,
-    fill_holes=False,
-    **kwargs: Any,
-    ) -> np.ndarray:
-
-    x, y = list(zip(*pts))
-    # if those are in latlon, convert to Raster crs
-    if input_latlon and isinstance(dem, gu.Raster):
-        init_crs = pyproj.CRS(4326)
-        transformer = pyproj.Transformer.from_crs(init_crs, dem.crs)
-        x, y = transformer.transform(x, y)
-
-    # prepare DEM
-    arr_ = dem.data[0, :, :]
-    i, j = dem.xy2ij(x, y, op = np.float32)
-
-    if fill_holes and (not np.all(~arr_.mask)):   
-        # if there is nodata, fill by nearest for interpolation (map_cordinate)
-        arr_ = fill_by_nearest(arr_,arr_.mask)
-    
-    return scipy.ndimage.map_coordinates(arr_, [i, j],order=order,mode=mode,**kwargs)
-
 def get_horizontal_shift(
     elevation_difference: NDArrayf, slope: NDArrayf, aspect: NDArrayf, min_count: int = 20
 ) -> tuple[float, float, float]:
@@ -731,7 +684,7 @@ class Coreg:
                     f"'dem_to_be_aligned': {dem_to_be_aligned}"
                 )
 
-            # DEM to dataframe if ref_dem is in raster
+            # DEM to dataframe if ref_dem is raster
             # How to make sure sample point locates in stable terrain?
             if isinstance(reference_dem, (np.ndarray, gu.Raster)):
                 reference_dem = df_sampling_from_dem(reference_dem, dem_to_be_aligned, samples = samples, order=1, offset=None)
@@ -1622,14 +1575,14 @@ class GradientDescending(Coreg):
         downsampling: int = 6000,
         z_name: str ='z',
         weight: str = None,
-        x0=(0,0),
-        bounds=(-3,3),
-        deltainit=2,
-        deltatol=0.004,
-        feps=0.0001
+        x0 : tuple = (0,0),
+        bounds : tuple = (-3,3),
+        deltainit : int = 2,
+        deltatol : int = 0.004,
+        feps : int = 0.0001
     ) -> None:
         """
-        Instantiate a new Nuth and Kääb (2011) coregistration object.
+        Instantiate gradient descending coregistration object.
         
         :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
         :param x0: The initial point of gradient descending iteration.
@@ -1653,19 +1606,23 @@ class GradientDescending(Coreg):
         super().__init__()
 
     def _fit_pts_func(
-        self,ref_dem: NDArrayf | pd.DataFrame,
+        self,
+        ref_dem: pd.DataFrame,
         tba_dem: NDArrayf,
         transform: rio.transform.Affine or None, 
         verbose: bool = False,
-        order : int = 1,
+        order : int = 1 or None,
         z_name: str = 'z',
         weights: str | None = None,
     ) -> None:
 
         """Estimate the x/y/z offset between two DEMs.
-
+        :param ref_dem: the dataframe used as ref
+        :param tba_dem: the dem to be aligned
         :param z_name: the column name of dataframe used for elevation differencing
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
+        :param order and transform is no needed but kept temporally for consistency.
+
         """
         
         # downsampling if downsampling != None
@@ -1914,9 +1871,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         offset_east, offset_north, bias = 0.0, 0.0, 0.0
 
         # Calculate initial DEM statistics
-        slope_pts = interp_points(slope_r, pts, order = order, mode = 'nearest')
-        aspect_pts = interp_points(aspect_r, pts, order = order, mode = 'nearest')
-        tba_pts = interp_points(aligned_dem, pts, order = order, mode = 'nearest')
+        slope_pts = slope_r.interp_points(pts, mode = 'nearest')
+        aspect_pts = aspect_r.interp_points(pts, mode = 'nearest')
+        tba_pts = aligned_dem.interp_points(pts, mode = 'nearest')
 
         # Treat new_pts as a window. Everytime we shift it a little bit to fit the correct view.
         new_pts = pts.copy()
@@ -1955,7 +1912,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             new_pts += [east_diff*resolution, north_diff*resolution]
 
             # get new values
-            tba_pts = interp_points(aligned_dem,new_pts, order=order,mode='nearest')
+            tba_pts = aligned_dem.interp_points(new_pts,mode='nearest')
             elevation_difference = ref_dem[z_name].values - tba_pts
 
             # mask out no data by dem's mask
@@ -1963,8 +1920,8 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
             # update values relataed to shifted pts
             elevation_difference = elevation_difference[mask_]
-            slope_pts = interp_points(slope_r, pts_, order=order,mode='nearest')
-            aspect_pts = interp_points(aspect_r, pts_, order=order,mode='nearest')
+            slope_pts = slope_r.interp_points(pts_, mode='nearest')
+            aspect_pts = aspect_r.interp_points(pts_, mode='nearest')
             bias = np.nanmedian(elevation_difference)
 
             # Update statistics
@@ -1988,7 +1945,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             
         # Print final results
         if verbose:
-            print("\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(offset_east, offset_north,bias))
+            print("\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(offset_east, offset_north, bias))
             print("   Statistics on coregistered dh:")
             print("      Median = {:.3f} - NMAD = {:.3f}".format(bias, nmad_new))
 

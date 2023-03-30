@@ -1,4 +1,5 @@
 {
-    "python.linting.prospectorEnabled": true,
-    "python.linting.enabled": false
+    "python.linting.prospectorEnabled": false,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true
 }
