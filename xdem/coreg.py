@@ -134,7 +134,7 @@ def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_
 
     return (df_shifted[z_name].values - dem_h) * weight_
 
-def df_sampling_from_dem(dem: NDArrayf, tba_dem: NDArrayf, samples:int = 5000, order:int = 1, offset = None) -> pd.DataFrame:
+def df_sampling_from_dem(dem: NDArrayf, tba_dem: NDArrayf, samples:int = 10000, order:int = 1, offset = None) -> pd.DataFrame:
     '''
     generate a datafram from a dem by random sampling.
 
@@ -211,24 +211,23 @@ def interp_points(
     mode: str = "nearest",
     area_or_point: str = 'Area' or None,
     order=1,
-    fillhole=False,
+    fill_holes=False,
     **kwargs: Any,
     ) -> np.ndarray:
 
     x, y = list(zip(*pts))
     # if those are in latlon, convert to Raster crs
-    if input_latlon and isinstance(dem,xdem.DEM):
+    if input_latlon and isinstance(dem, gu.Raster):
         init_crs = pyproj.CRS(4326)
-        dest_crs = pyproj.CRS(dem.crs)
-        transformer = pyproj.Transformer.from_crs(init_crs, dest_crs)
+        transformer = pyproj.Transformer.from_crs(init_crs, dem.crs)
         x, y = transformer.transform(x, y)
 
     # prepare DEM
     arr_ = dem.data[0, :, :]
     i, j = dem.xy2ij(x, y, op = np.float32)
 
-    if fillhole and (not np.all(~arr_.mask)):   
-        # if there is nodata, fill by nearest for interpolation(map_cordinate)
+    if fill_holes and (not np.all(~arr_.mask)):   
+        # if there is nodata, fill by nearest for interpolation (map_cordinate)
         arr_ = fill_by_nearest(arr_,arr_.mask)
     
     return scipy.ndimage.map_coordinates(arr_, [i, j],order=order,mode=mode,**kwargs)
@@ -824,33 +823,6 @@ class Coreg:
             self._fit_called = True
 
             return self
-    
-    '''
-                if self.coreg_name == 'GradientDescending':
-
-                tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
-                if isinstance(reference_dem, pd.DataFrame):
-                    assert 'N' in reference_dem.columns
-                    assert 'E' in reference_dem.columns
-
-                if inlier_mask is not None:
-                    inlier_mask = np.asarray(inlier_mask).squeeze()
-                    assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
-                    full_mask = (~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)).squeeze()
-                    dem_to_be_aligned.set_mask(~full_mask)
-
-                    if np.all(~inlier_mask):
-                        raise ValueError("'inlier_mask' had no inliers.")
-
-                    if np.all(full_mask):
-                        raise ValueError("'dem_to_be_aligned' had only NaNs")
-
-                # Run the associated fitting function
-                self._fit_func(ref_dem=reference_dem, tba_dem=dem_to_be_aligned, transform=transform, weights=weights, verbose=verbose)
-                # Flag that the fitting function has been called.
-                self._fit_called = True
-                return self
-    '''
 
     @overload
     def apply(
@@ -1671,7 +1643,6 @@ class GradientDescending(Coreg):
 
         """
         self._meta: CoregDict
-        self.coreg_name = 'GradientDescending'
         self.downsampling = downsampling
         self.bounds = bounds
         self.x0 = x0
@@ -1707,7 +1678,6 @@ class GradientDescending(Coreg):
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
             if self.downsampling:
                 print('Running on downsampling. The length of the gdf:',len(ref_dem))
-                print('Set downsampling = other value or None to make a change.')
 
             elevation_difference = residuals_df(tba_dem,ref_dem,(0,0),0,z_name=z_name)
             nmad_old = xdem.spatialstats.nmad(elevation_difference)
@@ -1769,7 +1739,6 @@ class NuthKaab(Coreg):
         :param offset_threshold: The residual offset threshold after which to stop the iterations.
         """
         self._meta: CoregDict
-        self.coreg_name = 'NuthKaab'
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
@@ -1912,7 +1881,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
     ) -> None:
 
         """
-        Estimate the x/y/z offset between a DEM and ICESat pts. Zhihao's implement:
+        Estimate the x/y/z offset between a DEM and ppints. 
         1. delete elevation_function and nodata_function, shifting dataframe (points) instead of DEM.
         2. do not support latitude and longitude as inputs.
 
@@ -2028,8 +1997,6 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         self._meta["bias"] = bias
         self._meta["resolution"] = resolution
         self._meta["nmad"] = nmad_new
-
-
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
