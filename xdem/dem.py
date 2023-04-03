@@ -9,7 +9,7 @@ from typing import Any
 
 import pyproj
 import rasterio as rio
-from geoutils.georaster.raster import RasterType
+from geoutils.raster.raster import RasterType
 from geoutils import SatelliteImage
 from pyproj import Transformer
 

@@ -2,13 +2,13 @@
 import os
 import warnings
 
-import geoutils.georaster as gr
-import geoutils.georaster.satimg as si
+import geoutils.raster as gr
+import geoutils.raster.satimg as si
 import numpy as np
 import pyproj
 import pytest
 import rasterio as rio
-from geoutils.georaster.raster import _default_rio_attrs
+from geoutils.raster.raster import _default_rio_attrs
 
 import xdem
 from xdem.dem import DEM

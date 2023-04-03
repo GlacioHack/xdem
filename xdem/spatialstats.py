@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.georaster import Raster, RasterType, Mask
+from geoutils.raster import Raster, RasterType, Mask
 from geoutils.geovector import Vector, VectorType
 from geoutils.spatial_tools import get_array_and_mask, subsample_raster
 from numba import jit

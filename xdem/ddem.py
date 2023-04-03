@@ -8,7 +8,7 @@ import geoutils as gu
 import numpy as np
 import shapely
 from geoutils import spatial_tools
-from geoutils.georaster import RasterType
+from geoutils.raster import RasterType
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 

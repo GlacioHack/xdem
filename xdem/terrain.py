@@ -7,7 +7,7 @@ from typing import Sized, overload
 import geoutils as gu
 import numba
 import numpy as np
-from geoutils.georaster import Raster, RasterType
+from geoutils.raster import Raster, RasterType
 
 from xdem._typing import MArrayf, NDArrayf
 

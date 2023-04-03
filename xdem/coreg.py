@@ -27,7 +27,7 @@ import scipy.optimize
 import skimage.transform
 from geoutils import spatial_tools
 from geoutils._typing import AnyNumber
-from geoutils.georaster import RasterType, Mask, raster
+from geoutils.raster import RasterType, Mask, raster
 from rasterio import Affine
 from tqdm import tqdm, trange
 

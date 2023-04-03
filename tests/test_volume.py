@@ -81,8 +81,8 @@ class TestLocalHypsometric:
         )
 
         # Add some nans to the reference DEM
-        data_with_nans = self.dem_2009[self.mask]
-        data_with_nans[[2, 5]] = np.nan
+        data_with_nans = self.dem_2009
+        data_with_nans[2, 5] = np.nan
 
         # Make sure that the above results in the correct error.
         try:

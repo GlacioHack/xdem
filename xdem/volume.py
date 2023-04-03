@@ -13,7 +13,7 @@ import scipy.interpolate
 from geoutils import spatial_tools
 from tqdm import tqdm
 
-from geoutils.georaster import RasterType
+from geoutils.raster import RasterType
 import xdem
 from xdem._typing import MArrayf, NDArrayf
 

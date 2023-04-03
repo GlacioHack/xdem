@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
-from geoutils.georaster.raster import RasterType
+from geoutils.raster.raster import RasterType
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
