@@ -10,7 +10,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import scipy.optimize
-from geoutils.spatial_tools import subsample_raster
+from geoutils.raster import subsample_array
 
 from xdem._typing import NDArrayf
 from xdem.spatialstats import nd_binning
@@ -279,7 +279,7 @@ def robust_polynomial_fit(
     y = y[valid_data]
 
     # Subsample data
-    subsamp = subsample_raster(x, subsample=subsample, return_indices=True, random_state=random_state)
+    subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
     x = x[subsamp]
     y = y[subsamp]
 
@@ -454,7 +454,7 @@ def robust_sumsin_fit(
         init_x = np.array([np.round(ini, 5) for ini in init_results.x])
 
         # Subsample the final raster
-        subsamp = subsample_raster(x, subsample=subsample, return_indices=True, random_state=random_state)
+        subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
         x = x[subsamp]
         y = y[subsamp]
 

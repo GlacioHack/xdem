@@ -13,9 +13,9 @@ class TestLocalHypsometric:
     """Test cases for the local hypsometric method."""
 
     # Load example data.
-    dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    dem_2009 = gu.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = gu.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
+    outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     all_outlines = outlines.copy()
 
     # Filter to only look at the Scott Turnerbreen glacier
@@ -82,7 +82,7 @@ class TestLocalHypsometric:
 
         # Add some nans to the reference DEM
         data_with_nans = self.dem_2009
-        data_with_nans[2, 5] = np.nan
+        data_with_nans.data[0, 2, 5] = np.nan
 
         # Make sure that the above results in the correct error.
         try:
@@ -146,9 +146,9 @@ class TestLocalHypsometric:
 
 
 class TestNormHypsometric:
-    dem_2009 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
-    outlines = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    dem_2009 = gu.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    dem_1990 = gu.Raster(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(dem_2009, silent=True)
+    outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
     glacier_index_map = outlines.rasterize(dem_2009)
     ddem = dem_2009.data - dem_1990.data
@@ -248,7 +248,7 @@ class TestNormHypsometric:
         assert not np.array_equal(filled_ddem, idealized_ddem)
 
         # Check that all glacier-values are finite
-        assert np.count_nonzero(np.isnan(idealized_ddem)[self.glacier_index_map > 0]) == 0
+        assert np.count_nonzero(np.isnan(idealized_ddem)[self.glacier_index_map.get_nanarray() > 0]) == 0
         # Validate that the un-idealized dDEM has a higher gradient variance (more ups and downs)
         filled_gradient = np.linalg.norm(np.gradient(filled_ddem), axis=0)
         ideal_gradient = np.linalg.norm(np.gradient(idealized_ddem), axis=0)
@@ -265,9 +265,9 @@ class TestNormHypsometric:
             plt.show()
 
         # Extract the finite glacier values.
-        changes = ddem.data.squeeze()[self.glacier_index_map > 0]
+        changes = ddem.data.squeeze()[self.glacier_index_map.get_nanarray() > 0]
         changes = changes[np.isfinite(changes)]
-        interp_changes = filled_ddem[self.glacier_index_map > 0]
+        interp_changes = filled_ddem[self.glacier_index_map.get_nanarray() > 0]
         interp_changes = interp_changes[np.isfinite(interp_changes)]
 
         # Validate that the interpolated (20% data) means and stds are similar to the original (100% data)

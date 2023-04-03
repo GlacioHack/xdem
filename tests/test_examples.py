@@ -62,6 +62,6 @@ class TestExamples:
 
         rst = rst_and_truenodata[0]
         truenodata = rst_and_truenodata[1]
-        mask = gu.spatial_tools.get_array_and_mask(rst)[1]
+        mask = gu.raster.get_array_and_mask(rst)[1]
 
         assert np.sum(mask) == truenodata

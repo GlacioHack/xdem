@@ -15,9 +15,8 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.raster import Raster, RasterType, Mask
-from geoutils.geovector import Vector, VectorType
-from geoutils.spatial_tools import get_array_and_mask, subsample_raster
+from geoutils.raster import Raster, RasterType, Mask, get_array_and_mask, subsample_array
+from geoutils.vector import Vector, VectorType
 from numba import jit
 from numpy.typing import ArrayLike
 from scipy import integrate
@@ -818,7 +817,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_raster(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
+    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 

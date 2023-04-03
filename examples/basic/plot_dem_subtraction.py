@@ -38,7 +38,7 @@ _ = dem_1990.reproject(dem_2009)
 # To hide this prompt, add ``.reproject(..., silent=True)``.
 # By default, :func:`xdem.DEM.reproject` uses "bilinear" resampling (assuming resampling is needed).
 # Other options are "nearest" (fast but inaccurate), "cubic_spline", "lanczos" and others.
-# See `geoutils.Raster.reproject() <https://geoutils.readthedocs.io/en/latest/api.html#geoutils.georaster.Raster.reproject>`_ and `rasterio.enums.Resampling <https://rasterio.readthedocs.io/en/latest/api/rasterio.enums.html#rasterio.enums.Resampling>`_ for more information about reprojection.
+# See `geoutils.Raster.reproject() <https://geoutils.readthedocs.io/en/latest/api.html#geoutils.raster.Raster.reproject>`_ and `rasterio.enums.Resampling <https://rasterio.readthedocs.io/en/latest/api/rasterio.enums.html#rasterio.enums.Resampling>`_ for more information about reprojection.
 #
 # Now, we are ready to generate the dDEM:
 

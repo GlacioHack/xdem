@@ -5,20 +5,20 @@ import numpy as np
 import xdem
 
 # Load data
-dh = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ddem"))
+dh = gu.Raster(xdem.examples.get_path("longyearbyen_ddem"))
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-glacier_mask = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+glacier_mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 mask = glacier_mask.create_mask(dh)
 
 slope = xdem.terrain.get_terrain_attribute(ref_dem, attribute=["slope"])
 
 # Keep only stable terrain data
 dh.set_mask(mask)
-dh_arr = gu.spatial_tools.get_array_and_mask(dh)[0]
-slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0]
+dh_arr = gu.raster.get_array_and_mask(dh)[0]
+slope_arr = gu.raster.get_array_and_mask(slope)[0]
 
 # Subsample to run the snipped code faster
-indices = gu.spatial_tools.subsample_raster(dh_arr, subsample=10000, return_indices=True, random_state=42)
+indices = gu.raster.subsample_array(dh_arr, subsample=10000, return_indices=True, random_state=42)
 dh_arr = dh_arr[indices]
 slope_arr = slope_arr[indices]
 

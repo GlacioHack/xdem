@@ -72,7 +72,7 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.spatial_tools.subsample_raster(
+        indices = gu.raster.subsample_array(
             self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
@@ -339,7 +339,7 @@ class TestBinning:
 
         # Test the error map is consistent as well
         errors_2_arr = err_fun_2((self.slope.get_nanarray(), self.maximum_curv.get_nanarray()))
-        errors_1_arr = gu.spatial_tools.get_array_and_mask(errors_1)[0]
+        errors_1_arr = gu.raster.get_array_and_mask(errors_1)[0]
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
@@ -475,7 +475,7 @@ class TestVariogram:
         )
 
         # Index of valid values
-        values_arr, mask_nodata = gu.spatial_tools.get_array_and_mask(values)
+        values_arr, mask_nodata = gu.raster.get_array_and_mask(values)
 
         t3 = time.time()
         rems = skgstat.RasterEquidistantMetricSpace(
@@ -774,7 +774,7 @@ class TestVariogram:
         pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_3)
 
         # Run again with array instead of Raster as input
-        zscores_arr = gu.spatial_tools.get_array_and_mask(zscores)[0]
+        zscores_arr = gu.raster.get_array_and_mask(zscores)[0]
         emp_vgm_4, params_model_vgm_4, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
             dvalues=zscores_arr,
             gsd=self.diff.res[0],
@@ -813,7 +813,7 @@ class TestVariogram:
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
-        diff_on_stable_arr = gu.spatial_tools.get_array_and_mask(diff_on_stable)[0]
+        diff_on_stable_arr = gu.raster.get_array_and_mask(diff_on_stable)[0]
         with pytest.raises(
             ValueError,
             match="The stable mask can only passed as a Vector or GeoDataFrame if the input "

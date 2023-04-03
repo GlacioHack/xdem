@@ -208,8 +208,8 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive the attribute using both RichDEM and xdem
-        attr_xdem = gu.spatial_tools.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
-        attr_richdem = gu.spatial_tools.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
+        attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
+        attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem

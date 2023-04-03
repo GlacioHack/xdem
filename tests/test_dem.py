@@ -94,7 +94,7 @@ class TestDEM:
         assert isinstance(r2, xdem.dem.DEM)
 
         # Check all immutable attributes are equal
-        # georaster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+        # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
         # dem_attrs = ['vref', 'vref_grid', 'ccrs']

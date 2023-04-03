@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
-from geoutils.raster.raster import RasterType
+from geoutils.raster import RasterType
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -822,7 +822,7 @@ class TestCoregClass:
 def test_apply_matrix() -> None:
     warnings.simplefilter("error")
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    ref_arr = gu.spatial_tools.get_array_and_mask(ref)[0]
+    ref_arr = gu.raster.get_array_and_mask(ref)[0]
 
     # Test only bias (it should just apply the bias and not make anything else)
     bias = 5
