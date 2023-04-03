@@ -104,7 +104,7 @@ def subset_gdf(df: pd.DataFrame, dem: NDArrayf) -> pd.DataFrame:
 
     return df_subset
 
-def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str, weight: str = None, area_or_point: str | None = None, **kwargs) -> pd.DataFrame:
+def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str, weight: str = None, **kwargs) -> pd.DataFrame:
     """
     Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying a shift.
 
@@ -126,7 +126,7 @@ def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_
     arr_ = dem.data[0, :, :]
 
     # get residual error at the point on DEM.
-    i, j = dem.xy2ij(df_shifted['E'].values, df_shifted['N'].values, op=np.float32, area_or_point=area_or_point)
+    i, j = dem.xy2ij(df_shifted['E'].values, df_shifted['N'].values, op=np.float32)
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j],order=1,mode='nearest',**kwargs)
@@ -654,7 +654,6 @@ class Coreg:
                 dem_to_be_aligned: RasterType,
                 inlier_mask: NDArrayf | None = None,
                 transform: rio.transform.Affine | None = None,
-                crs: rio.crs.CRS | None = None,
                 samples: int = 10000,
                 subsample: float | int = 1.0,
                 verbose: bool = False,
@@ -706,12 +705,6 @@ class Coreg:
                         transform = getattr(dem, "transform")
                     elif transform is not None:
                         warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
-
-                    if crs is None:
-                        crs = getattr(dem, "crs")
-                    elif crs is not None:
-                        warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
-                        
 
             if transform is None:
                 raise ValueError("'transform' must be given if the dem_to_be_align DEM is array-like.")
@@ -777,7 +770,7 @@ class Coreg:
                 ref_dem = ref_dem.iloc[random_valids]
 
             # Run the associated fitting function
-            self._fit_pts_func(ref_dem = ref_dem, tba_dem = tba_dem, transform = transform,crs=crs, weights = weights, verbose = verbose,order = order,z_name = z_name)
+            self._fit_pts_func(ref_dem = ref_dem, tba_dem = tba_dem, transform = transform, weights = weights, verbose = verbose,order = order,z_name = z_name)
 
             # Flag that the fitting function has been called.
             self._fit_called = True
@@ -1612,34 +1605,11 @@ class GradientDescending(Coreg):
 
         super().__init__()
 
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        verbose: bool = False,
-        order : int = 1 or None,
-        z_name: str = 'z',
-        weights: str | None = None,
-    ) -> None:
-
-
-        ref_dem = xdem.DEM.from_array(ref_dem, transform=transform, crs=crs, nodata=-9999).to_points(subset=self.downsampling, as_frame=True, pixel_offset="center")
-        ref_dem["E"] = ref_dem.geometry.x
-        ref_dem["N"] = ref_dem.geometry.y
-        ref_dem.rename(columns={"b1": z_name}, inplace=True)
-
-        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform,crs=crs, verbose=verbose, order=order, z_name=z_name, weights=weights)
-
-
-
     def _fit_pts_func(
         self,
         ref_dem: pd.DataFrame,
-        tba_dem: NDArrayf | RasterType,
+        tba_dem: NDArrayf,
         transform: rio.transform.Affine or None, 
-        crs: rio.crs.CRS,
         verbose: bool = False,
         order : int = 1 or None,
         z_name: str = 'z',
@@ -1658,29 +1628,15 @@ class GradientDescending(Coreg):
         # downsampling if downsampling != None
         if self.downsampling and len(ref_dem) > self.downsampling:
             ref_dem = ref_dem.sample(frac=self.downsampling/len(ref_dem),random_state=42).copy()
-        else:
-            ref_dem = ref_dem.copy()
-
-        # The TBA DEM needs to be a RasterType at the moment. If it isn't, convert it to one.
-        if not hasattr(tba_dem, "transform"):
-            tba_dem = xdem.DEM.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.)
 
         resolution = tba_dem.res[0]
-        # Assume that the coordinates represent the center of a theoretical pixel. 
-        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
-        ref_dem["E"] -= resolution / 2
-        ref_dem["N"] += resolution / 2
-        
-        # The raster sampling needs to be consistent (and not be read from the metadata). Sampling by point
-        # would be more logical, but this together with the above hack seems more consistent.. 
-        area_or_point = "Area"
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
             if self.downsampling:
                 print('Running on downsampling. The length of the gdf:',len(ref_dem))
 
-            elevation_difference = residuals_df(tba_dem,ref_dem,(0,0),0,z_name=z_name, area_or_point=area_or_point)
+            elevation_difference = residuals_df(tba_dem,ref_dem,(0,0),0,z_name=z_name)
             nmad_old = xdem.spatialstats.nmad(elevation_difference)
             bias = np.nanmedian(elevation_difference)
             print("   Statistics on initial dh:")
@@ -1688,13 +1644,13 @@ class GradientDescending(Coreg):
 
 
         # start iteration, find the best shifting px
-        func_cost = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = z_name, weight = weights, area_or_point=area_or_point))
+        func_cost = lambda x: xdem.spatialstats.nmad(residuals_df(tba_dem, ref_dem, x, 0, z_name = z_name, weight = weights))
 
         res = minimizeCompass(func_cost, x0=self.x0, deltainit=self.deltainit,deltatol=self.deltatol,feps=self.feps,
                               bounds=(self.bounds,self.bounds),disp=verbose,errorcontrol=False)
         
         # Send the best solution to find all results
-        elevation_difference = residuals_df(tba_dem, ref_dem, (res.x[0],res.x[1]), 0, z_name = z_name, area_or_point=area_or_point)
+        elevation_difference = residuals_df(tba_dem, ref_dem, (res.x[0],res.x[1]), 0, z_name = z_name)
 
         # results statistics
         bias = np.nanmedian(elevation_difference)
@@ -1875,7 +1831,6 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         ref_dem: pd.DataFrame, 
         tba_dem: NDArrayf, 
         transform: rio.transform.Affine | None,
-        crs: rio.CRS | None,
         weights: NDArrayf | None,
         verbose: bool = False, 
         order: int = 1,
@@ -1894,7 +1849,6 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         if verbose:
             print("Running Nuth and Kääb (2011) coregistration. Zhihao's implement, shift pts instead of shift dem")
 
-
         tba_arr, _ = spatial_tools.get_array_and_mask(tba_dem)
 
         resolution = tba_dem.res[0]
@@ -1902,15 +1856,6 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         aligned_dem = tba_dem.copy()
 
         x_coords, y_coords = (ref_dem['E'].values, ref_dem['N'].values)
-
-        # Assume that the coordinates represent the center of a theoretical pixel. 
-        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
-        x_coords -= resolution / 2
-        y_coords += resolution / 2
-        # The raster sampling needs to be consistent (and not be read from the metadata). Sampling by point
-        # would be more logical, but this together with the above hack seems more consistent.. 
-        area_or_point = "Area"
-        
         pts = np.array((x_coords, y_coords)).T
 
         # Calculate slope and aspect maps from the reference DEM
@@ -1926,9 +1871,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         offset_east, offset_north, bias = 0.0, 0.0, 0.0
 
         # Calculate initial DEM statistics
-        slope_pts = slope_r.interp_points(pts, mode = 'nearest', area_or_point=area_or_point)
-        aspect_pts = aspect_r.interp_points(pts, mode = 'nearest', area_or_point=area_or_point)
-        tba_pts = aligned_dem.interp_points(pts, mode = 'nearest', area_or_point=area_or_point)
+        slope_pts = slope_r.interp_points(pts, mode = 'nearest')
+        aspect_pts = aspect_r.interp_points(pts, mode = 'nearest')
+        tba_pts = aligned_dem.interp_points(pts, mode = 'nearest')
 
         # Treat new_pts as a window. Everytime we shift it a little bit to fit the correct view.
         new_pts = pts.copy()
@@ -1967,7 +1912,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             new_pts += [east_diff*resolution, north_diff*resolution]
 
             # get new values
-            tba_pts = aligned_dem.interp_points(new_pts,mode='nearest', area_or_point=area_or_point)
+            tba_pts = aligned_dem.interp_points(new_pts,mode='nearest')
             elevation_difference = ref_dem[z_name].values - tba_pts
 
             # mask out no data by dem's mask
@@ -1975,8 +1920,8 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
             # update values relataed to shifted pts
             elevation_difference = elevation_difference[mask_]
-            slope_pts = slope_r.interp_points(pts_, mode='nearest', area_or_point=area_or_point)
-            aspect_pts = aspect_r.interp_points(pts_, mode='nearest', area_or_point=area_or_point)
+            slope_pts = slope_r.interp_points(pts_, mode='nearest')
+            aspect_pts = aspect_r.interp_points(pts_, mode='nearest')
             bias = np.nanmedian(elevation_difference)
 
             # Update statistics
@@ -1997,6 +1942,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
                 break
 
             nmad_old = nmad_new
+            
         # Print final results
         if verbose:
             print("\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(offset_east, offset_north, bias))
