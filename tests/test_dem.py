@@ -120,62 +120,66 @@ class TestDEM:
 
         assert np.array_equal(r3.data, r2.data)
 
-    def test_set_vref(self) -> None:
-        """Tests to set the vertical reference"""
+    def test_set_vcrs(self) -> None:
+        """Tests to set the vertical CRS."""
 
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
-        img = DEM(fn_img)
+        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem = DEM(fn_dem)
+
+        # -- Test 1: we check with names --
 
         # Check setting WGS84
-        img.set_vref(vref_name="WGS84")
-        assert img.vref == "WGS84"
-        assert img.vref_grid is None
+        dem.set_vcrs(new_vcrs="WGS84")
+        assert dem.vcrs_name == "WGS84"
+        assert dem.vcrs_grid is None
 
         # Check setting EGM96
-        img.set_vref(vref_name="EGM96")
-        assert img.vref == "EGM96"
-        assert img.vref_grid == "us_nga_egm96_15.tif"
-        # The grid argument should have priority over name and parse the right vref name
-        img.set_vref(vref_name="WGS84", vref_grid="us_nga_egm96_15.tif")
-        assert img.vref == "EGM96"
+        dem.set_vcrs(new_vcrs="EGM96")
+        assert dem.vcrs_name == "EGM96 height"
+        assert dem.vcrs_grid == "us_nga_egm96_15.tif"
 
         # Check setting EGM08
-        img.set_vref(vref_name="EGM08")
-        assert img.vref == "EGM08"
-        assert img.vref_grid == "us_nga_egm08_25.tif"
-        # The grid argument should have priority over name and parse the right vref name
-        img.set_vref(vref_name="best ref in the entire world, or any string", vref_grid="us_nga_egm08_25.tif")
-        assert img.vref == "EGM08"
+        dem.set_vcrs(new_vcrs="EGM08")
+        assert dem.vcrs_name == "EGM2008 height"
+        assert dem.vcrs_grid == "us_nga_egm08_25.tif"
+
+        # -- Test 2: we check with grids --
+
+        dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
+        assert dem.vcrs_name == "EGM96"
+
+        dem.set_vcrs(new_vcrs="us_nga_egm08_25.tif")
+        assert dem.vcrs_grid == "EGM08"
 
         # Check that other existing grids are well detected in the pyproj.datadir
         # TODO: Figure out why CI cannot get the grids on Windows
         if os.name != "nt":
-            img.set_vref(vref_grid="is_lmi_Icegeoid_ISN93.tif")
+            dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
         else:
             with pytest.raises(ValueError):
-                img.set_vref(vref_grid="is_lmi_Icegeoid_ISN93.tif")
+                dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
         with pytest.raises(ValueError):
-            img.set_vref(vref_grid="the best grid in the entire world, or any non-existing string")
+            dem.set_vcrs(new_vcrs="the best grid in the entire world, or any non-existing string")
 
-    @pytest.mark.skip("This fails on Windows because the grids are not found")  # type: ignore
-    def test_to_vref(self) -> None:
-        """Tests to convert vertical references"""
+    def test_to_vcrs(self) -> None:
+        """Tests to convert vertical CRS."""
 
         # First, we use test points to test the vertical transform
         # Let's start with Chile
         lat = 43.70012234
         lng = -79.41629234
         z = 100
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", module="pyproj")
-            # init is deprecated by
-            ellipsoid = pyproj.Proj(init="EPSG:4326")  # WGS84 datum ellipsoid height
-            # EGM96 geoid in Chile, we expect ~30 m difference
-            geoid = pyproj.Proj(init="EPSG:4326", geoidgrids="us_nga_egm96_15.tif")
-        transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
-        z_out = transformer.transform(lng, lat, z)[2]
+
+        # WGS84 datum with ellipsoid height
+        ellipsoid = pyproj.CRS.from_epsg(4979)
+        # EGM96 geoid in Chile, we expect ~30 m difference
+        # geoid = pyproj.crs.CompoundCRS(name="WGS 84 + EGM96 height", components=["EPSG:4326", "EPSG:5773"])
+        # geoid = xdem.dem._build_ccrs_from_vref(crs=pyproj.CRS.from_epsg(4326), vref_name="EGM96", vref_grid="us_nga_egm96_15.tif")
+        geoid = pyproj.Proj(init="EPSG:4326", geoidgrids="us_nga_egm96_15.tif").crs
+        transformer = pyproj.Transformer.from_crs(ellipsoid, geoid)
+        z_out = transformer.transform(lat, lng, z)[2]
 
         # Check that the final elevation is finite, and higher than ellipsoid by less than 40 m (typical geoid in Chile)
         assert np.logical_and.reduce((np.isfinite(z_out), np.greater(z_out, z), np.less(np.abs(z_out - z), 40)))
