@@ -24,7 +24,7 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
 
     :param product: Product name (typically from satimg.parse_metadata_from_fn).
 
-    :return: vcrs_name: Vertical reference name.
+    :return: vcrs_name: Vertical CRS name.
     """
     # Sources for defining vertical references:
     # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
@@ -48,9 +48,9 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
 
     return vcrs_name
 
-def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS) -> CompoundCRS:
+def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
     """
-    Build a compound CRS from a CRS and a vertical reference.
+    Build a compound CRS from a horizontal CRS and a vertical CRS.
 
     :param crs: Horizontal CRS.
     :param vcrs: Vertical CRS.
@@ -58,19 +58,24 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS) -> CompoundCRS:
     :return: Compound CRS (horizontal + vertical).
     """
 
-    ccrs = CompoundCRS(
-        name="Horizontal: " + crs.name + "; Vertical: " + vcrs.name,
-        components=[crs, vcrs],
-    )
+    # If a vertical CRS was passed
+    # Using CRS() because rasterio.CRS does not allow to call .name otherwise...
+    if isinstance(vcrs, CRS):
+        ccrs = CompoundCRS(
+            name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
+            components=[CRS(crs), vcrs],
+        )
+    # Else if "Ellipsoid" was passed, there is no vertical reference, we return the CRS in 3D
+    else:
+        ccrs = CRS(crs).to_3d()
 
     return ccrs
 
 
-def _build_ccrs_from_grid(crs: CRS, grid: str | pathlib.Path, old_way: bool = True) -> CompoundCRS:
+def _build_vcrs_from_grid(grid: str | pathlib.Path, old_way: bool = True) -> CompoundCRS:
     """
-    Build a compound CRS from a vertical reference name and grid.
+    Build a compound CRS from a vertical CRS grid path.
 
-    :param crs: Horizontal CRS.
     :param grid: Path to grid for vertical reference.
     :param old_way: Whether to use the new or old way of building the compound CRS with pyproj (for testing purposes).
 
@@ -87,8 +92,9 @@ def _build_ccrs_from_grid(crs: CRS, grid: str | pathlib.Path, old_way: bool = Tr
     if old_way:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", module="pyproj")
-            ccrs = pyproj.Proj(init="EPSG:" + str(int(crs.to_epsg())),
-                               geoidgrids=os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid))).crs
+            ccrs = pyproj.Proj(init="EPSG:4326",
+                               geoidgrids=grid).crs
+            bound_crs = ccrs.sub_crs_list[1]
 
     # The clean way (to respect the new PROJ indexing order?)
     else:
@@ -121,24 +127,32 @@ def _build_ccrs_from_grid(crs: CRS, grid: str | pathlib.Path, old_way: bool = Tr
             }
         )
 
-        ccrs = CompoundCRS(
-            name="Horizontal: "+ crs.name +"; Vertical: " + grid,
-            components=[crs, bound_crs],
-        )
-
-    return ccrs
+    return bound_crs
 
 # Define CRS in case path or string was passed
-_vcrs_meta_from_name = {"WGS84": {"grid": None, "epsg": "a"},
-                   "EGM08": {"grid": "us_nga_egm08_25.tif", "epsg": 3855},  # EGM2008 at 2.5 minute resolution
-                   "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773}}  # EGM1996 at 15 minute resolution
+_vcrs_meta_from_name = {"EGM08": {"grid": "us_nga_egm08_25.tif", "epsg": 3855},  # EGM2008 at 2.5 minute resolution
+                        "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773}}  # EGM1996 at 15 minute resolution
 
-def _vcrs_from_user_input(new_vcrs: Literal["WGS84", "EGM08", "EGM96"] | str | pathlib.Path | CRS | int) -> VerticalCRS:
+def _vcrs_from_user_input(
+        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int
+        ) -> VerticalCRS | Literal["Ellipsoid"]:
+    """
+    Parse vertical CRS from user input.
 
-    # Raise errors if input type is wrong (leave CRS instead of VerticalCRS for broader error messages below)
+    :param new_vcrs: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
+        a EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+
+    :return: Vertical CRS.
+    """
+
+    # Raise errors if input type is wrong (allow CRS instead of VerticalCRS for broader error messages below)
     if not isinstance(new_vcrs, (str, pathlib.Path, CRS, int)):
         raise TypeError("New vertical CRS must be a name or path as string or "
                         "a vertical reference as pyproj.crs.VerticalCRS, received {}.".format(type(new_vcrs)))
+
+    # If input is ellipsoid
+    if isinstance(new_vcrs, str) and (new_vcrs.lower() == "ellipsoid" or new_vcrs.upper() == 'WGS84'):
+        return "Ellipsoid"
 
     # Define CRS in case EPSG or CRS was passed
     if isinstance(new_vcrs, (int | CRS)):
@@ -166,8 +180,7 @@ def _vcrs_from_user_input(new_vcrs: Literal["WGS84", "EGM08", "EGM96"] | str | p
                 grid = new_vcrs.name
             else:
                 grid = new_vcrs
-            ccrs = _build_ccrs_from_grid(grid=grid)
-            vcrs = [subcrs for subcrs in ccrs.sub_crs_list if subcrs.is_vertical][0]
+            vcrs = _build_vcrs_from_grid(grid=grid)
 
     return vcrs
 
@@ -207,7 +220,7 @@ class DEM(SatelliteImage):  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["WGS84", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
+        vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
         silent: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -217,7 +230,7 @@ class DEM(SatelliteImage):  # type: ignore
         The vertical reference of the DEM can be defined by passing the `vcrs` argument.
         Otherwise, a vertical reference is tentatively parsed from the DEM product name.
 
-        Inherits all attributes from the Raster and SatelliteImage class.
+        Inherits all attributes from the :class:`geoutils.Raster` and :class:`geoutils.SatelliteImage` classes.
 
         :param filename_or_dataset: The filename of the dataset.
         :param vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
@@ -255,6 +268,13 @@ class DEM(SatelliteImage):  # type: ignore
             self.set_vcrs(vcrs)
 
     def copy(self, new_array: NDArrayf | None = None) -> DEM:
+        """
+        Copy the DEM, possibly updating the data array.
+
+        :param new_array: New data array.
+
+        :return: Copied DEM.
+        """
 
         new_dem = super().copy(new_array=new_array)  # type: ignore
         # The rest of attributes are immutable, including pyproj.CRS
@@ -265,28 +285,39 @@ class DEM(SatelliteImage):  # type: ignore
         return new_dem  # type: ignore
 
     @property
-    def vcrs(self) -> VerticalCRS:
+    def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
         """Vertical coordinate reference system of the DEM."""
 
         return self._vcrs
 
     @property
-    def vcrs_grid(self) -> str:
+    def vcrs_grid(self) -> str | None:
         """Grid path of vertical coordinate reference system of the DEM."""
 
         return self._vcrs_grid
 
     @property
-    def vcrs_name(self) -> str:
+    def vcrs_name(self) -> str | None:
         """Name of vertical coordinate reference system of the DEM."""
 
-        return self.vcrs.name
+        if self.vcrs is not None:
+            # If it is the ellipsoid
+            if isinstance(self.vcrs, str):
+                # Need to call CRS() here to make it work with rasterio.CRS...
+                vcrs_name = "Ellipsoid (No vertical CRS). Datum: {}.".format(CRS(self.crs).ellipsoid.name)
+            # Otherwise, return the vertical reference name
+            else:
+                vcrs_name = self.vcrs.name
+        else:
+            vcrs_name = None
 
-    def set_vcrs(self, new_vcrs: Literal["WGS84", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int) -> None:
+        return vcrs_name
+
+    def set_vcrs(self, new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int) -> None:
         """
         Set the vertical coordinate reference system of the DEM.
 
-        :param new_vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
+        :param new_vcrs: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
             a EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
         """
 
@@ -302,6 +333,9 @@ class DEM(SatelliteImage):  # type: ignore
             # If it's a pathlib path
             elif isinstance(new_vcrs, pathlib.Path):
                 grid = new_vcrs.name
+            # Or an ellipsoid
+            elif new_vcrs.lower() == "ellipsoid":
+                grid = None
             # Or a string path
             else:
                 grid = new_vcrs
@@ -312,7 +346,7 @@ class DEM(SatelliteImage):  # type: ignore
             self._vcrs_grid = None
 
     @property
-    def ccrs(self) -> CompoundCRS | None:
+    def ccrs(self) -> CompoundCRS | CRS | None:
         """Compound horizontal and vertical coordinate reference system of the DEM."""
 
         if self.vcrs is not None:
@@ -322,8 +356,8 @@ class DEM(SatelliteImage):  # type: ignore
             return None
 
     def to_vcrs(self,
-                dst_vcrs: Literal["WGS84", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-                src_vcrs: Literal["WGS84", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None) -> None:
+                dst_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+                src_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None) -> None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
@@ -349,10 +383,12 @@ class DEM(SatelliteImage):  # type: ignore
             ccrs_init = self.ccrs
 
         # New destination Compound CRS
-        ccrs_dest = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=dst_vcrs)
+        ccrs_dest = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(new_vcrs=dst_vcrs))
 
+        print(ccrs_init)
+        print(ccrs_dest)
         # Transform the grid
-        transformer = Transformer.from_crs(ccrs_init, ccrs_dest)
+        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest)
         # Will preserve the mask of the masked-array since pyproj 3.4
         zz = self.data
         xx, yy = self.coords(offset="center")

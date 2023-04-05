@@ -128,9 +128,9 @@ class TestDEM:
 
         # -- Test 1: we check with names --
 
-        # Check setting WGS84
-        dem.set_vcrs(new_vcrs="WGS84")
-        assert dem.vcrs_name == "WGS84"
+        # Check setting ellipsoid
+        dem.set_vcrs(new_vcrs="Ellipsoid")
+        assert "Ellipsoid (No vertical CRS)." in dem.vcrs_name
         assert dem.vcrs_grid is None
 
         # Check setting EGM96
@@ -146,10 +146,12 @@ class TestDEM:
         # -- Test 2: we check with grids --
 
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
-        assert dem.vcrs_name == "EGM96"
+        assert dem.vcrs_name == "unknown"
+        assert dem.vcrs_grid == "us_nga_egm96_15.tif"
 
         dem.set_vcrs(new_vcrs="us_nga_egm08_25.tif")
-        assert dem.vcrs_grid == "EGM08"
+        assert dem.vcrs_name == "unknown"
+        assert dem.vcrs_grid == "us_nga_egm08_25.tif"
 
         # Check that other existing grids are well detected in the pyproj.datadir
         # TODO: Figure out why CI cannot get the grids on Windows
@@ -162,6 +164,35 @@ class TestDEM:
         # Check that non-existing grids raise errors
         with pytest.raises(ValueError):
             dem.set_vcrs(new_vcrs="the best grid in the entire world, or any non-existing string")
+
+    def test_to_vcrs(self) -> None:
+        """Tests the conversion of vertical CRS."""
+
+        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem = DEM(fn_dem)
+
+        dem = dem.reproject(dst_crs=pyproj.CRS.from_epsg(4979))
+        dem.set_vcrs(new_vcrs="Ellipsoid")
+        ccrs_init = dem.ccrs
+        median_before = np.nanmean(dem)
+        dem.to_vcrs(dst_vcrs="EGM96")
+        ccrs_dest = dem.ccrs
+        median_after = np.nanmean(dem)
+
+        from pyproj.transformer import Transformer
+        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest)
+
+        xx, yy = dem.coords()
+        x = xx[0, 0]
+        yy = yy[0, 0]
+        z = dem.data[0, 0, 0]
+
+        z_out = transformer.transform(xx=x, yy=x, zz=z)[2]
+
+
+
+
+
 
     def test_to_vcrs(self) -> None:
         """Tests to convert vertical CRS."""
