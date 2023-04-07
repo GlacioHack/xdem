@@ -434,7 +434,7 @@ class TestCoregClass:
         assert np.abs(np.nanmedian(diff)) < 0.01
 
         # Create a spatially correlated error field to mess with the algorithm a bit.
-        corr_size = int(self.ref.data.shape[2] / 100)
+        corr_size = int(self.ref.data.shape[1] / 100)
         error_field = cv2.resize(
             cv2.GaussianBlur(
                 np.repeat(
@@ -442,7 +442,7 @@ class TestCoregClass:
                         np.random.randint(
                             0,
                             255,
-                            (self.ref.data.shape[1] // corr_size, self.ref.data.shape[2] // corr_size),
+                            (self.ref.data.shape[0] // corr_size, self.ref.data.shape[1] // corr_size),
                             dtype="uint8",
                         ),
                         corr_size,
@@ -455,7 +455,7 @@ class TestCoregClass:
                 sigmaX=corr_size,
             )
             / 255,
-            dsize=(self.ref.data.shape[2], self.ref.data.shape[1]),
+            dsize=(self.ref.data.shape[1], self.ref.data.shape[0]),
         )
 
         # Create 50000 random nans
@@ -554,7 +554,7 @@ class TestCoregClass:
         # Copy the TBA DEM and set a square portion to nodata
         tba = self.tba.copy()
         mask = np.zeros(np.shape(tba.data), dtype=bool)
-        mask[0, 450:500, 450:500] = True
+        mask[450:500, 450:500] = True
         tba.set_mask(mask=mask)
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
@@ -583,7 +583,7 @@ class TestCoregClass:
             nodata=-9999,
         )
         # Assign a funny value to one particular pixel. This is to validate that reprojection works perfectly.
-        dem1.data[0, 1, 1] = 100
+        dem1.data[1, 1] = 100
 
         # Translate the DEM 1 "meter" right and add a bias
         dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5), silent=True)
@@ -1254,7 +1254,7 @@ def test_dem_coregistration() -> None:
         resample=True,
     )
     gl_mask = outlines.create_mask(dem_coreg, as_array=True)
-    assert np.all(~inlier_mask[:, gl_mask])
+    assert np.all(~inlier_mask[gl_mask])
 
     # Testing with plot
     out_fig = tempfile.NamedTemporaryFile(suffix=".png", mode="w", delete=False)

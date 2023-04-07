@@ -93,7 +93,7 @@ class DEMCollection:
         # Subtract every DEM that is available.
         for i, dem in enumerate(self.dems):
             # If the reference DEM is encountered, make a dDEM where dH == 0 (to keep length consistency).
-            if dem == self.reference_dem:
+            if dem.raster_equal(self.reference_dem):
                 ddem_raster = self.reference_dem.copy()
                 ddem_raster.data[:] = 0.0
                 ddem = xdem.dDEM(
@@ -154,7 +154,8 @@ class DEMCollection:
 
         # If both the start and end time outlines exist, a mask is created from their union.
         if ddem.start_time in outlines and ddem.end_time in outlines:
-            mask = np.logical_or(outlines[ddem.start_time].create_mask(ddem), outlines[ddem.end_time].create_mask(ddem), as_array=True)
+            mask = np.logical_or(outlines[ddem.start_time].create_mask(ddem, as_array=True),
+                                 outlines[ddem.end_time].create_mask(ddem, as_array=True))
         # If only start time outlines exist, these should be used as a mask
         elif ddem.start_time in outlines:
             mask = outlines[ddem.start_time].create_mask(ddem, as_array=True)
