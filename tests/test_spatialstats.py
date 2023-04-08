@@ -36,6 +36,7 @@ def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
 
     return reference_raster, ddem, mask, outlines
 
+
 class TestStats:
 
     # Load data for the entire test class
@@ -291,9 +292,7 @@ class TestBinning:
             df_binning, list_var_names=["var1", "var2"], statistic="nmad"
         )
         # The zscore spread should not be one right after binning
-        zscores = self.diff[~self.mask] / unscaled_fun(
-            (self.slope[~self.mask], self.maximum_curv[~self.mask])
-        )
+        zscores = self.diff[~self.mask] / unscaled_fun((self.slope[~self.mask], self.maximum_curv[~self.mask]))
         scale_fac = xdem.spatialstats.nmad(zscores)
         assert scale_fac != 1
 

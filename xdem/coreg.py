@@ -26,7 +26,14 @@ import scipy.ndimage
 import scipy.optimize
 import skimage.transform
 from geoutils._typing import AnyNumber
-from geoutils.raster import RasterType, Mask, raster, get_array_and_mask, subsample_array, subdivide_array, load_multiple_rasters
+from geoutils.raster import (
+    Mask,
+    RasterType,
+    get_array_and_mask,
+    raster,
+    subdivide_array,
+    subsample_array,
+)
 from rasterio import Affine
 from tqdm import tqdm, trange
 
@@ -318,9 +325,7 @@ def deramping(
     return fit_ramp, coefs
 
 
-def mask_as_array(
-    reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster
-) -> NDArrayf:
+def mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
     """
     Convert a given mask into an array.
 
@@ -355,8 +360,7 @@ def mask_as_array(
         mask_array = (mask.data == true_value).squeeze()
     else:
         raise TypeError(
-            f"Mask has invalid type: {type(mask)}. Expected one of: "
-            f"{[gu.Raster, gu.Vector, str, type(None)]}"
+            f"Mask has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
         )
 
     return mask_array

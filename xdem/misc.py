@@ -126,7 +126,6 @@ def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any
     return deprecator_func
 
 
-
 def diff_environment_yml(
     fn_env: str | dict[str, Any], fn_devenv: str | dict[str, Any], print_dep: str = "both", input_dict: bool = False
 ) -> None:

@@ -27,13 +27,11 @@ class TestLocalHypsometric:
         """Test dDEM binning."""
         ddem = self.dem_2009 - self.dem_1990
 
-        ddem_bins = xdem.volume.hypsometric_binning(
-            ddem[self.mask], self.dem_2009[self.mask], bins=50, kind="fixed"
-        )
+        ddem_bins = xdem.volume.hypsometric_binning(ddem[self.mask], self.dem_2009[self.mask], bins=50, kind="fixed")
 
         ddem_bins_masked = xdem.volume.hypsometric_binning(
             np.ma.masked_array(ddem.data, mask=~self.mask.data.filled(False)),
-            np.ma.masked_array(self.dem_2009.data, mask=~self.mask.data.filled(False))
+            np.ma.masked_array(self.dem_2009.data, mask=~self.mask.data.filled(False)),
         )
 
         ddem_stds = xdem.volume.hypsometric_binning(
@@ -103,9 +101,7 @@ class TestLocalHypsometric:
         # Mess up the dDEM bins and see if it gives the correct error
         ddem_bins.iloc[3] = np.nan
         try:
-            xdem.volume.calculate_hypsometry_area(
-                ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0]
-            )
+            xdem.volume.calculate_hypsometry_area(ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0])
         except AssertionError as exception:
             if "cannot contain NaNs" not in str(exception):
                 raise exception

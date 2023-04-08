@@ -106,7 +106,7 @@ class TestMisc:
             with pytest.raises(ValueError, match="^" + text + "$"):
                 useless_func()
 
-    def test_diff_environment_yml(self, capsys) -> None:
+    def test_diff_environment_yml(self, capsys) -> None:  # type: ignore
 
         # Test with synthetic environment
         env = {"dependencies": ["python==3.9", "numpy", "fiona"]}

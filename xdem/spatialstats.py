@@ -15,7 +15,13 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.raster import Raster, RasterType, Mask, get_array_and_mask, subsample_array
+from geoutils.raster import (
+    Mask,
+    Raster,
+    RasterType,
+    get_array_and_mask,
+    subsample_array,
+)
 from geoutils.vector import Vector, VectorType
 from numba import jit
 from numpy.typing import ArrayLike
