@@ -12,10 +12,6 @@ kernelspec:
 ---
 # Differencing and volume change
 
-```{contents} Contents
-:local: true
-```
-
 **Example data**
 
 Example data in this chapter are loaded as follows:

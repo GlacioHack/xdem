@@ -29,10 +29,6 @@ In particular, these tools help to:
 > - estimate robust errors for observations analyzed in space (e.g., average or sum of elevation, or of elevation changes),
 > - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
 
-```{contents} Contents
-:local: true
-```
-
 (spatialstats-intro)=
 
 ## Spatial statistics for DEM precision estimation

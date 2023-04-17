@@ -23,10 +23,6 @@ Those transformations include for instance:
 - rotations, reflections,
 - scalings.
 
-```{contents} Contents
-:local: true
-```
-
 ## Introduction
 
 Coregistration of a DEM is performed when it needs to be compared to a reference, but the DEM does not align with the reference perfectly.
