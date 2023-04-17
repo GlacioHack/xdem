@@ -1,3 +1,15 @@
+---
+file_format: mystnb
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
 (coregistration)=
 
 # Coregistration
@@ -33,26 +45,41 @@ Below is a summary of how each method works, and when it should (and should not)
 
 Examples are given using data close to Longyearbyen on Svalbard. These can be loaded as:
 
-```{literalinclude} code/coregistration.py
-:lines: 5-21
+```{code-cell} ipython3
+import geoutils as gu
+import numpy as np
+
+import xdem
+
+# Open a reference DEM from 2009
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+# Open a to-be-aligned DEM from 1990
+tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(ref_dem, silent=True)
+
+# Open glacier polygons from 1990, corresponding to unstable ground
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+# Create an inlier mask of terrain outside the glacier polygons
+inlier_mask = glacier_outlines.create_mask(ref_dem)
 ```
 
-## The Coreg object
+## The {class}`~xdem.Coreg` object
 
-{class}`xdem.coreg.Coreg`
+Each coregistration approaches in xDEM inherits their interface from the {class}`~xdem.Coreg` class<sup>1</sup>.
 
-Each of the coregistration approaches in xDEM inherit their interface from the `Coreg` class.
-It is written in a style that should resemble that of `scikit-learn` (see their [LinearRegression](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression) class for example).
-Each coregistration approach has the methods:
+```{margin}
+<sup>1</sup>In a style resembling [scikit-learn's pipelines](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression).
+```
 
-- `.fit()` for estimating the transform.
-- `.apply()` for applying the transform to a DEM.
-- `.apply_pts()` for applying the transform to a set of 3D points.
-- `.to_matrix()` to convert the transform to a 4x4 transformation matrix, if possible.
+Each coregistration approach has the following methods:
 
-First, `.fit()` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
+- {func}`~xdem.Coreg.fit` for estimating the transform.
+- {func}`~xdem.Coreg.apply` for applying the transform to a DEM.
+- {func}`~xdem.Coreg.apply_pts` for applying the transform to a set of 3D points.
+- {func}`~xdem.Coreg.to_matrix()` to convert the transform to a 4x4 transformation matrix, if possible.
 
-**Figure illustrating the different coregistration methods implemented**
+First, {func}`~xdem.Coreg.fit()` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
+
+**Inheritance diagram of implemented coregistrations:**
 
 ```{eval-rst}
 .. inheritance-diagram:: xdem.coreg
@@ -92,8 +119,13 @@ For large rotations, the Nuth and Kääb (2011) approach will not work properly,
 
 ### Example
 
-```{literalinclude} code/coregistration.py
-:lines: 27-32
+```{code-cell} ipython3
+nuth_kaab = coreg.NuthKaab()
+# Fit the data to a suitable x/y/z offset.
+nuth_kaab.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
+
+# Apply the transformation to the data (or any other data)
+aligned_dem = nuth_kaab.apply(tba_dem)
 ```
 
 ```{eval-rst}
@@ -122,8 +154,14 @@ For large rotational corrections, [ICP] is recommended.
 
 ### Example
 
-```{literalinclude} code/coregistration.py
-:lines: 38-44
+```{code-cell} ipython3
+# Instantiate a 1st order deramping object.
+deramp = coreg.Deramp(degree=1)
+# Fit the data to a suitable polynomial solution.
+deramp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
+
+# Apply the transformation to the data (or any other data)
+deramped_dem = deramp.apply(tba_dem)
 ```
 
 ## Bias correction
@@ -144,8 +182,16 @@ Only performs vertical corrections, so it should be combined with another approa
 
 ### Example
 
-```{literalinclude} code/coregistration.py
-:lines: 50-60
+```{code-cell} ipython3
+bias_corr = coreg.BiasCorr()
+# Note that the transform argument is not needed, since it is a simple vertical correction.
+bias_corr.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
+
+# Apply the bias to a DEM
+corrected_dem = bias_corr.apply(tba_dem)
+
+# Use median bias instead
+bias_median = coreg.BiasCorr(bias_func=np.median)```
 ```
 
 ## ICP
@@ -175,8 +221,14 @@ Due to the repeated nearest neighbour calculations, ICP is often the slowest cor
 
 ### Example
 
-```{literalinclude} code/coregistration.py
-:lines: 66-72
+```{code-cell} ipython3
+# Instantiate the object with default parameters
+icp = coreg.ICP()
+# Fit the data to a suitable transformation.
+icp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
+
+# Apply the transformation matrix to the data (or any other data)
+aligned_dem = icp.apply(tba_dem)```
 ```
 
 ```{eval-rst}
@@ -191,14 +243,19 @@ Due to the repeated nearest neighbour calculations, ICP is often the slowest cor
 Often, more than one coregistration approach is necessary to obtain the best results.
 For example, ICP works poorly with large initial biases, so a `CoregPipeline` can be constructed to perform both sequentially:
 
-```{literalinclude} code/coregistration.py
-:lines: 78-83
+```{code-cell} ipython3
+pipeline = coreg.CoregPipeline([coreg.BiasCorr(), coreg.ICP()])
+
+# pipeline.fit(...  # etc.
+
+# This works identically to the syntax above
+pipeline2 = coreg.BiasCorr() + coreg.ICP()
 ```
 
 The `CoregPipeline` object exposes the same interface as the `Coreg` object.
 The results of a pipeline can be used in other programs by exporting the combined transformation matrix:
 
-```python
+```{code-cell} ipython3
 pipeline.to_matrix()
 ```
 
@@ -216,18 +273,18 @@ For sub-pixel accuracy, the [Nuth and Kääb (2011)] approach should almost alwa
 The approach does not account for rotations in the dataset, however, so a combination is often necessary.
 For small rotations, a 1st degree deramp could be used:
 
-```python
+```{code-cell} ipython3
 coreg.NuthKaab() + coreg.Deramp(degree=1)
 ```
 
 For larger rotations, ICP is the only reliable approach (but does not outperform in sub-pixel accuracy):
 
-```python
+```{code-cell} ipython3
 coreg.ICP() + coreg.NuthKaab()
 ```
 
 For large biases, rotations and high amounts of noise:
 
-```python
+```{code-cell} ipython3
 coreg.BiasCorr() + coreg.ICP() + coreg.NuthKaab()
 ```

@@ -1,3 +1,15 @@
+---
+file_format: mystnb
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
 # Differencing and volume change
 
 ```{contents} Contents
@@ -8,8 +20,27 @@
 
 Example data in this chapter are loaded as follows:
 
-```{literalinclude} code/comparison.py
-:lines: 5-32
+```{code-cell} ipython3
+from datetime import datetime
+
+import geoutils as gu
+import numpy as np
+
+import xdem
+
+# Load a reference DEM from 2009
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
+# Load a DEM from 1990
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), datetime=datetime(1990, 8, 1))
+# Load glacier outlines from 1990.
+glaciers_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+glaciers_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
+
+# Make a dictionary of glacier outlines where the key represents the associated date.
+outlines = {
+    datetime(1990, 8, 1): glaciers_1990,
+    datetime(2009, 8, 1): glaciers_2010,
+}
 ```
 
 ## dDEM interpolation
@@ -24,16 +55,22 @@ So far, xDEM has three types of interpolation:
 
 Let's first create a {class}`xdem.ddem.dDEM` object to experiment on:
 
-```{literalinclude} code/comparison.py
-:lines: 51-61
+```{code-cell} ipython3
+ddem = xdem.dDEM(raster=dem_2009 - dem_1990, start_time=dem_1990.datetime, end_time=dem_2009.datetime)
+
+# The example DEMs are void-free, so let's make some random voids.
+# Introduce 50000 nans randomly throughout the dDEM.
+mask = np.zeros_like(ddem.data, dtype=bool)
+mask.ravel()[(np.random.choice(ddem.data.size, 50000, replace=False))] = True
+ddem.set_mask(mask)
 ```
 
 ### Linear spatial interpolation
 
 Linear spatial interpolation (also often called bilinear interpolation) of dDEMs is arguably the simplest approach: voids are filled by a an average of the surrounding pixels values, weighted by their distance to the void pixel.
 
-```{literalinclude} code/comparison.py
-:lines: 65
+```{code-cell} ipython3
+ddem.interpolate(method="linear")
 ```
 
 ```{eval-rst}
@@ -50,8 +87,8 @@ With the local (glacier specific) hypsometric approach, elevation change gradien
 This is simply a linear or polynomial model estimated with the dDEM and a reference DEM.
 Then, voids are interpolated by replacing them with what "should be there" at that elevation, according to the model.
 
-```{literalinclude} code/comparison.py
-:lines: 69
+```{code-cell} ipython3
+ddem.interpolate(method="local_hypsometric", reference_elevation=dem_2009, mask=glaciers_1990)
 ```
 
 ```{eval-rst}
@@ -68,8 +105,8 @@ With the regional approach (often also called "global"), elevation change gradie
 This is advantageous in respect to areas where voids are frequent, as not even a single dDEM value has to exist on a glacier in order to reconstruct it.
 Of course, the accuracy of such an averaging is much lower than if the local hypsometric approach is used (assuming it is possible).
 
-```{literalinclude} code/comparison.py
-:lines: 73
+```{code-cell} ipython3
+ddem.interpolate(method="regional_hypsometric", reference_elevation=dem_2009, mask=glaciers_1990)
 ```
 
 ```{eval-rst}

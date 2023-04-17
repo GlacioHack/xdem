@@ -1,3 +1,15 @@
+---
+file_format: mystnb
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
 (spatialstats)=
 
 # Spatial statistics
@@ -144,9 +156,38 @@ $$
 Owing to the large number of samples of elevation data, we can easily estimate this variability by [binning](https://en.wikipedia.org/wiki/Data_binning) the data and estimating the statistical dispersion (see
 {ref}`robuststats_meanstd`) across several explanatory variables using {func}`xdem.spatialstats.nd_binning`.
 
-```{literalinclude} code/spatialstats.py
-:language: python
-:lines: 27
+
+```{code-cell} ipython3
+:tags: [hide-input, hide-output]
+import geoutils as gu
+import numpy as np
+
+import xdem
+
+# Load data
+dh = gu.Raster(xdem.examples.get_path("longyearbyen_ddem"))
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+glacier_mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+mask = glacier_mask.create_mask(dh)
+
+slope = xdem.terrain.get_terrain_attribute(ref_dem, attribute=["slope"])
+
+# Keep only stable terrain data
+dh.set_mask(mask)
+dh_arr = gu.raster.get_array_and_mask(dh)[0]
+slope_arr = gu.raster.get_array_and_mask(slope)[0]
+
+# Subsample to run the snipped code faster
+indices = gu.raster.subsample_array(dh_arr, subsample=10000, return_indices=True, random_state=42)
+dh_arr = dh_arr[indices]
+slope_arr = slope_arr[indices]
+```
+
+```{code-cell} ipython3
+# Estimate the measurement error by bin of slope, using the NMAD as robust estimator
+df_ns = xdem.spatialstats.nd_binning(
+    dh_arr, list_var=[slope_arr], list_var_names=["slope"], statistics=["count", xdem.spatialstats.nmad]
+)
 ```
 
 ```{eval-rst}
@@ -163,9 +204,9 @@ The most common explanatory variables are:
 Once quantified, elevation heteroscedasticity can be modelled numerically by linear interpolation across several
 variables using {func}`xdem.spatialstats.interp_nd_binning`.
 
-```{literalinclude} code/spatialstats.py
-:language: python
-:lines: 30
+```{code-cell} ipython3
+# Derive a numerical function of the measurement error
+err_dh = xdem.spatialstats.interp_nd_binning(df_ns, list_var_names=["slope"])
 ```
 
 #### Standardize elevation differences for further analysis
@@ -191,9 +232,9 @@ where $z_{dh}$ is the standardized elevation difference sample.
 Code-wise, standardization is as simple as a division of the elevation differences `dh` using the estimated measurement
 error:
 
-```{literalinclude} code/spatialstats.py
-:language: python
-:lines: 33
+```{code-cell} ipython3
+# Standardize the data
+z_dh = dh_arr / err_dh(slope_arr)
 ```
 
 To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
@@ -286,9 +327,9 @@ subsets, as in [scipy.cdist](https://docs.scipy.org/doc/scipy/reference/generate
 The resulting pairwise differences are evenly distributed across the grid and across lag classes (in 2 dimensions, this
 means that lag classes separated by a factor of $\sqrt{2}$ have an equal number of pairwise differences computed).
 
-```{literalinclude} code/spatialstats.py
-:language: python
-:lines: 36
+```{code-cell} ipython3
+# Sample empirical variogram
+df_vgm = xdem.spatialstats.sample_empirical_variogram(values=dh, subsample=10, random_state=42)
 ```
 
 The variogram is returned as a `pd.Dataframe` object.
@@ -310,9 +351,11 @@ applications).
 This can be performed through the function {func}`xdem.spatialstats.fit_sum_model_variogram`, which expects as input a
 `pd.Dataframe` variogram.
 
-```{literalinclude} code/spatialstats.py
-:language: python
-:lines: 39-40
+```{code-cell} ipython3
+# Fit sum of double-range spherical model
+func_sum_vgm, params_variogram_model = xdem.spatialstats.fit_sum_model_variogram(
+    list_models=["Gaussian", "Spherical"], empirical_variogram=df_vgm
+)
 ```
 
 ```{eval-rst}
@@ -327,8 +370,9 @@ This can be performed through the function {func}`xdem.spatialstats.fit_sum_mode
 
 After quantifying and modelling spatial correlations, those an effective sample size, and elevation measurement error:
 
-```{literalinclude} code/spatialstats.py
-:lines: 43
+```{code-cell} ipython3
+# Calculate the area-averaged uncertainty with these models
+neff = xdem.spatialstats.number_effective_samples(area=1000, params_variogram_model=params_variogram_model)
 ```
 
 TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)

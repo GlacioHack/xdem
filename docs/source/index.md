@@ -10,7 +10,7 @@ title: xDEM
 :::{grid-item}
 :columns: 4
 
-```{image} ./_static/xdem_logo_only_v3.svg
+```{image} ./_static/xdem_logo_only.svg
     :width: 300px
     :class: dark-light
 ```

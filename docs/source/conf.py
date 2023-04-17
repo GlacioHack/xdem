@@ -24,9 +24,8 @@ import xdem.version
 
 # -- Project information -----------------------------------------------------
 
-project = "xdem"
+project = "xDEM"
 copyright = "2021, Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
-
 author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
@@ -37,6 +36,8 @@ os.environ["PYTHON"] = sys.executable
 
 
 # -- General configuration ---------------------------------------------------
+
+master_doc = "index"
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
@@ -90,9 +91,12 @@ sphinx_gallery_conf = {
     },
     # directory where function/class granular galleries are stored
     "backreferences_dir": "gen_modules/backreferences",
-    "doc_module": ("xdem", "geoutils"),  # which function/class levels are used to create galleries
+    "doc_module": ("xdem", ),  # which function/class levels are used to create galleries
     # 'subsection_order': ExplicitOrder([os.path.join(os.path.dirname(__file__), "../", "../", "examples", "basic"),
     #                                    os.path.join(os.path.dirname(__file__), "../", "../", "examples", "advanced")])
+    "remove_config_comments": True,
+    # To remove comments such as sphinx-gallery-thumbnail-number (only works in code, not in text)
+
 }
 
 extlinks = {
@@ -110,6 +114,7 @@ inheritance_alias = {
     "geoutils.georaster.satimg.SatelliteImage": "geoutils.SatelliteImage",
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
+    "xdem.dem.Coreg": "xdem.Coreg",
 }
 
 # To avoid fuzzy PNGs
@@ -136,8 +141,8 @@ def setup(app):
 # a list of builtin themes.
 #
 html_theme = "sphinx_book_theme"
-html_favicon = "_static/xdem_logo_only_v3.svg"
-html_logo = "_static/xdem_logo_v3.svg"
+html_favicon = "_static/xdem_logo_only.svg"
+html_logo = "_static/xdem_logo.svg"
 html_title = "xDEM"
 
 html_theme_options = {
@@ -150,6 +155,17 @@ html_theme_options = {
     "use_source_button": True,
     "use_issues_button": True,
     "use_download_button": True,
+    "launch_buttons": {
+        "binderhub_url": "https://mybinder.org/",
+        "notebook_interface": "jupyterlab",
+        # For launching Binder in Jupyterlab to open MD files as notebook (downloads them otherwise)
+    },
+}
+
+# For dark mode
+html_context = {
+    # ...
+    "default_mode": "auto"
 }
 
 
