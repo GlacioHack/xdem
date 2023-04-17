@@ -53,7 +53,7 @@ Cite the related study:
 - **Bias correction**:
   - Along-track multi-sinusoidal noise by basin-hopping of *[Girod et al., 2017](https://doi.org/10.3390/rs9070704)*,
 - **Uncertainty analysis**:
-  - Inference of heteroscedasticity and multi-range correlations from stable terrain of *[Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922)*,
+  - Heteroscedasticity and multi-range correlations from stable terrain of *[Hugonnet et al., (2022)](https://doi.org/10.1109/JSTARS.2022.3188922)*,
 - **Terrain attributes**:
   - Slope, aspect and hillshade of either *[Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918)* or *[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)*,
   - Profile, plan and maximum curvature of *[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)*,
