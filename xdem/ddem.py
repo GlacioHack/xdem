@@ -7,8 +7,7 @@ from typing import Any
 import geoutils as gu
 import numpy as np
 import shapely
-from geoutils import spatial_tools
-from geoutils.georaster import RasterType
+from geoutils.raster import RasterType, get_array_and_mask
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 
@@ -114,7 +113,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
         :returns: A new dDEM instance.
         """
         return dDEM(
-            gu.georaster.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
+            gu.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
             start_time=start_time,
             end_time=end_time,
             error=error,
@@ -156,12 +155,12 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
             if not isinstance(mask, gu.Vector):
                 mask = gu.Vector(mask)
 
-            interpolated_ddem, nans = spatial_tools.get_array_and_mask(self.data.copy())
+            interpolated_ddem, nans = get_array_and_mask(self.data.copy())
             entries = mask.ds[mask.ds.intersects(shapely.geometry.box(*self.bounds))]
 
             ddem_mask = nans.copy().squeeze()
             for i in entries.index:
-                feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(self)).reshape(
+                feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(self, as_array=True)).reshape(
                     interpolated_ddem.shape
                 )
                 if np.count_nonzero(feature_mask) == 0:

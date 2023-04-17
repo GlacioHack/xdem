@@ -96,9 +96,9 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
 
     # If the ddem file does not exist, create it
     if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_ddem"]):
-        reference_raster = gu.georaster.Raster(_FILEPATHS_DATA["longyearbyen_ref_dem"])
-        to_be_aligned_raster = gu.georaster.Raster(_FILEPATHS_DATA["longyearbyen_tba_dem"])
-        glacier_mask = gu.geovector.Vector(_FILEPATHS_DATA["longyearbyen_glacier_outlines"])
+        reference_raster = gu.Raster(_FILEPATHS_DATA["longyearbyen_ref_dem"])
+        to_be_aligned_raster = gu.Raster(_FILEPATHS_DATA["longyearbyen_tba_dem"])
+        glacier_mask = gu.Vector(_FILEPATHS_DATA["longyearbyen_glacier_outlines"])
         inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
         nuth_kaab = xdem.coreg.NuthKaab()

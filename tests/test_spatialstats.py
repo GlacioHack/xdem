@@ -16,7 +16,7 @@ from geoutils import Raster, Vector
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
-from xdem.spatialstats import EmpiricalVariogramKArgs
+from xdem.spatialstats import EmpiricalVariogramKArgs, nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -37,6 +37,28 @@ def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
     return reference_raster, ddem, mask, outlines
 
 
+class TestStats:
+
+    # Load data for the entire test class
+    ref, diff, mask, outlines = load_ref_and_diff()
+
+    def test_nmad(self) -> None:
+        """Test NMAD functionality runs on any type of input"""
+
+        # Check that the NMAD is computed the same with a raster, masked array or NaN array
+        nmad_raster = nmad(self.diff)
+        nmad_ma = nmad(self.diff.data)
+        nmad_array = nmad(self.diff.get_nanarray())
+
+        assert nmad_raster == nmad_ma == nmad_array
+
+        # Check that the scaling factor works
+        nmad_1 = nmad(self.diff, nfact=1)
+        nmad_2 = nmad(self.diff, nfact=2)
+
+        assert nmad_1 * 2 == nmad_2
+
+
 class TestBinning:
 
     # Load data for the entire test class
@@ -51,7 +73,7 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.spatial_tools.subsample_raster(
+        indices = gu.raster.subsample_array(
             self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
@@ -259,16 +281,10 @@ class TestBinning:
     def test_two_step_standardization(self) -> None:
         """Test two-step standardization function"""
 
-        # Test this gives the same results as when using the base functions
-        diff_arr = gu.spatial_tools.get_array_and_mask(self.diff)[0]
-        slope_arr = gu.spatial_tools.get_array_and_mask(self.slope)[0]
-        maximum_curv_arr = gu.spatial_tools.get_array_and_mask(self.maximum_curv)[0]
-        stable_mask_arr = ~self.outlines.create_mask(self.ref).squeeze()
-
         # Reproduce the first steps of binning
         df_binning = xdem.spatialstats.nd_binning(
-            values=diff_arr[stable_mask_arr],
-            list_var=[slope_arr[stable_mask_arr], maximum_curv_arr[stable_mask_arr]],
+            values=self.diff[~self.mask],
+            list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             list_var_names=["var1", "var2"],
             statistics=[xdem.spatialstats.nmad],
         )
@@ -276,9 +292,7 @@ class TestBinning:
             df_binning, list_var_names=["var1", "var2"], statistic="nmad"
         )
         # The zscore spread should not be one right after binning
-        zscores = diff_arr[stable_mask_arr] / unscaled_fun(
-            (slope_arr[stable_mask_arr], maximum_curv_arr[stable_mask_arr])
-        )
+        zscores = self.diff[~self.mask] / unscaled_fun((self.slope[~self.mask], self.maximum_curv[~self.mask]))
         scale_fac = xdem.spatialstats.nmad(zscores)
         assert scale_fac != 1
 
@@ -288,8 +302,8 @@ class TestBinning:
         scale_fac_std = np.nanstd(zscores)
         zscores /= scale_fac_std
         zscores_2, final_func = xdem.spatialstats.two_step_standardization(
-            diff_arr[stable_mask_arr],
-            list_var=[slope_arr[stable_mask_arr], maximum_curv_arr[stable_mask_arr]],
+            dvalues=self.diff[~self.mask],
+            list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             unscaled_error_fun=unscaled_fun,
             spread_statistic=np.nanstd,
             fac_spread_outliers=3,
@@ -311,15 +325,9 @@ class TestBinning:
             dvalues=self.diff, list_var=[self.slope, self.maximum_curv], unstable_mask=self.outlines
         )
 
-        # Test this gives the same results as when using the base functions
-        diff_arr = gu.spatial_tools.get_array_and_mask(self.diff)[0]
-        slope_arr = gu.spatial_tools.get_array_and_mask(self.slope)[0]
-        maximum_curv_arr = gu.spatial_tools.get_array_and_mask(self.maximum_curv)[0]
-        stable_mask_arr = ~self.outlines.create_mask(self.ref).squeeze()
-
         df_binning_2, err_fun_2 = xdem.spatialstats.estimate_model_heteroscedasticity(
-            dvalues=diff_arr[stable_mask_arr],
-            list_var=[slope_arr[stable_mask_arr], maximum_curv_arr[stable_mask_arr]],
+            dvalues=self.diff[~self.mask],
+            list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             list_var_names=["var1", "var2"],
         )
 
@@ -329,8 +337,8 @@ class TestBinning:
         assert np.array_equal(err_fun_1((test_slopes, test_max_curvs)), err_fun_2((test_slopes, test_max_curvs)))
 
         # Test the error map is consistent as well
-        errors_2_arr = err_fun_2((slope_arr, maximum_curv_arr))
-        errors_1_arr = gu.spatial_tools.get_array_and_mask(errors_1)[0]
+        errors_2_arr = err_fun_2((self.slope.get_nanarray(), self.maximum_curv.get_nanarray()))
+        errors_1_arr = gu.raster.get_array_and_mask(errors_1)[0]
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
@@ -339,15 +347,15 @@ class TestBinning:
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
-                dvalues="not_an_array", stable_mask=~self.mask.squeeze(), list_var=[slope_arr]
+                dvalues="not_an_array", stable_mask=~self.mask, list_var=[self.slope.get_nanarray()]
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
-                dvalues=self.diff, stable_mask="not_a_vector_or_array", list_var=[slope_arr]
+                dvalues=self.diff, stable_mask="not_a_vector_or_array", list_var=[self.slope.get_nanarray()]
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
-                dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_var=[slope_arr]
+                dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_var=[self.slope.get_nanarray()]
             )
 
         with pytest.raises(
@@ -356,7 +364,7 @@ class TestBinning:
             "values contain a Raster.",
         ):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
-                dvalues=diff_arr, stable_mask=self.outlines, list_var=[slope_arr]
+                dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
     def test_plot_binning(self) -> None:
@@ -466,7 +474,7 @@ class TestVariogram:
         )
 
         # Index of valid values
-        values_arr, mask_nodata = gu.spatial_tools.get_array_and_mask(values)
+        values_arr, mask_nodata = gu.raster.get_array_and_mask(values)
 
         t3 = time.time()
         rems = skgstat.RasterEquidistantMetricSpace(
@@ -759,17 +767,17 @@ class TestVariogram:
 
         # Run wrapper infer from stable function with a Raster and the mask, and check the consistency there as well
         emp_vgm_3, params_model_vgm_3, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
-            dvalues=zscores, stable_mask=~self.mask.squeeze(), list_models=["Gau", "Sph"], subsample=10, random_state=42
+            dvalues=zscores, stable_mask=~self.mask, list_models=["Gau", "Sph"], subsample=10, random_state=42
         )
         pd.testing.assert_frame_equal(emp_vgm_1, emp_vgm_3)
         pd.testing.assert_frame_equal(params_model_vgm_1, params_model_vgm_3)
 
         # Run again with array instead of Raster as input
-        zscores_arr = gu.spatial_tools.get_array_and_mask(zscores)[0]
+        zscores_arr = gu.raster.get_array_and_mask(zscores)[0]
         emp_vgm_4, params_model_vgm_4, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
             dvalues=zscores_arr,
             gsd=self.diff.res[0],
-            stable_mask=~self.mask.squeeze(),
+            stable_mask=~self.mask,
             list_models=["Gau", "Sph"],
             subsample=10,
             random_state=42,
@@ -781,7 +789,7 @@ class TestVariogram:
         _, params_model_vgm_5, _ = xdem.spatialstats.infer_spatial_correlation_from_stable(
             dvalues=zscores_arr,
             gsd=self.diff.res[0],
-            stable_mask=~self.mask.squeeze(),
+            stable_mask=~self.mask,
             list_models=["Gau", "Sph"],
             subsample=200,
             random_state=42,
@@ -794,17 +802,17 @@ class TestVariogram:
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
-                dvalues="not_an_array", stable_mask=~self.mask.squeeze(), list_models=["Gau", "Sph"], random_state=42
+                dvalues="not_an_array", stable_mask=~self.mask, list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, stable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
-        diff_on_stable_arr = gu.spatial_tools.get_array_and_mask(diff_on_stable)[0]
+        diff_on_stable_arr = gu.raster.get_array_and_mask(diff_on_stable)[0]
         with pytest.raises(
             ValueError,
             match="The stable mask can only passed as a Vector or GeoDataFrame if the input "
@@ -1008,7 +1016,7 @@ class TestNeffEstimation:
             subsample=10,
         )
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_brom.create_mask(xres=res)
+        mask = outlines_brom.create_mask(xres=res, as_array=True)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))
@@ -1166,7 +1174,7 @@ class TestPatchesMethod:
         # Check the patches method runs
         df, df_full = xdem.spatialstats.patches_method(
             diff,
-            unstable_mask=mask.squeeze(),
+            unstable_mask=mask,
             gsd=gsd,
             areas=[area],
             random_state=42,
@@ -1205,7 +1213,7 @@ class TestPatchesMethod:
         # First, the patches method runs with scipy
         df = xdem.spatialstats.patches_method(
             diff,
-            unstable_mask=mask.squeeze(),
+            unstable_mask=mask,
             gsd=gsd,
             areas=[area, area * 10],
             random_state=42,
