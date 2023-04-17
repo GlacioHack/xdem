@@ -20,8 +20,8 @@ dependencies:
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
+#  - geoutils==0.0.10
   - pip
 
   - pip:
      - git+https://github.com/GlacioHack/GeoUtils.git
-#    - geoutils==0.0.10

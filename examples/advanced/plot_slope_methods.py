@@ -5,7 +5,7 @@ Slope and aspect methods
 Terrain slope and aspect can be estimated using different methods.
 Here is an example of how to generate the two with each method, and understand their differences.
 
-For more information, see the :ref:`terrain_attributes` chapter and the
+For more information, see the :ref:`terrain-attributes` chapter and the
 :ref:`sphx_glr_basic_examples_plot_terrain_attributes.py` example.
 """
 import matplotlib.pyplot as plt

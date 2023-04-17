@@ -1058,7 +1058,7 @@ class ICP(Coreg):
     Estimates a rigid transform (rotation + translation) between two DEMs.
 
     Requires 'opencv'
-    See opencv docs for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
+    See opencv doc for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(
