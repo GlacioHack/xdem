@@ -21,7 +21,7 @@ operations specific to DEMs and a wide range of 3D alignment and correction meth
 The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around `DEM` and `dDEM` classes** (that, notably, re-implements all tools 
 of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are **built around 
 modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves**. Finally, xDEM includes advanced 
-uncertainty analysis tools based on spatial statistics of the [SciKit-GStat package](https://scikit-gstat.readthedocs.io/en/latest/).
+uncertainty analysis tools based on spatial statistics of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/).
 
 Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as 
 **implicit loading**, **numerical interfacing** and **convenient object-based geospatial methods** to easily perform
@@ -34,26 +34,32 @@ If you are looking for an accessible Python package to write the Python equivale
 [QGIS](https://www.qgis.org/en/site/) analysis pipeline **without a steep learning curve** on Python GIS syntax, xDEM is perfect for you! For more advanced
 users, xDEM also aims at being efficient and scalable by supporting lazy loading and parallel computing (ongoing).
 
-
 ## Documentation
 
-For installation, quick start, gallery examples, a full feature description or a search through the API, see xDEM's documentation at: https://xdem.readthedocs.io.
+For a quick start, full feature description or search through the API, see xDEM's documentation at: https://xdem.readthedocs.io.
+
+## Installation
+
+```bash
+mamba install -c conda-forge xdem
+```
+See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install `mamba`, which will solve your environment much faster than `conda`.
 
 ## Citing methods implemented in the package
 
-When using a method implemented in xDEM, one should **cite both the package and the related study**: 
+When using a method implemented in xDEM, please **cite both the package and the related study**: 
 
-Cite xDEM: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
+Citing xDEM: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
 
-Cite the related study:
+Citing the related study:
 
 - **Coregistration**:
-  - Horizontal shift from aspect/slope relationship of *[Nuth and Kääb, 2011](https://doi.org/10.5194/tc-5-271-2011)*,
-  - Iterative closest point (ICP) of *[Besl and McKay, 1992](http://dx.doi.org/10.1109/34.121791)*,
+  - Horizontal shift from aspect/slope relationship of *[Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)*,
+  - Iterative closest point (ICP) of *[Besl and McKay (1992)](http://dx.doi.org/10.1109/34.121791)*,
 - **Bias correction**:
-  - Along-track multi-sinusoidal noise by basin-hopping of *[Girod et al., 2017](https://doi.org/10.3390/rs9070704)*,
+  - Along-track multi-sinusoidal noise by basin-hopping of *[Girod et al. (2017)](https://doi.org/10.3390/rs9070704)*,
 - **Uncertainty analysis**:
-  - Heteroscedasticity and multi-range correlations from stable terrain of *[Hugonnet et al., (2022)](https://doi.org/10.1109/JSTARS.2022.3188922)*,
+  - Heteroscedasticity and multi-range correlations from stable terrain of *[Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922)*,
 - **Terrain attributes**:
   - Slope, aspect and hillshade of either *[Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918)* or *[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)*,
   - Profile, plan and maximum curvature of *[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)*,
@@ -62,14 +68,6 @@ Cite the related study:
   - Roughness of *[Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081)*,
   - Rugosity of *[Jenness (2004)](https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2)*,
   - Fractal roughness of *[Taud et Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)*.
-
-## Installation
-
-### With mamba (recommended)
-```bash
-mamba install -c conda-forge xdem
-```
-See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install `mamba`, which will solve your environment much faster than `conda`.
 
 ## Start contributing
 
