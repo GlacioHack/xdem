@@ -50,7 +50,7 @@ print(ddem)
 # It is a new :class:`xdem.DEM` instance, loaded in memory.
 # Let's visualize it:
 
-ddem.show(cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
+ddem.show(cmap="coolwarm_r", vmin=-20, vmax=20, cbar_title="Elevation change (m)")
 
 # %%
 # Let's add some glacier outlines
@@ -61,7 +61,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # Need to create a common matplotlib Axes to plot both on the same figure
 # The xlim/ylim commands are necessary only because outlines extend further than the raster extent
 ax = plt.subplot(111)
-ddem.show(ax=ax, cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
+ddem.show(ax=ax, cmap="coolwarm_r", vmin=-20, vmax=20, cbar_title="Elevation change (m)")
 glacier_outlines.ds.plot(ax=ax, fc="none", ec="k")
 plt.xlim(ddem.bounds.left, ddem.bounds.right)
 plt.ylim(ddem.bounds.bottom, ddem.bounds.top)

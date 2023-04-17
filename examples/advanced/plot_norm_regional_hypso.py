@@ -61,8 +61,7 @@ plt_extent = [
 np.random.seed(42)
 random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5) > 0.7) & (glacier_index_map > 0)
 
-plt.imshow(random_nans, interpolation="none")
-plt.show()
+random_nans.show()
 
 # %%
 # The normalized hypsometric signal shows the tendency for elevation change as a function of elevation.
@@ -71,8 +70,8 @@ plt.show()
 # **NOTE**: The hypsometric signal does not need to be generated separately; it will be created by :func:`xdem.volume.norm_regional_hypsometric_interpolation`.
 # Generating it first, however, allows us to visualize and validate it.
 
-ddem = (dem_2009 - dem_1990).data
-ddem_voided = np.where(random_nans, np.nan, ddem)
+ddem = (dem_2009 - dem_1990)
+ddem_voided = np.where(random_nans.data, np.nan, ddem.data)
 
 signal = xdem.volume.get_regional_hypsometric_signal(
     ddem=ddem_voided,
@@ -91,12 +90,12 @@ plt.show()
 # The signal can now be used (or simply estimated again if not provided) to interpolate the DEM.
 
 ddem_filled = xdem.volume.norm_regional_hypsometric_interpolation(
-    voided_ddem=ddem_voided, ref_dem=dem_2009.data, glacier_index_map=glacier_index_map, regional_signal=signal
+    voided_ddem=ddem_voided, ref_dem=dem_2009, glacier_index_map=glacier_index_map, regional_signal=signal
 )
 
 
 plt.figure(figsize=(8, 5))
-plt.imshow(ddem_filled, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
+plt.imshow(ddem_filled.data, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
 plt.colorbar()
 plt.show()
 
@@ -104,12 +103,12 @@ plt.show()
 # %%
 # We can plot the difference between the actual and the interpolated values, to validate the method.
 
-difference = (ddem_filled - ddem).squeeze()[random_nans].filled(np.nan)
+difference = (ddem_filled - ddem)[random_nans]
 median = np.nanmedian(difference)
 nmad = xdem.spatialstats.nmad(difference)
 
 plt.title(f"Median: {median:.2f} m, NMAD: {nmad:.2f} m")
-plt.hist(difference, bins=np.linspace(-15, 15, 100))
+plt.hist(difference.data, bins=np.linspace(-15, 15, 100))
 plt.show()
 
 # %%

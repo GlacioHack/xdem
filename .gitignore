@@ -69,11 +69,11 @@ instance/
 .scrapy
 
 # Sphinx documentation
-docs/_build/
-docs/build/
-docs/source/api/
-docs/.buildinfo
-docs/.doctrees
+doc/_build/
+doc/build/
+doc/source/api/
+doc/.buildinfo
+doc/.doctrees
 
 # PyBuilder
 target/
@@ -145,9 +145,9 @@ examples/data/Longyearbyen/processed/
 examples/data/*.tif
 examples/data/*.csv
 
-docs/source/basic_examples/
-docs/source/advanced_examples/
-docs/source/gen_modules/
+doc/source/basic_examples/
+doc/source/advanced_examples/
+doc/source/gen_modules/
 examples/basic/temp.tif
 
 # Directory where myst_nb executes jupyter code

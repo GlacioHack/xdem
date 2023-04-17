@@ -11,6 +11,7 @@ from xdem import (  # noqa
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa
+from xdem.coreg import Coreg, CoregPipeline, BiasCorr, NuthKaab, ICP, Deramp, BlockwiseCoreg
 
 try:
     from xdem.version import version as __version__  # noqa

@@ -34,14 +34,13 @@ mask_glacier = glacier_outlines.create_mask(dh)
 
 # Compute the slope and maximum curvature
 slope, planc, profc = xdem.terrain.get_terrain_attribute(
-    dem=ref_dem.data, attribute=["slope", "planform_curvature", "profile_curvature"], resolution=ref_dem.res
-)
+    dem=ref_dem, attribute=["slope", "planform_curvature", "profile_curvature"])
 
 # Remove values on unstable terrain
-dh_arr = dh.data[~mask_glacier]
-slope_arr = slope[~mask_glacier]
-planc_arr = planc[~mask_glacier]
-profc_arr = profc[~mask_glacier]
+dh_arr = dh[~mask_glacier].filled(np.nan)
+slope_arr = slope[~mask_glacier].filled(np.nan)
+planc_arr = planc[~mask_glacier].filled(np.nan)
+profc_arr = profc[~mask_glacier].filled(np.nan)
 maxc_arr = np.maximum(np.abs(planc_arr), np.abs(profc_arr))
 
 # Remove large outliers
@@ -84,7 +83,7 @@ slope_curv_to_dh_err = xdem.spatialstats.interp_nd_binning(
 maxc = np.maximum(np.abs(profc), np.abs(planc))
 
 # Estimate a measurement error per pixel
-dh_err = slope_curv_to_dh_err((slope, maxc))
+dh_err = slope_curv_to_dh_err((slope.data, maxc.data))
 
 # %%
 # Using the measurement error estimated for each pixel, we standardize the elevation differences by applying
@@ -94,7 +93,7 @@ z_dh = dh.data / dh_err
 
 # %%
 # We remove values on glacierized terrain and large outliers.
-z_dh.data[mask_glacier] = np.nan
+z_dh.data[mask_glacier.data] = np.nan
 z_dh.data[np.abs(z_dh.data) > 4] = np.nan
 
 # %%
@@ -164,7 +163,7 @@ plt_extent = [
     ref_dem.bounds.bottom,
     ref_dem.bounds.top,
 ]
-plt.imshow(slope.squeeze(), cmap="Blues", vmin=0, vmax=40, extent=plt_extent)
+plt.imshow(slope.data, cmap="Blues", vmin=0, vmax=40, extent=plt_extent)
 cbar = plt.colorbar(ax=ax)
 cbar.set_label("Slope (degrees)")
 svendsen_shp.ds.plot(ax=ax, fc="none", ec="tab:olive", lw=2)
@@ -208,19 +207,19 @@ print(f"Standardized integrated error of Medalsbreen glacier: {medals_z_err:.1f}
 # maximum curvature. This yields the uncertainty into the mean elevation change for each glacier.
 
 # Destandardize the uncertainty
-fac_svendsen_dh_err = scale_fac_std * np.nanmean(dh_err[svendsen_mask])
-fac_medals_dh_err = scale_fac_std * np.nanmean(dh_err[medals_mask])
+fac_svendsen_dh_err = scale_fac_std * np.nanmean(dh_err[svendsen_mask.data])
+fac_medals_dh_err = scale_fac_std * np.nanmean(dh_err[medals_mask.data])
 svendsen_dh_err = fac_svendsen_dh_err * svendsen_z_err
 medals_dh_err = fac_medals_dh_err * medals_z_err
 
 # Derive mean elevation change
-svendsen_dh = np.nanmean(dh.data[svendsen_mask])
-medals_dh = np.nanmean(dh.data[medals_mask])
+svendsen_dh = np.nanmean(dh.data[svendsen_mask.data])
+medals_dh = np.nanmean(dh.data[medals_mask.data])
 
 # Plot the result
 plt.figure(figsize=(8, 5))
 ax = plt.gca()
-plt.imshow(dh.data.squeeze(), cmap="RdYlBu", vmin=-50, vmax=50, extent=plt_extent)
+plt.imshow(dh.data, cmap="RdYlBu", vmin=-50, vmax=50, extent=plt_extent)
 cbar = plt.colorbar(ax=ax)
 cbar.set_label("Elevation differences (m)")
 svendsen_shp.ds.plot(ax=ax, fc="none", ec="tab:olive", lw=2)
