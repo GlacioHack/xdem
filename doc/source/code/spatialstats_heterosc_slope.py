@@ -5,15 +5,16 @@ import numpy as np
 import xdem
 
 # Load data
-dh = gu.georaster.Raster(xdem.examples.get_path("longyearbyen_ddem"))
+dh = gu.Raster(xdem.examples.get_path("longyearbyen_ddem"))
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-glacier_mask = gu.geovector.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+glacier_mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 mask = glacier_mask.create_mask(dh)
 
 # Get slope for non-stationarity
 slope = xdem.terrain.get_terrain_attribute(dem=ref_dem, attribute=["slope"])
 
 # Keep only stable terrain data
+dh.load()
 dh.set_mask(mask)
 
 # Estimate the measurement error by bin of slope, using the NMAD as robust estimator

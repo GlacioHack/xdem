@@ -14,7 +14,7 @@ import geoutils as gu
 import xdem
 
 # %%
-# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration_nuthkaab` as shown in
+# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration-nuthkaab` as shown in
 # the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example. We also load the glacier outlines here corresponding to
 # moving terrain.
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))

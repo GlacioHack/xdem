@@ -8,11 +8,11 @@ import sphinx.cmd.build
 
 
 class TestDocs:
-    docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "docs/")
+    docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "doc/")
     n_threads = os.getenv("N_CPUS")
 
     def test_example_code(self) -> None:
-        """Try running each python script in the docs/source/code\
+        """Try running each python script in the doc/source/code\
                 directory and check that it doesn't raise an error."""
         current_dir = os.getcwd()
         os.chdir(os.path.join(self.docs_dir, "source"))
@@ -54,7 +54,7 @@ class TestDocs:
         os.chdir(current_dir)
 
     def test_build(self) -> None:
-        """Try building the docs and see if it works."""
+        """Try building the doc and see if it works."""
 
         # Test only on Linux
         if platform.system() == "Linux":

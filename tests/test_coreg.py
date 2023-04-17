@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
-from geoutils.georaster.raster import RasterType
+from geoutils.raster import RasterType
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -264,12 +264,12 @@ class TestCoregClass:
         deramp.fit(**self.fit_params)
 
         # Apply the deramping to a DEM
-        deramped_dem, _ = deramp.apply(self.tba.data, self.ref.transform, self.ref.crs)
+        deramped_dem = deramp.apply(self.tba)
 
         # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref.data.squeeze() - deramped_dem)[self.inlier_mask.squeeze()]
+        periglacial_offset = (self.ref - deramped_dem)[self.inlier_mask]
         # Get the periglacial offset before deramping
-        pre_offset = ((self.ref.data - self.tba.data)[self.inlier_mask]).squeeze()
+        pre_offset = (self.ref - self.tba)[self.inlier_mask]
 
         # Check that the error improved
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
@@ -434,7 +434,7 @@ class TestCoregClass:
         assert np.abs(np.nanmedian(diff)) < 0.01
 
         # Create a spatially correlated error field to mess with the algorithm a bit.
-        corr_size = int(self.ref.data.shape[2] / 100)
+        corr_size = int(self.ref.data.shape[1] / 100)
         error_field = cv2.resize(
             cv2.GaussianBlur(
                 np.repeat(
@@ -442,7 +442,7 @@ class TestCoregClass:
                         np.random.randint(
                             0,
                             255,
-                            (self.ref.data.shape[1] // corr_size, self.ref.data.shape[2] // corr_size),
+                            (self.ref.data.shape[0] // corr_size, self.ref.data.shape[1] // corr_size),
                             dtype="uint8",
                         ),
                         corr_size,
@@ -455,7 +455,7 @@ class TestCoregClass:
                 sigmaX=corr_size,
             )
             / 255,
-            dsize=(self.ref.data.shape[2], self.ref.data.shape[1]),
+            dsize=(self.ref.data.shape[1], self.ref.data.shape[0]),
         )
 
         # Create 50000 random nans
@@ -517,13 +517,13 @@ class TestCoregClass:
         chunk_numbers = [m["i"] for m in blockwise._meta["coreg_meta"]]
         assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
 
-        transformed_dem, _ = blockwise.apply(self.tba.data, self.tba.transform, self.tba.crs)
+        transformed_dem = blockwise.apply(self.tba)
 
-        ddem_pre = (self.ref.data - self.tba.data)[~self.inlier_mask].squeeze().filled(np.nan)
-        ddem_post = (self.ref.data.squeeze() - transformed_dem)[~self.inlier_mask.squeeze()].filled(np.nan)
+        ddem_pre = (self.ref - self.tba)[~self.inlier_mask]
+        ddem_post = (self.ref - transformed_dem)[~self.inlier_mask]
 
         # Check that the periglacial difference is lower after coregistration.
-        assert abs(np.nanmedian(ddem_post)) < abs(np.nanmedian(ddem_pre))
+        assert abs(np.ma.median(ddem_post)) < abs(np.ma.median(ddem_pre))
 
         stats = blockwise.stats()
 
@@ -554,7 +554,7 @@ class TestCoregClass:
         # Copy the TBA DEM and set a square portion to nodata
         tba = self.tba.copy()
         mask = np.zeros(np.shape(tba.data), dtype=bool)
-        mask[0, 450:500, 450:500] = True
+        mask[450:500, 450:500] = True
         tba.set_mask(mask=mask)
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
@@ -583,7 +583,7 @@ class TestCoregClass:
             nodata=-9999,
         )
         # Assign a funny value to one particular pixel. This is to validate that reprojection works perfectly.
-        dem1.data[0, 1, 1] = 100
+        dem1.data[1, 1] = 100
 
         # Translate the DEM 1 "meter" right and add a bias
         dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5), silent=True)
@@ -822,7 +822,7 @@ class TestCoregClass:
 def test_apply_matrix() -> None:
     warnings.simplefilter("error")
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    ref_arr = gu.spatial_tools.get_array_and_mask(ref)[0]
+    ref_arr = gu.raster.get_array_and_mask(ref)[0]
 
     # Test only bias (it should just apply the bias and not make anything else)
     bias = 5
@@ -1043,7 +1043,7 @@ def test_create_inlier_mask() -> None:
 
     # - Assert that without filtering create_inlier_mask behaves as if calling Vector.create_mask - #
     # Masking inside - using Vector
-    inlier_mask_comp = ~outlines.create_mask(ref)
+    inlier_mask_comp = ~outlines.create_mask(ref, as_array=True)
     inlier_mask = xdem.coreg.create_inlier_mask(
         tba,
         ref,
@@ -1253,7 +1253,7 @@ def test_dem_coregistration() -> None:
         ],
         resample=True,
     )
-    gl_mask = outlines.create_mask(dem_coreg)
+    gl_mask = outlines.create_mask(dem_coreg, as_array=True)
     assert np.all(~inlier_mask[gl_mask])
 
     # Testing with plot

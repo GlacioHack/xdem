@@ -19,7 +19,7 @@ repos:
                     '--'
                   ]
                   types_or: [python, rst, markdown]
-                  files: ^(xdem|docs|tests)/
+                  files: ^(xdem|doc|tests)/
 
         # Replace relative imports (e.g. 'from . import georaster' -> 'from geoutils import georaster')
         - repo: https://github.com/MarcoGorelli/absolufy-imports
@@ -70,7 +70,7 @@ repos:
 
                   ]
                   additional_dependencies: [tokenize-rt==3.2.0, numpy==1.22]
-                  files: ^(xdem|tests|docs/code)
+                  files: ^(xdem|tests|doc/code)
 
 
         # Sort imports using isort

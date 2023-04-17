@@ -20,22 +20,26 @@ dependencies:
   - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-  - pip
+#  - geoutils==0.0.10
 
   # Development-specific
+  - pip
+  - sphinx-book-theme
   - autovizwidget
   - pytest
   - pytest-xdist
   - sphinx
-  - sphinx_rtd_theme
+  - myst-nb
   - numpydoc
   - sphinxcontrib-programoutput
   - flake8
+  - sphinx-design
+  - pylint
   - sphinx-autodoc-typehints
   - sphinx-gallery
   - pyyaml
   - richdem
 
   - pip:
-    # - git+https://github.com/GlacioHack/GeoUtils.git
-    - geoutils==0.0.10
+     - -e ./
+     - git+https://github.com/GlacioHack/GeoUtils.git

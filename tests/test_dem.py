@@ -2,13 +2,13 @@
 import os
 import warnings
 
-import geoutils.georaster as gr
-import geoutils.satimg as si
+import geoutils.raster as gr
+import geoutils.raster.satimg as si
 import numpy as np
 import pyproj
 import pytest
 import rasterio as rio
-from geoutils.georaster.raster import _default_rio_attrs
+from geoutils.raster.raster import _default_rio_attrs
 
 import xdem
 from xdem.dem import DEM
@@ -94,7 +94,7 @@ class TestDEM:
         assert isinstance(r2, xdem.dem.DEM)
 
         # Check all immutable attributes are equal
-        # georaster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+        # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
         # dem_attrs = ['vref', 'vref_grid', 'ccrs']
