@@ -25,9 +25,15 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 import skimage.transform
-from geoutils import spatial_tools
 from geoutils._typing import AnyNumber
-from geoutils.georaster import RasterType, raster
+from geoutils.raster import (
+    Mask,
+    RasterType,
+    get_array_and_mask,
+    raster,
+    subdivide_array,
+    subsample_array,
+)
 from rasterio import Affine
 from tqdm import tqdm, trange
 
@@ -293,7 +299,7 @@ def deramping(
         print("Estimating deramp function...")
 
     # reduce number of elements for speed
-    rand_indices = gu.spatial_tools.subsample_raster(x_coords, subsample=subsample, return_indices=True)
+    rand_indices = subsample_array(x_coords, subsample=subsample, return_indices=True)
     x_coords = x_coords[rand_indices]
     y_coords = y_coords[rand_indices]
     ddem = ddem[rand_indices]
@@ -319,9 +325,7 @@ def deramping(
     return fit_ramp, coefs
 
 
-def mask_as_array(
-    reference_raster: gu.georaster.Raster, mask: str | gu.geovector.Vector | gu.georaster.Raster
-) -> NDArrayf:
+def mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
     """
     Convert a given mask into an array.
 
@@ -337,27 +341,26 @@ def mask_as_array(
     if isinstance(mask, str):
         # First try to load it as a Vector
         try:
-            mask = gu.geovector.Vector(mask)
+            mask = gu.Vector(mask)
         # If the format is unsopported, try loading as a Raster
         except fiona.errors.DriverError:
             try:
-                mask = gu.georaster.Raster(mask)
+                mask = gu.Raster(mask)
             # If that fails, raise an error
             except rio.errors.RasterioIOError:
                 raise ValueError(f"Mask path not in a supported Raster or Vector format: {mask}")
 
     # At this point, the mask variable is either a Raster or a Vector
     # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
-    if isinstance(mask, gu.geovector.Vector):
-        mask_array = mask.create_mask(reference_raster)
-    elif isinstance(mask, gu.georaster.Raster):
+    if isinstance(mask, gu.Vector):
+        mask_array = mask.create_mask(reference_raster, as_array=True)
+    elif isinstance(mask, gu.Raster):
         # The true value is the maximum value in the raster, unless the maximum value is 0 or False
         true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
         mask_array = (mask.data == true_value).squeeze()
     else:
         raise TypeError(
-            f"Mask has invalid type: {type(mask)}. Expected one of: "
-            f"{[gu.georaster.Raster, gu.geovector.Vector, str, type(None)]}"
+            f"Mask has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
         )
 
     return mask_array
@@ -433,7 +436,7 @@ class Coreg:
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType,
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-        inlier_mask: NDArrayf | None = None,
+        inlier_mask: NDArrayf | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         weights: NDArrayf | None = None,
@@ -496,13 +499,16 @@ class Coreg:
         if crs is None:
             raise ValueError("'crs' must be given if both DEMs are array-like.")
 
-        ref_dem, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
-        tba_dem, tba_mask = spatial_tools.get_array_and_mask(dem_to_be_aligned)
+        ref_dem, ref_mask = get_array_and_mask(reference_dem)
+        tba_dem, tba_mask = get_array_and_mask(dem_to_be_aligned)
 
         # Make sure that the mask has an expected format.
         if inlier_mask is not None:
-            inlier_mask = np.asarray(inlier_mask).squeeze()
-            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+            if isinstance(inlier_mask, Mask):
+                inlier_mask = inlier_mask.data.filled(False).squeeze()
+            else:
+                inlier_mask = np.asarray(inlier_mask).squeeze()
+                assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
 
             if np.all(~inlier_mask):
                 raise ValueError("'inlier_mask' had no inliers.")
@@ -521,7 +527,7 @@ class Coreg:
             full_mask = (
                 ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
             ).squeeze()
-            random_indices = gu.spatial_tools.subsample_raster(full_mask, subsample=subsample, return_indices=True)
+            random_indices = subsample_array(full_mask, subsample=subsample, return_indices=True)
             full_mask[random_indices] = False
 
         # Run the associated fitting function
@@ -607,7 +613,7 @@ class Coreg:
                 raise ValueError("'crs' must be given if DEM is array-like.")
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
-        dem_array, dem_mask = spatial_tools.get_array_and_mask(dem)
+        dem_array, dem_mask = get_array_and_mask(dem)
 
         if np.all(dem_mask):
             raise ValueError("'dem' had only NaNs")
@@ -776,7 +782,7 @@ class Coreg:
         aligned_dem, _ = self.apply(dem_to_be_aligned, transform=transform, crs=crs)
 
         # Format the reference DEM
-        ref_arr, ref_mask = spatial_tools.get_array_and_mask(reference_dem)
+        ref_arr, ref_mask = get_array_and_mask(reference_dem)
 
         if inlier_mask is None:
             inlier_mask = np.ones(ref_arr.shape, dtype=bool)
@@ -1850,7 +1856,11 @@ class BlockwiseCoreg(Coreg):
             meta["representative_x"], meta["representative_y"] = rio.transform.xy(
                 transform_subset, representative_row, representative_col
             )
-            meta["representative_val"] = ref_subset[representative_row, representative_col]
+
+            repr_val = ref_subset[representative_row, representative_col]
+            if ~np.isfinite(repr_val):
+                repr_val = 0
+            meta["representative_val"] = repr_val
 
             # If the coreg is a pipeline, copy its metadatas to the output meta
             if hasattr(coreg, "pipeline"):
@@ -2003,11 +2013,14 @@ class BlockwiseCoreg(Coreg):
         """
         if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
             shape = (shape[1], shape[2])
-        return spatial_tools.subdivide_array(shape, count=self.subdivision)
+        return subdivide_array(shape, count=self.subdivision)
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
     ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        if np.count_nonzero(np.isfinite(dem)) == 0:
+            return dem, transform
 
         # Other option than resample=True is not implemented for this case
         if "resample" in kwargs and kwargs["resample"] is not True:
@@ -2102,7 +2115,7 @@ def warp_dem(
     if resampling not in allowed_resampling_strs:
         raise ValueError(f"Resampling type '{resampling}' not understood. Choices: {allowed_resampling_strs}")
 
-    dem_arr, dem_mask = spatial_tools.get_array_and_mask(dem)
+    dem_arr, dem_mask = get_array_and_mask(dem)
 
     bounds, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
 
@@ -2264,8 +2277,7 @@ be excluded.
                 outlines = gu.Vector(shp)
             else:
                 outlines = shp
-            mask_temp = outlines.create_mask(src_dem).astype("bool")
-
+            mask_temp = outlines.create_mask(src_dem, as_array=True).reshape(np.shape(inlier_mask))
             # Append mask for given shapefile to final mask
             if inout[k] == 1:
                 inlier_mask[mask_temp] = False
@@ -2372,9 +2384,9 @@ coregistration and 4) the inlier_mask used.
 
     if isinstance(ref_dem_path, str):
         if grid == "ref":
-            ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
+            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
         elif grid == "src":
-            ref_dem, src_dem = gu.spatial_tools.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
+            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
     else:
         ref_dem = ref_dem_path
         src_dem = src_dem_path

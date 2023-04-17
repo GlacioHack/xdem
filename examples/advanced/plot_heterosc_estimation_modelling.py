@@ -44,11 +44,11 @@ slope, aspect, planc, profc = xdem.terrain.get_terrain_attribute(
 
 # %%
 # We convert to arrays and keep only stable terrain for the analysis of variability
-dh_arr = gu.spatial_tools.get_array_and_mask(dh)[0][~mask_glacier]
-slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0][~mask_glacier]
-aspect_arr = gu.spatial_tools.get_array_and_mask(aspect)[0][~mask_glacier]
-planc_arr = gu.spatial_tools.get_array_and_mask(planc)[0][~mask_glacier]
-profc_arr = gu.spatial_tools.get_array_and_mask(profc)[0][~mask_glacier]
+dh_arr = dh.get_nanarray()[~mask_glacier]
+slope_arr = slope.get_nanarray()[~mask_glacier]
+aspect_arr = aspect.get_nanarray()[~mask_glacier]
+planc_arr = planc.get_nanarray()[~mask_glacier]
+profc_arr = profc.get_nanarray()[~mask_glacier]
 
 # %%
 # We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform

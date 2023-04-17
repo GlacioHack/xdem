@@ -23,5 +23,5 @@ dependencies:
   - pip
 
   - pip:
-    # - git+https://github.com/GlacioHack/GeoUtils.git
-    - geoutils==0.0.10
+     - git+https://github.com/GlacioHack/GeoUtils.git
+#    - geoutils==0.0.10

@@ -9,8 +9,8 @@ from typing import Any
 
 import pyproj
 import rasterio as rio
-from geoutils.georaster.raster import RasterType
-from geoutils.satimg import SatelliteImage
+from geoutils import SatelliteImage
+from geoutils.raster import RasterType
 from pyproj import Transformer
 
 from xdem._typing import NDArrayf
