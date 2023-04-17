@@ -146,7 +146,7 @@ html_logo = "_static/xdem_logo.svg"
 html_title = "xDEM"
 
 html_theme_options = {
-    "path_to_docs": "docs/source",
+    "path_to_docs": "doc/source",
     "use_sidenotes": True,
     "repository_url": "https://github.com/GlacioHack/xdem",
     "repository_branch": "main",

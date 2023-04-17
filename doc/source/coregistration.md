@@ -102,7 +102,7 @@ First, the DEMs are compared to get a dDEM, and slope/aspect maps are created fr
 Together, these three products contain the information about in which direction the offset is.
 A cosine function is solved using these products to find the most probable offset direction, and an appropriate horizontal shift is applied to fix it.
 This is an iterative process, and cosine functions with suggested shifts are applied in a loop, continuously refining the total offset.
-The loop is stopped either when the maximum iteration limit is reached, or when the {ref}`spatial_stats_nmad` between the two products stops improving significantly.
+The loop is stopped either when the maximum iteration limit is reached, or when the NMAD between the two products stops improving significantly.
 
 ```{eval-rst}
 .. plot:: code/coregistration_plot_nuth_kaab.py
@@ -120,6 +120,8 @@ For large rotations, the Nuth and Kääb (2011) approach will not work properly,
 ### Example
 
 ```{code-cell} ipython3
+from xdem import coreg
+
 nuth_kaab = coreg.NuthKaab()
 # Fit the data to a suitable x/y/z offset.
 nuth_kaab.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
@@ -191,7 +193,7 @@ bias_corr.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 corrected_dem = bias_corr.apply(tba_dem)
 
 # Use median bias instead
-bias_median = coreg.BiasCorr(bias_func=np.median)```
+bias_median = coreg.BiasCorr(bias_func=np.median)
 ```
 
 ## ICP
@@ -228,7 +230,7 @@ icp = coreg.ICP()
 icp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
 # Apply the transformation matrix to the data (or any other data)
-aligned_dem = icp.apply(tba_dem)```
+aligned_dem = icp.apply(tba_dem)
 ```
 
 ```{eval-rst}
@@ -253,18 +255,13 @@ pipeline2 = coreg.BiasCorr() + coreg.ICP()
 ```
 
 The `CoregPipeline` object exposes the same interface as the `Coreg` object.
-The results of a pipeline can be used in other programs by exporting the combined transformation matrix:
-
-```{code-cell} ipython3
-pipeline.to_matrix()
-```
+The results of a pipeline can be used in other programs by exporting the combined transformation matrix using {func}`xdem.coreg.CoregPipeline.to_matrix`.
 
 This class is heavily inspired by the [Pipeline](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn-pipeline-pipeline) and [make_pipeline()](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.make_pipeline.html#sklearn.pipeline.make_pipeline) functionalities in `scikit-learn`.
 
 ```{eval-rst}
 .. minigallery:: xdem.coreg.CoregPipeline
         :add-heading:
-
 ```
 
 ### Suggested pipelines

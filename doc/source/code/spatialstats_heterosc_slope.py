@@ -14,6 +14,7 @@ mask = glacier_mask.create_mask(dh)
 slope = xdem.terrain.get_terrain_attribute(dem=ref_dem, attribute=["slope"])
 
 # Keep only stable terrain data
+dh.load()
 dh.set_mask(mask)
 
 # Estimate the measurement error by bin of slope, using the NMAD as robust estimator

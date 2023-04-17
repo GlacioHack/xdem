@@ -1,4 +1,4 @@
-"""Plot an example of regional hypsometric interpolation in central Svalbard."""
+"""Plot an example of local hypsometric interpolation at Scott Turnerbreen, Svalbard."""
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,15 +13,14 @@ ddem = xdem.dDEM(dem_2009 - dem_1990, start_time=np.datetime64("1990-08-01"), en
 
 ddem.data /= 2009 - 1990
 
-mask = outlines_1990.create_mask(ddem)
+scott_1990 = outlines_1990.query("NAME == 'Scott Turnerbreen'")
+mask = scott_1990.create_mask(ddem)
 
-ddem_bins = xdem.volume.hypsometric_binning(ddem.data[mask], dem_2009.data[mask])
-stds = xdem.volume.hypsometric_binning(ddem.data[mask], dem_2009.data[mask], aggregation_function=np.std)
+ddem_bins = xdem.volume.hypsometric_binning(ddem[mask], dem_2009[mask])
+stds = xdem.volume.hypsometric_binning(ddem[mask], dem_2009[mask], aggregation_function=np.std)
 
 plt.figure(figsize=(8, 8))
 plt.grid(zorder=0)
-
-
 plt.plot(ddem_bins["value"], ddem_bins.index.mid, linestyle="--", zorder=1)
 
 plt.barh(
@@ -46,6 +45,7 @@ plt.barh(
     alpha=0.2,
 )
 plt.xlabel("Normalized area distribution (hypsometry)")
+
 plt.ylabel("Elevation (m a.s.l.)")
 
 plt.tight_layout()
