@@ -16,17 +16,17 @@
 
 **xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs).
 
-It aims at **providing modular and robust tools for the most common analyses needed with DEMs**, including both geospatial 
-operations specific to DEMs and a wide range of 3D alignment and correction methods from published, peer-reviewed studies. 
-The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around `DEM` and `dDEM` classes** (that, notably, re-implements all tools 
-of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are **built around 
-modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves**. Finally, xDEM includes advanced 
+It aims at **providing modular and robust tools for the most common analyses needed with DEMs**, including both geospatial
+operations specific to DEMs and a wide range of 3D alignment and correction methods from published, peer-reviewed studies.
+The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around `DEM` and `dDEM` classes** (that, notably, re-implements all tools
+of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are **built around
+modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves**. Finally, xDEM includes advanced
 uncertainty analysis tools based on spatial statistics of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/).
 
-Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as 
+Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as
 **implicit loading**, **numerical interfacing** and **convenient object-based geospatial methods** to easily perform
-the most common higher-level tasks needed by geospatial users (e.g., reprojection, cropping, vector masking). Through [GeoUtils](https://github.com/GlacioHack/geoutils), xDEM 
-relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj) 
+the most common higher-level tasks needed by geospatial users (e.g., reprojection, cropping, vector masking). Through [GeoUtils](https://github.com/GlacioHack/geoutils), xDEM
+relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj)
 for georeferenced calculations, and on [NumPy](https://github.com/numpy/numpy) and [Xarray](https://github.com/pydata/xarray) for numerical analysis. It allows easy access to
 the functionalities of these packages through interfacing or composition, and quick inter-operability through object conversion.
 
@@ -47,7 +47,7 @@ See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install 
 
 ## Citing methods implemented in the package
 
-When using a method implemented in xDEM, please **cite both the package and the related study**: 
+When using a method implemented in xDEM, please **cite both the package and the related study**:
 
 Citing xDEM: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
 

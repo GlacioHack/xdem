@@ -964,11 +964,11 @@ class TestNeffEstimation:
         assert (t1 - t0) < (t2 - t1)
 
         # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
-        t3 = time.time()
+        # t3 = time.time()
         neff_approx = xdem.spatialstats.neff_hugonnet_approx(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, subsample=100, random_state=42
         )
-        t4 = time.time()
+        # t4 = time.time()
 
         # Check that the non-vectorized version gives the same result, sampling 100 out of 250 samples
         neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(
