@@ -5,6 +5,7 @@
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
+[![PyPI version](https://badge.fury.io/py/xdem.svg)](https://badge.fury.io/py/xdem)
 [![Coverage Status](https://coveralls.io/repos/github/GlacioHack/xdem/badge.svg?branch=main)](https://coveralls.io/github/GlacioHack/xdem?branch=main)
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/GlacioHack/xdem/main)
@@ -15,11 +16,11 @@
 
 **xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs).
 
-It aims at **providing robust and modular tools for the most common analyses needed with DEMs**, including the specific geospatial 
-tools necessary for working with DEMs, as well as a wide range of methods from published, peer-reviewed studies for more advanced analysis. 
-The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are conveniently centered around `DEM` and `dDEM` classes (that, notably, re-implements all tools 
-of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are built around 
-modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves. Finally, xDEM includes advanced 
+It aims at **providing modular and robust tools for the most common analyses needed with DEMs**, including both geospatial 
+operations specific to DEMs and a wide range of 3D alignment and correction methods from published, peer-reviewed studies. 
+The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around `DEM` and `dDEM` classes** (that, notably, re-implements all tools 
+of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are **built around 
+modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves**. Finally, xDEM includes advanced 
 uncertainty analysis tools based on spatial statistics of the [SciKit-GStat package](https://scikit-gstat.readthedocs.io/en/latest/).
 
 Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as 
@@ -36,30 +37,31 @@ users, xDEM also aims at being efficient and scalable by supporting lazy loading
 
 ## Documentation
 
-For installation, quick start, gallery examples, a full feature description or a search through the API, see GeoUtils' documentation at:
-https://xdem.readthedocs.io.
+For installation, quick start, gallery examples, a full feature description or a search through the API, see xDEM's documentation at: https://xdem.readthedocs.io.
 
 ## Citing methods implemented in the package
 
-Below are the published methods currently implemented in xDEM. When using one of those, one should cite **both xDEM and the related study**: 
+When using a method implemented in xDEM, one should **cite both the package and the related study**: 
 
-**Citing xDEM:** [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
+Cite xDEM: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
 
-**Published methods implemented**:
+Cite the related study:
 
-- Coregistration:
-  - Horizontal shift from aspect/slope relationship of *Nuth and Kääb, 2011*: https://doi.org/10.5194/tc-5-271-2011,
-  - Iterative closest point (ICP) of *Besl and McKay, 1992*: http://dx.doi.org/10.1109/34.121791,
-- Uncertainty analysis:
-  - Inference of heteroscedasticity and multi-range correlations from stable terrain of *Hugonnet et al. (2022)*, https://doi.org/10.1109/JSTARS.2022.3188922,
-- Terrain attributes:
-  - Slope, aspect and hillshade of either *Horn (1981)*, http://dx.doi.org/10.1109/PROC.1981.11918 or *Zevenbergen and Thorne (1987)*, http://dx.doi.org/10.1002/esp.3290120107,
-  - Profile, plan and maximum curvature of *Zevenbergen and Thorne (1987)*, http://dx.doi.org/10.1002/esp.3290120107,
-  - Topographic position index of *Weiss (2001)*, http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf,
-  - Terrain ruggedness index of either *Riley et al. (1999)*, http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf or *Wilson et al. (2007)*, http://dx.doi.org/10.1080/01490410701295962,
-  - Roughness of *Dartnell (2000)*, http://dx.doi.org/10.14358/PERS.70.9.1081,
-  - Rugosity of *Jenness (2004)*, https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2,
-  - Fractal roughness of *Taud et Parrot (2005)*, https://doi.org/10.4000/geomorphologie.622.
+- **Coregistration**:
+  - Horizontal shift from aspect/slope relationship of *[Nuth and Kääb, 2011](https://doi.org/10.5194/tc-5-271-2011)*,
+  - Iterative closest point (ICP) of *[Besl and McKay, 1992](http://dx.doi.org/10.1109/34.121791)*,
+- **Bias correction**:
+  - Along-track multi-sinusoidal noise by basin-hopping of *[Girod et al., 2017](https://doi.org/10.3390/rs9070704)*,
+- **Uncertainty analysis**:
+  - Inference of heteroscedasticity and multi-range correlations from stable terrain of *[Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922)*,
+- **Terrain attributes**:
+  - Slope, aspect and hillshade of either *[Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918)* or *[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)*,
+  - Profile, plan and maximum curvature of *[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)*,
+  - Topographic position index of *[Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf)*,
+  - Terrain ruggedness index of either *[Riley et al. (1999)](http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf)* or *[Wilson et al. (2007)](http://dx.doi.org/10.1080/01490410701295962)*,
+  - Roughness of *[Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081)*,
+  - Rugosity of *[Jenness (2004)](https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2)*,
+  - Fractal roughness of *[Taud et Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)*.
 
 ## Installation
 
