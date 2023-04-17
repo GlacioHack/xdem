@@ -59,7 +59,7 @@ extensions = [
 ]
 
 # For sphinx design to work properly
-myst_enable_extensions = ["colon_fence"]
+myst_enable_extensions = ["colon_fence", "dollarmath"]
 
 # For myst-nb to find the Jupyter kernel (=environment) to run from
 nb_kernel_rgx_aliases = {".*xdem.*": "python3"}
@@ -160,6 +160,7 @@ html_theme_options = {
         "notebook_interface": "jupyterlab",
         # For launching Binder in Jupyterlab to open MD files as notebook (downloads them otherwise)
     },
+    "show_toc_level": 2  # To show more levels on the right sidebar TOC
 }
 
 # For dark mode

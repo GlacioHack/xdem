@@ -5,10 +5,6 @@
 For analytic and visual purposes, deriving certain attributes of a DEM may be required.
 Some are useful for direct analysis, such as a slope map to differentiate features of different angles, while others, like the hillshade, are great tools for visualizing a DEM.
 
-```{contents} Contents
-:local: true
-```
-
 ## Slope
 
 {func}`xdem.terrain.slope`
@@ -29,7 +25,6 @@ example.
 
 ```{eval-rst}
 .. minigallery:: xdem.terrain.slope
-        :add-heading:
 ```
 
 ## Aspect
