@@ -45,4 +45,3 @@ dependencies:
   - pip:
       -e ./
      - git+https://github.com/GlacioHack/GeoUtils.git
-

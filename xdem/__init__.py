@@ -8,10 +8,18 @@ from xdem import (  # noqa
     terrain,
     volume,
 )
+from xdem.coreg import (  # noqa
+    ICP,
+    BiasCorr,
+    BlockwiseCoreg,
+    Coreg,
+    CoregPipeline,
+    Deramp,
+    NuthKaab,
+)
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa
-from xdem.coreg import Coreg, CoregPipeline, BiasCorr, NuthKaab, ICP, Deramp, BlockwiseCoreg
 
 try:
     from xdem.version import version as __version__  # noqa

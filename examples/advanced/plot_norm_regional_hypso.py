@@ -70,7 +70,7 @@ random_nans.show()
 # **NOTE**: The hypsometric signal does not need to be generated separately; it will be created by :func:`xdem.volume.norm_regional_hypsometric_interpolation`.
 # Generating it first, however, allows us to visualize and validate it.
 
-ddem = (dem_2009 - dem_1990)
+ddem = dem_2009 - dem_1990
 ddem_voided = np.where(random_nans.data, np.nan, ddem.data)
 
 signal = xdem.volume.get_regional_hypsometric_signal(

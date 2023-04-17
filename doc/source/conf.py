@@ -91,12 +91,11 @@ sphinx_gallery_conf = {
     },
     # directory where function/class granular galleries are stored
     "backreferences_dir": "gen_modules/backreferences",
-    "doc_module": ("xdem", ),  # which function/class levels are used to create galleries
+    "doc_module": ("xdem",),  # which function/class levels are used to create galleries
     # 'subsection_order': ExplicitOrder([os.path.join(os.path.dirname(__file__), "../", "../", "examples", "basic"),
     #                                    os.path.join(os.path.dirname(__file__), "../", "../", "examples", "advanced")])
     "remove_config_comments": True,
     # To remove comments such as sphinx-gallery-thumbnail-number (only works in code, not in text)
-
 }
 
 extlinks = {
@@ -134,6 +133,7 @@ exclude_patterns = ["_templates"]
 def setup(app):
     # Ignore .ipynb files
     app.registry.source_suffix.pop(".ipynb", None)
+
 
 # -- Options for HTML output -------------------------------------------------
 

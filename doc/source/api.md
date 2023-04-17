@@ -161,6 +161,3 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 
     xdem.spatialstats
 ```
-
-
-

@@ -34,7 +34,8 @@ mask_glacier = glacier_outlines.create_mask(dh)
 
 # Compute the slope and maximum curvature
 slope, planc, profc = xdem.terrain.get_terrain_attribute(
-    dem=ref_dem, attribute=["slope", "planform_curvature", "profile_curvature"])
+    dem=ref_dem, attribute=["slope", "planform_curvature", "profile_curvature"]
+)
 
 # Remove values on unstable terrain
 dh_arr = dh[~mask_glacier].filled(np.nan)
