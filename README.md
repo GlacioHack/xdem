@@ -1,7 +1,4 @@
-# xdem
-Set of tools to manipulate Digital Elevation Models (DEMs)
-
-More documentation to come!
+# xDEM: robust analysis of DEMs in Python.
 
 [![Documentation Status](https://readthedocs.org/projects/xdem/badge/?version=latest)](https://xdem.readthedocs.io/en/latest/?badge=latest)
 [![build](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml/badge.svg)](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml)
@@ -10,114 +7,72 @@ More documentation to come!
 [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Coverage Status](https://coveralls.io/repos/github/GlacioHack/xdem/badge.svg?branch=main)](https://coveralls.io/github/GlacioHack/xdem?branch=main)
 
-To cite this package: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/GlacioHack/xdem/main)
+[![Pre-Commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![Formatted with black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/python/black)
+[![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+
+**xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs).
+
+It aims at **providing robust and modular tools for the most common analyses needed with DEMs**, including the specific geospatial 
+tools necessary for working with DEMs, as well as a wide range of methods from published, peer-reviewed studies for more advanced analysis. 
+The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are conveniently centered around `DEM` and `dDEM` classes (that, notably, re-implements all tools 
+of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are built around 
+modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves. Finally, xDEM includes advanced 
+uncertainty analysis tools based on spatial statistics of the [SciKit-GStat package](https://scikit-gstat.readthedocs.io/en/latest/).
+
+Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as 
+**implicit loading**, **numerical interfacing** and **convenient object-based geospatial methods** to easily perform
+the most common higher-level tasks needed by geospatial users (e.g., reprojection, cropping, vector masking). Through [GeoUtils](https://github.com/GlacioHack/geoutils), xDEM 
+relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj) 
+for georeferenced calculations, and on [NumPy](https://github.com/numpy/numpy) and [Xarray](https://github.com/pydata/xarray) for numerical analysis. It allows easy access to
+the functionalities of these packages through interfacing or composition, and quick inter-operability through object conversion.
+
+If you are looking for an accessible Python package to write the Python equivalent of your [GDAL](https://gdal.org/) command lines, or of your
+[QGIS](https://www.qgis.org/en/site/) analysis pipeline **without a steep learning curve** on Python GIS syntax, xDEM is perfect for you! For more advanced
+users, xDEM also aims at being efficient and scalable by supporting lazy loading and parallel computing (ongoing).
+
+
+## Documentation
+
+For installation, quick start, gallery examples, a full feature description or a search through the API, see GeoUtils' documentation at:
+https://xdem.readthedocs.io.
+
+## Citing methods implemented in the package
+
+Below are the published methods currently implemented in xDEM. When using one of those, one should cite **both xDEM and the related study**: 
+
+**Citing xDEM:** [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
+
+**Published methods implemented**:
+
+- Coregistration:
+  - Horizontal shift from aspect/slope relationship of *Nuth and Kääb, 2011*: https://doi.org/10.5194/tc-5-271-2011,
+  - Iterative closest point (ICP) of *Besl and McKay, 1992*: http://dx.doi.org/10.1109/34.121791,
+- Uncertainty analysis:
+  - Inference of heteroscedasticity and multi-range correlations from stable terrain of *Hugonnet et al. (2022)*, https://doi.org/10.1109/JSTARS.2022.3188922,
+- Terrain attributes:
+  - Slope, aspect and hillshade of either *Horn (1981)*, http://dx.doi.org/10.1109/PROC.1981.11918 or *Zevenbergen and Thorne (1987)*, http://dx.doi.org/10.1002/esp.3290120107,
+  - Profile, plan and maximum curvature of *Zevenbergen and Thorne (1987)*, http://dx.doi.org/10.1002/esp.3290120107,
+  - Topographic position index of *Weiss (2001)*, http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf,
+  - Terrain ruggedness index of either *Riley et al. (1999)*, http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf or *Wilson et al. (2007)*, http://dx.doi.org/10.1080/01490410701295962,
+  - Roughness of *Dartnell (2000)*, http://dx.doi.org/10.14358/PERS.70.9.1081,
+  - Rugosity of *Jenness (2004)*, https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2,
+  - Fractal roughness of *Taud et Parrot (2005)*, https://doi.org/10.4000/geomorphologie.622.
 
 ## Installation
 
-### With conda (recommended)
+### With mamba (recommended)
 ```bash
-conda install -c conda-forge --strict-channel-priority xdem
+mamba install -c conda-forge xdem
 ```
-The `--strict-channel-priority` flag seems essential for Windows installs to function correctly, and is recommended for UNIX-based systems as well.
+See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install `mamba`, which will solve your environment much faster than `conda`.
 
-Solving dependencies can take a long time with `conda`. To speed up this, consider installing `mamba`:
+## Start contributing
 
-```bash
-conda install mamba -n base -c conda-forge
-```
+1. Fork the repository, make a feature branch and push changes.
+2. When ready, submit a pull request from the feature branch of your fork to `GlacioHack/geoutils:main`.
+3. The PR will be reviewed by at least one maintainer, discussed, then merged.
 
-Once installed, the same commands can be run by simply replacing `conda` by `mamba`. More details available through the [mamba project](https://github.com/mamba-org/mamba).
-
-If running into the `sklearn` error `ImportError: dlopen: cannot load any more object with static TLS`, your system
-needs to update its `glibc` (see details [here](https://github.com/scikit-learn/scikit-learn/issues/14485#issuecomment-822678559)).
-If you have no administrator right on the system, you might be able to circumvent this issue by installing a working
-environment with specific downgraded versions of `scikit-learn` and `numpy`:
-```bash
-conda create -n xdem-env -c conda-forge xdem scikit-learn==0.20.3 numpy==1.19.*
-```
-On very old systems, if the above install results in segmentation faults, try setting more specifically
-`numpy==1.19.2=py37h54aff64_0` (worked with Debian 8.11, GLIBC 2.19).
-
-### Installing with pip
-**NOTE**: Setting up GDAL and PROJ may need some extra steps, depending on your operating system and configuration.
-```bash
-pip install xdem
-```
-
-### Installing for contributors
-Recommended: Use conda for depencency solving.
-```
-$ git clone https://github.com/GlacioHack/xdem.git
-$ cd ./xdem
-$ conda env create -f dev-environment.yml
-$ conda activate xdem
-$ pip install -e .
-```
-After installing, we recommend to check that everything is working by running the tests:
-
-```
-$ pytest -rA
-```
-
-## Structure
-
-xdem are for now composed of three libraries:
-- `coreg.py` with tools covering differet aspects of DEM coregistration
-- `spatial_tools.py` for spatial operations on DEMs
-- `dem.py` for DEM-specific operations, such as vertical datum correction.
-
-## How to contribute
-
-You can find ways to improve the libraries in the [issues](https://github.com/GlacioHack/xdem/issues) section. All contributions are welcome.
-To avoid conflicts, it is suggested to use separate branches for each implementation. All changes must then be submitted to the dev branch using pull requests. Each PR must be reviewed by at least one other person.
-
-Please see our [contribution page](CONTRIBUTING.md) for more detailed instructions.
-
-### Documentation
-See the documentation at https://xdem.readthedocs.io
-
-### Testing - again please read!
-These tools are only valuable if we can rely on them to perform exactly as we expect. So, we need testing. Please create tests for every function that you make, as much as you are able. Guidance/examples here for the moment: https://github.com/GeoUtils/raster/blob/master/test/test_raster.py
-https://github.com/corteva/rioxarray/blob/master/test/integration/test_integration__io.py
-
-
-
-### Examples
-
-**Coregister a DEM to another DEM**
-```python
-import xdem
-
-reference_dem = xdem.DEM("path/to/reference.tif")
-dem_to_be_aligned = xdem.DEM("path/to/dem.tif")
-
-nuth_kaab = xdem.coreg.NuthKaab()
-
-nuth_kaab.fit(reference_dem.data, dem_to_be_aligned.data, transform=reference_dem.transform)
-
-
-aligned_dem = xdem.DEM.from_array(
-	nuth_kaab.apply(dem_to_be_aligned.data, transform=dem_to_be_aligned.transform),
-	transform=dem_to_be_aligned.transform,
-	crs=dem_to_be_aligned.crs
-)
-
-aligned_dem.save("path/to/coreg.tif")
-```
-This is an implementation of the [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) approach.
-[Please see the documentation](https://xdem.readthedocs.io/en/latest/coregistration.html) for more approaches.
-
-**Subtract one DEM with another**
-```python
-import xdem
-
-first_dem = xdem.DEM("path/to/first.tif")
-second_dem = xdem.DEM("path/to/second.tif")
-
-difference = first_dem - second_dem
-
-difference.save("path/to/difference.tif")
-```
-By default, `second_dem` is reprojected to fit `first_dem`.
-This can be switched with the keyword argument `reference="second"`.
-The resampling method can also be changed (e.g. `resampling_method="nearest"`) from the default `"cubic_spline"`.
+More info on [our contributing page](CONTRIBUTING.md).
