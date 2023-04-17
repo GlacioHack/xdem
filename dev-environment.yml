@@ -43,5 +43,5 @@ dependencies:
   - richdem
 
   - pip:
-      -e ./
+     - -e ./
      - git+https://github.com/GlacioHack/GeoUtils.git
