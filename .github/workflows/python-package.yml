@@ -40,14 +40,14 @@ jobs:
 
     - name: Get month for resetting cache
       id: get-date
-      run: echo "::set-output name=month::$(/bin/date -u '+%Y%m')"
+      run: echo "cache_date=$(/bin/date -u '+%Y%m')" >> $GITHUB_ENV
       shell: bash
 
     - name: Cache conda env
       uses: actions/cache@v3
       with:
         path: ${{ env.CONDA }}/envs
-        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ steps.get-date.outputs.month }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
+        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
       env:
         CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
       id: cache
