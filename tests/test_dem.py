@@ -1,6 +1,7 @@
 """ Functions to test the DEM tools."""
 import os
 import warnings
+from typing import Any
 
 import geoutils.raster as gr
 import geoutils.raster.satimg as si
@@ -97,7 +98,7 @@ class TestDEM:
         # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
-        # dem_attrs = ['vref', 'vref_grid', 'ccrs']
+        # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
 
         # using list directly available in Class
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
@@ -170,117 +171,58 @@ class TestDEM:
 
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
+        dem_orig = dem.copy()
 
         dem = dem.reproject(dst_crs=pyproj.CRS.from_epsg(4979))
         dem.set_vcrs(new_vcrs="Ellipsoid")
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
         dem.to_vcrs(dst_vcrs="EGM96")
-        ccrs_dest = dem.ccrs
         median_after = np.nanmean(dem)
 
+        # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
+        assert median_after - median_before == pytest.approx(-32, rel=0.1)
+
+        # Check that the results are consistent with the operation done independently
         from pyproj.transformer import Transformer
-        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest)
+        ccrs_dest = xdem.dem._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.dem._vcrs_from_user_input("EGM96"))
+        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
 
         xx, yy = dem.coords()
         x = xx[0, 0]
-        yy = yy[0, 0]
-        z = dem.data[0, 0, 0]
+        y = yy[0, 0]
+        z = dem_orig.data[0, 0]
+        z_out = transformer.transform(xx=x, yy=y, zz=z)[2]
 
-        z_out = transformer.transform(xx=x, yy=x, zz=z)[2]
+        assert z_out == pytest.approx(dem.data.data[0, 0])
 
+    egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
+    egm08_chile = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}
+    geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 17}
+    isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
+    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])
+    def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
+        """Tests grids to convert vertical CRS."""
 
+        # Using an arbitrary elevation of 100 m (no influence on the transformation)
+        dem = DEM.from_array(data=np.array([[100]]),
+                             transform=rio.transform.from_bounds(
+                                 grid_shifts["lon"],
+                                 grid_shifts["lat"],
+                                 grid_shifts["lon"]+0.01,
+                                 grid_shifts["lat"]+0.01,
+                                 0.01,
+                                 0.01),
+                             crs=pyproj.CRS.from_epsg(4326),
+                             nodata=None)
+        dem.set_vcrs("Ellipsoid")
 
+        # Transform to the vertical CRS of the grid
+        dem.to_vcrs(grid_shifts["grid"])
 
+        # Compare the elevation difference
+        z_diff = 100 - dem.data[0, 0]
 
-    def test_to_vcrs(self) -> None:
-        """Tests to convert vertical CRS."""
-
-        # First, we use test points to test the vertical transform
-        # Let's start with Chile
-        lat = 43.70012234
-        lng = -79.41629234
-        z = 100
-
-        # WGS84 datum with ellipsoid height
-        ellipsoid = pyproj.CRS.from_epsg(4979)
-        # EGM96 geoid in Chile, we expect ~30 m difference
-        # geoid = pyproj.crs.CompoundCRS(name="WGS 84 + EGM96 height", components=["EPSG:4326", "EPSG:5773"])
-        # geoid = xdem.dem._build_ccrs_from_vref(crs=pyproj.CRS.from_epsg(4326), vref_name="EGM96", vref_grid="us_nga_egm96_15.tif")
-        geoid = pyproj.Proj(init="EPSG:4326", geoidgrids="us_nga_egm96_15.tif").crs
-        transformer = pyproj.Transformer.from_crs(ellipsoid, geoid)
-        z_out = transformer.transform(lat, lng, z)[2]
-
-        # Check that the final elevation is finite, and higher than ellipsoid by less than 40 m (typical geoid in Chile)
-        assert np.logical_and.reduce((np.isfinite(z_out), np.greater(z_out, z), np.less(np.abs(z_out - z), 40)))
-
-        # With the EGM2008 (catch warnings as this use of init is depecrated)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", module="pyproj")
-            ellipsoid = pyproj.Proj(init="EPSG:4326")  # WGS84 datum ellipsoid height
-            geoid = pyproj.Proj(init="EPSG:4326", geoidgrids="us_nga_egm08_25.tif")
-        transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
-        z_out = transformer.transform(lng, lat, z)[2]
-
-        # Check final elevation is finite, higher than ellipsoid with less than 40 m difference (typical geoid in Chile)
-        assert np.logical_and.reduce((np.isfinite(z_out), np.greater(z_out, z), np.less(np.abs(z_out - z), 40)))
-
-        # With GEOID2006 for Alaska
-        lat = 65
-        lng = -140
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", module="pyproj")
-            # init is deprecated by
-            ellipsoid = pyproj.Proj(init="EPSG:4326")  # WGS84 datum ellipsoid height
-            geoid = pyproj.Proj(init="EPSG:4326", geoidgrids="us_noaa_geoid06_ak.tif")
-        transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
-        z_out = transformer.transform(lng, lat, z)[2]
-
-        # Check that the final elevation is finite, lower than ellipsoid by less than 20 m (typical geoid in Alaska)
-        assert np.logical_and.reduce((np.isfinite(z_out), np.less(z_out, z), np.less(np.abs(z_out - z), 20)))
-
-        # With ISN1993 for Iceland
-        lat = 65
-        lng = -18
-        # TODO: Figure out why CI cannot get the grids on Windows
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", module="pyproj")
-            # init is deprecated by
-            ellipsoid = pyproj.Proj(init="EPSG:4326")  # WGS84 datum ellipsoid height
-            # Iceland, we expect a ~70m difference
-            geoid = pyproj.Proj(init="EPSG:4326", geoidgrids="is_lmi_Icegeoid_ISN93.tif")
-        transformer = pyproj.Transformer.from_proj(ellipsoid, geoid)
-        z_out = transformer.transform(lng, lat, z)[2]
-
-        # Check that the final elevation is finite, lower than ellipsoid by less than 100 m (typical geoid in Iceland)
-        assert np.logical_and.reduce((np.isfinite(z_out), np.less(z_out, z), np.less(np.abs(z_out - z), 100)))
-
-        # Check that the function does not run without a reference set
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
-        img = DEM(fn_img)
-        with pytest.raises(ValueError):
-            img.to_vref(vref_name="EGM96")
-
-        # Check that the function properly runs with a reference set
-        img.set_vref(vref_name="WGS84")
-        mean_ellips = np.nanmean(img.data)
-        img.to_vref(vref_name="EGM96")
-        mean_geoid_96 = np.nanmean(img.data)
-        assert img.vref == "EGM96"
-        assert img.vref_grid == "us_nga_egm96_15.tif"
-        # Check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
-        assert np.greater(mean_ellips, mean_geoid_96)
-        assert np.less(np.abs(mean_ellips - mean_geoid_96), 35.0)
-
-        # Check in the other direction
-        img = DEM(fn_img)
-        img.set_vref(vref_name="EGM96")
-        mean_geoid_96 = np.nanmean(img.data)
-        img.to_vref(vref_name="WGS84")
-        mean_ellips = np.nanmean(img.data)
-        assert img.vref == "WGS84"
-        assert img.vref_grid is None
-        # Check that the geoid is lower than ellipsoid, less than 35 m difference (Svalbard)
-        assert np.greater(mean_ellips, mean_geoid_96)
-        assert np.less(np.abs(mean_ellips - mean_geoid_96), 35.0)
+        # Check the shift is the one expect within 10%
+        assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)

@@ -49,6 +49,7 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
 
     return vcrs_name
 
+
 def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
     """
     Build a compound CRS from a horizontal CRS and a vertical CRS.
@@ -59,14 +60,16 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipso
     :return: Compound CRS (horizontal + vertical).
     """
 
-    # If a vertical CRS was passed
+    # If a vertical CRS was passed, build a compound CRS with horizontal + vertical
+    # This requires transforming the horizontal CRS to 2D in case it was 3D
     # Using CRS() because rasterio.CRS does not allow to call .name otherwise...
     if isinstance(vcrs, CRS):
         ccrs = CompoundCRS(
             name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
-            components=[CRS(crs), vcrs],
+            components=[CRS(crs).to_2d(), vcrs],
         )
-    # Else if "Ellipsoid" was passed, there is no vertical reference, we return the CRS in 3D
+    # Else if "Ellipsoid" was passed, there is no vertical reference
+    # We still have to return the CRS in 3D
     else:
         ccrs = CRS(crs).to_3d()
 
@@ -130,9 +133,11 @@ def _build_vcrs_from_grid(grid: str | pathlib.Path, old_way: bool = True) -> Com
 
     return bound_crs
 
+
 # Define CRS in case path or string was passed
 _vcrs_meta_from_name = {"EGM08": {"grid": "us_nga_egm08_25.tif", "epsg": 3855},  # EGM2008 at 2.5 minute resolution
                         "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773}}  # EGM1996 at 15 minute resolution
+
 
 def _vcrs_from_user_input(
         new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int
@@ -166,7 +171,8 @@ def _vcrs_from_user_input(
         if isinstance(new_vcrs, CRS) and not new_vcrs.is_vertical:
             raise ValueError("New vertical CRS must have a vertical axis (check with is_vertical).")
         elif isinstance(new_vcrs, CRS) and not isinstance(new_vcrs, VerticalCRS) and new_vcrs.is_vertical:
-            warnings.warn("New vertical CRS has a vertical dimension but also other components, extracting the first vertical reference only.")
+            warnings.warn("New vertical CRS has a vertical dimension but also other components, "
+                          "extracting the first vertical reference only.")
             vcrs = [subcrs for subcrs in new_vcrs.sub_crs_list if subcrs.is_vertical][0]
 
     # If a string was passed
@@ -185,14 +191,16 @@ def _vcrs_from_user_input(
 
     return vcrs
 
-dem_attrs = ["_vref", "_vref_grid", "_ccrs"]
+
+dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid", "_ccrs"]
 
 
 class DEM(SatelliteImage):  # type: ignore
     """
     The digital elevation model.
 
-    The DEM has a single additional main attribute to that inherited from :class:`geoutils.SatelliteImage` and :class:`geoutils.Raster`:
+    The DEM has a single additional main attribute to that inherited from :class:`geoutils.SatelliteImage`
+    and :class:`geoutils.Raster`:
         vcrs: :class:`pyproj.VerticalCRS`
             Vertical coordinate reference system of the DEM.
 
@@ -206,13 +214,13 @@ class DEM(SatelliteImage):  # type: ignore
 
     The DEM also inherits from :class:`geoutils.Raster`:
         data: :class:`np.ndarray`
-            Data array of the raster, with dimensions corresponding to (count, height, width).
+            Data array of the DEM, with dimensions corresponding to (count, height, width).
         transform: :class:`affine.Affine`
-            Geotransform of the raster.
+            Geotransform of the DEM.
         crs: :class:`pyproj.crs.CRS`
-            Coordinate reference system of the raster.
+            Coordinate reference system of the DEM.
         nodata: :class:`int` or :class:`float`
-            Nodata value of the raster.
+            Nodata value of the DEM.
 
     All other attributes are derivatives of those attributes, or read from the file on disk.
     See the API for more details.
@@ -386,18 +394,15 @@ class DEM(SatelliteImage):  # type: ignore
         # New destination Compound CRS
         ccrs_dest = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(new_vcrs=dst_vcrs))
 
-        print(ccrs_init)
-        print(ccrs_dest)
         # Transform the grid
-        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest)
+        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
         # Will preserve the mask of the masked-array since pyproj 3.4
         zz = self.data
         xx, yy = self.coords(offset="center")
-        zz_trans = transformer.transform(xx, yy, zz[0, :])[2]
-        zz[0, :] = zz_trans
+        zz_trans = transformer.transform(xx, yy, zz)[2]
 
         # Update DEM
-        self.data = zz
+        self.data = zz_trans.astype(self.dtypes[0])
 
         # Update vcrs (which will update ccrs if called)
         self.set_vcrs(new_vcrs=dst_vcrs)
