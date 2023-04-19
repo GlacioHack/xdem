@@ -114,14 +114,18 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
 
     if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
         warnings.warn(
-            "Grid not found in " + str(pyproj.datadir.get_data_dir()) + ". Attempting to download from https://cdn.proj.org/..."
+            "Grid not found in "
+            + str(pyproj.datadir.get_data_dir())
+            + ". Attempting to download from https://cdn.proj.org/..."
         )
         from pyproj.sync import _download_resource_file
+
         _download_resource_file(
-                        file_url=os.path.join("https://cdn.proj.org/", grid),
-                        short_name=grid,
-                        directory=pyproj.datadir.get_data_dir(),
-                        verbose=False)
+            file_url=os.path.join("https://cdn.proj.org/", grid),
+            short_name=grid,
+            directory=pyproj.datadir.get_data_dir(),
+            verbose=False,
+        )
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
     if old_way:
@@ -282,9 +286,12 @@ def _transform_zz(
     # If the best available grid is still not there, raise a warning
     if not trans_group.best_available:
         import logging
+
         logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
-        warnings.warn(message="Best available grid for transformation could not be downloaded, "
-                              "applying the next best available. See PROJ log: {}.")
+        warnings.warn(
+            message="Best available grid for transformation could not be downloaded, "
+            "applying the next best available. See PROJ log: {}."
+        )
     transformer = trans_group.transformers[0]
 
     # Transform the grid

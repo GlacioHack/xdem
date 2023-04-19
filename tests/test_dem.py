@@ -209,14 +209,16 @@ class TestDEM:
 
         # With both inputs as names
         dem.set_vcrs("EGM96")
-        with pytest.warns(UserWarning, match="Source and destination vertical CRS are the same, "
-                                             "skipping vertical transformation."):
+        with pytest.warns(
+            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+        ):
             dem.to_vcrs("EGM96")
 
         # With one input as name, the other as CRS
         dem.set_vcrs("Ellipsoid")
-        with pytest.warns(UserWarning, match="Source and destination vertical CRS are the same, "
-                                             "skipping vertical transformation."):
+        with pytest.warns(
+            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+        ):
             dem.to_vcrs(CRS("EPSG:4979"))
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids

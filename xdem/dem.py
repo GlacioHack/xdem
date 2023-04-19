@@ -219,8 +219,10 @@ class DEM(SatelliteImage):  # type: ignore
 
         # If both compound CCRS are equal, do not run any transform
         if src_ccrs.equals(dst_ccrs):
-            warnings.warn(message="Source and destination vertical CRS are the same, skipping vertical transformation.",
-                          category=UserWarning)
+            warnings.warn(
+                message="Source and destination vertical CRS are the same, skipping vertical transformation.",
+                category=UserWarning,
+            )
             return None
 
         # Transform elevation with new vertical CRS
