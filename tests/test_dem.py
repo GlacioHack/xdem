@@ -6,13 +6,15 @@ from typing import Any
 import geoutils.raster as gr
 import geoutils.raster.satimg as si
 import numpy as np
-import pyproj
 import pytest
+from pyproj import CRS
+from pyproj.transformer import Transformer
 import rasterio as rio
 from geoutils.raster.raster import _default_rio_attrs
 
 import xdem
 from xdem.dem import DEM
+import xdem.vcrs
 
 DO_PLOT = False
 
@@ -121,6 +123,7 @@ class TestDEM:
 
         assert np.array_equal(r3.data, r2.data)
 
+
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
 
@@ -145,7 +148,6 @@ class TestDEM:
         assert dem.vcrs_grid == "us_nga_egm08_25.tif"
 
         # -- Test 2: we check with grids --
-
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert dem.vcrs_name == "unknown"
         assert dem.vcrs_grid == "us_nga_egm96_15.tif"
@@ -171,9 +173,10 @@ class TestDEM:
 
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
-        dem_orig = dem.copy()
 
-        dem = dem.reproject(dst_crs=pyproj.CRS.from_epsg(4979))
+        dem = dem.reproject(dst_crs=4979)
+        dem_before_trans = dem.copy()
+
         dem.set_vcrs(new_vcrs="Ellipsoid")
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
@@ -184,18 +187,18 @@ class TestDEM:
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
 
         # Check that the results are consistent with the operation done independently
-        from pyproj.transformer import Transformer
-        ccrs_dest = xdem.dem._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.dem._vcrs_from_user_input("EGM96"))
+        ccrs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
         transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
 
         xx, yy = dem.coords()
-        x = xx[0, 0]
-        y = yy[0, 0]
-        z = dem_orig.data[0, 0]
+        x = xx[5, 5]
+        y = yy[5, 5]
+        z = dem_before_trans.data[5, 5]
         z_out = transformer.transform(xx=x, yy=y, zz=z)[2]
 
-        assert z_out == pytest.approx(dem.data.data[0, 0])
+        assert z_out == pytest.approx(dem.data.data[5, 5])
 
+    # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
     egm08_chile = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}
     geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 17}
@@ -210,11 +213,11 @@ class TestDEM:
                              transform=rio.transform.from_bounds(
                                  grid_shifts["lon"],
                                  grid_shifts["lat"],
-                                 grid_shifts["lon"]+0.01,
-                                 grid_shifts["lat"]+0.01,
+                                 grid_shifts["lon"] + 0.01,
+                                 grid_shifts["lat"] + 0.01,
                                  0.01,
                                  0.01),
-                             crs=pyproj.CRS.from_epsg(4326),
+                             crs=CRS.from_epsg(4326),
                              nodata=None)
         dem.set_vcrs("Ellipsoid")
 
@@ -226,3 +229,4 @@ class TestDEM:
 
         # Check the shift is the one expect within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
+
