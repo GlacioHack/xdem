@@ -200,6 +200,24 @@ class TestDEM:
 
         assert z_out == pytest.approx(dem.data[5, 5])
 
+    def test_to_vcrs__equal_warning(self) -> None:
+        """Test that DEM.to_vcrs() does not transform if both 3D CRS are equal."""
+
+        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem = DEM(fn_dem)
+
+        # With both inputs as names
+        dem.set_vcrs("EGM96")
+        with pytest.warns(UserWarning, match="Source and destination vertical CRS are the same, "
+                                             "skipping vertical transformation."):
+            dem.to_vcrs("EGM96")
+
+        # With one input as name, the other as CRS
+        dem.set_vcrs("Ellipsoid")
+        with pytest.warns(UserWarning, match="Source and destination vertical CRS are the same, "
+                                             "skipping vertical transformation."):
+            dem.to_vcrs(CRS("EPSG:4979"))
+
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
     egm08_chile = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}

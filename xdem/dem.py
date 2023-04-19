@@ -20,7 +20,7 @@ from xdem.vcrs import (
     _vcrs_from_user_input,
 )
 
-dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid", "_ccrs"]
+dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
 
 
 class DEM(SatelliteImage):  # type: ignore
@@ -86,7 +86,6 @@ class DEM(SatelliteImage):  # type: ignore
         self._vcrs: VerticalCRS | None = None
         self._vcrs_name: str | None = None
         self._vcrs_grid: str | None = None
-        self._ccrs: CompoundCRS | None = None
 
         # If DEM is passed, simply point back to DEM
         if isinstance(filename_or_dataset, DEM):
@@ -217,6 +216,12 @@ class DEM(SatelliteImage):  # type: ignore
 
         # New destination Compound CRS
         dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=dst_vcrs))
+
+        # If both compound CCRS are equal, do not run any transform
+        if src_ccrs.equals(dst_ccrs):
+            warnings.warn(message="Source and destination vertical CRS are the same, skipping vertical transformation.",
+                          category=UserWarning)
+            return None
 
         # Transform elevation with new vertical CRS
         zz = self.data
