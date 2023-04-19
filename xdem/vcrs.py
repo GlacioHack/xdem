@@ -71,6 +71,7 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipso
     if isinstance(vcrs, CRS):
         # If pyproj >= 3.5.1, we can use CRS.to_2d()
         from packaging.version import Version
+
         if Version(pyproj.__version__) > Version("3.5.0"):
             crs_from = CRS(crs).to_2d()
             ccrs = CompoundCRS(
@@ -81,9 +82,11 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipso
         else:
             crs_from = CRS(crs)
             if crs_from.is_vertical:
-                raise NotImplementedError("pyproj >= 3.5.1 is required to demote a 3D CRS to 2D and be able to compound "
-                                          "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
-                                          "manually.")
+                raise NotImplementedError(
+                    "pyproj >= 3.5.1 is required to demote a 3D CRS to 2D and be able to compound "
+                    "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
+                    "manually."
+                )
             else:
                 ccrs = CompoundCRS(
                     name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
