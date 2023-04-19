@@ -126,6 +126,7 @@ class TestVCRS:
                     "manually.",
                 ):
                     ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+                return None
         # If the CRS is 2D, it should pass
         else:
             ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
