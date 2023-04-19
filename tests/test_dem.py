@@ -7,14 +7,14 @@ import geoutils.raster as gr
 import geoutils.raster.satimg as si
 import numpy as np
 import pytest
-from pyproj import CRS
-from pyproj.transformer import Transformer
 import rasterio as rio
 from geoutils.raster.raster import _default_rio_attrs
+from pyproj import CRS
+from pyproj.transformer import Transformer
 
 import xdem
-from xdem.dem import DEM
 import xdem.vcrs
+from xdem.dem import DEM
 
 DO_PLOT = False
 
@@ -123,7 +123,6 @@ class TestDEM:
 
         assert np.array_equal(r3.data, r2.data)
 
-
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
 
@@ -134,6 +133,7 @@ class TestDEM:
 
         # Check setting ellipsoid
         dem.set_vcrs(new_vcrs="Ellipsoid")
+        assert dem.vcrs_name is not None
         assert "Ellipsoid (No vertical CRS)." in dem.vcrs_name
         assert dem.vcrs_grid is None
 
@@ -196,7 +196,7 @@ class TestDEM:
         z = dem_before_trans.data[5, 5]
         z_out = transformer.transform(xx=x, yy=y, zz=z)[2]
 
-        assert z_out == pytest.approx(dem.data.data[5, 5])
+        assert z_out == pytest.approx(dem.data[5, 5])
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
@@ -204,21 +204,19 @@ class TestDEM:
     geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 17}
     isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
-    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])
+    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
-        dem = DEM.from_array(data=np.array([[100]]),
-                             transform=rio.transform.from_bounds(
-                                 grid_shifts["lon"],
-                                 grid_shifts["lat"],
-                                 grid_shifts["lon"] + 0.01,
-                                 grid_shifts["lat"] + 0.01,
-                                 0.01,
-                                 0.01),
-                             crs=CRS.from_epsg(4326),
-                             nodata=None)
+        dem = DEM.from_array(
+            data=np.array([[100]]),
+            transform=rio.transform.from_bounds(
+                grid_shifts["lon"], grid_shifts["lat"], grid_shifts["lon"] + 0.01, grid_shifts["lat"] + 0.01, 0.01, 0.01
+            ),
+            crs=CRS.from_epsg(4326),
+            nodata=None,
+        )
         dem.set_vcrs("Ellipsoid")
 
         # Transform to the vertical CRS of the grid
@@ -229,4 +227,3 @@ class TestDEM:
 
         # Check the shift is the one expect within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
-

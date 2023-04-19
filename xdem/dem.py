@@ -1,21 +1,24 @@
 """DEM class and functions."""
 from __future__ import annotations
 
-import os
 import pathlib
 import warnings
 from typing import Any, Literal
 
-import pyproj
 import rasterio as rio
-
 from geoutils import SatelliteImage
 from geoutils.raster import RasterType
-from pyproj import Transformer, CRS
-from pyproj.crs import BoundCRS, VerticalCRS, CompoundCRS
+from pyproj import CRS
+from pyproj.crs import CompoundCRS, VerticalCRS
 
 from xdem._typing import NDArrayf
-from xdem.vcrs import _vcrs_from_user_input, _build_ccrs_from_crs_and_vcrs, _parse_vcrs_name_from_product, _grid_from_user_input, _transform_zz
+from xdem.vcrs import (
+    _build_ccrs_from_crs_and_vcrs,
+    _grid_from_user_input,
+    _parse_vcrs_name_from_product,
+    _transform_zz,
+    _vcrs_from_user_input,
+)
 
 dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid", "_ccrs"]
 
@@ -54,7 +57,14 @@ class DEM(SatelliteImage):  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
+        vcrs: Literal["Ellipsoid"]
+        | Literal["EGM08"]
+        | Literal["EGM96"]
+        | VerticalCRS
+        | str
+        | pathlib.Path
+        | int
+        | None = None,
         silent: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -138,7 +148,7 @@ class DEM(SatelliteImage):  # type: ignore
             # If it is the ellipsoid
             if isinstance(self.vcrs, str):
                 # Need to call CRS() here to make it work with rasterio.CRS...
-                vcrs_name = "Ellipsoid (No vertical CRS). Datum: {}.".format(CRS(self.crs).ellipsoid.name)
+                vcrs_name = f"Ellipsoid (No vertical CRS). Datum: {CRS(self.crs).ellipsoid.name}."
             # Otherwise, return the vertical reference name
             else:
                 vcrs_name = self.vcrs.name
@@ -147,7 +157,10 @@ class DEM(SatelliteImage):  # type: ignore
 
         return vcrs_name
 
-    def set_vcrs(self, new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int) -> None:
+    def set_vcrs(
+        self,
+        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
+    ) -> None:
         """
         Set the vertical coordinate reference system of the DEM.
 
@@ -169,9 +182,11 @@ class DEM(SatelliteImage):  # type: ignore
         else:
             return None
 
-    def to_vcrs(self,
-                dst_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-                src_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None) -> None:
+    def to_vcrs(
+        self,
+        dst_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        src_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None,
+    ) -> None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
@@ -192,8 +207,10 @@ class DEM(SatelliteImage):  # type: ignore
         if src_vcrs is not None:
             # Warn if a vertical CRS already existed for that DEM
             if self.vcrs is not None:
-                warnings.warn(category=UserWarning,
-                              message="Overriding the vertical CRS of the DEM with the one provided in `src_vcrs`.")
+                warnings.warn(
+                    category=UserWarning,
+                    message="Overriding the vertical CRS of the DEM with the one provided in `src_vcrs`.",
+                )
             src_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=src_vcrs)
         else:
             src_ccrs = self.ccrs
@@ -207,7 +224,7 @@ class DEM(SatelliteImage):  # type: ignore
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
 
         # Update DEM
-        self._data = zz_trans.astype(self.dtypes[0])
+        self._data = zz_trans.astype(self.dtypes[0])  # type: ignore
 
         # Update vcrs (which will update ccrs if called)
         self.set_vcrs(new_vcrs=dst_vcrs)

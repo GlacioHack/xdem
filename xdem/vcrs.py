@@ -2,16 +2,15 @@
 import os
 import pathlib
 import warnings
-from typing import Literal
+from typing import Literal, TypedDict
 
-import numpy as np
 import pyproj
-from pyproj import Transformer, CRS
-from pyproj.crs import BoundCRS, VerticalCRS, CompoundCRS, GeographicCRS
+from pyproj import CRS, Transformer
+from pyproj.crs import BoundCRS, CompoundCRS, GeographicCRS, VerticalCRS
 from pyproj.crs.coordinate_system import Ellipsoidal3DCS
 from pyproj.crs.enums import Ellipsoidal3DCSAxis
 
-from xdem._typing import NDArrayf, MArrayf
+from xdem._typing import MArrayf, NDArrayf
 
 # Sources for defining vertical references:
 # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
@@ -23,18 +22,19 @@ from xdem._typing import NDArrayf, MArrayf
 # REMA (mosaic and strips): https://www.pgc.umn.edu/data/rema/
 # TanDEM-X 90m global: https://geoservice.dlr.de/web/dataguide/tdm90/
 # COPERNICUS DEM: https://spacedata.copernicus.eu/web/cscda/dataset-details?articleId=394198
-vcrs_dem_products = \
-    {"ArcticDEM": "Ellipsoid",
-     "REMA": "Ellipsoid",
-     "TDM1": "Ellipsoid",
-     "NASADEM-HGTS": "Ellipsoid",
-     "AW3D30": "EGM96",
-     "SRTMv4.1": "EGM96",
-     "ASTGTM2": "EGM96",
-     "ASTGTM3": "EGM96",
-     "NASADEM-HGT": "EGM96",
-     "COPDEM": "EGM08"
-     }
+vcrs_dem_products = {
+    "ArcticDEM": "Ellipsoid",
+    "REMA": "Ellipsoid",
+    "TDM1": "Ellipsoid",
+    "NASADEM-HGTS": "Ellipsoid",
+    "AW3D30": "EGM96",
+    "SRTMv4.1": "EGM96",
+    "ASTGTM2": "EGM96",
+    "ASTGTM3": "EGM96",
+    "NASADEM-HGT": "EGM96",
+    "COPDEM": "EGM08",
+}
+
 
 def _parse_vcrs_name_from_product(product: str) -> str | None:
     """
@@ -51,6 +51,7 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
         vcrs_name = None
 
     return vcrs_name
+
 
 def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
     """
@@ -78,7 +79,7 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipso
     return ccrs
 
 
-def _build_vcrs_from_grid(grid: str | pathlib.Path, old_way: bool = False) -> CompoundCRS:
+def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
     """
     Build a compound CRS from a vertical CRS grid path.
 
@@ -89,28 +90,26 @@ def _build_vcrs_from_grid(grid: str | pathlib.Path, old_way: bool = False) -> Co
     """
 
     if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
-        raise ValueError("Grid not found in " + str(pyproj.datadir.get_data_dir()) + ": check if proj-data is "
-                         "installed via conda-forge, the pyproj.datadir, and that you are using a grid available at "
-                         "https://github.com/OSGeo/PROJ-data."
-                         )
+        raise ValueError(
+            "Grid not found in " + str(pyproj.datadir.get_data_dir()) + ": check if proj-data is "
+            "installed via conda-forge, the pyproj.datadir, and that you are using a grid available at "
+            "https://github.com/OSGeo/PROJ-data."
+        )
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
     if old_way:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", module="pyproj")
-            ccrs = pyproj.Proj(init="EPSG:4326",
-                               geoidgrids=grid).crs
+            ccrs = pyproj.Proj(init="EPSG:4326", geoidgrids=grid).crs
             bound_crs = ccrs.sub_crs_list[1]
 
     # The clean way
     else:
         # First, we build a bounds CRS (the vertical CRS relative to geographic)
-        vertical_crs = VerticalCRS(name="unknown", datum='VDATUM["unknown using geoidgrids='+grid+'"]')
+        vertical_crs = VerticalCRS(name="unknown", datum='VDATUM["unknown using geoidgrids=' + grid + '"]')
         geographic3d_crs = GeographicCRS(
             name="WGS 84",
-            ellipsoidal_cs=Ellipsoidal3DCS(
-                axis=Ellipsoidal3DCSAxis.LATITUDE_LONGITUDE_HEIGHT
-            ),
+            ellipsoidal_cs=Ellipsoidal3DCS(axis=Ellipsoidal3DCSAxis.LATITUDE_LONGITUDE_HEIGHT),
         )
         bound_crs = BoundCRS(
             source_crs=vertical_crs,
@@ -121,27 +120,35 @@ def _build_vcrs_from_grid(grid: str | pathlib.Path, old_way: bool = False) -> Co
                 "name": "unknown to WGS84 ellipsoidal height",
                 "source_crs": vertical_crs.to_json_dict(),
                 "target_crs": geographic3d_crs.to_json_dict(),
-                "method": {
-                    "name": "GravityRelatedHeight to Geographic3D"
-                },
+                "method": {"name": "GravityRelatedHeight to Geographic3D"},
                 "parameters": [
                     {
                         "name": "Geoid (height correction) model file",
                         "value": grid,
-                        "id": {
-                            "authority": "EPSG",
-                            "code": 8666
-                        }
+                        "id": {"authority": "EPSG", "code": 8666},
                     }
-                ]
-            }
+                ],
+            },
         )
 
     return bound_crs
 
+
+# Define types of common Vertical CRS dictionary
+class VCRSMetaDict(TypedDict, total=False):
+    grid: str
+    epsg: int
+
+
+_vcrs_meta: dict[str, VCRSMetaDict] = {
+    "EGM08": {"grid": "us_nga_egm08_25.tif", "epsg": 3855},  # EGM2008 at 2.5 minute resolution
+    "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
+}
+
+
 def _vcrs_from_user_input(
-        vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int
-        ) -> VerticalCRS | BoundCRS | Literal["Ellipsoid"]:
+    vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
+) -> VerticalCRS | BoundCRS | Literal["Ellipsoid"]:
     """
     Parse vertical CRS from user input.
 
@@ -153,12 +160,14 @@ def _vcrs_from_user_input(
 
     # Raise errors if input type is wrong (allow CRS instead of VerticalCRS for broader error messages below)
     if not isinstance(vcrs_input, (str, pathlib.Path, CRS, int)):
-        raise TypeError("New vertical CRS must be a string, path or VerticalCRS, received {}.".format(type(vcrs_input)))
+        raise TypeError(f"New vertical CRS must be a string, path or VerticalCRS, received {type(vcrs_input)}.")
 
     # If input is ellipsoid
-    if (isinstance(vcrs_input, str) and (vcrs_input.lower() == "ellipsoid" or vcrs_input.upper() == 'WGS84')) or \
-            (isinstance(vcrs_input, int) and vcrs_input in [4326, 4979]) \
-            or (isinstance(vcrs_input, CRS) and vcrs_input.to_epsg() in [4326, 4979]):
+    if (
+        (isinstance(vcrs_input, str) and (vcrs_input.lower() == "ellipsoid" or vcrs_input.upper() == "WGS84"))
+        or (isinstance(vcrs_input, int) and vcrs_input in [4326, 4979])
+        or (isinstance(vcrs_input, CRS) and vcrs_input.to_epsg() in [4326, 4979])
+    ):
         return "Ellipsoid"
 
     # Define CRS in case EPSG or CRS was passed
@@ -170,18 +179,22 @@ def _vcrs_from_user_input(
 
         # Raise errors if the CRS constructed is not vertical or has other components
         if isinstance(vcrs, CRS) and not vcrs.is_vertical:
-            raise ValueError("New vertical CRS must have a vertical axis, '{}' does not "
-                             "(check with `CRS.is_vertical`).".format(vcrs.name))
+            raise ValueError(
+                "New vertical CRS must have a vertical axis, '{}' does not "
+                "(check with `CRS.is_vertical`).".format(vcrs.name)
+            )
         elif isinstance(vcrs, CRS) and (vcrs.is_vertical and len(vcrs.sub_crs_list) > 1):
-            warnings.warn("New vertical CRS has a vertical dimension but also other components, "
-                          "extracting the first vertical reference only.")
+            warnings.warn(
+                "New vertical CRS has a vertical dimension but also other components, "
+                "extracting the first vertical reference only."
+            )
             vcrs = [subcrs for subcrs in vcrs.sub_crs_list if subcrs.is_vertical][0]
 
     # If a string was passed
     else:
         # If a name is passed, define CRS based on dict
-        if isinstance(vcrs_input, str) and vcrs_input.upper() in _vcrs_meta_from_name.keys():
-            vcrs_meta = _vcrs_meta_from_name[vcrs_input]
+        if isinstance(vcrs_input, str) and vcrs_input.upper() in _vcrs_meta.keys():
+            vcrs_meta = _vcrs_meta[vcrs_input]
             vcrs = CRS.from_epsg(vcrs_meta["epsg"])
         # Otherwise, attempt to read a grid from the string
         else:
@@ -194,17 +207,13 @@ def _vcrs_from_user_input(
     return vcrs
 
 
-# Define CRS in case path or string was passed
-_vcrs_meta_from_name = {"EGM08": {"grid": "us_nga_egm08_25.tif", "epsg": 3855},  # EGM2008 at 2.5 minute resolution
-                        "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773}}  # EGM1996 at 15 minute resolution
-
-def _grid_from_user_input(vcrs_input) -> str | None:
+def _grid_from_user_input(vcrs_input: str | pathlib.Path | int | CRS) -> str | None:
 
     # If a grid or name was passed, get grid name
     if isinstance(vcrs_input, (str, pathlib.Path)):
         # If the string is within the supported names
-        if isinstance(vcrs_input, str) and vcrs_input in _vcrs_meta_from_name.keys():
-            grid = _vcrs_meta_from_name[vcrs_input]["grid"]
+        if isinstance(vcrs_input, str) and vcrs_input in _vcrs_meta.keys():
+            grid = _vcrs_meta[vcrs_input]["grid"]
         # If it's a pathlib path
         elif isinstance(vcrs_input, pathlib.Path):
             grid = vcrs_input.name
@@ -220,7 +229,10 @@ def _grid_from_user_input(vcrs_input) -> str | None:
 
     return grid
 
-def _transform_zz(crs_from: CRS, crs_to: CRS, xx: NDArrayf, yy: NDArrayf, zz: MArrayf | NDArrayf) -> MArrayf | NDArrayf:
+
+def _transform_zz(
+    crs_from: CRS, crs_to: CRS, xx: NDArrayf, yy: NDArrayf, zz: MArrayf | NDArrayf | int | float
+) -> MArrayf | NDArrayf | int | float:
     """
     Transform elevation to a new 3D CRS.
 
