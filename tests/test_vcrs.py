@@ -108,7 +108,24 @@ class TestVCRS:
         vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs_input)
 
         # Build the compound CRS
-        ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+
+        # For a 3D horizontal CRS, a condition based on pyproj version is needed
+        if crs.is_vertical:
+            from packaging.version import Version
+            import pyproj
+            # If the version is higher than 3.5.0, it should pass
+            if Version(pyproj.__version__) > Version("3.5.0"):
+                ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+            # Otherwise, it should raise an error
+            else:
+                with pytest.raises(NotImplementedError,
+                                   match= "pyproj >= 3.5.1 is required to demote a 3D CRS to 2D and be able to compound "
+                                              "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
+                                              "manually."):
+                    ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+        # If the CRS is 2D, it should pass
+        else:
+            ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
 
         assert isinstance(ccrs, CRS)
         assert ccrs.is_vertical

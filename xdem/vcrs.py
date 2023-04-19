@@ -69,10 +69,27 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipso
     # This requires transforming the horizontal CRS to 2D in case it was 3D
     # Using CRS() because rasterio.CRS does not allow to call .name otherwise...
     if isinstance(vcrs, CRS):
-        ccrs = CompoundCRS(
-            name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
-            components=[CRS(crs).to_2d(), vcrs],
-        )
+        # If pyproj >= 3.5.1, we can use CRS.to_2d()
+        from packaging.version import Version
+        if Version(pyproj.__version__) > Version("3.5.0"):
+            crs_from = CRS(crs).to_2d()
+            ccrs = CompoundCRS(
+                name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
+                components=[crs_from, vcrs],
+            )
+        # Otherwise, we have to raise an error if the horizontal CRS is already 3D
+        else:
+            crs_from = CRS(crs)
+            if crs_from.is_vertical:
+                raise NotImplementedError("pyproj >= 3.5.1 is required to demote a 3D CRS to 2D and be able to compound "
+                                          "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
+                                          "manually.")
+            else:
+                ccrs = CompoundCRS(
+                    name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
+                    components=[crs_from, vcrs],
+                )
+
     # Else if "Ellipsoid" was passed, there is no vertical reference
     # We still have to return the CRS in 3D
     else:
