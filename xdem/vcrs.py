@@ -7,10 +7,11 @@ import warnings
 from typing import Literal, TypedDict
 
 import pyproj
-from pyproj import CRS, Transformer
+from pyproj import CRS
 from pyproj.crs import BoundCRS, CompoundCRS, GeographicCRS, VerticalCRS
 from pyproj.crs.coordinate_system import Ellipsoidal3DCS
 from pyproj.crs.enums import Ellipsoidal3DCSAxis
+from pyproj.transformer import TransformerGroup
 
 from xdem._typing import MArrayf, NDArrayf
 
@@ -112,11 +113,15 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
     """
 
     if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
-        raise ValueError(
-            "Grid not found in " + str(pyproj.datadir.get_data_dir()) + ": check if proj-data is "
-            "installed via conda-forge, the pyproj.datadir, and that you are using a grid available at "
-            "https://github.com/OSGeo/PROJ-data."
+        warnings.warn(
+            "Grid not found in " + str(pyproj.datadir.get_data_dir()) + ". Attempting to download from https://cdn.proj.org/..."
         )
+        from pyproj.sync import _download_resource_file
+        _download_resource_file(
+                        file_url=os.path.join("https://cdn.proj.org/", grid),
+                        short_name=grid,
+                        directory=pyproj.datadir.get_data_dir(),
+                        verbose=False)
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
     if old_way:
@@ -267,8 +272,23 @@ def _transform_zz(
     :return: Transformed Z coordinates.
     """
 
+    # Find all possible transforms
+    trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
+
+    # Download grid if best available is not on disk
+    if not trans_group.best_available:
+        trans_group.download_grids(directory=pyproj.datadir.get_data_dir())
+
+    # If the best available grid is still not there, raise a warning
+    if not trans_group.best_available:
+        import logging
+        logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
+        warnings.warn(message="Best available grid for transformation could not be downloaded, "
+                              "applying the next best available. See PROJ log: {}.")
+    transformer = trans_group.transformers[0]
+
     # Transform the grid
-    transformer = Transformer.from_crs(crs_from=crs_from, crs_to=crs_to, always_xy=True)
+    # transformer = trans_group.from_crs(crs_from=crs_from, crs_to=crs_to, always_xy=True)
 
     # Will preserve the mask of the masked-array since pyproj 3.4
     zz_trans = transformer.transform(xx, yy, zz)[2]

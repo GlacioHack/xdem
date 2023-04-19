@@ -1,6 +1,7 @@
 """ Functions to test the DEM tools."""
 from __future__ import annotations
 
+import http.client
 import os
 import warnings
 from typing import Any
@@ -167,7 +168,7 @@ class TestDEM:
                 dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.raises(ValueError):
+        with pytest.raises(http.client.InvalidURL):
             dem.set_vcrs(new_vcrs="the best grid in the entire world, or any non-existing string")
 
     def test_to_vcrs(self) -> None:
