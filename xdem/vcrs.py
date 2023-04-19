@@ -56,7 +56,7 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
     return vcrs_name
 
 
-def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
+def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
     """
     Build a compound CRS from a horizontal CRS and a vertical CRS.
 
@@ -96,8 +96,10 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: VerticalCRS | Literal["Ellipso
 
     # Else if "Ellipsoid" was passed, there is no vertical reference
     # We still have to return the CRS in 3D
-    else:
+    elif isinstance(vcrs, str) and vcrs.lower() == "ellipsoid":
         ccrs = CRS(crs).to_3d()
+    else:
+        raise ValueError("Invalid vcrs given. Must be a vertical CRS or the literal string 'Ellipsoid'.")
 
     return ccrs
 

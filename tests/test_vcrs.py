@@ -125,7 +125,7 @@ class TestVCRS:
                     "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
                     "manually.",
                 ):
-                    ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+                    xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
                 return None
         # If the CRS is 2D, it should pass
         else:
@@ -133,6 +133,14 @@ class TestVCRS:
 
         assert isinstance(ccrs, CRS)
         assert ccrs.is_vertical
+
+    def test_build_ccrs_from_crs_and_vcrs__errors(self) -> None:
+        """Test errors are correctly raised from the build_ccrs function."""
+
+        with pytest.raises(
+            ValueError, match="Invalid vcrs given. Must be a vertical " "CRS or the literal string 'Ellipsoid'."
+        ):
+            xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=CRS("EPSG:4326"), vcrs="NotAVerticalCRS")  # type: ignore
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
