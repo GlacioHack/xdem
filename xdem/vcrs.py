@@ -208,19 +208,6 @@ def _vcrs_from_crs(crs: CRS) -> CRS:
     return vcrs
 
 
-def _vcrs_equal(vcrs1: CRS | Literal["Ellipsoid"], vcrs2: CRS | Literal["Ellipsoid"]) -> bool:
-    """Check if two vertical CRS are equal."""
-
-    if isinstance(vcrs1, CRS) and isinstance(vcrs2, CRS):
-        eq = vcrs1.equals(vcrs2)
-    elif isinstance(vcrs1, str) and isinstance(vcrs2, str):
-        eq = vcrs1 == vcrs2
-    else:
-        eq = False
-
-    return eq
-
-
 def _vcrs_from_user_input(
     vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
 ) -> VerticalCRS | BoundCRS | Literal["Ellipsoid"]:
@@ -228,7 +215,7 @@ def _vcrs_from_user_input(
     Parse vertical CRS from user input.
 
     :param vcrs_input: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
-        a EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+        an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
 
     :return: Vertical CRS.
     """

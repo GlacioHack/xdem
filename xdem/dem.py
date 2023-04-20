@@ -10,6 +10,8 @@ from geoutils import SatelliteImage
 from geoutils.raster import RasterType
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
+import numpy as np
+from affine import Affine
 
 from xdem._typing import NDArrayf
 from xdem.vcrs import (
@@ -17,7 +19,6 @@ from xdem.vcrs import (
     _grid_from_user_input,
     _parse_vcrs_name_from_product,
     _transform_zz,
-    _vcrs_equal,
     _vcrs_from_crs,
     _vcrs_from_user_input,
 )
@@ -80,7 +81,7 @@ class DEM(SatelliteImage):  # type: ignore
 
         :param filename_or_dataset: The filename of the dataset.
         :param vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
-            a EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
         :param silent: Whether to display vertical reference parsing.
         """
 
@@ -104,21 +105,24 @@ class DEM(SatelliteImage):  # type: ignore
         if self.indexes is not None and len(self.indexes) > 1:
             raise ValueError("DEM rasters should be composed of one band only")
 
-        # If the CRS in the Raster metadata has a 3rd dimension, will set it as a vertical reference
+        # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
         vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))
         if vcrs_from_crs is not None:
-            # If something was also provided by the user, additional checks
+            # If something was also provided by the user, user takes precedence
+            # (we leave vcrs as it was for input)
             if vcrs is not None:
-                # If the two are not the same, raise a warning
+                # Raise a warning if the two are not the same
                 vcrs_user = _vcrs_from_user_input(vcrs)
-                if not _vcrs_equal(vcrs_from_crs, vcrs_user):
+                if not vcrs_from_crs == vcrs_user:
                     warnings.warn(
                         "The CRS in the raster metadata already has a vertical component, "
                         "the user-input '{}' will override it.".format(vcrs)
                     )
-            vcrs = vcrs_from_crs
+            # Otherwise, use the one from the raster 3D CRS
+            else:
+                vcrs = vcrs_from_crs
 
-        # If no vertical CRS was provided by the user
+        # If no vertical CRS was provided by the user or defined in the CRS
         if vcrs is None:
             vcrs = _parse_vcrs_name_from_product(self.product)
 
@@ -137,11 +141,36 @@ class DEM(SatelliteImage):  # type: ignore
 
         new_dem = super().copy(new_array=new_array)  # type: ignore
         # The rest of attributes are immutable, including pyproj.CRS
-        # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
         for attrs in dem_attrs:
             setattr(new_dem, attrs, getattr(self, attrs))
 
         return new_dem  # type: ignore
+
+    @classmethod
+    def from_array(
+        cls: type[DEM],
+        data: np.ndarray | np.ma.masked_array,
+        transform: tuple[float, ...] | Affine,
+        crs: CRS | int | None,
+        nodata: int | float | tuple[int, ...] | tuple[float, ...] | None = None,
+        vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None
+    ) -> DEM:
+        """Create a DEM from a numpy array and the georeferencing information.
+
+        :param data: Input array.
+        :param transform: Affine 2D transform. Either a tuple(x_res, 0.0, top_left_x,
+            0.0, y_res, top_left_y) or an affine.Affine object.
+        :param crs: Coordinate reference system. Either a rasterio CRS,
+            or an EPSG integer.
+        :param nodata: Nodata value.
+        :param vcrs: Vertical coordinate reference system.
+
+        :returns: DEM created from the provided array and georeferencing.
+        """
+        # We first apply the from_array of the parent class
+        rast = SatelliteImage.from_array(data=data, transform=transform, crs=crs, nodata=nodata)
+        # Then add the vcrs to the class call (that builds on top of the parent class)
+        return cls(filename_or_dataset=rast, vcrs=vcrs)
 
     @property
     def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
@@ -180,7 +209,7 @@ class DEM(SatelliteImage):  # type: ignore
         Set the vertical coordinate reference system of the DEM.
 
         :param new_vcrs: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
-            a EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
         """
 
         # Get vertical CRS and set it and the grid
@@ -206,7 +235,7 @@ class DEM(SatelliteImage):  # type: ignore
         Convert the DEM to another vertical coordinate reference system.
 
         :param dst_vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
-            a EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
         :param src_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `dst_vcrs`.
 
         :return:

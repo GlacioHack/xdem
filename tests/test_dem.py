@@ -117,20 +117,49 @@ class TestDEM:
         ):
             DEM(temp_file, vcrs="EGM08")
 
-        # Tests 3: with an artificial DEM through from_array()
+    def test_from_array(self) -> None:
+        """Test that overriden from_array works as expected."""
 
-        # # Create a 5x5 DEM with a 2D CRS
-        # transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
-        # DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
-        # assert dem.vcrs is None
-        #
-        # # One with a 3D ellipsoid CRS
-        # DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4979"), nodata=None)
-        # assert dem.vcrs == "Ellipsoid"
-        #
-        # # One with a compound CRS
-        # DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None)
-        # assert dem.vcrs.equals(CRS("EPSG:5773"))
+        # Create a 5x5 DEM
+        data = np.ones((5, 5))
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        crs = CRS("EPSG:4326")
+        nodata = -9999
+        vcrs = "EGM08"
+        dem = DEM.from_array(data=data, transform=transform, crs=crs, nodata=nodata, vcrs=vcrs)
+
+        # Check output matches
+        assert isinstance(dem, DEM)
+        assert isinstance(dem.data, np.ma.masked_array)
+        assert np.array_equal(dem.data.data, np.ones((5, 5)))
+        assert dem.transform == transform
+        assert dem.crs == crs
+        assert dem.nodata == nodata
+        assert dem.vcrs == xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs)
+
+    def test_from_array__vcrs(self) -> None:
+        """Test that overriden from_array rightly sets the vertical CRS."""
+
+        # Create a 5x5 DEM with a 2D CRS
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=None)
+        assert dem.vcrs is None
+
+        # One with a 3D ellipsoid CRS
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4979"), nodata=None, vcrs=None)
+        assert dem.vcrs == "Ellipsoid"
+
+        # One with a 2D and the ellipsoid vertical CRS
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs="Ellipsoid")
+        assert dem.vcrs == "Ellipsoid"
+
+        # One with a compound CRS
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None, vcrs=None)
+        assert dem.vcrs.equals(CRS("EPSG:5773"))
+
+        # One with a CRS and vertical CRS
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=CRS("EPSG:5773"))
+        assert dem.vcrs.equals(CRS("EPSG:5773"))
 
     def test_copy(self) -> None:
         """

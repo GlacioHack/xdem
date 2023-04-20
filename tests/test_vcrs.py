@@ -53,23 +53,6 @@ class TestVCRS:
             assert vcrs is None
 
     @pytest.mark.parametrize(
-        "input1_input2_output",
-        [
-            (CRS("EPSG:5773"), CRS("EPSG:5773"), True),
-            ("Ellipsoid", "Ellipsoid", True),
-            (CRS("EPSG:5773"), "Ellipsoid", False),
-        ],
-    )  # type: ignore
-    def test_vcrs_equals(self, input1_input2_output: tuple[CRS | str, CRS | str, bool]) -> None:
-        """Check that equality test for vcrs works as expected."""
-
-        # Check equality
-        eq = xdem.vcrs._vcrs_equal(vcrs1=input1_input2_output[0], vcrs2=input1_input2_output[1])
-
-        # Check it matches expected output
-        assert eq is input1_input2_output[2]
-
-    @pytest.mark.parametrize(
         "vcrs_input",
         [
             "EGM08",
