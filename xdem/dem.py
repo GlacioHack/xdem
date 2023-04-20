@@ -6,14 +6,13 @@ import warnings
 from typing import Any, Literal
 
 import rasterio as rio
+from affine import Affine
 from geoutils import SatelliteImage
 from geoutils.raster import RasterType
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
-import numpy as np
-from affine import Affine
 
-from xdem._typing import NDArrayf
+from xdem._typing import MArrayf, NDArrayf
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
     _grid_from_user_input,
@@ -149,11 +148,18 @@ class DEM(SatelliteImage):  # type: ignore
     @classmethod
     def from_array(
         cls: type[DEM],
-        data: np.ndarray | np.ma.masked_array,
+        data: NDArrayf | MArrayf,
         transform: tuple[float, ...] | Affine,
         crs: CRS | int | None,
-        nodata: int | float | tuple[int, ...] | tuple[float, ...] | None = None,
-        vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None
+        nodata: int | float | None = None,
+        vcrs: Literal["Ellipsoid"]
+        | Literal["EGM08"]
+        | Literal["EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
     ) -> DEM:
         """Create a DEM from a numpy array and the georeferencing information.
 
