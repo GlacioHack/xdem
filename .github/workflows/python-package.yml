@@ -105,6 +105,8 @@ jobs:
       run: |
         # We unset the PROJ_DATA environment variable to make PROJ work on Windows
         unset PROJ_DATA
+        # We disable NUMBA JIT to make coverage work for numba-decorated functions
+        export NUMBA_DISABLE_JIT=1
         pytest -ra --cov=xdem/
 
     # We can skip the conversion step once this PR of pytest is merged: https://github.com/pytest-dev/pytest-cov/pull/536
