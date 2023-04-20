@@ -185,6 +185,36 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
     "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
 }
 
+def _vcrs_from_crs(crs: CRS) -> CRS:
+    """Get the vertical CRS from a CRS."""
+
+    # Check if CRS is 3D
+    if len(crs.axis_info) > 2:
+
+        # Check if CRS has a vertical compound
+        if any(subcrs.is_vertical for subcrs in crs.sub_crs_list):
+            # Then we get the first vertical CRS (should be only one anyway)
+            vcrs = [subcrs for subcrs in crs.sub_crs_list if subcrs.is_vertical][0]
+        # Otherwise, it's a 3D CRS based on an ellipsoid
+        else:
+            vcrs = 'Ellipsoid'
+    # Otherwise, the CRS is 2D and there is no vertical CRS
+    else:
+        vcrs = None
+
+    return vcrs
+
+def _vcrs_equal(vcrs1: CRS | Literal["Ellipsoid"], vcrs2: CRS | Literal["Ellipsoid"]) -> bool:
+    """Check if two vertical CRS are equal."""
+
+    if isinstance(vcrs1, CRS) and isinstance(vcrs2, CRS):
+        eq = vcrs1.equals(vcrs2)
+    elif isinstance(vcrs1, str) and isinstance(vcrs2, str):
+        eq = vcrs1 == vcrs2
+    else:
+        eq = False
+
+    return eq
 
 def _vcrs_from_user_input(
     vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
@@ -223,12 +253,12 @@ def _vcrs_from_user_input(
                 "New vertical CRS must have a vertical axis, '{}' does not "
                 "(check with `CRS.is_vertical`).".format(vcrs.name)
             )
-        elif isinstance(vcrs, CRS) and (vcrs.is_vertical and len(vcrs.sub_crs_list) > 1):
+        elif isinstance(vcrs, CRS) and vcrs.is_vertical and len(vcrs.axis_info) > 2:
             warnings.warn(
                 "New vertical CRS has a vertical dimension but also other components, "
-                "extracting the first vertical reference only."
+                "extracting the vertical reference only."
             )
-            vcrs = [subcrs for subcrs in vcrs.sub_crs_list if subcrs.is_vertical][0]
+            vcrs = _vcrs_from_crs(vcrs)
 
     # If a string was passed
     else:

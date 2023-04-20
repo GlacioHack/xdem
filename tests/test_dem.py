@@ -1,10 +1,10 @@
 """ Functions to test the DEM tools."""
 from __future__ import annotations
 
-import http.client
 import os
 import warnings
 from typing import Any
+import tempfile
 
 import geoutils.raster as gr
 import geoutils.raster.satimg as si
@@ -80,6 +80,54 @@ class TestDEM:
                 crs=None,
                 nodata=None,
             )
+
+    def test_init__vcrs(self):
+        """Test that vcrs is set properly during instantiation."""
+
+        # Tests 1: instantiation with a file that has a 2D CRS
+
+        # First, check a DEM that does not have any vertical CRS set
+        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem = DEM(fn_img)
+        assert dem.vcrs is None
+
+        # Setting a vertical CRS during instantiation should work here
+        dem = DEM(fn_img, vcrs="EGM96")
+        assert dem.vcrs_name == "EGM96 height"
+
+        # Tests 2: instantiation with a file that has a 3D CRS
+        # Create such a file
+        dem = DEM(fn_img)
+        dem_reproj = dem.reproject(dst_crs=4979)
+
+        # Save to temporary folder
+        temp_dir = tempfile.TemporaryDirectory()
+        temp_file = os.path.join(temp_dir.name, "test.tif")
+        dem_reproj.save(temp_file)
+
+        # Check opening a DEM with a 3D CRS sets the vcrs
+        dem_3d = DEM(temp_file)
+        assert dem_3d.vcrs == "Ellipsoid"
+
+        # Check that a warning is raised when trying to override with user input
+        with pytest.warns(UserWarning, match="The CRS in the raster metadata already has a vertical component, "
+                                             "the user-input 'EGM08' will override it."):
+            DEM(temp_file, vcrs="EGM08")
+
+        # Tests 3: with an artificial DEM through from_array()
+
+        # # Create a 5x5 DEM with a 2D CRS
+        # transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        # DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
+        # assert dem.vcrs is None
+        #
+        # # One with a 3D ellipsoid CRS
+        # DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4979"), nodata=None)
+        # assert dem.vcrs == "Ellipsoid"
+        #
+        # # One with a compound CRS
+        # DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None)
+        # assert dem.vcrs.equals(CRS("EPSG:5773"))
 
     def test_copy(self) -> None:
         """
