@@ -110,7 +110,7 @@ class TestVCRS:
         # Build the compound CRS
 
         # For a 3D horizontal CRS, a condition based on pyproj version is needed
-        if crs.is_vertical:
+        if len(crs.axis_info) > 2:
             import pyproj
             from packaging.version import Version
 

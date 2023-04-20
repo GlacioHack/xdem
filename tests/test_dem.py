@@ -177,12 +177,15 @@ class TestDEM:
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
-        dem = dem.reproject(dst_crs=4979)
+        # Reproject in WGS84 2D
+        dem = dem.reproject(dst_crs=4326)
         dem_before_trans = dem.copy()
 
+        # Set ellipsoid as vertical reference
         dem.set_vcrs(new_vcrs="Ellipsoid")
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
+        # Transform to EGM96 geoid
         dem.to_vcrs(dst_vcrs="EGM96")
         median_after = np.nanmean(dem)
 
