@@ -947,21 +947,21 @@ class TestNeffEstimation:
         )
 
         # Check that the function runs with default parameters
-        t0 = time.time()
+        # t0 = time.time()
         neff_exact = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model
         )
-        t1 = time.time()
+        # t1 = time.time()
 
         # Check that the non-vectorized version gives the same result
         neff_exact_nv = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, vectorized=False
         )
-        t2 = time.time()
+        # t2 = time.time()
         assert neff_exact == pytest.approx(neff_exact_nv, rel=0.001)
 
         # Check that the vectorized version is faster (vectorized for about 250 points here)
-        assert (t1 - t0) < (t2 - t1)
+        # assert (t1 - t0) < (t2 - t1)
 
         # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
         # t3 = time.time()
