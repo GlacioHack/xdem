@@ -1,6 +1,7 @@
 """Routines for vertical CRS transformation (fully based on pyproj)."""
 from __future__ import annotations
 
+import http.client
 import os
 import pathlib
 import warnings
@@ -124,12 +125,16 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
         )
         from pyproj.sync import _download_resource_file
 
-        _download_resource_file(
-            file_url=os.path.join("https://cdn.proj.org/", grid),
-            short_name=grid,
-            directory=pyproj.datadir.get_data_dir(),
-            verbose=False,
-        )
+        try:
+            _download_resource_file(
+                file_url=os.path.join("https://cdn.proj.org/", grid),
+                short_name=grid,
+                directory=pyproj.datadir.get_data_dir(),
+                verbose=False,
+            )
+        except http.client.InvalidURL:
+            raise ValueError("The provided grid '{}' does not exist at https://cdn.proj.org/. "
+                             "Provide an existing grid.".format(grid))
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
     if old_way:

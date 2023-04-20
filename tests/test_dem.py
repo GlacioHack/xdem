@@ -160,16 +160,12 @@ class TestDEM:
         assert dem.vcrs_grid == "us_nga_egm08_25.tif"
 
         # Check that other existing grids are well detected in the pyproj.datadir
-        # TODO: Figure out why CI cannot get the grids on Windows
-        if os.name != "nt":
-            dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
-        else:
-            with pytest.raises(ValueError):
-                dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
+        dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.raises(http.client.InvalidURL):
-            dem.set_vcrs(new_vcrs="the best grid in the entire world, or any non-existing string")
+        with pytest.raises(ValueError, match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+                             "Provide an existing grid."):
+            dem.set_vcrs(new_vcrs="the best grid")
 
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
