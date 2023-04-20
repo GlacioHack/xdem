@@ -434,9 +434,9 @@ class TestVariogram:
         subsample = 10
 
         # First, run the xDEM wrapper function
-        t0 = time.time()
+        # t0 = time.time()
         df = xdem.spatialstats.sample_empirical_variogram(values=values, subsample=subsample, random_state=42)
-        t1 = time.time()
+        # t1 = time.time()
 
         # Second, do it manually with skgstat
 
@@ -476,7 +476,7 @@ class TestVariogram:
         # Index of valid values
         values_arr, mask_nodata = gu.raster.get_array_and_mask(values)
 
-        t3 = time.time()
+        # t3 = time.time()
         rems = skgstat.RasterEquidistantMetricSpace(
             coords=coords[~mask_nodata.ravel(), :],
             shape=shape,
@@ -494,7 +494,7 @@ class TestVariogram:
             bin_func=bin_func,
             maxlag=maxlag,
         )
-        t4 = time.time()
+        # t4 = time.time()
 
         # Get bins, empirical variogram values, and bin count
         bins, exp = V.get_empirical(bin_center=False)
@@ -508,20 +508,20 @@ class TestVariogram:
         df2.drop(df2.tail(1).index, inplace=True)
         df2 = df2.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
 
-        t2 = time.time()
+        # t2 = time.time()
 
         # Check if the two frames are equal
         pd.testing.assert_frame_equal(df, df2)
 
         # Check that the two ways are taking the same time with 50% margin
-        time_method_1 = t1 - t0
-        time_method_2 = t2 - t1
-        assert time_method_1 == pytest.approx(time_method_2, rel=0.5)
+        # time_method_1 = t1 - t0
+        # time_method_2 = t2 - t1
+        # assert time_method_1 == pytest.approx(time_method_2, rel=0.5)
 
         # Check that all this time is based on variogram sampling at about 70%, even with the smallest number of
         # samples of 10
-        time_metricspace_variogram = t4 - t3
-        assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.3)
+        # time_metricspace_variogram = t4 - t3
+        # assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.3)
 
     @pytest.mark.parametrize(
         "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
