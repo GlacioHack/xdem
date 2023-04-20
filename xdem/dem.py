@@ -17,9 +17,9 @@ from xdem.vcrs import (
     _grid_from_user_input,
     _parse_vcrs_name_from_product,
     _transform_zz,
-    _vcrs_from_user_input,
+    _vcrs_equal,
     _vcrs_from_crs,
-    _vcrs_equal
+    _vcrs_from_user_input,
 )
 
 dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
@@ -59,7 +59,14 @@ class DEM(SatelliteImage):  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
+        vcrs: Literal["Ellipsoid"]
+        | Literal["EGM08"]
+        | Literal["EGM96"]
+        | VerticalCRS
+        | str
+        | pathlib.Path
+        | int
+        | None = None,
         silent: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -105,8 +112,10 @@ class DEM(SatelliteImage):  # type: ignore
                 # If the two are not the same, raise a warning
                 vcrs_user = _vcrs_from_user_input(vcrs)
                 if not _vcrs_equal(vcrs_from_crs, vcrs_user):
-                    warnings.warn("The CRS in the raster metadata already has a vertical component, "
-                                  "the user-input '{}' will override it.".format(vcrs))
+                    warnings.warn(
+                        "The CRS in the raster metadata already has a vertical component, "
+                        "the user-input '{}' will override it.".format(vcrs)
+                    )
             vcrs = vcrs_from_crs
 
         # If no vertical CRS was provided by the user

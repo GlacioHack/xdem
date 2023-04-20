@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import warnings
 from typing import Any
-import tempfile
 
 import geoutils.raster as gr
 import geoutils.raster.satimg as si
@@ -81,7 +81,7 @@ class TestDEM:
                 nodata=None,
             )
 
-    def test_init__vcrs(self):
+    def test_init__vcrs(self) -> None:
         """Test that vcrs is set properly during instantiation."""
 
         # Tests 1: instantiation with a file that has a 2D CRS
@@ -110,8 +110,11 @@ class TestDEM:
         assert dem_3d.vcrs == "Ellipsoid"
 
         # Check that a warning is raised when trying to override with user input
-        with pytest.warns(UserWarning, match="The CRS in the raster metadata already has a vertical component, "
-                                             "the user-input 'EGM08' will override it."):
+        with pytest.warns(
+            UserWarning,
+            match="The CRS in the raster metadata already has a vertical component, "
+            "the user-input 'EGM08' will override it.",
+        ):
             DEM(temp_file, vcrs="EGM08")
 
         # Tests 3: with an artificial DEM through from_array()
@@ -211,8 +214,11 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.raises(ValueError, match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
-                             "Provide an existing grid."):
+        with pytest.raises(
+            ValueError,
+            match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+            "Provide an existing grid.",
+        ):
             dem.set_vcrs(new_vcrs="the best grid")
 
     def test_to_vcrs(self) -> None:

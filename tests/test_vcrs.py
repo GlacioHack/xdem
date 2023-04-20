@@ -25,13 +25,16 @@ class TestVCRS:
         assert xdem.vcrs._parse_vcrs_name_from_product("BESTDEM") is None
 
     # Expect outputs for the inputs
-    @pytest.mark.parametrize("input_output",
-                             [(CRS("EPSG:4326"), None),
-                              (CRS("EPSG:4979"), "Ellipsoid"),
-                              (CRS("EPSG:4326+5773"), CRS("EPSG:5773")),
-                              (CRS("EPSG:32610"), None),
-                              (CRS("EPSG:32610").to_3d(), "Ellipsoid"),
-                              ])
+    @pytest.mark.parametrize(
+        "input_output",
+        [
+            (CRS("EPSG:4326"), None),
+            (CRS("EPSG:4979"), "Ellipsoid"),
+            (CRS("EPSG:4326+5773"), CRS("EPSG:5773")),
+            (CRS("EPSG:32610"), None),
+            (CRS("EPSG:32610").to_3d(), "Ellipsoid"),
+        ],
+    )  # type: ignore
     def test_vcrs_from_crs(self, input_output: tuple[CRS, CRS]) -> None:
         """Test the extraction of a vertical CRS from a CRS."""
 
@@ -49,11 +52,15 @@ class TestVCRS:
         else:
             assert vcrs is None
 
-    @pytest.mark.parametrize("input1_input2_output",
-                             [(CRS("EPSG:5773"), CRS("EPSG:5773"), True),
-                              ("Ellipsoid", "Ellipsoid", True),
-                              (CRS("EPSG:5773"), "Ellipsoid", False)])
-    def test_vcrs_equals(self, input1_input2_output: tuple[CRS | str, CRS | str, bool]):
+    @pytest.mark.parametrize(
+        "input1_input2_output",
+        [
+            (CRS("EPSG:5773"), CRS("EPSG:5773"), True),
+            ("Ellipsoid", "Ellipsoid", True),
+            (CRS("EPSG:5773"), "Ellipsoid", False),
+        ],
+    )  # type: ignore
+    def test_vcrs_equals(self, input1_input2_output: tuple[CRS | str, CRS | str, bool]) -> None:
         """Check that equality test for vcrs works as expected."""
 
         # Check equality
@@ -116,7 +123,7 @@ class TestVCRS:
         with pytest.warns(
             UserWarning,
             match="New vertical CRS has a vertical dimension but also other components, "
-                "extracting the vertical reference only.",
+            "extracting the vertical reference only.",
         ):
             xdem.vcrs._vcrs_from_user_input(CRS("EPSG:4326+5773"))
 

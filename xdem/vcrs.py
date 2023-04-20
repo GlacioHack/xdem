@@ -133,8 +133,10 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
                 verbose=False,
             )
         except http.client.InvalidURL:
-            raise ValueError("The provided grid '{}' does not exist at https://cdn.proj.org/. "
-                             "Provide an existing grid.".format(grid))
+            raise ValueError(
+                "The provided grid '{}' does not exist at https://cdn.proj.org/. "
+                "Provide an existing grid.".format(grid)
+            )
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
     if old_way:
@@ -185,6 +187,7 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
     "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
 }
 
+
 def _vcrs_from_crs(crs: CRS) -> CRS:
     """Get the vertical CRS from a CRS."""
 
@@ -197,12 +200,13 @@ def _vcrs_from_crs(crs: CRS) -> CRS:
             vcrs = [subcrs for subcrs in crs.sub_crs_list if subcrs.is_vertical][0]
         # Otherwise, it's a 3D CRS based on an ellipsoid
         else:
-            vcrs = 'Ellipsoid'
+            vcrs = "Ellipsoid"
     # Otherwise, the CRS is 2D and there is no vertical CRS
     else:
         vcrs = None
 
     return vcrs
+
 
 def _vcrs_equal(vcrs1: CRS | Literal["Ellipsoid"], vcrs2: CRS | Literal["Ellipsoid"]) -> bool:
     """Check if two vertical CRS are equal."""
@@ -215,6 +219,7 @@ def _vcrs_equal(vcrs1: CRS | Literal["Ellipsoid"], vcrs2: CRS | Literal["Ellipso
         eq = False
 
     return eq
+
 
 def _vcrs_from_user_input(
     vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
