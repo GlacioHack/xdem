@@ -72,6 +72,7 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
     if isinstance(vcrs, CRS):
         # If pyproj >= 3.5.1, we can use CRS.to_2d()
         from packaging.version import Version
+
         if Version(pyproj.__version__) > Version("3.5.0"):
             crs_from = CRS(crs).to_2d()
             ccrs = CompoundCRS(
