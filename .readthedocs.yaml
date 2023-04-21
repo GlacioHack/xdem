@@ -10,7 +10,7 @@ build:
   tools:
     python: "mambaforge-4.10"
   jobs:
-    pre_create_environment:
+    post_build:
       - unset PROJ_DATA
 
 # Build documentation in the doc/ directory with Sphinx
