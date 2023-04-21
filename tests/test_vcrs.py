@@ -67,7 +67,7 @@ class TestVCRS:
         """Tests the function _vcrs_from_user_input for varying user inputs, for which it will return a CRS."""
 
         # Get user input
-        vcrs = xdem.dem.vcrs_from_user_input(vcrs_input)
+        vcrs = xdem.dem._vcrs_from_user_input(vcrs_input)
 
         # Check output type
         assert isinstance(vcrs, CRS)
@@ -80,7 +80,7 @@ class TestVCRS:
         """Tests the function _vcrs_from_user_input for inputs where it returns "Ellipsoid"."""
 
         # Get user input
-        vcrs = xdem.vcrs.vcrs_from_user_input(vcrs_input)
+        vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input)
 
         # Check output type
         assert vcrs == "Ellipsoid"
@@ -100,7 +100,7 @@ class TestVCRS:
                 "zone 1N' does not (check with `CRS.is_vertical`)."
             ),
         ):
-            xdem.vcrs.vcrs_from_user_input(32601)
+            xdem.vcrs._vcrs_from_user_input(32601)
 
         # Check that a warning is raised if the CRS has other dimensions than vertical
         with pytest.warns(
@@ -108,7 +108,7 @@ class TestVCRS:
             match="New vertical CRS has a vertical dimension but also other components, "
             "extracting the vertical reference only.",
         ):
-            xdem.vcrs.vcrs_from_user_input(CRS("EPSG:4326+5773"))
+            xdem.vcrs._vcrs_from_user_input(CRS("EPSG:4326+5773"))
 
     @pytest.mark.parametrize(
         "grid", ["us_noaa_geoid06_ak.tif", "is_lmi_Icegeoid_ISN93.tif", "us_nga_egm08_25.tif", "us_nga_egm96_15.tif"]
@@ -133,7 +133,7 @@ class TestVCRS:
         """Test the function build_ccrs_from_crs_and_vcrs."""
 
         # Get the vertical CRS from user input
-        vcrs = xdem.vcrs.vcrs_from_user_input(vcrs_input=vcrs_input)
+        vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs_input)
 
         # Build the compound CRS
 
@@ -188,7 +188,7 @@ class TestVCRS:
         ccrs_from = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs="Ellipsoid")
 
         # Build the compound CRS
-        vcrs_to = xdem.vcrs.vcrs_from_user_input(vcrs_input=grid_shifts["grid"])
+        vcrs_to = xdem.vcrs._vcrs_from_user_input(vcrs_input=grid_shifts["grid"])
         ccrs_to = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs=vcrs_to)
 
         # Apply the transformation

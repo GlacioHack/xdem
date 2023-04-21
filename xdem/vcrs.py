@@ -207,7 +207,7 @@ def _vcrs_from_crs(crs: CRS) -> CRS:
     return vcrs
 
 
-def vcrs_from_user_input(
+def _vcrs_from_user_input(
     vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
 ) -> VerticalCRS | BoundCRS | Literal["Ellipsoid"]:
     """

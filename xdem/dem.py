@@ -19,7 +19,7 @@ from xdem.vcrs import (
     _parse_vcrs_name_from_product,
     _transform_zz,
     _vcrs_from_crs,
-    vcrs_from_user_input,
+    _vcrs_from_user_input,
 )
 
 dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
@@ -110,7 +110,7 @@ class DEM(SatelliteImage):  # type: ignore
             # (we leave vcrs as it was for input)
             if vcrs is not None:
                 # Raise a warning if the two are not the same
-                vcrs_user = vcrs_from_user_input(vcrs)
+                vcrs_user = _vcrs_from_user_input(vcrs)
                 if not vcrs_from_crs == vcrs_user:
                     warnings.warn(
                         "The CRS in the raster metadata already has a vertical component, "
@@ -218,7 +218,7 @@ class DEM(SatelliteImage):  # type: ignore
         """
 
         # Get vertical CRS and set it and the grid
-        self._vcrs = vcrs_from_user_input(vcrs_input=new_vcrs)
+        self._vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
         self._vcrs_grid = _grid_from_user_input(vcrs_input=new_vcrs)
 
     @property
@@ -265,7 +265,7 @@ class DEM(SatelliteImage):  # type: ignore
             src_ccrs = self.ccrs
 
         # New destination Compound CRS
-        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=vcrs_from_user_input(vcrs_input=dst_vcrs))
+        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=dst_vcrs))
 
         # If both compound CCRS are equal, do not run any transform
         if src_ccrs.equals(dst_ccrs):

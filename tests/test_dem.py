@@ -135,7 +135,7 @@ class TestDEM:
         assert dem.transform == transform
         assert dem.crs == crs
         assert dem.nodata == nodata
-        assert dem.vcrs == xdem.vcrs.vcrs_from_user_input(vcrs_input=vcrs)
+        assert dem.vcrs == xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs)
 
     def test_from_array__vcrs(self) -> None:
         """Test that overridden from_array rightly sets the vertical CRS."""
@@ -238,11 +238,11 @@ class TestDEM:
 
         # -- Test 2: we check with grids --
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
-        assert dem.vcrs_name == "unknown"
+        assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
         assert dem.vcrs_grid == "us_nga_egm96_15.tif"
 
         dem.set_vcrs(new_vcrs="us_nga_egm08_25.tif")
-        assert dem.vcrs_name == "unknown"
+        assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm08_25.tif"
         assert dem.vcrs_grid == "us_nga_egm08_25.tif"
 
         # Check that other existing grids are well detected in the pyproj.datadir
@@ -278,7 +278,7 @@ class TestDEM:
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
 
         # Check that the results are consistent with the operation done independently
-        ccrs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs.vcrs_from_user_input("EGM96"))
+        ccrs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
         transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
 
         xx, yy = dem.coords()
