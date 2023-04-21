@@ -14,7 +14,7 @@ kernelspec:
 
 # Vertical referencing
 
-xDEM supports the use of vertical coordinate reference systems (CRSs) and vertical transformations for DEMs 
+xDEM supports the use of vertical coordinate reference systems (CRSs) and vertical transformations for DEMs
 by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.io/pyproj/stable/) in the {class}`~xdem.DEM` class.
 
 ## What is a vertical CRS?
@@ -30,7 +30,7 @@ In xDEM, we merge these into a single vertical CRS attribute {class}`DEM.vcrs<xd
 - a {class}`~pyproj.crs.VerticalCRS` for a CRS based on geoid heights or grids (e.g., the EGM96 geoid).
 
 ```{caution}
-As yet, [Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection (even if the CRS provided contains a vertical axis). 
+As yet, [Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection (even if the CRS provided contains a vertical axis).
 We therefore advise to perform horizontal transformation and vertical transformation independently using {func}`DEM.reproject<xdem.DEM.reproject>` and {func}`DEM.to_vcrs<xdem.DEM.to_vcrs>`, respectively.
 ```
 
@@ -67,6 +67,6 @@ If any of these conflict, a warning is raised to the user.
 
 If, after instantiation, the {attr}`~xdem.DEM.vcrs` is not yet defined or wrongly so, it can be set manually using {func}`~xdem.DEM.set_vcrs`.
 
-## Transforming 
+## Transforming
 
 To transform a {class}`~xdem.DEM` to a different vertical CRS, {func}`~xdem.DEM.to_vcrs` is used.
