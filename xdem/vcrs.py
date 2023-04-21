@@ -314,7 +314,7 @@ def _transform_zz(
     # Download grid if best available is not on disk
     if not trans_group.best_available:
         print(pyproj.datadir.get_data_dir())
-        trans_group.download_grids(directory=pyproj.datadir.get_data_dir())
+        trans_group.download_grids()
 
     # If the best available grid is still not there, raise a warning
     if not trans_group.best_available:
