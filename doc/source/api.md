@@ -61,6 +61,15 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
     DEM.ccrs
 ```
 
+### Vertical referencing
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.set_vcrs
+    DEM.to_vcrs
+```
 
 ## dDEM
 

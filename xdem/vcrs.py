@@ -27,8 +27,7 @@ from xdem._typing import MArrayf, NDArrayf
 # TanDEM-X 90m global: https://geoservice.dlr.de/web/dataguide/tdm90/
 # COPERNICUS DEM: https://spacedata.copernicus.eu/web/cscda/dataset-details?articleId=394198
 vcrs_dem_products = {
-    "ArcticDEM": "Ellipsoid",
-    "REMA": "Ellipsoid",
+    "ArcticDEM/REMA/EarthDEM": "Ellipsoid",
     "TDM1": "Ellipsoid",
     "NASADEM-HGTS": "Ellipsoid",
     "AW3D30": "EGM96",
@@ -148,7 +147,7 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
     # The clean way
     else:
         # First, we build a bounds CRS (the vertical CRS relative to geographic)
-        vertical_crs = VerticalCRS(name="unknown", datum='VDATUM["unknown using geoidgrids=' + grid + '"]')
+        vertical_crs = VerticalCRS(name="unknown using geoidgrids=" + grid, datum='VDATUM["unknown using geoidgrids=' + grid + '"]')
         geographic3d_crs = GeographicCRS(
             name="WGS 84",
             ellipsoidal_cs=Ellipsoidal3DCS(axis=Ellipsoidal3DCSAxis.LATITUDE_LONGITUDE_HEIGHT),
@@ -208,7 +207,7 @@ def _vcrs_from_crs(crs: CRS) -> CRS:
     return vcrs
 
 
-def _vcrs_from_user_input(
+def vcrs_from_user_input(
     vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
 ) -> VerticalCRS | BoundCRS | Literal["Ellipsoid"]:
     """
