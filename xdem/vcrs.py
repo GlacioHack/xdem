@@ -318,16 +318,11 @@ def _transform_zz(
 
     # If the best available grid is still not there, raise a warning
     if not trans_group.best_available:
-        # import logging
-        # logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
         warnings.warn(
             message="Best available grid for transformation could not be downloaded, "
             "applying the next best available."
         )
     transformer = trans_group.transformers[0]
-
-    # Transform the grid
-    # transformer = trans_group.from_crs(crs_from=crs_from, crs_to=crs_to, always_xy=True)
 
     # Will preserve the mask of the masked-array since pyproj 3.4
     zz_trans = transformer.transform(xx, yy, zz)[2]

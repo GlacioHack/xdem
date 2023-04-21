@@ -9,9 +9,9 @@ build:
   os: "ubuntu-20.04"
   tools:
     python: "mambaforge-4.10"
-#  jobs:
-#    pre_create_environment:
-#      - unset PROJ_DATA
+  jobs:
+    pre_create_environment:
+      - unset PROJ_DATA
 
 # Build documentation in the doc/ directory with Sphinx
 sphinx:
