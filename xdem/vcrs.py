@@ -147,7 +147,9 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
     # The clean way
     else:
         # First, we build a bounds CRS (the vertical CRS relative to geographic)
-        vertical_crs = VerticalCRS(name="unknown using geoidgrids=" + grid, datum='VDATUM["unknown using geoidgrids=' + grid + '"]')
+        vertical_crs = VerticalCRS(
+            name="unknown using geoidgrids=" + grid, datum='VDATUM["unknown using geoidgrids=' + grid + '"]'
+        )
         geographic3d_crs = GeographicCRS(
             name="WGS 84",
             ellipsoidal_cs=Ellipsoidal3DCS(axis=Ellipsoidal3DCSAxis.LATITUDE_LONGITUDE_HEIGHT),

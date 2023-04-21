@@ -61,8 +61,8 @@ import xdem
 import numpy as np
 import pyproj
 import rasterio as rio
-dem = xdem.DEM.from_array(data=np.ones((2,2)), 
-                     transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2), 
+dem = xdem.DEM.from_array(data=np.ones((2,2)),
+                     transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2),
                      crs=pyproj.CRS("EPSG:4326+5773"),
                      nodata=None)
 dem.save("mydem_with3dcrs.tif")
@@ -96,8 +96,8 @@ os.remove("mydem_with3dcrs.tif")
 
 # Replace this with a new DEM in xdem-data
 import rasterio as rio
-dem = xdem.DEM.from_array(data=np.ones((2,2)), 
-                     transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2), 
+dem = xdem.DEM.from_array(data=np.ones((2,2)),
+                     transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2),
                      crs=pyproj.CRS("EPSG:4326"),
                      nodata=None)
 dem.save("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
@@ -146,8 +146,8 @@ os.remove("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_de
      - EGM08
 ```
 
-If your DEM does not have a `.vcrs` after instantiation, none of those steps worked. You can define the vertical CRS 
-explicitly during {class}`~xdem.DEM` instantiation with the `vcrs` argument or with {func}`~xdem.DEM.set_vcrs`, 
+If your DEM does not have a `.vcrs` after instantiation, none of those steps worked. You can define the vertical CRS
+explicitly during {class}`~xdem.DEM` instantiation with the `vcrs` argument or with {func}`~xdem.DEM.set_vcrs`,
 with user inputs described below.
 
 ## Setting a vertical CRS with convenient user inputs
@@ -205,7 +205,7 @@ dem.vcrs
 To transform a {class}`~xdem.DEM` to a different vertical CRS, {func}`~xdem.DEM.to_vcrs` is used.
 
 ```{note}
-If your transformation requires a grid that is not available locally, it will be **downloaded automatically**. 
+If your transformation requires a grid that is not available locally, it will be **downloaded automatically**.
 xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`, considering the area-of-interest as the DEM extent {class}`~xdem.DEM.bounds`.
 ```
 
