@@ -313,16 +313,16 @@ def _transform_zz(
 
     # Download grid if best available is not on disk
     if not trans_group.best_available:
+        print(pyproj.datadir.get_data_dir())
         trans_group.download_grids(directory=pyproj.datadir.get_data_dir())
 
     # If the best available grid is still not there, raise a warning
     if not trans_group.best_available:
-        import logging
-
-        logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
+        # import logging
+        # logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
         warnings.warn(
             message="Best available grid for transformation could not be downloaded, "
-            "applying the next best available. See PROJ log: {}."
+            "applying the next best available."
         )
     transformer = trans_group.transformers[0]
 
