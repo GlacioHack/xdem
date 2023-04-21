@@ -29,8 +29,7 @@ class DEM(SatelliteImage):  # type: ignore
     """
     The digital elevation model.
 
-    The DEM has a single additional main attribute to that inherited from :class:`geoutils.SatelliteImage`
-    and :class:`geoutils.Raster`:
+    The DEM has a single main attribute in addition to that inherited from :class:`geoutils.Raster`:
         vcrs: :class:`pyproj.VerticalCRS`
             Vertical coordinate reference system of the DEM.
 
@@ -42,7 +41,7 @@ class DEM(SatelliteImage):  # type: ignore
         ccrs: :class:`pyproj.CompoundCRS`
             Compound vertical and horizontal CRS of the DEM.
 
-    The DEM also inherits from :class:`geoutils.Raster`:
+    The attributes inherited from :class:`geoutils.Raster` are:
         data: :class:`np.ndarray`
             Data array of the DEM, with dimensions corresponding to (count, height, width).
         transform: :class:`affine.Affine`

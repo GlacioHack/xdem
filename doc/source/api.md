@@ -49,7 +49,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    DEM.vref
+    DEM.vcrs
 ```
 
 ### Derived attributes
