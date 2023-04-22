@@ -323,7 +323,7 @@ def _transform_zz(
         warnings.warn(
             category=UserWarning,
             message="Best available grid for transformation could not be downloaded, "
-            "applying the next best available (caution: might apply no transform at all)."
+            "applying the next best available (caution: might apply no transform at all).",
         )
     transformer = trans_group.transformers[0]
 
