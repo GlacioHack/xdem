@@ -309,18 +309,21 @@ def _transform_zz(
     """
 
     # Find all possible transforms
-    trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Best transformation is not available")
+        trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
 
-    # Download grid if best available is not on disk
+    # Download grid if best available is not on disk, download and re-initiate the object
     if not trans_group.best_available:
-        print(pyproj.datadir.get_data_dir())
         trans_group.download_grids()
+        trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
 
     # If the best available grid is still not there, raise a warning
     if not trans_group.best_available:
         warnings.warn(
+            category=UserWarning,
             message="Best available grid for transformation could not be downloaded, "
-            "applying the next best available."
+            "applying the next best available (caution: might apply no transform at all)."
         )
     transformer = trans_group.transformers[0]
 

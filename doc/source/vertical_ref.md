@@ -18,9 +18,9 @@ xDEM supports the use of **vertical coordinate reference systems (vertical CRSs)
 by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.io/pyproj/stable/) in the {class}`~xdem.DEM` class.
 
 ```{important}
-**A {class}`~xdem.DEM` already possesses a {class}`~xdem.DEM.crs` attribute that defines a 2- or 3D CRS**, inherited from 
-{class}`~geoutils.Raster`. Unfortunately, most DEM products do not yet come with a 3D CRS, and vertical CRSs often have to be set 
-by the user. See {ref}`vref-setting` further below.
+**A {class}`~xdem.DEM` already possesses a {class}`~xdem.DEM.crs` attribute that defines its 2- or 3D CRS**, inherited from 
+{class}`~geoutils.Raster`. Unfortunately, most DEM products do not yet come with a 3D CRS in their raster metadata, and 
+vertical CRSs often have to be set by the user. See {ref}`vref-setting` below.
 ```
 
 ## What is a vertical CRS?
@@ -118,7 +118,6 @@ dem.vcrs
 :tags: [remove-cell]
 
 os.remove("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
-
 ```
 
 **Currently recognized DEM products**:
@@ -222,7 +221,7 @@ dem.to_vcrs("EGM96")
 dem.vcrs
 ```
 
-The operation updates the DEM array in-place, shifting each pixel by the transformation at their coordinates:
+The operation updates the DEM array **in-place**, shifting each pixel by the transformation at their coordinates:
 
 ```{code-cell} ipython3
 import numpy as np
