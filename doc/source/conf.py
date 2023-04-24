@@ -116,6 +116,9 @@ inheritance_alias = {
     "xdem.dem.Coreg": "xdem.Coreg",
 }
 
+# To have an edge color that works in both dark and light mode
+inheritance_edge_attrs = {"color": "dodgerblue1"}
+
 # To avoid fuzzy PNGs
 graphviz_output_format = "svg"
 
