@@ -15,8 +15,10 @@ sphinx:
   configuration: doc/source/conf.py
   fail_on_warning: false
 
-# Optionally build your doc in additional formats such as PDF and ePub
-formats: []
+# Build the doc in offline formats
+formats:
+  - pdf
+  - hmtlzip
 
 conda:
   environment: dev-environment.yml
