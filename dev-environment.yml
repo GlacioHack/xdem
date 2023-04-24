@@ -26,7 +26,6 @@ dependencies:
   - pip
   - sphinx-book-theme
   - autovizwidget
-  - graphviz
   - pytest
   - pytest-xdist
   - sphinx
@@ -43,4 +42,5 @@ dependencies:
 
   - pip:
      - -e ./
+     - graphviz
      - git+https://github.com/GlacioHack/GeoUtils.git
