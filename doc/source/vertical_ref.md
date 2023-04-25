@@ -45,7 +45,8 @@ The parsing, setting and transformation of vertical CRSs revolves around **three
 - The **transformation** method {func}`~xdem.DEM.to_vcrs` to explicitly transform the vertical CRS of a {class}`~xdem.DEM`.
 
 ```{caution}
-As yet, **[Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection** (even if the CRS provided contains a vertical axis).
+As of now, **[Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection** (even if the CRS 
+provided contains a vertical axis).
 We therefore advise to perform horizontal transformation and vertical transformation independently using {func}`DEM.reproject<xdem.DEM.reproject>` and {func}`DEM.to_vcrs<xdem.DEM.to_vcrs>`, respectively.
 ```
 
@@ -95,6 +96,11 @@ os.remove("mydem_with3dcrs.tif")
 
 2. **From the {attr}`~xdem.DEM.product` name of the DEM**, if parsed from the filename by {class}`geoutils.SatelliteImage`.
 
+
+```{see-also}
+The {class}`~geoutils.SatelliteImage` parent class that parses the product metadata is described in [a dedicated section of GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/satimg_class.html).
+```
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
@@ -104,13 +110,14 @@ dem = xdem.DEM.from_array(data=np.ones((2,2)),
                      transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2),
                      crs=pyproj.CRS("EPSG:4326"),
                      nodata=None)
+# Save with the name of an ArcticDEM strip file
 dem.save("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
 ```
 
 ```{code-cell} ipython3
-# Open an ArcticDEM strip
+# Open an ArcticDEM strip file, recognized as an ArcticDEM product by SatelliteImage
 dem = xdem.DEM("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
-# The vertical CRS is set from the filename (no information in the CRS that is 2D)
+# The vertical CRS is set as "Ellipsoid" from knowing that is it an ArcticDEM product
 dem.vcrs
 ```
 
