@@ -18,7 +18,7 @@ sphinx:
 # Build the doc in offline formats
 formats:
   - pdf
-  - hmtlzip
+  - htmlzip
 
 conda:
   environment: dev-environment.yml
