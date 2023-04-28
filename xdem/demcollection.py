@@ -17,10 +17,10 @@ class DEMCollection:
 
     def __init__(
         self,
-        dems: list[gu.georaster.Raster] | list[xdem.DEM],
+        dems: list[gu.Raster] | list[xdem.DEM],
         timestamps: list[datetime.datetime] | None = None,
-        outlines: gu.geovector.Vector | dict[datetime.datetime, gu.geovector.Vector] | None = None,
-        reference_dem: int | gu.georaster.Raster = 0,
+        outlines: gu.Vector | dict[datetime.datetime, gu.Vector] | None = None,
+        reference_dem: int | gu.Raster = 0,
     ):
         """
         Create a new temporal DEM collection.
@@ -55,23 +55,23 @@ class DEMCollection:
         # The reference index changes place when sorted
         if isinstance(reference_dem, (int, np.integer)):
             self.reference_index = np.argwhere(indices == reference_dem)[0][0]
-        elif isinstance(reference_dem, gu.georaster.Raster):
+        elif isinstance(reference_dem, gu.Raster):
             self.reference_index = [i for i, dem in enumerate(self.dems) if dem is reference_dem][0]
 
         if outlines is None:
-            self.outlines: dict[np.datetime64, gu.geovector.Vector] = {}
-        elif isinstance(outlines, gu.geovector.Vector):
+            self.outlines: dict[np.datetime64, gu.Vector] = {}
+        elif isinstance(outlines, gu.Vector):
             self.outlines = {self.timestamps[self.reference_index]: outlines}
-        elif all(isinstance(value, gu.geovector.Vector) for value in outlines.values()):
+        elif all(isinstance(value, gu.Vector) for value in outlines.values()):
             self.outlines = dict(zip(np.array(list(outlines.keys())).astype("datetime64[ns]"), outlines.values()))
         else:
             raise ValueError(
                 f"Invalid format on 'outlines': {type(outlines)},"
-                " expected one of ['gu.geovector.Vector', 'dict[datetime.datetime, gu.geovector.Vector']"
+                " expected one of ['gu.Vector', 'dict[datetime.datetime, gu.Vector']"
             )
 
     @property
-    def reference_dem(self) -> gu.georaster.Raster:
+    def reference_dem(self) -> gu.Raster:
         """Get the DEM acting reference."""
         return self.dems[self.reference_index]
 
@@ -93,7 +93,7 @@ class DEMCollection:
         # Subtract every DEM that is available.
         for i, dem in enumerate(self.dems):
             # If the reference DEM is encountered, make a dDEM where dH == 0 (to keep length consistency).
-            if dem == self.reference_dem:
+            if dem.raster_equal(self.reference_dem):
                 ddem_raster = self.reference_dem.copy()
                 ddem_raster.data[:] = 0.0
                 ddem = xdem.dDEM(
@@ -154,13 +154,16 @@ class DEMCollection:
 
         # If both the start and end time outlines exist, a mask is created from their union.
         if ddem.start_time in outlines and ddem.end_time in outlines:
-            mask = np.logical_or(outlines[ddem.start_time].create_mask(ddem), outlines[ddem.end_time].create_mask(ddem))
+            mask = np.logical_or(
+                outlines[ddem.start_time].create_mask(ddem, as_array=True),
+                outlines[ddem.end_time].create_mask(ddem, as_array=True),
+            )
         # If only start time outlines exist, these should be used as a mask
         elif ddem.start_time in outlines:
-            mask = outlines[ddem.start_time].create_mask(ddem)
+            mask = outlines[ddem.start_time].create_mask(ddem, as_array=True)
         # If only one outlines file exist, use that as a mask.
         elif len(outlines) == 1:
-            mask = list(outlines.values())[0].create_mask(ddem)
+            mask = list(outlines.values())[0].create_mask(ddem, as_array=True)
         # If no fitting outlines were found, make a full true boolean mask in its stead.
         else:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)

@@ -9,23 +9,25 @@ import geoutils as gu
 
 import xdem
 
-EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples/data"))
+_EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples", "data"))
 # Absolute filepaths to the example files.
-FILEPATHS_DATA = {
-    "longyearbyen_ref_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
-    "longyearbyen_tba_dem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.tif"),
+_FILEPATHS_DATA = {
+    "longyearbyen_ref_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
+    "longyearbyen_tba_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.tif"),
     "longyearbyen_glacier_outlines": os.path.join(
-        EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
+        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
     ),
     "longyearbyen_glacier_outlines_2010": os.path.join(
-        EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
+        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
     ),
 }
 
-FILEPATHS_PROCESSED = {
-    "longyearbyen_ddem": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
-    "longyearbyen_tba_dem_coreg": os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "DEM_1990_coreg.tif"),
+_FILEPATHS_PROCESSED = {
+    "longyearbyen_ddem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
+    "longyearbyen_tba_dem_coreg": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "DEM_1990_coreg.tif"),
 }
+
+available = list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys())
 
 
 def download_longyearbyen_examples(overwrite: bool = False) -> None:
@@ -34,13 +36,13 @@ def download_longyearbyen_examples(overwrite: bool = False) -> None:
 
     :param overwrite: Do not download the files again if they already exist.
     """
-    if not overwrite and all(map(os.path.isfile, list(FILEPATHS_DATA.values()))):
+    if not overwrite and all(map(os.path.isfile, list(_FILEPATHS_DATA.values()))):
         # print("Datasets exist")
         return
 
     # If we ask for overwrite, also remove the processed test data
     if overwrite:
-        for fn in list(FILEPATHS_PROCESSED.values()):
+        for fn in list(_FILEPATHS_PROCESSED.values()):
             if os.path.exists(fn):
                 os.remove(fn)
 
@@ -74,67 +76,67 @@ def download_longyearbyen_examples(overwrite: bool = False) -> None:
     )
 
     # Copy the data to the examples directory.
-    copy_tree(dir_name, os.path.join(EXAMPLES_DIRECTORY, "Longyearbyen", "data"))
+    copy_tree(dir_name, os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data"))
 
 
-def process_coregistered_examples(overwrite: bool = False) -> None:
+def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
     """
     Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
 
+    :param name: Name of test data
     :param overwrite: Do not download the files again if they already exist.
     """
 
-    if not overwrite and all(map(os.path.isfile, list(FILEPATHS_PROCESSED.values()))):
-        # print("Processed data exists")
+    # If the file called already exists and overwrite is False, do nothing
+    if not overwrite and os.path.isfile(_FILEPATHS_PROCESSED[name]):
         return
 
+    # Check that data is downloaded before attempting processing
     download_longyearbyen_examples(overwrite=False)
 
-    # Run the coregistration if it hasn't been made yet.
-    reference_raster = gu.georaster.Raster(FILEPATHS_DATA["longyearbyen_ref_dem"])
-    to_be_aligned_raster = gu.georaster.Raster(FILEPATHS_DATA["longyearbyen_tba_dem"])
-    glacier_mask = gu.geovector.Vector(FILEPATHS_DATA["longyearbyen_glacier_outlines"])
-    inlier_mask = ~glacier_mask.create_mask(reference_raster)
+    # If the ddem file does not exist, create it
+    if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_ddem"]):
+        reference_raster = gu.Raster(_FILEPATHS_DATA["longyearbyen_ref_dem"])
+        to_be_aligned_raster = gu.Raster(_FILEPATHS_DATA["longyearbyen_tba_dem"])
+        glacier_mask = gu.Vector(_FILEPATHS_DATA["longyearbyen_glacier_outlines"])
+        inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
-    nuth_kaab = xdem.coreg.NuthKaab()
-    nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask)
-    aligned_raster = nuth_kaab.apply(to_be_aligned_raster)
+        nuth_kaab = xdem.coreg.NuthKaab()
+        nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask)
+        aligned_raster = nuth_kaab.apply(to_be_aligned_raster, resample=True)
 
-    diff = reference_raster - aligned_raster
+        diff = reference_raster - aligned_raster
 
-    # Save it so that future calls won't need to recreate the file
-    os.makedirs(os.path.dirname(FILEPATHS_PROCESSED["longyearbyen_ddem"]), exist_ok=True)
-    diff.save(FILEPATHS_PROCESSED["longyearbyen_ddem"])
+        # Save it so that future calls won't need to recreate the file
+        os.makedirs(os.path.dirname(_FILEPATHS_PROCESSED["longyearbyen_ddem"]), exist_ok=True)
+        diff.save(_FILEPATHS_PROCESSED["longyearbyen_ddem"])
 
+    # If the tba_dem_coreg file does not exist, create it
+    if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]):
 
-def _get_longyearbyen_tba_coreg_dem() -> str:
-    if not os.path.isfile(FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]):
         dem_2009 = xdem.DEM(get_path("longyearbyen_ref_dem"), silent=True)
         ddem = xdem.DEM(get_path("longyearbyen_ddem"), silent=True)
 
-        (dem_2009 - ddem).save(FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
-
-    return FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]
+        # Save it so that future calls won't need to recreate the file
+        (dem_2009 - ddem).save(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
 
 
 def get_path(name: str) -> str:
     """
-    Get path of example data
-    :param name: Name of test data (listed in xdem/examples.py)
+    Get path of example data. List of available files can be found in "examples.available".
+    :param name: Name of test data
     :return:
     """
-    if name == "longyearbyen_tba_dem_coreg":
-        return _get_longyearbyen_tba_coreg_dem()
 
-    if name in list(FILEPATHS_DATA.keys()):
+    if name in list(_FILEPATHS_DATA.keys()):
         download_longyearbyen_examples()
-        return FILEPATHS_DATA[name]
-    elif name in list(FILEPATHS_PROCESSED.keys()):
-        process_coregistered_examples()
-        return FILEPATHS_PROCESSED[name]
+        return _FILEPATHS_DATA[name]
+    elif name in list(_FILEPATHS_PROCESSED.keys()):
+        process_coregistered_examples(name)
+        return _FILEPATHS_PROCESSED[name]
     else:
         raise ValueError(
             'Data name should be one of "'
-            + '" , "'.join(list(FILEPATHS_DATA.keys()) + list(FILEPATHS_PROCESSED.keys()))
+            + '" , "'.join(list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys()))
             + '".'
         )

@@ -15,9 +15,14 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.georaster import Raster, RasterType
-from geoutils.geovector import Vector, VectorType
-from geoutils.spatial_tools import get_array_and_mask, subsample_raster
+from geoutils.raster import (
+    Mask,
+    Raster,
+    RasterType,
+    get_array_and_mask,
+    subsample_array,
+)
+from geoutils.vector import Vector, VectorType
 from numba import jit
 from numpy.typing import ArrayLike
 from scipy import integrate
@@ -35,20 +40,22 @@ with warnings.catch_warnings():
     import skgstat as skg
 
 
-def nmad(data: NDArrayf, nfact: float = 1.4826) -> np.floating[Any]:
+def nmad(data: NDArrayf | RasterType, nfact: float = 1.4826) -> np.floating[Any]:
     """
     Calculate the normalized median absolute deviation (NMAD) of an array.
     Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
     distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
     e.g. Höhle and Höhle (2009), http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
 
-    :param data: Input data
+    :param data: Input array or raster
     :param nfact: Normalization factor for the data
 
     :returns nmad: (normalized) median absolute deviation of data.
     """
     if isinstance(data, np.ma.masked_array):
         data_arr = get_array_and_mask(data, check_shape=False)[0]
+    elif isinstance(data, Raster):
+        data_arr = data
     else:
         data_arr = np.asarray(data)
     return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
@@ -444,8 +451,8 @@ def estimate_model_heteroscedasticity(
 @overload
 def _preprocess_values_with_mask_to_array(  # type: ignore
     values: list[NDArrayf | RasterType],
-    include_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    exclude_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    include_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
 ) -> tuple[list[NDArrayf], float]:
@@ -455,8 +462,8 @@ def _preprocess_values_with_mask_to_array(  # type: ignore
 @overload
 def _preprocess_values_with_mask_to_array(
     values: NDArrayf | RasterType,
-    include_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    exclude_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    include_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
 ) -> tuple[NDArrayf, float]:
@@ -465,8 +472,8 @@ def _preprocess_values_with_mask_to_array(
 
 def _preprocess_values_with_mask_to_array(
     values: list[NDArrayf | RasterType] | NDArrayf | RasterType,
-    include_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    exclude_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    include_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
 ) -> tuple[list[NDArrayf] | NDArrayf, float]:
@@ -493,10 +500,10 @@ def _preprocess_values_with_mask_to_array(
     ):
         raise ValueError("The values must be a Raster or NumPy array, or a list of those.")
     # Masks need to be an array, Vector or GeoPandas dataframe
-    if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError("The stable mask must be a Vector, GeoDataFrame or NumPy array.")
-    if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, gpd.GeoDataFrame)):
-        raise ValueError("The unstable mask must be a Vector, GeoDataFrame or NumPy array.")
+    if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, Mask, gpd.GeoDataFrame)):
+        raise ValueError("The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array.")
+    if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, Mask, gpd.GeoDataFrame)):
+        raise ValueError("The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array.")
 
     # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
     if isinstance(values, list):
@@ -543,7 +550,10 @@ def _preprocess_values_with_mask_to_array(
             stable_vector = include_mask
 
         # Create the mask
-        include_mask_arr = stable_vector.create_mask(first_raster)
+        include_mask_arr = stable_vector.create_mask(first_raster, as_array=True)
+    # If the mask is a Mask
+    elif isinstance(include_mask, Mask):
+        include_mask_arr = include_mask.data.filled(False)
     # If the mask is already an array, just pass it
     else:
         include_mask_arr = include_mask
@@ -560,8 +570,11 @@ def _preprocess_values_with_mask_to_array(
             unstable_vector = exclude_mask
 
         # Create the mask
-        exclude_mask_arr = unstable_vector.create_mask(first_raster)
+        exclude_mask_arr = unstable_vector.create_mask(first_raster, as_array=True)
     # If the mask is already an array, just pass it
+    # If the mask is a Mask
+    elif isinstance(exclude_mask, Mask):
+        exclude_mask_arr = exclude_mask.data.filled(False)
     else:
         exclude_mask_arr = exclude_mask
 
@@ -588,8 +601,8 @@ def _preprocess_values_with_mask_to_array(
 def infer_heteroscedasticity_from_stable(
     dvalues: NDArrayf,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
     spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
@@ -603,8 +616,8 @@ def infer_heteroscedasticity_from_stable(
 def infer_heteroscedasticity_from_stable(
     dvalues: RasterType,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
     spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
@@ -617,8 +630,8 @@ def infer_heteroscedasticity_from_stable(
 def infer_heteroscedasticity_from_stable(
     dvalues: NDArrayf | RasterType,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
     spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
@@ -708,7 +721,7 @@ def _create_circular_mask(
     # Skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
     mask = np.zeros(shape, dtype=bool)
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
         rr, cc = disk(center=center, radius=radius, shape=shape)
     mask[rr, cc] = True
 
@@ -744,7 +757,7 @@ def _create_ring_mask(
         out_radius = min(center[0], center[1], w - center[0], h - center[1])
 
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
         mask_inside = _create_circular_mask((w, h), center=center, radius=in_radius)
         mask_outside = _create_circular_mask((w, h), center=center, radius=out_radius)
 
@@ -810,7 +823,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_raster(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
+    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -1368,6 +1381,9 @@ def sample_empirical_variogram(
     # Remove the last spatial lag bin which is always undersampled
     df.drop(df.tail(1).index, inplace=True)
 
+    # Force output dtype (default differs on different OS)
+    df = df.astype({"exp": "float64", "err_exp": "float64", "lags": "float64", "count": "int64"})
+
     return df
 
 
@@ -1693,8 +1709,8 @@ def estimate_model_spatial_correlation(
 def infer_spatial_correlation_from_stable(
     dvalues: NDArrayf | RasterType,
     list_models: list[str | Callable[[NDArrayf, float, float], NDArrayf]],
-    stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     errors: NDArrayf | RasterType = None,
     estimator: str = "dowd",
     gsd: float = None,
@@ -2209,7 +2225,7 @@ def number_effective_samples(
         if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
 
             # We only need relative mask and coordinates, not absolute
-            mask = V.create_mask(xres=rasterize_resolution)
+            mask = V.create_mask(xres=rasterize_resolution, as_array=True)
             x = rasterize_resolution * np.arange(0, mask.shape[0])
             y = rasterize_resolution * np.arange(0, mask.shape[1])
             coords = np.array(np.meshgrid(y, x))
@@ -2218,7 +2234,7 @@ def number_effective_samples(
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(rst=rasterize_resolution).squeeze()
+            mask = V.create_mask(rst=rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
             coords_on_mask = coords[:, mask].T
 
@@ -2283,7 +2299,7 @@ def spatial_error_propagation(
                 area_vector = Vector(area)
             else:
                 area_vector = area
-            area_mask = area_vector.create_mask(errors).squeeze()
+            area_mask = area_vector.create_mask(errors, as_array=True).squeeze()
 
             average_spread = np.nanmean(errors_arr[area_mask])
 
@@ -2471,7 +2487,7 @@ def mean_filter_nan(
 
     # Compute the final mean filter which accounts for no data
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "divide by zero encountered in true_divide")
+        warnings.filterwarnings("ignore", "divide by zero encountered in *divide")
         mean_img = summed_img / nb_valid_img
 
     # Compute the number of pixel per kernel

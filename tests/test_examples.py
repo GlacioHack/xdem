@@ -34,11 +34,11 @@ class TestExamples:
                 ddem,
                 np.array(
                     [
-                        -2.423095703125000000e-02,
-                        -7.189941406250000000e-01,
-                        1.425628662109375000e-01,
-                        1.101867675781250000e00,
-                        -5.920959472656250000e00,
+                        -4.669189453125000000e-02,
+                        -7.413940429687500000e-01,
+                        1.499481201171875000e-01,
+                        1.095550537109375000e00,
+                        -5.904846191406250000e00,
                     ],
                     dtype=np.float32,
                 ),
@@ -55,12 +55,13 @@ class TestExamples:
 
         assert values == pytest.approx(truevals)
 
-    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 2316)])  # type: ignore
+    # Note: Following PR #329, no gaps on DEM edges after coregistration
+    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0)])  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
 
         rst = rst_and_truenodata[0]
         truenodata = rst_and_truenodata[1]
-        mask = gu.spatial_tools.get_array_and_mask(rst)[1]
+        mask = gu.raster.get_array_and_mask(rst)[1]
 
         assert np.sum(mask) == truenodata

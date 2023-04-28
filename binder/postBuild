@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e  # To avoid silent errors
+
+# ${MAMBA_EXE} env update -p ${NB_PYTHON_PREFIX} --file "environment.yml"
+pip install -e .
+${MAMBA_EXE} env update -p ${NB_PYTHON_PREFIX} --file "binder/extra-environment.yml"
+wget https://raw.githubusercontent.com/mwouts/jupytext/main/binder/labconfig/default_setting_overrides.json -P  ~/.jupyter/labconfig/  # To automatically open Markdown files as notebooks with Jupytext, see https://github.com/mwouts/jupytext

@@ -1,6 +1,7 @@
 sphinx
 numpydoc
-sphinx_rtd_theme
+sphinx-book-theme
+myst-parser
 sphinx_autodoc_typehints
 sphinxcontrib-programoutput
 numpy
@@ -11,7 +12,7 @@ scipy
 rasterio
 pyproj
 tqdm
-git+https://github.com/GlacioHack/geoutils.git
+geoutils
 scikit-gstat
 flake8
 opencv-contrib-python

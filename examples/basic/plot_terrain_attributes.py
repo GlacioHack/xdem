@@ -5,7 +5,7 @@ Terrain attributes
 Terrain attributes generated from a DEM have a multitude of uses for analytic and visual purposes.
 Here is an example of how to generate these products.
 
-For more information, see the :ref:`terrain_attributes` chapter and the
+For more information, see the :ref:`terrain-attributes` chapter and the
 :ref:`sphx_glr_advanced_examples_plot_slope_methods.py` example.
 """
 # sphinx_gallery_thumbnail_number = 12
@@ -21,7 +21,7 @@ dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 def plot_attribute(attribute, cmap, label=None, vlim=None):
 
-    add_cb = True if label is not None else False
+    add_cbar = True if label is not None else False
 
     fig = plt.figure(figsize=(8, 5))
     ax = fig.add_subplot(111)
@@ -34,7 +34,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     else:
         vlims = {}
 
-    attribute.show(ax=ax, cmap=cmap, add_cb=add_cb, cb_title=label, **vlims)
+    attribute.show(ax=ax, cmap=cmap, add_cbar=add_cbar, cbar_title=label, **vlims)
 
     plt.xticks([])
     plt.yticks([])

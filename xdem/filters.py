@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import warnings
 
-import cv2 as cv
+try:
+    import cv2
+
+    _has_cv2 = True
+except ImportError:
+    _has_cv2 = False
 import numpy as np
 import scipy
 
@@ -65,6 +70,9 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
 
     :returns: the filtered array (same shape as input)
     """
+    if not _has_cv2:
+        raise ValueError("Optional dependency needed. Install 'opencv'")
+
     # Check that array dimension is 2, or can be squeezed to 2D
     orig_shape = array.shape
     if len(orig_shape) == 2:
@@ -80,7 +88,7 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
     # In case array does not contain NaNs, use OpenCV's gaussian filter directly
     # With kernel size (0, 0), i.e. set to default, and borderType=BORDER_REFLECT, the output is equivalent to scipy
     if np.count_nonzero(np.isnan(array)) == 0:
-        gauss = cv.GaussianBlur(array, (0, 0), sigmaX=sigma, borderType=cv.BORDER_REFLECT)
+        gauss = cv2.GaussianBlur(array, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
 
     # If array contain NaNs, need a more sophisticated approach
     # Inspired by https://stackoverflow.com/a/36307291
@@ -89,13 +97,13 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
         # Run filter on a copy with NaNs set to 0
         array_no_nan = array.copy()
         array_no_nan[np.isnan(array)] = 0
-        gauss_no_nan = cv.GaussianBlur(array_no_nan, (0, 0), sigmaX=sigma, borderType=cv.BORDER_REFLECT)
+        gauss_no_nan = cv2.GaussianBlur(array_no_nan, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
         del array_no_nan
 
         # Mask of NaN values
         nan_mask = 0 * array.copy() + 1
         nan_mask[np.isnan(array)] = 0
-        gauss_mask = cv.GaussianBlur(nan_mask, (0, 0), sigmaX=sigma, borderType=cv.BORDER_REFLECT)
+        gauss_mask = cv2.GaussianBlur(nan_mask, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
         del nan_mask
 
         with warnings.catch_warnings():

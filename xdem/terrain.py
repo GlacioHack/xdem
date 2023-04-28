@@ -7,7 +7,7 @@ from typing import Sized, overload
 import geoutils as gu
 import numba
 import numpy as np
-from geoutils.georaster import Raster, RasterType
+from geoutils.raster import Raster, RasterType
 
 from xdem._typing import MArrayf, NDArrayf
 
@@ -300,7 +300,7 @@ def get_quadric_coefficients(
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = gu.raster.get_array_and_mask(dem)[0]
 
     if len(dem_arr.shape) != 2:
         raise ValueError(
@@ -572,7 +572,7 @@ def get_windowed_indexes(
     :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
     # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = gu.raster.get_array_and_mask(dem)[0]
 
     if len(dem_arr.shape) != 2:
         raise ValueError(
@@ -873,7 +873,7 @@ def get_terrain_attribute(
     make_fractal_roughness = "fractal_roughness" in attribute
 
     # Get array of DEM
-    dem_arr = gu.spatial_tools.get_array_and_mask(dem)[0]
+    dem_arr = gu.raster.get_array_and_mask(dem)[0]
 
     if make_surface_fit:
         if not isinstance(resolution, Sized):
@@ -991,7 +991,7 @@ def get_terrain_attribute(
         else:
             # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
                 terrain_attributes["planform_curvature"] = (
                     -2
                     * (
@@ -1021,7 +1021,7 @@ def get_terrain_attribute(
         else:
             # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
                 terrain_attributes["profile_curvature"] = (
                     2
                     * (
@@ -1144,7 +1144,7 @@ def slope(
                [2, 2, 2]])
         >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
         45.0
-        >>> np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.) # Slope in percentage
+        >>> np.round(np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.), 1) # Slope in percentage
         0.5
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.

@@ -33,7 +33,7 @@ import xdem
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-mask_glacier = glacier_outlines.create_mask(dh).squeeze()
+mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
 # We derive terrain attributes from the reference DEM (see :ref:`sphx_glr_basic_examples_plot_terrain_attributes.py`),
@@ -44,16 +44,16 @@ slope, aspect, planc, profc = xdem.terrain.get_terrain_attribute(
 
 # %%
 # We convert to arrays and keep only stable terrain for the analysis of variability
-dh_arr = gu.spatial_tools.get_array_and_mask(dh)[0][~mask_glacier]
-slope_arr = gu.spatial_tools.get_array_and_mask(slope)[0][~mask_glacier]
-aspect_arr = gu.spatial_tools.get_array_and_mask(aspect)[0][~mask_glacier]
-planc_arr = gu.spatial_tools.get_array_and_mask(planc)[0][~mask_glacier]
-profc_arr = gu.spatial_tools.get_array_and_mask(profc)[0][~mask_glacier]
+dh_arr = dh[~mask_glacier].filled(np.nan)
+slope_arr = slope[~mask_glacier].filled(np.nan)
+aspect_arr = aspect[~mask_glacier].filled(np.nan)
+planc_arr = planc[~mask_glacier].filled(np.nan)
+profc_arr = profc[~mask_glacier].filled(np.nan)
 
 # %%
 # We use :func:`xdem.spatialstats.nd_binning` to perform N-dimensional binning on all those terrain variables, with uniform
 # bin length divided by 30. We use the NMAD as a robust measure of `statistical dispersion <https://en.wikipedia.org/wiki/Statistical_dispersion>`_
-# (see :ref:`robuststats_meanstd`).
+# (see :ref:`robuststats-meanstd`).
 
 df = xdem.spatialstats.nd_binning(
     values=dh_arr,
@@ -269,4 +269,4 @@ for s, c in [(0.0, 0.1), (50.0, 0.1), (0.0, 20.0), (50.0, 20.0)]:
 maxc = np.maximum(np.abs(profc), np.abs(planc))
 errors = dh.copy(new_array=dh_err_fun((slope.data, maxc.data)))
 
-errors.show(cmap="Reds", vmin=2, vmax=8, cb_title=r"Elevation error ($1\sigma$, m)")
+errors.show(cmap="Reds", vmin=2, vmax=8, cbar_title=r"Elevation error ($1\sigma$, m)")
