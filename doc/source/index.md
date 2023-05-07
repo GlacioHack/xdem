@@ -12,7 +12,12 @@ title: xDEM
 
 ```{image} ./_static/xdem_logo_only.svg
     :width: 300px
-    :class: dark-light
+    :class: only-light
+```
+
+```{image} ./_static/xdem_logo_only_dark.svg
+    :width: 300px
+    :class: only-dark
 ```
 :::
 

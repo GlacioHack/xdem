@@ -12,20 +12,20 @@ dependencies:
   - matplotlib
   - opencv
   - openh264
-  - pyproj
+  - pyproj>=3.4
   - rasterio>=1.3
   - scipy
   - tqdm
   - scikit-image
-  - proj-data
   - scikit-gstat>=0.6.8
   - pytransform3d
-#  - geoutils==0.0.10
+  - geoutils==0.0.11
 
   # Development-specific
   - pip
   - sphinx-book-theme
   - autovizwidget
+  - graphviz
   - pytest
   - pytest-xdist
   - sphinx
@@ -42,4 +42,4 @@ dependencies:
 
   - pip:
      - -e ./
-     - git+https://github.com/GlacioHack/GeoUtils.git
+#     - git+https://github.com/GlacioHack/GeoUtils.git

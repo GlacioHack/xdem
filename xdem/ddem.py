@@ -7,15 +7,15 @@ from typing import Any
 import geoutils as gu
 import numpy as np
 import shapely
-from geoutils.raster import RasterType, get_array_and_mask
+from geoutils.raster import Raster, RasterType, get_array_and_mask
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 
 import xdem
-from xdem._typing import NDArrayf
+from xdem._typing import MArrayf, NDArrayf
 
 
-class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
+class dDEM(Raster):  # type: ignore
     """A difference-DEM object."""
 
     def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64, error: Any | None = None):
@@ -91,14 +91,14 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
     @classmethod
     def from_array(
         cls: type[RasterType],
-        data: NDArrayf,
+        data: NDArrayf | MArrayf,
         transform: tuple[float, ...] | Affine,
         crs: CRS | int | None,
         start_time: np.datetime64,
         end_time: np.datetime64,
-        error: float = None,
         nodata: int | float | None = None,
-    ) -> dDEM:
+        error: float = None,
+    ) -> dDEM:  # type: ignore
         """
         Create a new dDEM object from an array.
 
@@ -112,7 +112,7 @@ class dDEM(xdem.dem.DEM):  # pylint: disable=invalid-name
 
         :returns: A new dDEM instance.
         """
-        return dDEM(
+        return cls(
             gu.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
             start_time=start_time,
             end_time=end_time,
