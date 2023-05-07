@@ -562,9 +562,8 @@ class TestCoregClass:
     @pytest.mark.parametrize(
         "inputs",
         [
-            [xdem.coreg.BiasCorr(), True, "strict"],
+            [xdem.coreg.VerticalShift(), True, "strict"],
             [xdem.coreg.Deramp(), True, "strict"],
-            [xdem.coreg.ZScaleCorr(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
             [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
             [xdem.coreg.BlockwiseCoreg(coreg=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
@@ -574,7 +573,7 @@ class TestCoregClass:
     def test_apply_resample(self, inputs: list[Any]) -> None:
         """
         Test that the option resample of coreg.apply works as expected.
-        For vertical correction only (BiasCorr, Deramp...), option True or False should yield same results.
+        For vertical correction only (VerticalShift, Deramp...), option True or False should yield same results.
         For horizontal shifts (NuthKaab etc), georef should differ, but DEMs should be the same after resampling.
         For others, the method is not implemented.
         """
@@ -1140,13 +1139,13 @@ def test_dem_coregistration() -> None:
     # Assert that default coreg_method is as expected
     assert hasattr(coreg_method, "pipeline")
     assert isinstance(coreg_method.pipeline[0], xdem.coreg.NuthKaab)
-    assert isinstance(coreg_method.pipeline[1], xdem.coreg.BiasCorr)
+    assert isinstance(coreg_method.pipeline[1], xdem.coreg.VerticalShift)
 
     # The result should be similar to applying the same coreg by hand with:
     # - DEMs converted to Float32
     # - default inlier_mask
     # - no resampling
-    coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.BiasCorr()
+    coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
     inlier_mask = xdem.coreg.create_inlier_mask(tba_dem, ref_dem)
     coreg_method_ref.fit(ref_dem.astype("float32"), tba_dem.astype("float32"), inlier_mask=inlier_mask)
     dem_coreg_ref = coreg_method_ref.apply(tba_dem, resample=False)

@@ -6,11 +6,14 @@ from typing import Callable
 import numpy as np
 import rasterio as rio
 
-import xdem
+import geoutils as gu
+
+from xdem.fit import robust_polynomial_fit
+from xdem.coreg import Coreg
 from xdem._typing import NDArrayf
 
 
-class BiasCorr(xdem.coreg.Coreg):
+class BiasCorr(Coreg):
     """
     Parent class of bias-corrections methods: subclass of Coreg for non-affine methods.
     This is a class made to be subclassed, that simply writes the bias function in the Coreg metadata and defines the
@@ -18,7 +21,7 @@ class BiasCorr(xdem.coreg.Coreg):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = xdem.fit.robust_polynomial_fit
+        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a bias correction object.
@@ -32,8 +35,9 @@ class BiasCorr(xdem.coreg.Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_var: None | dict[str, NDArrayf] = None,
+        bias_vars: None | dict[str, NDArrayf] = None,
         transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -48,7 +52,7 @@ class BiasCorr1D(BiasCorr):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = xdem.fit.robust_polynomial_fit
+        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a 1D bias correction object.
@@ -61,8 +65,9 @@ class BiasCorr1D(BiasCorr):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_var: None | dict[str, NDArrayf] = None,
+        bias_vars: None | dict[str, NDArrayf] = None,
         transform: None | rio.transform.Affine = None,
+        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -72,11 +77,11 @@ class BiasCorr1D(BiasCorr):
         diff = ref_dem - tba_dem
 
         # Check length of bias variable
-        if bias_var is None or len(bias_var) != 1:
+        if bias_vars is None or len(bias_vars) != 1:
             raise ValueError('A single variable has to be provided through the argument "bias_var".')
 
         # Get variable name
-        var_name = list(bias_var.keys())[0]
+        var_name = list(bias_vars.keys())[0]
 
         if verbose:
             print(
@@ -84,7 +89,7 @@ class BiasCorr1D(BiasCorr):
                 "with function {}...".format(var_name, self._meta["bias_func"].__name__)
             )
 
-        params = self._meta["bias_func"](bias_var[var_name], diff, **kwargs)
+        params = self._meta["bias_func"](bias_vars[var_name], diff, **kwargs)
 
         if verbose:
             print("1D bias estimated.")
@@ -100,7 +105,7 @@ class BiasCorr2D(BiasCorr):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = xdem.fit.robust_polynomial_fit
+        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a 2D bias correction object.
@@ -113,8 +118,9 @@ class BiasCorr2D(BiasCorr):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_var: None | dict[str, NDArrayf] = None,
+        bias_vars: None | dict[str, NDArrayf] = None,
         transform: None | rio.transform.Affine = None,
+        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -124,12 +130,12 @@ class BiasCorr2D(BiasCorr):
         diff = ref_dem - tba_dem
 
         # Check bias variable
-        if bias_var is None or len(bias_var) != 2:
+        if bias_vars is None or len(bias_vars) != 2:
             raise ValueError('Two variables have to be provided through the argument "bias_var".')
 
         # Get variable names
-        var_name_1 = list(bias_var.keys())[0]
-        var_name_2 = list(bias_var.keys())[1]
+        var_name_1 = list(bias_vars.keys())[0]
+        var_name_2 = list(bias_vars.keys())[1]
 
         if verbose:
             print(
@@ -137,7 +143,7 @@ class BiasCorr2D(BiasCorr):
                 "with function {}...".format(var_name_1, var_name_2, self._meta["bias_func"].__name__)
             )
 
-        params = self._meta["bias_func"](bias_var[var_name_1], bias_var[var_name_2], diff, **kwargs)
+        params = self._meta["bias_func"](bias_vars[var_name_1], bias_vars[var_name_2], diff, **kwargs)
 
         if verbose:
             print("2D bias estimated.")
@@ -152,7 +158,7 @@ class BiasCorrND(BiasCorr):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = xdem.fit.robust_polynomial_fit
+        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a 2D bias correction object.
@@ -165,8 +171,9 @@ class BiasCorrND(BiasCorr):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_var: None | dict[str, NDArrayf] = None,
+        bias_vars: None | dict[str, NDArrayf] = None,
         transform: None | rio.transform.Affine = None,
+        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -176,11 +183,11 @@ class BiasCorrND(BiasCorr):
         diff = ref_dem - tba_dem
 
         # Check bias variable
-        if bias_var is None or len(bias_var) <= 2:
+        if bias_vars is None or len(bias_vars) <= 2:
             raise ValueError('More than two variables have to be provided through the argument "bias_var".')
 
         # Get variable names
-        list_var_names = list(bias_var.keys())
+        list_var_names = list(bias_vars.keys())
 
         if verbose:
             print(
@@ -188,7 +195,7 @@ class BiasCorrND(BiasCorr):
                 "with function {}...".format(", ".join(list_var_names), self._meta["bias_func"].__name__)
             )
 
-        params = self._meta["bias_func"](*list(bias_var.values()), diff, **kwargs)
+        params = self._meta["bias_func"](*list(bias_vars.values()), diff, **kwargs)
 
         if verbose:
             print("2D bias estimated.")
@@ -203,7 +210,7 @@ class DirectionalBias(BiasCorr1D):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = xdem.fit.robust_polynomial_fit, angle: float = 0
+        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit, angle: float = 0
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate an directional bias correction object.
@@ -218,6 +225,7 @@ class DirectionalBias(BiasCorr1D):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: None | rio.transform.Affine = None,
+        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -228,7 +236,7 @@ class DirectionalBias(BiasCorr1D):
             print("Getting directional coordinates")
 
         diff = ref_dem - tba_dem
-        x, _ = xdem.spatial_tools.get_xy_rotated(ref_dem, along_track_angle=self._meta["angle"])
+        x, _ = gu.raster.get_xy_rotated(ref_dem, along_track_angle=self._meta["angle"])
 
         if verbose:
             print("Estimating directional bias correction with function {}".format(self._meta["bias_func"].__name__))
@@ -256,7 +264,7 @@ class TerrainBias(BiasCorr1D):
 
     def __init__(
         self,
-        bias_func: Callable[..., tuple[int, NDArrayf]] = xdem.fit.robust_polynomial_fit,
+        bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit,
         terrain_attribute="maximum_curvature",
     ):
         """
@@ -272,6 +280,7 @@ class TerrainBias(BiasCorr1D):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         transform: None | rio.transform.Affine = None,
+        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,

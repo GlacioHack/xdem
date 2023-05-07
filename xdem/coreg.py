@@ -37,7 +37,9 @@ from geoutils.raster import (
 from rasterio import Affine
 from tqdm import tqdm, trange
 
-import xdem
+from xdem.spatialstats import nmad
+from xdem.dem import DEM
+from xdem.terrain import slope
 from xdem._typing import MArrayf, NDArrayf
 
 try:
@@ -205,7 +207,7 @@ def calculate_ddem_stats(
     """
     # Default stats - Cannot be put in default args due to circular import with xdem.spatialstats.nmad.
     if (stats_list is None) or (stats_labels is None):
-        stats_list = (np.size, np.mean, np.median, xdem.spatialstats.nmad, np.std)
+        stats_list = (np.size, np.mean, np.median, nmad, np.std)
         stats_labels = ("count", "mean", "median", "nmad", "std")
 
     # Check that stats_list and stats_labels are correct
@@ -878,7 +880,7 @@ class Coreg:
             return res.size
 
         error_functions: dict[str, Callable[[NDArrayf], np.floating[Any] | float | np.integer[Any] | int]] = {
-            "nmad": xdem.spatialstats.nmad,
+            "nmad": nmad,
             "median": np.median,
             "mean": np.mean,
             "std": np.std,
@@ -1040,13 +1042,13 @@ class VerticalShift(Coreg):
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
     ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the BiasCorr function to a DEM."""
-        return dem + self._meta["bias"], transform
+        """Apply the VerticalShift function to a DEM."""
+        return dem + self._meta["vshift"], transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        """Apply the BiasCorr function to a set of points."""
+        """Apply the VerticalShift function to a set of points."""
         new_coords = coords.copy()
-        new_coords[:, 2] += self._meta["bias"]
+        new_coords[:, 2] += self._meta["vshift"]
         return new_coords
 
     def _to_matrix_func(self) -> NDArrayf:
@@ -1413,7 +1415,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         elevation_difference = ref_dem - aligned_dem
 
         vshift = np.nanmedian(elevation_difference)
-        nmad_old = xdem.spatialstats.nmad(elevation_difference)
+        nmad_old = nmad(elevation_difference)
 
         if verbose:
             print("   Statistics on initial dh:")
@@ -1458,7 +1460,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             elevation_difference = ref_dem - aligned_dem
 
             vshift = np.nanmedian(elevation_difference)
-            nmad_new = xdem.spatialstats.nmad(elevation_difference)
+            nmad_new = nmad(elevation_difference)
 
             nmad_gain = (nmad_new - nmad_old) / nmad_old * 100
 
@@ -1509,8 +1511,8 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
         updated_transform = apply_xy_shift(transform, -offset_east, -offset_north)
-        bias = self._meta["bias"]
-        return dem + bias, updated_transform
+        vshift = self._meta["vshift"]
+        return dem + vshift, updated_transform
 
     def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         """Apply the Nuth & Kaab shift to a set of points."""
@@ -1520,7 +1522,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         new_coords = coords.copy()
         new_coords[:, 0] += offset_east
         new_coords[:, 1] += offset_north
-        new_coords[:, 2] += self._meta["bias"]
+        new_coords[:, 2] += self._meta["vshift"]
 
         return new_coords
 
@@ -2243,14 +2245,14 @@ be excluded.
             inlier_mask[np.abs(ddem.data) > dh_max] = False
 
         # Remove blunders where dh differ by nmad_factor * NMAD from the median
-        nmad = xdem.spatialstats.nmad(ddem.data[inlier_mask])
+        nmad_val = nmad(ddem.data[inlier_mask])
         med = np.ma.median(ddem.data[inlier_mask])
-        inlier_mask = inlier_mask & (np.abs(ddem.data - med) < nmad_factor * nmad).filled(False)
+        inlier_mask = inlier_mask & (np.abs(ddem.data - med) < nmad_factor * nmad_val).filled(False)
 
         # Exclude steep slopes for coreg
-        slope = xdem.terrain.slope(ref_dem)
-        inlier_mask[slope.data < slope_lim[0]] = False
-        inlier_mask[slope.data > slope_lim[1]] = False
+        slp = slope(ref_dem)
+        inlier_mask[slp.data < slope_lim[0]] = False
+        inlier_mask[slp.data > slope_lim[1]] = False
 
     return inlier_mask
 
@@ -2272,7 +2274,7 @@ def dem_coregistration(
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
-) -> tuple[xdem.DEM, xdem.coreg.Coreg, pd.DataFrame, NDArrayf]:
+) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 
@@ -2306,7 +2308,7 @@ be excluded.
 coregistration and 4) the inlier_mask used.
     """
     # Check inputs
-    if not isinstance(coreg_method, xdem.coreg.Coreg):
+    if not isinstance(coreg_method, Coreg):
         raise ValueError("`coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())")
 
     if isinstance(ref_dem_path, str):
@@ -2346,8 +2348,8 @@ coregistration and 4) the inlier_mask used.
 
     # Convert to DEM instance with Float32 dtype
     # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
-    ref_dem = xdem.DEM(ref_dem.astype(np.float32))
-    src_dem = xdem.DEM(src_dem.astype(np.float32))
+    ref_dem = DEM(ref_dem.astype(np.float32))
+    src_dem = DEM(src_dem.astype(np.float32))
 
     # Create raster mask
     if verbose:
@@ -2370,7 +2372,7 @@ coregistration and 4) the inlier_mask used.
     # Calculate dDEM statistics on pixels used for coreg
     inlier_data = ddem.data[inlier_mask].compressed()
     nstable_orig, mean_orig = len(inlier_data), np.mean(inlier_data)
-    med_orig, nmad_orig = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
+    med_orig, nmad_orig = np.median(inlier_data), nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
     coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
@@ -2382,7 +2384,7 @@ coregistration and 4) the inlier_mask used.
     # Calculate new stats
     inlier_data = ddem_coreg.data[inlier_mask].compressed()
     nstable_coreg, mean_coreg = len(inlier_data), np.mean(inlier_data)
-    med_coreg, nmad_coreg = np.median(inlier_data), xdem.spatialstats.nmad(inlier_data)
+    med_coreg, nmad_coreg = np.median(inlier_data), nmad(inlier_data)
 
     # Plot results
     if plot:
