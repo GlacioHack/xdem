@@ -22,7 +22,7 @@ class TestRobustFitting:
             ("sklearn", "Huber"),
         ],
     )  # type: ignore
-    def test_robust_polynomial_fit(self, pkg_estimator: str) -> None:
+    def test_robust_norder_polynomial_fit(self, pkg_estimator: str) -> None:
 
         # Define x vector
         x = np.linspace(1, 10, 1000)
@@ -33,7 +33,7 @@ class TestRobustFitting:
         # Run fit
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="lbfgs failed to converge")
-            coefs, deg = xdem.fit.robust_polynomial_fit(
+            coefs, deg = xdem.fit.norder_polynomial_fit(
                 x,
                 y,
                 linear_pkg=pkg_estimator[0],
@@ -48,7 +48,7 @@ class TestRobustFitting:
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
-    def test_robust_polynomial_fit_noise_and_outliers(self) -> None:
+    def test_robust_norder_polynomial_fit_noise_and_outliers(self) -> None:
 
         np.random.seed(42)
 
@@ -64,7 +64,7 @@ class TestRobustFitting:
         y[900:925] = 1000.0
 
         # Run with the "Linear" estimator
-        coefs, deg = xdem.fit.robust_polynomial_fit(
+        coefs, deg = xdem.fit.norder_polynomial_fit(
             x, y, estimator_name="Linear", linear_pkg="scipy", loss="soft_l1", f_scale=0.5
         )
 
@@ -77,13 +77,13 @@ class TestRobustFitting:
             assert coefs[i] == pytest.approx(true_coefs[i], abs=acceptable_scipy_linear_margins[i])
 
         # The sklearn Linear solution with MSE cost function will not be robust
-        coefs2, deg2 = xdem.fit.robust_polynomial_fit(
+        coefs2, deg2 = xdem.fit.norder_polynomial_fit(
             x, y, estimator_name="Linear", linear_pkg="sklearn", cost_func=mean_squared_error, margin_improvement=50
         )
         # It won't find the right degree because of the outliers and noise
         assert deg2 != 3
         # Using the median absolute error should improve the fit
-        coefs3, deg3 = xdem.fit.robust_polynomial_fit(
+        coefs3, deg3 = xdem.fit.norder_polynomial_fit(
             x, y, estimator_name="Linear", linear_pkg="sklearn", cost_func=median_absolute_error, margin_improvement=50
         )
         # Will find the right degree, but won't find the right coefficients because of the outliers and noise
@@ -94,23 +94,23 @@ class TestRobustFitting:
 
         # Now, the robust estimators
         # Theil-Sen should have better coefficients
-        coefs4, deg4 = xdem.fit.robust_polynomial_fit(x, y, estimator_name="Theil-Sen", random_state=42)
+        coefs4, deg4 = xdem.fit.norder_polynomial_fit(x, y, estimator_name="Theil-Sen", random_state=42)
         assert deg4 == 3
         # High degree coefficients should be well constrained
         assert coefs4[2] == pytest.approx(true_coefs[2], abs=1)
         assert coefs4[3] == pytest.approx(true_coefs[3], abs=1)
 
         # RANSAC also works
-        coefs5, deg5 = xdem.fit.robust_polynomial_fit(x, y, estimator_name="RANSAC", random_state=42)
+        coefs5, deg5 = xdem.fit.norder_polynomial_fit(x, y, estimator_name="RANSAC", random_state=42)
         assert deg5 == 3
 
         # Huber should perform well, close to the scipy robust solution
-        coefs6, deg6 = xdem.fit.robust_polynomial_fit(x, y, estimator_name="Huber")
+        coefs6, deg6 = xdem.fit.norder_polynomial_fit(x, y, estimator_name="Huber")
         assert deg6 == 3
         for i in range(3):
             assert coefs6[i + 1] == pytest.approx(true_coefs[i + 1], abs=1)
 
-    def test_robust_sumsin_fit(self) -> None:
+    def test_robust_nfreq_sumsin_fit(self) -> None:
 
         # Define X vector
         x = np.linspace(0, 10, 1000)
@@ -119,7 +119,7 @@ class TestRobustFitting:
         y = xdem.fit._sumofsinval(x, params=true_coefs)
 
         # Check that the function runs (we passed a small niter to reduce the computing time of the test)
-        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, niter=40)
+        coefs, deg = xdem.fit.nfreq_sumsin_fit(x, y, random_state=42, niter=40)
 
         # Check that the estimated sum of sinusoid correspond to the input, with better tolerance on the highest
         # amplitude sinusoid
@@ -130,11 +130,11 @@ class TestRobustFitting:
 
         # Check that using custom arguments does not trigger an error
         bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
-        coefs, deg = xdem.fit.robust_sumsin_fit(
+        coefs, deg = xdem.fit.nfreq_sumsin_fit(
             x, y, bounds_amp_freq_phase=bounds, nb_frequency_max=2, hop_length=0.01, random_state=42, niter=1
         )
 
-    def test_robust_simsin_fit_noise_and_outliers(self) -> None:
+    def test_robust_nfreq_simsin_fit_noise_and_outliers(self) -> None:
 
         # Check robustness to outliers
         np.random.seed(42)
@@ -152,7 +152,7 @@ class TestRobustFitting:
 
         # Define first guess for bounds and run
         bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
-        coefs, deg = xdem.fit.robust_sumsin_fit(x, y, random_state=42, bounds_amp_freq_phase=bounds, niter=5)
+        coefs, deg = xdem.fit.nfreq_sumsin_fit(x, y, random_state=42, bounds_amp_freq_phase=bounds, niter=5)
 
         # Should be less precise, but still on point
         # We need to re-order output coefficient to match input

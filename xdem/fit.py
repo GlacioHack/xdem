@@ -60,19 +60,46 @@ def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
     """
     return np.sum(np.square(scale) * 2 * (np.sqrt(1 + np.square(z / scale)) - 1))
 
+######################################################
+# Most common functions for 1- or 2-D bias corrections
+######################################################
 
-def _cost_sumofsin(
-    p: NDArrayf,
-    x: NDArrayf,
-    y: NDArrayf,
-    cost_func: Callable[[NDArrayf], float],
-) -> float:
+def sumsin_1d(xx: NDArrayf, params: NDArrayf) -> NDArrayf:
     """
-    Calculate robust cost function for sum of sinusoids
-    """
-    z = y - _sumofsinval(x, p)
-    return cost_func(z)
+    Sum of N sinusoids in 1D.
 
+    :param xx: Array of coordinates.
+    :param params: List of N tuples containing amplitude, frequency and phase (radians) parameters.
+    """
+    aix = np.arange(0, params.size, 3)
+    bix = np.arange(1, params.size, 3)
+    cix = np.arange(2, params.size, 3)
+
+    val = np.sum(params[aix] * np.sin(2 * np.pi / params[bix] * xx[:, np.newaxis] + params[cix]), axis=1)
+
+    return val
+
+def polynomial_1d(xx: NDArrayf, params: NDArrayf) -> float:
+    """
+    N-order 1D polynomial.
+
+    :param xx: 1D array of coordinates.
+    :param params: N polynomial parameters.
+
+    :return: Ouput value.
+    """
+    return sum(p * (xx**i) for i, p in enumerate(params))
+
+
+#################################
+# Most common optimizer functions
+##################################
+
+
+
+#######################################################################
+# Convenience wrappers for robust N-order polynomial or sum of sin fits
+#######################################################################
 
 def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose: bool = False) -> int:
     """
@@ -110,9 +137,9 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
 
 def _wrapper_scipy_leastsquares(
     residual_func: Callable[[NDArrayf, NDArrayf, NDArrayf], NDArrayf],
-    p0: NDArrayf,
     x: NDArrayf,
     y: NDArrayf,
+    p0: NDArrayf = None,
     verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
@@ -236,7 +263,7 @@ def _wrapper_sklearn_robustlinear(
     return cost, coefs
 
 
-def robust_polynomial_fit(
+def robust_norder_polynomial_fit(
     x: NDArrayf,
     y: NDArrayf,
     max_order: int = 6,
@@ -291,18 +318,14 @@ def robust_polynomial_fit(
         # If method is linear and package scipy
         if estimator_name == "Linear" and linear_pkg == "scipy":
 
-            # Define the residual function to optimize with scipy
-            def fitfun_polynomial(xx: NDArrayf, params: NDArrayf) -> float:
-                return sum(p * (xx**i) for i, p in enumerate(params))
-
-            def residual_func(p: NDArrayf, xx: NDArrayf, yy: NDArrayf) -> NDArrayf:
-                return fitfun_polynomial(xx, p) - yy
+            def residual_polynomial_nd(p: NDArrayf, xx: NDArrayf, yy: NDArrayf) -> NDArrayf:
+                return polynomial_1d(xx, p) - yy
 
             # Define the initial guess
             p0 = np.polyfit(x, y, deg)
 
             # Run the linear method with scipy
-            cost, coef = _wrapper_scipy_leastsquares(residual_func, p0, x, y, verbose=verbose, **kwargs)
+            cost, coef = _wrapper_scipy_leastsquares(residual_polynomial_nd, p0, x, y, verbose=verbose, **kwargs)
 
         else:
             # Otherwise, we use sklearn
@@ -327,22 +350,19 @@ def robust_polynomial_fit(
     return np.trim_zeros(list_coeffs[final_index], "b"), final_index + 1
 
 
-def _sumofsinval(x: NDArrayf, params: NDArrayf) -> NDArrayf:
+def _cost_sumofsin(
+    p: NDArrayf,
+    x: NDArrayf,
+    y: NDArrayf,
+    cost_func: Callable[[NDArrayf], float],
+) -> float:
     """
-    Function for a sum of N frequency sinusoids
-    :param x: array of coordinates (N,)
-    :param p: list of tuples with amplitude, frequency and phase parameters
+    Calculate robust cost function for sum of sinusoids
     """
-    aix = np.arange(0, params.size, 3)
-    bix = np.arange(1, params.size, 3)
-    cix = np.arange(2, params.size, 3)
+    z = y - sumsin_1d(x, p)
+    return cost_func(z)
 
-    val = np.sum(params[aix] * np.sin(2 * np.pi / params[bix] * x[:, np.newaxis] + params[cix]), axis=1)
-
-    return val
-
-
-def robust_sumsin_fit(
+def robust_nfreq_sumsin_fit(
     x: NDArrayf,
     y: NDArrayf,
     nb_frequency_max: int = 3,

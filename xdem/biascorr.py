@@ -1,17 +1,20 @@
 """Bias corrections for DEMs"""
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Any, Literal
 
 import numpy as np
 import rasterio as rio
+import scipy
 
 import geoutils as gu
 
-from xdem.fit import robust_polynomial_fit
+from xdem.fit import robust_norder_polynomial_fit, robust_nfreq_sumsin_fit, polynomial_1d, sumsin_1d
 from xdem.coreg import Coreg
 from xdem._typing import NDArrayf
 
+workflows = {"norder_polynomial_fit": {"bias_func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
+             "nfreq_sumsin_fit": {"bias_func": sumsin_1d, "optimizer": robust_nfreq_sumsin_fit}}
 
 class BiasCorr(Coreg):
     """
@@ -21,14 +24,35 @@ class BiasCorr(Coreg):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
+        self,
+        bias_func: Callable[..., NDArrayf] = None,
+        bias_workflow: Literal["norder_polynomial_fit"] | Literal["nfreq_sumsin_fit"] | None = "norder_polynomial_fit",
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a bias correction object.
 
-        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        Using ``workflow_func_and_optimizer`` will call the function
+
+        :param bias_func: A function to fit to the bias.
+        :param bias_workflow: A pre-defined function + optimizer workflow to fit the bias.
+            Overrides ``bias_func`` and the ``optimizer`` later used in ``fit()``.
         """
-        super().__init__(meta={"bias_func": bias_func})
+
+        # TODO: Move this logic to parent class? Depends how we deal with Coreg inheritance eventually
+        if bias_workflow is None and bias_func is None:
+            raise ValueError("Either `bias_func` or `bias_workflow` need to be defined.")
+
+        if bias_workflow is not None:
+            if bias_workflow in workflows.keys():
+                bias_func = workflows[bias_workflow]["bias_func"]
+                optimizer = workflows[bias_workflow]["optimizer"]
+            else:
+                raise ValueError("Argument `bias_workflow` must be one of '{}', got {}.".format("', '".join(workflows.keys()), bias_workflow))
+        else:
+            bias_func = bias_func
+            optimizer = None
+
+        super().__init__(meta={"bias_func": bias_func, "optimizer": optimizer})
         self._is_affine = False
 
     def _fit_func(
@@ -36,6 +60,7 @@ class BiasCorr(Coreg):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: None | dict[str, NDArrayf] = None,
+        optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -45,27 +70,43 @@ class BiasCorr(Coreg):
         # FOR DEVELOPERS: This function needs to be implemented in a subclass.
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
+    def _apply_func(
+            self,
+            dem: NDArrayf,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            bias_vars: None | dict[str, NDArrayf] = None,
+            **kwargs: Any
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        dem + self._meta["bias_func"](*tuple(bias_vars.values()), **self._meta["bias_params"])
+
 
 class BiasCorr1D(BiasCorr):
     """
-    Bias-correction along a single variable (e.g., angle, terrain attribute, or any other).
+    Bias-correction along a single variable (e.g., angle, terrain attribute).
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
+        self,
+        bias_func: Callable[..., NDArrayf] = None,
+        bias_workflow: Literal["norder_polynomial_fit"] | Literal["nfreq_sumsin_fit"] | None = "norder_polynomial_fit",
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a 1D bias correction object.
 
-        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        :param bias_func: The function to fit the bias.
+        :param bias_workflow: A pre-defined function + optimizer workflow to fit the bias.
+            Overrides ``bias_func`` and the ``optimizer`` later used in ``fit()``.
         """
-        super().__init__(bias_func=bias_func)
+        super().__init__(bias_func=bias_func, bias_workflow=bias_workflow)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: None | dict[str, NDArrayf] = None,
+        optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -78,7 +119,7 @@ class BiasCorr1D(BiasCorr):
 
         # Check length of bias variable
         if bias_vars is None or len(bias_vars) != 1:
-            raise ValueError('A single variable has to be provided through the argument "bias_var".')
+            raise ValueError('A single variable has to be provided through the argument "bias_vars".')
 
         # Get variable name
         var_name = list(bias_vars.keys())[0]
@@ -89,49 +130,60 @@ class BiasCorr1D(BiasCorr):
                 "with function {}...".format(var_name, self._meta["bias_func"].__name__)
             )
 
-        params = self._meta["bias_func"](bias_vars[var_name], diff, **kwargs)
+        params = optimizer(f=self._meta["bias_func"],
+                           xdata=bias_vars[var_name],
+                           ydata=diff,
+                           sigma=weights,
+                           absolute_sigma=True,
+                           **kwargs)
 
         if verbose:
             print("1D bias estimated.")
 
         # Save method results and variable name
-        self._meta["params"] = params
-        self._meta["bias_var"] = var_name
+        self._meta["optimizer"] = optimizer.__name__
+        self._meta["bias_params"] = params
+        self._meta["bias_vars"] = [var_name]
 
 
 class BiasCorr2D(BiasCorr):
     """
-    Bias-correction along two variables (e.g., simultaneously slope and curvature, or simply x/y coordinates).
+    Bias-correction along two variables (e.g., X/Y coordinates, slope and curvature simultaneously).
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
+        self,
+        bias_func: Callable[..., NDArrayf] = None,
+        bias_workflow: Literal["norder_polynomial_fit"] | Literal["nfreq_sumsin_fit"] | None = "norder_polynomial_fit",
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a 2D bias correction object.
 
-        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        :param bias_func: The function to fit the bias.
+        :param bias_workflow: A pre-defined function + optimizer workflow to fit the bias.
+            Overrides ``bias_func`` and the ``optimizer`` later used in ``fit()``.
         """
-        super().__init__(bias_func=bias_func)
+        super().__init__(bias_func=bias_func, bias_workflow=bias_workflow)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: None | dict[str, NDArrayf] = None,
+        optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
     ):
-        """Estimate the bias along the two provided variable using the bias function."""
+        """Estimate the bias along the two provided variables using the bias function."""
 
         diff = ref_dem - tba_dem
 
         # Check bias variable
         if bias_vars is None or len(bias_vars) != 2:
-            raise ValueError('Two variables have to be provided through the argument "bias_var".')
+            raise ValueError('Two variables have to be provided through the argument "bias_vars".')
 
         # Get variable names
         var_name_1 = list(bias_vars.keys())[0]
@@ -143,12 +195,17 @@ class BiasCorr2D(BiasCorr):
                 "with function {}...".format(var_name_1, var_name_2, self._meta["bias_func"].__name__)
             )
 
-        params = self._meta["bias_func"](bias_vars[var_name_1], bias_vars[var_name_2], diff, **kwargs)
+        params = optimizer(f=self._meta["bias_func"],
+                           xdata=(bias_vars[var_name_1], bias_vars[var_name_2]),
+                           ydata=diff,
+                           sigma=weights,
+                           absolute_sigma=True,
+                           **kwargs)
 
         if verbose:
             print("2D bias estimated.")
 
-        self._meta["params"] = params
+        self._meta["bias_params"] = params
         self._meta["bias_vars"] = [var_name_1, var_name_2]
 
 
@@ -158,20 +215,25 @@ class BiasCorrND(BiasCorr):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit
+        self,
+        bias_func: Callable[..., NDArrayf] = None,
+        bias_workflow: Literal["norder_polynomial_fit"] | Literal["nfreq_sumsin_fit"] | None = "norder_polynomial_fit",
     ):  # pylint: disable=super-init-not-called
         """
         Instantiate a 2D bias correction object.
 
-        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        :param bias_func: The function to fit the bias.
+        :param bias_workflow: A pre-defined function + optimizer workflow to fit the bias.
+            Overrides ``bias_func`` and the ``optimizer`` later used in ``fit()``.
         """
-        super().__init__(bias_func=bias_func)
+        super().__init__(bias_func=bias_func, bias_workflow=bias_workflow)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: None | dict[str, NDArrayf] = None,
+        optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -184,7 +246,7 @@ class BiasCorrND(BiasCorr):
 
         # Check bias variable
         if bias_vars is None or len(bias_vars) <= 2:
-            raise ValueError('More than two variables have to be provided through the argument "bias_var".')
+            raise ValueError('More than two variables have to be provided through the argument "bias_vars".')
 
         # Get variable names
         list_var_names = list(bias_vars.keys())
@@ -192,15 +254,19 @@ class BiasCorrND(BiasCorr):
         if verbose:
             print(
                 "Estimating a 2D bias correction along variables {} "
-                "with function {}...".format(", ".join(list_var_names), self._meta["bias_func"].__name__)
+                "with function {}.".format(", ".join(list_var_names), self._meta["bias_func"].__name__)
             )
 
-        params = self._meta["bias_func"](*list(bias_vars.values()), diff, **kwargs)
-
+        params = optimizer(f=self._meta["bias_func"],
+                           xdata=tuple(bias_vars.values()),
+                           ydata=diff,
+                           sigma=weights,
+                           absolute_sigma=True,
+                           **kwargs)
         if verbose:
             print("2D bias estimated.")
 
-        self._meta["params"] = params
+        self._meta["bias_params"] = params
         self._meta["bias_vars"] = list_var_names
 
 
@@ -210,20 +276,26 @@ class DirectionalBias(BiasCorr1D):
     """
 
     def __init__(
-        self, bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit, angle: float = 0
+        self,
+        bias_func: Callable[..., NDArrayf] = None,
+        bias_workflow: Literal["norder_polynomial_fit"] | Literal["nfreq_sumsin_fit"] | None = "norder_polynomial_fit",
+        angle: float = 0
     ):  # pylint: disable=super-init-not-called
         """
-        Instantiate an directional bias correction object.
+        Instantiate a directional bias correction object.
 
         :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        :param bias_workflow: A pre-defined function + optimizer workflow to fit the bias.
+            Overrides ``bias_func`` and the ``optimizer`` later used in ``fit()``.
         """
-        super().__init__(bias_func=bias_func)
+        super().__init__(bias_func=bias_func, bias_workflow=bias_workflow)
         self._meta["angle"] = angle
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -233,21 +305,27 @@ class DirectionalBias(BiasCorr1D):
         """Estimate the bias using the bias_func."""
 
         if verbose:
-            print("Getting directional coordinates")
+            print("Getting directional coordinates.")
 
         diff = ref_dem - tba_dem
         x, _ = gu.raster.get_xy_rotated(ref_dem, along_track_angle=self._meta["angle"])
 
         if verbose:
-            print("Estimating directional bias correction with function {}".format(self._meta["bias_func"].__name__))
+            print("Estimating directional bias correction with function {}...".format(self._meta["bias_func"].__name__))
 
-        deg, coefs = self._meta["bias_func"](x, diff, **kwargs)
+        params = optimizer(f=self._meta["bias_func"],
+                           xdata=x,
+                           ydata=diff,
+                           sigma=weights,
+                           absolute_sigma=True,
+                           **kwargs)
 
         if verbose:
-            print("Directional bias estimated")
+            print("Directional bias estimated.")
 
         self._meta["degree"] = deg
         self._meta["coefs"] = coefs
+        self._meta["bias_vars"] = ["angle"]
 
 
 class TerrainBias(BiasCorr1D):
@@ -264,21 +342,25 @@ class TerrainBias(BiasCorr1D):
 
     def __init__(
         self,
-        bias_func: Callable[..., tuple[int, NDArrayf]] = robust_polynomial_fit,
+        bias_func: Callable[..., NDArrayf] = None,
+        bias_workflow: Literal["norder_polynomial_fit"] | Literal["nfreq_sumsin_fit"] | None = "norder_polynomial_fit",
         terrain_attribute="maximum_curvature",
     ):
         """
-        Instantiate an terrain bias correction object
+        Instantiate a terrain bias correction object
 
-        :param bias_func: The function to fit the bias. Default: robust polynomial of degree 1 to 6.
+        :param bias_func: The function to fit the bias.
+        :param bias_workflow: A pre-defined function + optimizer workflow to fit the bias.
+            Overrides ``bias_func`` and the ``optimizer`` later used in ``fit()``.
         """
-        super().__init__(bias_func=bias_func)
+        super().__init__(bias_func=bias_func, bias_workflow=bias_workflow)
         self._meta["terrain_attribute"] = terrain_attribute
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -290,14 +372,15 @@ class TerrainBias(BiasCorr1D):
         diff = ref_dem - tba_dem
 
         if verbose:
-            print("Estimating terrain bias correction with function {}".format(self._meta["bias_func"].__name__))
+            print("Estimating terrain bias correction with function {}...".format(self._meta["bias_func"].__name__))
         deg, coefs = self._meta["bias_func"](self._meta["terrain_attribute"], diff, **kwargs)
 
         if verbose:
-            print("Terrain bias estimated")
+            print("Terrain bias estimated.")
 
         self._meta["degree"] = deg
         self._meta["coefs"] = coefs
+        self._meta["bias_vars"] = [self._meta["terrain_attribute"]]
 
     def _apply_func(self, dem: NDArrayf, transform: rio.transform.Affine) -> NDArrayf:
         """Apply the scaling model to a DEM."""
@@ -320,4 +403,4 @@ class TerrainBias(BiasCorr1D):
         elif self.degree < 2:
             raise NotImplementedError
         else:
-            raise ValueError("A 2nd degree or higher ZScaleCorr cannot be described as a 4x4 matrix!")
+            raise ValueError("A 2nd degree or higher terrain cannot be described as a 4x4 matrix!")

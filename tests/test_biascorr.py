@@ -6,7 +6,6 @@ import pytest
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem.fit import robust_polynomial_fit, robust_sumsin_fit
     from xdem import biascorr, examples
 
 
@@ -50,7 +49,19 @@ class TestBiasCorr:
             bcorr.fit(*self.fit_params)
 
         # Check the bias correction instantiation works with another bias function
-        bcorr = biascorr.BiasCorr(bias_func=robust_sumsin_fit)
+        biascorr.BiasCorr(bias_func=np.polyval)
+
+        # Or with any bias workflow
+        biascorr.BiasCorr(bias_workflow="nfreq_sumsin_fit")
+
+        # And raises an error when none of the two are defined
+        with pytest.raises(ValueError, match="Either `bias_func` or `bias_workflow` need to be defined."):
+            biascorr.BiasCorr(bias_func=None, bias_workflow=None)
+
+        # Or when the wrong bias workflow is passed
+        with pytest.raises(ValueError, match="Argument `bias_workflow` must be one of.*"):
+            biascorr.BiasCorr(bias_func=None, bias_workflow="lol")
+
 
     def test_biascorr1d(self):
         """Test the subclass BiasCorr1D."""
@@ -60,7 +71,7 @@ class TestBiasCorr:
 
         # Try to run the correction using the elevation as external variable
         elev_fit_params = self.fit_params.copy()
-        elev_fit_params.update({"bias_var": {"elevation": self.ref.data}})
+        elev_fit_params.update({"bias_vars": {"elevation": self.ref.data}})
         bcorr1d.fit(**elev_fit_params)
 
         # Apply the correction

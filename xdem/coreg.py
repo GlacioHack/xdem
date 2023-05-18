@@ -968,9 +968,6 @@ class Coreg:
     def _to_matrix_func(self) -> NDArrayf:
         # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
 
-        if not self._is_affine:
-            raise ValueError(f"Non-affine coreg class ({type(self)}) cannot be represented by transformation matrices.")
-
         # Try to see if a matrix exists.
         meta_matrix = self._meta.get("matrix")
         if meta_matrix is not None:
