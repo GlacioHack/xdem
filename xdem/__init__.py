@@ -12,7 +12,7 @@ from xdem import (  # noqa
 from xdem.coreg import (  # noqa
     ICP,
     BlockwiseCoreg,
-    Coreg,
+    Rigid,
     CoregPipeline,
     Deramp,
     NuthKaab,

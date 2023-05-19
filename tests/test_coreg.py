@@ -58,25 +58,25 @@ class TestCoregClass:
         vshift = 5
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[2, 3] = vshift
-        coreg_obj = coreg.Coreg.from_matrix(matrix)
+        coreg_obj = coreg.Rigid.from_matrix(matrix)
         transformed_points = coreg_obj.apply_pts(self.points)
         assert transformed_points[0, 2] == vshift
 
         # Check that the from_translation function works as expected.
         x_offset = 5
-        coreg_obj2 = coreg.Coreg.from_translation(x_off=x_offset)
+        coreg_obj2 = coreg.Rigid.from_translation(x_off=x_offset)
         transformed_points2 = coreg_obj2.apply_pts(self.points)
         assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
 
         # Try to make a Coreg object from a nan translation (should fail).
         try:
-            coreg.Coreg.from_translation(np.nan)
+            coreg.Rigid.from_translation(np.nan)
         except ValueError as exception:
             if "non-finite values" not in str(exception):
                 raise exception
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])
-    def test_copy(self, coreg_class: Callable[[], coreg.Coreg]) -> None:
+    def test_copy(self, coreg_class: Callable[[], coreg.Rigid]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")
 
@@ -416,10 +416,10 @@ class TestCoregClass:
 
     @pytest.mark.parametrize("pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()])  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
-    def test_blockwise_coreg(self, pipeline: coreg.Coreg, subdivision: int) -> None:
+    def test_blockwise_coreg(self, pipeline: coreg.Rigid, subdivision: int) -> None:
         warnings.simplefilter("error")
 
-        blockwise = coreg.BlockwiseCoreg(coreg=pipeline, subdivision=subdivision)
+        blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
 
         # Results can not yet be extracted (since fit has not been called) and should raise an error
         with pytest.raises(AssertionError, match="No coreg results exist.*"):
@@ -441,10 +441,10 @@ class TestCoregClass:
 
         # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
         with pytest.raises(ValueError, match="instantiated Coreg subclass"):
-            coreg.BlockwiseCoreg(coreg=coreg.VerticalShift, subdivision=1)  # type: ignore
+            coreg.BlockwiseCoreg(step=coreg.VerticalShift, subdivision=1)  # type: ignore
 
         # Metadata copying has been an issue. Validate that all chunks have unique ids
-        chunk_numbers = [m["i"] for m in blockwise._meta["coreg_meta"]]
+        chunk_numbers = [m["i"] for m in blockwise._meta["step_meta"]]
         assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
 
         transformed_dem = blockwise.apply(self.tba)
@@ -566,7 +566,7 @@ class TestCoregClass:
             [xdem.coreg.Deramp(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
             [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
-            [xdem.coreg.BlockwiseCoreg(coreg=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
+            [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
             [xdem.coreg.ICP(), False, ""],
         ],
     )  # type: ignore
@@ -704,7 +704,7 @@ class TestCoregClass:
         # Use VerticalShift as a representative example.
         vshiftcorr = xdem.coreg.VerticalShift()
 
-        def fit_func() -> coreg.Coreg:
+        def fit_func() -> coreg.Rigid:
            return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
 
         def apply_func() -> NDArrayf:
