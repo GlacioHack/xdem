@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
-import scipy.optimize
+import scipy
 from geoutils.raster import subsample_array
 
 from xdem._typing import NDArrayf
@@ -79,7 +79,7 @@ def sumsin_1d(xx: NDArrayf, params: NDArrayf) -> NDArrayf:
 
     return val
 
-def polynomial_1d(xx: NDArrayf, params: NDArrayf) -> float:
+def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> float:
     """
     N-order 1D polynomial.
 
@@ -136,57 +136,68 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
 
 
 def _wrapper_scipy_leastsquares(
-    residual_func: Callable[[NDArrayf, NDArrayf, NDArrayf], NDArrayf],
-    x: NDArrayf,
-    y: NDArrayf,
+    f: Callable[..., NDArrayf],
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf,
     p0: NDArrayf = None,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
     """
     Wrapper function for scipy.optimize.least_squares: passes down keyword, extracts cost and final parameters, print
     statements in the console
 
-    :param residual_func: Residual function to fit
-    :param p0: Initial guess
-    :param x: X vector
-    :param y: Y vector
-    :param verbose: Whether to print out statements
+    :param f: Function to fit.
+    :param p0: Initial guess.
+    :param x: X vector.
+    :param y: Y vector.
+    :param verbose: Whether to print out statements.
     :return:
     """
 
-    # Get arguments of scipy.optimize
-    fun_args = scipy.optimize.least_squares.__code__.co_varnames[: scipy.optimize.least_squares.__code__.co_argcount]
+    # Get arguments of scipy.optimize.curve_fit and subfunction least_squares
+    fun_args = scipy.optimize.curve_fit.__code__.co_varnames[: scipy.optimize.curve_fit.__code__.co_argcount]
+    ls_args = scipy.optimize.least_squares.__code__.co_varnames[: scipy.optimize.least_squares.__code__.co_argcount]
+
+    all_args = list(fun_args) + list(ls_args)
+
     # Check no other argument is left to be passed
     remaining_kwargs = kwargs.copy()
-    for arg in fun_args:
+    for arg in all_args:
         remaining_kwargs.pop(arg, None)
     if len(remaining_kwargs) != 0:
         warnings.warn("Keyword arguments: " + ",".join(list(remaining_kwargs.keys())) + " were not used.")
     # Filter corresponding arguments before passing
-    filtered_kwargs = {k: kwargs[k] for k in fun_args if k in kwargs}
+    filtered_kwargs = {k: kwargs[k] for k in all_args if k in kwargs}
+    print(filtered_kwargs)
 
     # Run function with associated keyword arguments
-    myresults = scipy.optimize.least_squares(
-        residual_func,
-        p0,
-        args=(x, y),
-        xtol=1e-7,
-        gtol=None,
-        ftol=None,
+    coefs = scipy.optimize.curve_fit(
+        f=f,
+        xdata=xdata,
+        ydata=ydata,
+        p0=p0,
+        sigma=sigma,
+        absolute_sigma=True,
         **filtered_kwargs,
-    )
+    )[0]
 
     # Round results above the tolerance to get fixed results on different OS
-    coefs = np.array([np.round(coef, 5) for coef in myresults.x])
+    coefs = np.array([np.round(coef, 5) for coef in coefs])
 
-    if verbose:
-        print("Initial Parameters: ", p0)
-        print("Status: ", myresults.success, " - ", myresults.status)
-        print(myresults.message)
-        print("Lowest cost:", myresults.cost)
-        print("Parameters:", coefs)
-    cost = myresults.cost
+    # If a specific loss function was passed, construct it to get the cost
+    if "loss" in kwargs.keys():
+        loss = kwargs["loss"]
+        if "f_scale" in kwargs.keys():
+            f_scale = kwargs["f_scale"]
+        else:
+            f_scale = 1.0
+        from scipy.optimize._lsq.least_squares import construct_loss_function
+        loss_func = construct_loss_function(m=ydata.size, loss=loss, f_scale=f_scale)
+        cost = 0.5 * sum(np.atleast_1d(loss_func((f(xdata, *coefs) - ydata) ** 2, cost_only=True)))
+    # Default is linear loss
+    else:
+        cost = 0.5 * sum((f(xdata, *coefs) - ydata) ** 2)
 
     return cost, coefs
 
@@ -194,8 +205,9 @@ def _wrapper_scipy_leastsquares(
 def _wrapper_sklearn_robustlinear(
     model: PolynomialFeatures,
     cost_func: Callable[[NDArrayf, NDArrayf], float],
-    x: NDArrayf,
-    y: NDArrayf,
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf,
     estimator_name: str = "Linear",
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
@@ -205,8 +217,8 @@ def _wrapper_sklearn_robustlinear(
 
     :param model: Function model to fit (e.g., Polynomial features)
     :param cost_func: Cost function to use for optimization
-    :param x: X vector
-    :param y: Y vector
+    :param xdata: X vector
+    :param ydata: Y vector
     :param estimator_name: Linear estimator to use (one of "Linear", "Theil-Sen", "RANSAC" and "Huber")
     :return:
     """
@@ -247,11 +259,20 @@ def _wrapper_sklearn_robustlinear(
     pipeline = make_pipeline(model, init_estimator)
 
     # Run with data
-    pipeline.fit(x.reshape(-1, 1), y)
-    y_pred = pipeline.predict(x.reshape(-1, 1))
+    # The sample weight can only be passed if it exists in the estimator call
+    if sigma is not None and "sample_weight" in inspect.signature(est.fit).parameters.keys():
+        # The weight is the inverse of the squared standard error
+        sample_weight = 1/sigma**2
+        # The argument name to pass it through a pipeline is "estimatorname__sample_weight"
+        args = {est.__name__.lower()+"__sample_weight": sample_weight}
+        pipeline.fit(xdata.reshape(-1, 1), ydata, *args)
+    else:
+        pipeline.fit(xdata.reshape(-1, 1), ydata)
+
+    y_pred = pipeline.predict(xdata.reshape(-1, 1))
 
     # Calculate cost
-    cost = cost_func(y_pred, y)
+    cost = cost_func(y_pred, ydata)
 
     # Get polynomial coefficients estimated with the estimators Linear, Theil-Sen and Huber
     if estimator_name in ["Linear", "Theil-Sen", "Huber"]:
@@ -264,14 +285,15 @@ def _wrapper_sklearn_robustlinear(
 
 
 def robust_norder_polynomial_fit(
-    x: NDArrayf,
-    y: NDArrayf,
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf = None,
     max_order: int = 6,
     estimator_name: str = "Theil-Sen",
     cost_func: Callable[[NDArrayf, NDArrayf], float] = median_absolute_error,
     margin_improvement: float = 20.0,
-    subsample: float | int = 25000,
-    linear_pkg: str = "sklearn",
+    subsample: float | int = 1,
+    linear_pkg: str = "scipy",
     verbose: bool = False,
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
     **kwargs: Any,
@@ -279,36 +301,50 @@ def robust_norder_polynomial_fit(
     """
     Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
+
     Any keyword argument will be passed down to scipy.optimize.least_squares and sklearn linear estimators.
 
-    :param x: input x data (N,)
-    :param y: input y data (N,)
-    :param max_order: maximum polynomial order tried for the fit
-    :param estimator_name: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'
-    :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
-    :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
+    :param xdata: Input x data (N,).
+    :param ydata: Input y data (N,).
+    :param sigma: Standard error of y data (N,).
+    :param max_order: Maximum polynomial order tried for the fit.
+    :param estimator_name: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'.
+    :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length.
+    :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept.
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
-    If > 1 will be considered the number of pixels to extract.
-    :param linear_pkg: package to use for Linear estimator, one of 'scipy' and 'sklearn'
-    :param random_state: random seed for testing purposes
-    :param verbose: if text should be printed
+        If > 1 will be considered the number of pixels to extract.
+    :param linear_pkg: package to use for Linear estimator, one of 'scipy' and 'sklearn'.
+    :param random_state: Random seed.
+    :param verbose: Whether to print text.
 
-    :returns coefs, degree: polynomial coefficients and degree for the best-fit polynomial
+    :returns coefs, degree: Polynomial coefficients and degree for the best-fit polynomial
     """
+    # Remove "f" and "absolute sigma" arguments passed, as both are fixed here
+    if "f" in kwargs.keys():
+        kwargs.pop("f")
+    if "absolute_sigma" in kwargs.keys():
+        kwargs.pop("absolute_sigma")
+
+    # Raise errors for input string parameters
     if not isinstance(estimator_name, str) or estimator_name not in ["Linear", "Theil-Sen", "RANSAC", "Huber"]:
         raise ValueError('Attribute estimator must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
     if not isinstance(linear_pkg, str) or linear_pkg not in ["sklearn", "scipy"]:
         raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
 
+    # Extract xdata from iterable
+    if len(xdata) == 1:
+        xdata = xdata[0]
+
     # Remove NaNs
-    valid_data = np.logical_and(np.isfinite(y), np.isfinite(x))
-    x = x[valid_data]
-    y = y[valid_data]
+    valid_data = np.logical_and(np.isfinite(ydata), np.isfinite(xdata))
+    x = xdata[valid_data]
+    y = ydata[valid_data]
 
     # Subsample data
-    subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
-    x = x[subsamp]
-    y = y[subsamp]
+    if subsample != 1:
+        subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
+        x = x[subsamp]
+        y = y[subsamp]
 
     # Initialize cost function and output coefficients
     list_costs = np.empty(max_order)
@@ -318,14 +354,16 @@ def robust_norder_polynomial_fit(
         # If method is linear and package scipy
         if estimator_name == "Linear" and linear_pkg == "scipy":
 
-            def residual_polynomial_nd(p: NDArrayf, xx: NDArrayf, yy: NDArrayf) -> NDArrayf:
-                return polynomial_1d(xx, p) - yy
-
             # Define the initial guess
             p0 = np.polyfit(x, y, deg)
 
             # Run the linear method with scipy
-            cost, coef = _wrapper_scipy_leastsquares(residual_polynomial_nd, p0, x, y, verbose=verbose, **kwargs)
+            try:
+                cost, coef = _wrapper_scipy_leastsquares(f=polynomial_1d, xdata=x, ydata=y, p0=p0,
+                                                         sigma=sigma, **kwargs)
+            except RuntimeError:
+                cost = np.inf
+                coef = np.array([np.nan for i in range(len(p0))])
 
         else:
             # Otherwise, we use sklearn
@@ -337,11 +375,11 @@ def robust_norder_polynomial_fit(
 
             # Run the linear method with sklearn
             cost, coef = _wrapper_sklearn_robustlinear(
-                model, estimator_name=estimator_name, cost_func=cost_func, x=x, y=y, **kwargs
+                model, estimator_name=estimator_name, cost_func=cost_func, xdata=x, ydata=y, sigma=sigma, **kwargs
             )
 
         list_costs[deg - 1] = cost
-        list_coeffs[deg - 1, 0 : coef.size] = coef
+        list_coeffs[deg - 1, 0:coef.size] = coef
 
     # Choose the best polynomial with a margin of improvement on the cost
     final_index = _choice_best_order(cost=list_costs, margin_improvement=margin_improvement, verbose=verbose)
@@ -363,12 +401,13 @@ def _cost_sumofsin(
     return cost_func(z)
 
 def robust_nfreq_sumsin_fit(
-    x: NDArrayf,
-    y: NDArrayf,
-    nb_frequency_max: int = 3,
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf = None,
+    max_nb_frequency: int = 3,
     bounds_amp_freq_phase: list[tuple[float, float]] | None = None,
     cost_func: Callable[[NDArrayf], float] = soft_loss,
-    subsample: float | int = 25000,
+    subsample: float | int = 1,
     hop_length: float | None = None,
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
     verbose: bool = False,
@@ -377,24 +416,36 @@ def robust_nfreq_sumsin_fit(
     """
     Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
+
     Any keyword argument will be passed down to scipy.optimize.basinhopping.
 
-    :param x: input x data (N,)
-    :param y: input y data (N,)
-    :param nb_frequency_max: maximum number of phases
-    :param bounds_amp_freq_phase: bounds for amplitude, frequency and phase (L, 3, 2) and
-    with mean value used for initialization
-    :param hop_length: jump in function values to optimize basinhopping algorithm search (for best results, should be
-    comparable to the separation (in function value) between local minima)
-    :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length
+    :param xdata: Input x data (N,).
+    :param ydata: Input y data (N,).
+    :param sigma: Standard error of y data (N,).
+    :param max_nb_frequency: Maximum number of phases.
+    :param bounds_amp_freq_phase: Bounds for amplitude, frequency and phase (L, 3, 2) and
+        with mean value used for initialization.
+    :param hop_length: Jump in function values to optimize basinhopping algorithm search (for best results, should be
+    comparable to the separation in function value between local minima).
+    :param cost_func: Cost function taking as input two vectors y (true y), y' (predicted y) of same length.
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
-    If > 1 will be considered the number of pixels to extract.
-    :param random_state: random seed for testing purposes
-    :param verbose: if text should be printed
+        If > 1 will be considered the number of pixels to extract.
+    :param random_state: Random seed.
+    :param verbose: If text should be printed.
     :param kwargs: Keyword arguments to pass to scipy.optimize.basinhopping
 
     :returns coefs, degree: sinusoid coefficients (amplitude, frequency, phase) x N, Number N of summed sinusoids
     """
+
+    # Remove "f" and "absolute sigma" arguments passed, as both are fixed here
+    if "f" in kwargs.keys():
+        kwargs.pop("f")
+    if "absolute_sigma" in kwargs.keys():
+        kwargs.pop("absolute_sigma")
+
+    # Extract xdata from iterable
+    if len(xdata) == 1:
+        xdata = xdata[0]
 
     # Check if there is a number of iterations to stop the run if the global minimum candidate remains the same.
     if "niter_success" not in kwargs.keys():
@@ -410,9 +461,9 @@ def robust_nfreq_sumsin_fit(
         return _cost_sumofsin(p, x, y, cost_func=cost_func)
 
     # First, remove NaNs
-    valid_data = np.logical_and(np.isfinite(y), np.isfinite(x))
-    x = x[valid_data]
-    y = y[valid_data]
+    valid_data = np.logical_and(np.isfinite(ydata), np.isfinite(xdata))
+    x = xdata[valid_data]
+    y = ydata[valid_data]
 
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
     if hop_length is None:
@@ -430,10 +481,10 @@ def robust_nfreq_sumsin_fit(
     y_fg = y_fg[valid_fg]
 
     # Loop on all frequencies
-    costs = np.empty(nb_frequency_max)
-    amp_freq_phase = np.zeros((nb_frequency_max, 3 * nb_frequency_max)) * np.nan
+    costs = np.empty(max_nb_frequency)
+    amp_freq_phase = np.zeros((max_nb_frequency, 3 * max_nb_frequency)) * np.nan
 
-    for nb_freq in np.arange(1, nb_frequency_max + 1):
+    for nb_freq in np.arange(1, max_nb_frequency + 1):
 
         b = bounds_amp_freq_phase
         # If bounds are not provided, define as the largest possible bounds
@@ -474,9 +525,10 @@ def robust_nfreq_sumsin_fit(
         init_x = np.array([np.round(ini, 5) for ini in init_results.x])
 
         # Subsample the final raster
-        subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
-        x = x[subsamp]
-        y = y[subsamp]
+        if subsample != 1:
+            subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
+            x = x[subsamp]
+            y = y[subsamp]
 
         # Minimize the globalization with a larger number of points
         minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-6})

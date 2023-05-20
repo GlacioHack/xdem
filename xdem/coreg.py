@@ -408,7 +408,8 @@ def _preprocess_coreg_input(
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
-        dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True).data
+        dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+        reference_dem = reference_dem
 
     # If any input is a Raster, use its transform if 'transform is None'.
     # If 'transform' was given and any input is a Raster, trigger a warning.
@@ -437,6 +438,7 @@ def _preprocess_coreg_input(
     if crs is None:
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
+    # Get a NaN array covering nodatas from the raster, masked array or integer-type array
     ref_dem, ref_mask = get_array_and_mask(reference_dem)
     tba_dem, tba_mask = get_array_and_mask(dem_to_be_aligned)
 
@@ -461,12 +463,19 @@ def _preprocess_coreg_input(
 
     # If subsample is not equal to one, subsampling should be performed.
     if subsample != 1.0:
+
+        # TODO: Use tested subsampling function from geoutils?
         # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
         full_mask = (
                 ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
         ).squeeze()
         random_indices = subsample_array(full_mask, subsample=subsample, return_indices=True)
         full_mask[random_indices] = False
+
+        # Remove the data, keep the shape
+        # TODO: there's likely a better way to go about this...
+        ref_dem[~full_mask] = np.nan
+        tba_dem[~full_mask] = np.nan
 
     return ref_dem, tba_dem, transform, crs
 
