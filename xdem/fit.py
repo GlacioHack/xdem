@@ -79,7 +79,7 @@ def sumsin_1d(xx: NDArrayf, params: NDArrayf) -> NDArrayf:
 
     return val
 
-def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> float:
+def polynomial_1d(xx: NDArrayf, params: NDArrayf) -> float:
     """
     N-order 1D polynomial.
 
@@ -169,11 +169,14 @@ def _wrapper_scipy_leastsquares(
         warnings.warn("Keyword arguments: " + ",".join(list(remaining_kwargs.keys())) + " were not used.")
     # Filter corresponding arguments before passing
     filtered_kwargs = {k: kwargs[k] for k in all_args if k in kwargs}
-    print(filtered_kwargs)
+
+    # Wrap function to have form expected by scipy (parameters are not in one variable)
+    def f_wrapped(xx, *params):
+        return f(xx, tuple(params))
 
     # Run function with associated keyword arguments
     coefs = scipy.optimize.curve_fit(
-        f=f,
+        f=f_wrapped,
         xdata=xdata,
         ydata=ydata,
         p0=p0,
@@ -194,10 +197,10 @@ def _wrapper_scipy_leastsquares(
             f_scale = 1.0
         from scipy.optimize._lsq.least_squares import construct_loss_function
         loss_func = construct_loss_function(m=ydata.size, loss=loss, f_scale=f_scale)
-        cost = 0.5 * sum(np.atleast_1d(loss_func((f(xdata, *coefs) - ydata) ** 2, cost_only=True)))
+        cost = 0.5 * sum(np.atleast_1d(loss_func((f_wrapped(xdata, *coefs) - ydata) ** 2, cost_only=True)))
     # Default is linear loss
     else:
-        cost = 0.5 * sum((f(xdata, *coefs) - ydata) ** 2)
+        cost = 0.5 * sum((f_wrapped(xdata, *coefs) - ydata) ** 2)
 
     return cost, coefs
 
@@ -349,6 +352,7 @@ def robust_norder_polynomial_fit(
     # Initialize cost function and output coefficients
     list_costs = np.empty(max_order)
     list_coeffs = np.zeros((max_order, max_order + 1))
+
     # Loop on polynomial degrees
     for deg in np.arange(1, max_order + 1):
         # If method is linear and package scipy

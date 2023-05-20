@@ -87,7 +87,7 @@ class TestBiasCorr:
             biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)  # type: ignore
 
 
-    @pytest.mark.parametrize("fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, p: p[0]*np.exp(x) + p[1]))   # type: ignore
+    @pytest.mark.parametrize("fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a: a*np.exp(x)+b))   # type: ignore
     @pytest.mark.parametrize("fit_optimizer", [scipy.optimize.curve_fit,])   # type: ignore
     def test_biascorr__fit(self, fit_func, fit_optimizer) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""

@@ -197,7 +197,10 @@ class BiasCorr(Coreg):
 
         # Apply function to get correction
         if self._fit_or_bin == "fit":
+            print(np.shape(bias_vars.values()))
+            print(self._meta["fit_params"])
             corr = self._meta["fit_func"](*bias_vars.values(), self._meta["fit_params"])
+
         # Apply binning to get correction
         else:
             if self._meta["bin_apply"] == "linear":

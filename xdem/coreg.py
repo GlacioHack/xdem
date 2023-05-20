@@ -409,28 +409,31 @@ def _preprocess_coreg_input(
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
         dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
-        reference_dem = reference_dem
 
     # If any input is a Raster, use its transform if 'transform is None'.
     # If 'transform' was given and any input is a Raster, trigger a warning.
     # Finally, extract only the data of the raster.
+    new_transform = None
+    new_crs = None
     for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
         if isinstance(dem, gu.Raster):
+            # If a raster was passed, override the transform, reference raster has priority to set new_transform.
             if transform is None:
-                transform = dem.transform
-            elif transform is not None:
+                new_transform = dem.transform
+            elif transform is not None and new_transform is None:
+                new_transform = dem.transform
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
+            # Same for crs
             if crs is None:
-                crs = dem.crs
-            elif crs is not None:
+                new_crs = dem.crs
+            elif crs is not None and new_crs is None:
+                new_crs = dem.crs
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
-
-            """
-            if name == "reference_dem":
-                reference_dem = dem.data
-            else:
-                dem_to_be_aligned = dem.data
-            """
+    # Override transform and CRS
+    if new_transform is not None:
+        transform = new_transform
+    if new_crs is not None:
+        crs = new_crs
 
     if transform is None:
         raise ValueError("'transform' must be given if both DEMs are array-like.")
@@ -464,18 +467,26 @@ def _preprocess_coreg_input(
     # If subsample is not equal to one, subsampling should be performed.
     if subsample != 1.0:
 
-        # TODO: Use tested subsampling function from geoutils?
-        # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
-        full_mask = (
-                ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
-        ).squeeze()
-        random_indices = subsample_array(full_mask, subsample=subsample, return_indices=True)
-        full_mask[random_indices] = False
+        indices = gu.raster.subsample_array(ref_dem, subsample=subsample, return_indices=True, random_state=random_state)
 
-        # Remove the data, keep the shape
-        # TODO: there's likely a better way to go about this...
-        ref_dem[~full_mask] = np.nan
-        tba_dem[~full_mask] = np.nan
+        mask_subsample = np.zeros(np.shape(ref_dem), dtype=bool)
+        mask_subsample[indices[0], indices[1]] = True
+
+        ref_dem[~mask_subsample] = np.nan
+        tba_dem[~mask_subsample] = np.nan
+
+        # # TODO: Use tested subsampling function from geoutils?
+        # # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
+        # full_mask = (
+        #         ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
+        # ).squeeze()
+        # random_indices = subsample_array(full_mask, subsample=subsample, return_indices=True)
+        # full_mask[random_indices] = False
+        #
+        # # Remove the data, keep the shape
+        # # TODO: there's likely a better way to go about this...
+        # ref_dem[~full_mask] = np.nan
+        # tba_dem[~full_mask] = np.nan
 
     return ref_dem, tba_dem, transform, crs
 
