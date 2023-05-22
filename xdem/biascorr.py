@@ -130,15 +130,23 @@ class BiasCorr(Coreg):
         # Run fit and save optimized function parameters
         if self._fit_or_bin == "fit":
 
+            # Print if verbose
             if verbose:
                 print(
                     "Estimating bias correction along variables {} by fitting "
                     "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
                 )
 
+            # Remove random state for keyword argument if its value is None (fit() function default)
+            if kwargs["random_state"] is None:
+                kwargs.pop("random_state")
+
+            print(np.shape([var[ind_valid].flatten() for var in bias_vars.values()]))
+            print(np.shape(diff[ind_valid].flatten()))
+
             results = self._meta["fit_optimizer"] \
                 (f=self._meta["fit_func"],
-                 xdata=[var[ind_valid].flatten() for var in bias_vars.values()],
+                 xdata=np.array([var[ind_valid].flatten() for var in bias_vars.values()]).squeeze(),
                  ydata=diff[ind_valid].flatten(),
                  sigma=weights[ind_valid].flatten() if weights is not None else None,
                  absolute_sigma=True,
@@ -172,10 +180,10 @@ class BiasCorr(Coreg):
             )
 
             df = xdem.spatialstats.nd_binning(values=diff[ind_valid],
-                                              list_var=list(bias_vars.values()),
+                                              list_var=list(var[ind_valid] for var in bias_vars.values()),
                                               list_var_names=list(bias_vars.keys()),
                                               list_var_bins=self._meta["bin_sizes"],
-                                              statistics=(self._meta["bin_statistic"]),
+                                              statistics=(self._meta["bin_statistic"],),
                                               )
 
             self._meta["bin_dataframe"] = df
@@ -197,13 +205,12 @@ class BiasCorr(Coreg):
 
         # Apply function to get correction
         if self._fit_or_bin == "fit":
-            print(np.shape(bias_vars.values()))
-            print(self._meta["fit_params"])
-            corr = self._meta["fit_func"](*bias_vars.values(), self._meta["fit_params"])
+            corr = self._meta["fit_func"](*bias_vars.values(), *self._meta["fit_params"])
 
         # Apply binning to get correction
         else:
-            if self._meta["bin_apply"] == "linear":
+            if self._meta["bin_apply_method"] == "linear":
+                # N-D interpolation of binning
                 bin_interpolator = xdem.spatialstats.interp_nd_binning(df=self._meta["bin_dataframe"],
                                                                        list_var_names=list(bias_vars.keys()),
                                                                        statistic=self._meta["bin_statistic"])
@@ -212,7 +219,11 @@ class BiasCorr(Coreg):
                 # TODO: !
                 # bin_interpolator =
 
-            corr = bin_interpolator(*bias_vars)
+            # Flatten each array before interpolating
+            corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
+            # Reshape with shape of first variable
+            first_var = list(bias_vars.keys())[0]
+            corr = corr.reshape(np.shape(bias_vars[first_var]))
 
         return corr, transform
 
@@ -252,7 +263,7 @@ class BiasCorr1D(BiasCorr):
             self,
             ref_dem: NDArrayf,
             tba_dem: NDArrayf,
-            bias_vars: None | dict[str, NDArrayf] = None,
+            bias_vars: dict[str, NDArrayf],
             transform: None | rio.transform.Affine = None,
             crs: rio.crs.CRS | None = None,
             weights: None | NDArrayf = None,
@@ -262,8 +273,9 @@ class BiasCorr1D(BiasCorr):
         """Estimate the bias along the single provided variable using the bias function."""
 
         # Check number of variables
-        if bias_vars is None or len(bias_vars) != 1:
-            raise ValueError('A single variable has to be provided through the argument "bias_vars".')
+        if len(bias_vars) != 1:
+            raise ValueError("A single variable has to be provided through the argument 'bias_vars', "
+                             "got {}." .format(len(bias_vars)))
 
         super()._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, bias_vars=bias_vars, transform=transform, crs=crs,
                           weights=weights, verbose=verbose, **kwargs)
@@ -303,7 +315,7 @@ class BiasCorr2D(BiasCorr):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: None | dict[str, NDArrayf] = None,
+        bias_vars: dict[str, NDArrayf],
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -352,7 +364,7 @@ class BiasCorrND(BiasCorr):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: None | dict[str, NDArrayf] = None,
+        bias_vars: dict[str, NDArrayf],
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,

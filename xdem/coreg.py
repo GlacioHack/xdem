@@ -521,7 +521,7 @@ class CoregDict(TypedDict, total=False):
     fit_optimizer: Callable[..., tuple[float]]
     bin_sizes: int | dict[str, int | tuple[float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
-    bin_apply: Literal["linear"] | Literal["per_bin"]
+    bin_apply_method: Literal["linear"] | Literal["per_bin"]
 
     bias_vars: list[str]
     fit_params: list[float]
@@ -601,7 +601,8 @@ class Coreg:
 
         # Run the associated fitting function
         self._fit_func(
-            ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose, **kwargs
+            ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose,
+            random_state=random_state, **kwargs
         )
 
         # Flag that the fitting function has been called.

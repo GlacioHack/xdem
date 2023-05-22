@@ -64,22 +64,27 @@ def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
 # Most common functions for 1- or 2-D bias corrections
 ######################################################
 
-def sumsin_1d(xx: NDArrayf, params: NDArrayf) -> NDArrayf:
+def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     """
     Sum of N sinusoids in 1D.
 
     :param xx: Array of coordinates.
-    :param params: List of N tuples containing amplitude, frequency and phase (radians) parameters.
+    :param params: 3 x N parameters in order of amplitude, frequency and phase (radians).
     """
-    aix = np.arange(0, params.size, 3)
-    bix = np.arange(1, params.size, 3)
-    cix = np.arange(2, params.size, 3)
+
+    # Convert parameters to array
+    params = np.array(params)
+
+    # Indexes of amplitude, frequencies and phases
+    aix = np.arange(0, len(params), 3)
+    bix = np.arange(1, len(params), 3)
+    cix = np.arange(2, len(params), 3)
 
     val = np.sum(params[aix] * np.sin(2 * np.pi / params[bix] * xx[:, np.newaxis] + params[cix]), axis=1)
 
     return val
 
-def polynomial_1d(xx: NDArrayf, params: NDArrayf) -> float:
+def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> float:
     """
     N-order 1D polynomial.
 
@@ -170,13 +175,9 @@ def _wrapper_scipy_leastsquares(
     # Filter corresponding arguments before passing
     filtered_kwargs = {k: kwargs[k] for k in all_args if k in kwargs}
 
-    # Wrap function to have form expected by scipy (parameters are not in one variable)
-    def f_wrapped(xx, *params):
-        return f(xx, tuple(params))
-
     # Run function with associated keyword arguments
     coefs = scipy.optimize.curve_fit(
-        f=f_wrapped,
+        f=f,
         xdata=xdata,
         ydata=ydata,
         p0=p0,
@@ -197,10 +198,10 @@ def _wrapper_scipy_leastsquares(
             f_scale = 1.0
         from scipy.optimize._lsq.least_squares import construct_loss_function
         loss_func = construct_loss_function(m=ydata.size, loss=loss, f_scale=f_scale)
-        cost = 0.5 * sum(np.atleast_1d(loss_func((f_wrapped(xdata, *coefs) - ydata) ** 2, cost_only=True)))
+        cost = 0.5 * sum(np.atleast_1d(loss_func((f(xdata, *coefs) - ydata) ** 2, cost_only=True)))
     # Default is linear loss
     else:
-        cost = 0.5 * sum((f_wrapped(xdata, *coefs) - ydata) ** 2)
+        cost = 0.5 * sum((f(xdata, *coefs) - ydata) ** 2)
 
     return cost, coefs
 
@@ -393,15 +394,15 @@ def robust_norder_polynomial_fit(
 
 
 def _cost_sumofsin(
-    p: NDArrayf,
     x: NDArrayf,
     y: NDArrayf,
     cost_func: Callable[[NDArrayf], float],
+    *p: NDArrayf,
 ) -> float:
     """
     Calculate robust cost function for sum of sinusoids
     """
-    z = y - sumsin_1d(x, p)
+    z = y - sumsin_1d(x, *p)
     return cost_func(z)
 
 def robust_nfreq_sumsin_fit(
@@ -462,7 +463,7 @@ def robust_nfreq_sumsin_fit(
         kwargs.update({"niter_success": niter_success})
 
     def wrapper_cost_sumofsin(p: NDArrayf, x: NDArrayf, y: NDArrayf) -> float:
-        return _cost_sumofsin(p, x, y, cost_func=cost_func)
+        return _cost_sumofsin(x, y, cost_func, *p)
 
     # First, remove NaNs
     valid_data = np.logical_and(np.isfinite(ydata), np.isfinite(xdata))
@@ -512,7 +513,7 @@ def robust_nfreq_sumsin_fit(
         # Insert in a scipy bounds object
         scipy_bounds = scipy.optimize.Bounds(lb, ub)
         # First guess for the mean parameters
-        p0 = np.divide(lb + ub, 2)
+        p0 = np.divide(lb + ub, 2).squeeze()
 
         # Initialize with the first guess
         init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-6})
