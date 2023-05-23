@@ -1,6 +1,6 @@
 from xdem import (  # noqa
-    coreg,
     biascorr,
+    coreg,
     dem,
     examples,
     filters,
@@ -9,15 +9,15 @@ from xdem import (  # noqa
     terrain,
     volume,
 )
+from xdem.biascorr import BiasCorr, DirectionalBias, TerrainBias  # noqa
 from xdem.coreg import (  # noqa
     ICP,
     BlockwiseCoreg,
-    Rigid,
     CoregPipeline,
     Deramp,
     NuthKaab,
+    Rigid,
 )
-from xdem.biascorr import (BiasCorr, TerrainBias, DirectionalBias)  # noqa
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa

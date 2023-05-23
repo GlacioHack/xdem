@@ -4,7 +4,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import warnings
-from typing import Any, Callable, Generator, TypedDict, TypeVar, overload, Literal
+from typing import Any, Callable, Generator, Literal, TypedDict, TypeVar, overload
 
 import affine
 
@@ -39,10 +39,10 @@ from geoutils.raster import (
 from rasterio import Affine
 from tqdm import tqdm, trange
 
-from xdem.spatialstats import nmad
-from xdem.dem import DEM
-from xdem.terrain import slope
 from xdem._typing import MArrayf, NDArrayf
+from xdem.dem import DEM
+from xdem.spatialstats import nmad
+from xdem.terrain import slope
 
 try:
     import pytransform3d.transformations
@@ -389,15 +389,16 @@ def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine)
     )
     return x_coords, y_coords
 
+
 def _preprocess_coreg_input(
-        reference_dem: NDArrayf | MArrayf | RasterType,
-        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-        inlier_mask: NDArrayf | Mask | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        subsample: float | int = 1.0,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
-) -> tuple[NDArrayf, NDArrayf, affine.Affine, rio.crs.CRS] :
+    reference_dem: NDArrayf | MArrayf | RasterType,
+    dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+    inlier_mask: NDArrayf | Mask | None = None,
+    transform: rio.transform.Affine | None = None,
+    crs: rio.crs.CRS | None = None,
+    subsample: float | int = 1.0,
+    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+) -> tuple[NDArrayf, NDArrayf, affine.Affine, rio.crs.CRS]:
 
     # Validate that both inputs are valid array-like (or Raster) types.
     if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
@@ -467,7 +468,9 @@ def _preprocess_coreg_input(
     # If subsample is not equal to one, subsampling should be performed.
     if subsample != 1.0:
 
-        indices = gu.raster.subsample_array(ref_dem, subsample=subsample, return_indices=True, random_state=random_state)
+        indices = gu.raster.subsample_array(
+            ref_dem, subsample=subsample, return_indices=True, random_state=random_state
+        )
 
         mask_subsample = np.zeros(np.shape(ref_dem), dtype=bool)
         mask_subsample[indices[0], indices[1]] = True
@@ -490,9 +493,11 @@ def _preprocess_coreg_input(
 
     return ref_dem, tba_dem, transform, crs
 
+
 ###########################################
 # Generic coregistration processing classes
 ###########################################
+
 
 class CoregDict(TypedDict, total=False):
     """
@@ -530,13 +535,14 @@ class CoregDict(TypedDict, total=False):
 
 CoregType = TypeVar("CoregType", bound="Coreg")
 
+
 class Coreg:
     """
     Generic co-registration processing class.
 
     Used to implement methods common to all processing steps (rigid alignment, bias corrections, filtering).
     Those are: instantiation, copying and addition (which casts to a Pipeline object).
-    
+
     Made to be subclassed.
     """
 
@@ -591,18 +597,26 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
-        ref_dem, tba_dem, transform, crs = _preprocess_coreg_input(reference_dem=reference_dem,
-                                                                   dem_to_be_aligned=dem_to_be_aligned,
-                                                                   inlier_mask=inlier_mask,
-                                                                   transform=transform,
-                                                                   crs=crs,
-                                                                   subsample=subsample,
-                                                                   random_state=random_state)
+        ref_dem, tba_dem, transform, crs = _preprocess_coreg_input(
+            reference_dem=reference_dem,
+            dem_to_be_aligned=dem_to_be_aligned,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            subsample=subsample,
+            random_state=random_state,
+        )
 
         # Run the associated fitting function
         self._fit_func(
-            ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose,
-            random_state=random_state, **kwargs
+            ref_dem=ref_dem,
+            tba_dem=tba_dem,
+            transform=transform,
+            crs=crs,
+            weights=weights,
+            verbose=verbose,
+            random_state=random_state,
+            **kwargs,
         )
 
         # Flag that the fitting function has been called.
@@ -611,12 +625,12 @@ class Coreg:
         return self
 
     def residuals(
-            self,
-            reference_dem: NDArrayf,
-            dem_to_be_aligned: NDArrayf,
-            inlier_mask: NDArrayf | None = None,
-            transform: rio.transform.Affine | None = None,
-            crs: rio.crs.CRS | None = None,
+        self,
+        reference_dem: NDArrayf,
+        dem_to_be_aligned: NDArrayf,
+        inlier_mask: NDArrayf | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
     ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
@@ -653,44 +667,44 @@ class Coreg:
 
     @overload
     def apply(
-            self,
-            dem: MArrayf,
-            transform: rio.transform.Affine | None = None,
-            crs: rio.crs.CRS | None = None,
-            resample: bool = True,
-            **kwargs: Any,
+        self,
+        dem: MArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]:
         ...
 
     @overload
     def apply(
-            self,
-            dem: NDArrayf,
-            transform: rio.transform.Affine | None = None,
-            crs: rio.crs.CRS | None = None,
-            resample: bool = True,
-            **kwargs: Any,
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         ...
 
     @overload
     def apply(
-            self,
-            dem: RasterType,
-            transform: rio.transform.Affine | None = None,
-            crs: rio.crs.CRS | None = None,
-            resample: bool = True,
-            **kwargs: Any,
+        self,
+        dem: RasterType,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
     ) -> RasterType:
         ...
 
     def apply(
-            self,
-            dem: RasterType | NDArrayf | MArrayf,
-            transform: rio.transform.Affine | None = None,
-            crs: rio.crs.CRS | None = None,
-            resample: bool = True,
-            **kwargs: Any,
+        self,
+        dem: RasterType | NDArrayf | MArrayf,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
     ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
         """
         Apply the estimated transform to a DEM.
@@ -1071,7 +1085,7 @@ class BlockwiseCoreg(Coreg):
     """
     Block-wise co-registration processing class to run a step in segmented parts of the grid.
 
-    A processing class of choice is run on an arbitrary subdivision of the raster. When later applying the processing step
+    A processing class of choice is run on an arbitrary subdivision of the raster. When later applying the step
     the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
 
     For instance: a subdivision of 4 triggers a division of the DEM in four equally sized parts. These parts are then
@@ -1424,6 +1438,7 @@ class BlockwiseCoreg(Coreg):
 
 RigidType = TypeVar("RigidType", bound="Rigid")
 
+
 class Rigid(Coreg):
     """
     Generic Rigid coregistration class.
@@ -1447,7 +1462,6 @@ class Rigid(Coreg):
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
             self._meta["matrix"] = valid_matrix
         self._is_affine = True
-
 
     @property
     def is_affine(self) -> bool:
@@ -1528,14 +1542,14 @@ class Rigid(Coreg):
         raise NotImplementedError("This should be implemented by subclassing")
 
     def _fit_func(
-            self,
-            ref_dem: NDArrayf,
-            tba_dem: NDArrayf,
-            transform: rio.transform.Affine,
-            crs: rio.crs.CRS,
-            weights: NDArrayf | None,
-            verbose: bool = False,
-            **kwargs: Any,
+        self,
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None,
+        verbose: bool = False,
+        **kwargs: Any,
     ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This step has to be implemented by subclassing.")
@@ -2135,6 +2149,7 @@ def apply_matrix(
     assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
 
     return transformed_dem
+
 
 def warp_dem(
     dem: NDArrayf,

@@ -8,11 +8,10 @@ import warnings
 from typing import Any, Callable
 
 import numpy as np
-from numpy.polynomial.polynomial import polyval, polyval2d
-
 import pandas as pd
 import scipy
 from geoutils.raster import subsample_array
+from numpy.polynomial.polynomial import polyval, polyval2d
 
 from xdem._typing import NDArrayf
 from xdem.spatialstats import nd_binning
@@ -62,9 +61,11 @@ def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
     """
     return np.sum(np.square(scale) * 2 * (np.sqrt(1 + np.square(z / scale)) - 1))
 
+
 ######################################################
 # Most common functions for 1- or 2-D bias corrections
 ######################################################
+
 
 def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     """
@@ -89,6 +90,7 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
 
     return val
 
+
 def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     """
     N-order 1D polynomial.
@@ -96,9 +98,10 @@ def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     :param xx: 1D array of values.
     :param params: N polynomial parameters.
 
-    :return: Ouput value.
+    :return: Output value.
     """
     return polyval(x=xx, c=params)
+
 
 def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
     """
@@ -114,8 +117,10 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
     poly_order = np.sqrt(len(params))
 
     if not poly_order.is_integer():
-        raise ValueError("The parameters of the 2D polynomial should have a length equal to order^2, "
-                         "see np.polyval2d for more details.")
+        raise ValueError(
+            "The parameters of the 2D polynomial should have a length equal to order^2, "
+            "see np.polyval2d for more details."
+        )
 
     # We reshape the parameter into the N x N shape expected by NumPy
     params = np.array(params).reshape((int(poly_order), int(poly_order)))
@@ -126,6 +131,7 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
 #######################################################################
 # Convenience wrappers for robust N-order polynomial or sum of sin fits
 #######################################################################
+
 
 def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose: bool = False) -> int:
     """
@@ -218,6 +224,7 @@ def _wrapper_scipy_leastsquares(
         else:
             f_scale = 1.0
         from scipy.optimize._lsq.least_squares import construct_loss_function
+
         loss_func = construct_loss_function(m=ydata.size, loss=loss, f_scale=f_scale)
         cost = 0.5 * sum(np.atleast_1d(loss_func((f(xdata, *coefs) - ydata) ** 2, cost_only=True)))
     # Default is linear loss
@@ -287,9 +294,9 @@ def _wrapper_sklearn_robustlinear(
     # The sample weight can only be passed if it exists in the estimator call
     if sigma is not None and "sample_weight" in inspect.signature(est.fit).parameters.keys():
         # The weight is the inverse of the squared standard error
-        sample_weight = 1/sigma**2
+        sample_weight = 1 / sigma**2
         # The argument name to pass it through a pipeline is "estimatorname__sample_weight"
-        args = {est.__name__.lower()+"__sample_weight": sample_weight}
+        args = {est.__name__.lower() + "__sample_weight": sample_weight}
         pipeline.fit(xdata.reshape(-1, 1), ydata, *args)
     else:
         pipeline.fit(xdata.reshape(-1, 1), ydata)
@@ -385,8 +392,9 @@ def robust_norder_polynomial_fit(
 
             # Run the linear method with scipy
             try:
-                cost, coef = _wrapper_scipy_leastsquares(f=polynomial_1d, xdata=x, ydata=y, p0=p0,
-                                                         sigma=sigma, **kwargs)
+                cost, coef = _wrapper_scipy_leastsquares(
+                    f=polynomial_1d, xdata=x, ydata=y, p0=p0, sigma=sigma, **kwargs
+                )
             except RuntimeError:
                 cost = np.inf
                 coef = np.array([np.nan for i in range(len(p0))])
@@ -405,7 +413,7 @@ def robust_norder_polynomial_fit(
             )
 
         list_costs[deg - 1] = cost
-        list_coeffs[deg - 1, 0:coef.size] = coef
+        list_coeffs[deg - 1, 0 : coef.size] = coef
 
     # Choose the best polynomial with a margin of improvement on the cost
     final_index = _choice_best_order(cost=list_costs, margin_improvement=margin_improvement, verbose=verbose)
@@ -425,6 +433,7 @@ def _cost_sumofsin(
     """
     z = y - sumsin_1d(x, *p)
     return cost_func(z)
+
 
 def robust_nfreq_sumsin_fit(
     xdata: NDArrayf,

@@ -1,12 +1,11 @@
 """Tests for the biascorr module (non-rigid coregistrations)."""
-import warnings
 import re
-
-import scipy
+import warnings
 
 import geoutils as gu
 import numpy as np
 import pytest
+import scipy
 
 import xdem.terrain
 
@@ -69,33 +68,54 @@ class TestBiasCorr:
             biascorr.BiasCorr(fit_or_bin=True)  # type: ignore
 
         # For fit function
-        with pytest.raises(TypeError, match=re.escape("Argument `fit_func` must be a function (callable) or the string '{}', "
-                                            "got <class 'str'>.".format("', '".join(biascorr.fit_workflows.keys())))):
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                "Argument `fit_func` must be a function (callable) or the string '{}', "
+                "got <class 'str'>.".format("', '".join(biascorr.fit_workflows.keys()))
+            ),
+        ):
             biascorr.BiasCorr(fit_func="yay")  # type: ignore
 
         # For fit optimizer
-        with pytest.raises(TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable), "
-                                "got <class 'int'>.")):
+        with pytest.raises(
+            TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable), " "got <class 'int'>.")
+        ):
             biascorr.BiasCorr(fit_optimizer=3)  # type: ignore
 
         # For bin sizes
-        with pytest.raises(TypeError, match=re.escape("Argument `bin_sizes` must be an integer, or a dictionary of integers or tuples, "
-                                "got <class 'dict'>.")):
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or tuples, " "got <class 'dict'>."
+            ),
+        ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_sizes={"a": 1.5})  # type: ignore
 
         # For bin statistic
-        with pytest.raises(TypeError, match=re.escape("Argument `bin_statistic` must be a function (callable), "
-                                "got <class 'str'>.")):
+        with pytest.raises(
+            TypeError, match=re.escape("Argument `bin_statistic` must be a function (callable), " "got <class 'str'>.")
+        ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_statistic="count")  # type: ignore
 
         # For bin apply method
-        with pytest.raises(TypeError, match=re.escape("Argument `bin_apply_method` must be the string 'linear' or 'per_bin', "
-                                "got <class 'int'>.")):
+        with pytest.raises(
+            TypeError,
+            match=re.escape(
+                "Argument `bin_apply_method` must be the string 'linear' or 'per_bin', " "got <class 'int'>."
+            ),
+        ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)  # type: ignore
 
-
-    @pytest.mark.parametrize("fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: a*np.exp(x)+b))   # type: ignore
-    @pytest.mark.parametrize("fit_optimizer", [scipy.optimize.curve_fit,])   # type: ignore
+    @pytest.mark.parametrize(
+        "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: a * np.exp(x) + b)
+    )  # type: ignore
+    @pytest.mark.parametrize(
+        "fit_optimizer",
+        [
+            scipy.optimize.curve_fit,
+        ],
+    )  # type: ignore
     def test_biascorr__fit_1d(self, fit_func, fit_optimizer) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
@@ -119,9 +139,15 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_func",
-                             (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1]*b + c/d))  # type: ignore
-    @pytest.mark.parametrize("fit_optimizer", [scipy.optimize.curve_fit, ])  # type: ignore
+    @pytest.mark.parametrize(
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1] * b + c / d)
+    )  # type: ignore
+    @pytest.mark.parametrize(
+        "fit_optimizer",
+        [
+            scipy.optimize.curve_fit,
+        ],
+    )  # type: ignore
     def test_biascorr__fit_2d(self, fit_func, fit_optimizer) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
@@ -140,8 +166,7 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("bin_sizes",
-                             (10,))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10,))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_1d(self, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -160,8 +185,7 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("bin_sizes",
-                             (10,))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10,))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_2d(self, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -179,7 +203,6 @@ class TestBiasCorr:
 
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
-
 
     def test_biascorr1d(self):
         """
@@ -202,13 +225,13 @@ class TestBiasCorr:
 
         elev_fit_params = self.fit_params.copy()
         # Raise error when wrong number of parameters are passed
-        with pytest.raises(ValueError, match="A single variable has to be provided through the argument 'bias_vars', "
-                                             "got 2."):
+        with pytest.raises(
+            ValueError, match="A single variable has to be provided through the argument 'bias_vars', " "got 2."
+        ):
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
             bcorr1d.fit(**elev_fit_params, bias_vars=bias_vars_dict)
 
-
-    def test_biascorr2d(self):
+    def test_biascorr2d(self) -> None:
         """
         Test the subclass BiasCorr2D, which defines default parameters for 2D.
         The rest is already tested in test_biascorr.
@@ -229,12 +252,13 @@ class TestBiasCorr:
 
         elev_fit_params = self.fit_params.copy()
         # Raise error when wrong number of parameters are passed
-        with pytest.raises(ValueError, match="Exactly two variables have to be provided through the argument "
-                                             "'bias_vars', got 1."):
+        with pytest.raises(
+            ValueError, match="Exactly two variables have to be provided through the argument " "'bias_vars', got 1."
+        ):
             bias_vars_dict = {"elevation": self.ref}
             bcorr1d.fit(**elev_fit_params, bias_vars=bias_vars_dict)
 
-    def test_directionalbias(self):
+    def test_directionalbias(self) -> None:
         """Test the subclass DirectionalBias."""
 
         # Try default "fit" parameters instantiation
@@ -244,7 +268,7 @@ class TestBiasCorr:
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
 
-    def test_directionalbias__synthetic(self):
+    def test_directionalbias__synthetic(self) -> None:
         """Test the subclass DirectionalBias."""
 
         # Try default "fit" parameters instantiation
@@ -254,7 +278,7 @@ class TestBiasCorr:
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
 
-    def test_deramp(self):
+    def test_deramp(self) -> None:
         """Test the subclass Deramp."""
 
         # Try default "fit" parameters instantiation
@@ -265,7 +289,7 @@ class TestBiasCorr:
         assert deramp._meta["poly_order"] == 2
 
     @pytest.mark.parametrize("order", [1, 2, 3, 4, 5])  # type: ignore
-    def test_deramp__synthetic(self, order: int):
+    def test_deramp__synthetic(self, order: int) -> None:
         """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
 
         # Get coordinates
@@ -289,10 +313,10 @@ class TestBiasCorr:
         # Check high-order parameters are the same
         fit_params = deramp._meta["fit_params"]
         assert np.shape(fit_params) == np.shape(params)
-        assert np.allclose(params.reshape(order + 1, order + 1)[-1:, -1:],
-                           fit_params.reshape(order + 1, order + 1)[-1:, -1:], rtol=0.1)
+        assert np.allclose(
+            params.reshape(order + 1, order + 1)[-1:, -1:], fit_params.reshape(order + 1, order + 1)[-1:, -1:], rtol=0.1
+        )
 
         # Run apply and check that 99% of the variance was corrected
         corrected_dem = deramp.apply(bias_dem)
         assert np.nanvar(corrected_dem + bias_dem) < 0.01 * np.nanvar(synthetic_bias)
-

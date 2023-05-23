@@ -7,7 +7,6 @@ import tempfile
 import warnings
 from typing import Any, Callable
 
-import cv2
 import geoutils as gu
 import numpy as np
 import pandas as pd
@@ -147,7 +146,8 @@ class TestCoregClass:
         new_vshift = newmeta["vshift"]
         assert np.abs(new_vshift) < 0.01
 
-        # Check that the original model's vertical shift has not changed (that the _meta dicts are two different objects)
+        # Check that the original model's vertical shift has not changed
+        # (that the _meta dicts are two different objects)
         assert vshiftcorr._meta["vshift"] == vshift
 
     def test_all_nans(self) -> None:
@@ -413,8 +413,9 @@ class TestCoregClass:
         # Check that the estimated biases are similar
         assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-1)
 
-
-    @pytest.mark.parametrize("pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()])  # type: ignore
+    @pytest.mark.parametrize(
+        "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
+    )  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
     def test_blockwise_coreg(self, pipeline: coreg.Rigid, subdivision: int) -> None:
         warnings.simplefilter("error")
@@ -526,7 +527,11 @@ class TestCoregClass:
         # Fit the data
         vshiftcorr_r.fit(reference_dem=dem1, dem_to_be_aligned=dem2)
         vshiftcorr_a.fit(
-            reference_dem=dem1.data, dem_to_be_aligned=dem2.reproject(dem1, silent=True).data, transform=dem1.transform, crs=dem1.crs)
+            reference_dem=dem1.data,
+            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
+            transform=dem1.transform,
+            crs=dem1.crs,
+        )
 
         # Validate that they ended up giving the same result.
         assert vshiftcorr_r._meta["vshift"] == vshiftcorr_a._meta["vshift"]
@@ -705,11 +710,10 @@ class TestCoregClass:
         vshiftcorr = xdem.coreg.VerticalShift()
 
         def fit_func() -> coreg.Rigid:
-           return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
+            return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
 
         def apply_func() -> NDArrayf:
             return vshiftcorr.apply(tba_dem, transform=transform, crs=crs)
-
 
         # Try running the methods in order and validate the result.
         for method, method_call in [("fit", fit_func), ("apply", apply_func)]:
@@ -737,7 +741,9 @@ class TestCoregClass:
         crs = rio.crs.CRS.from_epsg(4326)
 
         dem_arr2_fixed, _ = (
-            coreg.VerticalShift().fit(dem_arr, dem_arr2, transform=transform, crs=crs).apply(dem_arr2, transform=transform, crs=crs)
+            coreg.VerticalShift()
+            .fit(dem_arr, dem_arr2, transform=transform, crs=crs)
+            .apply(dem_arr2, transform=transform, crs=crs)
         )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
