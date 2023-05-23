@@ -8,6 +8,8 @@ import warnings
 from typing import Any, Callable
 
 import numpy as np
+from numpy.polynomial.polynomial import polyval, polyval2d
+
 import pandas as pd
 import scipy
 from geoutils.raster import subsample_array
@@ -72,6 +74,9 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     :param params: 3 x N parameters in order of amplitude, frequency and phase (radians).
     """
 
+    # Squeeze input in case it is a 1-D tuple or such
+    xx = np.array(xx).squeeze()
+
     # Convert parameters to array
     params = np.array(params)
 
@@ -84,22 +89,38 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
 
     return val
 
-def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> float:
+def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     """
     N-order 1D polynomial.
 
-    :param xx: 1D array of coordinates.
+    :param xx: 1D array of values.
     :param params: N polynomial parameters.
 
     :return: Ouput value.
     """
-    return sum(p * (xx**i) for i, p in enumerate(params))
+    return polyval(x=xx, c=params)
 
+def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
+    """
+    N-order 2D polynomial.
 
-#################################
-# Most common optimizer functions
-##################################
+    :param xx: The two 1D array of values.
+    :param params: The N parameters (a, b, c, etc.) of the polynomial.
 
+    :returns: Output value.
+    """
+
+    # The number of parameters of np.polyval2d is order^2, so a square array needs to be passed
+    poly_order = np.sqrt(len(params))
+
+    if not poly_order.is_integer():
+        raise ValueError("The parameters of the 2D polynomial should have a length equal to order^2, "
+                         "see np.polyval2d for more details.")
+
+    # We reshape the parameter into the N x N shape expected by NumPy
+    params = np.array(params).reshape((int(poly_order), int(poly_order)))
+
+    return polyval2d(x=xx[0], y=xx[1], c=params)
 
 
 #######################################################################

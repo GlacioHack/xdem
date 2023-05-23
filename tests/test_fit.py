@@ -119,7 +119,7 @@ class TestRobustFitting:
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
         true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
-        y = xdem.fit.sumsin_1d(x, params=true_coefs)
+        y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Check that the function runs (we passed a small niter to reduce the computing time of the test)
         coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, niter=40)
@@ -145,7 +145,7 @@ class TestRobustFitting:
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
         true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
-        y = xdem.fit.sumsin_1d(x, params=true_coefs)
+        y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Add some noise
         y += np.random.normal(loc=0, scale=0.25, size=1000)
