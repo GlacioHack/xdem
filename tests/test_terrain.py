@@ -208,8 +208,8 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive the attribute using both RichDEM and xdem
-        attr_xdem = gu.spatial_tools.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
-        attr_richdem = gu.spatial_tools.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
+        attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
+        attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem
@@ -255,8 +255,9 @@ class TestTerrainAttribute:
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
         dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
 
-        # Validate that this doesn't raise weird warnings after introducing nans.
-        functions_richdem[attribute](dem)
+        # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
+        output = functions_richdem[attribute](dem)
+        assert np.all(dem.data.mask == output.data.mask)
 
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""

@@ -40,27 +40,29 @@ jobs:
 
     - name: Get month for resetting cache
       id: get-date
-      run: echo "::set-output name=month::$(/bin/date -u '+%Y%m')"
+      run: echo "cache_date=$(/bin/date -u '+%Y%m')" >> $GITHUB_ENV
       shell: bash
 
     - name: Cache conda env
       uses: actions/cache@v3
       with:
         path: ${{ env.CONDA }}/envs
-        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ steps.get-date.outputs.month }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
+        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
       env:
         CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
       id: cache
 
     # The trick below is necessary because the generic environment file does not specify a Python version, and only
     # "conda env update" can be used to update with an environment file, which upgrades the Python version
+    # (we add "graphviz" from dev-environment to solve all dependencies at once, at graphviz relies on image
+    # processing packages very much like geo-packages; not a problem for docs, dev installs where all is done at once)
     - name: Install base environment with a fixed Python version
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
         pkgs_conda_base=`python .github/get_yml_env_nopy.py "environment.yml" --p "conda"`
         pkgs_pip_base=`python .github/get_yml_env_nopy.py "environment.yml" --p "pip"`
-        mamba install python=${{ matrix.python-version }} $pkgs_conda_base
+        mamba install python=${{ matrix.python-version }} $pkgs_conda_base graphviz
         if [[ "$pkgs_pip_base" != "None" ]]; then
           pip install $pkgs_pip_base
         fi

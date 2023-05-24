@@ -29,7 +29,7 @@ class TestdDEM:
 
         ddem2.data += 1
 
-        assert self.ddem != ddem2
+        assert not self.ddem.raster_equal(ddem2)
 
     def test_filled_data(self) -> None:
         """Test that the filled_data property points to the right data."""

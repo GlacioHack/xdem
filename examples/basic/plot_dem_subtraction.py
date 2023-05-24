@@ -38,7 +38,7 @@ _ = dem_1990.reproject(dem_2009)
 # To hide this prompt, add ``.reproject(..., silent=True)``.
 # By default, :func:`xdem.DEM.reproject` uses "bilinear" resampling (assuming resampling is needed).
 # Other options are "nearest" (fast but inaccurate), "cubic_spline", "lanczos" and others.
-# See `geoutils.Raster.reproject() <https://geoutils.readthedocs.io/en/latest/api.html#geoutils.georaster.Raster.reproject>`_ and `rasterio.enums.Resampling <https://rasterio.readthedocs.io/en/latest/api/rasterio.enums.html#rasterio.enums.Resampling>`_ for more information about reprojection.
+# See `geoutils.Raster.reproject() <https://geoutils.readthedocs.io/en/latest/api.html#geoutils.raster.Raster.reproject>`_ and `rasterio.enums.Resampling <https://rasterio.readthedocs.io/en/latest/api/rasterio.enums.html#rasterio.enums.Resampling>`_ for more information about reprojection.
 #
 # Now, we are ready to generate the dDEM:
 
@@ -50,7 +50,7 @@ print(ddem)
 # It is a new :class:`xdem.DEM` instance, loaded in memory.
 # Let's visualize it:
 
-ddem.show(cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
+ddem.show(cmap="coolwarm_r", vmin=-20, vmax=20, cbar_title="Elevation change (m)")
 
 # %%
 # Let's add some glacier outlines
@@ -61,7 +61,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # Need to create a common matplotlib Axes to plot both on the same figure
 # The xlim/ylim commands are necessary only because outlines extend further than the raster extent
 ax = plt.subplot(111)
-ddem.show(ax=ax, cmap="coolwarm_r", vmin=-20, vmax=20, cb_title="Elevation change (m)")
+ddem.show(ax=ax, cmap="coolwarm_r", vmin=-20, vmax=20, cbar_title="Elevation change (m)")
 glacier_outlines.ds.plot(ax=ax, fc="none", ec="k")
 plt.xlim(ddem.bounds.left, ddem.bounds.right)
 plt.ylim(ddem.bounds.bottom, ddem.bounds.top)
