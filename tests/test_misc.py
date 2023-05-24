@@ -105,3 +105,54 @@ class TestMisc:
         else:
             with pytest.raises(ValueError, match="^" + text + "$"):
                 useless_func()
+
+    def test_diff_environment_yml(self, capsys) -> None:  # type: ignore
+
+        # Test with synthetic environment
+        env = {"dependencies": ["python==3.9", "numpy", "fiona"]}
+        devenv = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv"]}
+
+        # This should print the difference between the two
+        xdem.misc.diff_environment_yml(env, devenv, input_dict=True, print_dep="conda")
+
+        # Capture the stdout and check it is indeed the right diff
+        captured = capsys.readouterr().out
+        assert captured == "opencv\n"
+
+        # This should print the difference including pip
+        xdem.misc.diff_environment_yml(env, devenv, input_dict=True, print_dep="both")
+
+        captured = capsys.readouterr().out
+        assert captured == "opencv\nNone\n"
+
+        env2 = {"dependencies": ["python==3.9", "numpy", "fiona"]}
+        devenv2 = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv", {"pip": ["geoutils", "-e ./"]}]}
+
+        # The diff function should not account for -e ./ that is the local install for developers
+        xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="both")
+        captured = capsys.readouterr().out
+
+        assert captured == "opencv\ngeoutils\n"
+
+        # This should print only pip
+        xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="pip")
+        captured = capsys.readouterr().out
+
+        assert captured == "geoutils\n"
+
+        # This should raise an error because print_dep is not well defined
+        with pytest.raises(ValueError, match='The argument "print_dep" can only be "conda", "pip" or "both".'):
+            xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="lol")
+
+        # When the dependencies are not defined in dev-env but in env, it should raise an error
+        # For normal dependencies
+        env3 = {"dependencies": ["python==3.9", "numpy", "fiona", "lol"]}
+        devenv3 = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv", {"pip": ["geoutils"]}]}
+        with pytest.raises(ValueError, match="The following dependencies are listed in env but not dev-env: lol"):
+            xdem.misc.diff_environment_yml(env3, devenv3, input_dict=True, print_dep="pip")
+
+        # For pip dependencies
+        env4 = {"dependencies": ["python==3.9", "numpy", "fiona", {"pip": ["lol"]}]}
+        devenv4 = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv", {"pip": ["geoutils"]}]}
+        with pytest.raises(ValueError, match="The following pip dependencies are listed in env but not dev-env: lol"):
+            xdem.misc.diff_environment_yml(env4, devenv4, input_dict=True, print_dep="pip")

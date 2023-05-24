@@ -1,76 +1,92 @@
 """DEM class and functions."""
 from __future__ import annotations
 
-import json
-import os
-import subprocess
+import pathlib
 import warnings
-from typing import Any
+from typing import Any, Literal
 
-import pyproj
 import rasterio as rio
-from geoutils.georaster.raster import RasterType
-from geoutils.satimg import SatelliteImage
-from pyproj import Transformer
+from affine import Affine
+from geoutils import SatelliteImage
+from geoutils.raster import RasterType
+from pyproj import CRS
+from pyproj.crs import CompoundCRS, VerticalCRS
 
-from xdem._typing import NDArrayf
+from xdem._typing import MArrayf, NDArrayf
+from xdem.vcrs import (
+    _build_ccrs_from_crs_and_vcrs,
+    _grid_from_user_input,
+    _parse_vcrs_name_from_product,
+    _transform_zz,
+    _vcrs_from_crs,
+    _vcrs_from_user_input,
+)
 
-
-def parse_vref_from_product(product: str) -> str | None:
-    """
-
-    :param product: Product name (typically from satimg.parse_metadata_from_fn)
-
-    :return: vref_name: Vertical reference name
-    """
-    # Sources for defining vertical references:
-    # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
-    # SRTMGL1: https://lpdaac.usgs.gov/documents/179/SRTM_User_Guide_V3.pdf
-    # SRTMv4.1: http://www.cgiar-csi.org/data/srtm-90m-digital-elevation-database-v4-1
-    # ASTGTM2/ASTGTM3: https://lpdaac.usgs.gov/documents/434/ASTGTM_User_Guide_V3.pdf
-    # NASADEM: https://lpdaac.usgs.gov/documents/592/NASADEM_User_Guide_V1.pdf, HGTS is ellipsoid, HGT is EGM96 geoid !!
-    # ArcticDEM (mosaic and strips): https://www.pgc.umn.edu/data/arcticdem/
-    # REMA (mosaic and strips): https://www.pgc.umn.edu/data/rema/
-    # TanDEM-X 90m global: https://geoservice.dlr.de/web/dataguide/tdm90/
-    # COPERNICUS DEM: https://spacedata.copernicus.eu/web/cscda/dataset-details?articleId=394198
-
-    if product in ["ArcticDEM/REMA", "TDM1", "NASADEM-HGTS"]:
-        vref_name = "WGS84"
-    elif product in ["AW3D30", "SRTMv4.1", "SRTMGL1", "ASTGTM2", "NASADEM-HGT"]:
-        vref_name = "EGM96"
-    elif product in ["COPDEM"]:
-        vref_name = "EGM08"
-    else:
-        vref_name = None
-
-    return vref_name
-
-
-dem_attrs = ["vref", "vref_grid", "_ccrs"]
+dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
 
 
 class DEM(SatelliteImage):  # type: ignore
+    """
+    The digital elevation model.
+
+    The DEM has a single main attribute in addition to that inherited from :class:`geoutils.Raster`:
+        vcrs: :class:`pyproj.VerticalCRS`
+            Vertical coordinate reference system of the DEM.
+
+    Other derivative attributes are:
+        vcrs_name: :class:`str`
+            Name of vertical CRS of the DEM.
+        vcrs_grid: :class:`str`
+            Grid path to the vertical CRS of the DEM.
+        ccrs: :class:`pyproj.CompoundCRS`
+            Compound vertical and horizontal CRS of the DEM.
+
+    The attributes inherited from :class:`geoutils.Raster` are:
+        data: :class:`np.ndarray`
+            Data array of the DEM, with dimensions corresponding to (count, height, width).
+        transform: :class:`affine.Affine`
+            Geotransform of the DEM.
+        crs: :class:`pyproj.crs.CRS`
+            Coordinate reference system of the DEM.
+        nodata: :class:`int` or :class:`float`
+            Nodata value of the DEM.
+
+    All other attributes are derivatives of those attributes, or read from the file on disk.
+    See the API for more details.
+    """
+
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vref_name: str | None = None,
-        vref_grid: str | None = None,
+        vcrs: Literal["Ellipsoid"]
+        | Literal["EGM08"]
+        | Literal["EGM96"]
+        | VerticalCRS
+        | str
+        | pathlib.Path
+        | int
+        | None = None,
         silent: bool = True,
         **kwargs: Any,
     ) -> None:
         """
-        Load digital elevation model data through the Raster class, parse additional attributes from filename or
-        metadata through the SatelliteImage class, and then parse vertical reference from DEM product name.
-        For manual input, only one of "vref", "vref_grid" or "ccrs" is necessary to set the vertical reference.
+        Instantiate a digital elevation model.
+
+        The vertical reference of the DEM can be defined by passing the `vcrs` argument.
+        Otherwise, a vertical reference is tentatively parsed from the DEM product name.
+
+        Inherits all attributes from the :class:`geoutils.Raster` and :class:`geoutils.SatelliteImage` classes.
 
         :param filename_or_dataset: The filename of the dataset.
-        :param vref_name: Vertical reference name
-        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
-        :param silent: Whether to display vertical reference setting
-        :param silent: boolean
+        :param vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+        :param silent: Whether to display vertical reference parsing.
         """
 
         self.data: NDArrayf
+        self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
+        self._vcrs_name: str | None = None
+        self._vcrs_grid: str | None = None
 
         # If DEM is passed, simply point back to DEM
         if isinstance(filename_or_dataset, DEM):
@@ -83,173 +99,189 @@ class DEM(SatelliteImage):  # type: ignore
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
                 super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
-        # self.indexes can be None when data is not loaded through the Raster class
+        # Ensure DEM has only one band: self.indexes can be None when data is not loaded through the Raster class
         if self.indexes is not None and len(self.indexes) > 1:
             raise ValueError("DEM rasters should be composed of one band only")
 
-        # user input
-        self.vref = vref_name
-        self.vref_grid = vref_grid
-        self._ccrs = None
+        # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
+        vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))
+        if vcrs_from_crs is not None:
+            # If something was also provided by the user, user takes precedence
+            # (we leave vcrs as it was for input)
+            if vcrs is not None:
+                # Raise a warning if the two are not the same
+                vcrs_user = _vcrs_from_user_input(vcrs)
+                if not vcrs_from_crs == vcrs_user:
+                    warnings.warn(
+                        "The CRS in the raster metadata already has a vertical component, "
+                        "the user-input '{}' will override it.".format(vcrs)
+                    )
+            # Otherwise, use the one from the raster 3D CRS
+            else:
+                vcrs = vcrs_from_crs
 
-        # trying to get vref from product name (priority to user input)
-        self.__parse_vref_from_fn(silent=silent)
+        # If no vertical CRS was provided by the user or defined in the CRS
+        if vcrs is None:
+            vcrs = _parse_vcrs_name_from_product(self.product)
+
+        # If a vertical reference was parsed or provided by user
+        if vcrs is not None:
+            self.set_vcrs(vcrs)
 
     def copy(self, new_array: NDArrayf | None = None) -> DEM:
+        """
+        Copy the DEM, possibly updating the data array.
+
+        :param new_array: New data array.
+
+        :return: Copied DEM.
+        """
 
         new_dem = super().copy(new_array=new_array)  # type: ignore
         # The rest of attributes are immutable, including pyproj.CRS
-        # dem_attrs = ['vref','vref_grid','ccrs'] #taken outside of class
         for attrs in dem_attrs:
             setattr(new_dem, attrs, getattr(self, attrs))
 
         return new_dem  # type: ignore
 
-    def __parse_vref_from_fn(self, silent: bool = False) -> None:
-        """Attempts to pull vertical reference from product name identified by SatImg."""
+    @classmethod
+    def from_array(
+        cls: type[DEM],
+        data: NDArrayf | MArrayf,
+        transform: tuple[float, ...] | Affine,
+        crs: CRS | int | None,
+        nodata: int | float | None = None,
+        vcrs: Literal["Ellipsoid"]
+        | Literal["EGM08"]
+        | Literal["EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
+    ) -> DEM:
+        """Create a DEM from a numpy array and the georeferencing information.
 
-        if self.product is not None:
-            vref = parse_vref_from_product(self.product)
-            if vref is not None and self.vref is None:
-                if not silent:
-                    print('From product name "' + str(self.product) + '": setting vertical reference as ' + str(vref))
-                self.vref = vref
-            elif vref is not None and self.vref is not None:
-                if not silent:
-                    print(
-                        "Leaving user input of "
-                        + str(self.vref)
-                        + " for vertical reference despite reading "
-                        + str(vref)
-                        + " from product name"
-                    )
-            else:
-                if not silent:
-                    print('Could not find a vertical reference based on product name: "' + str(self.product) + '"')
+        :param data: Input array.
+        :param transform: Affine 2D transform. Either a tuple(x_res, 0.0, top_left_x,
+            0.0, y_res, top_left_y) or an affine.Affine object.
+        :param crs: Coordinate reference system. Either a rasterio CRS,
+            or an EPSG integer.
+        :param nodata: Nodata value.
+        :param vcrs: Vertical coordinate reference system.
+
+        :returns: DEM created from the provided array and georeferencing.
+        """
+        # We first apply the from_array of the parent class
+        rast = SatelliteImage.from_array(data=data, transform=transform, crs=crs, nodata=nodata)
+        # Then add the vcrs to the class call (that builds on top of the parent class)
+        return cls(filename_or_dataset=rast, vcrs=vcrs)
 
     @property
-    def ccrs(self) -> pyproj.CRS:
-        """Set compound CRS, i.e. horizontal and vertical references"""
+    def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
+        """Vertical coordinate reference system of the DEM."""
 
-        # Temporary fix for some CRS with proj < 7.2
-        def get_crs(filepath: str) -> pyproj.CRS:
-            """Get the CRS of a raster with the given filepath."""
-            info = subprocess.run(
-                ["gdalinfo", "-json", filepath], stdout=subprocess.PIPE, check=True, encoding="utf-8"
-            ).stdout
+        return self._vcrs
 
-            wkt_string = json.loads(info)["coordinateSystem"]["wkt"]
+    @property
+    def vcrs_grid(self) -> str | None:
+        """Grid path of vertical coordinate reference system of the DEM."""
 
-            return pyproj.CRS.from_wkt(wkt_string)
+        return self._vcrs_grid
 
-        # Temporary fix to get all types of CRS
-        if pyproj.proj_version_str >= "7.2.0":
-            crs = self.crs
+    @property
+    def vcrs_name(self) -> str | None:
+        """Name of vertical coordinate reference system of the DEM."""
+
+        if self.vcrs is not None:
+            # If it is the ellipsoid
+            if isinstance(self.vcrs, str):
+                # Need to call CRS() here to make it work with rasterio.CRS...
+                vcrs_name = f"Ellipsoid (No vertical CRS). Datum: {CRS(self.crs).ellipsoid.name}."
+            # Otherwise, return the vertical reference name
+            else:
+                vcrs_name = self.vcrs.name
         else:
-            crs = get_crs(self.filename)
+            vcrs_name = None
 
-        if self.vref == "WGS84":
-            # The WGS84 ellipsoid corresponds to no vertical reference in pyproj
-            self._ccrs = pyproj.CRS(crs)
-        elif self.vref_grid is not None:
-            # For other vrefs, keep same horizontal projection and add geoid grid (the "dirty" way: because init is so
-            # practical and still going to be used for a while)
-            # see https://gis.stackexchange.com/questions/352277/
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", module="pyproj")
-                self._ccrs = pyproj.Proj(init="EPSG:" + str(int(crs.to_epsg())), geoidgrids=self.vref_grid).crs
-        else:
-            self._ccrs = None
+        return vcrs_name
 
-        return self._ccrs
-
-    def set_vref(self, vref_name: str | None = None, vref_grid: str | None = None) -> None:
+    def set_vcrs(
+        self,
+        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
+    ) -> None:
         """
-        Set vertical reference with a name or with a grid.
+        Set the vertical coordinate reference system of the DEM.
 
-        :param vref_name: Vertical reference name
-        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
+        :param new_vcrs: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+        """
+
+        # Get vertical CRS and set it and the grid
+        self._vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
+        self._vcrs_grid = _grid_from_user_input(vcrs_input=new_vcrs)
+
+    @property
+    def ccrs(self) -> CompoundCRS | CRS | None:
+        """Compound horizontal and vertical coordinate reference system of the DEM."""
+
+        if self.vcrs is not None:
+            ccrs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=self.vcrs)
+            return ccrs
+        else:
+            return None
+
+    def to_vcrs(
+        self,
+        dst_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        src_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None,
+    ) -> None:
+        """
+        Convert the DEM to another vertical coordinate reference system.
+
+        :param dst_vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
+        :param src_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `dst_vcrs`.
 
         :return:
         """
 
-        # Using vref_name only for WGS84 ellipsoid or the EGM96/EGM08 geoids (used 99% of the time)
-        if isinstance(vref_grid, str):
-
-            # Default behaviour: use grid if both name and grid are provided
-            if isinstance(vref_name, str):
-                print("Both a vertical reference name and vertical grid are provided: defaulting to using grid only.")
-
-            if vref_grid == "us_nga_egm08_25.tif":
-                self.vref = "EGM08"
-                self.vref_grid = vref_grid
-            elif vref_grid == "us_nga_egm96_15.tif":
-                self.vref = "EGM96"
-                self.vref_grid = vref_grid
-            else:
-                if os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), vref_grid)):
-                    self.vref = "Unknown vertical reference name from: " + vref_grid
-                    self.vref_grid = vref_grid
-                else:
-                    raise ValueError(
-                        "Grid not found in " + str(pyproj.datadir.get_data_dir()) + ": check if proj-data is "
-                        "installed via conda-forge, the pyproj.datadir, and that you are using a grid available at "
-                        "https://github.com/OSGeo/PROJ-data"
-                    )
-
-        # Otherwise, use name provided
-        elif isinstance(vref_name, str):
-            if vref_name == "WGS84":
-                self.vref_grid = None
-                self.vref = "WGS84"  # WGS84 ellipsoid
-            elif vref_name == "EGM08":
-                self.vref_grid = "us_nga_egm08_25.tif"  # EGM2008 at 2.5 minute resolution
-                self.vref = "EGM08"
-            elif vref_name == "EGM96":
-                self.vref_grid = "us_nga_egm96_15.tif"  # EGM1996 at 15 minute resolution
-                self.vref = "EGM96"
-            else:
-                raise ValueError(
-                    'Vertical reference name must be either "WGS84", "EGM96" or "EGM08". Otherwise, provide'
-                    " a geoid grid from PROJ DATA: https://github.com/OSGeo/PROJ-data"
-                )
-
-        # Else, return an error
-        else:
-            raise ValueError("Vertical reference name or vertical grid must be a string")
-
-    def to_vref(self, vref_name: str = "EGM96", vref_grid: str | None = None) -> None:
-
-        """
-        Convert between vertical references: ellipsoidal heights or geoid grids.
-
-        :param vref_name: Vertical reference name
-        :param vref_grid: Vertical reference grid (any grid file in https://github.com/OSGeo/PROJ-data)
-
-        :return:
-        """
-
-        # All transformations grids file are described here: https://github.com/OSGeo/PROJ-data
-        if self.vref is None and self.vref_grid is None:
+        if self.vcrs is None and src_vcrs is None:
             raise ValueError(
-                "The current DEM has not vertical reference: need to set one before attempting a conversion "
-                "towards another vertical reference."
+                "The current DEM has no vertical reference, define one with .set_vref() "
+                "or by passing `src_vcrs` to perform a conversion."
             )
 
-        # Initial ccrs
-        ccrs_init = self.ccrs
+        # Initial Compound CRS (only exists if vertical CRS is not None, as checked above)
+        if src_vcrs is not None:
+            # Warn if a vertical CRS already existed for that DEM
+            if self.vcrs is not None:
+                warnings.warn(
+                    category=UserWarning,
+                    message="Overriding the vertical CRS of the DEM with the one provided in `src_vcrs`.",
+                )
+            src_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=src_vcrs)
+        else:
+            src_ccrs = self.ccrs
 
-        # Destination crs: first, set the new reference (before calculation doesn't change anything,
-        # we need to update the data manually anyway)
-        self.set_vref(vref_name=vref_name, vref_grid=vref_grid)
-        ccrs_dest = self.ccrs
+        # New destination Compound CRS
+        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=dst_vcrs))
 
-        # Transform the grid
-        transformer = Transformer.from_crs(ccrs_init, ccrs_dest)
+        # If both compound CCRS are equal, do not run any transform
+        if src_ccrs.equals(dst_ccrs):
+            warnings.warn(
+                message="Source and destination vertical CRS are the same, skipping vertical transformation.",
+                category=UserWarning,
+            )
+            return None
+
+        # Transform elevation with new vertical CRS
         zz = self.data
         xx, yy = self.coords(offset="center")
-        zz_trans = transformer.transform(xx, yy, zz[0, :])[2]
-        zz[0, :] = zz_trans
+        zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
 
-        # Update raster
-        self.data = zz
+        # Update DEM
+        self._data = zz_trans.astype(self.dtypes[0])  # type: ignore
+
+        # Update vcrs (which will update ccrs if called)
+        self.set_vcrs(new_vcrs=dst_vcrs)

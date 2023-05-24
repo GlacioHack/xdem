@@ -16,7 +16,7 @@ import geoutils as gu
 import xdem
 
 # %%
-# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration_nuthkaab` as shown in
+# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration-nuthkaab` as shown in
 # the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example. We also load the reference DEM to derive terrain
 # attributes and the glacier outlines here corresponding to moving terrain.
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
@@ -35,7 +35,7 @@ errors, df_binning, error_function = xdem.spatialstats.infer_heteroscedasticity_
 
 # %%
 # The first output corresponds to the error map for the DEM (:math:`\pm` 1\ :math:`\sigma` level):
-errors.show(vmin=2, vmax=7, cmap="Reds", cb_title=r"Elevation error (1$\sigma$, m)")
+errors.show(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
 
 # %%
 # The second output is the dataframe of 2D binning with slope and maximum curvature:
