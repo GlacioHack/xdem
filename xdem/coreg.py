@@ -90,11 +90,11 @@ def apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float, z_name
     return new_df
 
 
-def residuals_df(dem: NDArrayf, 
-                 df: pd.DataFrame, 
-                 shift_px: tuple, 
-                 dz: float, 
-                 z_name: str, 
+def residuals_df(dem: NDArrayf,
+                 df: pd.DataFrame,
+                 shift_px: tuple,
+                 dz: float,
+                 z_name: str,
                  weight: str = None, **kwargs) -> pd.DataFrame:
     """
     Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying a shift.
@@ -647,7 +647,6 @@ class Coreg:
         self._fit_called = True
 
         return self
-
 
     def fit_pts(self: CoregType,
                 reference_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
@@ -1930,7 +1929,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             new_pts += [east_diff*resolution, north_diff*resolution]
 
             # get new values
-            tba_pts = aligned_dem.interp_points(new_pts, mode='nearest')
+            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest")
             elevation_difference = ref_dem[z_name].values - tba_pts
 
             # mask out no data by dem's mask
@@ -1938,8 +1937,8 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
             # update values relataed to shifted pts
             elevation_difference = elevation_difference[mask_]
-            slope_pts = slope_r.interp_points(pts_, mode='nearest')
-            aspect_pts = aspect_r.interp_points(pts_, mode='nearest')
+            slope_pts = slope_r.interp_points(pts_, mode="nearest")
+            aspect_pts = aspect_r.interp_points(pts_, mode="nearest")
             bias = np.nanmedian(elevation_difference)
 
             # Update statistics
@@ -1968,8 +1967,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(
                 offset_east, offset_north, bias))
             print("   Statistics on coregistered dh:")
-            print(
-                "      Median = {:.3f} - NMAD = {:.3f}".format(bias, nmad_new))
+            print("      Median = {:.3f} - NMAD = {:.3f}".format(bias, nmad_new))
 
         self._meta["offset_east_px"] = offset_east
         self._meta["offset_north_px"] = offset_north
@@ -1979,6 +1977,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
+
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
@@ -2303,7 +2302,7 @@ class BlockwiseCoreg(Coreg):
 
             # Find the corresponding slice of the inlier_mask to subset the data
             rows, cols = np.where(inlier_mask)
-            arrayslice = np.s_[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1]
+            arrayslice = np.s_[rows.min(): rows.max() + 1, cols.min(): cols.max() + 1]
 
             # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
             ref_subset = ref_dem[arrayslice].copy()
@@ -2638,7 +2637,7 @@ def warp_dem(
         coords[:, 1] = dem_arr.shape[0] * (1 - (coords[:, 1] - bounds.bottom) / (bounds.top - bounds.bottom))
 
     # Generate a grid of x and y index coordinates.
-    grid_y, grid_x = np.mgrid[0 : dem_arr.shape[0], 0 : dem_arr.shape[1]]
+    grid_y, grid_x = np.mgrid[0: dem_arr.shape[0], 0: dem_arr.shape[1]]
 
     if no_horizontal:
         warped = dem_arr.copy()
