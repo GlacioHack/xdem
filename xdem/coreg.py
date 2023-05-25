@@ -1854,7 +1854,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         """
 
         if verbose:
-            print("Running Nuth and Kääb (2011) coregistration. Zhihao's implement, shift pts instead of shift dem")
+            print("Running Nuth and Kääb (2011) coregistration. Shift pts instead of shifting dem")
 
         tba_arr, _ = get_array_and_mask(tba_dem)
 

@@ -42,5 +42,5 @@ dependencies:
 
   - pip:
     - noisyopt
-     - -e ./
+    - -e ./
 #     - git+https://github.com/GlacioHack/GeoUtils.git
