@@ -123,7 +123,9 @@ venv.bak/
 .idea
 
 # VS code setting
-.vscode
+.vscode/
+!.vscode/settings.json
+!.vscode/launch.json
 
 # Rope project settings
 .ropeproject

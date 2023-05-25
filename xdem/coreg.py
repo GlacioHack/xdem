@@ -90,7 +90,12 @@ def apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float, z_name
     return new_df
 
 
-def residuals_df(dem: NDArrayf, df: pd.DataFrame, shift_px: tuple, dz: float, z_name: str, weight: str = None, **kwargs) -> pd.DataFrame:
+def residuals_df(dem: NDArrayf, 
+                 df: pd.DataFrame, 
+                 shift_px: tuple, 
+                 dz: float, 
+                 z_name: str, 
+                 weight: str = None, **kwargs) -> pd.DataFrame:
     """
     Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying a shift.
 
@@ -127,7 +132,8 @@ def df_sampling_from_dem(dem: NDArrayf, tba_dem: NDArrayf, samples: int = 10000,
     '''
     generate a datafram from a dem by random sampling.
 
-    :param offset: The pixel’s center is returned by default, but a corner can be returned by setting offset to one of ul, ur, ll, lr.
+    :param offset: The pixel’s center is returned by default, but a corner can be returned 
+    by setting offset to one of ul, ur, ll, lr.
 
     :returns dataframe: N,E coordinates and z of DEM at sampling points.
     '''
@@ -635,7 +641,7 @@ class Coreg:
             full_mask[random_indices] = False
 
         # Run the associated fitting function
-        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem,transform=transform, crs=crs, weights=weights, verbose=verbose)
+        self._fit_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, crs=crs, weights=weights, verbose=verbose)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -729,7 +735,7 @@ class Coreg:
             if 'planc' in ref_dem.columns and 'profc' in ref_dem.columns:
                 ref_dem = ref_dem.query('planc < 5 and profc < 5')
             else:
-                print('Warning: There is no curvature in dataframe. Set mask_high_curv = True for more robust results and costs more time')
+                print("Warning: There is no curvature in dataframe. Set mask_high_curv=True for more robust results")
 
         points = np.array((ref_dem['E'].values, ref_dem['N'].values)).T
 
@@ -1595,7 +1601,7 @@ class GradientDescending(Coreg):
         :param deltatol: Target pattern size, or the precision you want achieve.
         :param feps: Parameters for algorithm. Smallest difference in function value to resolve.
 
-        The algorithm terminates when the current iterate is locally optimally ('deltatol') at the target pattern size 'deltatol' 
+        The algorithm terminates when the iterate is locally optimally ('deltatol') at the target pattern size 'deltatol' 
         or when the function value differs by less than the tolerance 'feps' along all directions.
 
         """
