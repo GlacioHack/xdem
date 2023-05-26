@@ -118,7 +118,7 @@ class TestRobustFitting:
         # Define X vector
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
-        true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
+        true_coefs = np.array([(5, 3, np.pi), (2, 0.5, 0)]).flatten()
         y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Check that the function runs (we passed a small niter to reduce the computing time of the test)
@@ -128,13 +128,20 @@ class TestRobustFitting:
         # amplitude sinusoid
         # TODO: Work on making results not random between OS with basinhopping, this currently fails on Windows and Mac
         if platform.system() == "Linux":
+            # Test all parameters
             for i in np.arange(6):
-                assert coefs[i] == pytest.approx(true_coefs[i], abs=0.1)
+                # For the phase, check the circular variable with distance to modulo 2 pi
+                if (i+1) % 3 == 0:
+                    coef_diff = coefs[i] - true_coefs[i] % (2*np.pi)
+                    assert np.minimum(coef_diff, np.abs(2*np.pi - coef_diff)) < 0.1
+                # Else check normally
+                else:
+                    assert coefs[i] == pytest.approx(true_coefs[i], abs=0.1)
 
         # Check that using custom arguments does not trigger an error
-        bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
+        bounds = [(1, 7), (1, 10), (0, 2 * np.pi), (1, 7), (0.1, 4), (0, 2 * np.pi)]
         coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(
-            x, y, bounds_amp_freq_phase=bounds, max_nb_frequency=2, hop_length=0.01, random_state=42, niter=1
+            x, y, bounds_amp_wave_phase=bounds, max_nb_frequency=2, hop_length=0.01, random_state=42, niter=1
         )
 
     def test_robust_nfreq_simsin_fit_noise_and_outliers(self) -> None:
@@ -144,7 +151,7 @@ class TestRobustFitting:
         # Define X vector
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
-        true_coefs = np.array([(5, 1, np.pi), (3, 0.3, 0)]).flatten()
+        true_coefs = np.array([(5, 3, np.pi), (3, 0.5, 0)]).flatten()
         y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Add some noise
@@ -154,8 +161,8 @@ class TestRobustFitting:
         y[900:925] = 10
 
         # Define first guess for bounds and run
-        bounds = [(3, 7), (0.1, 3), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
-        coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, bounds_amp_freq_phase=bounds, niter=5)
+        bounds = [(3, 7), (1, 5), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
+        coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, bounds_amp_wave_phase=bounds, niter=5)
 
         # Should be less precise, but still on point
         # We need to re-order output coefficient to match input

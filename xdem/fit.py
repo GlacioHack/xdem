@@ -10,6 +10,8 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import scipy
+
+import xdem.spatialstats
 from geoutils.raster import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
@@ -72,7 +74,7 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     Sum of N sinusoids in 1D.
 
     :param xx: Array of coordinates.
-    :param params: 3 x N parameters in order of amplitude, frequency and phase (radians).
+    :param params: 3 x N parameters in order of amplitude (Y unit), wavelength (X unit) and phase (radians).
     """
 
     # Squeeze input in case it is a 1-D tuple or such
@@ -440,7 +442,7 @@ def robust_nfreq_sumsin_fit(
     ydata: NDArrayf,
     sigma: NDArrayf = None,
     max_nb_frequency: int = 3,
-    bounds_amp_freq_phase: list[tuple[float, float]] | None = None,
+    bounds_amp_wave_phase: list[tuple[float, float]] | None = None,
     cost_func: Callable[[NDArrayf], float] = soft_loss,
     subsample: float | int = 1,
     hop_length: float | None = None,
@@ -457,8 +459,8 @@ def robust_nfreq_sumsin_fit(
     :param xdata: Input x data (N,).
     :param ydata: Input y data (N,).
     :param sigma: Standard error of y data (N,).
-    :param max_nb_frequency: Maximum number of phases.
-    :param bounds_amp_freq_phase: Bounds for amplitude, frequency and phase (L, 3, 2) and
+    :param max_nb_frequency: Maximum number of sinusoid of different frequencies.
+    :param bounds_amp_wave_phase: Bounds for amplitude, wavelength and phase (L, 3, 2) and
         with mean value used for initialization.
     :param hop_length: Jump in function values to optimize basinhopping algorithm search (for best results, should be
     comparable to the separation in function value between local minima).
@@ -502,11 +504,13 @@ def robust_nfreq_sumsin_fit(
 
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
     if hop_length is None:
-        x_sorted = np.sort(x)
-        hop_length = np.mean(np.diff(x_sorted))
+        y_sorted = np.sort(y)
+        hop_length = np.mean(np.diff(y_sorted))
+
+    x_res = np.mean(np.diff(np.sort(x)))
 
     # Use binned statistics for first guess
-    nb_bin = int((x.max() - x.min()) / (5 * hop_length))
+    nb_bin = int((x.max() - x.min()) / (5 * x_res))
     df = nd_binning(y, [x], ["var"], list_var_bins=nb_bin, statistics=[np.nanmedian])
     # Compute first guess for x and y
     x_fg = pd.IntervalIndex(df["var"]).mid.values
@@ -521,21 +525,22 @@ def robust_nfreq_sumsin_fit(
 
     for nb_freq in np.arange(1, max_nb_frequency + 1):
 
-        b = bounds_amp_freq_phase
+        b = bounds_amp_wave_phase
         # If bounds are not provided, define as the largest possible bounds
         if b is None:
+            # For the amplitude, from Y values
             lb_amp = 0
-            ub_amp = (y_fg.max() - y_fg.min()) / 2
-            # Define for phase
+            ub_amp = y_fg.max() - y_fg.min()
+            # For phase: all possible values for a sinusoid
             lb_phase = 0
             ub_phase = 2 * np.pi
-            # Define for the frequency, we need at least 5 points to see any kind of periodic signal
-            lb_frequency = 1 / (5 * (x.max() - x.min()))
-            ub_frequency = 1 / (5 * hop_length)
+            # For the wavelength: from the resolution and coordinate extent
+            lb_wavelength = x_res
+            ub_wavelength = x.max() - x.min()
 
             b = []
             for _i in range(nb_freq):
-                b += [(lb_amp, ub_amp), (lb_frequency, ub_frequency), (lb_phase, ub_phase)]
+                b += [(lb_amp, ub_amp), (lb_wavelength, ub_wavelength), (lb_phase, ub_phase)]
 
         # Format lower and upper bounds for scipy
         lb = np.asarray([b[i][0] for i in range(3 * nb_freq)])
@@ -545,19 +550,26 @@ def robust_nfreq_sumsin_fit(
         # First guess for the mean parameters
         p0 = np.divide(lb + ub, 2).squeeze()
 
+        print("Bounds")
+        print(lb)
+        print(ub)
+
         # Initialize with the first guess
-        init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-6})
+        init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds)
         init_results = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             p0,
             disp=verbose,
-            T=hop_length,
+            T=70,
             minimizer_kwargs=init_args,
             seed=random_state,
             **kwargs,
         )
         init_results = init_results.lowest_optimization_result
         init_x = np.array([np.round(ini, 5) for ini in init_results.x])
+
+        print('Initial result')
+        print(init_x)
 
         # Subsample the final raster
         if subsample != 1:
@@ -566,33 +578,58 @@ def robust_nfreq_sumsin_fit(
             y = y[subsamp]
 
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds, options={"ftol": 1e-6})
+        minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds)
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             init_x,
             disp=verbose,
-            T=5 * hop_length,
+            T=700,
             minimizer_kwargs=minimizer_kwargs,
             seed=random_state,
             **kwargs,
         )
         myresults = myresults.lowest_optimization_result
         myresults_x = np.array([np.round(myres, 5) for myres in myresults.x])
+
+        print('Final result')
+        print(myresults_x)
+
         # Write results for this number of frequency
         costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, x, y)
         amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults_x
+
+
+    # Replace NaN cost by infinity
+    costs[np.isnan(costs)] = np.inf
+
+    print('Costs')
+    print(costs)
 
     final_index = _choice_best_order(cost=costs)
 
     final_coefs = amp_freq_phase[final_index][~np.isnan(amp_freq_phase[final_index])]
 
+    print(final_coefs)
+
+
     # If an amplitude coefficient is almost zero, remove the coefs of that frequency and lower the degree
     final_degree = final_index + 1
     for i in range(final_index + 1):
-        if np.abs(final_coefs[3 * i]) < (np.nanpercentile(x, 90) - np.nanpercentile(x, 10)) / 1000:
+        # If an amplitude has an estimated value of less than 0.1% the signal bounds (percentiles for robustness)
+        if np.abs(final_coefs[3 * i]) < (np.nanpercentile(y, 90) - np.nanpercentile(y, 10)) / 1000:
             final_coefs = np.delete(final_coefs, slice(3 * i, 3 * i + 3))
             final_degree -= 1
             break
+
+    # Re-order frequencies by highest amplitude
+    amplitudes = final_coefs[0::3]
+    indices = np.flip(np.argsort(amplitudes))
+    new_amplitudes = amplitudes[indices]
+    new_wavelengths = final_coefs[1::3][indices]
+    new_phases = final_coefs[2::3][indices]
+
+    final_coefs = np.array([(new_amplitudes[i], new_wavelengths[i], new_phases[i])
+                            for i in range(final_degree)]).flatten()
 
     # The number of frequencies corresponds to the final index plus one
     return final_coefs, final_degree

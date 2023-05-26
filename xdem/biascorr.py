@@ -216,7 +216,7 @@ class BiasCorr(Coreg):
                 list_var=[var[ind_valid] for var in bias_vars.values()],
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=self._meta["bin_sizes"],
-                statistics=(self._meta["bin_statistic"],),
+                statistics=(self._meta["bin_statistic"], "count"),
             )
 
             self._meta["bin_dataframe"] = df
@@ -260,7 +260,9 @@ class BiasCorr(Coreg):
             first_var = list(bias_vars.keys())[0]
             corr = corr.reshape(np.shape(bias_vars[first_var]))
 
-        return corr, transform
+        dem_corr = dem + corr
+
+        return dem_corr, transform
 
 
 class BiasCorr1D(BiasCorr):
@@ -479,6 +481,7 @@ class DirectionalBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        bias_vars: NDArrayf,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
@@ -504,6 +507,23 @@ class DirectionalBias(BiasCorr1D):
             verbose=verbose,
             **kwargs,
         )
+
+    def _apply_func(
+            self,
+            dem: NDArrayf,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            bias_vars: None | dict[str, NDArrayf] = None,
+            **kwargs: Any,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        # Define the coordinates for applying the correction
+        x, _ = gu.raster.get_xy_rotated(
+            raster=gu.Raster.from_array(data=dem, crs=crs, transform=transform),
+            along_track_angle=self._meta["angle"],
+        )
+
+        return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
 
 
 class TerrainBias(BiasCorr1D):
@@ -551,6 +571,7 @@ class TerrainBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        bias_vars: NDArrayf,
         transform: None | rio.transform.Affine = None,
         crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,

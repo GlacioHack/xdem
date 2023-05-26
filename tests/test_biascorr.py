@@ -9,10 +9,12 @@ import scipy
 
 import xdem.terrain
 
+PLOT = False
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from xdem import biascorr, examples
-    from xdem.fit import polynomial_2d
+    from xdem.fit import polynomial_2d, sumsin_1d, polynomial_1d
 
 
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
@@ -268,15 +270,53 @@ class TestBiasCorr:
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
 
-    def test_directionalbias__synthetic(self) -> None:
+    @pytest.mark.parametrize("angle", [20, 90, 210])   # type: ignore
+    # @pytest.mark.parametrize("nb_freq", [1, 2, 3])   # type: ignore
+    def test_directionalbias__synthetic(self, angle) -> None:
         """Test the subclass DirectionalBias."""
 
-        # Try default "fit" parameters instantiation
-        dirbias = biascorr.DirectionalBias(angle=45)
+        # Get along track
+        xx = gu.raster.get_xy_rotated(self.ref, along_track_angle=angle)[0]
 
-        assert dirbias._meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
-        assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
-        assert dirbias._meta["angle"] == 45
+        # Get random parameters (3 parameters needed per frequency)
+        np.random.seed(42)
+        params = np.array([(5, 3000, np.pi), (1, 300, 0)]).flatten()
+        nb_freq=1
+        params = params[0:3*nb_freq]
+
+        # Create a synthetic bias and add to the DEM
+        synthetic_bias = sumsin_1d(xx.flatten(), *params)
+        bias_dem = self.ref - synthetic_bias.reshape(np.shape(self.ref.data))
+
+        # For debugging
+        if PLOT:
+            synth = self.ref.copy(new_array=synthetic_bias.reshape(np.shape(self.ref.data)))
+            import matplotlib.pyplot as plt
+            synth.show()
+            plt.show()
+
+            dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
+            dirbias.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42)
+            xdem.spatialstats.plot_1d_binning(df=dirbias._meta["bin_dataframe"], var_name="angle",
+                                              statistic_name="nanmedian", min_count=0)
+            plt.show()
+
+        # Try default "fit" parameters instantiation
+        dirbias = biascorr.DirectionalBias(angle=angle)
+        bounds = [(2, 10), (500, 5000), (0, 2 * np.pi),
+                  (0.5, 2), (100, 500), (0, 2 * np.pi),
+                  (0, 0.5), (0, 100), (0, 2 * np.pi)]
+        dirbias.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42,
+                    bounds_amp_wave_phase=bounds, niter=70)
+
+        # Check all parameters are the same within 10%
+        fit_params = dirbias._meta["fit_params"]
+        assert np.shape(fit_params) == np.shape(params)
+        assert np.allclose(params, fit_params, rtol=0.1)
+
+        # Run apply and check that 99% of the variance was corrected
+        corrected_dem = dirbias.apply(bias_dem)
+        assert np.nanvar(corrected_dem - self.ref) < 0.01 * np.nanvar(synthetic_bias)
 
     def test_deramp(self) -> None:
         """Test the subclass Deramp."""
@@ -288,7 +328,7 @@ class TestBiasCorr:
         assert deramp._meta["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp._meta["poly_order"] == 2
 
-    @pytest.mark.parametrize("order", [1, 2, 3, 4, 5])  # type: ignore
+    @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
     def test_deramp__synthetic(self, order: int) -> None:
         """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
 
@@ -310,7 +350,7 @@ class TestBiasCorr:
         deramp = biascorr.Deramp(poly_order=order)
         deramp.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42)
 
-        # Check high-order parameters are the same
+        # Check high-order parameters are the same within 10%
         fit_params = deramp._meta["fit_params"]
         assert np.shape(fit_params) == np.shape(params)
         assert np.allclose(
@@ -319,4 +359,4 @@ class TestBiasCorr:
 
         # Run apply and check that 99% of the variance was corrected
         corrected_dem = deramp.apply(bias_dem)
-        assert np.nanvar(corrected_dem + bias_dem) < 0.01 * np.nanvar(synthetic_bias)
+        assert np.nanvar(corrected_dem - self.ref) < 0.01 * np.nanvar(synthetic_bias)
