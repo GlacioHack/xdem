@@ -89,7 +89,7 @@ class TestBiasCorr:
         with pytest.raises(
             TypeError,
             match=re.escape(
-                "Argument `bin_sizes` must be an integer, or a dictionary of integers or tuples, " "got <class 'dict'>."
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, " "got <class 'dict'>."
             ),
         ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_sizes={"a": 1.5})  # type: ignore
@@ -142,7 +142,7 @@ class TestBiasCorr:
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1] * b + c / d)
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1] * b + c ** d)
     )  # type: ignore
     @pytest.mark.parametrize(
         "fit_optimizer",
@@ -266,21 +266,22 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=45)
 
+        assert dirbias._meta["fit_or_bin"] == "fit"
         assert dirbias._meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
 
     @pytest.mark.parametrize("angle", [20, 90, 210])   # type: ignore
-    # @pytest.mark.parametrize("nb_freq", [1, 2, 3])   # type: ignore
-    def test_directionalbias__synthetic(self, angle) -> None:
-        """Test the subclass DirectionalBias."""
+    @pytest.mark.parametrize("nb_freq", [1, 2, 3])   # type: ignore
+    def test_directionalbias__synthetic(self, angle, nb_freq) -> None:
+        """Test the subclass DirectionalBias with synthetic data."""
 
         # Get along track
         xx = gu.raster.get_xy_rotated(self.ref, along_track_angle=angle)[0]
 
         # Get random parameters (3 parameters needed per frequency)
         np.random.seed(42)
-        params = np.array([(5, 3000, np.pi), (1, 300, 0)]).flatten()
+        params = np.array([(5, 3000, np.pi), (1, 300, 0), (0.5, 100, np.pi/2)]).flatten()
         nb_freq=1
         params = params[0:3*nb_freq]
 
@@ -305,9 +306,9 @@ class TestBiasCorr:
         dirbias = biascorr.DirectionalBias(angle=angle)
         bounds = [(2, 10), (500, 5000), (0, 2 * np.pi),
                   (0.5, 2), (100, 500), (0, 2 * np.pi),
-                  (0, 0.5), (0, 100), (0, 2 * np.pi)]
+                  (0, 0.5), (10, 100), (0, 2 * np.pi)]
         dirbias.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42,
-                    bounds_amp_wave_phase=bounds, niter=70)
+                    bounds_amp_wave_phase=bounds, niter=10)
 
         # Check all parameters are the same within 10%
         fit_params = dirbias._meta["fit_params"]
@@ -324,6 +325,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         deramp = biascorr.Deramp()
 
+        assert deramp._meta["fit_or_bin"] == "fit"
         assert deramp._meta["fit_func"] == polynomial_2d
         assert deramp._meta["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp._meta["poly_order"] == 2
@@ -356,6 +358,52 @@ class TestBiasCorr:
         assert np.allclose(
             params.reshape(order + 1, order + 1)[-1:, -1:], fit_params.reshape(order + 1, order + 1)[-1:, -1:], rtol=0.1
         )
+
+        # Run apply and check that 99% of the variance was corrected
+        corrected_dem = deramp.apply(bias_dem)
+        assert np.nanvar(corrected_dem - self.ref) < 0.01 * np.nanvar(synthetic_bias)
+
+    def test_terrainbias(self) -> None:
+        """Test the subclass TerrainBias."""
+
+        # Try default "fit" parameters instantiation
+        tb = biascorr.TerrainBias()
+
+        assert tb._meta["fit_or_bin"] == "bin"
+        assert tb._meta["bin_sizes"] == 100
+        assert tb._meta["bin_statistic"] == np.nanmedian
+        assert tb._meta["terrain_attribute"] == "maximum_curvature"
+
+    def test_terrainbias__synthetic(self) -> None:
+        """Test the subclass TerrainBias."""
+
+        # Get maximum curvature
+        maxc = xdem.terrain.get_terrain_attribute(self.ref, attribute="maximum_curvature")
+
+        # Create a bias depending on bins
+        synthetic_bias = np.zeros(np.shape(self.ref.data))
+
+        bin_edges = np.array((-1, 0, 0.1, 0.5, 2, 5))
+        bias_per_bin = np.array((-5, 10, -2, 25, 5))
+        for i in range(len(bin_edges) - 1):
+            synthetic_bias[np.logical_and(maxc.data >= bin_edges[i], maxc.data < bin_edges[i+1])] = bias_per_bin[i]
+
+        # Add bias to the second DEM
+        bias_dem = self.ref - synthetic_bias
+
+        # Run the binning
+        deramp = biascorr.TerrainBias(terrain_attribute="maximum_curvature",
+                                      bin_sizes={"maximum_curvature": bin_edges},
+                                      bin_apply_method="per_bin")
+        # We don't want to subsample here, otherwise it might be very hard to derive maximum curvature...
+        # TODO: Add the option to get terrain attribute before subsampling in the fit subclassing logic?
+        deramp.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, random_state=42)
+
+        # Check high-order parameters are the same within 10%
+        bin_df = deramp._meta["bin_dataframe"]
+        assert [interval.left for interval in bin_df["maximum_curvature"].values] == list(bin_edges[:-1])
+        assert [interval.right for interval in bin_df["maximum_curvature"].values] == list(bin_edges[1:])
+        assert np.allclose(bin_df["nanmedian"], bias_per_bin, rtol=0.1)
 
         # Run apply and check that 99% of the variance was corrected
         corrected_dem = deramp.apply(bias_dem)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Iterable
 
 import geoutils as gu
 import numpy as np
@@ -42,8 +42,8 @@ class BiasCorr(Coreg):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
@@ -79,10 +79,10 @@ class BiasCorr(Coreg):
             # Check input types for "bin" to raise user-friendly errors
             if not (
                 isinstance(bin_sizes, int)
-                or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, tuple)) for val in bin_sizes.values()))
+                or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, Iterable)) for val in bin_sizes.values()))
             ):
                 raise TypeError(
-                    "Argument `bin_sizes` must be an integer, or a dictionary of integers or tuples, "
+                    "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
                     "got {}.".format(type(bin_sizes))
                 )
 
@@ -157,10 +157,15 @@ class BiasCorr(Coreg):
         diff = ref_dem - tba_dem
         ind_valid = np.logical_and.reduce((np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values())))
 
+        # Raise errors if all values are NaN after introducing masks from the variables
+        # (Others are already checked in Coreg.fit())
+        if np.all(~ind_valid):
+            raise ValueError("One of the 'bias_vars' had only NaNs.")
+
         # Get number of variables
         nd = len(bias_vars)
 
-        # Run fit and save optimized function parameters
+        # Option 1: Run fit and save optimized function parameters
         if self._fit_or_bin == "fit":
 
             # Print if verbose
@@ -203,19 +208,29 @@ class BiasCorr(Coreg):
 
             self._meta["fit_params"] = params
 
-        # Or run binning and save dataframe of result
+        # Option 2: Run binning and save dataframe of result
         else:
 
-            print(
-                "Estimating bias correction along variables {} by binning "
-                "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
-            )
+            if verbose:
+                print(
+                    "Estimating bias correction along variables {} by binning "
+                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
+                )
+
+            # We need to sort the bin sizes in the same order as the bias variables if a dict is passed
+            if isinstance(self._meta["bin_sizes"], dict):
+                var_order = list(bias_vars.keys())
+                bin_sizes = [self._meta["bin_sizes"][var] for var in var_order]
+            else:
+                bin_sizes = self._meta["bin_sizes"]
+
+            print(bin_sizes)
 
             df = xdem.spatialstats.nd_binning(
                 values=diff[ind_valid],
                 list_var=[var[ind_valid] for var in bias_vars.values()],
                 list_var_names=list(bias_vars.keys()),
-                list_var_bins=self._meta["bin_sizes"],
+                list_var_bins=bin_sizes,
                 statistics=(self._meta["bin_statistic"], "count"),
             )
 
@@ -249,16 +264,18 @@ class BiasCorr(Coreg):
                     list_var_names=list(bias_vars.keys()),
                     statistic=self._meta["bin_statistic"],
                 )
-            else:
-                pass
-                # TODO: !
-                # bin_interpolator =
+                corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
+                first_var = list(bias_vars.keys())[0]
+                corr = corr.reshape(np.shape(bias_vars[first_var]))
 
-            # Flatten each array before interpolating
-            corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
-            # Reshape with shape of first variable
-            first_var = list(bias_vars.keys())[0]
-            corr = corr.reshape(np.shape(bias_vars[first_var]))
+            else:
+                # Get N-D binning statistic for each pixel of the new list of variables
+                corr = xdem.spatialstats.get_perbin_nd_binning(
+                    df=self._meta["bin_dataframe"],
+                    list_var=list(bias_vars.values()),
+                    list_var_names=list(bias_vars.keys()),
+                    statistic=self._meta["bin_statistic"],
+                )
 
         dem_corr = dem + corr
 
@@ -278,8 +295,8 @@ class BiasCorr1D(BiasCorr):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] | None = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
@@ -338,8 +355,8 @@ class BiasCorr2D(BiasCorr):
         self,
         fit_or_bin: str = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[float]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] | None = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
@@ -399,8 +416,8 @@ class BiasCorrND(BiasCorr):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] | None = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
@@ -456,8 +473,8 @@ class DirectionalBias(BiasCorr1D):
         angle: float = 0,
         fit_or_bin: str = "fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
-        fit_optimizer: Callable[..., tuple[float]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] | None = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
@@ -496,6 +513,12 @@ class DirectionalBias(BiasCorr1D):
             raster=gu.Raster.from_array(data=ref_dem, crs=crs, transform=transform),
             along_track_angle=self._meta["angle"],
         )
+
+        # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
+        if "hop_length" not in kwargs:
+            # The hop length will condition jump in function values, need to be larger than average resolution
+            average_res = (transform[0] + abs(transform[4]))/2
+            kwargs.update({"hop_length": average_res})
 
         super()._fit_func(
             ref_dem=ref_dem,
@@ -540,13 +563,13 @@ class TerrainBias(BiasCorr1D):
 
     def __init__(
         self,
-        terrain_attribute="maximum_curvature",
+        terrain_attribute: str = "maximum_curvature",
         fit_or_bin: str = "bin",
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] | None = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] | None = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
@@ -580,21 +603,43 @@ class TerrainBias(BiasCorr1D):
     ):
 
         # Derive terrain attribute
-        attr = xdem.terrain.get_terrain_attribute(
-            dem=ref_dem, attribute=self._meta["attribute"], resolution=(transform[0], transform[4])
-        )
+        if self._meta["terrain_attribute"] == "elevation":
+            attr = ref_dem
+        else:
+            attr = xdem.terrain.get_terrain_attribute(
+                dem=ref_dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+            )
 
         # Run the parent function
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
-            bias_vars={self._meta["attribute"]: attr},
+            bias_vars={self._meta["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
             weights=weights,
             verbose=verbose,
             **kwargs,
         )
+
+    def _apply_func(
+            self,
+            dem: NDArrayf,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            bias_vars: None | dict[str, NDArrayf] = None,
+            **kwargs: Any,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        # Derive terrain attribute
+        if self._meta["terrain_attribute"] == "elevation":
+            attr = dem
+        else:
+            attr = xdem.terrain.get_terrain_attribute(
+                dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4])))
+
+        return super()._apply_func(dem=dem, transform=transform, crs=crs,
+                                   bias_vars={self._meta["terrain_attribute"]: attr}, **kwargs)
 
 
 class Deramp(BiasCorr2D):
@@ -607,8 +652,8 @@ class Deramp(BiasCorr2D):
         poly_order: int = 2,
         fit_or_bin: str = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[float]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | tuple[float]] | None = 10,
+        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):

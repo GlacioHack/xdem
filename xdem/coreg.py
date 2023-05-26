@@ -521,16 +521,26 @@ class CoregDict(TypedDict, total=False):
     # The pipeline metadata can have any value of the above
     pipeline: list[Any]
 
-    # BiasCorr classes
+    # BiasCorr classes generic metadata
+
+    # 1/ Inputs
+    fit_or_bin: Literal["fit"] | Literal["bin"]
     fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
     fit_optimizer: Callable[..., tuple[float]]
     bin_sizes: int | dict[str, int | tuple[float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear"] | Literal["per_bin"]
 
+    # 2/ Outputs
     bias_vars: list[str]
     fit_params: list[float]
     bin_dataframe: pd.DataFrame
+
+    # 3/ Specific inputs or outputs
+    terrain_attribute: str
+    angle: float
+    poly_order: int
+    nb_sin_freq: int
 
 
 CoregType = TypeVar("CoregType", bound="Coreg")

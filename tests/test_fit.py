@@ -161,7 +161,7 @@ class TestRobustFitting:
         y[900:925] = 10
 
         # Define first guess for bounds and run
-        bounds = [(3, 7), (1, 5), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0, 1), (0.1, 1), (0, 2 * np.pi)]
+        bounds = [(3, 7), (1, 5), (0, 2 * np.pi), (1, 7), (0.1, 1), (0, 2 * np.pi), (0.1, 1), (0.1, 1), (0, 2 * np.pi)]
         coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, bounds_amp_wave_phase=bounds, niter=5)
 
         # Should be less precise, but still on point

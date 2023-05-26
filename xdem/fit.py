@@ -504,13 +504,11 @@ def robust_nfreq_sumsin_fit(
 
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
     if hop_length is None:
-        y_sorted = np.sort(y)
-        hop_length = np.mean(np.diff(y_sorted))
-
-    x_res = np.mean(np.diff(np.sort(x)))
+        x_res = np.mean(np.diff(np.sort(x)))
+        hop_length = x_res
 
     # Use binned statistics for first guess
-    nb_bin = int((x.max() - x.min()) / (5 * x_res))
+    nb_bin = int((x.max() - x.min()) / (5 * hop_length))
     df = nd_binning(y, [x], ["var"], list_var_bins=nb_bin, statistics=[np.nanmedian])
     # Compute first guess for x and y
     x_fg = pd.IntervalIndex(df["var"]).mid.values
@@ -525,6 +523,9 @@ def robust_nfreq_sumsin_fit(
 
     for nb_freq in np.arange(1, max_nb_frequency + 1):
 
+        if verbose:
+            print('Fitting with {} frequency'.format(nb_freq))
+
         b = bounds_amp_wave_phase
         # If bounds are not provided, define as the largest possible bounds
         if b is None:
@@ -535,7 +536,8 @@ def robust_nfreq_sumsin_fit(
             lb_phase = 0
             ub_phase = 2 * np.pi
             # For the wavelength: from the resolution and coordinate extent
-            lb_wavelength = x_res
+            # (we don't want the lower bound to be zero, to avoid divisions by zero)
+            lb_wavelength = hop_length / 5
             ub_wavelength = x.max() - x.min()
 
             b = []
@@ -550,9 +552,10 @@ def robust_nfreq_sumsin_fit(
         # First guess for the mean parameters
         p0 = np.divide(lb + ub, 2).squeeze()
 
-        print("Bounds")
-        print(lb)
-        print(ub)
+        if verbose:
+            print("Bounds")
+            print(lb)
+            print(ub)
 
         # Initialize with the first guess
         init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds)
@@ -560,7 +563,7 @@ def robust_nfreq_sumsin_fit(
             wrapper_cost_sumofsin,
             p0,
             disp=verbose,
-            T=70,
+            T= hop_length * 5,
             minimizer_kwargs=init_args,
             seed=random_state,
             **kwargs,
@@ -568,8 +571,9 @@ def robust_nfreq_sumsin_fit(
         init_results = init_results.lowest_optimization_result
         init_x = np.array([np.round(ini, 5) for ini in init_results.x])
 
-        print('Initial result')
-        print(init_x)
+        if verbose:
+            print('Initial result')
+            print(init_x)
 
         # Subsample the final raster
         if subsample != 1:
@@ -583,7 +587,7 @@ def robust_nfreq_sumsin_fit(
             wrapper_cost_sumofsin,
             init_x,
             disp=verbose,
-            T=700,
+            T=hop_length * 50,
             minimizer_kwargs=minimizer_kwargs,
             seed=random_state,
             **kwargs,
@@ -591,8 +595,9 @@ def robust_nfreq_sumsin_fit(
         myresults = myresults.lowest_optimization_result
         myresults_x = np.array([np.round(myres, 5) for myres in myresults.x])
 
-        print('Final result')
-        print(myresults_x)
+        if verbose:
+            print('Final result')
+            print(myresults_x)
 
         # Write results for this number of frequency
         costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, x, y)
@@ -602,15 +607,17 @@ def robust_nfreq_sumsin_fit(
     # Replace NaN cost by infinity
     costs[np.isnan(costs)] = np.inf
 
-    print('Costs')
-    print(costs)
+    if verbose:
+        print('Costs')
+        print(costs)
 
     final_index = _choice_best_order(cost=costs)
 
     final_coefs = amp_freq_phase[final_index][~np.isnan(amp_freq_phase[final_index])]
 
-    print(final_coefs)
-
+    if verbose:
+        print("Selecting best performing number of frequencies:")
+        print(final_coefs)
 
     # If an amplitude coefficient is almost zero, remove the coefs of that frequency and lower the degree
     final_degree = final_index + 1

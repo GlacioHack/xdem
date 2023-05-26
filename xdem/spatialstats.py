@@ -189,6 +189,23 @@ def nd_binning(
     return df_concat
 
 
+ # Function to convert IntervalIndex written to str in csv back to pd.Interval
+# from: https://github.com/pandas-dev/pandas/issues/28210
+def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
+    if isinstance(istr, float):
+        return np.nan
+    else:
+        c_left = istr[0] == "["
+        c_right = istr[-1] == "]"
+        closed = {(True, False): "left", (False, True): "right", (True, True): "both", (False, False): "neither"}[
+            c_left, c_right
+        ]
+        left, right = map(float, istr[1:-1].split(","))
+        try:
+            return pd.Interval(left, right, closed)
+        except Exception:
+            return np.nan
+
 def interp_nd_binning(
     df: pd.DataFrame,
     list_var_names: str | list[str],
@@ -211,6 +228,7 @@ def interp_nd_binning(
     :param list_var_names: Explanatory variable data series to select from the dataframe
     :param statistic: Statistic to interpolate, stored as a data series in the dataframe
     :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata)
+
     :return: N-dimensional interpolant function
 
     :examples
@@ -260,23 +278,6 @@ def interp_nd_binning(
     if "nd" in df_sub.columns:
         df_sub = df_sub[df_sub.nd == len(list_var_names)]
 
-    # Function to convert IntervalIndex written to str in csv back to pd.Interval
-    # from: https://github.com/pandas-dev/pandas/issues/28210
-    def to_interval(istr: str) -> float | pd.Interval:
-        if isinstance(istr, float):
-            return np.nan
-        else:
-            c_left = istr[0] == "["
-            c_right = istr[-1] == "]"
-            closed = {(True, False): "left", (False, True): "right", (True, True): "both", (False, False): "neither"}[
-                c_left, c_right
-            ]
-            left, right = map(float, istr[1:-1].split(","))
-            try:
-                return pd.Interval(left, right, closed)
-            except Exception:
-                return np.nan
-
     # Compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
 
@@ -288,8 +289,8 @@ def interp_nd_binning(
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
         # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
         # pd.Interval into strings)
-        elif any(isinstance(to_interval(x), pd.Interval) for x in df_sub[var].values):
-            intervalindex_vals = [to_interval(x) for x in df_sub[var].values]
+        elif any(isinstance(_pandas_str_to_interval(x), pd.Interval) for x in df_sub[var].values):
+            intervalindex_vals = [_pandas_str_to_interval(x) for x in df_sub[var].values]
             df_sub[var] = pd.IntervalIndex(intervalindex_vals).mid.values
         else:
             raise ValueError("The variable columns must be provided as numerical mid values, or pd.Interval values.")
@@ -346,6 +347,107 @@ def interp_nd_binning(
     )
 
     return interp_fun  # type: ignore
+
+
+def get_perbin_nd_binning(
+    df: pd.DataFrame,
+    list_var: list[NDArrayf],
+    list_var_names: str | list[str],
+    statistic: str | Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+    min_count: int | None = 0,
+) -> NDArrayf:
+    """
+    Get per-bin statistic for a list of array variables based on the results of an N-D binning .
+
+    For example, get the median statistic for every bin of 2D arrays of input variables (systematic correction).
+
+    :param list_var: List of size (L) of explanatory variables array of size (N,).
+    :param list_var_names: List of size (L) of names of the explanatory variables.
+    :param df: Dataframe with statistic of binned values according to explanatory variables.
+    :param statistic: Statistic to use, stored as a data series in the dataframe.
+    :param min_count: Minimum number of samples to be used as a valid statistic (otherwise not applying operation).
+
+    :return: The array of statistic values corresponding to the input variables.
+    """
+
+    # Prepare output
+    values_out = np.zeros(np.shape(list_var[0])) * np.nan
+
+    # If list of variable input is simply a string
+    if isinstance(list_var_names, str):
+        list_var_names = [list_var_names]
+
+    if len(list_var) != len(list_var_names):
+        raise ValueError("The lists of variables and variable names should be the same length.")
+
+    # Check that the dataframe contains what we need
+    for var in list_var_names:
+        if var not in df.columns:
+            raise ValueError('Variable "' + var + '" does not exist in the provided dataframe.')
+    statistic_name = statistic if isinstance(statistic, str) else statistic.__name__
+    if statistic_name not in df.columns:
+        raise ValueError('Statistic "' + statistic_name + '" does not exist in the provided dataframe.')
+    if min_count is not None and "count" not in df.columns:
+        raise ValueError('Statistic "count" is not in the provided dataframe, necessary to use the min_count argument.')
+    if df.empty:
+        raise ValueError("Dataframe is empty.")
+
+    df_sub = df.copy()
+
+    # If the dataframe is an output of nd_binning, keep only the dimension of interest
+    if "nd" in df_sub.columns:
+        df_sub = df_sub[df_sub.nd == len(list_var_names)]
+
+    # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
+    # pd.Interval into strings)
+    for var_name in list_var_names:
+        if any(isinstance(x, pd.Interval) for x in df_sub[var_name].values):
+            continue
+        elif any(isinstance(_pandas_str_to_interval(x), pd.Interval) for x in df_sub[var_name]):
+            df_sub[var_name] = [_pandas_str_to_interval(x) for x in df_sub[var_name]]
+        else:
+            ValueError("The bin intervals of the dataframe should be pandas.Interval.")
+
+    # Apply operator in the nd binning
+    # We compute the masks linked to each 1D bin in a single for loop, to optimize speed
+    L = len(list_var)
+    all_mask_vars = []
+    all_interval_vars = []
+    for k in range(L):
+        # Get variable name and list of intervals in the dataframe
+        var_name = list_var_names[k]
+        list_interval_var = np.unique(df_sub[var_name].values)
+
+        # Get a list of mask for every bin of the variable
+        list_mask_var = [
+            np.logical_and(list_var[k] >= list_interval_var[j].left, list_var[k] < list_interval_var[j].right)
+            for j in range(len(list_interval_var))
+        ]
+
+        # Save those in lists to later combine them
+        all_mask_vars.append(list_mask_var)
+        all_interval_vars.append(list_interval_var)
+
+    # We perform the K-D binning by logically combining the masks
+    all_ranges = [range(len(all_interval_vars[k])) for k in range(L)]
+    for indices in itertools.product(*all_ranges):
+
+        # Get mask of the specific bin, skip if empty
+        mask_bin = np.logical_and.reduce([all_mask_vars[k][indices[k]] for k in range(L)])
+        if np.count_nonzero(mask_bin) == 0:
+            continue
+
+        # Get the statistic
+        index_bin = np.logical_and.reduce([df_sub[list_var_names[k]] == all_interval_vars[k][indices[k]] for k in range(L)])
+        statistic_bin = df_sub[statistic_name][index_bin].values[0]
+
+        # Get count value of the statistic and use it if above the threshold
+        count_bin = df_sub["count"][index_bin].values[0]
+        if count_bin > min_count:
+            # Write out to the output array
+            values_out[mask_bin] = statistic_bin
+
+    return values_out
 
 
 def two_step_standardization(
