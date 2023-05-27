@@ -323,9 +323,13 @@ class TestBinning:
                 continue
 
             # Isolate the bin in the dataframe, should be only one
-            index_bin = np.logical_and.reduce(([h in interv for interv in df["elevation"]],
-                                               [slp in interv for interv in df["slope"]],
-                                               [asp in interv for interv in df["aspect"]]))
+            index_bin = np.logical_and.reduce(
+                (
+                    [h in interv for interv in df["elevation"]],
+                    [slp in interv for interv in df["slope"]],
+                    [asp in interv for interv in df["aspect"]],
+                )
+            )
             assert np.count_nonzero(index_bin) == 1
 
             # Get the statistic value and verify that this was the one returned by the function

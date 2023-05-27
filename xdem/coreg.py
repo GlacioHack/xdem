@@ -4,7 +4,16 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import warnings
-from typing import Any, Callable, Generator, Literal, TypedDict, TypeVar, overload
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    TypedDict,
+    TypeVar,
+    overload,
+)
 
 import affine
 
@@ -525,15 +534,16 @@ class CoregDict(TypedDict, total=False):
 
     # 1/ Inputs
     fit_or_bin: Literal["fit"] | Literal["bin"]
-    fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
-    fit_optimizer: Callable[..., tuple[float]]
-    bin_sizes: int | dict[str, int | tuple[float]]
+    fit_func: Callable[..., NDArrayf]
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
+    bin_sizes: int | dict[str, int | Iterable[float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear"] | Literal["per_bin"]
 
     # 2/ Outputs
     bias_vars: list[str]
-    fit_params: list[float]
+    fit_params: NDArrayf
+    fit_perr: NDArrayf
     bin_dataframe: pd.DataFrame
 
     # 3/ Specific inputs or outputs
@@ -1060,7 +1070,7 @@ class CoregPipeline(Coreg):
 
     def __add__(self, other: list[Coreg] | Coreg | CoregPipeline) -> CoregPipeline:
         """Append a processing step or a pipeline to the pipeline."""
-        if not isinstance(other, Rigid):
+        if not isinstance(other, Coreg):
             other = list(other)
         else:
             other = [other]
@@ -1614,8 +1624,11 @@ class VerticalShift(Rigid):
 
         # Use weights if those were provided.
         vshift = (
-            self._meta["vshift_func"](diff) if weights is None else self._meta["vshift_func"](diff, weights)
-        )  # type: ignore
+            self._meta["vshift_func"](diff)
+            if weights is None
+            else self._meta["vshift_func"](diff, weights)  # type: ignore
+        )
+
         # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
         # TODO: once we have the weights implemented
 
@@ -2395,7 +2408,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Rigid | None = NuthKaab() + VerticalShift(),
+    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -2408,7 +2421,7 @@ def dem_coregistration(
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
-) -> tuple[DEM, Rigid, pd.DataFrame, NDArrayf]:
+) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 

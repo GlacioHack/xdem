@@ -74,7 +74,7 @@ class TestCoregClass:
             if "non-finite values" not in str(exception):
                 raise exception
 
-    @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])
+    @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], coreg.Rigid]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")

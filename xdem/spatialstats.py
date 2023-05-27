@@ -65,7 +65,7 @@ def nd_binning(
     values: NDArrayf,
     list_var: list[NDArrayf],
     list_var_names: list[str],
-    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
+    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf, ...] | None = None,
     statistics: Iterable[str | Callable[[NDArrayf], np.floating[Any]]] = ("count", np.nanmedian, nmad),
     list_ranges: list[float] | None = None,
 ) -> pd.DataFrame:
@@ -189,7 +189,7 @@ def nd_binning(
     return df_concat
 
 
- # Function to convert IntervalIndex written to str in csv back to pd.Interval
+# Function to convert IntervalIndex written to str in csv back to pd.Interval
 # from: https://github.com/pandas-dev/pandas/issues/28210
 def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
     if isinstance(istr, float):
@@ -205,6 +205,7 @@ def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
             return pd.Interval(left, right, closed)
         except Exception:
             return np.nan
+
 
 def interp_nd_binning(
     df: pd.DataFrame,
@@ -438,7 +439,9 @@ def get_perbin_nd_binning(
             continue
 
         # Get the statistic
-        index_bin = np.logical_and.reduce([df_sub[list_var_names[k]] == all_interval_vars[k][indices[k]] for k in range(L)])
+        index_bin = np.logical_and.reduce(
+            [df_sub[list_var_names[k]] == all_interval_vars[k][indices[k]] for k in range(L)]
+        )
         statistic_bin = df_sub[statistic_name][index_bin].values[0]
 
         # Get count value of the statistic and use it if above the threshold

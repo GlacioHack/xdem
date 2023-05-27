@@ -131,9 +131,9 @@ class TestRobustFitting:
             # Test all parameters
             for i in np.arange(6):
                 # For the phase, check the circular variable with distance to modulo 2 pi
-                if (i+1) % 3 == 0:
-                    coef_diff = coefs[i] - true_coefs[i] % (2*np.pi)
-                    assert np.minimum(coef_diff, np.abs(2*np.pi - coef_diff)) < 0.1
+                if (i + 1) % 3 == 0:
+                    coef_diff = coefs[i] - true_coefs[i] % (2 * np.pi)
+                    assert np.minimum(coef_diff, np.abs(2 * np.pi - coef_diff)) < 0.1
                 # Else check normally
                 else:
                     assert coefs[i] == pytest.approx(true_coefs[i], abs=0.1)

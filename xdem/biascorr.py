@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Literal, Iterable
+from typing import Any, Callable, Iterable, Literal
 
 import geoutils as gu
 import numpy as np
@@ -42,7 +42,7 @@ class BiasCorr(Coreg):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float, ...]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -58,22 +58,25 @@ class BiasCorr(Coreg):
         if fit_or_bin == "fit":
 
             # Check input types for "fit" to raise user-friendly errors
-            if not (isinstance(fit_func, Callable) or (isinstance(fit_func, str) and fit_func in fit_workflows.keys())):
+            if not (callable(fit_func) or (isinstance(fit_func, str) and fit_func in fit_workflows.keys())):
                 raise TypeError(
                     "Argument `fit_func` must be a function (callable) "
                     "or the string '{}', got {}.".format("', '".join(fit_workflows.keys()), type(fit_func))
                 )
-            if not isinstance(fit_optimizer, Callable):
+            if not callable(fit_optimizer):
                 raise TypeError(
                     "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
                 )
 
             # If a workflow was called, override optimizer and pass proper function
             if isinstance(fit_func, str) and fit_func in fit_workflows.keys():
-                fit_optimizer = fit_workflows[fit_func]["optimizer"]
-                fit_func = fit_workflows[fit_func]["func"]
+                # Looks like a typing bug here, see: https://github.com/python/mypy/issues/10740
+                fit_optimizer = fit_workflows[fit_func]["optimizer"]  # type: ignore
+                fit_func = fit_workflows[fit_func]["func"]  # type: ignore
 
-            super().__init__(meta={"fit_func": fit_func, "fit_optimizer": fit_optimizer})
+            # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
+            # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
+            super().__init__(meta={"fit_func": fit_func, "fit_optimizer": fit_optimizer})  # type: ignore
         else:
 
             # Check input types for "bin" to raise user-friendly errors
@@ -86,7 +89,7 @@ class BiasCorr(Coreg):
                     "got {}.".format(type(bin_sizes))
                 )
 
-            if not isinstance(bin_statistic, Callable):
+            if not callable(bin_statistic):
                 raise TypeError(
                     "Argument `bin_statistic` must be a function (callable), " "got {}.".format(type(bin_statistic))
                 )
@@ -105,11 +108,11 @@ class BiasCorr(Coreg):
         self._fit_or_bin = fit_or_bin
         self._is_affine = False
 
-    def fit(
+    def fit(  # type: ignore
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType,
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,  # None if subclass derives biasvar itself
         inlier_mask: NDArrayf | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
@@ -126,7 +129,7 @@ class BiasCorr(Coreg):
                 bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
 
         # Call parent fit to do the pre-processing and return itself
-        return super().fit(
+        return super().fit(  # type: ignore
             reference_dem=reference_dem,
             dem_to_be_aligned=dem_to_be_aligned,
             inlier_mask=inlier_mask,
@@ -140,7 +143,7 @@ class BiasCorr(Coreg):
             **kwargs,
         )
 
-    def apply(
+    def apply(  # type: ignore
         self,
         dem: MArrayf,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
@@ -165,18 +168,24 @@ class BiasCorr(Coreg):
             **kwargs,
         )
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         """Should only be called through subclassing."""
+
+        # This is called by subclasses, so the bias_var should always be defined
+        # TODO: Move this up to Coreg class, checking kwargs of fit(), or better to overload function
+        #  description in fit() here?
+        if bias_vars is None:
+            raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
 
         # Compute difference and mask of valid data
         diff = ref_dem - tba_dem
@@ -214,10 +223,11 @@ class BiasCorr(Coreg):
                 **kwargs,
             )
 
-            if self._meta["fit_func"] in fit_workflows.keys():
+            # Write the results to metadata in different ways depending on optimizer returns
+            if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
                 order_or_freq = results[1]
-                if fit_workflows == "norder_polynomial":
+                if self._meta["fit_optimizer"] == robust_norder_polynomial_fit:
                     self._meta["poly_order"] = order_or_freq
                 else:
                     self._meta["nb_sin_freq"] = order_or_freq
@@ -245,7 +255,11 @@ class BiasCorr(Coreg):
             # We need to sort the bin sizes in the same order as the bias variables if a dict is passed
             if isinstance(self._meta["bin_sizes"], dict):
                 var_order = list(bias_vars.keys())
-                bin_sizes = [self._meta["bin_sizes"][var] for var in var_order]
+                # Declare type to write integer or tuple to the variable
+                bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
+                    np.array(self._meta["bin_sizes"][var]) for var in var_order
+                )
+            # Otherwise, write integer directly
             else:
                 bin_sizes = self._meta["bin_sizes"]
 
@@ -265,14 +279,17 @@ class BiasCorr(Coreg):
         # Save bias variable names
         self._meta["bias_vars"] = list(bias_vars.keys())
 
-    def _apply_func(
+    def _apply_func(  # type: ignore
         self,
         dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        if bias_vars is None:
+            raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
 
         # Apply function to get correction
         if self._fit_or_bin == "fit":
@@ -318,9 +335,9 @@ class BiasCorr1D(BiasCorr):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
         """
@@ -337,17 +354,17 @@ class BiasCorr1D(BiasCorr):
         """
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: dict[str, NDArrayf],
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         """Estimate the bias along the single provided variable using the bias function."""
 
         # Check number of variables
@@ -378,9 +395,9 @@ class BiasCorr2D(BiasCorr):
         self,
         fit_or_bin: str = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
         """
@@ -397,17 +414,17 @@ class BiasCorr2D(BiasCorr):
         """
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: dict[str, NDArrayf],
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
 
         # Check number of variables
         if len(bias_vars) != 2:
@@ -439,9 +456,9 @@ class BiasCorrND(BiasCorr):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
         """
@@ -458,17 +475,17 @@ class BiasCorrND(BiasCorr):
         """
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: dict[str, NDArrayf],
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
 
         # Check bias variable
         if bias_vars is None or len(bias_vars) <= 2:
@@ -496,9 +513,9 @@ class DirectionalBias(BiasCorr1D):
         angle: float = 0,
         fit_or_bin: str = "fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
-        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
         """
@@ -517,17 +534,17 @@ class DirectionalBias(BiasCorr1D):
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
         self._meta["angle"] = angle
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: NDArrayf,
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf],
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
 
         if verbose:
             print("Estimating rotated coordinates.")
@@ -540,7 +557,7 @@ class DirectionalBias(BiasCorr1D):
         # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
         if "hop_length" not in kwargs:
             # The hop length will condition jump in function values, need to be larger than average resolution
-            average_res = (transform[0] + abs(transform[4]))/2
+            average_res = (transform[0] + abs(transform[4])) / 2
             kwargs.update({"hop_length": average_res})
 
         super()._fit_func(
@@ -555,12 +572,12 @@ class DirectionalBias(BiasCorr1D):
         )
 
     def _apply_func(
-            self,
-            dem: NDArrayf,
-            transform: rio.transform.Affine,
-            crs: rio.crs.CRS,
-            bias_vars: None | dict[str, NDArrayf] = None,
-            **kwargs: Any,
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: None | dict[str, NDArrayf] = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         # Define the coordinates for applying the correction
@@ -591,9 +608,9 @@ class TerrainBias(BiasCorr1D):
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] | None = 100,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 100,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
         """
@@ -613,17 +630,17 @@ class TerrainBias(BiasCorr1D):
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
         self._meta["terrain_attribute"] = terrain_attribute
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: NDArrayf,
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf],
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
 
         # Derive terrain attribute
         if self._meta["terrain_attribute"] == "elevation":
@@ -646,12 +663,12 @@ class TerrainBias(BiasCorr1D):
         )
 
     def _apply_func(
-            self,
-            dem: NDArrayf,
-            transform: rio.transform.Affine,
-            crs: rio.crs.CRS,
-            bias_vars: None | dict[str, NDArrayf] = None,
-            **kwargs: Any,
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: None | dict[str, NDArrayf] = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         if bias_vars is None:
@@ -660,11 +677,11 @@ class TerrainBias(BiasCorr1D):
                 attr = dem
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4])))
+                    dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                )
             bias_vars = {self._meta["terrain_attribute"]: attr}
 
-        return super()._apply_func(dem=dem, transform=transform, crs=crs,
-                                   bias_vars=bias_vars, **kwargs)
+        return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
 
 class Deramp(BiasCorr2D):
@@ -677,9 +694,9 @@ class Deramp(BiasCorr2D):
         poly_order: int = 2,
         fit_or_bin: str = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[float, ...]] | None = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] | None = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] | None = np.nanmedian,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
     ):
         """
@@ -698,17 +715,17 @@ class Deramp(BiasCorr2D):
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
         self._meta["poly_order"] = poly_order
 
-    def _fit_func(
+    def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: NDArrayf,
-        transform: None | rio.transform.Affine = None,
-        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf],
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
-    ):
+    ) -> None:
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
         p0 = np.ones(shape=((self._meta["poly_order"] + 1) * (self._meta["poly_order"] + 1)))

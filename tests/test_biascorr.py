@@ -14,7 +14,7 @@ PLOT = False
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from xdem import biascorr, examples
-    from xdem.fit import polynomial_2d, sumsin_1d, polynomial_1d
+    from xdem.fit import polynomial_2d, sumsin_1d
 
 
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
@@ -89,7 +89,8 @@ class TestBiasCorr:
         with pytest.raises(
             TypeError,
             match=re.escape(
-                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, " "got <class 'dict'>."
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
+                "got <class 'dict'>."
             ),
         ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_sizes={"a": 1.5})  # type: ignore
@@ -142,7 +143,7 @@ class TestBiasCorr:
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1] * b + c ** d)
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1] * b + c**d)
     )  # type: ignore
     @pytest.mark.parametrize(
         "fit_optimizer",
@@ -206,7 +207,7 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
-    def test_biascorr1d(self):
+    def test_biascorr1d(self) -> None:
         """
         Test the subclass BiasCorr1D, which defines default parameters for 1D.
         The rest is already tested in test_biascorr.
@@ -271,8 +272,8 @@ class TestBiasCorr:
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
 
-    @pytest.mark.parametrize("angle", [20, 90, 210])   # type: ignore
-    @pytest.mark.parametrize("nb_freq", [1, 2, 3])   # type: ignore
+    @pytest.mark.parametrize("angle", [20, 90, 210])  # type: ignore
+    @pytest.mark.parametrize("nb_freq", [1, 2, 3])  # type: ignore
     def test_directionalbias__synthetic(self, angle, nb_freq) -> None:
         """Test the subclass DirectionalBias with synthetic data."""
 
@@ -281,9 +282,9 @@ class TestBiasCorr:
 
         # Get random parameters (3 parameters needed per frequency)
         np.random.seed(42)
-        params = np.array([(5, 3000, np.pi), (1, 300, 0), (0.5, 100, np.pi/2)]).flatten()
-        nb_freq=1
-        params = params[0:3*nb_freq]
+        params = np.array([(5, 3000, np.pi), (1, 300, 0), (0.5, 100, np.pi / 2)]).flatten()
+        nb_freq = 1
+        params = params[0 : 3 * nb_freq]
 
         # Create a synthetic bias and add to the DEM
         synthetic_bias = sumsin_1d(xx.flatten(), *params)
@@ -293,22 +294,38 @@ class TestBiasCorr:
         if PLOT:
             synth = self.ref.copy(new_array=synthetic_bias.reshape(np.shape(self.ref.data)))
             import matplotlib.pyplot as plt
+
             synth.show()
             plt.show()
 
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
             dirbias.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42)
-            xdem.spatialstats.plot_1d_binning(df=dirbias._meta["bin_dataframe"], var_name="angle",
-                                              statistic_name="nanmedian", min_count=0)
+            xdem.spatialstats.plot_1d_binning(
+                df=dirbias._meta["bin_dataframe"], var_name="angle", statistic_name="nanmedian", min_count=0
+            )
             plt.show()
 
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=angle)
-        bounds = [(2, 10), (500, 5000), (0, 2 * np.pi),
-                  (0.5, 2), (100, 500), (0, 2 * np.pi),
-                  (0, 0.5), (10, 100), (0, 2 * np.pi)]
-        dirbias.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42,
-                    bounds_amp_wave_phase=bounds, niter=10)
+        bounds = [
+            (2, 10),
+            (500, 5000),
+            (0, 2 * np.pi),
+            (0.5, 2),
+            (100, 500),
+            (0, 2 * np.pi),
+            (0, 0.5),
+            (10, 100),
+            (0, 2 * np.pi),
+        ]
+        dirbias.fit(
+            reference_dem=self.ref,
+            dem_to_be_aligned=bias_dem,
+            subsample=10000,
+            random_state=42,
+            bounds_amp_wave_phase=bounds,
+            niter=10,
+        )
 
         # Check all parameters are the same within 10%
         fit_params = dirbias._meta["fit_params"]
@@ -386,15 +403,17 @@ class TestBiasCorr:
         bin_edges = np.array((-1, 0, 0.1, 0.5, 2, 5))
         bias_per_bin = np.array((-5, 10, -2, 25, 5))
         for i in range(len(bin_edges) - 1):
-            synthetic_bias[np.logical_and(maxc.data >= bin_edges[i], maxc.data < bin_edges[i+1])] = bias_per_bin[i]
+            synthetic_bias[np.logical_and(maxc.data >= bin_edges[i], maxc.data < bin_edges[i + 1])] = bias_per_bin[i]
 
         # Add bias to the second DEM
         bias_dem = self.ref - synthetic_bias
 
         # Run the binning
-        deramp = biascorr.TerrainBias(terrain_attribute="maximum_curvature",
-                                      bin_sizes={"maximum_curvature": bin_edges},
-                                      bin_apply_method="per_bin")
+        deramp = biascorr.TerrainBias(
+            terrain_attribute="maximum_curvature",
+            bin_sizes={"maximum_curvature": bin_edges},
+            bin_apply_method="per_bin",
+        )
         # We don't want to subsample here, otherwise it might be very hard to derive maximum curvature...
         # TODO: Add the option to get terrain attribute before subsampling in the fit subclassing logic?
         deramp.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, random_state=42)

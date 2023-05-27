@@ -10,8 +10,6 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import scipy
-
-import xdem.spatialstats
 from geoutils.raster import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
@@ -81,14 +79,14 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     xx = np.array(xx).squeeze()
 
     # Convert parameters to array
-    params = np.array(params)
+    p = np.array(params)
 
     # Indexes of amplitude, frequencies and phases
-    aix = np.arange(0, len(params), 3)
-    bix = np.arange(1, len(params), 3)
-    cix = np.arange(2, len(params), 3)
+    aix = np.arange(0, len(p), 3)
+    bix = np.arange(1, len(p), 3)
+    cix = np.arange(2, len(p), 3)
 
-    val = np.sum(params[aix] * np.sin(2 * np.pi / params[bix] * xx[:, np.newaxis] + params[cix]), axis=1)
+    val = np.sum(p[aix] * np.sin(2 * np.pi / p[bix] * xx[:, np.newaxis] + p[cix]), axis=1)
 
     return val
 
@@ -125,9 +123,9 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
         )
 
     # We reshape the parameter into the N x N shape expected by NumPy
-    params = np.array(params).reshape((int(poly_order), int(poly_order)))
+    c = np.array(params).reshape((int(poly_order), int(poly_order)))
 
-    return polyval2d(x=xx[0], y=xx[1], c=params)
+    return polyval2d(x=xx[0], y=xx[1], c=c)
 
 
 #######################################################################
@@ -173,7 +171,7 @@ def _wrapper_scipy_leastsquares(
     f: Callable[..., NDArrayf],
     xdata: NDArrayf,
     ydata: NDArrayf,
-    sigma: NDArrayf,
+    sigma: NDArrayf | None = None,
     p0: NDArrayf = None,
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
@@ -241,7 +239,7 @@ def _wrapper_sklearn_robustlinear(
     cost_func: Callable[[NDArrayf, NDArrayf], float],
     xdata: NDArrayf,
     ydata: NDArrayf,
-    sigma: NDArrayf,
+    sigma: NDArrayf | None = None,
     estimator_name: str = "Linear",
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
@@ -321,7 +319,7 @@ def _wrapper_sklearn_robustlinear(
 def robust_norder_polynomial_fit(
     xdata: NDArrayf,
     ydata: NDArrayf,
-    sigma: NDArrayf = None,
+    sigma: NDArrayf | None = None,
     max_order: int = 6,
     estimator_name: str = "Theil-Sen",
     cost_func: Callable[[NDArrayf, NDArrayf], float] = median_absolute_error,
@@ -440,7 +438,7 @@ def _cost_sumofsin(
 def robust_nfreq_sumsin_fit(
     xdata: NDArrayf,
     ydata: NDArrayf,
-    sigma: NDArrayf = None,
+    sigma: NDArrayf | None = None,
     max_nb_frequency: int = 3,
     bounds_amp_wave_phase: list[tuple[float, float]] | None = None,
     cost_func: Callable[[NDArrayf], float] = soft_loss,
@@ -524,7 +522,7 @@ def robust_nfreq_sumsin_fit(
     for nb_freq in np.arange(1, max_nb_frequency + 1):
 
         if verbose:
-            print('Fitting with {} frequency'.format(nb_freq))
+            print(f"Fitting with {nb_freq} frequency")
 
         b = bounds_amp_wave_phase
         # If bounds are not provided, define as the largest possible bounds
@@ -563,7 +561,7 @@ def robust_nfreq_sumsin_fit(
             wrapper_cost_sumofsin,
             p0,
             disp=verbose,
-            T= hop_length * 5,
+            T=hop_length * 5,
             minimizer_kwargs=init_args,
             seed=random_state,
             **kwargs,
@@ -572,7 +570,7 @@ def robust_nfreq_sumsin_fit(
         init_x = np.array([np.round(ini, 5) for ini in init_results.x])
 
         if verbose:
-            print('Initial result')
+            print("Initial result")
             print(init_x)
 
         # Subsample the final raster
@@ -596,19 +594,18 @@ def robust_nfreq_sumsin_fit(
         myresults_x = np.array([np.round(myres, 5) for myres in myresults.x])
 
         if verbose:
-            print('Final result')
+            print("Final result")
             print(myresults_x)
 
         # Write results for this number of frequency
         costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, x, y)
         amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults_x
 
-
     # Replace NaN cost by infinity
     costs[np.isnan(costs)] = np.inf
 
     if verbose:
-        print('Costs')
+        print("Costs")
         print(costs)
 
     final_index = _choice_best_order(cost=costs)
@@ -635,8 +632,9 @@ def robust_nfreq_sumsin_fit(
     new_wavelengths = final_coefs[1::3][indices]
     new_phases = final_coefs[2::3][indices]
 
-    final_coefs = np.array([(new_amplitudes[i], new_wavelengths[i], new_phases[i])
-                            for i in range(final_degree)]).flatten()
+    final_coefs = np.array(
+        [(new_amplitudes[i], new_wavelengths[i], new_phases[i]) for i in range(final_degree)]
+    ).flatten()
 
     # The number of frequencies corresponds to the final index plus one
     return final_coefs, final_degree
