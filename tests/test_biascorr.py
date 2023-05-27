@@ -266,7 +266,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=45)
 
-        assert dirbias._meta["fit_or_bin"] == "fit"
+        assert dirbias._fit_or_bin == "fit"
         assert dirbias._meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
@@ -325,7 +325,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         deramp = biascorr.Deramp()
 
-        assert deramp._meta["fit_or_bin"] == "fit"
+        assert deramp._fit_or_bin == "fit"
         assert deramp._meta["fit_func"] == polynomial_2d
         assert deramp._meta["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp._meta["poly_order"] == 2
@@ -369,7 +369,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         tb = biascorr.TerrainBias()
 
-        assert tb._meta["fit_or_bin"] == "bin"
+        assert tb._fit_or_bin == "bin"
         assert tb._meta["bin_sizes"] == 100
         assert tb._meta["bin_statistic"] == np.nanmedian
         assert tb._meta["terrain_attribute"] == "maximum_curvature"
@@ -406,5 +406,7 @@ class TestBiasCorr:
         assert np.allclose(bin_df["nanmedian"], bias_per_bin, rtol=0.1)
 
         # Run apply and check that 99% of the variance was corrected
-        corrected_dem = deramp.apply(bias_dem)
+        # (we override the bias_var "max_curv" with that of the ref_dem to have a 1 on 1 match with the synthetic bias,
+        # otherwise it is derived from the bias_dem which gives slightly different results than with ref_dem)
+        corrected_dem = deramp.apply(bias_dem, bias_vars={"maximum_curvature": maxc})
         assert np.nanvar(corrected_dem - self.ref) < 0.01 * np.nanvar(synthetic_bias)

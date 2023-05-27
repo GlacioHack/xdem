@@ -140,6 +140,31 @@ class BiasCorr(Coreg):
             **kwargs,
         )
 
+    def apply(
+        self,
+        dem: MArrayf,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        resample: bool = True,
+        **kwargs: Any,
+    ) -> tuple[MArrayf, rio.transform.Affine]:
+
+        # Change dictionary content to array
+        if bias_vars is not None:
+            for var in bias_vars.keys():
+                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
+
+        # Call parent fit to do the pre-processing and return itself
+        return super().apply(
+            dem=dem,
+            transform=transform,
+            crs=crs,
+            resample=resample,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
     def _fit_func(
         self,
         ref_dem: NDArrayf,
@@ -223,8 +248,6 @@ class BiasCorr(Coreg):
                 bin_sizes = [self._meta["bin_sizes"][var] for var in var_order]
             else:
                 bin_sizes = self._meta["bin_sizes"]
-
-            print(bin_sizes)
 
             df = xdem.spatialstats.nd_binning(
                 values=diff[ind_valid],
@@ -631,15 +654,17 @@ class TerrainBias(BiasCorr1D):
             **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
-        # Derive terrain attribute
-        if self._meta["terrain_attribute"] == "elevation":
-            attr = dem
-        else:
-            attr = xdem.terrain.get_terrain_attribute(
-                dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4])))
+        if bias_vars is None:
+            # Derive terrain attribute
+            if self._meta["terrain_attribute"] == "elevation":
+                attr = dem
+            else:
+                attr = xdem.terrain.get_terrain_attribute(
+                    dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4])))
+            bias_vars = {self._meta["terrain_attribute"]: attr}
 
         return super()._apply_func(dem=dem, transform=transform, crs=crs,
-                                   bias_vars={self._meta["terrain_attribute"]: attr}, **kwargs)
+                                   bias_vars=bias_vars, **kwargs)
 
 
 class Deramp(BiasCorr2D):
