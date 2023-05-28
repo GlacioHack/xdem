@@ -1,4 +1,6 @@
 """Tests for the biascorr module (non-rigid coregistrations)."""
+from __future__ import annotations
+
 import re
 import warnings
 
