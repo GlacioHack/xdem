@@ -114,7 +114,7 @@ inheritance_alias = {
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
     "xdem.coreg.Coreg": "xdem.Coreg",
-    "xdem.biascorr.BiasCorr": "xdem.BiasCorr"
+    "xdem.biascorr.BiasCorr": "xdem.BiasCorr",
 }
 
 # To have an edge color that works in both dark and light mode

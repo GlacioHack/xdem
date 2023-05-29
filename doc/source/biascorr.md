@@ -15,18 +15,18 @@ kernelspec:
 
 # Bias correction
 
-In xDEM, bias-correction methods correspond to non-rigid transformations that cannot be described as a 3-dimensional 
+In xDEM, bias-correction methods correspond to non-rigid transformations that cannot be described as a 3-dimensional
 affine function (see {ref}`coregistration`).
 
-Contrary to rigid coregistration methods, bias corrections are not limited to the information in the DEMs. They can be 
-passed any external variables (e.g., land cover type, processing metric) to attempt to identify and correct biases in 
-the DEM. Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain 
+Contrary to rigid coregistration methods, bias corrections are not limited to the information in the DEMs. They can be
+passed any external variables (e.g., land cover type, processing metric) to attempt to identify and correct biases in
+the DEM. Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain
 (e.g., curvature- or elevation-dependant corrections), derived solely from the DEM.
 
 ## The {class}`~xdem.BiasCorr` object
 
 Each bias-correction method in xDEM inherits their interface from the {class}`~xdem.Coreg` class (see {ref}`coreg_object`).
-This implies that bias-correction methods can be combined in a {class}`~xdem.CoregPipeline` with any other methods, or 
+This implies that bias-correction methods can be combined in a {class}`~xdem.CoregPipeline` with any other methods, or
 applied in a block-wise manner through {class}`~xdem.BlockwiseCoreg`.
 
 **Inheritance diagram of co-registration and bias corrections:**
@@ -60,7 +60,7 @@ To define the parameters related to fitting and/or binning, every {func}`~xdem.B
 - `fit_optimizer` to pass any optimizer function to perform the fit minimization,
 - `bin_sizes` to pass the size or edges of the bins for each variable,
 - `bin_statistic` to pass the statistic to compute in each bin,
-- `bin_apply_method` to pass the method to apply the binning for correction. 
+- `bin_apply_method` to pass the method to apply the binning for correction.
 
 ```{code-cell} ipython3
 :tags: [hide-input, hide-output]
@@ -178,8 +178,8 @@ corrected_dem = terbias.apply(tba_dem)
 
 ## Generic 1-D, 2-D and N-D classes
 
-All bias-corrections methods are inherited from generic classes that perform corrections in 1-, 2- or N-D. Having these 
-separate helps the user navigating the dimensionality of the functions, optimizer, binning or variables used. 
+All bias-corrections methods are inherited from generic classes that perform corrections in 1-, 2- or N-D. Having these
+separate helps the user navigating the dimensionality of the functions, optimizer, binning or variables used.
 
 {class}`xdem.biascorr.BiasCorr1D`
 {class}`xdem.biascorr.BiasCorr2D`

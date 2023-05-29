@@ -10,14 +10,7 @@ from xdem import (  # noqa
     volume,
 )
 from xdem.biascorr import BiasCorr, DirectionalBias, TerrainBias  # noqa
-from xdem.coreg import (  # noqa
-    ICP,
-    BlockwiseCoreg,
-    CoregPipeline,
-    Tilt,
-    NuthKaab,
-    Rigid,
-)
+from xdem.coreg import ICP, BlockwiseCoreg, CoregPipeline, NuthKaab, Rigid, Tilt  # noqa
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa
