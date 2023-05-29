@@ -172,6 +172,7 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
 
+    @pytest.mark.skip("richdem wheels don't build on latest GDAL versions, need to circumvent that problem...")
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
