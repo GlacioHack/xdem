@@ -14,7 +14,7 @@ from xdem.coreg import (  # noqa
     ICP,
     BlockwiseCoreg,
     CoregPipeline,
-    Deramp,
+    Tilt,
     NuthKaab,
     Rigid,
 )

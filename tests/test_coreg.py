@@ -258,7 +258,7 @@ class TestCoregClass:
         warnings.simplefilter("error")
 
         # Try a 1st degree deramping.
-        deramp = coreg.Deramp(degree=1)
+        deramp = coreg.Tilt()
 
         # Fit the data
         deramp.fit(**self.fit_params)
@@ -277,25 +277,10 @@ class TestCoregClass:
         # Check that the mean periglacial offset is low
         assert np.abs(np.mean(periglacial_offset)) < 1
 
-        # Try a 0 degree deramp (basically vertical shift correction)
-        deramp0 = coreg.Deramp(degree=0)
-        deramp0.fit(**self.fit_params)
-
-        # Check that only one coefficient exists (y = x + a => coefficients=["a"])
-        assert len(deramp0._meta["coefficients"]) == 1
-        # Extract said vertical shift
-        vshift = deramp0._meta["coefficients"][0]
-
-        # Make sure to_matrix does not throw an error. It will for higher degree deramps
-        deramp0.to_matrix()
-
-        # Check that the apply_pts would apply a z shift equal to the vertical shift
-        assert deramp0.apply_pts(self.points)[0, 2] == vshift
-
     def test_icp_opencv(self) -> None:
         warnings.simplefilter("error")
 
-        # Do a fast an dirty 3 iteration ICP just to make sure it doesn't error out.
+        # Do a fast and dirty 3 iteration ICP just to make sure it doesn't error out.
         icp = coreg.ICP(max_iterations=3)
         icp.fit(**self.fit_params)
 
@@ -396,8 +381,7 @@ class TestCoregClass:
         assert np.count_nonzero(matrix_diff > 0.3) == 0
 
         # Test subsampled deramping
-        degree = 1
-        deramp_sub = coreg.Deramp(degree=degree)
+        deramp_sub = coreg.Tilt()
 
         # Fit the bias using 50% of the unmasked data using a fraction
         deramp_sub.fit(**self.fit_params, subsample=0.5)
@@ -407,7 +391,7 @@ class TestCoregClass:
         deramp_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
 
         # Do full bias corr to compare
-        deramp_full = coreg.Deramp(degree=degree)
+        deramp_full = coreg.Tilt()
         deramp_full.fit(**self.fit_params)
 
         # Check that the estimated biases are similar
@@ -568,9 +552,9 @@ class TestCoregClass:
         "inputs",
         [
             [xdem.coreg.VerticalShift(), True, "strict"],
-            [xdem.coreg.Deramp(), True, "strict"],
+            [xdem.coreg.Tilt(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
-            [xdem.coreg.NuthKaab() + xdem.coreg.Deramp(), True, "approx"],
+            [xdem.coreg.NuthKaab() + xdem.coreg.Tilt(), True, "approx"],
             [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
             [xdem.coreg.ICP(), False, ""],
         ],
@@ -1195,8 +1179,8 @@ def test_dem_coregistration() -> None:
 
     # Testing different coreg method
     dem_coreg, coreg_method, coreg_stats, inlier_mask = xdem.coreg.dem_coregistration(
-        tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp(degree=1)
+        tba_dem, ref_dem, coreg_method=xdem.coreg.Tilt()
     )
-    assert isinstance(coreg_method, xdem.coreg.Deramp)
+    assert isinstance(coreg_method, xdem.coreg.Tilt)
     assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
     assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values

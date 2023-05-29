@@ -1760,24 +1760,23 @@ class ICP(Rigid):
         self._meta["matrix"] = matrix
 
 
-class Deramp(Rigid):
+class Tilt(Rigid):
     """
-    Polynomial DEM deramping.
+    DEM tilting.
 
-    Estimates an n-D polynomial between the difference of two DEMs.
+    Estimates an 2-D plan correction between the difference of two DEMs.
     """
 
-    def __init__(self, degree: int = 1, subsample: int | float = 5e5) -> None:
+    def __init__(self, subsample: int | float = 5e5) -> None:
         """
-        Instantiate a deramping correction object.
+        Instantiate a tilt correction object.
 
-        :param degree: The polynomial degree to estimate. degree=0 is a simple bias correction.
         :param subsample: Factor for subsampling the input raster for speed-up.
             If <= 1, will be considered a fraction of valid pixels to extract.
             If > 1 will be considered the number of pixels to extract.
 
         """
-        self.degree = degree
+        self.poly_order = 1
         self.subsample = subsample
 
         super().__init__()
@@ -1796,7 +1795,7 @@ class Deramp(Rigid):
         ddem = ref_dem - tba_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
         fit_ramp, coefs = deramping(
-            ddem, x_coords, y_coords, degree=self.degree, subsample=self.subsample, verbose=verbose
+            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self.subsample, verbose=verbose
         )
 
         self._meta["coefficients"] = coefs[0]
@@ -1825,7 +1824,7 @@ class Deramp(Rigid):
         if self.degree > 1:
             raise ValueError(
                 "Nonlinear deramping degrees cannot be represented as transformation matrices."
-                f" (max 1, given: {self.degree})"
+                f" (max 1, given: {self.poly_order})"
             )
         if self.degree == 1:
             raise NotImplementedError("Vertical shift, rotation and horizontal scaling has to be implemented.")

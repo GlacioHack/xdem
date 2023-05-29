@@ -14,7 +14,7 @@ kernelspec:
 
 # Coregistration
 
-Coregistration between DEMs correspond to aligning the digital elevation models in three dimension.
+Coregistration between DEMs correspond to aligning the digital elevation models in three dimensions.
 
 Transformations that can be described by a 3-dimensional [affine](https://en.wikipedia.org/wiki/Affine_transformation) function are included in coregistration methods.
 Those transformations include for instance:
@@ -58,9 +58,10 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = glacier_outlines.create_mask(ref_dem)
 ```
 
+(coreg_object)=
 ## The {class}`~xdem.Coreg` object
 
-Each coregistration approaches in xDEM inherits their interface from the {class}`~xdem.Coreg` class<sup>1</sup>.
+Each coregistration approach in xDEM inherits their interface from the {class}`~xdem.Coreg` class<sup>1</sup>.
 
 ```{margin}
 <sup>1</sup>In a style resembling [scikit-learn's pipelines](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression).
@@ -78,9 +79,11 @@ First, {func}`~xdem.Coreg.fit()` is called to estimate the transform, and then t
 **Inheritance diagram of implemented coregistrations:**
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg
+.. inheritance-diagram:: xdem.coreg xdem.biascorr
         :top-classes: xdem.coreg.Coreg
 ```
+
+See {ref}`biascorr` for more information on non-rigid transformations ("bias corrections").
 
 (coregistration-nuthkaab)=
 
@@ -98,7 +101,7 @@ First, the DEMs are compared to get a dDEM, and slope/aspect maps are created fr
 Together, these three products contain the information about in which direction the offset is.
 A cosine function is solved using these products to find the most probable offset direction, and an appropriate horizontal shift is applied to fix it.
 This is an iterative process, and cosine functions with suggested shifts are applied in a loop, continuously refining the total offset.
-The loop is stopped either when the maximum iteration limit is reached, or when the NMAD between the two products stops improving significantly.
+The loop stops either when the maximum iteration limit is reached, or when the NMAD between the two products stops improving significantly.
 
 ```{eval-rst}
 .. plot:: code/coregistration_plot_nuth_kaab.py
@@ -131,35 +134,33 @@ aligned_dem = nuth_kaab.apply(tba_dem)
         :add-heading:
 ```
 
-## Deramping
+## Tilt
 
-{class}`xdem.coreg.Deramp`
+{class}`xdem.coreg.Tilt`
 
-- **Performs:** Bias, linear or nonlinear vertical corrections.
+- **Performs:** A 2D plan tilt correction.
 - **Supports weights** (soon)
 - **Recommended for:** Data with no horizontal offset and low to moderate rotational differences.
 
-Deramping works by estimating and correcting for an N-degree polynomial over the entire dDEM between a reference and the DEM to be aligned.
+Tilt correction works by estimating and correcting for an 1-order polynomial over the entire dDEM between a reference and the DEM to be aligned.
 This may be useful for correcting small rotations in the dataset, or nonlinear errors that for example often occur in structure-from-motion derived optical DEMs (e.g. Rosnell and Honkavaara [2012](https://doi.org/10.3390/s120100453); Javernick et al. [2014](https://doi.org/10.1016/j.geomorph.2014.01.006); Girod et al. [2017](https://doi.org/10.5194/tc-11827-2017)).
-Applying a "0 degree deramping" is equivalent to a simple vertical shift.
 
 ### Limitations
 
-Deramping does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
-
-1st order deramping is not perfectly equivalent to a rotational correction: Values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
+Tilt correction does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
+It is not perfectly equivalent to a rotational correction: values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
 For large rotational corrections, [ICP] is recommended.
 
 ### Example
 
 ```{code-cell} ipython3
 # Instantiate a 1st order deramping object.
-deramp = coreg.Deramp(degree=1)
+tilt = coreg.Tilt(degree=1)
 # Fit the data to a suitable polynomial solution.
-deramp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
+tilt.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
 # Apply the transformation to the data (or any other data)
-deramped_dem = deramp.apply(tba_dem)
+deramped_dem = tilt.apply(tba_dem)
 ```
 
 ## Vertical shift
@@ -203,7 +204,7 @@ vshift_median = coreg.VerticalShift(bias_func=np.median)
 Iterative Closest Point (ICP) coregistration, which is based on [Besl and McKay (1992)](https://doi.org/10.1117/12.57955), works by iteratively moving the data until it fits the reference as well as possible.
 The DEMs are read as point clouds; collections of points with X/Y/Z coordinates, and a nearest neighbour analysis is made between the reference and the data to be aligned.
 After the distances are calculated, a rigid transform is estimated to minimise them.
-The transform is attempted, and then distances are calculated again.
+The transform is attempted, and then distances calculated again.
 If the distance is lowered, another rigid transform is estimated, and this is continued in a loop.
 The loop stops if it reaches the max iteration limit or if the distances do not improve significantly between iterations.
 The opencv implementation of ICP includes outlier removal, since extreme outliers will heavily interfere with the nearest neighbour distances.
