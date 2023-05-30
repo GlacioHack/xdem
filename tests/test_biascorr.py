@@ -138,11 +138,7 @@ class TestBiasCorr:
             elev_fit_params.update({"niter": 1})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        try:
-            bcorr.fit(**elev_fit_params, subsample=100, random_state=42)
-        # Don't care if it raises a convergence error, as long as it runs
-        except RuntimeError as e:
-            assert ""
+        bcorr.fit(**elev_fit_params, subsample=100, random_state=42)
 
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
