@@ -71,7 +71,6 @@ class TestBiasCorr:
 
         assert bcorr3._meta["bin_sizes"] == 10
         assert bcorr3._meta["bin_statistic"] == np.nanmedian
-        assert bcorr3._meta["bin_apply_method"] == "linear"
         assert bcorr3._meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
         assert bcorr3._meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
 
@@ -236,8 +235,13 @@ class TestBiasCorr:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
 
         # Create a bias correction object
-        bcorr = biascorr.BiasCorr(fit_or_bin="bin_and_fit", fit_func=fit_func, fit_optimizer=fit_optimizer,
-                                  bin_sizes=bin_sizes, bin_statistic=bin_statistic)
+        bcorr = biascorr.BiasCorr(
+            fit_or_bin="bin_and_fit",
+            fit_func=fit_func,
+            fit_optimizer=fit_optimizer,
+            bin_sizes=bin_sizes,
+            bin_statistic=bin_statistic,
+        )
 
         # Run fit using elevation as input variable
         elev_fit_params = self.fit_params.copy()
@@ -270,8 +274,13 @@ class TestBiasCorr:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
 
         # Create a bias correction object
-        bcorr = biascorr.BiasCorr(fit_or_bin="bin_and_fit", fit_func=fit_func, fit_optimizer=fit_optimizer,
-                                  bin_sizes=bin_sizes, bin_statistic=bin_statistic)
+        bcorr = biascorr.BiasCorr(
+            fit_or_bin="bin_and_fit",
+            fit_func=fit_func,
+            fit_optimizer=fit_optimizer,
+            bin_sizes=bin_sizes,
+            bin_statistic=bin_statistic,
+        )
 
         # Run fit using elevation as input variable
         elev_fit_params = self.fit_params.copy()

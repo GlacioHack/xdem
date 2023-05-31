@@ -75,8 +75,6 @@ class BiasCorr(Coreg):
                 fit_optimizer = fit_workflows[fit_func]["optimizer"]  # type: ignore
                 fit_func = fit_workflows[fit_func]["func"]  # type: ignore
 
-            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer}
-
         if fit_or_bin in ["bin", "bin_and_fit"]:
 
             # Check input types for "bin" to raise user-friendly errors
@@ -100,25 +98,28 @@ class BiasCorr(Coreg):
                     "got {}.".format(type(bin_apply_method))
                 )
 
-            meta_bin = {"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method}
-
         # Now we write the relevant attributes to the class metadata
         # For fitting
         if fit_or_bin == "fit":
+            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer}
             # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
             # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
             super().__init__(meta=meta_fit)  # type: ignore
 
         # For binning
         elif fit_or_bin == "bin":
+            meta_bin = {"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method}
             super().__init__(meta=meta_bin)  # type: ignore
 
         # For both
         else:
-            # Merge the two dictionaries
-            meta_both = meta_fit.copy()
-            meta_both.update(meta_bin)
-            super().__init__(meta=meta_both)
+            meta_bin_and_fit = {
+                "fit_func": fit_func,
+                "fit_optimizer": fit_optimizer,
+                "bin_sizes": bin_sizes,
+                "bin_statistic": bin_statistic,
+            }
+            super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
         # Update attributes
         self._fit_or_bin = fit_or_bin
@@ -276,9 +277,11 @@ class BiasCorr(Coreg):
             if verbose:
                 print(
                     "Estimating bias correction along variables {} by binning with statistic {} and then fitting "
-                    "with function {}.".format(", ".join(list(bias_vars.keys())),
-                                               self._meta["bin_statistic"].__name__,
-                                               self._meta["fit_func"].__name__)
+                    "with function {}.".format(
+                        ", ".join(list(bias_vars.keys())),
+                        self._meta["bin_statistic"].__name__,
+                        self._meta["fit_func"].__name__,
+                    )
                 )
 
             df = xdem.spatialstats.nd_binning(
