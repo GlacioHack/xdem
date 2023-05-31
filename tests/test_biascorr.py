@@ -229,7 +229,7 @@ class TestBiasCorr:
             scipy.optimize.curve_fit,
         ],
     )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000)}))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": np.arange(0, 1000, 100)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_and_fit_1d(self, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
@@ -354,7 +354,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=45)
 
-        assert dirbias._fit_or_bin == "fit"
+        assert dirbias._fit_or_bin == "bin_and_fit"
         assert dirbias._meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
@@ -393,7 +393,7 @@ class TestBiasCorr:
             plt.show()
 
         # Try default "fit" parameters instantiation
-        dirbias = biascorr.DirectionalBias(angle=angle)
+        dirbias = biascorr.DirectionalBias(angle=angle, bin_sizes=300)
         bounds = [
             (2, 10),
             (500, 5000),

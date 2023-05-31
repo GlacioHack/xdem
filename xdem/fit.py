@@ -86,7 +86,11 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     bix = np.arange(1, len(p), 3)
     cix = np.arange(2, len(p), 3)
 
-    val = np.sum(p[aix] * np.sin(2 * np.pi / p[bix] * xx[:, np.newaxis] + p[cix]), axis=1)
+    # Expand array to the same size as data.dim + 1, and move params to axis 0 for sum (ndmin moves it to last axis)
+    p = np.moveaxis(np.array(p, ndmin=xx.ndim + 1), source=xx.ndim, destination=0)
+
+    # Perform the sum of sinusoid
+    val = np.sum(p[aix, :] * np.sin(2 * np.pi / p[bix, :] * np.expand_dims(xx, axis=0) + p[cix, :]), axis=0)
 
     return val
 
@@ -495,25 +499,10 @@ def robust_nfreq_sumsin_fit(
     def wrapper_cost_sumofsin(p: NDArrayf, x: NDArrayf, y: NDArrayf) -> float:
         return _cost_sumofsin(x, y, cost_func, *p)
 
-    # First, remove NaNs
-    valid_data = np.logical_and(np.isfinite(ydata), np.isfinite(xdata))
-    x = xdata[valid_data]
-    y = ydata[valid_data]
-
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
     if hop_length is None:
-        x_res = np.mean(np.diff(np.sort(x)))
+        x_res = np.mean(np.diff(np.sort(xdata)))
         hop_length = x_res
-
-    # Use binned statistics for first guess
-    nb_bin = int((x.max() - x.min()) / (5 * hop_length))
-    df = nd_binning(y, [x], ["var"], list_var_bins=nb_bin, statistics=[np.nanmedian])
-    # Compute first guess for x and y
-    x_fg = pd.IntervalIndex(df["var"]).mid.values
-    y_fg = df["nanmedian"]
-    valid_fg = np.logical_and(np.isfinite(x_fg), np.isfinite(y_fg))
-    x_fg = x_fg[valid_fg]
-    y_fg = y_fg[valid_fg]
 
     # Loop on all frequencies
     costs = np.empty(max_nb_frequency)
@@ -529,14 +518,14 @@ def robust_nfreq_sumsin_fit(
         if b is None:
             # For the amplitude, from Y values
             lb_amp = 0
-            ub_amp = y_fg.max() - y_fg.min()
+            ub_amp = ydata.max() - ydata.min()
             # For phase: all possible values for a sinusoid
             lb_phase = 0
             ub_phase = 2 * np.pi
             # For the wavelength: from the resolution and coordinate extent
             # (we don't want the lower bound to be zero, to avoid divisions by zero)
             lb_wavelength = hop_length / 5
-            ub_wavelength = x.max() - x.min()
+            ub_wavelength = xdata.max() - xdata.min()
 
             b = []
             for _i in range(nb_freq):
@@ -555,35 +544,11 @@ def robust_nfreq_sumsin_fit(
             print(lb)
             print(ub)
 
-        # Initialize with the first guess
-        init_args = dict(args=(x_fg, y_fg), method="L-BFGS-B", bounds=scipy_bounds)
-        init_results = scipy.optimize.basinhopping(
-            wrapper_cost_sumofsin,
-            p0,
-            disp=verbose,
-            T=hop_length * 5,
-            minimizer_kwargs=init_args,
-            seed=random_state,
-            **kwargs,
-        )
-        init_results = init_results.lowest_optimization_result
-        init_x = np.array([np.round(ini, 5) for ini in init_results.x])
-
-        if verbose:
-            print("Initial result")
-            print(init_x)
-
-        # Subsample the final raster
-        if subsample != 1:
-            subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
-            x = x[subsamp]
-            y = y[subsamp]
-
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(x, y), method="L-BFGS-B", bounds=scipy_bounds)
+        minimizer_kwargs = dict(args=(xdata, ydata), method="L-BFGS-B", bounds=scipy_bounds)
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
-            init_x,
+            p0,
             disp=verbose,
             T=hop_length * 50,
             minimizer_kwargs=minimizer_kwargs,
@@ -598,7 +563,7 @@ def robust_nfreq_sumsin_fit(
             print(myresults_x)
 
         # Write results for this number of frequency
-        costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, x, y)
+        costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, xdata, ydata)
         amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults_x
 
     # Replace NaN cost by infinity
@@ -620,7 +585,9 @@ def robust_nfreq_sumsin_fit(
     final_degree = final_index + 1
     for i in range(final_index + 1):
         # If an amplitude has an estimated value of less than 0.1% the signal bounds (percentiles for robustness)
-        if np.abs(final_coefs[3 * i]) < (np.nanpercentile(y, 90) - np.nanpercentile(y, 10)) / 1000:
+        # And if the degree is higher than 2 (need at least degree 1 return)
+        if np.abs(final_coefs[3 * i]) < (np.nanpercentile(ydata, 90) - np.nanpercentile(ydata, 10)) / 1000 \
+                and len(final_coefs) > 3:
             final_coefs = np.delete(final_coefs, slice(3 * i, 3 * i + 3))
             final_degree -= 1
             break

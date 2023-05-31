@@ -302,8 +302,6 @@ class BiasCorr(Coreg):
             # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
             #  sigma values would have to be binned above also
 
-            print(new_diff)
-
             ind_valid = np.logical_and.reduce((np.isfinite(new_diff), *(np.isfinite(var) for var in new_vars)))
 
             if np.all(~ind_valid):
@@ -583,7 +581,7 @@ class DirectionalBias(BiasCorr1D):
     def __init__(
         self,
         angle: float = 0,
-        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin_and_fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
