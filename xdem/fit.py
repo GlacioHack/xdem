@@ -8,13 +8,11 @@ import warnings
 from typing import Any, Callable
 
 import numpy as np
-import pandas as pd
 import scipy
 from geoutils.raster import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
 from xdem._typing import NDArrayf
-from xdem.spatialstats import nd_binning
 
 try:
     from sklearn.linear_model import (
@@ -586,8 +584,10 @@ def robust_nfreq_sumsin_fit(
     for i in range(final_index + 1):
         # If an amplitude has an estimated value of less than 0.1% the signal bounds (percentiles for robustness)
         # And if the degree is higher than 2 (need at least degree 1 return)
-        if np.abs(final_coefs[3 * i]) < (np.nanpercentile(ydata, 90) - np.nanpercentile(ydata, 10)) / 1000 \
-                and len(final_coefs) > 3:
+        if (
+            np.abs(final_coefs[3 * i]) < (np.nanpercentile(ydata, 90) - np.nanpercentile(ydata, 10)) / 1000
+            and len(final_coefs) > 3
+        ):
             final_coefs = np.delete(final_coefs, slice(3 * i, 3 * i + 3))
             final_degree -= 1
             break
