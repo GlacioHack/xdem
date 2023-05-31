@@ -81,6 +81,8 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = glacier_outlines.create_mask(ref_dem)
 ```
 
+(biascorr-deramp)=
+
 ## Deramping
 
 {class}`xdem.biascorr.Deramp`

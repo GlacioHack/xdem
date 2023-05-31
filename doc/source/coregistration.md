@@ -154,8 +154,8 @@ For large rotational corrections, [ICP] is recommended.
 ### Example
 
 ```{code-cell} ipython3
-# Instantiate a 1st order deramping object.
-tilt = coreg.Tilt(degree=1)
+# Instantiate a tilt object.
+tilt = coreg.Tilt()
 # Fit the data to a suitable polynomial solution.
 tilt.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
@@ -171,7 +171,7 @@ deramped_dem = tilt.apply(tba_dem)
 - **Supports weights** (soon)
 - **Recommended for:** A precursor step to e.g. ICP.
 
-``VerticalShift`` has very similar functionality to ``Deramp(degree=0)`` or the z-component of `Nuth and Kääb (2011)`_.
+``VerticalShift`` has very similar functionality to the z-component of `Nuth and Kääb (2011)`_.
 This function is more customizable, for example allowing changing of the vertical shift algorithm (from weighted average to e.g. median).
 It should also be faster, since it is a single function call.
 
@@ -268,7 +268,7 @@ The approach does not account for rotations in the dataset, however, so a combin
 For small rotations, a 1st degree deramp could be used:
 
 ```{code-cell} ipython3
-coreg.NuthKaab() + coreg.Deramp(degree=1)
+coreg.NuthKaab() + coreg.Tilt()
 ```
 
 For larger rotations, ICP is the only reliable approach (but does not outperform in sub-pixel accuracy):

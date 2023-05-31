@@ -162,7 +162,7 @@ class BiasCorr(Coreg):
 
     def apply(  # type: ignore
         self,
-        dem: MArrayf,
+        dem: RasterType | NDArrayf | MArrayf,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,

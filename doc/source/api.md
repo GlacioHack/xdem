@@ -142,6 +142,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
     xdem.VerticalShift
     xdem.NuthKaab
     xdem.ICP
+    xdem.Tilt
 ```
 
 ### Bias-correction (non-rigid) methods
