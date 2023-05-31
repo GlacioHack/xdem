@@ -168,7 +168,7 @@ class BiasCorr(Coreg):
         crs: rio.crs.CRS | None = None,
         resample: bool = True,
         **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
+    ) -> tuple[RasterType | NDArrayf | MArrayf, rio.transform.Affine]:
 
         # Change dictionary content to array
         if bias_vars is not None:

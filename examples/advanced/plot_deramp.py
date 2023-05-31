@@ -54,4 +54,3 @@ med_after, nmad_after = np.median(inliers_after), xdem.spatialstats.nmad(inliers
 
 print(f"Error before: median = {med_before:.2f} - NMAD = {nmad_before:.2f} m")
 print(f"Error after: median = {med_after:.2f} - NMAD = {nmad_after:.2f} m")
-
