@@ -113,7 +113,7 @@ class TestBiasCorr:
             biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)  # type: ignore
 
     @pytest.mark.parametrize(
-        "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: a * np.exp(x) + b)
+        "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
     )  # type: ignore
     @pytest.mark.parametrize(
         "fit_optimizer",
@@ -144,7 +144,7 @@ class TestBiasCorr:
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * np.exp(x[0]) + x[1] * b + c**d)
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c**d)
     )  # type: ignore
     @pytest.mark.parametrize(
         "fit_optimizer",
