@@ -6,6 +6,7 @@ from typing import Any, Callable, Iterable, Literal
 
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import rasterio as rio
 import scipy
 from geoutils import Mask
@@ -38,7 +39,7 @@ class BiasCorr(Coreg):
 
     def __init__(
         self,
-        fit_or_bin: str = "fit",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
@@ -51,11 +52,11 @@ class BiasCorr(Coreg):
         Instantiate a bias correction object.
         """
         # Raise error if fit_or_bin is not defined
-        if fit_or_bin not in ["fit", "bin"]:
-            raise ValueError(f"Argument `fit_or_bin` must be 'fit' or 'bin', got {fit_or_bin}.")
+        if fit_or_bin not in ["fit", "bin", "bin_and_fit"]:
+            raise ValueError(f"Argument `fit_or_bin` must be 'bin_and_fit', 'fit' or 'bin', got {fit_or_bin}.")
 
         # Pass the arguments to the class metadata
-        if fit_or_bin == "fit":
+        if fit_or_bin in ["fit", "bin_and_fit"]:
 
             # Check input types for "fit" to raise user-friendly errors
             if not (callable(fit_func) or (isinstance(fit_func, str) and fit_func in fit_workflows.keys())):
@@ -74,10 +75,9 @@ class BiasCorr(Coreg):
                 fit_optimizer = fit_workflows[fit_func]["optimizer"]  # type: ignore
                 fit_func = fit_workflows[fit_func]["func"]  # type: ignore
 
-            # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
-            # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
-            super().__init__(meta={"fit_func": fit_func, "fit_optimizer": fit_optimizer})  # type: ignore
-        else:
+            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer}
+
+        if fit_or_bin in ["bin", "bin_and_fit"]:
 
             # Check input types for "bin" to raise user-friendly errors
             if not (
@@ -100,9 +100,25 @@ class BiasCorr(Coreg):
                     "got {}.".format(type(bin_apply_method))
                 )
 
-            super().__init__(
-                meta={"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method}
-            )
+            meta_bin = {"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method}
+
+        # Now we write the relevant attributes to the class metadata
+        # For fitting
+        if fit_or_bin == "fit":
+            # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
+            # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
+            super().__init__(meta=meta_fit)  # type: ignore
+
+        # For binning
+        elif fit_or_bin == "bin":
+            super().__init__(meta=meta_bin)  # type: ignore
+
+        # For both
+        else:
+            # Merge the two dictionaries
+            meta_both = meta_fit.copy()
+            meta_both.update(meta_bin)
+            super().__init__(meta=meta_both)
 
         # Update attributes
         self._fit_or_bin = fit_or_bin
@@ -199,6 +215,24 @@ class BiasCorr(Coreg):
         # Get number of variables
         nd = len(bias_vars)
 
+        # Remove random state for keyword argument if its value is not in the optimizer function
+        if self._fit_or_bin in ["fit", "bin_and_fit"]:
+            fit_func_args = inspect.getfullargspec(self._meta["fit_optimizer"]).args
+            if "random_state" not in fit_func_args:
+                kwargs.pop("random_state")
+
+        # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
+        if self._fit_or_bin in ["bin", "bin_and_fit"]:
+            if isinstance(self._meta["bin_sizes"], dict):
+                var_order = list(bias_vars.keys())
+                # Declare type to write integer or tuple to the variable
+                bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
+                    np.array(self._meta["bin_sizes"][var]) for var in var_order
+                )
+            # Otherwise, write integer directly
+            else:
+                bin_sizes = self._meta["bin_sizes"]
+
         # Option 1: Run fit and save optimized function parameters
         if self._fit_or_bin == "fit":
 
@@ -209,11 +243,6 @@ class BiasCorr(Coreg):
                     "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
                 )
 
-            # Remove random state for keyword argument if its value is not in the optimizer function
-            fit_func_args = inspect.getfullargspec(self._meta["fit_optimizer"]).args
-            if "random_state" not in fit_func_args:
-                kwargs.pop("random_state")
-
             results = self._meta["fit_optimizer"](
                 f=self._meta["fit_func"],
                 xdata=np.array([var[ind_valid].flatten() for var in bias_vars.values()]).squeeze(),
@@ -222,6 +251,75 @@ class BiasCorr(Coreg):
                 absolute_sigma=True,
                 **kwargs,
             )
+
+        # Option 2: Run binning and save dataframe of result
+        elif self._fit_or_bin == "bin":
+
+            if verbose:
+                print(
+                    "Estimating bias correction along variables {} by binning "
+                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
+                )
+
+            df = xdem.spatialstats.nd_binning(
+                values=diff[ind_valid],
+                list_var=[var[ind_valid] for var in bias_vars.values()],
+                list_var_names=list(bias_vars.keys()),
+                list_var_bins=bin_sizes,
+                statistics=(self._meta["bin_statistic"], "count"),
+            )
+
+        # Option 3: Run binning, then fitting, and save both results
+        else:
+
+            # Print if verbose
+            if verbose:
+                print(
+                    "Estimating bias correction along variables {} by binning with statistic {} and then fitting "
+                    "with function {}.".format(", ".join(list(bias_vars.keys())),
+                                               self._meta["bin_statistic"].__name__,
+                                               self._meta["fit_func"].__name__)
+                )
+
+            df = xdem.spatialstats.nd_binning(
+                values=diff[ind_valid],
+                list_var=[var[ind_valid] for var in bias_vars.values()],
+                list_var_names=list(bias_vars.keys()),
+                list_var_bins=bin_sizes,
+                statistics=(self._meta["bin_statistic"], "count"),
+            )
+
+            # Now, we need to pass this new data to the fitting function and optimizer
+            # We use only the N-D binning estimates (maximum dimension, equal to length of variable list)
+            df_nd = df[df.nd == len(bias_vars)]
+
+            # We get the middle of bin values for variable, and statistic for the diff
+            new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
+            new_diff = df_nd[self._meta["bin_statistic"].__name__].values
+            # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
+            #  sigma values would have to be binned above also
+
+            print(new_diff)
+
+            ind_valid = np.logical_and.reduce((np.isfinite(new_diff), *(np.isfinite(var) for var in new_vars)))
+
+            if np.all(~ind_valid):
+                raise ValueError("Only NaNs values after binning, did you pass the right bin edges?")
+
+            results = self._meta["fit_optimizer"](
+                f=self._meta["fit_func"],
+                xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
+                ydata=new_diff[ind_valid].flatten(),
+                sigma=weights[ind_valid].flatten() if weights is not None else None,
+                absolute_sigma=True,
+                **kwargs,
+            )
+
+        if verbose:
+            print(f"{nd}D bias estimated.")
+
+        # Save results if fitting was performed
+        if self._fit_or_bin in ["fit", "bin_and_fit"]:
 
             # Write the results to metadata in different ways depending on optimizer returns
             if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
@@ -243,40 +341,11 @@ class BiasCorr(Coreg):
 
             self._meta["fit_params"] = params
 
-        # Option 2: Run binning and save dataframe of result
-        else:
-
-            if verbose:
-                print(
-                    "Estimating bias correction along variables {} by binning "
-                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
-                )
-
-            # We need to sort the bin sizes in the same order as the bias variables if a dict is passed
-            if isinstance(self._meta["bin_sizes"], dict):
-                var_order = list(bias_vars.keys())
-                # Declare type to write integer or tuple to the variable
-                bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
-                    np.array(self._meta["bin_sizes"][var]) for var in var_order
-                )
-            # Otherwise, write integer directly
-            else:
-                bin_sizes = self._meta["bin_sizes"]
-
-            df = xdem.spatialstats.nd_binning(
-                values=diff[ind_valid],
-                list_var=[var[ind_valid] for var in bias_vars.values()],
-                list_var_names=list(bias_vars.keys()),
-                list_var_bins=bin_sizes,
-                statistics=(self._meta["bin_statistic"], "count"),
-            )
-
+        # Save results of binning if it was perfrmed
+        elif self._fit_or_bin in ["bin", "bin_and_fit"]:
             self._meta["bin_dataframe"] = df
 
-        if verbose:
-            print(f"{nd}D bias estimated.")
-
-        # Save bias variable names
+        # Save bias variable names in any case
         self._meta["bias_vars"] = list(bias_vars.keys())
 
     def _apply_func(  # type: ignore
@@ -291,8 +360,8 @@ class BiasCorr(Coreg):
         if bias_vars is None:
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
 
-        # Apply function to get correction
-        if self._fit_or_bin == "fit":
+        # Apply function to get correction (including if binning was done before)
+        if self._fit_or_bin in ["fit", "bin_and_fit"]:
             corr = self._meta["fit_func"](tuple(bias_vars.values()), *self._meta["fit_params"])
 
         # Apply binning to get correction
@@ -331,7 +400,7 @@ class BiasCorr1D(BiasCorr):
 
     def __init__(
         self,
-        fit_or_bin: str = "fit",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
@@ -393,7 +462,7 @@ class BiasCorr2D(BiasCorr):
 
     def __init__(
         self,
-        fit_or_bin: str = "fit",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
@@ -452,7 +521,7 @@ class BiasCorrND(BiasCorr):
 
     def __init__(
         self,
-        fit_or_bin: str = "bin",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
@@ -511,7 +580,7 @@ class DirectionalBias(BiasCorr1D):
     def __init__(
         self,
         angle: float = 0,
-        fit_or_bin: str = "fit",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
@@ -604,7 +673,7 @@ class TerrainBias(BiasCorr1D):
     def __init__(
         self,
         terrain_attribute: str = "maximum_curvature",
-        fit_or_bin: str = "bin",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
         fit_func: Callable[..., NDArrayf]
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
@@ -692,7 +761,7 @@ class Deramp(BiasCorr2D):
     def __init__(
         self,
         poly_order: int = 2,
-        fit_or_bin: str = "fit",
+        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,

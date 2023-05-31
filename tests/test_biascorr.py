@@ -64,11 +64,24 @@ class TestBiasCorr:
         assert bcorr2._meta["bin_statistic"] == np.nanmedian
         assert bcorr2._meta["bin_apply_method"] == "linear"
 
+        assert bcorr2._fit_or_bin == "bin"
+
+        # Or with default bin_and_fit arguments
+        bcorr3 = biascorr.BiasCorr(fit_or_bin="bin_and_fit")
+
+        assert bcorr3._meta["bin_sizes"] == 10
+        assert bcorr3._meta["bin_statistic"] == np.nanmedian
+        assert bcorr3._meta["bin_apply_method"] == "linear"
+        assert bcorr3._meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
+        assert bcorr3._meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+
+        assert bcorr3._fit_or_bin == "bin_and_fit"
+
     def test_biascorr__errors(self) -> None:
         """Test the errors that should be raised by BiasCorr."""
 
         # And raises an error when "fit" or "bin" is wrongly passed
-        with pytest.raises(ValueError, match="Argument `fit_or_bin` must be 'fit' or 'bin'."):
+        with pytest.raises(ValueError, match="Argument `fit_or_bin` must be 'bin_and_fit', 'fit' or 'bin'."):
             biascorr.BiasCorr(fit_or_bin=True)  # type: ignore
 
         # For fit function
@@ -170,7 +183,7 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("bin_sizes", (10,))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (0, 500, 1000)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_1d(self, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -189,7 +202,7 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("bin_sizes", (10,))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_2d(self, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -204,6 +217,70 @@ class TestBiasCorr:
 
         # Run with input parameter, and using only 100 subsamples for speed
         bcorr.fit(**elev_fit_params, subsample=1000, random_state=42)
+
+        # Apply the correction
+        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+
+    @pytest.mark.parametrize(
+        "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
+    )  # type: ignore
+    @pytest.mark.parametrize(
+        "fit_optimizer",
+        [
+            scipy.optimize.curve_fit,
+        ],
+    )  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000)}))  # type: ignore
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
+    def test_biascorr__bin_and_fit_1d(self, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
+        """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
+
+        # Create a bias correction object
+        bcorr = biascorr.BiasCorr(fit_or_bin="bin_and_fit", fit_func=fit_func, fit_optimizer=fit_optimizer,
+                                  bin_sizes=bin_sizes, bin_statistic=bin_statistic)
+
+        # Run fit using elevation as input variable
+        elev_fit_params = self.fit_params.copy()
+        bias_vars_dict = {"elevation": self.ref}
+        elev_fit_params.update({"bias_vars": bias_vars_dict})
+
+        # To speed up the tests, pass niter to basinhopping through "nfreq_sumsin"
+        # Also fix random state for basinhopping
+        if fit_func == "nfreq_sumsin":
+            elev_fit_params.update({"niter": 1})
+
+        # Run with input parameter, and using only 100 subsamples for speed
+        bcorr.fit(**elev_fit_params, subsample=100, random_state=42)
+
+        # Apply the correction
+        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+
+    @pytest.mark.parametrize(
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c**d)
+    )  # type: ignore
+    @pytest.mark.parametrize(
+        "fit_optimizer",
+        [
+            scipy.optimize.curve_fit,
+        ],
+    )  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
+    def test_biascorr__bin_and_fit_2d(self, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
+        """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
+
+        # Create a bias correction object
+        bcorr = biascorr.BiasCorr(fit_or_bin="bin_and_fit", fit_func=fit_func, fit_optimizer=fit_optimizer,
+                                  bin_sizes=bin_sizes, bin_statistic=bin_statistic)
+
+        # Run fit using elevation as input variable
+        elev_fit_params = self.fit_params.copy()
+        bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
+        elev_fit_params.update({"bias_vars": bias_vars_dict})
+
+        # Run with input parameter, and using only 100 subsamples for speed
+        # Passing p0 defines the number of parameters to solve for
+        bcorr.fit(**elev_fit_params, subsample=100, p0=[0, 0, 0, 0], random_state=42)
 
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
