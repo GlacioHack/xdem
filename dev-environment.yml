@@ -38,7 +38,7 @@ dependencies:
   - sphinx-autodoc-typehints
   - sphinx-gallery
   - pyyaml
-  - richdem
+#  - richdem
 
   - pip:
     - noisyopt
