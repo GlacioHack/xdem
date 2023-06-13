@@ -42,6 +42,7 @@ def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") 
     """
     rda = _raster_to_rda(rst)
     terrattr = rd.TerrainAttribute(rda, attrib=attribute)
+    terrattr[terrattr == terrattr.no_data] = np.nan
 
     return np.array(terrattr)
 

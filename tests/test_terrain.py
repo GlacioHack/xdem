@@ -260,8 +260,9 @@ class TestTerrainAttribute:
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
         dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
 
-        # Validate that this doesn't raise weird warnings after introducing nans.
-        functions_richdem[attribute](dem)
+        # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
+        output = functions_richdem[attribute](dem)
+        assert np.all(dem.data.mask == output.data.mask)
 
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""
