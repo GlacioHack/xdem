@@ -2282,7 +2282,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         aspect_r = tba_dem.copy(new_array=np.ma.masked_array(aspect[None, :, :], mask=~np.isfinite(aspect[None, :, :])))
 
         # Initialise east and north pixel offset variables (these will be incremented up and down)
-        offset_east, offset_north, bias = 0.0, 0.0, 0.0
+        offset_east, offset_north, vshift = 0.0, 0.0, 0.0
 
         # Calculate initial DEM statistics
         slope_pts = slope_r.interp_points(pts, mode="nearest")
@@ -2293,12 +2293,12 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         new_pts = pts.copy()
 
         elevation_difference = ref_dem[z_name].values - tba_pts
-        bias = float(np.nanmedian(elevation_difference))
+        vshift = float(np.nanmedian(elevation_difference))
         nmad_old = nmad(elevation_difference)
 
         if verbose:
             print("   Statistics on initial dh:")
-            print(f"      Median = {bias:.3f} - NMAD = {nmad_old:.3f}")
+            print(f"      Median = {vshift:.3f} - NMAD = {nmad_old:.3f}")
 
         # Iteratively run the analysis until the maximum iterations or until the error gets low enough
         if verbose:
@@ -2334,15 +2334,15 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             elevation_difference = elevation_difference[mask_]
             slope_pts = slope_r.interp_points(pts_, mode="nearest")
             aspect_pts = aspect_r.interp_points(pts_, mode="nearest")
-            bias = float(np.nanmedian(elevation_difference))
+            vshift = float(np.nanmedian(elevation_difference))
 
             # Update statistics
-            elevation_difference -= bias
+            elevation_difference -= vshift
             nmad_new = nmad(elevation_difference)
             nmad_gain = (nmad_new - nmad_old) / nmad_old * 100
 
             if verbose:
-                pbar.write(f"      Median = {bias:.3f} - NMAD = {nmad_new:.3f}  ==>  Gain = {nmad_gain:.3f}%")
+                pbar.write(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}  ==>  Gain = {nmad_gain:.3f}%")
 
             # Stop if the NMAD is low and a few iterations have been made
             assert ~np.isnan(nmad_new), (offset_east, offset_north)
@@ -2361,15 +2361,15 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         if verbose:
             print(
                 "\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(
-                    offset_east, offset_north, bias
+                    offset_east, offset_north, vshift
                 )
             )
             print("   Statistics on coregistered dh:")
-            print(f"      Median = {bias:.3f} - NMAD = {nmad_new:.3f}")
+            print(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}")
 
         self._meta["offset_east_px"] = offset_east
         self._meta["offset_north_px"] = offset_north
-        self._meta["bias"] = bias
+        self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
         self._meta["nmad"] = nmad_new
 
@@ -2479,9 +2479,9 @@ class GradientDescending(Rigid):
 
             elevation_difference = residuals_df(tba_dem, ref_dem, (0, 0), 0, z_name=z_name)
             nmad_old = nmad(elevation_difference)
-            bias = np.nanmedian(elevation_difference)
+            vshift = np.nanmedian(elevation_difference)
             print("   Statistics on initial dh:")
-            print(f"      Median = {bias:.4f} - NMAD = {nmad_old:.4f}")
+            print(f"      Median = {vshift:.4f} - NMAD = {nmad_old:.4f}")
 
         # start iteration, find the best shifting px
         def func_cost(x: tuple[float, float]) -> np.floating[Any]:
@@ -2502,7 +2502,7 @@ class GradientDescending(Rigid):
         elevation_difference = residuals_df(tba_dem, ref_dem, (res.x[0], res.x[1]), 0, z_name=z_name)
 
         # results statistics
-        bias = np.nanmedian(elevation_difference)
+        vshift = np.nanmedian(elevation_difference)
         nmad_new = nmad(elevation_difference)
 
         # Print final results
@@ -2510,11 +2510,11 @@ class GradientDescending(Rigid):
 
             print(f"\n   Final offset in pixels (east, north) : ({res.x[0]:f}, {res.x[1]:f})")
             print("   Statistics on coregistered dh:")
-            print(f"      Median = {bias:.4f} - NMAD = {nmad_new:.4f}")
+            print(f"      Median = {vshift:.4f} - NMAD = {nmad_new:.4f}")
 
         self._meta["offset_east_px"] = res.x[0]
         self._meta["offset_north_px"] = res.x[1]
-        self._meta["bias"] = bias
+        self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
 
     def _to_matrix_func(self) -> NDArrayf:
@@ -2525,7 +2525,7 @@ class GradientDescending(Rigid):
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[0, 3] += offset_east
         matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["bias"]
+        matrix[2, 3] += self._meta["vshift"]
 
         return matrix
 
