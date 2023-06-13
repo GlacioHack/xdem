@@ -193,7 +193,16 @@ class TestCoregClass:
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(vshiftcorr.error(dem1, dem3, transform=affine, crs=crs, error_type="std") - np.std(dem3)) < 1e-6
 
-    def test_coreg_example(self) -> None:
+    def test_ij_xy(self, i: int = 10, j: int = 20) -> None:
+        """
+        Test the reversibility of ij2xy and xy2ij, which is important for point co-registration.
+        """
+        x, y = self.ref.ij2xy(i, j, offset="ul")
+        i, j = self.ref.xy2ij(x, y, shift_area_or_point=False)
+        assert i == pytest.approx(10)
+        assert j == pytest.approx(20)
+
+    def test_coreg_example(self, verbose: bool = False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
@@ -201,12 +210,71 @@ class TestCoregClass:
 
         # Run co-registration
         nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask)
+        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose)
 
         # Check the output metadata is always the same
         assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.46255704521968716)
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
         assert nuth_kaab._meta["vshift"] == pytest.approx(-1.9815309753424906)
+
+    def test_coreg_example_gradiendescending(
+        self, downsampling: int = 10000, samples: int = 20000, inlier_mask: bool = True, verbose: bool = False
+    ) -> None:
+        """
+        Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
+        test_examples.py, but helps identify from where differences arise.
+        """
+        if inlier_mask:
+            inlier_mask = self.inlier_mask
+
+        # Run co-registration
+        gds = xdem.coreg.GradientDescending(downsampling=downsampling)
+        gds.fit_pts(self.ref, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples)
+        assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
+        assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
+        assert gds._meta["bias"] == pytest.approx(-1.8730, rel=1e-1)
+
+    def test_coreg_example_shift_test(
+        self,
+        shift_px: tuple[float, float] = (1, 1),
+        verbose: bool = False,
+        coregs: tuple[str, ...] = ("NuthKaab", "GradientDescending", "NuthKaab_pts"),
+        downsampling: int = 10000,
+    ) -> None:
+        """
+        For comparison of coreg algorithms:
+        Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then apply coreg to shift it back.
+        """
+        warnings.simplefilter("error")
+
+        res = self.ref.res[0]
+
+        # Shift DEM by shift_px
+        shifted_ref = self.ref.copy()
+        shifted_ref.shift(shift_px[0] * res, shift_px[1] * res)
+
+        for cor in coregs:
+            # Do coreg on shifted DEM
+            if cor == "NuthKaab":
+                print("\n(1) NuthKaab")
+                nuth_kaab = xdem.coreg.NuthKaab()
+                nuth_kaab.fit(shifted_ref, self.ref, inlier_mask=self.inlier_mask, verbose=verbose)
+                assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
+                assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-shift_px[1], rel=1e-2)
+
+            if cor == "GradientDescending":
+                print("\n(2) GradientDescending")
+                gds = xdem.coreg.GradientDescending(downsampling=downsampling)
+                gds.fit_pts(shifted_ref, self.ref, inlier_mask=self.inlier_mask, verbose=verbose)
+                assert gds._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
+                assert gds._meta["offset_north_px"] == pytest.approx(-shift_px[1], rel=1e-2)
+
+            if cor == "NuthKaab_pts":
+                print("\n(3) NuthKaab running on pts_fit")
+                nuth_kaab = xdem.coreg.NuthKaab()
+                nuth_kaab.fit_pts(shifted_ref, self.ref, inlier_mask=self.inlier_mask, verbose=verbose)
+                assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
+                assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-shift_px[1], rel=1e-2)
 
     def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")

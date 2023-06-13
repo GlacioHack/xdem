@@ -122,6 +122,11 @@ venv.bak/
 # PyCharm project setting
 .idea
 
+# VS code setting
+.vscode/
+!.vscode/settings.json
+!.vscode/launch.json
+
 # Rope project settings
 .ropeproject
 
