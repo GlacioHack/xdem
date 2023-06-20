@@ -487,6 +487,7 @@ class TestBiasCorr:
         # Create a bias depending on bins
         synthetic_bias = np.zeros(np.shape(self.ref.data))
 
+        # For each bin, a fake bias value is set in the synthetic bias array
         bin_edges = np.array((-1, 0, 0.1, 0.5, 2, 5))
         bias_per_bin = np.array((-5, 10, -2, 25, 5))
         for i in range(len(bin_edges) - 1):
@@ -496,17 +497,17 @@ class TestBiasCorr:
         bias_dem = self.ref - synthetic_bias
 
         # Run the binning
-        deramp = biascorr.TerrainBias(
+        tb = biascorr.TerrainBias(
             terrain_attribute="maximum_curvature",
             bin_sizes={"maximum_curvature": bin_edges},
             bin_apply_method="per_bin",
         )
         # We don't want to subsample here, otherwise it might be very hard to derive maximum curvature...
         # TODO: Add the option to get terrain attribute before subsampling in the fit subclassing logic?
-        deramp.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, random_state=42)
+        tb.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, random_state=42)
 
         # Check high-order parameters are the same within 10%
-        bin_df = deramp._meta["bin_dataframe"]
+        bin_df = tb._meta["bin_dataframe"]
         assert [interval.left for interval in bin_df["maximum_curvature"].values] == list(bin_edges[:-1])
         assert [interval.right for interval in bin_df["maximum_curvature"].values] == list(bin_edges[1:])
         assert np.allclose(bin_df["nanmedian"], bias_per_bin, rtol=0.1)
@@ -514,5 +515,5 @@ class TestBiasCorr:
         # Run apply and check that 99% of the variance was corrected
         # (we override the bias_var "max_curv" with that of the ref_dem to have a 1 on 1 match with the synthetic bias,
         # otherwise it is derived from the bias_dem which gives slightly different results than with ref_dem)
-        corrected_dem = deramp.apply(bias_dem, bias_vars={"maximum_curvature": maxc})
+        corrected_dem = tb.apply(bias_dem, bias_vars={"maximum_curvature": maxc})
         assert np.nanvar(corrected_dem - self.ref) < 0.01 * np.nanvar(synthetic_bias)

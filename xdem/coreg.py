@@ -513,7 +513,7 @@ def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine)
     return x_coords, y_coords
 
 
-def _preprocess_coreg_input(
+def _preprocess_coreg_raster_input(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
     inlier_mask: NDArrayf | Mask | None = None,
@@ -733,7 +733,8 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
-        ref_dem, tba_dem, transform, crs = _preprocess_coreg_input(
+        # Pre-process the inputs, by reprojecting and subsampling
+        ref_dem, tba_dem, transform, crs = _preprocess_coreg_raster_input(
             reference_dem=reference_dem,
             dem_to_be_aligned=dem_to_be_aligned,
             inlier_mask=inlier_mask,
@@ -767,6 +768,8 @@ class Coreg:
         inlier_mask: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        subsample: float | int = 1.0,
+        random_state: None | np.random.RandomState | np.random.Generator | int = None,
     ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
@@ -776,25 +779,28 @@ class Coreg:
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
+        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
         :returns: A 1D array of finite residuals.
         """
-        # Use the transform to correct the DEM to be aligned.
-        aligned_dem, _ = self.apply(dem_to_be_aligned, transform=transform, crs=crs)
 
-        # Format the reference DEM
-        ref_arr, ref_mask = get_array_and_mask(reference_dem)
-
-        if inlier_mask is None:
-            inlier_mask = np.ones(ref_arr.shape, dtype=bool)
-
-        # Create the full inlier mask (manual inliers plus non-nans)
-        full_mask = (~ref_mask) & np.isfinite(aligned_dem) & inlier_mask
+        # Pre-process the inputs, by reprojecting and subsampling
+        ref_dem, tba_dem, transform, crs = _preprocess_coreg_raster_input(
+            reference_dem=reference_dem,
+            dem_to_be_aligned=dem_to_be_aligned,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            subsample=subsample,
+            random_state=random_state,
+        )
 
         # Calculate the DEM difference
-        diff = ref_arr - aligned_dem
+        diff = ref_dem - tba_dem
 
         # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
+        full_mask = np.isfinite(diff)
         if "float" in str(diff.dtype):
             full_mask[(diff == np.finfo(diff.dtype).min) | np.isinf(diff)] = False
 
@@ -876,8 +882,7 @@ class Coreg:
         ref_dem = reference_dem[ref_valid]
 
         if mask_high_curv:
-            planc, profc = get_terrain_attribute(tba_dem, attribute=["planform_curvature", "profile_curvature"])
-            maxc = np.maximum(np.abs(planc), np.abs(profc))
+            maxc = np.maximum(np.abs(get_terrain_attribute(tba_dem, attribute=["planform_curvature", "profile_curvature"])), axis=0)
             # Mask very high curvatures to avoid resolution biases
             mask_hc = maxc.data > 5.0
         else:

@@ -98,7 +98,7 @@ This may be useful for correcting small rotations in the dataset, or nonlinear e
 
 Deramping does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
 
-1st order deramping is not perfectly equivalent to a rotational correction: Values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
+1st order deramping is not perfectly equivalent to a rotational correction: values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
 For large rotational corrections, [ICP] is recommended.
 
 ### Example
@@ -125,13 +125,6 @@ corrected_dem = deramp.apply(tba_dem)
 
 The default optimizer for directional biases optimizes a sum of sinusoids using 1 to 3 different frequencies, and keeping the best performing fit.
 
-### Limitations
-
-Deramping does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
-
-1st order deramping is not perfectly equivalent to a rotational correction: Values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
-For large rotational corrections, [ICP] is recommended.
-
 ### Example
 
 ```{code-cell} ipython3
@@ -150,19 +143,11 @@ corrected_dem = dirbias.apply(tba_dem)
 
 {class}`xdem.biascorr.TerrainBias`
 
-- **Performs:** Correct biases with a 2D polynomial of degree N.
+- **Performs:** Correct biases along a terrain attribute of the DEM.
 - **Supports weights** Yes.
-- **Recommended for:** Residuals from camera model.
+- **Recommended for:** Different native resolution between DEMs.
 
-Deramping works by estimating and correcting for an N-degree polynomial over the entire dDEM between a reference and the DEM to be aligned.
-This may be useful for correcting small rotations in the dataset, or nonlinear errors that for example often occur in structure-from-motion derived optical DEMs (e.g. Rosnell and Honkavaara [2012](https://doi.org/10.3390/s120100453); Javernick et al. [2014](https://doi.org/10.1016/j.geomorph.2014.01.006); Girod et al. [2017](https://doi.org/10.5194/tc-11827-2017)).
-
-### Limitations
-
-Deramping does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
-
-1st order deramping is not perfectly equivalent to a rotational correction: Values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
-For large rotational corrections, [ICP] is recommended.
+The default optimizer for terrain biases optimizes a 1D polynomial with an order from 1 to 6, and keeping the best performing fit.
 
 ### Example
 

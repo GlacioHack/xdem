@@ -559,7 +559,7 @@ class BiasCorrND(BiasCorr):
 
         # Check bias variable
         if bias_vars is None or len(bias_vars) <= 2:
-            raise ValueError('More than two variables have to be provided through the argument "bias_vars".')
+            raise ValueError('At least three variables have to be provided through the argument "bias_vars".')
 
         super()._fit_func(
             ref_dem=ref_dem,

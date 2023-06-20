@@ -138,7 +138,7 @@ aligned_dem = nuth_kaab.apply(tba_dem)
 
 {class}`xdem.coreg.Tilt`
 
-- **Performs:** A 2D plan tilt correction.
+- **Performs:** A 2D plane tilt correction.
 - **Supports weights** (soon)
 - **Recommended for:** Data with no horizontal offset and low to moderate rotational differences.
 
