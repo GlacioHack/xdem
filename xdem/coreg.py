@@ -882,7 +882,9 @@ class Coreg:
         ref_dem = reference_dem[ref_valid]
 
         if mask_high_curv:
-            maxc = np.maximum(np.abs(get_terrain_attribute(tba_dem, attribute=["planform_curvature", "profile_curvature"])), axis=0)
+            maxc = np.maximum(
+                np.abs(get_terrain_attribute(tba_dem, attribute=["planform_curvature", "profile_curvature"])), axis=0
+            )
             # Mask very high curvatures to avoid resolution biases
             mask_hc = maxc.data > 5.0
         else:
