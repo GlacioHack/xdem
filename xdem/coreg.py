@@ -785,10 +785,13 @@ class Coreg:
         :returns: A 1D array of finite residuals.
         """
 
+        # Apply the transformation to the dem to be aligned
+        aligned_dem = self.apply(dem_to_be_aligned, transform=transform, crs=crs)[0]
+
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, tba_dem, transform, crs = _preprocess_coreg_raster_input(
+        ref_dem, align_dem, transform, crs = _preprocess_coreg_raster_input(
             reference_dem=reference_dem,
-            dem_to_be_aligned=dem_to_be_aligned,
+            dem_to_be_aligned=aligned_dem,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
@@ -797,7 +800,7 @@ class Coreg:
         )
 
         # Calculate the DEM difference
-        diff = ref_dem - tba_dem
+        diff = ref_dem - align_dem
 
         # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
         full_mask = np.isfinite(diff)
