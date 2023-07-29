@@ -32,7 +32,7 @@ diff_before.show(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation cha
 # %%
 # A 2-D 3rd order polynomial is estimated, and applied to the data:
 
-deramp = xdem.biascorr.Deramp(poly_order=2)
+deramp = xdem.coreg.Deramp(poly_order=2)
 
 deramp.fit(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
 corrected_dem = deramp.apply(dem_to_be_aligned)

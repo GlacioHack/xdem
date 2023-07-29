@@ -195,7 +195,7 @@ class dDEM(Raster):  # type: ignore
             assert reference_elevation is not None
             assert mask is not None
 
-            mask_array = xdem.coreg.mask_as_array(self, mask).reshape(self.data.shape)
+            mask_array = xdem.coreg.base._mask_as_array(self, mask).reshape(self.data.shape)
 
             self.filled_data = xdem.volume.hypsometric_interpolation(
                 self.data, reference_elevation.data, mask=mask_array

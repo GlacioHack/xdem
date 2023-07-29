@@ -1,4 +1,4 @@
-"""Bias corrections for DEMs"""
+"""Bias corrections (i.e., non-affine coregistration) classes."""
 from __future__ import annotations
 
 import inspect
@@ -14,7 +14,7 @@ from geoutils.raster import RasterType
 
 import xdem.spatialstats
 from xdem._typing import MArrayf, NDArrayf
-from xdem.coreg import Coreg, CoregType
+from xdem.coreg.base import Coreg, CoregType
 from xdem.fit import (
     polynomial_1d,
     polynomial_2d,

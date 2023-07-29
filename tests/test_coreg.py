@@ -20,7 +20,8 @@ with warnings.catch_warnings():
     import xdem
     from xdem import coreg, examples, misc, spatialstats
     from xdem._typing import NDArrayf
-    from xdem.coreg import CoregDict
+    from xdem.coreg.base import CoregDict, apply_matrix
+    from xdem.coreg.affine import AffineCoreg
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -57,25 +58,25 @@ class TestCoregClass:
         vshift = 5
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[2, 3] = vshift
-        coreg_obj = coreg.Rigid.from_matrix(matrix)
+        coreg_obj = AffineCoreg.from_matrix(matrix)
         transformed_points = coreg_obj.apply_pts(self.points)
         assert transformed_points[0, 2] == vshift
 
         # Check that the from_translation function works as expected.
         x_offset = 5
-        coreg_obj2 = coreg.Rigid.from_translation(x_off=x_offset)
+        coreg_obj2 = AffineCoreg.from_translation(x_off=x_offset)
         transformed_points2 = coreg_obj2.apply_pts(self.points)
         assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
 
         # Try to make a Coreg object from a nan translation (should fail).
         try:
-            coreg.Rigid.from_translation(np.nan)
+            AffineCoreg.from_translation(np.nan)
         except ValueError as exception:
             if "non-finite values" not in str(exception):
                 raise exception
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
-    def test_copy(self, coreg_class: Callable[[], coreg.Rigid]) -> None:
+    def test_copy(self, coreg_class: Callable[[], AffineCoreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
         warnings.simplefilter("error")
 
@@ -469,7 +470,7 @@ class TestCoregClass:
         "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
     )  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
-    def test_blockwise_coreg(self, pipeline: coreg.Rigid, subdivision: int) -> None:
+    def test_blockwise_coreg(self, pipeline: AffineCoreg, subdivision: int) -> None:
         warnings.simplefilter("error")
 
         blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
@@ -761,7 +762,7 @@ class TestCoregClass:
         # Use VerticalShift as a representative example.
         vshiftcorr = xdem.coreg.VerticalShift()
 
-        def fit_func() -> coreg.Rigid:
+        def fit_func() -> AffineCoreg:
             return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
 
         def apply_func() -> NDArrayf:
@@ -810,7 +811,7 @@ def test_apply_matrix() -> None:
     vshift = 5
     matrix = np.diag(np.ones(4, float))
     matrix[2, 3] = vshift
-    transformed_dem = coreg.apply_matrix(ref_arr, ref.transform, matrix)
+    transformed_dem = apply_matrix(ref_arr, ref.transform, matrix)
     reverted_dem = transformed_dem - vshift
 
     # Check that the reverted DEM has the exact same values as the initial one
@@ -829,7 +830,7 @@ def test_apply_matrix() -> None:
     matrix[0, 3] = pixel_shift * tba.res[0]
     matrix[2, 3] = -vshift
 
-    transformed_dem = coreg.apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
+    transformed_dem = apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
     diff = np.asarray(ref_arr - transformed_dem)
 
     # Check that the median is very close to zero
@@ -855,14 +856,14 @@ def test_apply_matrix() -> None:
         np.mean([ref.bounds.top, ref.bounds.bottom]),
         ref.data.mean(),
     )
-    rotated_dem = coreg.apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
+    rotated_dem = apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
     # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
     assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
     assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
 
     # Apply a rotation in the opposite direction
     unrotated_dem = (
-        coreg.apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
+        apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
     )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
@@ -925,7 +926,7 @@ def test_warp_dem() -> None:
     dest_coords = source_coords.copy()
     dest_coords[0, 0] = -1e-5
 
-    warped_dem = coreg.warp_dem(
+    warped_dem = coreg.base.warp_dem(
         dem=small_dem,
         transform=small_transform,
         source_coords=source_coords,
@@ -937,7 +938,7 @@ def test_warp_dem() -> None:
 
     elev_shift = 5.0
     dest_coords[1, 2] = elev_shift
-    warped_dem = coreg.warp_dem(
+    warped_dem = coreg.base.warp_dem(
         dem=small_dem,
         transform=small_transform,
         source_coords=source_coords,
@@ -984,12 +985,12 @@ def test_warp_dem() -> None:
     dem = misc.generate_random_field(shape, 100) * 200 + misc.generate_random_field(shape, 10) * 50
 
     # Warp the DEM using the source-destination coordinates.
-    transformed_dem = coreg.warp_dem(
+    transformed_dem = coreg.base.warp_dem(
         dem=dem, transform=transform, source_coords=source_coords, destination_coords=dest_coords, resampling="linear"
     )
 
     # Try to undo the warp by reversing the source-destination coordinates.
-    untransformed_dem = coreg.warp_dem(
+    untransformed_dem = coreg.base.warp_dem(
         dem=transformed_dem,
         transform=transform,
         source_coords=dest_coords,
@@ -1026,7 +1027,7 @@ def test_create_inlier_mask() -> None:
     # - Assert that without filtering create_inlier_mask behaves as if calling Vector.create_mask - #
     # Masking inside - using Vector
     inlier_mask_comp = ~outlines.create_mask(ref, as_array=True)
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba,
         ref,
         [
@@ -1037,7 +1038,7 @@ def test_create_inlier_mask() -> None:
     assert np.all(inlier_mask_comp == inlier_mask)
 
     # Masking inside - using string
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba,
         ref,
         [
@@ -1048,7 +1049,7 @@ def test_create_inlier_mask() -> None:
     assert np.all(inlier_mask_comp == inlier_mask)
 
     # Masking outside - using Vector
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba,
         ref,
         [
@@ -1062,7 +1063,7 @@ def test_create_inlier_mask() -> None:
     assert np.all(~inlier_mask_comp == inlier_mask)
 
     # Masking outside - using string
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba,
         ref,
         [
@@ -1080,18 +1081,18 @@ def test_create_inlier_mask() -> None:
     inlier_mask_comp2 = np.ones(tba.data.shape, dtype=bool)
     inlier_mask_comp2[slope.data < slope_lim[0]] = False
     inlier_mask_comp2[slope.data > slope_lim[1]] = False
-    inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf)
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf)
     assert np.all(inlier_mask == inlier_mask_comp2)
 
     # Test the nmad_factor filter only
     nmad_factor = 3
     ddem = tba - ref
     inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(False)
-    inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
     assert np.all(inlier_mask == inlier_mask_comp3)
 
     # Test the sum of both
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba, ref, shp_list=[], inout=[], filtering=True, slope_lim=slope_lim, nmad_factor=nmad_factor
     )
     inlier_mask_all = inlier_mask_comp2 & inlier_mask_comp3
@@ -1100,14 +1101,14 @@ def test_create_inlier_mask() -> None:
     # Test the dh_max filter only
     dh_max = 200
     inlier_mask_comp4 = (np.abs(ddem.data) < dh_max).filled(False)
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=np.inf, dh_max=dh_max
     )
     assert np.all(inlier_mask == inlier_mask_comp4)
 
     # - Test the sum of outlines + dh_max + slope - #
     # nmad_factor will have a different behavior because it calculates nmad from the inliers of previous filters
-    inlier_mask = xdem.coreg.create_inlier_mask(
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
         tba,
         ref,
         shp_list=[
@@ -1126,13 +1127,13 @@ def test_create_inlier_mask() -> None:
 
     # - Test that proper errors are raised for wrong inputs - #
     with pytest.raises(ValueError, match="`shp_list` must be a list/tuple"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, shp_list=outlines)
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, shp_list=outlines)
 
     with pytest.raises(ValueError, match="`shp_list` must be a list/tuple of strings or geoutils.Vector instance"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, shp_list=[1])
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, shp_list=[1])
 
     with pytest.raises(ValueError, match="`inout` must be a list/tuple"):
-        inlier_mask = xdem.coreg.create_inlier_mask(
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
             tba,
             ref,
             shp_list=[
@@ -1142,7 +1143,7 @@ def test_create_inlier_mask() -> None:
         )
 
     with pytest.raises(ValueError, match="`inout` must contain only 1 and -1"):
-        inlier_mask = xdem.coreg.create_inlier_mask(
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
             tba,
             ref,
             shp_list=[
@@ -1154,7 +1155,7 @@ def test_create_inlier_mask() -> None:
         )
 
     with pytest.raises(ValueError, match="`inout` must be of same length as shp"):
-        inlier_mask = xdem.coreg.create_inlier_mask(
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
             tba,
             ref,
             shp_list=[
@@ -1164,16 +1165,16 @@ def test_create_inlier_mask() -> None:
         )
 
     with pytest.raises(ValueError, match="`slope_lim` must be a list/tuple"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=1)  # type: ignore
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=1)  # type: ignore
 
     with pytest.raises(ValueError, match="`slope_lim` must contain 2 elements"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[30])
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[30])
 
     with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[-1, 40])
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[-1, 40])
 
     with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
-        inlier_mask = xdem.coreg.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
+        inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
 
 
 def test_dem_coregistration() -> None:
@@ -1204,7 +1205,7 @@ def test_dem_coregistration() -> None:
     # - default inlier_mask
     # - no resampling
     coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
-    inlier_mask = xdem.coreg.create_inlier_mask(tba_dem, ref_dem)
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba_dem, ref_dem)
     coreg_method_ref.fit(ref_dem.astype("float32"), tba_dem.astype("float32"), inlier_mask=inlier_mask)
     dem_coreg_ref = coreg_method_ref.apply(tba_dem, resample=False)
     assert dem_coreg == dem_coreg_ref

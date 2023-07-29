@@ -15,7 +15,8 @@ PLOT = False
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    from xdem import biascorr, examples
+    from xdem import examples
+    from xdem.coreg import biascorr
     from xdem.fit import polynomial_2d, sumsin_1d
 
 

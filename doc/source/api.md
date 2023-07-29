@@ -121,7 +121,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
     xdem.BlockwiseCoreg
 ```
 
-### Rigid coregistration methods
+### Affine coregistration methods
 
 
 **Generic parent class:**
@@ -130,7 +130,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.Rigid
+    xdem.AffineCoreg
 ```
 
 **Convenience classes for specific coregistrations:**
@@ -145,7 +145,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
     xdem.Tilt
 ```
 
-### Bias-correction (non-rigid) methods
+### Bias-correction (including non-affine coregistration) methods
 
 **Generic parent class:**
 
