@@ -44,11 +44,11 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
-from tqdm import tqdm, trange
+from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayf
 from xdem.spatialstats import nmad
-from xdem.terrain import get_terrain_attribute, slope
+from xdem.terrain import get_terrain_attribute
 
 try:
     import pytransform3d.transformations
@@ -63,6 +63,7 @@ except ImportError:
 # Generic functions for preprocessing
 ###########################################
 
+
 def _transform_to_bounds_and_res(
     shape: tuple[int, ...], transform: rio.transform.Affine
 ) -> tuple[rio.coords.BoundingBox, float]:
@@ -72,6 +73,7 @@ def _transform_to_bounds_and_res(
 
     return bounds, resolution
 
+
 def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine) -> tuple[NDArrayf, NDArrayf]:
     """Generate center coordinates from a transform and the shape of a DEM."""
     bounds, resolution = _transform_to_bounds_and_res(shape, transform)
@@ -80,6 +82,7 @@ def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine)
         np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=shape[0])[::-1],
     )
     return x_coords, y_coords
+
 
 def _apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float, z_name: str) -> NDArrayf:
     """
@@ -95,6 +98,7 @@ def _apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float, z_nam
     new_df[z_name] -= dz
 
     return new_df
+
 
 def _residuals_df(
     dem: NDArrayf,
@@ -237,6 +241,7 @@ def _calculate_ddem_stats(
         stats[label] = stat(valid_ddem)
 
     return stats
+
 
 def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
     """
@@ -479,6 +484,7 @@ def deramping(
 
     return fit_ramp, coefs
 
+
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
     """Invert a transformation matrix."""
     with warnings.catch_warnings():
@@ -488,6 +494,7 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         checked_matrix = pytransform3d.transformations.check_matrix(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
+
 
 def apply_matrix(
     dem: NDArrayf,

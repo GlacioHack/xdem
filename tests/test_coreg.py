@@ -20,8 +20,8 @@ with warnings.catch_warnings():
     import xdem
     from xdem import coreg, examples, misc, spatialstats
     from xdem._typing import NDArrayf
-    from xdem.coreg.base import CoregDict, apply_matrix
     from xdem.coreg.affine import AffineCoreg
+    from xdem.coreg.base import CoregDict, apply_matrix
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -1081,14 +1081,18 @@ def test_create_inlier_mask() -> None:
     inlier_mask_comp2 = np.ones(tba.data.shape, dtype=bool)
     inlier_mask_comp2[slope.data < slope_lim[0]] = False
     inlier_mask_comp2[slope.data > slope_lim[1]] = False
-    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf)
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
+        tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf
+    )
     assert np.all(inlier_mask == inlier_mask_comp2)
 
     # Test the nmad_factor filter only
     nmad_factor = 3
     ddem = tba - ref
     inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(False)
-    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
+    inlier_mask = xdem.coreg.pipelines.create_inlier_mask(
+        tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor
+    )
     assert np.all(inlier_mask == inlier_mask_comp3)
 
     # Test the sum of both

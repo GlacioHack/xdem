@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
 import geoutils as gu
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import rasterio as rio
 from geoutils._typing import AnyNumber
 from geoutils.raster import RasterType
 
 from xdem._typing import NDArrayf
+from xdem.coreg.affine import NuthKaab, VerticalShift
+from xdem.coreg.base import Coreg
 from xdem.dem import DEM
 from xdem.spatialstats import nmad
 from xdem.terrain import slope
-from xdem.coreg.base import Coreg
-from xdem.coreg.affine import NuthKaab, VerticalShift
+
 
 def create_inlier_mask(
     src_dem: RasterType,

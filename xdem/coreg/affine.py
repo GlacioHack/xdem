@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import (
-    Any,
-    Callable,
-    TypeVar,
-)
+from typing import Any, Callable, TypeVar
 
 try:
     import cv2
@@ -22,21 +18,24 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-from geoutils.raster import (
-    RasterType,
-    get_array_and_mask,
-    subsample_array,
-)
+from geoutils.raster import RasterType, get_array_and_mask
 from noisyopt import minimizeCompass
 from tqdm import trange
 
-from xdem._typing import NDArrayf, MArrayf
+from xdem._typing import NDArrayf
+from xdem.coreg.base import (
+    Coreg,
+    CoregDict,
+    _get_x_and_y_coords,
+    _mask_dataframe_by_dem,
+    _residuals_df,
+    _transform_to_bounds_and_res,
+    deramping,
+)
 from xdem.spatialstats import nmad
-from xdem.coreg.base import Coreg, CoregDict, _transform_to_bounds_and_res, _mask_dataframe_by_dem, _residuals_df, _get_x_and_y_coords, deramping
 
 try:
     import pytransform3d.transformations
-    from pytransform3d.transform_manager import TransformManager
 
     _HAS_P3D = True
 except ImportError:
@@ -45,6 +44,7 @@ except ImportError:
 ######################################
 # Generic functions for affine methods
 ######################################
+
 
 def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> rio.transform.Affine:
     """
@@ -55,12 +55,16 @@ def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> rio
 
     Returns: Updated transform
     """
-    transform_shifted = rio.transform.Affine(transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy)
+    transform_shifted = rio.transform.Affine(
+        transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy
+    )
     return transform_shifted
+
 
 ######################################
 # Functions for affine coregistrations
 ######################################
+
 
 def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
     """
@@ -191,6 +195,7 @@ def get_horizontal_shift(
 ##################################
 
 AffineCoregType = TypeVar("AffineCoregType", bound="AffineCoreg")
+
 
 class AffineCoreg(Coreg):
     """
@@ -1007,6 +1012,3 @@ class GradientDescending(AffineCoreg):
         matrix[2, 3] += self._meta["vshift"]
 
         return matrix
-
-
-
