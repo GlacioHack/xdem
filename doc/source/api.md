@@ -95,35 +95,79 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 
 ## Coreg
 
-### Coregistration object and pipeline
+**Overview of co-registration class structure**:
 
 ```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    xdem.Coreg
-    xdem.CoregPipeline
+.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
+        :top-classes: xdem.Coreg
 ```
 
-### Rigid coregistration methods
+### Coregistration, pipeline and blockwise
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.BiasCorr
-    xdem.NuthKaab
-    xdem.ICP
-    xdem.Deramp
+    xdem.coreg.Coreg
+    xdem.coreg.CoregPipeline
+    xdem.coreg.BlockwiseCoreg
 ```
 
-### Spatial coregistration
+### Affine coregistration methods
+
+
+**Generic parent class:**
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.BlockwiseCoreg
+    xdem.coreg.AffineCoreg
+```
+
+**Convenience classes for specific coregistrations:**
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.VerticalShift
+    xdem.coreg.NuthKaab
+    xdem.coreg.ICP
+    xdem.coreg.Tilt
+```
+
+### Bias-correction (including non-affine coregistration) methods
+
+**Generic parent class:**
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.BiasCorr
+```
+
+**Classes for any 1-, 2- and N-D biases:**
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.BiasCorr1D
+    xdem.coreg.BiasCorr2D
+    xdem.coreg.BiasCorrND
+```
+
+**Convenience classes for specific corrections:**
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.Deramp
+    xdem.coreg.DirectionalBias
+    xdem.coreg.TerrainBias
 ```
 
 ## Terrain attributes

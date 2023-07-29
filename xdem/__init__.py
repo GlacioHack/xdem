@@ -8,15 +8,6 @@ from xdem import (  # noqa
     terrain,
     volume,
 )
-from xdem.coreg import (  # noqa
-    ICP,
-    BiasCorr,
-    BlockwiseCoreg,
-    Coreg,
-    CoregPipeline,
-    Deramp,
-    NuthKaab,
-)
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa

@@ -277,6 +277,70 @@ class TestBinning:
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
 
+    def test_get_perbin_nd_binning(self) -> None:
+        """Test the get per-bin function."""
+
+        # Read nd_binning output
+        df = pd.read_csv(
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
+        )
+
+        # Get values for arrays from the above 3D binning
+        perbin_values = xdem.spatialstats.get_perbin_nd_binning(
+            df=df,
+            list_var=[
+                self.slope.data,
+                self.ref.data,
+                self.aspect.data,
+            ],
+            list_var_names=["slope", "elevation", "aspect"],
+        )
+
+        # Check that the function preserves the shape
+        assert np.shape(self.slope.data) == np.shape(perbin_values)
+
+        # Check that the bin are rightly recognized
+        df = df[df.nd == 3]
+        # Convert the intervals from string due to saving to file
+        for var in ["slope", "elevation", "aspect"]:
+            df[var] = [xdem.spatialstats._pandas_str_to_interval(x) for x in df[var]]
+
+        # Take 1000 random points in the array
+        np.random.seed(42)
+        xrand = np.random.randint(low=0, high=perbin_values.shape[0], size=1000)
+        yrand = np.random.randint(low=0, high=perbin_values.shape[1], size=1000)
+
+        for i in range(len(xrand)):
+
+            # Get the value at the random point for elevation, slope, aspect
+            x = xrand[i]
+            y = yrand[i]
+            h = self.ref.data[x, y]
+            slp = self.slope.data[x, y]
+            asp = self.aspect.data[x, y]
+
+            if np.logical_or.reduce((np.isnan(h), np.isnan(slp), np.isnan(asp))):
+                continue
+
+            # Isolate the bin in the dataframe, should be only one
+            index_bin = np.logical_and.reduce(
+                (
+                    [h in interv for interv in df["elevation"]],
+                    [slp in interv for interv in df["slope"]],
+                    [asp in interv for interv in df["aspect"]],
+                )
+            )
+            assert np.count_nonzero(index_bin) == 1
+
+            # Get the statistic value and verify that this was the one returned by the function
+            statistic_value = df["nanmedian"][index_bin].values[0]
+            # Nan equality does not work, so we compare finite values first
+            if ~np.isnan(statistic_value):
+                assert statistic_value == perbin_values[x, y]
+            # And then check that a NaN is returned if it is the statistic
+            else:
+                assert np.isnan(perbin_values[x, y])
+
     def test_two_step_standardization(self) -> None:
         """Test two-step standardization function"""
 
