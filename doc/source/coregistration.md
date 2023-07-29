@@ -79,7 +79,7 @@ First, {func}`~xdem.Coreg.fit()` is called to estimate the transform, and then t
 **Inheritance diagram of implemented coregistrations:**
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg xdem.biascorr
+.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
         :top-classes: xdem.coreg.Coreg
 ```
 
@@ -190,7 +190,7 @@ vshift.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 shifted_dem = vshift.apply(tba_dem)
 
 # Use median shift instead
-vshift_median = coreg.VerticalShift(bias_func=np.median)
+vshift_median = coreg.VerticalShift(vshift_func=np.median)
 ```
 
 ## ICP

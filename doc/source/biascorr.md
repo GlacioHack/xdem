@@ -32,7 +32,7 @@ applied in a block-wise manner through {class}`~xdem.BlockwiseCoreg`.
 **Inheritance diagram of co-registration and bias corrections:**
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg xdem.biascorr
+.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
         :top-classes: xdem.Coreg
 ```
 
@@ -85,7 +85,7 @@ inlier_mask = glacier_outlines.create_mask(ref_dem)
 
 ## Deramping
 
-{class}`xdem.biascorr.Deramp`
+{class}`xdem.coreg.Deramp`
 
 - **Performs:** Correct biases with a 2D polynomial of degree N.
 - **Supports weights** Yes.
@@ -104,10 +104,10 @@ For large rotational corrections, [ICP] is recommended.
 ### Example
 
 ```{code-cell} ipython3
-from xdem import biascorr
+from xdem import coreg
 
 # Instantiate a 1st order deramping
-deramp = biascorr.Deramp(poly_order=1)
+deramp = coreg.Deramp(poly_order=1)
 # Fit the data to a suitable polynomial solution
 deramp.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
@@ -117,7 +117,7 @@ corrected_dem = deramp.apply(tba_dem)
 
 ## Directional biases
 
-{class}`xdem.biascorr.DirectionalBias`
+{class}`xdem.coreg.DirectionalBias`
 
 - **Performs:** Correct biases along a direction of the DEM.
 - **Supports weights** Yes.
@@ -128,10 +128,8 @@ The default optimizer for directional biases optimizes a sum of sinusoids using 
 ### Example
 
 ```{code-cell} ipython3
-from xdem import biascorr
-
 # Instantiate a directional bias correction
-dirbias = biascorr.DirectionalBias(angle=65)
+dirbias = coreg.DirectionalBias(angle=65)
 # Fit the data
 dirbias.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
@@ -141,7 +139,7 @@ corrected_dem = dirbias.apply(tba_dem)
 
 ## Terrain biases
 
-{class}`xdem.biascorr.TerrainBias`
+{class}`xdem.coreg.TerrainBias`
 
 - **Performs:** Correct biases along a terrain attribute of the DEM.
 - **Supports weights** Yes.
@@ -152,10 +150,8 @@ The default optimizer for terrain biases optimizes a 1D polynomial with an order
 ### Example
 
 ```{code-cell} ipython3
-from xdem import biascorr
-
 # Instantiate a 1st order terrain bias correction
-terbias = biascorr.TerrainBias(terrain_attribute="maximum_curvature")
+terbias = coreg.TerrainBias(terrain_attribute="maximum_curvature")
 # Fit the data
 terbias.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 
@@ -168,9 +164,9 @@ corrected_dem = terbias.apply(tba_dem)
 All bias-corrections methods are inherited from generic classes that perform corrections in 1-, 2- or N-D. Having these
 separate helps the user navigating the dimensionality of the functions, optimizer, binning or variables used.
 
-{class}`xdem.biascorr.BiasCorr1D`
-{class}`xdem.biascorr.BiasCorr2D`
-{class}`xdem.biascorr.BiasCorrND`
+{class}`xdem.coreg.BiasCorr1D`
+{class}`xdem.coreg.BiasCorr2D`
+{class}`xdem.coreg.BiasCorrND`
 
 - **Performs:** Correct biases with any function and optimizer, or any binning, in 1-, 2- or N-D.
 - **Supports weights** Yes.

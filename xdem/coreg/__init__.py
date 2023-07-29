@@ -3,14 +3,16 @@ DEM coregistration classes and functions, including affine methods, bias correct
 """
 
 from xdem.coreg.affine import (  # noqa
+    AffineCoreg,
     ICP,
     GradientDescending,
     NuthKaab,
     Tilt,
     VerticalShift,
 )
-from xdem.coreg.base import BlockwiseCoreg, Coreg, CoregPipeline  # noqa
+from xdem.coreg.base import BlockwiseCoreg, Coreg, CoregPipeline, apply_matrix  # noqa
 from xdem.coreg.biascorr import (  # noqa
+    BiasCorr,
     BiasCorr1D,
     BiasCorr2D,
     BiasCorrND,

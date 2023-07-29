@@ -98,27 +98,19 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 **Overview of co-registration class structure**:
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg xdem.biascorr
+.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
         :top-classes: xdem.Coreg
 ```
 
-### Coregistration object and pipeline
+### Coregistration, pipeline and blockwise
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.Coreg
-    xdem.CoregPipeline
-```
-
-### Block-wise application of co-registrations
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    xdem.BlockwiseCoreg
+    xdem.coreg.Coreg
+    xdem.coreg.CoregPipeline
+    xdem.coreg.BlockwiseCoreg
 ```
 
 ### Affine coregistration methods
@@ -130,7 +122,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.AffineCoreg
+    xdem.coreg.AffineCoreg
 ```
 
 **Convenience classes for specific coregistrations:**
@@ -139,10 +131,10 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.VerticalShift
-    xdem.NuthKaab
-    xdem.ICP
-    xdem.Tilt
+    xdem.coreg.VerticalShift
+    xdem.coreg.NuthKaab
+    xdem.coreg.ICP
+    xdem.coreg.Tilt
 ```
 
 ### Bias-correction (including non-affine coregistration) methods
@@ -153,7 +145,7 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.BiasCorr
+    xdem.coreg.BiasCorr
 ```
 
 **Classes for any 1-, 2- and N-D biases:**
@@ -162,9 +154,9 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.BiasCorr1D
-    xdem.BiasCorr2D
-    xdem.BiasCorrND
+    xdem.coreg.BiasCorr1D
+    xdem.coreg.BiasCorr2D
+    xdem.coreg.BiasCorrND
 ```
 
 **Convenience classes for specific corrections:**
@@ -173,9 +165,9 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.Deramp
-    xdem.DirectionalBias
-    xdem.TerrainBias
+    xdem.coreg.Deramp
+    xdem.coreg.DirectionalBias
+    xdem.coreg.TerrainBias
 ```
 
 ## Terrain attributes
