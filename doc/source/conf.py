@@ -63,6 +63,7 @@ myst_enable_extensions = ["colon_fence", "dollarmath"]
 
 # For myst-nb to find the Jupyter kernel (=environment) to run from
 nb_kernel_rgx_aliases = {".*xdem.*": "python3"}
+nb_execution_raise_on_error = True
 
 # autosummary_generate = True
 
