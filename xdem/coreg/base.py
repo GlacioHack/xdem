@@ -1391,8 +1391,8 @@ class BlockwiseCoreg(Coreg):
     the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
 
     For instance: a subdivision of 4 triggers a division of the DEM in four equally sized parts. These parts are then
-    processed separately, with 4 .fit() results. If the subdivision is not divisible by the raster shape,
-     subdivision is made as good as possible to have approximately equal pixel counts.
+    processed separately, with 4 .fit() results. If the subdivision is not divisible by the raster shape, 
+    subdivision is made as good as possible to have approximately equal pixel counts.
     """
 
     def __init__(
