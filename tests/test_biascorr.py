@@ -216,7 +216,7 @@ class TestBiasCorr:
         elev_fit_params.update({"bias_vars": bias_vars_dict})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        bcorr.fit(**elev_fit_params, subsample=1000, random_state=42)
+        bcorr.fit(**elev_fit_params, subsample=10000, random_state=42)
 
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
