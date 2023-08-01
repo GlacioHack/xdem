@@ -211,26 +211,30 @@ def interp_nd_binning(
     df: pd.DataFrame,
     list_var_names: str | list[str],
     statistic: str | Callable[[NDArrayf], np.floating[Any]] = nmad,
+    interpolate_method: Literal["nearest"] | Literal["linear"] = "linear",
     min_count: int | None = 100,
 ) -> Callable[[tuple[ArrayLike, ...]], NDArrayf]:
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
     For more details on the input dataframe, and associated list of variable name and statistic, see nd_binning.
 
+    First, interpolates nodata values of the irregular N-D binning grid with scipy.griddata.
+    Then, extrapolates nodata values on the N-D binning grid with scipy.griddata with "nearest neighbour"
+    (necessary to get a regular grid without NaNs).
+    Finally, creates an interpolant function (linear by default) to interpolate between points of the grid using
+    scipy.RegularGridInterpolator. Extrapolation is fixed to nearest neighbour by duplicating edge bins along each
+    dimension (linear extrapolation of two equal bins = nearest neighbour).
+
     If the variable pd.DataSeries corresponds to an interval (as the output of nd_binning), uses the middle of the
-    interval.
-    Otherwise, uses the variable as such.
+    interval. Otherwise, uses the variable as such.
 
-    Workflow of the function:
-    Fills the no-data present on the regular N-D binning grid with nearest neighbour from scipy.griddata, then provides
-    an interpolant function that linearly interpolates/extrapolates using scipy.RegularGridInterpolator.
+    :param df: Dataframe with statistic of binned values according to explanatory variables.
+    :param list_var_names: Explanatory variable data series to select from the dataframe.
+    :param statistic: Statistic to interpolate, stored as a data series in the dataframe.
+    :param interpolate_method: Method to interpolate inside of edge bins, "nearest", "linear" (default).
+    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata).
 
-    :param df: Dataframe with statistic of binned values according to explanatory variables
-    :param list_var_names: Explanatory variable data series to select from the dataframe
-    :param statistic: Statistic to interpolate, stored as a data series in the dataframe
-    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata)
-
-    :return: N-dimensional interpolant function
+    :return: N-dimensional interpolant function.
 
     :examples
     # Using a dataframe created from scratch
@@ -329,22 +333,53 @@ def interp_nd_binning(
         list_bmid.append(bmid)
         shape.append(len(bmid))
 
-    # Use griddata first to perform nearest interpolation with NaNs (irregular grid)
+    # The workflow below is a bit complicated because of the irregular grid and handling of nodata values!
+    # Steps 1/ and 2/ fill the nodata values in the irregular grid, and step 3/ creates the interpolant object to
+    # get a value at any point inside or outside the bin edges
+
+    # 1/ Use griddata first to perform interpolation for nodata values within the N-D convex hull of the irregular grid
+
     # Valid values
     values = values[ind_valid]
-    # coordinates of valid values
+    # Coordinates of valid values
     points_valid = tuple(df_sub[var].values[ind_valid] for var in list_var_names)
-    # Grid coordinates
+    # Coordinates of all grid points (convex hull points will be detected automatically and interpolated)
     bmid_grid = np.meshgrid(*list_bmid, indexing="ij")
     points_grid = tuple(bmid_grid[i].flatten() for i in range(len(list_var_names)))
-    # Fill grid no data with nearest neighbour
-    values_grid = griddata(points_valid, values, points_grid, method="nearest")
-    values_grid = values_grid.reshape(shape)
+    # Interpolate on grid within convex hull with interpolation method
+    values_grid = griddata(points_valid, values, points_grid, method=interpolate_method)
 
-    # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
-    # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
+    # 2/ Use griddata to extrapolate nodata values with nearest neighbour on the N-D grid and remove all NaNs
+
+    # Valid values after above interpolation in convex hull
+    ind_valid_interp = np.isfinite(values_grid)
+    values_interp = values_grid[ind_valid_interp]
+    # Coordinate of valid values
+    points_valid_interp = tuple(points_grid[i][ind_valid_interp] for i in range(len(points_grid)))
+    # Extend grid by a value of "1" the point coordinates in all directions to ensure
+    # that 3/ will extrapolate linearly as for "nearest"
+    list_bmid_extended = []
+    for i in range(len(list_bmid)):
+        bmid_bin = list_bmid[i]
+        # Add bin before first edge and decrease coord value
+        bmid_bin_extlow = np.insert(bmid_bin, 0, bmid_bin[0] - 1)
+        # Add bin after last edge and increase coord value
+        bmid_bin_extboth = np.append(bmid_bin_extlow, bmid_bin[-1] + 1)
+        list_bmid_extended.append(bmid_bin_extboth)
+    bmid_grid_extended = np.meshgrid(*list_bmid_extended, indexing="ij")
+    points_grid_extended = tuple(bmid_grid_extended[i].flatten() for i in range(len(list_var_names)))
+    # Update shape
+    shape_extended = tuple(x + 2 for x in shape)
+
+    # Extrapolate on extended grid with nearest neighbour
+    values_grid_nearest = griddata(points_valid_interp, values_interp, points_grid_extended, method="nearest")
+    values_grid_nearest = values_grid_nearest.reshape(shape_extended)
+
+    # 3/ Use RegularGridInterpolator to perform interpolation **between points** of the grid, with extrapolation forced
+    # to nearest neighbour by duplicating edge points
+    # (does not support NaNs, hence the need for 2/ above)
     interp_fun = RegularGridInterpolator(
-        tuple(list_bmid), values_grid, method="linear", bounds_error=False, fill_value=None
+        tuple(list_bmid_extended), values_grid_nearest, method="linear", bounds_error=False, fill_value=None
     )
 
     return interp_fun  # type: ignore
@@ -358,9 +393,11 @@ def get_perbin_nd_binning(
     min_count: int | None = 0,
 ) -> NDArrayf:
     """
-    Get per-bin statistic for a list of array variables based on the results of an N-D binning .
+    Get per-bin array statistic for a list of array input variables, based on the results of an independent N-D binning.
 
-    For example, get the median statistic for every bin of 2D arrays of input variables (systematic correction).
+    For example, get a 2D array of elevation uncertainty based on 2D arrays of slope and curvature and a related binning
+    (for uncertainty analysis) or get a 2D array of elevation bias based on 2D arrays of rotated X coordinates (for
+    an along-track bias correction).
 
     :param list_var: List of size (L) of explanatory variables array of size (N,).
     :param list_var_names: List of size (L) of names of the explanatory variables.

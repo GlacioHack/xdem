@@ -158,8 +158,7 @@ class TestBinning:
         )
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3, 3))
         fun = xdem.spatialstats.interp_nd_binning(
-            df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None
-        )
+            df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
 
         # Check that the dimensions are rightly ordered
         assert fun((1, 3)) == df[np.logical_and(df["var1"] == 1, df["var2"] == 3)]["statistic"].values[0]
@@ -198,22 +197,55 @@ class TestBinning:
             x = point[0] - 1
             y = point[1] - 1
             val_extra = fun((y + 1, x + 1))
-            # The difference between the points extrapolated outside should be linear with the grid edges,
-            # i.e. the same as the difference as the first points inside the grid along the same axis
+            # (OUTDATED: The difference between the points extrapolated outside should be linear with the grid edges,
+            # # i.e. the same as the difference as the first points inside the grid along the same axis)
+            # if point[0] == 0:
+            #     diff_in = arr[x + 2, y] - arr[x + 1, y]
+            #     diff_out = arr[x + 1, y] - val_extra
+            # elif point[0] == 4:
+            #     diff_in = arr[x - 2, y] - arr[x - 1, y]
+            #     diff_out = arr[x - 1, y] - val_extra
+            # elif point[1] == 0:
+            #     diff_in = arr[x, y + 2] - arr[x, y + 1]
+            #     diff_out = arr[x, y + 1] - val_extra
+            # # has to be y == 4
+            # else:
+            #     diff_in = arr[x, y - 2] - arr[x, y - 1]
+            #     diff_out = arr[x, y - 1] - val_extra
+            # assert diff_in == diff_out
+
+            # Update with nearest default: the value should be that of the nearest!
             if point[0] == 0:
-                diff_in = arr[x + 2, y] - arr[x + 1, y]
-                diff_out = arr[x + 1, y] - val_extra
+                near = arr[x + 1, y]
             elif point[0] == 4:
-                diff_in = arr[x - 2, y] - arr[x - 1, y]
-                diff_out = arr[x - 1, y] - val_extra
+                near = arr[x - 1, y]
             elif point[1] == 0:
-                diff_in = arr[x, y + 2] - arr[x, y + 1]
-                diff_out = arr[x, y + 1] - val_extra
-            # has to be y == 4
+                near = arr[x, y+1]
             else:
-                diff_in = arr[x, y - 2] - arr[x, y - 1]
-                diff_out = arr[x, y - 1] - val_extra
-            assert diff_in == diff_out
+                near = arr[x, y-1]
+            assert near == val_extra
+
+        # Check that the output extrapolates as "nearest neighbour" far outside the grid
+        points_far_out = (
+                [(-10, i) for i in np.arange(1, 4)]
+                + [(i, -10) for i in np.arange(1, 4)]
+                + [(14, i) for i in np.arange(1, 4)]
+                + [(i, 14) for i in np.arange(4, 1)]
+        )
+        for point in points_far_out:
+            x = point[0] - 1
+            y = point[1] - 1
+            val_extra = fun((y + 1, x + 1))
+            # Update with nearest default: the value should be that of the nearest!
+            if point[0] == -10:
+                near = arr[0, y]
+            elif point[0] == 14:
+                near = arr[-1, y]
+            elif point[1] == -10:
+                near = arr[x, 0]
+            else:
+                near = arr[x, -1]
+            assert near == val_extra
 
         # Check that the output is rightly ordered in 3 dimensions, and works with varying dimension lengths
         vec1 = np.arange(1, 3)
