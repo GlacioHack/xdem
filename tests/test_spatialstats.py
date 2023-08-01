@@ -158,7 +158,8 @@ class TestBinning:
         )
         arr = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9]).reshape((3, 3))
         fun = xdem.spatialstats.interp_nd_binning(
-            df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None)
+            df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None
+        )
 
         # Check that the dimensions are rightly ordered
         assert fun((1, 3)) == df[np.logical_and(df["var1"] == 1, df["var2"] == 3)]["statistic"].values[0]
@@ -220,17 +221,17 @@ class TestBinning:
             elif point[0] == 4:
                 near = arr[x - 1, y]
             elif point[1] == 0:
-                near = arr[x, y+1]
+                near = arr[x, y + 1]
             else:
-                near = arr[x, y-1]
+                near = arr[x, y - 1]
             assert near == val_extra
 
         # Check that the output extrapolates as "nearest neighbour" far outside the grid
         points_far_out = (
-                [(-10, i) for i in np.arange(1, 4)]
-                + [(i, -10) for i in np.arange(1, 4)]
-                + [(14, i) for i in np.arange(1, 4)]
-                + [(i, 14) for i in np.arange(4, 1)]
+            [(-10, i) for i in np.arange(1, 4)]
+            + [(i, -10) for i in np.arange(1, 4)]
+            + [(14, i) for i in np.arange(1, 4)]
+            + [(i, 14) for i in np.arange(4, 1)]
         )
         for point in points_far_out:
             x = point[0] - 1
