@@ -257,9 +257,9 @@ def interp_nd_binning(
     >>> fun((1.5, 1.5))
     array(3.)
 
-    # Extrapolated linearly outside the 2D frame.
+    # Extrapolated linearly outside the 2D frame: nearest neighbour.
     >>> fun((-1, 1))
-    array(-1.)
+    array(1.)
     """
     # If list of variable input is simply a string
     if isinstance(list_var_names, str):
