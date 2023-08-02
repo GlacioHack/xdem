@@ -99,7 +99,7 @@ z_dh.data[np.abs(z_dh.data) > 4] = np.nan
 
 # %%
 # We perform a scale-correction for the standardization, to ensure that the spread of the data is exactly 1.
-# The NMAD is used as a robust measure for the spread (see :ref:`robuststats-nmad`). 
+# The NMAD is used as a robust measure for the spread (see :ref:`robuststats-nmad`).
 print(f"NMAD before scale-correction: {nmad(z_dh.data):.1f}")
 scale_fac_std = nmad(z_dh.data)
 z_dh = z_dh / scale_fac_std
