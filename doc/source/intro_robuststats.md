@@ -30,13 +30,13 @@ used as a robust measure of central tendency.
 
 The median is used by default in the alignment routines of {ref}`coregistration` and {ref}`biascorr`.
 
+(robuststats-nmad)=
+
 ### Dispersion
 
 The [statistical dispersion](https://en.wikipedia.org/wiki/Statistical_dispersion) represents the spread of a sample,
 and is core to the analysis of sample precision (see {ref}`intro`). It is typically measured by the [standard deviation](https://en.wikipedia.org/wiki/Standard_deviation).
 However, very much like the mean, the standard deviation is a measure sensitive to outliers.
-
-(robuststats-nmad)=
 
 The median equivalent of a standard deviation is the normalized median absolute deviation (NMAD), which corresponds to the [median absolute deviation](https://en.wikipedia.org/wiki/Median_absolute_deviation) scaled by a factor of ~1.4826 to match the dispersion of a
 normal distribution. It has been shown to provide more robust measures of dispersion with outliers when working
