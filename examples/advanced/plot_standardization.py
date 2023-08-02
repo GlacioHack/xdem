@@ -98,11 +98,12 @@ z_dh.data[mask_glacier.data] = np.nan
 z_dh.data[np.abs(z_dh.data) > 4] = np.nan
 
 # %%
-# We perform a scale-correction for the standardization, to ensure that the standard deviation of the data is exactly 1.
-print(f"Standard deviation before scale-correction: {nmad(z_dh.data):.1f}")
+# We perform a scale-correction for the standardization, to ensure that the spread of the data is exactly 1.
+# The NMAD is used as a robust measure for the spread (see :ref:`robuststats-nmad`).
+print(f"NMAD before scale-correction: {nmad(z_dh.data):.1f}")
 scale_fac_std = nmad(z_dh.data)
 z_dh = z_dh / scale_fac_std
-print(f"Standard deviation after scale-correction: {nmad(z_dh.data):.1f}")
+print(f"NMAD after scale-correction: {nmad(z_dh.data):.1f}")
 
 plt.figure(figsize=(8, 5))
 plt_extent = [
@@ -123,8 +124,9 @@ plt.show()
 # %%
 # Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_advanced_examples_plot_variogram_estimation_modelling.py`
 # example, by estimating a variogram and fitting a sum of two models.
+# Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 df_vgm = xdem.spatialstats.sample_empirical_variogram(
-    values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=300, n_variograms=10, random_state=42
+    values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=300, n_variograms=10, estimator="dowd", random_state=42,
 )
 
 func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(
