@@ -1526,7 +1526,7 @@ def sample_empirical_variogram(
     from packaging.version import Version
 
     if Version(skg.__version__) <= Version("1.0.0"):
-        if "estimator" in kwargs.keys() and kwargs["estimator"].lower() == "dowd":
+        if "estimator" in kwargs.keys() and kwargs["estimator"] == "dowd":
             # Correction: we divide all experimental variance values by 2
             df.exp.values /= 2
             df.err_exp.values /= 2

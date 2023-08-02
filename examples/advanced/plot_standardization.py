@@ -126,7 +126,12 @@ plt.show()
 # example, by estimating a variogram and fitting a sum of two models.
 # Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 df_vgm = xdem.spatialstats.sample_empirical_variogram(
-    values=z_dh.data.squeeze(), gsd=dh.res[0], subsample=300, n_variograms=10, estimator="dowd", random_state=42,
+    values=z_dh.data.squeeze(),
+    gsd=dh.res[0],
+    subsample=300,
+    n_variograms=10,
+    estimator="dowd",
+    random_state=42,
 )
 
 func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(

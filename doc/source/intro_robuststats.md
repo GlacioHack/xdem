@@ -6,7 +6,7 @@ Digital elevation models often contain outliers that can be traced back to instr
 
 In order to mitigate their effect, xDEM integrates [robust statistics](https://en.wikipedia.org/wiki/Robust_statistics) at different levels:
 - Robust optimizers for the fitting of parametric models during {ref}`coregistration` and {ref}`biascorr`,
-- Robust measures for the central tendency (e.g., mean) and dispersion (e.g., standard deviation), to evaluate DEM quality and converge during {ref}`coregistration`, 
+- Robust measures for the central tendency (e.g., mean) and dispersion (e.g., standard deviation), to evaluate DEM quality and converge during {ref}`coregistration`,
 - Robust measures for estimating spatial autocorrelation for uncertainty analysis in {ref}`spatialstats`.
 
 Yet, there is a downside to robust statistical measures. Those can yield less precise estimates for small samples sizes and,
@@ -34,7 +34,7 @@ The median is used by default in the alignment routines of {ref}`coregistration`
 
 The [statistical dispersion](https://en.wikipedia.org/wiki/Statistical_dispersion) represents the spread of a sample,
 and is core to the analysis of sample precision (see {ref}`intro`). It is typically measured by the [standard deviation](https://en.wikipedia.org/wiki/Standard_deviation).
-However, very much like the mean, the standard deviation is a measure sensitive to outliers. 
+However, very much like the mean, the standard deviation is a measure sensitive to outliers.
 
 (robuststats-nmad)=
 
