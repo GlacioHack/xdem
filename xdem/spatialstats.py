@@ -1520,6 +1520,17 @@ def sample_empirical_variogram(
         df_mean["count"] = df_count["count"]
         df = df_mean
 
+    # Fix variance error for Dowd's variogram in SciKit-GStat
+
+    # If skgstat > 1.0, we can use Dowd's without correcting, otherwise we correct
+    from packaging.version import Version
+
+    if Version(skg.__version__) <= Version("1.0.0"):
+        if "estimator" in kwargs.keys() and kwargs["estimator"] == "dowd":
+            # Correction: we divide all experimental variance values by 2
+            df.exp.values /= 2
+            df.err_exp.values /= 2
+
     # Remove the last spatial lag bin which is always undersampled
     df.drop(df.tail(1).index, inplace=True)
 
