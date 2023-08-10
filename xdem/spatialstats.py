@@ -23,7 +23,6 @@ from geoutils.raster import (
     subsample_array,
 )
 from geoutils.vector import Vector, VectorType
-from numba import jit
 from numpy.typing import ArrayLike
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
@@ -2532,7 +2531,7 @@ nd4type = numba.double[:, :, :, :]
 nd3type = numba.double[:, :, :]
 
 
-@njit((nd3type, nd3type, nd4type))  # type: ignore
+@numba.njit((nd3type, nd3type, nd4type))  # type: ignore
 def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> None:
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
