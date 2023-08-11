@@ -7,6 +7,7 @@ from typing import Any, Callable, TypeVar
 
 try:
     import cv2
+
     _has_cv2 = True
 except ImportError:
     _has_cv2 = False
@@ -41,6 +42,7 @@ except ImportError:
 
 try:
     from noisyopt import minimizeCompass
+
     _has_noisyopt = True
 except ImportError:
     _has_noisyopt = False
