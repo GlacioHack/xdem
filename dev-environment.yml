@@ -40,7 +40,10 @@ dependencies:
 #  - richdem
 
   - pip:
-    - noisyopt
     - scikit-gstat>=1.0.11
     - -e ./
+
+    # Development-specific
+    - noisyopt
+
 #     - git+https://github.com/GlacioHack/GeoUtils.git

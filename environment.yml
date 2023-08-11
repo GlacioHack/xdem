@@ -22,7 +22,6 @@ dependencies:
   - pip
 
   - pip:
-    - noisyopt
     - scikit-gstat>=1.0.11
 
 

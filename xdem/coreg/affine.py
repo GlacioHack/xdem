@@ -19,7 +19,6 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 from geoutils.raster import RasterType, get_array_and_mask
-from noisyopt import minimizeCompass
 from tqdm import trange
 
 from xdem._typing import NDArrayf
@@ -40,6 +39,13 @@ try:
     _HAS_P3D = True
 except ImportError:
     _HAS_P3D = False
+
+try:
+    from noisyopt import minimizeCompass
+
+    _has_noisyopt = True
+except ImportError:
+    _has_noisyopt = False
 
 ######################################
 # Generic functions for affine methods
@@ -949,6 +955,9 @@ class GradientDescending(AffineCoreg):
         :param order and transform is no needed but kept temporally for consistency.
 
         """
+
+        if not _has_noisyopt:
+            raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
         # downsampling if downsampling != None
         if self.downsampling and len(ref_dem) > self.downsampling:
