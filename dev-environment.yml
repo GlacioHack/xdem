@@ -38,8 +38,9 @@ dependencies:
   - sphinx-autodoc-typehints
   - sphinx-gallery
   - pyyaml
-  - richdem
+#  - richdem
 
   - pip:
-     - -e ./
+    - noisyopt
+    - -e ./
 #     - git+https://github.com/GlacioHack/GeoUtils.git

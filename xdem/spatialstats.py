@@ -65,7 +65,7 @@ def nd_binning(
     values: NDArrayf,
     list_var: list[NDArrayf],
     list_var_names: list[str],
-    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
+    list_var_bins: int | tuple[int, ...] | tuple[NDArrayf, ...] | None = None,
     statistics: Iterable[str | Callable[[NDArrayf], np.floating[Any]]] = ("count", np.nanmedian, nmad),
     list_ranges: list[float] | None = None,
 ) -> pd.DataFrame:
@@ -189,29 +189,52 @@ def nd_binning(
     return df_concat
 
 
+# Function to convert IntervalIndex written to str in csv back to pd.Interval
+# from: https://github.com/pandas-dev/pandas/issues/28210
+def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
+    if isinstance(istr, float):
+        return np.nan
+    else:
+        c_left = istr[0] == "["
+        c_right = istr[-1] == "]"
+        closed = {(True, False): "left", (False, True): "right", (True, True): "both", (False, False): "neither"}[
+            c_left, c_right
+        ]
+        left, right = map(float, istr[1:-1].split(","))
+        try:
+            return pd.Interval(left, right, closed)
+        except Exception:
+            return np.nan
+
+
 def interp_nd_binning(
     df: pd.DataFrame,
     list_var_names: str | list[str],
     statistic: str | Callable[[NDArrayf], np.floating[Any]] = nmad,
+    interpolate_method: Literal["nearest"] | Literal["linear"] = "linear",
     min_count: int | None = 100,
 ) -> Callable[[tuple[ArrayLike, ...]], NDArrayf]:
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
     For more details on the input dataframe, and associated list of variable name and statistic, see nd_binning.
 
+    First, interpolates nodata values of the irregular N-D binning grid with scipy.griddata.
+    Then, extrapolates nodata values on the N-D binning grid with scipy.griddata with "nearest neighbour"
+    (necessary to get a regular grid without NaNs).
+    Finally, creates an interpolant function (linear by default) to interpolate between points of the grid using
+    scipy.RegularGridInterpolator. Extrapolation is fixed to nearest neighbour by duplicating edge bins along each
+    dimension (linear extrapolation of two equal bins = nearest neighbour).
+
     If the variable pd.DataSeries corresponds to an interval (as the output of nd_binning), uses the middle of the
-    interval.
-    Otherwise, uses the variable as such.
+    interval. Otherwise, uses the variable as such.
 
-    Workflow of the function:
-    Fills the no-data present on the regular N-D binning grid with nearest neighbour from scipy.griddata, then provides
-    an interpolant function that linearly interpolates/extrapolates using scipy.RegularGridInterpolator.
+    :param df: Dataframe with statistic of binned values according to explanatory variables.
+    :param list_var_names: Explanatory variable data series to select from the dataframe.
+    :param statistic: Statistic to interpolate, stored as a data series in the dataframe.
+    :param interpolate_method: Method to interpolate inside of edge bins, "nearest", "linear" (default).
+    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata).
 
-    :param df: Dataframe with statistic of binned values according to explanatory variables
-    :param list_var_names: Explanatory variable data series to select from the dataframe
-    :param statistic: Statistic to interpolate, stored as a data series in the dataframe
-    :param min_count: Minimum number of samples to be used as a valid statistic (replaced by nodata)
-    :return: N-dimensional interpolant function
+    :return: N-dimensional interpolant function.
 
     :examples
     # Using a dataframe created from scratch
@@ -234,9 +257,9 @@ def interp_nd_binning(
     >>> fun((1.5, 1.5))
     array(3.)
 
-    # Extrapolated linearly outside the 2D frame.
+    # Extrapolated linearly outside the 2D frame: nearest neighbour.
     >>> fun((-1, 1))
-    array(-1.)
+    array(1.)
     """
     # If list of variable input is simply a string
     if isinstance(list_var_names, str):
@@ -260,23 +283,6 @@ def interp_nd_binning(
     if "nd" in df_sub.columns:
         df_sub = df_sub[df_sub.nd == len(list_var_names)]
 
-    # Function to convert IntervalIndex written to str in csv back to pd.Interval
-    # from: https://github.com/pandas-dev/pandas/issues/28210
-    def to_interval(istr: str) -> float | pd.Interval:
-        if isinstance(istr, float):
-            return np.nan
-        else:
-            c_left = istr[0] == "["
-            c_right = istr[-1] == "]"
-            closed = {(True, False): "left", (False, True): "right", (True, True): "both", (False, False): "neither"}[
-                c_left, c_right
-            ]
-            left, right = map(float, istr[1:-1].split(","))
-            try:
-                return pd.Interval(left, right, closed)
-            except Exception:
-                return np.nan
-
     # Compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
 
@@ -288,8 +294,8 @@ def interp_nd_binning(
             df_sub[var] = pd.IntervalIndex(df_sub[var]).mid.values
         # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
         # pd.Interval into strings)
-        elif any(isinstance(to_interval(x), pd.Interval) for x in df_sub[var].values):
-            intervalindex_vals = [to_interval(x) for x in df_sub[var].values]
+        elif any(isinstance(_pandas_str_to_interval(x), pd.Interval) for x in df_sub[var].values):
+            intervalindex_vals = [_pandas_str_to_interval(x) for x in df_sub[var].values]
             df_sub[var] = pd.IntervalIndex(intervalindex_vals).mid.values
         else:
             raise ValueError("The variable columns must be provided as numerical mid values, or pd.Interval values.")
@@ -327,25 +333,161 @@ def interp_nd_binning(
         list_bmid.append(bmid)
         shape.append(len(bmid))
 
-    # Use griddata first to perform nearest interpolation with NaNs (irregular grid)
+    # The workflow below is a bit complicated because of the irregular grid and handling of nodata values!
+    # Steps 1/ and 2/ fill the nodata values in the irregular grid, and step 3/ creates the interpolant object to
+    # get a value at any point inside or outside the bin edges
+
+    # 1/ Use griddata first to perform interpolation for nodata values within the N-D convex hull of the irregular grid
+
     # Valid values
     values = values[ind_valid]
-    # coordinates of valid values
+    # Coordinates of valid values
     points_valid = tuple(df_sub[var].values[ind_valid] for var in list_var_names)
-    # Grid coordinates
+    # Coordinates of all grid points (convex hull points will be detected automatically and interpolated)
     bmid_grid = np.meshgrid(*list_bmid, indexing="ij")
     points_grid = tuple(bmid_grid[i].flatten() for i in range(len(list_var_names)))
-    # Fill grid no data with nearest neighbour
-    values_grid = griddata(points_valid, values, points_grid, method="nearest")
-    values_grid = values_grid.reshape(shape)
+    # Interpolate on grid within convex hull with interpolation method
+    values_grid = griddata(points_valid, values, points_grid, method=interpolate_method)
 
-    # RegularGridInterpolator to perform linear interpolation/extrapolation on the grid
-    # (will extrapolate only outside of boundaries not filled with the nearest of griddata as fill_value = None)
+    # 2/ Use griddata to extrapolate nodata values with nearest neighbour on the N-D grid and remove all NaNs
+
+    # Valid values after above interpolation in convex hull
+    ind_valid_interp = np.isfinite(values_grid)
+    values_interp = values_grid[ind_valid_interp]
+    # Coordinate of valid values
+    points_valid_interp = tuple(points_grid[i][ind_valid_interp] for i in range(len(points_grid)))
+    # Extend grid by a value of "1" the point coordinates in all directions to ensure
+    # that 3/ will extrapolate linearly as for "nearest"
+    list_bmid_extended = []
+    for i in range(len(list_bmid)):
+        bmid_bin = list_bmid[i]
+        # Add bin before first edge and decrease coord value
+        bmid_bin_extlow = np.insert(bmid_bin, 0, bmid_bin[0] - 1)
+        # Add bin after last edge and increase coord value
+        bmid_bin_extboth = np.append(bmid_bin_extlow, bmid_bin[-1] + 1)
+        list_bmid_extended.append(bmid_bin_extboth)
+    bmid_grid_extended = np.meshgrid(*list_bmid_extended, indexing="ij")
+    points_grid_extended = tuple(bmid_grid_extended[i].flatten() for i in range(len(list_var_names)))
+    # Update shape
+    shape_extended = tuple(x + 2 for x in shape)
+
+    # Extrapolate on extended grid with nearest neighbour
+    values_grid_nearest = griddata(points_valid_interp, values_interp, points_grid_extended, method="nearest")
+    values_grid_nearest = values_grid_nearest.reshape(shape_extended)
+
+    # 3/ Use RegularGridInterpolator to perform interpolation **between points** of the grid, with extrapolation forced
+    # to nearest neighbour by duplicating edge points
+    # (does not support NaNs, hence the need for 2/ above)
     interp_fun = RegularGridInterpolator(
-        tuple(list_bmid), values_grid, method="linear", bounds_error=False, fill_value=None
+        tuple(list_bmid_extended), values_grid_nearest, method="linear", bounds_error=False, fill_value=None
     )
 
     return interp_fun  # type: ignore
+
+
+def get_perbin_nd_binning(
+    df: pd.DataFrame,
+    list_var: list[NDArrayf],
+    list_var_names: str | list[str],
+    statistic: str | Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+    min_count: int | None = 0,
+) -> NDArrayf:
+    """
+    Get per-bin array statistic for a list of array input variables, based on the results of an independent N-D binning.
+
+    For example, get a 2D array of elevation uncertainty based on 2D arrays of slope and curvature and a related binning
+    (for uncertainty analysis) or get a 2D array of elevation bias based on 2D arrays of rotated X coordinates (for
+    an along-track bias correction).
+
+    :param list_var: List of size (L) of explanatory variables array of size (N,).
+    :param list_var_names: List of size (L) of names of the explanatory variables.
+    :param df: Dataframe with statistic of binned values according to explanatory variables.
+    :param statistic: Statistic to use, stored as a data series in the dataframe.
+    :param min_count: Minimum number of samples to be used as a valid statistic (otherwise not applying operation).
+
+    :return: The array of statistic values corresponding to the input variables.
+    """
+
+    # Prepare output
+    values_out = np.zeros(np.shape(list_var[0])) * np.nan
+
+    # If list of variable input is simply a string
+    if isinstance(list_var_names, str):
+        list_var_names = [list_var_names]
+
+    if len(list_var) != len(list_var_names):
+        raise ValueError("The lists of variables and variable names should be the same length.")
+
+    # Check that the dataframe contains what we need
+    for var in list_var_names:
+        if var not in df.columns:
+            raise ValueError('Variable "' + var + '" does not exist in the provided dataframe.')
+    statistic_name = statistic if isinstance(statistic, str) else statistic.__name__
+    if statistic_name not in df.columns:
+        raise ValueError('Statistic "' + statistic_name + '" does not exist in the provided dataframe.')
+    if min_count is not None and "count" not in df.columns:
+        raise ValueError('Statistic "count" is not in the provided dataframe, necessary to use the min_count argument.')
+    if df.empty:
+        raise ValueError("Dataframe is empty.")
+
+    df_sub = df.copy()
+
+    # If the dataframe is an output of nd_binning, keep only the dimension of interest
+    if "nd" in df_sub.columns:
+        df_sub = df_sub[df_sub.nd == len(list_var_names)]
+
+    # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
+    # pd.Interval into strings)
+    for var_name in list_var_names:
+        if any(isinstance(x, pd.Interval) for x in df_sub[var_name].values):
+            continue
+        elif any(isinstance(_pandas_str_to_interval(x), pd.Interval) for x in df_sub[var_name]):
+            df_sub[var_name] = [_pandas_str_to_interval(x) for x in df_sub[var_name]]
+        else:
+            ValueError("The bin intervals of the dataframe should be pandas.Interval.")
+
+    # Apply operator in the nd binning
+    # We compute the masks linked to each 1D bin in a single for loop, to optimize speed
+    L = len(list_var)
+    all_mask_vars = []
+    all_interval_vars = []
+    for k in range(L):
+        # Get variable name and list of intervals in the dataframe
+        var_name = list_var_names[k]
+        list_interval_var = np.unique(df_sub[var_name].values)
+
+        # Get a list of mask for every bin of the variable
+        list_mask_var = [
+            np.logical_and(list_var[k] >= list_interval_var[j].left, list_var[k] < list_interval_var[j].right)
+            for j in range(len(list_interval_var))
+        ]
+
+        # Save those in lists to later combine them
+        all_mask_vars.append(list_mask_var)
+        all_interval_vars.append(list_interval_var)
+
+    # We perform the K-D binning by logically combining the masks
+    all_ranges = [range(len(all_interval_vars[k])) for k in range(L)]
+    for indices in itertools.product(*all_ranges):
+
+        # Get mask of the specific bin, skip if empty
+        mask_bin = np.logical_and.reduce([all_mask_vars[k][indices[k]] for k in range(L)])
+        if np.count_nonzero(mask_bin) == 0:
+            continue
+
+        # Get the statistic
+        index_bin = np.logical_and.reduce(
+            [df_sub[list_var_names[k]] == all_interval_vars[k][indices[k]] for k in range(L)]
+        )
+        statistic_bin = df_sub[statistic_name][index_bin].values[0]
+
+        # Get count value of the statistic and use it if above the threshold
+        count_bin = df_sub["count"][index_bin].values[0]
+        if count_bin > min_count:
+            # Write out to the output array
+            values_out[mask_bin] = statistic_bin
+
+    return values_out
 
 
 def two_step_standardization(
@@ -1377,6 +1519,17 @@ def sample_empirical_variogram(
         df_mean["err_exp"] = df_std["exp"] / np.sqrt(n_variograms)
         df_mean["count"] = df_count["count"]
         df = df_mean
+
+    # Fix variance error for Dowd's variogram in SciKit-GStat
+
+    # If skgstat > 1.0, we can use Dowd's without correcting, otherwise we correct
+    from packaging.version import Version
+
+    if Version(skg.__version__) <= Version("1.0.0"):
+        if "estimator" in kwargs.keys() and kwargs["estimator"] == "dowd":
+            # Correction: we divide all experimental variance values by 2
+            df.exp.values /= 2
+            df.err_exp.values /= 2
 
     # Remove the last spatial lag bin which is always undersampled
     df.drop(df.tail(1).index, inplace=True)

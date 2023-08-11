@@ -22,5 +22,9 @@ dependencies:
   - geoutils==0.0.11
   - pip
 
+  - pip:
+    - noisyopt
+
+
 #  - pip:
 #     - git+https://github.com/GlacioHack/GeoUtils.git

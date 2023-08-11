@@ -198,22 +198,55 @@ class TestBinning:
             x = point[0] - 1
             y = point[1] - 1
             val_extra = fun((y + 1, x + 1))
-            # The difference between the points extrapolated outside should be linear with the grid edges,
-            # i.e. the same as the difference as the first points inside the grid along the same axis
+            # (OUTDATED: The difference between the points extrapolated outside should be linear with the grid edges,
+            # # i.e. the same as the difference as the first points inside the grid along the same axis)
+            # if point[0] == 0:
+            #     diff_in = arr[x + 2, y] - arr[x + 1, y]
+            #     diff_out = arr[x + 1, y] - val_extra
+            # elif point[0] == 4:
+            #     diff_in = arr[x - 2, y] - arr[x - 1, y]
+            #     diff_out = arr[x - 1, y] - val_extra
+            # elif point[1] == 0:
+            #     diff_in = arr[x, y + 2] - arr[x, y + 1]
+            #     diff_out = arr[x, y + 1] - val_extra
+            # # has to be y == 4
+            # else:
+            #     diff_in = arr[x, y - 2] - arr[x, y - 1]
+            #     diff_out = arr[x, y - 1] - val_extra
+            # assert diff_in == diff_out
+
+            # Update with nearest default: the value should be that of the nearest!
             if point[0] == 0:
-                diff_in = arr[x + 2, y] - arr[x + 1, y]
-                diff_out = arr[x + 1, y] - val_extra
+                near = arr[x + 1, y]
             elif point[0] == 4:
-                diff_in = arr[x - 2, y] - arr[x - 1, y]
-                diff_out = arr[x - 1, y] - val_extra
+                near = arr[x - 1, y]
             elif point[1] == 0:
-                diff_in = arr[x, y + 2] - arr[x, y + 1]
-                diff_out = arr[x, y + 1] - val_extra
-            # has to be y == 4
+                near = arr[x, y + 1]
             else:
-                diff_in = arr[x, y - 2] - arr[x, y - 1]
-                diff_out = arr[x, y - 1] - val_extra
-            assert diff_in == diff_out
+                near = arr[x, y - 1]
+            assert near == val_extra
+
+        # Check that the output extrapolates as "nearest neighbour" far outside the grid
+        points_far_out = (
+            [(-10, i) for i in np.arange(1, 4)]
+            + [(i, -10) for i in np.arange(1, 4)]
+            + [(14, i) for i in np.arange(1, 4)]
+            + [(i, 14) for i in np.arange(4, 1)]
+        )
+        for point in points_far_out:
+            x = point[0] - 1
+            y = point[1] - 1
+            val_extra = fun((y + 1, x + 1))
+            # Update with nearest default: the value should be that of the nearest!
+            if point[0] == -10:
+                near = arr[0, y]
+            elif point[0] == 14:
+                near = arr[-1, y]
+            elif point[1] == -10:
+                near = arr[x, 0]
+            else:
+                near = arr[x, -1]
+            assert near == val_extra
 
         # Check that the output is rightly ordered in 3 dimensions, and works with varying dimension lengths
         vec1 = np.arange(1, 3)
@@ -276,6 +309,70 @@ class TestBinning:
         assert fun(([30], [300], [np.pi])) > fun(([10], [300], [np.pi]))
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
+
+    def test_get_perbin_nd_binning(self) -> None:
+        """Test the get per-bin function."""
+
+        # Read nd_binning output
+        df = pd.read_csv(
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
+        )
+
+        # Get values for arrays from the above 3D binning
+        perbin_values = xdem.spatialstats.get_perbin_nd_binning(
+            df=df,
+            list_var=[
+                self.slope.data,
+                self.ref.data,
+                self.aspect.data,
+            ],
+            list_var_names=["slope", "elevation", "aspect"],
+        )
+
+        # Check that the function preserves the shape
+        assert np.shape(self.slope.data) == np.shape(perbin_values)
+
+        # Check that the bin are rightly recognized
+        df = df[df.nd == 3]
+        # Convert the intervals from string due to saving to file
+        for var in ["slope", "elevation", "aspect"]:
+            df[var] = [xdem.spatialstats._pandas_str_to_interval(x) for x in df[var]]
+
+        # Take 1000 random points in the array
+        np.random.seed(42)
+        xrand = np.random.randint(low=0, high=perbin_values.shape[0], size=1000)
+        yrand = np.random.randint(low=0, high=perbin_values.shape[1], size=1000)
+
+        for i in range(len(xrand)):
+
+            # Get the value at the random point for elevation, slope, aspect
+            x = xrand[i]
+            y = yrand[i]
+            h = self.ref.data[x, y]
+            slp = self.slope.data[x, y]
+            asp = self.aspect.data[x, y]
+
+            if np.logical_or.reduce((np.isnan(h), np.isnan(slp), np.isnan(asp))):
+                continue
+
+            # Isolate the bin in the dataframe, should be only one
+            index_bin = np.logical_and.reduce(
+                (
+                    [h in interv for interv in df["elevation"]],
+                    [slp in interv for interv in df["slope"]],
+                    [asp in interv for interv in df["aspect"]],
+                )
+            )
+            assert np.count_nonzero(index_bin) == 1
+
+            # Get the statistic value and verify that this was the one returned by the function
+            statistic_value = df["nanmedian"][index_bin].values[0]
+            # Nan equality does not work, so we compare finite values first
+            if ~np.isnan(statistic_value):
+                assert statistic_value == perbin_values[x, y]
+            # And then check that a NaN is returned if it is the statistic
+            else:
+                assert np.isnan(perbin_values[x, y])
 
     def test_two_step_standardization(self) -> None:
         """Test two-step standardization function"""

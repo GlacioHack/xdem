@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import xdem
+from xdem.spatialstats import nmad
 
 # %%
 # We load example files.
@@ -75,9 +76,10 @@ dh.show(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 # To perform this procedure effectively, we use improved methods that provide efficient pairwise sampling methods for
 # large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
 # conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
+# Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 
 df = xdem.spatialstats.sample_empirical_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=100, n_variograms=10, random_state=42
+    values=dh.data, gsd=dh.res[0], subsample=100, n_variograms=10, estimator="dowd", random_state=42
 )
 
 # %%
@@ -151,8 +153,8 @@ for area in areas:
     neff_doublerange = xdem.spatialstats.number_effective_samples(area, params_vgm2)
 
     # Convert into a standard error
-    stderr_singlerange = np.nanstd(dh.data) / np.sqrt(neff_singlerange)
-    stderr_doublerange = np.nanstd(dh.data) / np.sqrt(neff_doublerange)
+    stderr_singlerange = nmad(dh.data) / np.sqrt(neff_singlerange)
+    stderr_doublerange = nmad(dh.data) / np.sqrt(neff_doublerange)
     list_stderr_singlerange.append(stderr_singlerange)
     list_stderr_doublerange.append(stderr_doublerange)
 

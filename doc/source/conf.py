@@ -63,6 +63,7 @@ myst_enable_extensions = ["colon_fence", "dollarmath"]
 
 # For myst-nb to find the Jupyter kernel (=environment) to run from
 nb_kernel_rgx_aliases = {".*xdem.*": "python3"}
+nb_execution_raise_on_error = True
 
 # autosummary_generate = True
 
@@ -113,7 +114,9 @@ inheritance_alias = {
     "geoutils.georaster.satimg.SatelliteImage": "geoutils.SatelliteImage",
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
-    "xdem.dem.Coreg": "xdem.Coreg",
+    "xdem.coreg.base.Coreg": "xdem.Coreg",
+    "xdem.coreg.affine.AffineCoreg": "xdem.AffineCoreg",
+    "xdem.coreg.biascorr.BiasCorr": "xdem.BiasCorr",
 }
 
 # To have an edge color that works in both dark and light mode
