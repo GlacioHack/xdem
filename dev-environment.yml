@@ -17,6 +17,7 @@ dependencies:
   - scipy
   - tqdm
   - scikit-image
+  - scikit-gstat>=1.0
   - pytransform3d
   - geoutils==0.0.11
 
@@ -40,7 +41,6 @@ dependencies:
 #  - richdem
 
   - pip:
-    - scikit-gstat>=1.0.11
     - -e ./
 
     # Development-specific

@@ -13,14 +13,14 @@ with open(os.path.join(os.path.dirname(__file__), "README.md")) as infile:
 setup(
     name="xdem",
     version=FULLVERSION,
-    description="Set of tools to manipulate Digital Elevation Models (DEMs) ",
+    description="Analysis of digital elevation models (DEMs)",
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     url="https://github.com/GlacioHack/xdem",
     author="The GlacioHack Team",
     author_email="this-is-not-an-email@a.com",  # This is needed for PyPi unfortunately.
     license="BSD-3",
-    packages=["xdem"],
+    packages=["xdem", "xdem.coreg"],
     install_requires=[
         "numpy",
         "scipy",
