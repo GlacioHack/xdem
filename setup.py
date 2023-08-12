@@ -4,7 +4,7 @@ import os
 
 from setuptools import setup
 
-FULLVERSION = "0.0.11"
+FULLVERSION = "0.0.12"
 VERSION = FULLVERSION
 
 with open(os.path.join(os.path.dirname(__file__), "README.md")) as infile:
