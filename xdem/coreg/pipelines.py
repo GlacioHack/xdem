@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio as rio
-from geoutils._typing import AnyNumber
+from geoutils._typing import Number
 from geoutils.raster import RasterType
 
 from xdem._typing import NDArrayf
@@ -24,9 +24,9 @@ def create_inlier_mask(
     shp_list: list[str | gu.Vector | None] | tuple[str | gu.Vector] | tuple[()] = (),
     inout: list[int] | tuple[int] | tuple[()] = (),
     filtering: bool = True,
-    dh_max: AnyNumber = None,
-    nmad_factor: AnyNumber = 5,
-    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
+    dh_max: Number = None,
+    nmad_factor: Number = 5,
+    slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
 ) -> NDArrayf:
     """
     Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
@@ -135,9 +135,9 @@ def dem_coregistration(
     shp_list: list[str | gu.Vector] | tuple[str | gu.Vector] | tuple[()] = (),
     inout: list[int] | tuple[int] | tuple[()] = (),
     filtering: bool = True,
-    dh_max: AnyNumber = None,
-    nmad_factor: AnyNumber = 5,
-    slope_lim: list[AnyNumber] | tuple[AnyNumber, AnyNumber] = (0.1, 40),
+    dh_max: Number = None,
+    nmad_factor: Number = 5,
+    slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
     plot: bool = False,
     out_fig: str = None,
     verbose: bool = False,
