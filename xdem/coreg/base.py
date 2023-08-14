@@ -35,7 +35,7 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 import skimage.transform
-from geoutils._typing import AnyNumber
+from geoutils._typing import Number
 from geoutils.raster import (
     Mask,
     RasterType,
@@ -201,7 +201,7 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
 def _calculate_ddem_stats(
     ddem: NDArrayf | MArrayf,
     inlier_mask: NDArrayf | None = None,
-    stats_list: tuple[Callable[[NDArrayf], AnyNumber], ...] | None = None,
+    stats_list: tuple[Callable[[NDArrayf], Number], ...] | None = None,
     stats_labels: tuple[str, ...] | None = None,
 ) -> dict[str, float]:
     """
