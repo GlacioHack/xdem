@@ -368,6 +368,25 @@ class TestCoregClass:
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
 
+    def test_pipeline_pts(self) -> None:
+        warnings.simplefilter("ignore")
+
+        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
+        ref_points = self.ref.to_points(as_array=False, subset=5000, pixel_offset="center").ds
+        ref_points["E"] = ref_points.geometry.x
+        ref_points["N"] = ref_points.geometry.y
+        ref_points.rename(columns={"b1": "z"}, inplace=True)
+
+        # Check that this runs without error
+        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
+
+        for part in pipeline.pipeline:
+            assert np.abs(part._meta["offset_east_px"]) > 0
+
+        assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
+
+
+
     def test_coreg_add(self) -> None:
         warnings.simplefilter("error")
         # Test with a vertical shift of 4
