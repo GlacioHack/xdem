@@ -107,7 +107,6 @@ def _residuals_df(
     dz: float,
     z_name: str,
     weight: str = None,
-    area_or_point: str | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
@@ -131,8 +130,9 @@ def _residuals_df(
     # prepare DEM
     arr_ = dem.data.astype(np.float32)
 
+
     # get residual error at the point on DEM.
-    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values, op=np.float32, area_or_point=area_or_point)
+    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values, op=np.float32, shift_area_or_point=("AREA_OR_POINT" in dem.tags))
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j], order=1, mode="nearest", **kwargs)

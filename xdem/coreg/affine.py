@@ -32,6 +32,7 @@ from xdem.coreg.base import (
     deramping,
 )
 from xdem.spatialstats import nmad
+from xdem.dem import DEM
 
 try:
     import pytransform3d.transformations
@@ -950,29 +951,37 @@ class GradientDescending(AffineCoreg):
         self,
         ref_dem: pd.DataFrame,
         tba_dem: RasterType,
-        transform: rio.transform.Affine | None,
         verbose: bool = False,
-        order: int | None = 1,
         z_name: str = "z",
         weights: str | None = None,
+        random_state: int = 42,
+        **kwargs,
     ) -> None:
         """Estimate the x/y/z offset between two DEMs.
         :param ref_dem: the dataframe used as ref
         :param tba_dem: the dem to be aligned
         :param z_name: the column name of dataframe used for elevation differencing
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
-        :param order and transform is no needed but kept temporally for consistency.
-
+        :param random_state: The random state of the subsampling.
         """
-
         if not _has_noisyopt:
             raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
         # downsampling if downsampling != None
         if self.downsampling and len(ref_dem) > self.downsampling:
-            ref_dem = ref_dem.sample(frac=self.downsampling / len(ref_dem), random_state=42).copy()
+            ref_dem = ref_dem.sample(frac=self.downsampling / len(ref_dem), random_state=random_state).copy()
+        else:
+            ref_dem = ref_dem.copy()
 
         resolution = tba_dem.res[0]
+         # Assume that the coordinates represent the center of a theoretical pixel. 
+        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
+        ref_dem["E"] -= resolution / 2
+        ref_dem["N"] += resolution / 2
+        area_or_point = "Area"
+
+        old_aop = tba_dem.tags.get("AREA_OR_POINT", None)
+        tba_dem.tags["AREA_OR_POINT"] = area_or_point
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
@@ -1003,6 +1012,11 @@ class GradientDescending(AffineCoreg):
         # Send the best solution to find all results
         elevation_difference = _residuals_df(tba_dem, ref_dem, (res.x[0], res.x[1]), 0, z_name=z_name)
 
+        if old_aop is None:
+            del tba_dem.tags["AREA_OR_POINT"]
+        else:
+            tba_dem.tags["AREA_OR_POINT"] = old_aop
+
         # results statistics
         vshift = np.nanmedian(elevation_difference)
         nmad_new = nmad(elevation_difference)
@@ -1018,6 +1032,25 @@ class GradientDescending(AffineCoreg):
         self._meta["offset_north_px"] = res.x[1]
         self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
+
+    def _fit_func(
+        self,
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None,
+        verbose: bool = False,
+        **kwargs: Any,
+    ) -> None:
+
+        ref_dem = DEM.from_array(ref_dem, transform=transform, crs=crs, nodata=-9999.).to_points(as_array=False, pixel_offset="center").ds
+        ref_dem["E"] = ref_dem.geometry.x
+        ref_dem["N"] = ref_dem.geometry.y
+        ref_dem.rename(columns={"b1": "z"}, inplace=True)
+        tba_dem = DEM.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.)
+        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, **kwargs)
+       
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

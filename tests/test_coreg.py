@@ -238,7 +238,8 @@ class TestCoregClass:
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending])  # type: ignore
-    def test_coreg_example_shift(self, shift_px, coreg_class, verbose=False, downsampling=5000):
+    @pytest.mark.parametrize("points_or_raster", ["raster", "points"])
+    def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, downsampling=5000):
         '''
         For comparison of coreg algorithms:
         Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
@@ -259,14 +260,13 @@ class TestCoregClass:
 
         coreg_obj = coreg_class(**kwargs)
 
-        for kind in ["raster", "points"]:
-            if kind == "raster":
-                coreg_obj.fit(shifted_ref, self.ref, verbose=verbose)
-            elif kind == "points":
-                coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose)
+        if points_or_raster == "raster":
+            coreg_obj.fit(shifted_ref, self.ref, verbose=verbose)
+        elif points_or_raster == "points":
+            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose)
 
-            assert coreg_obj._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
-            assert coreg_obj._meta["offset_north_px"] == pytest.approx(-shift_px[0], rel=1e-2)
+        assert coreg_obj._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
+        assert coreg_obj._meta["offset_north_px"] == pytest.approx(-shift_px[0], rel=1e-2)
 
     def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")
