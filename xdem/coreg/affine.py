@@ -756,12 +756,19 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         tba_arr, _ = get_array_and_mask(tba_dem)
 
         resolution = tba_dem.res[0]
+        x_coords, y_coords = (ref_dem["E"].values, ref_dem["N"].values)
 
+         # Assume that the coordinates represent the center of a theoretical pixel. 
+        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
+        x_coords -= resolution / 2
+        y_coords += resolution / 2
+
+        pts = np.array((x_coords, y_coords)).T
+        # This needs to be consistent, so it's cardcoded here
+        area_or_point = "Area"
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
-
-        x_coords, y_coords = (ref_dem["E"].values, ref_dem["N"].values)
-        pts = np.array((x_coords, y_coords)).T
+        aligned_dem.tags["AREA_OR_POINT"] = area_or_point
 
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
@@ -769,15 +776,17 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         slope, aspect = _calculate_slope_and_aspect_nuthkaab(tba_arr)
 
         slope_r = tba_dem.copy(new_array=np.ma.masked_array(slope[None, :, :], mask=~np.isfinite(slope[None, :, :])))
+        slope_r.tags["AREA_OR_POINT"] = area_or_point
         aspect_r = tba_dem.copy(new_array=np.ma.masked_array(aspect[None, :, :], mask=~np.isfinite(aspect[None, :, :])))
+        aspect_r.tags["AREA_OR_POINT"] = area_or_point
 
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, vshift = 0.0, 0.0, 0.0
 
         # Calculate initial DEM statistics
-        slope_pts = slope_r.interp_points(pts, mode="nearest")
-        aspect_pts = aspect_r.interp_points(pts, mode="nearest")
-        tba_pts = aligned_dem.interp_points(pts, mode="nearest")
+        slope_pts = slope_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
+        aspect_pts = aspect_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
+        tba_pts = aligned_dem.interp_points(pts, mode="nearest", shift_area_or_point=True)
 
         # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
         new_pts = pts.copy()
@@ -814,7 +823,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             new_pts += [east_diff * resolution, north_diff * resolution]
 
             # Get new values
-            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest")
+            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest", shift_area_or_point=True)
             elevation_difference = ref_dem[z_name].values - tba_pts
 
             # Mask out no data by dem's mask
@@ -822,8 +831,8 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
             # Update values relataed to shifted pts
             elevation_difference = elevation_difference[mask_]
-            slope_pts = slope_r.interp_points(pts_, mode="nearest")
-            aspect_pts = aspect_r.interp_points(pts_, mode="nearest")
+            slope_pts = slope_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
+            aspect_pts = aspect_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
             vshift = float(np.nanmedian(elevation_difference))
 
             # Update statistics
@@ -940,7 +949,7 @@ class GradientDescending(AffineCoreg):
     def _fit_pts_func(
         self,
         ref_dem: pd.DataFrame,
-        tba_dem: NDArrayf,
+        tba_dem: RasterType,
         transform: rio.transform.Affine | None,
         verbose: bool = False,
         order: int | None = 1,

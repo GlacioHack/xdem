@@ -107,6 +107,7 @@ def _residuals_df(
     dz: float,
     z_name: str,
     weight: str = None,
+    area_or_point: str | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """
@@ -118,6 +119,7 @@ def _residuals_df(
     :param dz: The bias.
     :param z_name: The column that be used to compare with dem_h.
     :param weight: The column that be used as weights
+    :param area_or_point: Use the GDAL Area or Point sampling method.
 
     :returns: An array of residuals.
     """
@@ -130,7 +132,7 @@ def _residuals_df(
     arr_ = dem.data.astype(np.float32)
 
     # get residual error at the point on DEM.
-    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values, op=np.float32)
+    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values, op=np.float32, area_or_point=area_or_point)
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j], order=1, mode="nearest", **kwargs)
