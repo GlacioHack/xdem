@@ -850,10 +850,12 @@ class Coreg:
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param samples: The sample count to run co-registration on. Equivalent to subsample.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
         :param order: interpolation 0=nearest, 1=linear, 2=cubic.
         :param z_name: the column name of dataframe used for elevation differencing
+        :param mask_high_curv: Mask out high-curvature points (>5 maxc) to increase the robustness.
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
         """
 
