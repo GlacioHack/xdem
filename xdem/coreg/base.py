@@ -152,13 +152,12 @@ def _df_sampling_from_dem(
 
     :returns dataframe: N,E coordinates and z of DEM at sampling points.
     """
-    try:
-        if offset is None and (dem.tags["AREA_OR_POINT"] in ["Point", "point"]):
-            offset = "center"
-        else:
+
+    if offset is None:
+        if dem.tags.get("AREA_OR_POINT", "").lower() == "area":
             offset = "ul"
-    except KeyError:
-        offset = "ul"
+        else:
+            offset = "center"
 
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape
