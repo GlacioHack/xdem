@@ -230,7 +230,10 @@ class TestCoregClass:
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-        gds.fit_pts(self.ref, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples)
+        ref_pts = self.ref.to_points().ds.rename(columns={"b1": "z"})
+        ref_pts["E"] = ref_pts.geometry.x
+        ref_pts["N"] = ref_pts.geometry.y
+        gds.fit_pts(ref_pts, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples)
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
         assert gds._meta["vshift"] == pytest.approx(-1.8730, rel=1e-1)
