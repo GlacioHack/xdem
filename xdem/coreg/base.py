@@ -896,7 +896,7 @@ class Coreg:
             raise ValueError("'dem_to_be_aligned' had only NaNs")
 
         tba_dem = dem_to_be_aligned.copy()
-        ref_valid = np.isfinite(reference_dem["z"].values)
+        ref_valid = np.isfinite(reference_dem[z_name].values)
 
         if np.all(~ref_valid):
             raise ValueError("'reference_dem' point data only contains NaNs")
@@ -916,6 +916,13 @@ class Coreg:
             else:
                 print("Warning: There is no curvature in dataframe. Set mask_high_curv=True for more robust results")
 
+        if any(col not in ref_dem for col in ["E", "N"]):
+            if "geometry" in ref_dem:
+                ref_dem["E"] = ref_dem.geometry.x
+                ref_dem["N"] = ref_dem.geometry.y
+            else:
+                raise ValueError("Reference points need E/N columns or point geometries")
+            
         points = np.array((ref_dem["E"].values, ref_dem["N"].values)).T
 
         # Make sure that the mask has an expected format.
@@ -947,7 +954,7 @@ class Coreg:
         if subsample != 1.0:
 
             # Randomly pick N inliers in the full_mask where N=subsample
-            random_valids = subsample_array(ref_dem["z"].values, subsample=subsample, return_indices=True)
+            random_valids = subsample_array(ref_dem[z_name].values, subsample=subsample, return_indices=True)
 
             # Subset to the N random inliers
             ref_dem = ref_dem.iloc[random_valids]

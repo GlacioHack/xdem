@@ -218,22 +218,21 @@ class TestCoregClass:
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
         assert nuth_kaab._meta["vshift"] == pytest.approx(-1.9815309753424906)
 
-    def test_coreg_example_gradiendescending(
-        self, downsampling: int = 10000, samples: int = 20000, inlier_mask: bool = True, verbose: bool = False
+    def test_gradientdescending(
+        self, downsampling: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
     ) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
+
+        It also implicitly tests the z_name kwarg and whether a geometry column can be provided instead of E/N cols.
         """
         if inlier_mask:
             inlier_mask = self.inlier_mask
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-        ref_pts = self.ref.to_points().ds.rename(columns={"b1": "z"})
-        ref_pts["E"] = ref_pts.geometry.x
-        ref_pts["N"] = ref_pts.geometry.y
-        gds.fit_pts(ref_pts, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples)
+        gds.fit_pts(self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1")
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
         assert gds._meta["vshift"] == pytest.approx(-1.8730, rel=1e-1)
