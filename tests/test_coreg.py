@@ -232,26 +232,27 @@ class TestCoregClass:
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-        gds.fit_pts(self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1")
+        gds.fit_pts(
+            self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1"
+        )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
         assert gds._meta["vshift"] == pytest.approx(-1.8730, rel=1e-1)
-
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
     @pytest.mark.parametrize("points_or_raster", ["raster", "points"])
     def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, downsampling=5000):
-        '''
+        """
         For comparison of coreg algorithms:
         Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
-        '''
+        """
         warnings.simplefilter("error")
         res = self.ref.res[0]
 
         # shift DEM by shift_px
         shifted_ref = self.ref.copy()
-        shifted_ref.shift(shift_px[0]*res,shift_px[1]*res)
+        shifted_ref.shift(shift_px[0] * res, shift_px[1] * res)
 
         shifted_ref_points = shifted_ref.to_points(as_array=False, subset=downsampling, pixel_offset="center").ds
         shifted_ref_points["E"] = shifted_ref_points.geometry.x
@@ -261,7 +262,6 @@ class TestCoregClass:
         kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"downsampling": downsampling}
 
         coreg_obj = coreg_class(**kwargs)
-
 
         best_east_diff = 1e5
         best_north_diff = 1e5
@@ -279,7 +279,9 @@ class TestCoregClass:
         # minimum between two grid points. This is clearly warned for in the documentation.
         precision = 1e-2 if coreg_class.__name__ != "ICP" else 1
 
-        if coreg_obj._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=precision) and coreg_obj._meta["offset_north_px"] == pytest.approx(-shift_px[0], rel=precision):
+        if coreg_obj._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=precision) and coreg_obj._meta[
+            "offset_north_px"
+        ] == pytest.approx(-shift_px[0], rel=precision):
             return
         best_east_diff = coreg_obj._meta["offset_east_px"] - shift_px[0]
         best_north_diff = coreg_obj._meta["offset_north_px"] - shift_px[1]
@@ -402,8 +404,6 @@ class TestCoregClass:
             assert np.abs(part._meta["offset_east_px"]) > 0
 
         assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
-
-
 
     def test_coreg_add(self) -> None:
         warnings.simplefilter("error")
@@ -1209,7 +1209,7 @@ def test_create_inlier_mask() -> None:
         inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
 
 
-@pytest.mark.skip(reason="The test segfaults locally and in CI (2023-08-21)")
+@pytest.mark.skip(reason="The test segfaults locally and in CI (2023-08-21)")  # type: ignore
 def test_dem_coregistration() -> None:
     """
     Test that the dem_coregistration function works expectedly.

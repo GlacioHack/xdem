@@ -130,9 +130,10 @@ def _residuals_df(
     # prepare DEM
     arr_ = dem.data.astype(np.float32)
 
-
     # get residual error at the point on DEM.
-    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values, op=np.float32, shift_area_or_point=("AREA_OR_POINT" in dem.tags))
+    i, j = dem.xy2ij(
+        df_shifted["E"].values, df_shifted["N"].values, op=np.float32, shift_area_or_point=("AREA_OR_POINT" in dem.tags)
+    )
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j], order=1, mode="nearest", **kwargs)
@@ -924,7 +925,7 @@ class Coreg:
                 ref_dem["N"] = ref_dem.geometry.y
             else:
                 raise ValueError("Reference points need E/N columns or point geometries")
-            
+
         points = np.array((ref_dem["E"].values, ref_dem["N"].values)).T
 
         # Make sure that the mask has an expected format.
@@ -1353,7 +1354,8 @@ class CoregPipeline(Coreg):
             coreg._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem_mod, verbose=verbose, **kwargs)
             coreg._fit_called = True
 
-            tba_dem_mod = coreg.apply(tba_dem_mod) 
+            tba_dem_mod = coreg.apply(tba_dem_mod)
+        return self
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
