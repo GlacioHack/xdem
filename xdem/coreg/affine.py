@@ -450,38 +450,88 @@ class ICP(AffineCoreg):
             warnings.warn("ICP was given weights, but does not support it.")
 
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        points: dict[str, NDArrayf] = {}
         # Generate the x and y coordinates for the reference_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
+        gradient_x, gradient_y = np.gradient(ref_dem)
 
+        normal_east = np.sin(np.arctan(gradient_y / resolution)) * -1
+        normal_north = np.sin(np.arctan(gradient_x / resolution))
+        normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
+
+        valid_mask = ~np.isnan(ref_dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
+
+        ref_pts = pd.DataFrame(np.dstack(
+            [
+                x_coords[valid_mask],
+                y_coords[valid_mask],
+                ref_dem[valid_mask],
+                normal_east[valid_mask],
+                normal_north[valid_mask],
+                normal_up[valid_mask],
+            ]
+        ).squeeze(), columns=["E", "N", "z", "nx", "ny", "nz"])
+
+        self._fit_pts_func(ref_dem=ref_pts, tba_dem=tba_dem, transform=transform, verbose=verbose, z_name="z")
+
+    def _fit_pts_func(
+        self,
+        ref_dem: pd.DataFrame,
+        tba_dem: RasterType | NDArrayf,
+        transform: rio.transform.Affine | None,
+        verbose: bool = False,
+        z_name: str = "z",
+        **kwargs: Any,
+    ):
+
+        if transform is None and hasattr(tba_dem, "transform"):
+            transform = tba_dem.transform
+        if hasattr(tba_dem, "transform"):
+            tba_dem = tba_dem.data
+
+        ref_dem = ref_dem.dropna(how="any", subset=["E", "N", z_name])
+        bounds, resolution = _transform_to_bounds_and_res(tba_dem.shape, transform)
+        points: dict[str, NDArrayf] = {}
+        # Generate the x and y coordinates for the TBA DEM
+        x_coords, y_coords = _get_x_and_y_coords(tba_dem.shape, transform)
         centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= centroid[0]
         y_coords -= centroid[1]
-        for key, dem in zip(["ref", "tba"], [ref_dem, tba_dem]):
 
-            gradient_x, gradient_y = np.gradient(dem)
+        gradient_x, gradient_y = np.gradient(tba_dem)
 
-            normal_east = np.sin(np.arctan(gradient_y / resolution)) * -1
-            normal_north = np.sin(np.arctan(gradient_x / resolution))
-            normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
+        # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
+        dem_kwargs = {"transform": transform, "crs": rio.CRS.from_epsg(32633), "nodata": -9999.}
+        normal_east = DEM.from_array(np.sin(np.arctan(gradient_y / resolution)) * -1, **dem_kwargs)
+        normal_north = DEM.from_array(np.sin(np.arctan(gradient_x / resolution)), **dem_kwargs)
+        normal_up = DEM.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
+        
+        valid_mask = ~np.isnan(tba_dem) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
 
-            valid_mask = ~np.isnan(dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
+        points["tba"] = np.dstack([
+            x_coords[valid_mask],
+            y_coords[valid_mask],
+            tba_dem[valid_mask],
+            normal_east.data[valid_mask],
+            normal_north.data[valid_mask],
+            normal_up.data[valid_mask],
+        ]).squeeze()
 
-            point_cloud = np.dstack(
-                [
-                    x_coords[valid_mask],
-                    y_coords[valid_mask],
-                    dem[valid_mask],
-                    normal_east[valid_mask],
-                    normal_north[valid_mask],
-                    normal_up[valid_mask],
-                ]
-            ).squeeze()
+        if any(col not in ref_dem for col in ["nx", "ny", "nz"]):
+            for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
+                raster.tags["AREA_OR_POINT"] = "Area"
+                ref_dem[key] = raster.interp_points(ref_dem[["E", "N"]].values, shift_area_or_point=True, mode="nearest")
 
-            points[key] = point_cloud[~np.any(np.isnan(point_cloud), axis=1)].astype("float32")
+        ref_dem["E"] -= centroid[0]
+        ref_dem["N"] -= centroid[1]
 
-            icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
+        points["ref"] = ref_dem[["E", "N", z_name, "nx", "ny", "nz"]].values
+
+        for key in points:
+            points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
+            points[key][:, :2] -= resolution / 2
+
+        icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
         if verbose:
             print("Running ICP...")
         try:
@@ -503,7 +553,7 @@ class ICP(AffineCoreg):
 
         self._meta["centroid"] = centroid
         self._meta["matrix"] = matrix
-
+        
 
 class Tilt(AffineCoreg):
     """
