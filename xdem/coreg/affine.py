@@ -18,7 +18,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-from geoutils.raster import RasterType, get_array_and_mask
+from geoutils.raster import Raster, RasterType, get_array_and_mask
 from tqdm import trange
 
 from xdem._typing import NDArrayf
@@ -31,7 +31,6 @@ from xdem.coreg.base import (
     _transform_to_bounds_and_res,
     deramping,
 )
-from xdem.dem import DEM
 from xdem.spatialstats import nmad
 
 try:
@@ -505,9 +504,9 @@ class ICP(AffineCoreg):
 
         # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
         dem_kwargs = {"transform": transform, "crs": rio.CRS.from_epsg(32633), "nodata": -9999.0}
-        normal_east = DEM.from_array(np.sin(np.arctan(gradient_y / resolution)) * -1, **dem_kwargs)
-        normal_north = DEM.from_array(np.sin(np.arctan(gradient_x / resolution)), **dem_kwargs)
-        normal_up = DEM.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
+        normal_east = Raster.from_array(np.sin(np.arctan(gradient_y / resolution)) * -1, **dem_kwargs)
+        normal_north = Raster.from_array(np.sin(np.arctan(gradient_x / resolution)), **dem_kwargs)
+        normal_up = Raster.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
 
         valid_mask = ~np.isnan(tba_dem) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
 
@@ -1102,14 +1101,14 @@ class GradientDescending(AffineCoreg):
     ) -> None:
 
         ref_dem = (
-            DEM.from_array(ref_dem, transform=transform, crs=crs, nodata=-9999.0)
+            Raster.from_array(ref_dem, transform=transform, crs=crs, nodata=-9999.0)
             .to_points(as_array=False, pixel_offset="center")
             .ds
         )
         ref_dem["E"] = ref_dem.geometry.x
         ref_dem["N"] = ref_dem.geometry.y
         ref_dem.rename(columns={"b1": "z"}, inplace=True)
-        tba_dem = DEM.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.0)
+        tba_dem = Raster.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.0)
         self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, **kwargs)
 
     def _to_matrix_func(self) -> NDArrayf:
