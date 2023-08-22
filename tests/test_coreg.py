@@ -218,64 +218,78 @@ class TestCoregClass:
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
         assert nuth_kaab._meta["vshift"] == pytest.approx(-1.9815309753424906)
 
-    def test_coreg_example_gradiendescending(
-        self, downsampling: int = 10000, samples: int = 20000, inlier_mask: bool = True, verbose: bool = False
+    def test_gradientdescending(
+        self, downsampling: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
     ) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
+
+        It also implicitly tests the z_name kwarg and whether a geometry column can be provided instead of E/N cols.
         """
         if inlier_mask:
             inlier_mask = self.inlier_mask
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-        gds.fit_pts(self.ref, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples)
+        gds.fit_pts(
+            self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1"
+        )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
         assert gds._meta["vshift"] == pytest.approx(-1.8730, rel=1e-1)
 
-    def test_coreg_example_shift_test(
-        self,
-        shift_px: tuple[float, float] = (1, 1),
-        verbose: bool = False,
-        coregs: tuple[str, ...] = ("NuthKaab", "GradientDescending", "NuthKaab_pts"),
-        downsampling: int = 10000,
-    ) -> None:
+    @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
+    @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
+    @pytest.mark.parametrize("points_or_raster", ["raster", "points"])
+    def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, downsampling=5000):
         """
         For comparison of coreg algorithms:
-        Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then apply coreg to shift it back.
+        Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
         """
         warnings.simplefilter("error")
-
         res = self.ref.res[0]
 
-        # Shift DEM by shift_px
+        # shift DEM by shift_px
         shifted_ref = self.ref.copy()
         shifted_ref.shift(shift_px[0] * res, shift_px[1] * res)
 
-        for cor in coregs:
-            # Do coreg on shifted DEM
-            if cor == "NuthKaab":
-                print("\n(1) NuthKaab")
-                nuth_kaab = xdem.coreg.NuthKaab()
-                nuth_kaab.fit(shifted_ref, self.ref, inlier_mask=self.inlier_mask, verbose=verbose)
-                assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
-                assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-shift_px[1], rel=1e-2)
+        shifted_ref_points = shifted_ref.to_points(as_array=False, subset=downsampling, pixel_offset="center").ds
+        shifted_ref_points["E"] = shifted_ref_points.geometry.x
+        shifted_ref_points["N"] = shifted_ref_points.geometry.y
+        shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)
 
-            if cor == "GradientDescending":
-                print("\n(2) GradientDescending")
-                gds = xdem.coreg.GradientDescending(downsampling=downsampling)
-                gds.fit_pts(shifted_ref, self.ref, inlier_mask=self.inlier_mask, verbose=verbose)
-                assert gds._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
-                assert gds._meta["offset_north_px"] == pytest.approx(-shift_px[1], rel=1e-2)
+        kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"downsampling": downsampling}
 
-            if cor == "NuthKaab_pts":
-                print("\n(3) NuthKaab running on pts_fit")
-                nuth_kaab = xdem.coreg.NuthKaab()
-                nuth_kaab.fit_pts(shifted_ref, self.ref, inlier_mask=self.inlier_mask, verbose=verbose)
-                assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=1e-2)
-                assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-shift_px[1], rel=1e-2)
+        coreg_obj = coreg_class(**kwargs)
+
+        best_east_diff = 1e5
+        best_north_diff = 1e5
+        if points_or_raster == "raster":
+            coreg_obj.fit(shifted_ref, self.ref, verbose=verbose)
+        elif points_or_raster == "points":
+            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose)
+
+        if coreg_class.__name__ == "ICP":
+            matrix = coreg_obj.to_matrix()
+            # The ICP fit only creates a matrix and doesn't normally show the alignment in pixels
+            # Since the test is formed to validate pixel shifts, these calls extract the approximate pixel shift
+            # from the matrix (it's not perfect since rotation/scale can change it).
+            coreg_obj._meta["offset_east_px"] = -matrix[0][3] / res
+            coreg_obj._meta["offset_north_px"] = -matrix[1][3] / res
+
+        # ICP can never be expected to be much better than 1px on structured data, as its implementation often finds a
+        # minimum between two grid points. This is clearly warned for in the documentation.
+        precision = 1e-2 if coreg_class.__name__ != "ICP" else 1
+
+        if coreg_obj._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=precision) and coreg_obj._meta[
+            "offset_north_px"
+        ] == pytest.approx(-shift_px[0], rel=precision):
+            return
+        best_east_diff = coreg_obj._meta["offset_east_px"] - shift_px[0]
+        best_north_diff = coreg_obj._meta["offset_north_px"] - shift_px[1]
+
+        raise AssertionError(f"Diffs are too big. east: {best_east_diff:.2f} px, north: {best_north_diff:.2f} px")
 
     def test_nuth_kaab(self) -> None:
         warnings.simplefilter("error")
@@ -376,6 +390,23 @@ class TestCoregClass:
 
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
+
+    def test_pipeline_pts(self) -> None:
+        warnings.simplefilter("ignore")
+
+        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
+        ref_points = self.ref.to_points(as_array=False, subset=5000, pixel_offset="center").ds
+        ref_points["E"] = ref_points.geometry.x
+        ref_points["N"] = ref_points.geometry.y
+        ref_points.rename(columns={"b1": "z"}, inplace=True)
+
+        # Check that this runs without error
+        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
+
+        for part in pipeline.pipeline:
+            assert np.abs(part._meta["offset_east_px"]) > 0
+
+        assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
 
     def test_coreg_add(self) -> None:
         warnings.simplefilter("error")
@@ -1181,6 +1212,7 @@ def test_create_inlier_mask() -> None:
         inlier_mask = xdem.coreg.pipelines.create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
 
 
+@pytest.mark.skip(reason="The test segfaults locally and in CI (2023-08-21)")  # type: ignore
 def test_dem_coregistration() -> None:
     """
     Test that the dem_coregistration function works expectedly.

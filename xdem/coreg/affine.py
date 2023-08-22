@@ -18,7 +18,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-from geoutils.raster import RasterType, get_array_and_mask
+from geoutils.raster import Raster, RasterType, get_array_and_mask
 from tqdm import trange
 
 from xdem._typing import NDArrayf
@@ -449,38 +449,95 @@ class ICP(AffineCoreg):
             warnings.warn("ICP was given weights, but does not support it.")
 
         bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        points: dict[str, NDArrayf] = {}
         # Generate the x and y coordinates for the reference_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
+        gradient_x, gradient_y = np.gradient(ref_dem)
 
-        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
-        # Subtract by the bounding coordinates to avoid float32 rounding errors.
-        x_coords -= centroid[0]
-        y_coords -= centroid[1]
-        for key, dem in zip(["ref", "tba"], [ref_dem, tba_dem]):
+        normal_east = np.sin(np.arctan(gradient_y / resolution)) * -1
+        normal_north = np.sin(np.arctan(gradient_x / resolution))
+        normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
 
-            gradient_x, gradient_y = np.gradient(dem)
+        valid_mask = ~np.isnan(ref_dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
 
-            normal_east = np.sin(np.arctan(gradient_y / resolution)) * -1
-            normal_north = np.sin(np.arctan(gradient_x / resolution))
-            normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
-
-            valid_mask = ~np.isnan(dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
-
-            point_cloud = np.dstack(
+        ref_pts = pd.DataFrame(
+            np.dstack(
                 [
                     x_coords[valid_mask],
                     y_coords[valid_mask],
-                    dem[valid_mask],
+                    ref_dem[valid_mask],
                     normal_east[valid_mask],
                     normal_north[valid_mask],
                     normal_up[valid_mask],
                 ]
-            ).squeeze()
+            ).squeeze(),
+            columns=["E", "N", "z", "nx", "ny", "nz"],
+        )
 
-            points[key] = point_cloud[~np.any(np.isnan(point_cloud), axis=1)].astype("float32")
+        self._fit_pts_func(ref_dem=ref_pts, tba_dem=tba_dem, transform=transform, verbose=verbose, z_name="z")
 
-            icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
+    def _fit_pts_func(
+        self,
+        ref_dem: pd.DataFrame,
+        tba_dem: RasterType | NDArrayf,
+        transform: rio.transform.Affine | None,
+        verbose: bool = False,
+        z_name: str = "z",
+        **kwargs: Any,
+    ) -> None:
+
+        if transform is None and hasattr(tba_dem, "transform"):
+            transform = tba_dem.transform  # type: ignore
+        if hasattr(tba_dem, "transform"):
+            tba_dem = tba_dem.data
+
+        ref_dem = ref_dem.dropna(how="any", subset=["E", "N", z_name])
+        bounds, resolution = _transform_to_bounds_and_res(tba_dem.shape, transform)
+        points: dict[str, NDArrayf] = {}
+        # Generate the x and y coordinates for the TBA DEM
+        x_coords, y_coords = _get_x_and_y_coords(tba_dem.shape, transform)
+        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
+        # Subtract by the bounding coordinates to avoid float32 rounding errors.
+        x_coords -= centroid[0]
+        y_coords -= centroid[1]
+
+        gradient_x, gradient_y = np.gradient(tba_dem)
+
+        # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
+        dem_kwargs = {"transform": transform, "crs": rio.CRS.from_epsg(32633), "nodata": -9999.0}
+        normal_east = Raster.from_array(np.sin(np.arctan(gradient_y / resolution)) * -1, **dem_kwargs)
+        normal_north = Raster.from_array(np.sin(np.arctan(gradient_x / resolution)), **dem_kwargs)
+        normal_up = Raster.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
+
+        valid_mask = ~np.isnan(tba_dem) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
+
+        points["tba"] = np.dstack(
+            [
+                x_coords[valid_mask],
+                y_coords[valid_mask],
+                tba_dem[valid_mask],
+                normal_east.data[valid_mask],
+                normal_north.data[valid_mask],
+                normal_up.data[valid_mask],
+            ]
+        ).squeeze()
+
+        if any(col not in ref_dem for col in ["nx", "ny", "nz"]):
+            for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
+                raster.tags["AREA_OR_POINT"] = "Area"
+                ref_dem[key] = raster.interp_points(
+                    ref_dem[["E", "N"]].values, shift_area_or_point=True, mode="nearest"
+                )
+
+        ref_dem["E"] -= centroid[0]
+        ref_dem["N"] -= centroid[1]
+
+        points["ref"] = ref_dem[["E", "N", z_name, "nx", "ny", "nz"]].values
+
+        for key in points:
+            points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
+            points[key][:, :2] -= resolution / 2
+
+        icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
         if verbose:
             print("Running ICP...")
         try:
@@ -756,12 +813,19 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         tba_arr, _ = get_array_and_mask(tba_dem)
 
         resolution = tba_dem.res[0]
+        x_coords, y_coords = (ref_dem["E"].values, ref_dem["N"].values)
 
+        # Assume that the coordinates represent the center of a theoretical pixel.
+        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
+        x_coords -= resolution / 2
+        y_coords += resolution / 2
+
+        pts = np.array((x_coords, y_coords)).T
+        # This needs to be consistent, so it's cardcoded here
+        area_or_point = "Area"
         # Make a new DEM which will be modified inplace
         aligned_dem = tba_dem.copy()
-
-        x_coords, y_coords = (ref_dem["E"].values, ref_dem["N"].values)
-        pts = np.array((x_coords, y_coords)).T
+        aligned_dem.tags["AREA_OR_POINT"] = area_or_point
 
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
@@ -769,15 +833,17 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         slope, aspect = _calculate_slope_and_aspect_nuthkaab(tba_arr)
 
         slope_r = tba_dem.copy(new_array=np.ma.masked_array(slope[None, :, :], mask=~np.isfinite(slope[None, :, :])))
+        slope_r.tags["AREA_OR_POINT"] = area_or_point
         aspect_r = tba_dem.copy(new_array=np.ma.masked_array(aspect[None, :, :], mask=~np.isfinite(aspect[None, :, :])))
+        aspect_r.tags["AREA_OR_POINT"] = area_or_point
 
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, vshift = 0.0, 0.0, 0.0
 
         # Calculate initial DEM statistics
-        slope_pts = slope_r.interp_points(pts, mode="nearest")
-        aspect_pts = aspect_r.interp_points(pts, mode="nearest")
-        tba_pts = aligned_dem.interp_points(pts, mode="nearest")
+        slope_pts = slope_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
+        aspect_pts = aspect_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
+        tba_pts = aligned_dem.interp_points(pts, mode="nearest", shift_area_or_point=True)
 
         # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
         new_pts = pts.copy()
@@ -814,7 +880,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             new_pts += [east_diff * resolution, north_diff * resolution]
 
             # Get new values
-            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest")
+            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest", shift_area_or_point=True)
             elevation_difference = ref_dem[z_name].values - tba_pts
 
             # Mask out no data by dem's mask
@@ -822,8 +888,8 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
             # Update values relataed to shifted pts
             elevation_difference = elevation_difference[mask_]
-            slope_pts = slope_r.interp_points(pts_, mode="nearest")
-            aspect_pts = aspect_r.interp_points(pts_, mode="nearest")
+            slope_pts = slope_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
+            aspect_pts = aspect_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
             vshift = float(np.nanmedian(elevation_difference))
 
             # Update statistics
@@ -940,30 +1006,38 @@ class GradientDescending(AffineCoreg):
     def _fit_pts_func(
         self,
         ref_dem: pd.DataFrame,
-        tba_dem: NDArrayf,
-        transform: rio.transform.Affine | None,
+        tba_dem: RasterType,
         verbose: bool = False,
-        order: int | None = 1,
         z_name: str = "z",
         weights: str | None = None,
+        random_state: int = 42,
+        **kwargs: Any,
     ) -> None:
         """Estimate the x/y/z offset between two DEMs.
         :param ref_dem: the dataframe used as ref
         :param tba_dem: the dem to be aligned
         :param z_name: the column name of dataframe used for elevation differencing
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
-        :param order and transform is no needed but kept temporally for consistency.
-
+        :param random_state: The random state of the subsampling.
         """
-
         if not _has_noisyopt:
             raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
         # downsampling if downsampling != None
         if self.downsampling and len(ref_dem) > self.downsampling:
-            ref_dem = ref_dem.sample(frac=self.downsampling / len(ref_dem), random_state=42).copy()
+            ref_dem = ref_dem.sample(frac=self.downsampling / len(ref_dem), random_state=random_state).copy()
+        else:
+            ref_dem = ref_dem.copy()
 
         resolution = tba_dem.res[0]
+        # Assume that the coordinates represent the center of a theoretical pixel.
+        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
+        ref_dem["E"] -= resolution / 2
+        ref_dem["N"] += resolution / 2
+        area_or_point = "Area"
+
+        old_aop = tba_dem.tags.get("AREA_OR_POINT", None)
+        tba_dem.tags["AREA_OR_POINT"] = area_or_point
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
@@ -994,6 +1068,11 @@ class GradientDescending(AffineCoreg):
         # Send the best solution to find all results
         elevation_difference = _residuals_df(tba_dem, ref_dem, (res.x[0], res.x[1]), 0, z_name=z_name)
 
+        if old_aop is None:
+            del tba_dem.tags["AREA_OR_POINT"]
+        else:
+            tba_dem.tags["AREA_OR_POINT"] = old_aop
+
         # results statistics
         vshift = np.nanmedian(elevation_difference)
         nmad_new = nmad(elevation_difference)
@@ -1009,6 +1088,28 @@ class GradientDescending(AffineCoreg):
         self._meta["offset_north_px"] = res.x[1]
         self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
+
+    def _fit_func(
+        self,
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None,
+        verbose: bool = False,
+        **kwargs: Any,
+    ) -> None:
+
+        ref_dem = (
+            Raster.from_array(ref_dem, transform=transform, crs=crs, nodata=-9999.0)
+            .to_points(as_array=False, pixel_offset="center")
+            .ds
+        )
+        ref_dem["E"] = ref_dem.geometry.x
+        ref_dem["N"] = ref_dem.geometry.y
+        ref_dem.rename(columns={"b1": "z"}, inplace=True)
+        tba_dem = Raster.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.0)
+        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, **kwargs)
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

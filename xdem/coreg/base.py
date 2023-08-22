@@ -118,6 +118,7 @@ def _residuals_df(
     :param dz: The bias.
     :param z_name: The column that be used to compare with dem_h.
     :param weight: The column that be used as weights
+    :param area_or_point: Use the GDAL Area or Point sampling method.
 
     :returns: An array of residuals.
     """
@@ -130,7 +131,9 @@ def _residuals_df(
     arr_ = dem.data.astype(np.float32)
 
     # get residual error at the point on DEM.
-    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values, op=np.float32)
+    i, j = dem.xy2ij(
+        df_shifted["E"].values, df_shifted["N"].values, op=np.float32, shift_area_or_point=("AREA_OR_POINT" in dem.tags)
+    )
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j], order=1, mode="nearest", **kwargs)
@@ -150,13 +153,12 @@ def _df_sampling_from_dem(
 
     :returns dataframe: N,E coordinates and z of DEM at sampling points.
     """
-    try:
-        if offset is None and (dem.tags["AREA_OR_POINT"] in ["Point", "point"]):
-            offset = "center"
-        else:
+
+    if offset is None:
+        if dem.tags.get("AREA_OR_POINT", "").lower() == "area":
             offset = "ul"
-    except KeyError:
-        offset = "ul"
+        else:
+            offset = "center"
 
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape
@@ -849,10 +851,12 @@ class Coreg:
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
+        :param samples: The sample count to run co-registration on. Equivalent to subsample.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
         :param order: interpolation 0=nearest, 1=linear, 2=cubic.
         :param z_name: the column name of dataframe used for elevation differencing
+        :param mask_high_curv: Mask out high-curvature points (>5 maxc) to increase the robustness.
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
         """
 
@@ -895,7 +899,7 @@ class Coreg:
             raise ValueError("'dem_to_be_aligned' had only NaNs")
 
         tba_dem = dem_to_be_aligned.copy()
-        ref_valid = np.isfinite(reference_dem["z"].values)
+        ref_valid = np.isfinite(reference_dem[z_name].values)
 
         if np.all(~ref_valid):
             raise ValueError("'reference_dem' point data only contains NaNs")
@@ -914,6 +918,13 @@ class Coreg:
                 ref_dem = ref_dem.query("planc < 5 and profc < 5")
             else:
                 print("Warning: There is no curvature in dataframe. Set mask_high_curv=True for more robust results")
+
+        if any(col not in ref_dem for col in ["E", "N"]):
+            if "geometry" in ref_dem:
+                ref_dem["E"] = ref_dem.geometry.x
+                ref_dem["N"] = ref_dem.geometry.y
+            else:
+                raise ValueError("Reference points need E/N columns or point geometries")
 
         points = np.array((ref_dem["E"].values, ref_dem["N"].values)).T
 
@@ -946,7 +957,7 @@ class Coreg:
         if subsample != 1.0:
 
             # Randomly pick N inliers in the full_mask where N=subsample
-            random_valids = subsample_array(ref_dem["z"].values, subsample=subsample, return_indices=True)
+            random_valids = subsample_array(ref_dem[z_name].values, subsample=subsample, return_indices=True)
 
             # Subset to the N random inliers
             ref_dem = ref_dem.iloc[random_valids]
@@ -1325,6 +1336,26 @@ class CoregPipeline(Coreg):
             coreg._fit_called = True
 
             tba_dem_mod, out_transform = coreg.apply(tba_dem_mod, transform, crs)
+
+    def _fit_pts_func(
+        self: CoregType,
+        ref_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
+        tba_dem: RasterType,
+        verbose: bool = False,
+        **kwargs: Any,
+    ) -> CoregType:
+
+        tba_dem_mod = tba_dem.copy()
+
+        for i, coreg in enumerate(self.pipeline):
+            if verbose:
+                print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
+
+            coreg._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem_mod, verbose=verbose, **kwargs)
+            coreg._fit_called = True
+
+            tba_dem_mod = coreg.apply(tba_dem_mod)
+        return self
 
     def _apply_func(
         self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
