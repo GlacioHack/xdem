@@ -272,6 +272,9 @@ class TestCoregClass:
 
         if coreg_class.__name__ == "ICP":
             matrix = coreg_obj.to_matrix()
+            # The ICP fit only creates a matrix and doesn't normally show the alignment in pixels
+            # Since the test is formed to validate pixel shifts, these calls extract the approximate pixel shift
+            # from the matrix (it's not perfect since rotation/scale can change it).
             coreg_obj._meta["offset_east_px"] = -matrix[0][3] / res
             coreg_obj._meta["offset_north_px"] = -matrix[1][3] / res
 
