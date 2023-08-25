@@ -21,6 +21,8 @@ class TestdDEM:
         assert isinstance(self.ddem, xdem.dDEM)
         assert isinstance(self.ddem.data, np.ma.masked_array)
 
+        assert self.ddem.nodata is (self.dem_2009 - self.dem_1990).nodata
+
     def test_copy(self) -> None:
         """Test that copying works as it should."""
         ddem2 = self.ddem.copy()

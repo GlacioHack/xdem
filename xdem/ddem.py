@@ -37,7 +37,6 @@ class dDEM(Raster):  # type: ignore
         self.error = error
         self._filled_data: NDArrayf | None = None
         self._fill_method = ""
-        self.nodata: int | float | None = None
 
     def __str__(self) -> str:
         """Return a summary of the dDEM."""
