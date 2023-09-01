@@ -53,6 +53,7 @@ class TestBiasCorr:
         # Check default "fit" metadata was set properly
         assert bcorr._meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
         assert bcorr._meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        assert bcorr._meta["bias_var_names"] is None
 
         # Check that the _is_affine attribute is set correctly
         assert not bcorr._is_affine
@@ -76,6 +77,15 @@ class TestBiasCorr:
         assert bcorr3._meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
 
         assert bcorr3._fit_or_bin == "bin_and_fit"
+
+        # Or defining bias variable names on instantiation as iterable
+        bcorr4 = biascorr.BiasCorr(bias_var_names=("slope", "ncc"))
+        assert bcorr4._meta["bias_var_names"] == ["slope", "ncc"]
+
+        # Same using an array
+        bcorr5 = biascorr.BiasCorr(bias_var_names=np.array(["slope", "ncc"]))
+        assert bcorr5._meta["bias_var_names"] == ["slope", "ncc"]
+
 
     def test_biascorr__errors(self) -> None:
         """Test the errors that should be raised by BiasCorr."""
@@ -153,6 +163,9 @@ class TestBiasCorr:
         # Run with input parameter, and using only 100 subsamples for speed
         bcorr.fit(**elev_fit_params, subsample=100, random_state=42)
 
+        # Check that variable names are defined during fit
+        assert bcorr._meta["bias_var_names"] == ["elevation"]
+
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
@@ -180,6 +193,9 @@ class TestBiasCorr:
         # Passing p0 defines the number of parameters to solve for
         bcorr.fit(**elev_fit_params, subsample=100, p0=[0, 0, 0, 0], random_state=42)
 
+        # Check that variable names are defined during fit
+        assert bcorr._meta["bias_var_names"] == ["elevation", "slope"]
+
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
@@ -199,6 +215,9 @@ class TestBiasCorr:
         # Run with input parameter, and using only 100 subsamples for speed
         bcorr.fit(**elev_fit_params, subsample=1000, random_state=42)
 
+        # Check that variable names are defined during fit
+        assert bcorr._meta["bias_var_names"] == ["elevation"]
+
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
@@ -217,6 +236,9 @@ class TestBiasCorr:
 
         # Run with input parameter, and using only 100 subsamples for speed
         bcorr.fit(**elev_fit_params, subsample=10000, random_state=42)
+
+        # Check that variable names are defined during fit
+        assert bcorr._meta["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
@@ -257,6 +279,9 @@ class TestBiasCorr:
         # Run with input parameter, and using only 100 subsamples for speed
         bcorr.fit(**elev_fit_params, subsample=100, random_state=42)
 
+        # Check that variable names are defined during fit
+        assert bcorr._meta["bias_var_names"] == ["elevation"]
+
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
@@ -292,6 +317,9 @@ class TestBiasCorr:
         # Passing p0 defines the number of parameters to solve for
         bcorr.fit(**elev_fit_params, subsample=100, p0=[0, 0, 0, 0], random_state=42)
 
+        # Check that variable names are defined during fit
+        assert bcorr._meta["bias_var_names"] == ["elevation", "slope"]
+
         # Apply the correction
         bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
 
@@ -322,6 +350,15 @@ class TestBiasCorr:
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
             bcorr1d.fit(**elev_fit_params, bias_vars=bias_vars_dict)
 
+        # Raise error when variables don't match
+        with pytest.raises(
+                ValueError, match=re.escape("The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                                 "instantiation: ['ncc'].")
+        ):
+            bcorr1d2 = biascorr.BiasCorr1D(bias_var_names=["ncc"])
+            bias_vars_dict = {"elevation": self.ref}
+            bcorr1d2.fit(**elev_fit_params, bias_vars=bias_vars_dict)
+
     def test_biascorr2d(self) -> None:
         """
         Test the subclass BiasCorr2D, which defines default parameters for 2D.
@@ -329,17 +366,17 @@ class TestBiasCorr:
         """
 
         # Try default "fit" parameters instantiation
-        bcorr1d = biascorr.BiasCorr2D()
+        bcorr2d = biascorr.BiasCorr2D()
 
-        assert bcorr1d._meta["fit_func"] == polynomial_2d
-        assert bcorr1d._meta["fit_optimizer"] == scipy.optimize.curve_fit
+        assert bcorr2d._meta["fit_func"] == polynomial_2d
+        assert bcorr2d._meta["fit_optimizer"] == scipy.optimize.curve_fit
 
         # Try default "bin" parameter instantiation
-        bcorr1d = biascorr.BiasCorr2D(fit_or_bin="bin")
+        bcorr2d = biascorr.BiasCorr2D(fit_or_bin="bin")
 
-        assert bcorr1d._meta["bin_sizes"] == 10
-        assert bcorr1d._meta["bin_statistic"] == np.nanmedian
-        assert bcorr1d._meta["bin_apply_method"] == "linear"
+        assert bcorr2d._meta["bin_sizes"] == 10
+        assert bcorr2d._meta["bin_statistic"] == np.nanmedian
+        assert bcorr2d._meta["bin_apply_method"] == "linear"
 
         elev_fit_params = self.fit_params.copy()
         # Raise error when wrong number of parameters are passed
@@ -347,7 +384,16 @@ class TestBiasCorr:
             ValueError, match="Exactly two variables have to be provided through the argument " "'bias_vars', got 1."
         ):
             bias_vars_dict = {"elevation": self.ref}
-            bcorr1d.fit(**elev_fit_params, bias_vars=bias_vars_dict)
+            bcorr2d.fit(**elev_fit_params, bias_vars=bias_vars_dict)
+
+        # Raise error when variables don't match
+        with pytest.raises(
+                ValueError, match=re.escape("The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                                            "instantiation: ['elevation', 'ncc'].")
+        ):
+            bcorr2d2 = biascorr.BiasCorr2D(bias_var_names=["elevation", "ncc"])
+            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
+            bcorr2d2.fit(**elev_fit_params, bias_vars=bias_vars_dict)
 
     def test_directionalbias(self) -> None:
         """Test the subclass DirectionalBias."""
@@ -359,6 +405,9 @@ class TestBiasCorr:
         assert dirbias._meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
+
+        # Check that variable names are defined during instantiation
+        assert dirbias._meta["bias_var_names"] == ["angle"]
 
     @pytest.mark.parametrize("angle", [20, 90, 210])  # type: ignore
     @pytest.mark.parametrize("nb_freq", [1, 2, 3])  # type: ignore
@@ -435,6 +484,9 @@ class TestBiasCorr:
         assert deramp._meta["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp._meta["poly_order"] == 2
 
+        # Check that variable names are defined during instantiation
+        assert deramp._meta["bias_var_names"] == ["xx", "yy"]
+
     @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
     def test_deramp__synthetic(self, order: int) -> None:
         """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
@@ -478,6 +530,9 @@ class TestBiasCorr:
         assert tb._meta["bin_sizes"] == 100
         assert tb._meta["bin_statistic"] == np.nanmedian
         assert tb._meta["terrain_attribute"] == "maximum_curvature"
+
+        assert tb._meta["bias_var_names"] == ["maximum_curvature"]
+
 
     def test_terrainbias__synthetic(self) -> None:
         """Test the subclass TerrainBias."""

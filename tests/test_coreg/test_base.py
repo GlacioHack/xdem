@@ -455,11 +455,31 @@ class TestCoregPipeline:
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
 
-    def test_pipeline_affine_biascorr(self) -> None:
+    all_coregs = [coreg.VerticalShift(), coreg.NuthKaab(), coreg.ICP(), coreg.Deramp(), coreg.TerrainBias(), coreg.DirectionalBias()]
+
+    @pytest.mark.parametrize("coreg1", all_coregs)
+    @pytest.mark.parametrize("coreg2", all_coregs)
+    def test_pipeline_combinations__nobiasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
+        """Test pipelines with all combinations of coregistration subclasses (without bias variables)"""
 
         # Create a pipeline from one affine and one biascorr methods.
-        pipeline = coreg.CoregPipeline([coreg.Deramp(), coreg.NuthKaab()])
+        pipeline = coreg.CoregPipeline([coreg1, coreg2])
         pipeline.fit(**self.fit_params)
+
+        aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
+        assert aligned_dem.shape == self.ref.data.squeeze().shape
+
+    all_coregs = [coreg.VerticalShift(), coreg.NuthKaab(), coreg.ICP(), coreg.Deramp(), coreg.TerrainBias(),
+                  coreg.DirectionalBias()]
+
+    @pytest.mark.parametrize("coreg1", all_coregs)
+    @pytest.mark.parametrize("coreg2", [coreg.BiasCorr1D()])
+    def test_pipeline_combinations__biasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
+        """Test pipelines with all combinations of coregistration subclasses with bias variables"""
+
+        # Create a pipeline from one affine and one biascorr methods.
+        pipeline = coreg.CoregPipeline([coreg1, coreg2])
+        pipeline.fit(**self.fit_params, bias_vars={"slope": xdem.terrain.slope(self.ref)})
 
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
         assert aligned_dem.shape == self.ref.data.squeeze().shape

@@ -47,6 +47,7 @@ class BiasCorr(Coreg):
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        bias_var_names: Iterable[str] = None,
     ):
         """
         Instantiate a bias correction object.
@@ -98,17 +99,20 @@ class BiasCorr(Coreg):
                     "got {}.".format(type(bin_apply_method))
                 )
 
+        list_bias_var_names = list(bias_var_names) if bias_var_names is not None else None
+
         # Now we write the relevant attributes to the class metadata
         # For fitting
         if fit_or_bin == "fit":
-            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer}
+            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer, "bias_var_names": list_bias_var_names}
             # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
             # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
             super().__init__(meta=meta_fit)  # type: ignore
 
         # For binning
         elif fit_or_bin == "bin":
-            meta_bin = {"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method}
+            meta_bin = {"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method,
+                        "bias_var_names": list_bias_var_names}
             super().__init__(meta=meta_bin)  # type: ignore
 
         # For both
@@ -118,6 +122,7 @@ class BiasCorr(Coreg):
                 "fit_optimizer": fit_optimizer,
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
+                "bias_var_names": list_bias_var_names
             }
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
@@ -203,6 +208,15 @@ class BiasCorr(Coreg):
         #  description in fit() here?
         if bias_vars is None:
             raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
+
+        # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
+        if self._meta["bias_var_names"] is not None:
+            if not sorted(list(bias_vars.keys())) == sorted(self._meta["bias_var_names"]):
+                raise ValueError("The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                                 "instantiation: {}.".format(self._meta["bias_var_names"]))
+        # Otherwise, store bias variable names from the dictionary
+        else:
+            self._meta["bias_var_names"] = list(bias_vars.keys())
 
         # Compute difference and mask of valid data
         diff = ref_dem - tba_dem
@@ -346,9 +360,6 @@ class BiasCorr(Coreg):
         elif self._fit_or_bin in ["bin", "bin_and_fit"]:
             self._meta["bin_dataframe"] = df
 
-        # Save bias variable names in any case
-        self._meta["bias_vars"] = list(bias_vars.keys())
-
     def _apply_func(  # type: ignore
         self,
         dem: NDArrayf,
@@ -360,6 +371,11 @@ class BiasCorr(Coreg):
 
         if bias_vars is None:
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
+
+        # Check the bias_vars passed match the ones stored for this bias correction class
+        if not sorted(list(bias_vars.keys())) == sorted(self._meta["bias_var_names"]):
+            raise ValueError("The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                             "instantiation or fitting: {}.".format(self._meta["bias_var_names"]))
 
         # Apply function to get correction (including if binning was done before)
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
@@ -409,6 +425,7 @@ class BiasCorr1D(BiasCorr):
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        bias_var_names: Iterable[str] = None,
     ):
         """
         Instantiate a 1D bias correction.
@@ -421,8 +438,9 @@ class BiasCorr1D(BiasCorr):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
+        :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names)
 
     def _fit_func(  # type: ignore
         self,
@@ -469,6 +487,7 @@ class BiasCorr2D(BiasCorr):
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        bias_var_names: Iterable[str] = None,
     ):
         """
         Instantiate a 2D bias correction.
@@ -481,8 +500,9 @@ class BiasCorr2D(BiasCorr):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
+        :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names)
 
     def _fit_func(  # type: ignore
         self,
@@ -530,6 +550,7 @@ class BiasCorrND(BiasCorr):
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        bias_var_names: Iterable[str] = None,
     ):
         """
         Instantiate an N-D bias correction.
@@ -542,8 +563,9 @@ class BiasCorrND(BiasCorr):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
+        :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names)
 
     def _fit_func(  # type: ignore
         self,
@@ -601,16 +623,16 @@ class DirectionalBias(BiasCorr1D):
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"])
         self._meta["angle"] = angle
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -697,23 +719,24 @@ class TerrainBias(BiasCorr1D):
             between bins, or "per_bin" to apply the statistic for each bin.
         """
 
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, [terrain_attribute])
+        # This is the same as bias_var_names, but let's leave the duplicate for clarity
         self._meta["terrain_attribute"] = terrain_attribute
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
     ) -> None:
 
         # Derive terrain attribute
-        if self._meta["terrain_attribute"] == "elevation":
+        if self._meta["bias_var_names"] == "elevation":
             attr = ref_dem
         else:
             attr = xdem.terrain.get_terrain_attribute(
@@ -743,13 +766,13 @@ class TerrainBias(BiasCorr1D):
 
         if bias_vars is None:
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self._meta["bias_var_names"] == "elevation":
                 attr = dem
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                    dem=dem, attribute=self._meta["bias_var_names"], resolution=(transform[0], abs(transform[4]))
                 )
-            bias_vars = {self._meta["terrain_attribute"]: attr}
+            bias_vars = {self._meta["bias_var_names"]: attr}
 
         return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
@@ -782,7 +805,7 @@ class Deramp(BiasCorr2D):
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method)
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["xx", "yy"])
         self._meta["poly_order"] = poly_order
 
     def _fit_func(  # type: ignore
