@@ -1,18 +1,18 @@
 """Functions to test the affine coregistrations."""
 
-import warnings
-import pytest
 import copy
+import warnings
 
 import numpy as np
+import pytest
 import rasterio as rio
-
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+
 import xdem
-from xdem import examples
-from xdem import coreg
+from xdem import coreg, examples
 from xdem.coreg.affine import AffineCoreg, CoregDict
+
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import warnings
 from typing import Any, Callable
 
@@ -18,7 +17,7 @@ with warnings.catch_warnings():
     import xdem
     from xdem import coreg, examples, misc, spatialstats
     from xdem._typing import NDArrayf
-    from xdem.coreg.base import Coreg, CoregDict, apply_matrix
+    from xdem.coreg.base import Coreg, apply_matrix
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -63,7 +62,6 @@ class TestCoregClass:
         # Make sure these don't appear in the copy
         assert corr_copy._meta != corr._meta
         assert not hasattr(corr_copy, "vshift")
-
 
     def test_error_method(self) -> None:
         """Test different error measures."""
@@ -158,7 +156,6 @@ class TestCoregClass:
 
         # Check that the estimated biases are similar
         assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-1)
-
 
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
@@ -365,7 +362,7 @@ class TestCoregClass:
         # Use VerticalShift as a representative example.
         vshiftcorr = xdem.coreg.VerticalShift()
 
-        def fit_func() -> AffineCoreg:
+        def fit_func() -> Coreg:
             return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
 
         def apply_func() -> NDArrayf:
@@ -404,6 +401,7 @@ class TestCoregClass:
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
 
+
 class TestCoregPipeline:
 
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
@@ -421,7 +419,7 @@ class TestCoregPipeline:
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
-    def test_copy(self, coreg_class: Callable[[], AffineCoreg]) -> None:
+    def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
 
         # Create a pipeline, add some metadata, and copy it
         pipeline = coreg_class() + coreg_class()
@@ -531,7 +529,7 @@ class TestBlockwiseCoreg:
         "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
     )  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
-    def test_blockwise_coreg(self, pipeline: AffineCoreg, subdivision: int) -> None:
+    def test_blockwise_coreg(self, pipeline: Coreg, subdivision: int) -> None:
         warnings.simplefilter("error")
 
         blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
@@ -617,7 +615,6 @@ class TestBlockwiseCoreg:
         ddem_pre = (tba - self.ref).data.compressed()
         assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
         assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
-
 
 
 def test_apply_matrix() -> None:

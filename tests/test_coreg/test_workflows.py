@@ -1,15 +1,15 @@
 """Functions to test the coregistration workflows."""
 
 import os
-import warnings
 import tempfile
+import warnings
 
 import numpy as np
 import pandas as pd
 import pytest
-
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+
 import xdem
 from xdem import examples
 from xdem.coreg.workflows import create_inlier_mask, dem_coregistration
@@ -25,8 +25,8 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
-class TestWorkflows:
 
+class TestWorkflows:
     def test_create_inlier_mask(self) -> None:
         """Test that the create_inlier_mask function works expectedly."""
         warnings.simplefilter("error")
@@ -90,18 +90,16 @@ class TestWorkflows:
         inlier_mask_comp2 = np.ones(tba.data.shape, dtype=bool)
         inlier_mask_comp2[slope.data < slope_lim[0]] = False
         inlier_mask_comp2[slope.data > slope_lim[1]] = False
-        inlier_mask = create_inlier_mask(
-            tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf
-        )
+        inlier_mask = create_inlier_mask(tba, ref, filtering=True, slope_lim=slope_lim, nmad_factor=np.inf)
         assert np.all(inlier_mask == inlier_mask_comp2)
 
         # Test the nmad_factor filter only
         nmad_factor = 3
         ddem = tba - ref
-        inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(False)
-        inlier_mask = create_inlier_mask(
-            tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor
+        inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(
+            False
         )
+        inlier_mask = create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
         assert np.all(inlier_mask == inlier_mask_comp3)
 
         # Test the sum of both
@@ -114,9 +112,7 @@ class TestWorkflows:
         # Test the dh_max filter only
         dh_max = 200
         inlier_mask_comp4 = (np.abs(ddem.data) < dh_max).filled(False)
-        inlier_mask = create_inlier_mask(
-            tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=np.inf, dh_max=dh_max
-        )
+        inlier_mask = create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=np.inf, dh_max=dh_max)
         assert np.all(inlier_mask == inlier_mask_comp4)
 
         # - Test the sum of outlines + dh_max + slope - #
@@ -188,7 +184,6 @@ class TestWorkflows:
 
         with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
             create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
-
 
     @pytest.mark.skip(reason="The test segfaults locally and in CI (2023-08-21)")  # type: ignore
     def test_dem_coregistration(self) -> None:
