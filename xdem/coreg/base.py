@@ -1335,7 +1335,8 @@ class CoregPipeline(Coreg):
             coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, crs=crs, weights=weights, verbose=verbose)
             coreg._fit_called = True
 
-            tba_dem_mod, out_transform = coreg.apply(tba_dem_mod, transform, crs)
+            # TODO: shouldn't this call _apply_func directly?
+            tba_dem_mod, out_transform = coreg.apply(tba_dem_mod, transform=transform, crs=crs)
 
     def _fit_pts_func(
         self: CoregType,
@@ -1364,7 +1365,7 @@ class CoregPipeline(Coreg):
         dem_mod = dem.copy()
         out_transform = copy.copy(transform)
         for coreg in self.pipeline:
-            dem_mod, out_transform = coreg.apply(dem_mod, out_transform, crs, **kwargs)
+            dem_mod, out_transform = coreg.apply(dem_mod, transform=out_transform, crs=crs, **kwargs)
 
         return dem_mod, out_transform
 

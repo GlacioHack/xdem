@@ -91,20 +91,6 @@ class TestCoregClass:
         assert corr_copy._meta != corr._meta
         assert not hasattr(corr_copy, "vshift")
 
-        # Create a pipeline, add some metadata, and copy it
-        pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["vshift"] = 1
-
-        pipeline_copy = pipeline.copy()
-
-        # Add some more metadata after copying (this should not be transferred)
-        pipeline._meta["resolution"] = 30
-        pipeline_copy.pipeline[0]._meta["offset_north_px"] = 0.5
-
-        assert pipeline._meta != pipeline_copy._meta
-        assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
-        assert pipeline_copy.pipeline[0]._meta["vshift"]
-
     def test_vertical_shift(self) -> None:
         warnings.simplefilter("error")
 
@@ -371,71 +357,6 @@ class TestCoregClass:
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
-    def test_pipeline(self) -> None:
-        warnings.simplefilter("error")
-
-        # Create a pipeline from two coreg methods.
-        pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
-        pipeline.fit(**self.fit_params)
-
-        aligned_dem, _ = pipeline.apply(self.tba.data, self.ref.transform, self.ref.crs)
-
-        assert aligned_dem.shape == self.ref.data.squeeze().shape
-
-        # Make a new pipeline with two vertical shift correction approaches.
-        pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
-        # Set both "estimated" vertical shifts to be 1
-        pipeline2.pipeline[0]._meta["vshift"] = 1
-        pipeline2.pipeline[1]._meta["vshift"] = 1
-
-        # Assert that the combined vertical shift is 2
-        assert pipeline2.to_matrix()[2, 3] == 2.0
-
-    def test_pipeline_pts(self) -> None:
-        warnings.simplefilter("ignore")
-
-        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
-        ref_points = self.ref.to_points(as_array=False, subset=5000, pixel_offset="center").ds
-        ref_points["E"] = ref_points.geometry.x
-        ref_points["N"] = ref_points.geometry.y
-        ref_points.rename(columns={"b1": "z"}, inplace=True)
-
-        # Check that this runs without error
-        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
-
-        for part in pipeline.pipeline:
-            assert np.abs(part._meta["offset_east_px"]) > 0
-
-        assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
-
-    def test_coreg_add(self) -> None:
-        warnings.simplefilter("error")
-        # Test with a vertical shift of 4
-        vshift = 4
-
-        vshift1 = coreg.VerticalShift()
-        vshift2 = coreg.VerticalShift()
-
-        # Set the vertical shift attribute
-        for vshift_corr in (vshift1, vshift2):
-            vshift_corr._meta["vshift"] = vshift
-
-        # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
-        vshift3 = vshift1 + vshift2
-        assert vshift3.to_matrix()[2, 3] == vshift * 2
-
-        # Make sure the correct exception is raised on incorrect additions
-        with pytest.raises(ValueError, match="Incompatible add type"):
-            vshift1 + 1  # type: ignore
-
-        # Try to add a Coreg step to an already existing CoregPipeline
-        vshift4 = vshift3 + vshift1
-        assert vshift4.to_matrix()[2, 3] == vshift * 3
-
-        # Try to add two CoregPipelines
-        vshift5 = vshift3 + vshift3
-        assert vshift5.to_matrix()[2, 3] == vshift * 4
-
     def test_subsample(self) -> None:
         warnings.simplefilter("error")
 
@@ -497,96 +418,6 @@ class TestCoregClass:
         # Check that the estimated biases are similar
         assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-1)
 
-    @pytest.mark.parametrize(
-        "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
-    )  # type: ignore
-    @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
-    def test_blockwise_coreg(self, pipeline: AffineCoreg, subdivision: int) -> None:
-        warnings.simplefilter("error")
-
-        blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
-
-        # Results can not yet be extracted (since fit has not been called) and should raise an error
-        with pytest.raises(AssertionError, match="No coreg results exist.*"):
-            blockwise.to_points()
-
-        blockwise.fit(**self.fit_params)
-        points = blockwise.to_points()
-
-        # Validate that the number of points is equal to the amount of subdivisions.
-        assert points.shape[0] == subdivision
-
-        # Validate that the points do not represent only the same location.
-        assert np.sum(np.linalg.norm(points[:, :, 0] - points[:, :, 1], axis=1)) != 0.0
-
-        z_diff = points[:, 2, 1] - points[:, 2, 0]
-
-        # Validate that all values are different
-        assert np.unique(z_diff).size == z_diff.size, "Each coreg cell should have different results."
-
-        # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
-        with pytest.raises(ValueError, match="instantiated Coreg subclass"):
-            coreg.BlockwiseCoreg(step=coreg.VerticalShift, subdivision=1)  # type: ignore
-
-        # Metadata copying has been an issue. Validate that all chunks have unique ids
-        chunk_numbers = [m["i"] for m in blockwise._meta["step_meta"]]
-        assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
-
-        transformed_dem = blockwise.apply(self.tba)
-
-        ddem_pre = (self.ref - self.tba)[~self.inlier_mask]
-        ddem_post = (self.ref - transformed_dem)[~self.inlier_mask]
-
-        # Check that the periglacial difference is lower after coregistration.
-        assert abs(np.ma.median(ddem_post)) < abs(np.ma.median(ddem_pre))
-
-        stats = blockwise.stats()
-
-        # Check that nans don't exist (if they do, something has gone very wrong)
-        assert np.all(np.isfinite(stats["nmad"]))
-        # Check that offsets were actually calculated.
-        assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
-
-    def test_blockwise_coreg_large_gaps(self) -> None:
-        """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
-        warnings.simplefilter("error")
-        reference_dem = self.ref.reproject(dst_crs="EPSG:3413", dst_res=self.ref.res, resampling="bilinear")
-        dem_to_be_aligned = self.tba.reproject(dst_ref=reference_dem, resampling="bilinear")
-
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
-
-        # This should not fail or trigger warnings as warn_failures is False
-        blockwise.fit(reference_dem, dem_to_be_aligned)
-
-        stats = blockwise.stats()
-
-        # We expect holes in the blockwise coregistration, so there should not be 64 "successful" blocks.
-        assert stats.shape[0] < 64
-
-        # Statistics are only calculated on finite values, so all of these should be finite as well.
-        assert np.all(np.isfinite(stats))
-
-        # Copy the TBA DEM and set a square portion to nodata
-        tba = self.tba.copy()
-        mask = np.zeros(np.shape(tba.data), dtype=bool)
-        mask[450:500, 450:500] = True
-        tba.set_mask(mask=mask)
-
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
-
-        # Align the DEM and apply the blockwise to a zero-array (to get the zshift)
-        aligned = blockwise.fit(self.ref, tba).apply(tba)
-        zshift, _ = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform, crs=tba.crs)
-
-        # Validate that the zshift is not something crazy high and that no negative values exist in the data.
-        assert np.nanmax(np.abs(zshift)) < 50
-        assert np.count_nonzero(aligned.data.compressed() < -50) == 0
-
-        # Check that coregistration improved the alignment
-        ddem_post = (aligned - self.ref).data.compressed()
-        ddem_pre = (tba - self.ref).data.compressed()
-        assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
-        assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
 
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
@@ -831,6 +662,221 @@ class TestCoregClass:
         )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
+
+class TestCoregPipeline:
+
+    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
+    inlier_mask = ~outlines.create_mask(ref)
+
+    fit_params = dict(
+        reference_dem=ref.data,
+        dem_to_be_aligned=tba.data,
+        inlier_mask=inlier_mask,
+        transform=ref.transform,
+        crs=ref.crs,
+        verbose=False,
+    )
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+
+    @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
+    def test_copy(self, coreg_class: Callable[[], AffineCoreg]) -> None:
+
+        # Create a pipeline, add some metadata, and copy it
+        pipeline = coreg_class() + coreg_class()
+        pipeline.pipeline[0]._meta["vshift"] = 1
+
+        pipeline_copy = pipeline.copy()
+
+        # Add some more metadata after copying (this should not be transferred)
+        pipeline._meta["resolution"] = 30
+        pipeline_copy.pipeline[0]._meta["offset_north_px"] = 0.5
+
+        assert pipeline._meta != pipeline_copy._meta
+        assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
+        assert pipeline_copy.pipeline[0]._meta["vshift"]
+
+    def test_pipeline(self) -> None:
+        warnings.simplefilter("error")
+
+        # Create a pipeline from two coreg methods.
+        pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
+        pipeline.fit(**self.fit_params)
+
+        aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
+
+        assert aligned_dem.shape == self.ref.data.squeeze().shape
+
+        # Make a new pipeline with two vertical shift correction approaches.
+        pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
+        # Set both "estimated" vertical shifts to be 1
+        pipeline2.pipeline[0]._meta["vshift"] = 1
+        pipeline2.pipeline[1]._meta["vshift"] = 1
+
+        # Assert that the combined vertical shift is 2
+        assert pipeline2.to_matrix()[2, 3] == 2.0
+
+    def test_pipeline_affine_biascorr(self) -> None:
+
+        # Create a pipeline from one affine and one biascorr methods.
+        pipeline = coreg.CoregPipeline([coreg.Deramp(), coreg.NuthKaab()])
+        pipeline.fit(**self.fit_params)
+
+        aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
+        assert aligned_dem.shape == self.ref.data.squeeze().shape
+
+    def test_pipeline_pts(self) -> None:
+        warnings.simplefilter("ignore")
+
+        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
+        ref_points = self.ref.to_points(as_array=False, subset=5000, pixel_offset="center").ds
+        ref_points["E"] = ref_points.geometry.x
+        ref_points["N"] = ref_points.geometry.y
+        ref_points.rename(columns={"b1": "z"}, inplace=True)
+
+        # Check that this runs without error
+        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
+
+        for part in pipeline.pipeline:
+            assert np.abs(part._meta["offset_east_px"]) > 0
+
+        assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
+
+    def test_coreg_add(self) -> None:
+        warnings.simplefilter("error")
+        # Test with a vertical shift of 4
+        vshift = 4
+
+        vshift1 = coreg.VerticalShift()
+        vshift2 = coreg.VerticalShift()
+
+        # Set the vertical shift attribute
+        for vshift_corr in (vshift1, vshift2):
+            vshift_corr._meta["vshift"] = vshift
+
+        # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
+        vshift3 = vshift1 + vshift2
+        assert vshift3.to_matrix()[2, 3] == vshift * 2
+
+        # Make sure the correct exception is raised on incorrect additions
+        with pytest.raises(ValueError, match="Incompatible add type"):
+            vshift1 + 1  # type: ignore
+
+        # Try to add a Coreg step to an already existing CoregPipeline
+        vshift4 = vshift3 + vshift1
+        assert vshift4.to_matrix()[2, 3] == vshift * 3
+
+        # Try to add two CoregPipelines
+        vshift5 = vshift3 + vshift3
+        assert vshift5.to_matrix()[2, 3] == vshift * 4
+
+
+class TestBlockwiseCoreg:
+    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
+    inlier_mask = ~outlines.create_mask(ref)
+
+    fit_params = dict(
+        reference_dem=ref.data,
+        dem_to_be_aligned=tba.data,
+        inlier_mask=inlier_mask,
+        transform=ref.transform,
+        crs=ref.crs,
+        verbose=False,
+    )
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+
+    @pytest.mark.parametrize(
+        "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
+    )  # type: ignore
+    @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
+    def test_blockwise_coreg(self, pipeline: AffineCoreg, subdivision: int) -> None:
+        warnings.simplefilter("error")
+
+        blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
+
+        # Results can not yet be extracted (since fit has not been called) and should raise an error
+        with pytest.raises(AssertionError, match="No coreg results exist.*"):
+            blockwise.to_points()
+
+        blockwise.fit(**self.fit_params)
+        points = blockwise.to_points()
+
+        # Validate that the number of points is equal to the amount of subdivisions.
+        assert points.shape[0] == subdivision
+
+        # Validate that the points do not represent only the same location.
+        assert np.sum(np.linalg.norm(points[:, :, 0] - points[:, :, 1], axis=1)) != 0.0
+
+        z_diff = points[:, 2, 1] - points[:, 2, 0]
+
+        # Validate that all values are different
+        assert np.unique(z_diff).size == z_diff.size, "Each coreg cell should have different results."
+
+        # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
+        with pytest.raises(ValueError, match="instantiated Coreg subclass"):
+            coreg.BlockwiseCoreg(step=coreg.VerticalShift, subdivision=1)  # type: ignore
+
+        # Metadata copying has been an issue. Validate that all chunks have unique ids
+        chunk_numbers = [m["i"] for m in blockwise._meta["step_meta"]]
+        assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
+
+        transformed_dem = blockwise.apply(self.tba)
+
+        ddem_pre = (self.ref - self.tba)[~self.inlier_mask]
+        ddem_post = (self.ref - transformed_dem)[~self.inlier_mask]
+
+        # Check that the periglacial difference is lower after coregistration.
+        assert abs(np.ma.median(ddem_post)) < abs(np.ma.median(ddem_pre))
+
+        stats = blockwise.stats()
+
+        # Check that nans don't exist (if they do, something has gone very wrong)
+        assert np.all(np.isfinite(stats["nmad"]))
+        # Check that offsets were actually calculated.
+        assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
+
+    def test_blockwise_coreg_large_gaps(self) -> None:
+        """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
+        warnings.simplefilter("error")
+        reference_dem = self.ref.reproject(dst_crs="EPSG:3413", dst_res=self.ref.res, resampling="bilinear")
+        dem_to_be_aligned = self.tba.reproject(dst_ref=reference_dem, resampling="bilinear")
+
+        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
+
+        # This should not fail or trigger warnings as warn_failures is False
+        blockwise.fit(reference_dem, dem_to_be_aligned)
+
+        stats = blockwise.stats()
+
+        # We expect holes in the blockwise coregistration, so there should not be 64 "successful" blocks.
+        assert stats.shape[0] < 64
+
+        # Statistics are only calculated on finite values, so all of these should be finite as well.
+        assert np.all(np.isfinite(stats))
+
+        # Copy the TBA DEM and set a square portion to nodata
+        tba = self.tba.copy()
+        mask = np.zeros(np.shape(tba.data), dtype=bool)
+        mask[450:500, 450:500] = True
+        tba.set_mask(mask=mask)
+
+        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
+
+        # Align the DEM and apply the blockwise to a zero-array (to get the zshift)
+        aligned = blockwise.fit(self.ref, tba).apply(tba)
+        zshift, _ = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform, crs=tba.crs)
+
+        # Validate that the zshift is not something crazy high and that no negative values exist in the data.
+        assert np.nanmax(np.abs(zshift)) < 50
+        assert np.count_nonzero(aligned.data.compressed() < -50) == 0
+
+        # Check that coregistration improved the alignment
+        ddem_post = (aligned - self.ref).data.compressed()
+        ddem_pre = (tba - self.ref).data.compressed()
+        assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
+        assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
+
 
 
 def test_apply_matrix() -> None:

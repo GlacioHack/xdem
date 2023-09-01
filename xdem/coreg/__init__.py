@@ -20,4 +20,4 @@ from xdem.coreg.biascorr import (  # noqa
     DirectionalBias,
     TerrainBias,
 )
-from xdem.coreg.pipelines import dem_coregistration  # noqa
+from xdem.coreg.workflows import dem_coregistration  # noqa

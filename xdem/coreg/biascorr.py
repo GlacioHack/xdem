@@ -219,7 +219,7 @@ class BiasCorr(Coreg):
         # Remove random state for keyword argument if its value is not in the optimizer function
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
             fit_func_args = inspect.getfullargspec(self._meta["fit_optimizer"]).args
-            if "random_state" not in fit_func_args:
+            if "random_state" not in fit_func_args and "random_state" in kwargs:
                 kwargs.pop("random_state")
 
         # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
@@ -789,9 +789,9 @@ class Deramp(BiasCorr2D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
