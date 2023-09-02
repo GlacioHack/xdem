@@ -227,20 +227,6 @@ class AffineCoreg(Coreg):
             self._meta["matrix"] = valid_matrix
         self._is_affine = True
 
-    @property
-    def is_affine(self) -> bool:
-        """Check if the transform be explained by a 3D affine transform."""
-        # _is_affine is found by seeing if to_matrix() raises an error.
-        # If this hasn't been done yet, it will be None
-        if self._is_affine is None:
-            try:  # See if to_matrix() raises an error.
-                self.to_matrix()
-                self._is_affine = True
-            except (ValueError, NotImplementedError):
-                self._is_affine = False
-
-        return self._is_affine
-
     def to_matrix(self) -> NDArrayf:
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()

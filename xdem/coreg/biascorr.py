@@ -2,19 +2,17 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Iterable, Literal
+from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import geoutils as gu
 import numpy as np
 import pandas as pd
 import rasterio as rio
 import scipy
-from geoutils import Mask
-from geoutils.raster import RasterType
 
 import xdem.spatialstats
-from xdem._typing import MArrayf, NDArrayf
-from xdem.coreg.base import Coreg, CoregType
+from xdem._typing import NDArrayf
+from xdem.coreg.base import Coreg
 from xdem.fit import (
     polynomial_1d,
     polynomial_2d,
@@ -28,6 +26,7 @@ fit_workflows = {
     "nfreq_sumsin": {"func": sumsin_1d, "optimizer": robust_nfreq_sumsin_fit},
 }
 
+BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 
 class BiasCorr(Coreg):
     """
@@ -129,66 +128,7 @@ class BiasCorr(Coreg):
         # Update attributes
         self._fit_or_bin = fit_or_bin
         self._is_affine = False
-
-    def fit(  # type: ignore
-        self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType,
-        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,  # None if subclass derives biasvar itself
-        inlier_mask: NDArrayf | Mask | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        weights: NDArrayf | None = None,
-        subsample: float | int = 1.0,
-        verbose: bool = False,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
-        **kwargs: Any,
-    ) -> CoregType:
-
-        # Change dictionary content to array
-        if bias_vars is not None:
-            for var in bias_vars.keys():
-                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
-
-        # Call parent fit to do the pre-processing and return itself
-        return super().fit(  # type: ignore
-            reference_dem=reference_dem,
-            dem_to_be_aligned=dem_to_be_aligned,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            weights=weights,
-            subsample=subsample,
-            verbose=verbose,
-            random_state=random_state,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
-
-    def apply(  # type: ignore
-        self,
-        dem: RasterType | NDArrayf | MArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        resample: bool = True,
-        **kwargs: Any,
-    ) -> tuple[RasterType | NDArrayf | MArrayf, rio.transform.Affine]:
-
-        # Change dictionary content to array
-        if bias_vars is not None:
-            for var in bias_vars.keys():
-                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
-
-        # Call parent fit to do the pre-processing and return itself
-        return super().apply(
-            dem=dem,
-            transform=transform,
-            crs=crs,
-            resample=resample,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
+        self._needs_vars = True
 
     def _fit_func(  # type: ignore
         self,
@@ -625,6 +565,7 @@ class DirectionalBias(BiasCorr1D):
         """
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"])
         self._meta["angle"] = angle
+        self._needs_vars = False
 
     def _fit_func(  # type: ignore
         self,
@@ -722,6 +663,7 @@ class TerrainBias(BiasCorr1D):
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, [terrain_attribute])
         # This is the same as bias_var_names, but let's leave the duplicate for clarity
         self._meta["terrain_attribute"] = terrain_attribute
+        self._needs_vars = False
 
     def _fit_func(  # type: ignore
         self,
@@ -736,7 +678,7 @@ class TerrainBias(BiasCorr1D):
     ) -> None:
 
         # Derive terrain attribute
-        if self._meta["bias_var_names"] == "elevation":
+        if self._meta["terrain_attribute"] == "elevation":
             attr = ref_dem
         else:
             attr = xdem.terrain.get_terrain_attribute(
@@ -766,13 +708,13 @@ class TerrainBias(BiasCorr1D):
 
         if bias_vars is None:
             # Derive terrain attribute
-            if self._meta["bias_var_names"] == "elevation":
+            if self._meta["terrain_attribute"] == "elevation":
                 attr = dem
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=dem, attribute=self._meta["bias_var_names"], resolution=(transform[0], abs(transform[4]))
+                    dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
                 )
-            bias_vars = {self._meta["bias_var_names"]: attr}
+            bias_vars = {self._meta["terrain_attribute"]: attr}
 
         return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
@@ -807,6 +749,7 @@ class Deramp(BiasCorr2D):
         """
         super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["xx", "yy"])
         self._meta["poly_order"] = poly_order
+        self._needs_vars = False
 
     def _fit_func(  # type: ignore
         self,

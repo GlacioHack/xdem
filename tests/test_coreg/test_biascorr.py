@@ -58,6 +58,7 @@ class TestBiasCorr:
         # Check that the _is_affine attribute is set correctly
         assert not bcorr._is_affine
         assert bcorr._fit_or_bin == "fit"
+        assert bcorr._needs_vars is True
 
         # Or with default bin arguments
         bcorr2 = biascorr.BiasCorr(fit_or_bin="bin")
@@ -334,6 +335,7 @@ class TestBiasCorr:
 
         assert bcorr1d._meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
         assert bcorr1d._meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        assert bcorr1d._needs_vars is True
 
         # Try default "bin" parameter instantiation
         bcorr1d = biascorr.BiasCorr1D(fit_or_bin="bin")
@@ -370,6 +372,7 @@ class TestBiasCorr:
 
         assert bcorr2d._meta["fit_func"] == polynomial_2d
         assert bcorr2d._meta["fit_optimizer"] == scipy.optimize.curve_fit
+        assert bcorr2d._needs_vars is True
 
         # Try default "bin" parameter instantiation
         bcorr2d = biascorr.BiasCorr2D(fit_or_bin="bin")
@@ -405,6 +408,7 @@ class TestBiasCorr:
         assert dirbias._meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
         assert dirbias._meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias._meta["angle"] == 45
+        assert dirbias._needs_vars is False
 
         # Check that variable names are defined during instantiation
         assert dirbias._meta["bias_var_names"] == ["angle"]
@@ -483,6 +487,7 @@ class TestBiasCorr:
         assert deramp._meta["fit_func"] == polynomial_2d
         assert deramp._meta["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp._meta["poly_order"] == 2
+        assert deramp._needs_vars is False
 
         # Check that variable names are defined during instantiation
         assert deramp._meta["bias_var_names"] == ["xx", "yy"]
@@ -530,6 +535,7 @@ class TestBiasCorr:
         assert tb._meta["bin_sizes"] == 100
         assert tb._meta["bin_statistic"] == np.nanmedian
         assert tb._meta["terrain_attribute"] == "maximum_curvature"
+        assert tb._needs_vars is False
 
         assert tb._meta["bias_var_names"] == ["maximum_curvature"]
 
