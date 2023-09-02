@@ -87,7 +87,6 @@ class TestBiasCorr:
         bcorr5 = biascorr.BiasCorr(bias_var_names=np.array(["slope", "ncc"]))
         assert bcorr5._meta["bias_var_names"] == ["slope", "ncc"]
 
-
     def test_biascorr__errors(self) -> None:
         """Test the errors that should be raised by BiasCorr."""
 
@@ -354,8 +353,10 @@ class TestBiasCorr:
 
         # Raise error when variables don't match
         with pytest.raises(
-                ValueError, match=re.escape("The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                                 "instantiation: ['ncc'].")
+            ValueError,
+            match=re.escape(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
+            ),
         ):
             bcorr1d2 = biascorr.BiasCorr1D(bias_var_names=["ncc"])
             bias_vars_dict = {"elevation": self.ref}
@@ -391,8 +392,11 @@ class TestBiasCorr:
 
         # Raise error when variables don't match
         with pytest.raises(
-                ValueError, match=re.escape("The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                                            "instantiation: ['elevation', 'ncc'].")
+            ValueError,
+            match=re.escape(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                "instantiation: ['elevation', 'ncc']."
+            ),
         ):
             bcorr2d2 = biascorr.BiasCorr2D(bias_var_names=["elevation", "ncc"])
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
@@ -538,7 +542,6 @@ class TestBiasCorr:
         assert tb._needs_vars is False
 
         assert tb._meta["bias_var_names"] == ["maximum_curvature"]
-
 
     def test_terrainbias__synthetic(self) -> None:
         """Test the subclass TerrainBias."""

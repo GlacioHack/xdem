@@ -48,7 +48,7 @@ class TestCoregClass:
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test instantiation of Coreg"""
 
         c = coreg.Coreg()
@@ -465,7 +465,14 @@ class TestCoregPipeline:
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
 
-    all_coregs = [coreg.VerticalShift(), coreg.NuthKaab(), coreg.ICP(), coreg.Deramp(), coreg.TerrainBias(), coreg.DirectionalBias()]
+    all_coregs = [
+        coreg.VerticalShift(),
+        coreg.NuthKaab(),
+        coreg.ICP(),
+        coreg.Deramp(),
+        coreg.TerrainBias(),
+        coreg.DirectionalBias(),
+    ]
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize("coreg2", all_coregs)  # type: ignore
@@ -479,12 +486,23 @@ class TestCoregPipeline:
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
-    all_coregs = [coreg.VerticalShift(), coreg.NuthKaab(), coreg.ICP(), coreg.Deramp(), coreg.TerrainBias(),
-                  coreg.DirectionalBias()]
+    all_coregs = [
+        coreg.VerticalShift(),
+        coreg.NuthKaab(),
+        coreg.ICP(),
+        coreg.Deramp(),
+        coreg.TerrainBias(),
+        coreg.DirectionalBias(),
+    ]
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
-    @pytest.mark.parametrize("coreg2", [coreg.BiasCorr1D(bias_var_names=["slope"], fit_or_bin="bin"),
-                                        coreg.BiasCorr2D(bias_var_names=["slope", "aspect"], fit_or_bin="bin")])  # type: ignore
+    @pytest.mark.parametrize(
+        "coreg2",
+        [
+            coreg.BiasCorr1D(bias_var_names=["slope"], fit_or_bin="bin"),
+            coreg.BiasCorr2D(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
+        ],
+    )  # type: ignore
     def test_pipeline_combinations__biasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
         """Test pipelines with all combinations of coregistration subclasses with bias variables"""
 
@@ -493,33 +511,54 @@ class TestCoregPipeline:
         bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
         pipeline.fit(**self.fit_params, bias_vars=bias_vars)
 
-        aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs, bias_vars=bias_vars)
+        aligned_dem, _ = pipeline.apply(
+            self.tba.data, transform=self.ref.transform, crs=self.ref.crs, bias_vars=bias_vars
+        )
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
-    def test_pipeline__errors(self):
+    def test_pipeline__errors(self) -> None:
         """Test pipeline raises proper errors."""
 
         pipeline = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr1D()])
-        with pytest.raises(ValueError, match=re.escape("No `bias_vars` passed to .fit() for bias correction step "
-                                             "<class 'xdem.coreg.biascorr.BiasCorr1D'> of the pipeline.")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "No `bias_vars` passed to .fit() for bias correction step "
+                "<class 'xdem.coreg.biascorr.BiasCorr1D'> of the pipeline."
+            ),
+        ):
             pipeline.fit(**self.fit_params)
 
-
         pipeline2 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr1D(), coreg.BiasCorr1D()])
-        with pytest.raises(ValueError, match=re.escape("No `bias_vars` passed to .fit() for bias correction step <class 'xdem.coreg.biascorr.BiasCorr1D'> "
-                                             "of the pipeline. As you are using several bias correction steps requiring"
-                                             " `bias_vars`, don't forget to explicitly define their `bias_var_names` "
-                                             "during instantiation, e.g. BiasCorr1D(bias_var_names=['slope']).")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "No `bias_vars` passed to .fit() for bias correction step <class 'xdem.coreg.biascorr.BiasCorr1D'> "
+                "of the pipeline. As you are using several bias correction steps requiring"
+                " `bias_vars`, don't forget to explicitly define their `bias_var_names` "
+                "during instantiation, e.g. BiasCorr1D(bias_var_names=['slope'])."
+            ),
+        ):
             pipeline2.fit(**self.fit_params)
 
-        with pytest.raises(ValueError, match=re.escape("When using several bias correction steps requiring `bias_vars` in a pipeline," 
-                                             "the `bias_var_names` need to be explicitly defined at each step's "
-                                             "instantiation, e.g. BiasCorr1D(bias_var_names=['slope']).")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "When using several bias correction steps requiring `bias_vars` in a pipeline,"
+                "the `bias_var_names` need to be explicitly defined at each step's "
+                "instantiation, e.g. BiasCorr1D(bias_var_names=['slope'])."
+            ),
+        ):
             pipeline2.fit(**self.fit_params, bias_vars={"slope": xdem.terrain.slope(self.ref)})
 
         pipeline3 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr1D(bias_var_names=["slope"])])
-        with pytest.raises(ValueError, match=re.escape("Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
-                                            "instantiation of the bias correction step <class 'xdem.coreg.biascorr.BiasCorr1D'>: ['slope'].")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
+                "instantiation of the bias correction step <class 'xdem.coreg.biascorr.BiasCorr1D'>: ['slope']."
+            ),
+        ):
             pipeline3.fit(**self.fit_params, bias_vars={"ncc": xdem.terrain.slope(self.ref)})
 
     def test_pipeline_pts(self) -> None:

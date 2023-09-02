@@ -768,8 +768,15 @@ class Coreg:
             random_state=random_state,
         )
 
-        main_args = {"ref_dem": ref_dem, "tba_dem": tba_dem, "transform": transform, "crs": crs, "weights": weights,
-                     "verbose": verbose, "random_state": random_state}
+        main_args = {
+            "ref_dem": ref_dem,
+            "tba_dem": tba_dem,
+            "transform": transform,
+            "crs": crs,
+            "weights": weights,
+            "verbose": verbose,
+            "random_state": random_state,
+        }
 
         # If bias_vars are defined, update dictionary content to array
         if bias_vars is not None:
@@ -1094,8 +1101,9 @@ class Coreg:
             kwargs["resample"] = resample
 
             # Run the associated apply function
-            applied_dem, out_transform = self._apply_func(**main_args, **kwargs
-                                                          )  # pylint: disable=assignment-from-no-return
+            applied_dem, out_transform = self._apply_func(
+                **main_args, **kwargs
+            )  # pylint: disable=assignment-from-no-return
 
         # If it doesn't exist, use apply_matrix()
         except NotImplementedError:
@@ -1309,9 +1317,12 @@ class Coreg:
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS,
-            bias_vars: dict[str, NDArrayf] | None = None,
-            **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
@@ -1348,7 +1359,7 @@ class CoregPipeline(Coreg):
 
         return new_coreg
 
-    def _parse_bias_vars(self, step: int, bias_vars: dict[str, NDArrayf] | None):
+    def _parse_bias_vars(self, step: int, bias_vars: dict[str, NDArrayf] | None) -> dict[str, NDArrayf]:
         """Parse bias variables for a pipeline step requiring them."""
 
         # Get number of non-affine coregistration requiring bias variables to be passed
@@ -1362,27 +1373,32 @@ class CoregPipeline(Coreg):
 
         # Raise error if bias_vars is None
         if bias_vars is None:
-            msg = "No `bias_vars` passed to .fit() for bias correction step {} of the pipeline.".format(coreg.__class__)
+            msg = f"No `bias_vars` passed to .fit() for bias correction step {coreg.__class__} of the pipeline."
             if nb_needs_vars > 1:
-                msg += " As you are using several bias correction steps requiring `bias_vars`, don't forget to " \
-                       "explicitly define their `bias_var_names` during " \
-                       "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
+                msg += (
+                    " As you are using several bias correction steps requiring `bias_vars`, don't forget to "
+                    "explicitly define their `bias_var_names` during "
+                    "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
+                )
             raise ValueError(msg)
 
         # Raise error if no variable were explicitly assigned and there is more than 1 step with bias_vars
         if var_names is None and nb_needs_vars > 1:
-            raise ValueError("When using several bias correction steps requiring `bias_vars` in a pipeline,"
-                             "the `bias_var_names` need to be explicitly defined at each step's "
-                             "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__))
+            raise ValueError(
+                "When using several bias correction steps requiring `bias_vars` in a pipeline,"
+                "the `bias_var_names` need to be explicitly defined at each step's "
+                "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
+            )
 
         # Raise error if the variables explicitly assigned don't match the ones passed in bias_vars
         if not all(n in bias_vars.keys() for n in var_names):
-            raise ValueError("Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
-                             "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names))
+            raise ValueError(
+                "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
+                "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names)
+            )
 
         # Add subset dict for this pipeline step to args of fit and apply
         return {n: bias_vars[n] for n in var_names}
-
 
     def _fit_func(
         self,
@@ -1402,8 +1418,14 @@ class CoregPipeline(Coreg):
             if verbose:
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
 
-            main_args_fit = {"ref_dem": ref_dem, "tba_dem": tba_dem_mod, "transform": transform, "crs": crs,
-                         "weights": weights, "verbose": verbose}
+            main_args_fit = {
+                "ref_dem": ref_dem,
+                "tba_dem": tba_dem_mod,
+                "transform": transform,
+                "crs": crs,
+                "weights": weights,
+                "verbose": verbose,
+            }
 
             main_args_apply = {"dem": tba_dem_mod, "transform": transform, "crs": crs}
 
@@ -1441,11 +1463,11 @@ class CoregPipeline(Coreg):
 
     def _apply_func(
         self,
-            dem: NDArrayf,
-            transform: rio.transform.Affine,
-            crs: rio.crs.CRS,
-            bias_vars: dict[str, NDArrayf] | None = None,
-            **kwargs: Any
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
@@ -1560,6 +1582,7 @@ class BlockwiseCoreg(Coreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -1801,7 +1824,12 @@ class BlockwiseCoreg(Coreg):
         return subdivide_array(shape, count=self.subdivision)
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         if np.count_nonzero(np.isfinite(dem)) == 0:

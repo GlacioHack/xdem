@@ -298,6 +298,7 @@ class AffineCoreg(Coreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -305,7 +306,12 @@ class AffineCoreg(Coreg):
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
@@ -340,6 +346,7 @@ class VerticalShift(AffineCoreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -368,7 +375,12 @@ class VerticalShift(AffineCoreg):
         self._meta["vshift"] = vshift
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the VerticalShift function to a DEM."""
         return dem + self._meta["vshift"], transform
@@ -426,6 +438,7 @@ class ICP(AffineCoreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -575,6 +588,7 @@ class Tilt(AffineCoreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -589,7 +603,12 @@ class Tilt(AffineCoreg):
         self._meta["func"] = fit_ramp
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
@@ -652,6 +671,7 @@ class NuthKaab(AffineCoreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -928,7 +948,12 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         return matrix
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the Nuth & Kaab shift to a DEM."""
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
@@ -1082,6 +1107,7 @@ class GradientDescending(AffineCoreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:

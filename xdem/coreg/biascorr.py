@@ -28,6 +28,7 @@ fit_workflows = {
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 
+
 class BiasCorr(Coreg):
     """
     Parent class of bias correction methods: non-rigid coregistrations.
@@ -110,8 +111,12 @@ class BiasCorr(Coreg):
 
         # For binning
         elif fit_or_bin == "bin":
-            meta_bin = {"bin_sizes": bin_sizes, "bin_statistic": bin_statistic, "bin_apply_method": bin_apply_method,
-                        "bias_var_names": list_bias_var_names}
+            meta_bin = {
+                "bin_sizes": bin_sizes,
+                "bin_statistic": bin_statistic,
+                "bin_apply_method": bin_apply_method,
+                "bias_var_names": list_bias_var_names,
+            }
             super().__init__(meta=meta_bin)  # type: ignore
 
         # For both
@@ -121,7 +126,7 @@ class BiasCorr(Coreg):
                 "fit_optimizer": fit_optimizer,
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
-                "bias_var_names": list_bias_var_names
+                "bias_var_names": list_bias_var_names,
             }
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
@@ -151,9 +156,11 @@ class BiasCorr(Coreg):
 
         # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
         if self._meta["bias_var_names"] is not None:
-            if not sorted(list(bias_vars.keys())) == sorted(self._meta["bias_var_names"]):
-                raise ValueError("The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                                 "instantiation: {}.".format(self._meta["bias_var_names"]))
+            if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
+                raise ValueError(
+                    "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                    "instantiation: {}.".format(self._meta["bias_var_names"])
+                )
         # Otherwise, store bias variable names from the dictionary
         else:
             self._meta["bias_var_names"] = list(bias_vars.keys())
@@ -313,9 +320,11 @@ class BiasCorr(Coreg):
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
 
         # Check the bias_vars passed match the ones stored for this bias correction class
-        if not sorted(list(bias_vars.keys())) == sorted(self._meta["bias_var_names"]):
-            raise ValueError("The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                             "instantiation or fitting: {}.".format(self._meta["bias_var_names"]))
+        if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
+            raise ValueError(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                "instantiation or fitting: {}.".format(self._meta["bias_var_names"])
+            )
 
         # Apply function to get correction (including if binning was done before)
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
@@ -380,7 +389,9 @@ class BiasCorr1D(BiasCorr):
             between bins, or "per_bin" to apply the statistic for each bin.
         :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names)
+        super().__init__(
+            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names
+        )
 
     def _fit_func(  # type: ignore
         self,
@@ -442,7 +453,9 @@ class BiasCorr2D(BiasCorr):
             between bins, or "per_bin" to apply the statistic for each bin.
         :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names)
+        super().__init__(
+            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names
+        )
 
     def _fit_func(  # type: ignore
         self,
@@ -505,7 +518,9 @@ class BiasCorrND(BiasCorr):
             between bins, or "per_bin" to apply the statistic for each bin.
         :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names)
+        super().__init__(
+            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names
+        )
 
     def _fit_func(  # type: ignore
         self,
@@ -660,7 +675,9 @@ class TerrainBias(BiasCorr1D):
             between bins, or "per_bin" to apply the statistic for each bin.
         """
 
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, [terrain_attribute])
+        super().__init__(
+            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, [terrain_attribute]
+        )
         # This is the same as bias_var_names, but let's leave the duplicate for clarity
         self._meta["terrain_attribute"] = terrain_attribute
         self._needs_vars = False
