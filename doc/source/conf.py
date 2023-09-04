@@ -20,7 +20,7 @@ sys.path.append(os.path.abspath(".."))
 
 from sphinx_gallery.sorting import ExplicitOrder
 
-import xdem.version
+import xdem
 
 # -- Project information -----------------------------------------------------
 
@@ -29,8 +29,7 @@ copyright = "2021, Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
 author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
-release = xdem.version.version
-
+release = xdem.__version__
 
 os.environ["PYTHON"] = sys.executable
 

@@ -13,7 +13,7 @@ from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa
 
 try:
-    from xdem.version import version as __version__  # noqa
+    from xdem.__version__ import __version__  # noqa
 except ImportError:  # pragma: no cover
     raise ImportError(
         "xDEM is not properly installed. If you are "

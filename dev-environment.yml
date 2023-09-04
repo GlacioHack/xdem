@@ -10,15 +10,12 @@ dependencies:
   - numba
   - numpy
   - matplotlib
-  - opencv
-  - openh264
   - pyproj>=3.4
   - rasterio>=1.3
   - scipy
   - tqdm
   - scikit-image
   - scikit-gstat>=1.0
-  - pytransform3d
   - geoutils==0.0.13
 
   # Development-specific
@@ -38,7 +35,12 @@ dependencies:
   - sphinx-autodoc-typehints
   - sphinx-gallery
   - pyyaml
-#  - richdem
+
+  # Optional dependencies
+  - opencv
+  - openh264
+  - pytransform3d
+  #  - richdem
 
   - pip:
     - -e ./
