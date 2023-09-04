@@ -62,7 +62,7 @@ jobs:
         mamba install pyyaml python=${{ matrix.python-version }}
         pkgs_conda_base=`python .github/scripts/get_yml_env_nopy.py "environment.yml" --p "conda"`
         pkgs_pip_base=`python .github/scripts/get_yml_env_nopy.py "environment.yml" --p "pip"`
-        mamba install python=${{ matrix.python-version }} $pkgs_conda_base graphviz
+        mamba install python=${{ matrix.python-version }} $pkgs_conda_base graphviz opencv
         if [[ "$pkgs_pip_base" != "None" ]]; then
           pip install $pkgs_pip_base
         fi
