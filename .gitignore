@@ -142,7 +142,7 @@ dmypy.json
 .pyre/
 
 # Version file
-xdem/__version__.py
+xdem/_version.py
 
 # Example data downloaded/produced during tests
 examples/data/Longyearbyen/data/

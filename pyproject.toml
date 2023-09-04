@@ -7,9 +7,9 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
-# Write version to file
+# To write version to file
 [tool.setuptools_scm]
-write_to = "xdem/__version__.py"
+write_to = "xdem/_version.py"
 fallback_version = "0.0.1"
 
 [tool.black]
