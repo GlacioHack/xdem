@@ -1,6 +1,16 @@
 [build-system]
 # Minimum requirements for the build system to execute.
-requires = ["setuptools", "wheel"]
+requires = [
+    "setuptools>=42",
+    "setuptools_scm[toml]>=6.2",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+# Write version to file
+[tool.setuptools_scm]
+write_to = "xdem/__version__.py"
+fallback_version = "0.0.1"
 
 [tool.black]
 target_version = ['py36']

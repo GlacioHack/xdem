@@ -1,7 +1,6 @@
 # This file is auto-generated from environment.yml, do not modify.
 # See that file for comments about the need/usage of each dependency.
 
-proj>=7.2
 geopandas>=0.10.0
 fiona
 shapely

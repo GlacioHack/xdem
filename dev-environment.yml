@@ -3,7 +3,6 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.8
-  - proj>=7.2
   - geopandas>=0.10.0
   - fiona
   - shapely
