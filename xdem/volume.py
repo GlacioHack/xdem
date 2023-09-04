@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 try:
     import cv2
+
     _has_cv2 = True
 except ImportError:
     _has_cv2 = False
