@@ -67,9 +67,7 @@ def conda_package_to_pip(package: str):
     return package
 
 
-def generate_pip_from_conda(
-    conda_path: pathlib.Path, pip_path: pathlib.Path, compare: bool = False
-) -> bool:
+def generate_pip_from_conda(conda_path: pathlib.Path, pip_path: pathlib.Path, compare: bool = False) -> bool:
     """
     Generate the pip dependencies file from the conda file, or compare that
     they are synchronized (``compare=True``).
@@ -128,9 +126,7 @@ def generate_pip_from_conda(
 
 
 if __name__ == "__main__":
-    argparser = argparse.ArgumentParser(
-        description="convert (or compare) conda file to pip"
-    )
+    argparser = argparse.ArgumentParser(description="convert (or compare) conda file to pip")
     argparser.add_argument(
         "--compare",
         action="store_true",
@@ -147,9 +143,6 @@ if __name__ == "__main__":
         compare=args.compare,
     )
     if res:
-        msg = (
-            f"`{pip_fname}` has to be generated with `{__file__}` after "
-            f"`{conda_fname}` is modified.\n"
-        )
+        msg = f"`{pip_fname}` has to be generated with `{__file__}` after " f"`{conda_fname}` is modified.\n"
         sys.stderr.write(msg)
     sys.exit(res)

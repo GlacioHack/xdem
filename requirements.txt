@@ -8,15 +8,12 @@ shapely
 numba
 numpy
 matplotlib
-opencv
-openh264
 pyproj>=3.4
 rasterio>=1.3
 scipy
 tqdm
 scikit-image
 scikit-gstat>=1.0
-pytransform3d
 geoutils==0.0.13
 pip
 setuptools
