@@ -16,10 +16,6 @@ Solving dependencies can take a long time with `conda`, `mamba` significantly sp
 Once installed, the same commands can be run by simply replacing `conda` by `mamba`. More details available in the [mamba documentation](https://mamba.readthedocs.io/en/latest/).
 ```
 
-```{warning}
-Updating packages with `pip` (and sometimes `mamba`) can break your installation. If this happens, re-create an environment from scratch fixing directly all your dependencies.
-```
-
 If running into the `sklearn` error `ImportError: dlopen: cannot load any more object with static TLS`, your system
 needs to update its `glibc` (see details [here](https://github.com/scikit-learn/scikit-learn/issues/14485#issuecomment-822678559)).
 If you have no administrator right on the system, you might be able to circumvent this issue by installing a working
@@ -36,6 +32,10 @@ On very old systems, if the above install results in segmentation faults, try se
 
 ```bash
 pip install xdem
+```
+
+```{warning}
+Updating packages with `pip` (and sometimes `mamba`) can break your installation. If this happens, re-create an environment from scratch fixing directly all your dependencies.
 ```
 
 ## Installing for contributors
