@@ -4,7 +4,6 @@ from __future__ import annotations
 import warnings
 from typing import Any, Callable
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,6 +11,13 @@ import rasterio.fill
 import scipy.interpolate
 from geoutils.raster import RasterType, get_array_and_mask, get_mask, get_valid_extent
 from tqdm import tqdm
+
+try:
+    import cv2
+
+    _has_cv2 = True
+except ImportError:
+    _has_cv2 = False
 
 import xdem
 from xdem._typing import MArrayf, NDArrayf
@@ -289,6 +295,9 @@ to interpolate from. The default is 10.
 
     :returns: A filled array with no NaNs
     """
+    if not _has_cv2:
+        raise ValueError("Optional dependency needed. Install 'opencv'")
+
     # Create a mask for where nans exist
     nan_mask = get_mask(array)
 

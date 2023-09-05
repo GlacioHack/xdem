@@ -24,7 +24,7 @@ except ImportError:
 
 import numpy as np
 
-import xdem.version
+import xdem
 from xdem._typing import NDArrayf
 
 
@@ -89,7 +89,7 @@ def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any
         @functools.wraps(func)  # type: ignore
         def new_func(*args: Any, **kwargs: Any) -> Any:
             # True if it should warn, False if it should raise an error
-            should_warn = removal_version is None or Version(removal_version) > Version(xdem.version.version)
+            should_warn = removal_version is None or Version(removal_version) > Version(xdem.__version__)
 
             # Add text depending on the given arguments and 'should_warn'.
             text = (
@@ -112,7 +112,7 @@ def deprecate(removal_version: str = None, details: str = None) -> Callable[[Any
             if should_warn and removal_version is not None:
                 text += f" This functionality will be removed in version {removal_version}."
             elif not should_warn:
-                text += f" Current version: {xdem.version.version}."
+                text += f" Current version: {xdem.__version__}."
 
             if should_warn:
                 warnings.warn(text, category=DeprecationWarning, stacklevel=2)

@@ -34,7 +34,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
         attribute.squeeze(),
         cmap=cmap,
         extent=[dem.bounds.left, dem.bounds.right, dem.bounds.bottom, dem.bounds.top],
-        **vlims
+        **vlims,
     )
     if label is not None:
         cbar = plt.colorbar()

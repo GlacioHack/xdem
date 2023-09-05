@@ -111,3 +111,13 @@ repos:
           rev: 2.0.0
           hooks:
                 - id: relint
+        - repo: local
+          hooks:
+                # Generate pip's requirements.txt from conda's environment.yml to ensure consistency
+                - id: pip-to-conda
+                  name: Generate pip dependency from conda
+                  language: python
+                  entry: .github/scripts/generate_pip_deps_from_conda.py
+                  files: ^(environment.yml|requirements.txt)$
+                  pass_filenames: false
+                  additional_dependencies: [tomli, pyyaml]
