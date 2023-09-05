@@ -64,7 +64,9 @@ class TestMisc:
 
         # Set the removal version to be the current version plus the increment (e.g. 0.0.5 + 1 -> 0.0.6)
         removal_version = (
-            current_version.rsplit(".", 2)[0] + "." + str(int(current_version.rsplit(".", 2)[1]) + deprecation_increment)
+            current_version.rsplit(".", 2)[0]
+            + "."
+            + str(int(current_version.rsplit(".", 2)[1]) + deprecation_increment)
             if deprecation_increment is not None
             else None
         )
