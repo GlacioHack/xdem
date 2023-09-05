@@ -17,23 +17,8 @@ dependencies:
   - scikit-gstat>=1.0
   - geoutils=0.0.13
 
-  # Development-specific
+  # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
-  - sphinx-book-theme
-  - autovizwidget
-  - graphviz
-  - pytest
-  - pytest-xdist
-  - sphinx
-  - myst-nb
-  - numpydoc
-  - sphinxcontrib-programoutput
-  - flake8
-  - sphinx-design
-  - pylint
-  - sphinx-autodoc-typehints
-  - sphinx-gallery
-  - pyyaml
 
   # Optional dependencies
   - opencv
@@ -41,10 +26,30 @@ dependencies:
   - pytransform3d
   #  - richdem
 
+  # Test dependencies
+  - pytest
+  - pytest-xdist
+  - pyyaml
+  - flake8
+  - pylint
+
+  # Doc dependencies
+  - sphinx
+  - sphinx-book-theme
+  - sphinxcontrib-programoutput
+  - sphinx-design
+  - sphinx-autodoc-typehints
+  - sphinx-gallery
+  - autovizwidget
+  - graphviz
+  - myst-nb
+  - numpydoc
+
   - pip:
     - -e ./
 
-    # Development-specific
+    # Optional dependencies
     - noisyopt
 
+    # To run CI against latest GeoUtils
 #     - git+https://github.com/GlacioHack/GeoUtils.git
