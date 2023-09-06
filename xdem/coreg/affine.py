@@ -214,10 +214,13 @@ class AffineCoreg(Coreg):
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
 
-    def __init__(self, meta: CoregDict | None = None, matrix: NDArrayf | None = None) -> None:
-        """Instantiate a generic Coreg method."""
+    def __init__(self, subsample: float | int = 1.0, matrix: NDArrayf | None = None, meta: CoregDict | None = None, ) -> None:
+        """Instantiate a generic AffineCoreg method."""
 
         super().__init__(meta=meta)
+
+        # Define subsample size
+        self._meta["subsample"] = subsample
 
         if matrix is not None:
             with warnings.catch_warnings():
@@ -328,16 +331,17 @@ class VerticalShift(AffineCoreg):
     Estimates the mean (or median, weighted avg., etc.) vertical offset between two DEMs.
     """
 
-    def __init__(self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average) -> None:  # pylint:
+    def __init__(self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a vertical shift correction object.
 
         :param vshift_func: The function to use for calculating the vertical shift. Default: (weighted) average.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_func": vshift_func})
+        super().__init__(meta={"vshift_func": vshift_func}, subsample=subsample)
 
     def _fit_func(
         self,
@@ -412,7 +416,8 @@ class ICP(AffineCoreg):
     """
 
     def __init__(
-        self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5, num_levels: int = 6
+        self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5, num_levels: int = 6,
+            subsample: float | int = 5e5,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -421,15 +426,18 @@ class ICP(AffineCoreg):
         :param tolerance: The residual change threshold after which to stop the iterations.
         :param rejection_scale: The threshold (std * rejection_scale) to consider points as outliers.
         :param num_levels: Number of octree levels to consider. A higher number is faster but may be more inaccurate.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         if not _has_cv2:
             raise ValueError("Optional dependency needed. Install 'opencv'")
+
+        # TODO: Move these to _meta?
         self.max_iterations = max_iterations
         self.tolerance = tolerance
         self.rejection_scale = rejection_scale
         self.num_levels = num_levels
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_func(
         self,
@@ -571,15 +579,11 @@ class Tilt(AffineCoreg):
         """
         Instantiate a tilt correction object.
 
-        :param subsample: Factor for subsampling the input raster for speed-up.
-            If <= 1, will be considered a fraction of valid pixels to extract.
-            If > 1 will be considered the number of pixels to extract.
-
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self.poly_order = 1
-        self.subsample = subsample
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_func(
         self,
@@ -651,18 +655,19 @@ class NuthKaab(AffineCoreg):
     https://doi.org/10.5194/tc-5-271-2011
     """
 
-    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05) -> None:
+    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param max_iterations: The maximum allowed iterations before stopping.
         :param offset_threshold: The residual offset threshold after which to stop the iterations.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_func(
         self,
@@ -983,36 +988,35 @@ class GradientDescending(AffineCoreg):
 
     def __init__(
         self,
-        downsampling: int = 6000,
         x0: tuple[float, float] = (0, 0),
         bounds: tuple[float, float] = (-3, 3),
         deltainit: int = 2,
         deltatol: float = 0.004,
         feps: float = 0.0001,
+        subsample: int | float = 6000,
     ) -> None:
         """
         Instantiate gradient descending coregistration object.
 
-        :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
         :param x0: The initial point of gradient descending iteration.
         :param bounds: The boundary of the maximum shift.
         :param deltainit: Initial pattern size.
         :param deltatol: Target pattern size, or the precision you want achieve.
         :param feps: Parameters for algorithm. Smallest difference in function value to resolve.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
 
         The algorithm terminates when the iteration is locally optimal at the target pattern size 'deltatol',
         or when the function value differs by less than the tolerance 'feps' along all directions.
 
         """
         self._meta: CoregDict
-        self.downsampling = downsampling
         self.bounds = bounds
         self.x0 = x0
         self.deltainit = deltainit
         self.deltatol = deltatol
         self.feps = feps
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_pts_func(
         self,
@@ -1035,8 +1039,8 @@ class GradientDescending(AffineCoreg):
             raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
         # downsampling if downsampling != None
-        if self.downsampling and len(ref_dem) > self.downsampling:
-            ref_dem = ref_dem.sample(frac=self.downsampling / len(ref_dem), random_state=random_state).copy()
+        if self._meta["subsample"] and len(ref_dem) > self._meta["subsample"]:
+            ref_dem = ref_dem.sample(frac=self._meta["subsample"] / len(ref_dem), random_state=random_state).copy()
         else:
             ref_dem = ref_dem.copy()
 
@@ -1052,7 +1056,7 @@ class GradientDescending(AffineCoreg):
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
-            if self.downsampling:
+            if self._meta["subsample"]:
                 print("Running on downsampling. The length of the gdf:", len(ref_dem))
 
             elevation_difference = _residuals_df(tba_dem, ref_dem, (0, 0), 0, z_name=z_name)

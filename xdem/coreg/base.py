@@ -653,6 +653,9 @@ class CoregDict(TypedDict, total=False):
     # The pipeline metadata can have any value of the above
     pipeline: list[Any]
 
+    # Affine + BiasCorr classes
+    subsample: int | float
+
     # BiasCorr classes generic metadata
 
     # 1/ Inputs
