@@ -71,7 +71,7 @@ Citing the related study:
 
 ## Contributing
 
-We welcome new contributions, and will happily help you integrate your own code to xDEM!
+We welcome new contributions, and will happily help you integrate your own DEM routines into xDEM!
 
 After discussing a new feature or bug fix in an issue, you can open a PR to xDEM with the following steps:
 
