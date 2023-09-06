@@ -13,18 +13,18 @@ The technical steps to contributing to xDEM are:
 4. Make your changes,
 5. Add or modify related tests in `tests/` **(see section "Tests" below)**,
 6. Add or modify related documentation in `doc/` **(see section "Documentation" below)**,
-7. Commit your changes, 
+7. Commit your changes,
 8. Run `pre-commit` separately if not installed as git hook **(see section "Linting" below)**,
 9. Push to your fork,
 10. Open a pull request from GitHub to discuss and eventually merge.
 
 ## Development environment
 
-xDEM currently supports Python versions of 3.8 to 3.10 (see `dev-environment.yml` for detailed dependencies), which are 
+xDEM currently supports Python versions of 3.8 to 3.10 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
-When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all 
-supported Python versions (3.8, 3.9 and 3.10) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also 
+When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
+supported Python versions (3.8, 3.9 and 3.10) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
 be reported by CoverAlls.
 
 ### Setup
@@ -40,7 +40,7 @@ mamba activate xdem-dev  # Or any other name specified above
 
 ### Tests
 
-At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples). 
+At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples).
 The structure of test modules and functions in `tests/` largely mirrors that of the package modules and functions in `xdem/`.
 
 To run the entire test suite, run `pytest` in the current directory:
