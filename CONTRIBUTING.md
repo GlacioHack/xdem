@@ -58,7 +58,7 @@ To ensure that the documentation is building properly after your changes, you ca
 
 ### Formatting and linting
 
-Install and run `pre-commit` (such as with `mamba install pre-commit`, see [pre-commit documentation](https://pre-commit.com/) for details), 
+Install and run `pre-commit` (such as with `mamba install pre-commit`, see [pre-commit documentation](https://pre-commit.com/) for details),
 which will use `.pre-commit-config.yaml` to verify spelling errors, import sorting, type checking, formatting and linting:
 
 ```bash
