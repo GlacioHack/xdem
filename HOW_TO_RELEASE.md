@@ -21,8 +21,8 @@ An automatic GitHub action will start to push and publish the new release to PyP
 
 ### The hard way
 
- 1. Go to your local main repository (not the fork) and ensure your master branch is synced:
-       git checkout master
+ 1. Go to your local main repository (not the fork) and ensure your main branch is synced:
+       git checkout main
        git pull
  2. Look over whats-new.rst and the docs. Make sure "What's New" is complete
     (check the date!) and add a brief summary note describing the release at the
@@ -30,7 +30,7 @@ An automatic GitHub action will start to push and publish the new release to PyP
  3. If you have any doubts, run the full test suite one final time!
       pytest --run-slow --mpl .
  4. Increment the version number "FULLVERSION" in setup.py for PyPI and conda.
- 5. On the master branch, commit the release in git:
+ 5. On the main branch, commit the release in git:
       git commit -a -m 'Release v1.X.Y'
  6. Tag the release:
       git tag -a v1.X.Y -m 'v1.X.Y'
@@ -42,22 +42,22 @@ An automatic GitHub action will start to push and publish the new release to PyP
       twine upload dist/xdem-1.X.Y*
     You will need to be listed as a package owner at
     https://pypi.python.org/pypi/xdem for this to work.
- 9. Push your changes to master:
-      git push origin master
+ 9. Push your changes to main:
+      git push origin main
       git push origin --tags
- 10. Update the stable branch (used by ReadTheDocs) and switch back to master:
+ 10. Update the stable branch (used by ReadTheDocs) and switch back to main:
        git checkout stable
-       git rebase master
+       git rebase main
        git push origin stable
-       git checkout master
+       git checkout main
      It's OK to force push to 'stable' if necessary.
      We also update the stable branch with `git cherrypick` for documentation
      only fixes that apply the current released version.
  11. Add a section for the next release (v.X.(Y+1)) to doc/whats-new.rst.
- 12. Commit your changes and push to master again:
+ 12. Commit your changes and push to main again:
        git commit -a -m 'Revert to dev version'
-       git push origin master
-     You're done pushing to master!
+       git push origin main
+     You're done pushing to main!
  13. Issue the release on GitHub. Click on "Draft a new release" at
      https://github.com/xdem/releases. Type in the version number, but
      don't bother to describe it -- we maintain that on the docs instead.
@@ -102,7 +102,7 @@ Then, follow these steps for `NEW_VERSION` (substitute with the actual version n
 
 >>> git add -u && git commit -m "Updated version to NEW_VERSION"  #  Or whatever you want to tell us :)
 
->>> git push -u origin master
+>>> git push -u origin main
 ```
 
 An alternative solution to get the sha256sum is to run `sha256sum` on the release file downloaded from GitHub
