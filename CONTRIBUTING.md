@@ -70,7 +70,7 @@ Optionally, `pre-commit` can be installed as a git hook to ensure checks have to
 
 ### Final steps
 
-That's it! We'll receive word of your PR as soon as it is opened, and should follow-up shortly to discuss the changes and eventually merge. Thank you for contributing!
+That's it! We'll receive word of your PR as soon as it is opened, and should follow-up shortly to discuss the changes and eventually merge. Thank you so much for contributing!
 
 ## Rights
 
