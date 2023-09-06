@@ -1,20 +1,31 @@
 # How to contribute
 
+We welcome new contributions to xDEM, that is still very much in expansion!
+Below is a guide to contributing to xDEM step by step, ensuring tests are passing and the documentation is updated.
+
 ## Overview: making a contribution
 
-For more details, see the rest of this document.
+The technical steps to contributing to xDEM are:
 
-1. Fork _GlacioHack/xdem_ and clone your fork repository locally.
-2. Set up the development environment (section below).
-3. Create a branch for the new feature or bug fix.
-4. Make your changes, and add or modify related tests in _tests/_.
-5. Commit, making sure to run `pre-commit` separately if not installed as git hook.
-6. Push to your fork.
-7. Open a pull request from GitHub to discuss and eventually merge.
+1. Fork `GlacioHack/xdem` and clone your fork repository locally.
+2. Set up the development environment **(see section "Setup" below)**,
+3. Create a branch for the new feature or bug fix,
+4. Make your changes,
+5. Add or modify related tests in `tests/` **(see section "Tests" below)**,
+6. Add or modify related documentation in `doc/` **(see section "Documentation" below)**,
+7. Commit your changes, 
+8. Run `pre-commit` separately if not installed as git hook **(see section "Linting" below)**,
+9. Push to your fork,
+10. Open a pull request from GitHub to discuss and eventually merge.
 
 ## Development environment
 
-GeoUtils currently supports only Python versions of 3.8 and higher, see `environment.yml` for detailed dependencies.
+xDEM currently supports Python versions of 3.8 to 3.10 (see `dev-environment.yml` for detailed dependencies), which are 
+tested in a continuous integration (CI) workflow running on GitHub Actions .
+
+When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all 
+supported Python versions (3.8, 3.9 and 3.10) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also 
+be reported by CoverAlls.
 
 ### Setup
 
@@ -29,24 +40,37 @@ mamba activate xdem-dev  # Or any other name specified above
 
 ### Tests
 
-At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples).
+At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples). 
+The structure of test modules and functions in `tests/` largely mirrors that of the package modules and functions in `xdem/`.
 
 To run the entire test suite, run `pytest` in the current directory:
 ```bash
 pytest
 ```
 
+Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) before running all tests.
+
+### Documentation
+
+If your changes need to be reflected in the documentation, update the related pages located in `doc/source/`. The documentation is written in MyST markdown syntax, similar to GitHub's default Markdown (see [MyST-NB](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html) for details).
+
+To ensure that the documentation is building properly after your changes, you can run `pytest tests/test_doc.py` on Linux. On Windows and Mac, the documentation is not maintained, so you can wait to open the PR for it to be checked by the CI.
+
 ### Formatting and linting
 
-Install and run `pre-commit` (see [pre-commit documentation](https://pre-commit.com/)), which will use `.pre-commit-config.yaml` to verify spelling errors,
-import sorting, type checking, formatting and linting.
+Install and run `pre-commit` (such as with `mamba install pre-commit`, see [pre-commit documentation](https://pre-commit.com/) for details), which will use `.pre-commit-config.yaml` to verify spelling errors,
+import sorting, type checking, formatting and linting:
 
-You can then run pre-commit manually:
 ```bash
-pre-commit run --all-files
+pre-commit run --all
 ```
 
+You can then commit and push those changes.
 Optionally, `pre-commit` can be installed as a git hook to ensure checks have to pass before committing.
+
+### Final steps
+
+That's it! We'll receive word of your PR as soon as it is opened, and should follow-up shortly to discuss the changes and eventually merge. Thank you for contributing!
 
 ## Rights
 
