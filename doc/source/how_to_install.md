@@ -35,7 +35,7 @@ pip install xdem
 ```
 
 ```{warning}
-Updating packages with `pip` (and sometimes `mamba`) can break your installation. If this happens, re-create an environment from scratch fixing directly all your dependencies.
+Updating packages with `pip` (and sometimes `mamba`) can break your installation. If this happens, re-create an environment from scratch pinning directly all your other dependencies during initial solve (e.g., `mamba create -n xdem-env -c conda-forge xdem myotherpackage==1.0.0`).
 ```
 
 ## Installing for contributors

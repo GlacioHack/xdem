@@ -486,15 +486,6 @@ class TestCoregPipeline:
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
-    all_coregs = [
-        coreg.VerticalShift(),
-        coreg.NuthKaab(),
-        coreg.ICP(),
-        coreg.Deramp(),
-        coreg.TerrainBias(),
-        coreg.DirectionalBias(),
-    ]
-
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize(
         "coreg2",
