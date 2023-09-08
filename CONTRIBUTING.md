@@ -43,22 +43,22 @@ mamba activate xdem-dev  # Or any other name specified above
 At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples).
 The structure of test modules and functions in `tests/` largely mirrors that of the package modules and functions in `xdem/`.
 
-To run the entire test suite, run `pytest` in the current directory:
+To run the entire test suite, run `pytest` from the root of the repository:
 ```bash
 pytest
 ```
 
-Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) before running all tests.
+Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) used to run all tests.
 
 ### Documentation
 
 If your changes need to be reflected in the documentation, update the related pages located in `doc/source/`. The documentation is written in MyST markdown syntax, similar to GitHub's default Markdown (see [MyST-NB](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html) for details).
 
-To ensure that the documentation is building properly after your changes, you can run `pytest tests/test_doc.py` on Linux. On Windows and Mac, the documentation is not maintained, so you can wait to open the PR for it to be checked by the CI.
+To ensure that the documentation is building properly after your changes, if you are on Linux, you can run `pytest tests/test_doc.py`, which is equivalent to building directly calling `sphinx-build source/ build/html/` from the `doc/` folder. On Windows and Mac, the documentation is not maintained, so you can wait to open the PR for it to be checked on Linux by the CI.
 
 ### Formatting and linting
 
-Install and run `pre-commit` (such as with `mamba install pre-commit`, see [pre-commit documentation](https://pre-commit.com/) for details),
+Install and run `pre-commit` from the root of the repository (such as with `mamba install pre-commit`, see [pre-commit documentation](https://pre-commit.com/) for details),
 which will use `.pre-commit-config.yaml` to verify spelling errors, import sorting, type checking, formatting and linting:
 
 ```bash
@@ -70,8 +70,10 @@ Optionally, `pre-commit` can be installed as a git hook to ensure checks have to
 
 ### Final steps
 
-That's it! We'll receive word of your PR as soon as it is opened, and should follow-up shortly to discuss the changes and eventually merge. Thank you so much for contributing!
+That's it! If the tests and documentation are passing, or if you need help to make those work, you can open a PR.
 
-## Rights
+We'll receive word of your PR as soon as it is opened, and should follow up shortly to discuss the changes and eventually merge. Thank you so much for contributing!
+
+### Rights
 
 The license (see LICENSE) applies to all contributions.
