@@ -374,19 +374,6 @@ def _preprocess_coreg_raster_input(
         ref_dem[~mask_subsample] = np.nan
         tba_dem[~mask_subsample] = np.nan
 
-        # # TODO: Use tested subsampling function from geoutils?
-        # # The full mask (inliers=True) is the inverse of the above masks and the provided mask.
-        # full_mask = (
-        #         ~ref_mask & ~tba_mask & (np.asarray(inlier_mask) if inlier_mask is not None else True)
-        # ).squeeze()
-        # random_indices = subsample_array(full_mask, subsample=subsample, return_indices=True)
-        # full_mask[random_indices] = False
-        #
-        # # Remove the data, keep the shape
-        # # TODO: there's likely a better way to go about this...
-        # ref_dem[~full_mask] = np.nan
-        # tba_dem[~full_mask] = np.nan
-
     return ref_dem, tba_dem, transform, crs
 
 
@@ -675,9 +662,9 @@ class CoregDict(TypedDict, total=False):
     bin_sizes: int | dict[str, int | Iterable[float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear"] | Literal["per_bin"]
+    bias_var_names: list[str]
 
     # 2/ Outputs
-    bias_vars: list[str]
     fit_params: NDArrayf
     fit_perr: NDArrayf
     bin_dataframe: pd.DataFrame
@@ -704,6 +691,7 @@ class Coreg:
 
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
+    _needs_vars: bool = False
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""
@@ -723,6 +711,20 @@ class Coreg:
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
         return CoregPipeline([self, other])
 
+    @property
+    def is_affine(self) -> bool:
+        """Check if the transform be explained by a 3D affine transform."""
+        # _is_affine is found by seeing if to_matrix() raises an error.
+        # If this hasn't been done yet, it will be None
+        if self._is_affine is None:
+            try:  # See if to_matrix() raises an error.
+                self.to_matrix()
+                self._is_affine = True
+            except (ValueError, NotImplementedError):
+                self._is_affine = False
+
+        return self._is_affine
+
     def fit(
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType,
@@ -730,6 +732,7 @@ class Coreg:
         inlier_mask: NDArrayf | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int = 1.0,
         verbose: bool = False,
@@ -744,6 +747,7 @@ class Coreg:
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory if DEM provided as array.
         :param crs: Optional. CRS of the reference_dem. Mandatory if DEM provided as array.
+        :param bias_vars: Optional, only for some bias correction classes. 2D array of bias variables used.
         :param weights: Optional. Per-pixel weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
@@ -764,15 +768,30 @@ class Coreg:
             random_state=random_state,
         )
 
+        main_args = {
+            "ref_dem": ref_dem,
+            "tba_dem": tba_dem,
+            "transform": transform,
+            "crs": crs,
+            "weights": weights,
+            "verbose": verbose,
+            "random_state": random_state,
+        }
+
+        # If bias_vars are defined, update dictionary content to array
+        if bias_vars is not None:
+            # Check if the current class actually requires bias_vars
+            if self._is_affine:
+                warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to fit().")
+
+            for var in bias_vars.keys():
+                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
+
+            main_args.update({"bias_vars": bias_vars})
+
         # Run the associated fitting function
         self._fit_func(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
-            transform=transform,
-            crs=crs,
-            weights=weights,
-            verbose=verbose,
-            random_state=random_state,
+            **main_args,
             **kwargs,
         )
 
@@ -984,6 +1003,7 @@ class Coreg:
         dem: MArrayf,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]:
@@ -995,6 +1015,7 @@ class Coreg:
         dem: NDArrayf,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
@@ -1006,6 +1027,7 @@ class Coreg:
         dem: RasterType,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         **kwargs: Any,
     ) -> RasterType:
@@ -1016,6 +1038,7 @@ class Coreg:
         dem: RasterType | NDArrayf | MArrayf,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         **kwargs: Any,
     ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
@@ -1025,6 +1048,7 @@ class Coreg:
         :param dem: A DEM array or Raster to apply the transform on.
         :param transform: Optional. The transform object of the DEM. Mandatory if 'dem' provided as array.
         :param crs: Optional. CRS of the reference_dem. Mandatory if 'dem' provided as array.
+        :param bias_vars: Optional, only for some bias correction classes. 2D array of bias variables used.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
         only the transform might be updated and no resampling is done.
         :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
@@ -1058,6 +1082,19 @@ class Coreg:
         if np.all(dem_mask):
             raise ValueError("'dem' had only NaNs")
 
+        main_args = {"dem": dem_array, "transform": transform, "crs": crs}
+
+        # If bias_vars are defined, update dictionary content to array
+        if bias_vars is not None:
+            # Check if the current class actually requires bias_vars
+            if self._is_affine:
+                warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
+
+            for var in bias_vars.keys():
+                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
+
+            main_args.update({"bias_vars": bias_vars})
+
         # See if a _apply_func exists
         try:
             # arg `resample` must be passed to _apply_func, otherwise will be overwritten in CoregPipeline
@@ -1065,7 +1102,7 @@ class Coreg:
 
             # Run the associated apply function
             applied_dem, out_transform = self._apply_func(
-                dem_array, transform, crs, **kwargs
+                **main_args, **kwargs
             )  # pylint: disable=assignment-from-no-return
 
         # If it doesn't exist, use apply_matrix()
@@ -1272,6 +1309,7 @@ class Coreg:
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -1279,7 +1317,12 @@ class Coreg:
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
@@ -1316,6 +1359,47 @@ class CoregPipeline(Coreg):
 
         return new_coreg
 
+    def _parse_bias_vars(self, step: int, bias_vars: dict[str, NDArrayf] | None) -> dict[str, NDArrayf]:
+        """Parse bias variables for a pipeline step requiring them."""
+
+        # Get number of non-affine coregistration requiring bias variables to be passed
+        nb_needs_vars = sum(c._needs_vars for c in self.pipeline)
+
+        # Get step object
+        coreg = self.pipeline[step]
+
+        # Check that all variable names of this were passed
+        var_names = coreg._meta["bias_var_names"]
+
+        # Raise error if bias_vars is None
+        if bias_vars is None:
+            msg = f"No `bias_vars` passed to .fit() for bias correction step {coreg.__class__} of the pipeline."
+            if nb_needs_vars > 1:
+                msg += (
+                    " As you are using several bias correction steps requiring `bias_vars`, don't forget to "
+                    "explicitly define their `bias_var_names` during "
+                    "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
+                )
+            raise ValueError(msg)
+
+        # Raise error if no variable were explicitly assigned and there is more than 1 step with bias_vars
+        if var_names is None and nb_needs_vars > 1:
+            raise ValueError(
+                "When using several bias correction steps requiring `bias_vars` in a pipeline,"
+                "the `bias_var_names` need to be explicitly defined at each step's "
+                "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
+            )
+
+        # Raise error if the variables explicitly assigned don't match the ones passed in bias_vars
+        if not all(n in bias_vars.keys() for n in var_names):
+            raise ValueError(
+                "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
+                "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names)
+            )
+
+        # Add subset dict for this pipeline step to args of fit and apply
+        return {n: bias_vars[n] for n in var_names}
+
     def _fit_func(
         self,
         ref_dem: NDArrayf,
@@ -1323,6 +1407,7 @@ class CoregPipeline(Coreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -1332,10 +1417,29 @@ class CoregPipeline(Coreg):
         for i, coreg in enumerate(self.pipeline):
             if verbose:
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
-            coreg._fit_func(ref_dem, tba_dem_mod, transform=transform, crs=crs, weights=weights, verbose=verbose)
+
+            main_args_fit = {
+                "ref_dem": ref_dem,
+                "tba_dem": tba_dem_mod,
+                "transform": transform,
+                "crs": crs,
+                "weights": weights,
+                "verbose": verbose,
+            }
+
+            main_args_apply = {"dem": tba_dem_mod, "transform": transform, "crs": crs}
+
+            # If non-affine method that expects a bias_vars argument
+            if coreg._needs_vars:
+                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
+
+                main_args_fit.update({"bias_vars": step_bias_vars})
+                main_args_apply.update({"bias_vars": step_bias_vars})
+
+            coreg._fit_func(**main_args_fit)
             coreg._fit_called = True
 
-            tba_dem_mod, out_transform = coreg.apply(tba_dem_mod, transform, crs)
+            tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
 
     def _fit_pts_func(
         self: CoregType,
@@ -1358,13 +1462,27 @@ class CoregPipeline(Coreg):
         return self
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the coregistration steps sequentially to a DEM."""
         dem_mod = dem.copy()
         out_transform = copy.copy(transform)
-        for coreg in self.pipeline:
-            dem_mod, out_transform = coreg.apply(dem_mod, out_transform, crs, **kwargs)
+
+        for i, coreg in enumerate(self.pipeline):
+
+            main_args_apply = {"dem": dem_mod, "transform": out_transform, "crs": crs}
+
+            # If non-affine method that expects a bias_vars argument
+            if coreg._needs_vars:
+                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
+                main_args_apply.update({"bias_vars": step_bias_vars})
+
+            dem_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
 
         return dem_mod, out_transform
 
@@ -1464,6 +1582,7 @@ class BlockwiseCoreg(Coreg):
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -1705,7 +1824,12 @@ class BlockwiseCoreg(Coreg):
         return subdivide_array(shape, count=self.subdivision)
 
     def _apply_func(
-        self, dem: NDArrayf, transform: rio.transform.Affine, crs: rio.crs.CRS, **kwargs: Any
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         if np.count_nonzero(np.isfinite(dem)) == 0:

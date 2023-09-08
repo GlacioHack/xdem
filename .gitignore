@@ -141,8 +141,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# version file
-xdem/version.py
+# Version file
+xdem/_version.py
 
 # Example data downloaded/produced during tests
 examples/data/Longyearbyen/data/

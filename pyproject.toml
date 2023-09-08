@@ -1,3 +1,20 @@
+[build-system]
+# Minimum requirements for the build system to execute.
+requires = [
+    "setuptools>=42",
+    "setuptools_scm[toml]>=6.2",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+# To write version to file
+[tool.setuptools_scm]
+write_to = "xdem/_version.py"
+fallback_version = "0.0.1"
+
+[tool.black]
+target_version = ['py36']
+
 [tool.pytest.ini_options]
 addopts = "--doctest-modules"
 testpaths = [
