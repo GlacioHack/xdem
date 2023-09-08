@@ -72,7 +72,7 @@ Optionally, `pre-commit` can be installed as a git hook to ensure checks have to
 
 That's it! If the tests and documentation are passing, or if you need help to make those work, you can open a PR.
 
-We'll receive word of your PR as soon as it is opened, and should follow up shortly to discuss the changes and eventually merge. Thank you so much for contributing!
+We'll receive word of your PR as soon as it is opened, and should follow up shortly to discuss the changes, and eventually give approval to merge. Thank you so much for contributing!
 
 ### Rights
 
