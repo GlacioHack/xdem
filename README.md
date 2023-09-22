@@ -69,10 +69,14 @@ Citing the related study:
   - Rugosity of *[Jenness (2004)](https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2)*,
   - Fractal roughness of *[Taud et Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)*.
 
-## Start contributing
+## Contributing
+
+We welcome new contributions, and will happily help you integrate your own DEM routines into xDEM!
+
+After discussing a new feature or bug fix in an issue, you can open a PR to xDEM with the following steps:
 
 1. Fork the repository, make a feature branch and push changes.
 2. When ready, submit a pull request from the feature branch of your fork to `GlacioHack/xdem:main`.
 3. The PR will be reviewed by at least one maintainer, discussed, then merged.
 
-More info on [our contributing page](CONTRIBUTING.md).
+More details on [our contributing page](CONTRIBUTING.md).
