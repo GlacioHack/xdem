@@ -107,6 +107,34 @@ class TestCoregClass:
         assert i == pytest.approx(10)
         assert j == pytest.approx(20)
 
+    @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])
+    def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
+        """Test the subsampling function called by all subclasses"""
+
+        # Define a valid mask
+        width = height = 50
+        np.random.seed(42)
+        valid_mask = np.random.randint(low=0, high=2, size=(width, height), dtype=bool)
+
+        # Define a class with a subsample and random_state in the metadata
+        coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
+        subsample_mask = coreg._get_subsample_on_valid_mask(valid_mask=valid_mask)
+
+        # Check that it returns a same-shaped array that is boolean
+        assert np.shape(valid_mask) == np.shape(subsample_mask)
+        assert subsample_mask.dtype == bool
+        # Check that the subsampled values are all within valid values
+        assert all(valid_mask[subsample_mask])
+        # Check that the number of subsampled value is coherent, or the maximum possible
+        if subsample <= 1:
+            # If value lower than 1, fraction of valid pixels
+            subsample_val = int(subsample * np.count_nonzero(valid_mask))
+        else:
+            # Otherwise the number of pixels
+            subsample_val = subsample
+        assert np.count_nonzero(subsample_mask) == min(subsample_val, np.count_nonzero(valid_mask))
+
+
     # TODO: Activate NuthKaab once subsampling there is made consistent
     all_coregs = [
         coreg.VerticalShift,
@@ -174,7 +202,7 @@ class TestCoregClass:
         pipe.fit(**self.fit_params, subsample=1000)
         assert pipe.pipeline[0]._meta["subsample"] == 1000
         assert pipe.pipeline[1]._meta["subsample"] == 1000
-        
+
     def test_subsample__errors(self) -> None:
         """Check proper errors are raised when using the subsample argument"""
 
