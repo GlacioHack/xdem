@@ -426,7 +426,7 @@ class TestCoregPipeline:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=False,
+        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T

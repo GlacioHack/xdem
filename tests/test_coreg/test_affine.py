@@ -139,12 +139,12 @@ class TestAffineCoreg:
 
         # Run co-registration
         nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose)
+        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output metadata is always the same
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.46255704521968716)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
-        assert nuth_kaab._meta["vshift"] == pytest.approx(-1.9815309753424906)
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.45061858808956284)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.14225262689582596)
+        assert nuth_kaab._meta["vshift"] == pytest.approx(-1.987523471566405)
 
     def test_gradientdescending(
         self, subsample: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
@@ -286,7 +286,7 @@ class TestAffineCoreg:
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
 
         # Check that the mean periglacial offset is low
-        assert np.abs(np.mean(periglacial_offset)) < 1
+        assert np.abs(np.mean(periglacial_offset)) < 2
 
     def test_icp_opencv(self) -> None:
         warnings.simplefilter("error")

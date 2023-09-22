@@ -298,7 +298,7 @@ class AffineCoreg(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        subsample_mask: NDArrayf,
+        inlier_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -348,7 +348,7 @@ class VerticalShift(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        subsample_mask: NDArrayf,
+        inlier_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -357,10 +357,15 @@ class VerticalShift(AffineCoreg):
         **kwargs: Any,
     ) -> None:
         """Estimate the vertical shift using the vshift_func."""
+
         if verbose:
             print("Estimating the vertical shift...")
         diff = ref_dem - tba_dem
-        diff = diff[np.isfinite(diff)]
+
+        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(diff)))
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
+
+        diff = diff[subsample_mask]
 
         if np.count_nonzero(np.isfinite(diff)) == 0:
             raise ValueError("No finite values in vertical shift comparison.")
@@ -445,7 +450,7 @@ class ICP(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        subsample_mask: NDArrayf,
+        inlier_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -467,17 +472,19 @@ class ICP(AffineCoreg):
         normal_north = np.sin(np.arctan(gradient_x / resolution))
         normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
 
-        valid_mask = ~np.isnan(ref_dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
+        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(normal_east),
+                                            np.isfinite(normal_north)))
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
         ref_pts = pd.DataFrame(
             np.dstack(
                 [
-                    x_coords[valid_mask],
-                    y_coords[valid_mask],
-                    ref_dem[valid_mask],
-                    normal_east[valid_mask],
-                    normal_north[valid_mask],
-                    normal_up[valid_mask],
+                    x_coords[subsample_mask],
+                    y_coords[subsample_mask],
+                    ref_dem[subsample_mask],
+                    normal_east[subsample_mask],
+                    normal_north[subsample_mask],
+                    normal_up[subsample_mask],
                 ]
             ).squeeze(),
             columns=["E", "N", "z", "nx", "ny", "nz"],
@@ -592,7 +599,7 @@ class Tilt(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        subsample_mask: NDArrayf,
+        inlier_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -604,7 +611,7 @@ class Tilt(AffineCoreg):
         ddem = ref_dem - tba_dem
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
         fit_ramp, coefs = deramping(
-            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self.subsample, verbose=verbose
+            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self._meta["subsample"], verbose=verbose
         )
 
         self._meta["coefficients"] = coefs[0]
@@ -677,6 +684,7 @@ class NuthKaab(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -702,6 +710,11 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
             print("   Calculate slope and aspect")
+
+        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem)))
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
+        # TODO: Make this consistent with other subsampling once NK is updated (work on vector, not 2D with NaN)
+        ref_dem[~subsample_mask] = np.nan
 
         slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
 
@@ -1112,6 +1125,7 @@ class GradientDescending(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
