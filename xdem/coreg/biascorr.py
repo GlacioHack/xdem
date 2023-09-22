@@ -143,6 +143,7 @@ class BiasCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -404,6 +405,7 @@ class BiasCorr1D(BiasCorr):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: dict[str, NDArrayf],
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         weights: None | NDArrayf = None,
@@ -422,6 +424,7 @@ class BiasCorr1D(BiasCorr):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            subsample_mask=subsample_mask,
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
@@ -470,6 +473,7 @@ class BiasCorr2D(BiasCorr):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: dict[str, NDArrayf],
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         weights: None | NDArrayf = None,
@@ -487,6 +491,7 @@ class BiasCorr2D(BiasCorr):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            subsample_mask=subsample_mask,
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
@@ -537,6 +542,7 @@ class BiasCorrND(BiasCorr):
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         weights: None | NDArrayf = None,
@@ -551,6 +557,7 @@ class BiasCorrND(BiasCorr):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            subsample_mask=subsample_mask,
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
@@ -598,6 +605,7 @@ class DirectionalBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] = None,
@@ -623,6 +631,7 @@ class DirectionalBias(BiasCorr1D):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            subsample_mask=subsample_mask,
             bias_vars={"angle": x},
             transform=transform,
             crs=crs,
@@ -700,6 +709,7 @@ class TerrainBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] = None,
@@ -720,6 +730,7 @@ class TerrainBias(BiasCorr1D):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            subsample_mask=subsample_mask,
             bias_vars={self._meta["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
@@ -788,6 +799,7 @@ class Deramp(BiasCorr2D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -805,6 +817,7 @@ class Deramp(BiasCorr2D):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            subsample_mask=subsample_mask,
             bias_vars={"xx": xx, "yy": yy},
             transform=transform,
             crs=crs,

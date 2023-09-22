@@ -298,6 +298,7 @@ class AffineCoreg(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -347,6 +348,7 @@ class VerticalShift(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -443,6 +445,7 @@ class ICP(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -589,6 +592,7 @@ class Tilt(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -1038,7 +1042,7 @@ class GradientDescending(AffineCoreg):
         if not _has_noisyopt:
             raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
-        # downsampling if downsampling != None
+        # Perform downsampling if subsample != None
         if self._meta["subsample"] and len(ref_dem) > self._meta["subsample"]:
             ref_dem = ref_dem.sample(frac=self._meta["subsample"] / len(ref_dem), random_state=random_state).copy()
         else:

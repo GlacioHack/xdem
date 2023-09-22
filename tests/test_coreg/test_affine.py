@@ -147,7 +147,7 @@ class TestAffineCoreg:
         assert nuth_kaab._meta["vshift"] == pytest.approx(-1.9815309753424906)
 
     def test_gradientdescending(
-        self, downsampling: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
+        self, subsample: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
     ) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
@@ -159,7 +159,7 @@ class TestAffineCoreg:
             inlier_mask = self.inlier_mask
 
         # Run co-registration
-        gds = xdem.coreg.GradientDescending(downsampling=downsampling)
+        gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit_pts(
             self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1"
         )
@@ -170,7 +170,7 @@ class TestAffineCoreg:
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
     @pytest.mark.parametrize("points_or_raster", ["raster", "points"])
-    def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, downsampling=5000):
+    def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, subsample=5000):
         """
         For comparison of coreg algorithms:
         Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
@@ -182,12 +182,12 @@ class TestAffineCoreg:
         shifted_ref = self.ref.copy()
         shifted_ref.shift(shift_px[0] * res, shift_px[1] * res)
 
-        shifted_ref_points = shifted_ref.to_points(as_array=False, subset=downsampling, pixel_offset="center").ds
+        shifted_ref_points = shifted_ref.to_points(as_array=False, subset=subsample, pixel_offset="center").ds
         shifted_ref_points["E"] = shifted_ref_points.geometry.x
         shifted_ref_points["N"] = shifted_ref_points.geometry.y
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)
 
-        kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"downsampling": downsampling}
+        kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"subsample": subsample}
 
         coreg_obj = coreg_class(**kwargs)
 

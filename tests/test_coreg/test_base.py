@@ -110,14 +110,15 @@ class TestCoregClass:
         warnings.simplefilter("error")
 
         # Test subsampled vertical shift correction
-        vshift_sub = coreg.VerticalShift()
+        vshift_sub = coreg.VerticalShift(subsample=0.5)
 
         # Fit the vertical shift using 50% of the unmasked data using a fraction
-        vshift_sub.fit(**self.fit_params, subsample=0.5)
+        vshift_sub.fit(**self.fit_params)
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        vshift_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+        vshift_sub = coreg.VerticalShift(subsample=self.tba.data.size // 2)
+        vshift_sub.fit(**self.fit_params)
 
         # Do full vertical shift corr to compare
         vshift_full = coreg.VerticalShift()
@@ -128,7 +129,6 @@ class TestCoregClass:
 
         # Test NuthKaab with subsampling
         nuthkaab_full = coreg.NuthKaab()
-        nuthkaab_sub = coreg.NuthKaab()
 
         # Measure the start and stop time to get the duration
         # start_time = time.time()
@@ -137,7 +137,8 @@ class TestCoregClass:
 
         # Do the same with 50% subsampling
         # start_time = time.time()
-        nuthkaab_sub.fit(**self.fit_params, subsample=0.5)
+        nuthkaab_sub = coreg.NuthKaab(subsample=0.5)
+        nuthkaab_sub.fit(**self.fit_params)
         # icp_sub_duration = time.time() - start_time
 
         # Make sure that the subsampling increased performance
@@ -151,14 +152,16 @@ class TestCoregClass:
         assert np.count_nonzero(matrix_diff > 0.5) == 0
 
         # Test subsampled deramping
-        deramp_sub = coreg.Tilt()
+        deramp_sub = coreg.Tilt(subsample=0.5)
 
         # Fit the bias using 50% of the unmasked data using a fraction
-        deramp_sub.fit(**self.fit_params, subsample=0.5)
+        deramp_sub.fit(**self.fit_params)
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        deramp_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+        deramp_sub = coreg.Tilt(subsample=self.tba.data.size // 2)
+
+        deramp_sub.fit(**self.fit_params)
 
         # Do full bias corr to compare
         deramp_full = coreg.Tilt()

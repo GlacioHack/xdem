@@ -294,7 +294,7 @@ def _preprocess_coreg_raster_input(
     crs: rio.crs.CRS | None = None,
     subsample: float | int = 1.0,
     random_state: None | np.random.RandomState | np.random.Generator | int = None,
-) -> tuple[NDArrayf, NDArrayf, affine.Affine, rio.crs.CRS]:
+) -> tuple[NDArrayf, NDArrayf, NDArrayf, affine.Affine, rio.crs.CRS]:
 
     # Validate that both inputs are valid array-like (or Raster) types.
     if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
@@ -339,8 +339,10 @@ def _preprocess_coreg_raster_input(
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
     # Get a NaN array covering nodatas from the raster, masked array or integer-type array
-    ref_dem, ref_mask = get_array_and_mask(reference_dem)
-    tba_dem, tba_mask = get_array_and_mask(dem_to_be_aligned)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(action="ignore", category=UserWarning)
+        ref_dem, ref_mask = get_array_and_mask(reference_dem, copy=False)
+        tba_dem, tba_mask = get_array_and_mask(dem_to_be_aligned, copy=False)
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
@@ -352,29 +354,37 @@ def _preprocess_coreg_raster_input(
 
         if np.all(~inlier_mask):
             raise ValueError("'inlier_mask' had no inliers.")
-
-        ref_dem[~inlier_mask] = np.nan
-        tba_dem[~inlier_mask] = np.nan
+    else:
+        inlier_mask = np.ones(np.shape(ref_dem), dtype=bool)
 
     if np.all(ref_mask):
         raise ValueError("'reference_dem' had only NaNs")
     if np.all(tba_mask):
         raise ValueError("'dem_to_be_aligned' had only NaNs")
 
+    # Isolate all invalid values
+    invalid_mask = np.logical_or.reduce((~inlier_mask, ref_mask, tba_mask))
+
+    if np.all(invalid_mask):
+        raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
+
     # If subsample is not equal to one, subsampling should be performed.
     if subsample != 1.0:
-
+        # Build a low memory masked array with invalid values masked to pass to subsampling
+        ma_valid = np.ma.masked_array(data=np.ones(np.shape(ref_dem), dtype=bool), mask=invalid_mask)
+        # Take a subsample within the valid values
         indices = gu.raster.subsample_array(
-            ref_dem, subsample=subsample, return_indices=True, random_state=random_state
+            ma_valid, subsample=subsample, return_indices=True, random_state=random_state
         )
 
-        mask_subsample = np.zeros(np.shape(ref_dem), dtype=bool)
-        mask_subsample[indices[0], indices[1]] = True
+        # We return a boolean mask of the subsample within valid values
+        subsample_mask = np.zeros(np.shape(ref_dem), dtype=bool)
+        subsample_mask[indices[0], indices[1]] = True
+    else:
+        # If no subsample is taken, use all valid values
+        subsample_mask = ~invalid_mask
 
-        ref_dem[~mask_subsample] = np.nan
-        tba_dem[~mask_subsample] = np.nan
-
-    return ref_dem, tba_dem, transform, crs
+    return ref_dem, tba_dem, subsample_mask, transform, crs
 
 
 # TODO: Re-structure AffineCoreg apply function and move there?
@@ -761,7 +771,7 @@ class Coreg:
             raise NotImplementedError("Weights have not yet been implemented")
 
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, tba_dem, transform, crs = _preprocess_coreg_raster_input(
+        ref_dem, tba_dem, subsample_mask, transform, crs = _preprocess_coreg_raster_input(
             reference_dem=reference_dem,
             dem_to_be_aligned=dem_to_be_aligned,
             inlier_mask=inlier_mask,
@@ -774,6 +784,7 @@ class Coreg:
         main_args = {
             "ref_dem": ref_dem,
             "tba_dem": tba_dem,
+            "subsample_mask": subsample_mask,
             "transform": transform,
             "crs": crs,
             "weights": weights,
@@ -1309,6 +1320,7 @@ class Coreg:
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -1403,34 +1415,55 @@ class CoregPipeline(Coreg):
         # Add subset dict for this pipeline step to args of fit and apply
         return {n: bias_vars[n] for n in var_names}
 
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
+    def fit(
+        self: CoregType,
+        reference_dem: NDArrayf | MArrayf | RasterType,
+        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        inlier_mask: NDArrayf | Mask | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int = 1.0,
         verbose: bool = False,
+        random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
-    ) -> None:
-        """Fit each processing step with the previously transformed DEM."""
+    ) -> CoregType:
+
+        # Raise warning if subsampling is overridden
+        if subsample != 1.0:
+            warnings.warn(category=UserWarning, message="In a coregistration pipeline, the subsample argument will override")
+
+        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
+        ref_dem, tba_dem, subsample_mask, transform, crs = _preprocess_coreg_raster_input(
+            reference_dem=reference_dem,
+            dem_to_be_aligned=dem_to_be_aligned,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            subsample=1.0,
+        )
+
         tba_dem_mod = tba_dem.copy()
+        out_transform = transform
 
         for i, coreg in enumerate(self.pipeline):
             if verbose:
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
 
             main_args_fit = {
-                "ref_dem": ref_dem,
-                "tba_dem": tba_dem_mod,
-                "transform": transform,
+                "reference_dem": ref_dem,
+                "dem_to_be_aligned": tba_dem,
+                "inlier_mask": inlier_mask,
+                "transform": out_transform,
                 "crs": crs,
                 "weights": weights,
                 "verbose": verbose,
+                "subsample": coreg._meta["subsample"],
+                "random_state": random_state,
             }
 
-            main_args_apply = {"dem": tba_dem_mod, "transform": transform, "crs": crs}
+            main_args_apply = {"dem": tba_dem_mod, "transform": out_transform, "crs": crs}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1439,30 +1472,34 @@ class CoregPipeline(Coreg):
                 main_args_fit.update({"bias_vars": step_bias_vars})
                 main_args_apply.update({"bias_vars": step_bias_vars})
 
-            coreg._fit_func(**main_args_fit)
-            coreg._fit_called = True
+            coreg.fit(**main_args_fit)
 
             tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
 
-    def _fit_pts_func(
-        self: CoregType,
-        ref_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
-        tba_dem: RasterType,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> CoregType:
+        # Flag that the fitting function has been called.
+        self._fit_called = True
 
-        tba_dem_mod = tba_dem.copy()
-
-        for i, coreg in enumerate(self.pipeline):
-            if verbose:
-                print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
-
-            coreg._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem_mod, verbose=verbose, **kwargs)
-            coreg._fit_called = True
-
-            tba_dem_mod = coreg.apply(tba_dem_mod)
         return self
+
+    # def _fit_pts_func(
+    #     self: CoregType,
+    #     ref_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
+    #     tba_dem: RasterType,
+    #     verbose: bool = False,
+    #     **kwargs: Any,
+    # ) -> CoregType:
+    #
+    #     tba_dem_mod = tba_dem.copy()
+    #
+    #     for i, coreg in enumerate(self.pipeline):
+    #         if verbose:
+    #             print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
+    #
+    #         coreg._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem_mod, verbose=verbose, **kwargs)
+    #         coreg._fit_called = True
+    #
+    #         tba_dem_mod = coreg.apply(tba_dem_mod)
+    #     return self
 
     def _apply_func(
         self,
@@ -1582,6 +1619,7 @@ class BlockwiseCoreg(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        subsample_mask: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
