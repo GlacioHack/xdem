@@ -602,7 +602,7 @@ class DirectionalBias(BiasCorr1D):
             between bins, or "per_bin" to apply the statistic for each bin.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"])
+        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"], subsample)
         self._meta["angle"] = angle
         self._needs_vars = False
 

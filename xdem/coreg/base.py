@@ -790,7 +790,6 @@ class Coreg:
 
         # Override subsample argument of instantiation if passed to fit
         if subsample is not None:
-            self._meta["subsample"] = subsample
 
             # Check if subsample argument was also defined at instantiation (not default value), and raise warning
             argspec = inspect.getfullargspec(self.__class__)
@@ -801,6 +800,10 @@ class Coreg:
                     "Subsample argument passed to fit() will override non-default subsample value defined at "
                     "instantiation. To silence this warning: only define 'subsample' in either fit(subsample=...) or "
                     "instantiation e.g. VerticalShift(subsample=...).")
+
+            # In any case, override!
+            self._meta["subsample"] = subsample
+
 
         # Save random_state is a subsample is used
         if self._meta["subsample"] != 1:
@@ -1678,8 +1681,8 @@ class BlockwiseCoreg(Coreg):
         sub_is_default = [argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]
                           for i in range(len(argspec))]
         if subsample is not None and not all(sub_is_default):
-            warnings.warn("Subsample argument passed to fit() will override non-default subsample values defined for"
-                          " individual steps of the pipeline. To silence this warning: only define 'subsample' in "
+            warnings.warn("Subsample argument passed to fit() will override non-default subsample values defined in the"
+                          " step within the blockwise method. To silence this warning: only define 'subsample' in "
                           "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...).")
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
