@@ -11,7 +11,7 @@ import rasterio as rio
 import scipy
 
 import xdem.spatialstats
-from xdem._typing import NDArrayf
+from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg
 from xdem.fit import (
     polynomial_1d,
@@ -143,7 +143,7 @@ class BiasCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -172,9 +172,9 @@ class BiasCorr(Coreg):
         # TODO: Move the check up to Coreg.fit()?
 
         diff = ref_dem - tba_dem
-        valid_mask = np.logical_and.reduce((inlier_mask,
-                                            np.isfinite(diff),
-                                            *(np.isfinite(var) for var in bias_vars.values())))
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values()))
+        )
 
         # Raise errors if all values are NaN after introducing masks from the variables
         # (Others are already checked in Coreg.fit())
@@ -402,14 +402,21 @@ class BiasCorr1D(BiasCorr):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names, subsample,
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            bias_var_names,
+            subsample,
         )
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -470,14 +477,21 @@ class BiasCorr2D(BiasCorr):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names, subsample,
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            bias_var_names,
+            subsample,
         )
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -539,14 +553,21 @@ class BiasCorrND(BiasCorr):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names, subsample,
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            bias_var_names,
+            subsample,
         )
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -602,7 +623,9 @@ class DirectionalBias(BiasCorr1D):
             between bins, or "per_bin" to apply the statistic for each bin.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"], subsample)
+        super().__init__(
+            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"], subsample
+        )
         self._meta["angle"] = angle
         self._needs_vars = False
 
@@ -610,7 +633,7 @@ class DirectionalBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] = None,
@@ -704,7 +727,14 @@ class TerrainBias(BiasCorr1D):
         """
 
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, [terrain_attribute], subsample,
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            [terrain_attribute],
+            subsample,
         )
         # This is the same as bias_var_names, but let's leave the duplicate for clarity
         self._meta["terrain_attribute"] = terrain_attribute
@@ -714,7 +744,7 @@ class TerrainBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] = None,
@@ -796,7 +826,16 @@ class Deramp(BiasCorr2D):
             between bins, or "per_bin" to apply the statistic for each bin.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["xx", "yy"], subsample,)
+        super().__init__(
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            ["xx", "yy"],
+            subsample,
+        )
         self._meta["poly_order"] = poly_order
         self._needs_vars = False
 
@@ -804,7 +843,7 @@ class Deramp(BiasCorr2D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] | None = None,

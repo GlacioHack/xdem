@@ -21,7 +21,7 @@ import scipy.optimize
 from geoutils.raster import Raster, RasterType, get_array_and_mask
 from tqdm import trange
 
-from xdem._typing import NDArrayf
+from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
@@ -214,7 +214,12 @@ class AffineCoreg(Coreg):
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
 
-    def __init__(self, subsample: float | int = 1.0, matrix: NDArrayf | None = None, meta: CoregDict | None = None, ) -> None:
+    def __init__(
+        self,
+        subsample: float | int = 1.0,
+        matrix: NDArrayf | None = None,
+        meta: CoregDict | None = None,
+    ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
         super().__init__(meta=meta)
@@ -298,7 +303,7 @@ class AffineCoreg(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -332,7 +337,9 @@ class VerticalShift(AffineCoreg):
     Estimates the mean (or median, weighted avg., etc.) vertical offset between two DEMs.
     """
 
-    def __init__(self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0) -> None:  # pylint:
+    def __init__(
+        self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0
+    ) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a vertical shift correction object.
@@ -348,7 +355,7 @@ class VerticalShift(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -423,8 +430,12 @@ class ICP(AffineCoreg):
     """
 
     def __init__(
-        self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5, num_levels: int = 6,
-            subsample: float | int = 5e5,
+        self,
+        max_iterations: int = 100,
+        tolerance: float = 0.05,
+        rejection_scale: float = 2.5,
+        num_levels: int = 6,
+        subsample: float | int = 5e5,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -450,7 +461,7 @@ class ICP(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -472,8 +483,9 @@ class ICP(AffineCoreg):
         normal_north = np.sin(np.arctan(gradient_x / resolution))
         normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
 
-        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(normal_east),
-                                            np.isfinite(normal_north)))
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(ref_dem), np.isfinite(normal_east), np.isfinite(normal_north))
+        )
         subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
         ref_pts = pd.DataFrame(
@@ -599,7 +611,7 @@ class Tilt(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -684,7 +696,7 @@ class NuthKaab(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -1125,7 +1137,7 @@ class GradientDescending(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
-        inlier_mask: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,

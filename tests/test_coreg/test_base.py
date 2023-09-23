@@ -107,7 +107,7 @@ class TestCoregClass:
         assert i == pytest.approx(10)
         assert j == pytest.approx(20)
 
-    @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])
+    @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])  # type: ignore
     def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
         """Test the subsampling function called by all subclasses"""
 
@@ -128,12 +128,11 @@ class TestCoregClass:
         # Check that the number of subsampled value is coherent, or the maximum possible
         if subsample <= 1:
             # If value lower than 1, fraction of valid pixels
-            subsample_val = int(subsample * np.count_nonzero(valid_mask))
+            subsample_val: float | int = int(subsample * np.count_nonzero(valid_mask))
         else:
             # Otherwise the number of pixels
             subsample_val = subsample
         assert np.count_nonzero(subsample_mask) == min(subsample_val, np.count_nonzero(valid_mask))
-
 
     # TODO: Activate NuthKaab once subsampling there is made consistent
     all_coregs = [
@@ -145,14 +144,14 @@ class TestCoregClass:
         coreg.DirectionalBias,
     ]
 
-    @pytest.mark.parametrize("coreg", all_coregs)
-    def test_subsample(self, coreg: Coreg) -> None:
+    @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
+    def test_subsample(self, coreg: Callable) -> None:  # type: ignore
         warnings.simplefilter("error")
 
         # Check that default value is set properly
         coreg_full = coreg()
         argspec = inspect.getfullargspec(coreg)
-        assert coreg_full._meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]
+        assert coreg_full._meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
 
         # But can be overridden during fit
         coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
@@ -172,7 +171,7 @@ class TestCoregClass:
         coreg_sub.fit(**self.fit_params, random_state=42)
 
         # Add a few performance checks
-        coreg_name = coreg.__class__.__class__
+        coreg_name = coreg.__name__
         if coreg_name == "VerticalShift":
             # Check that the estimated vertical shifts are similar
             assert abs(coreg_sub._meta["vshift"] - coreg_full._meta["vshift"]) < 0.1
@@ -209,29 +208,41 @@ class TestCoregClass:
         # A warning should be raised when overriding with fit if non-default parameter was passed during instantiation
         vshift = coreg.VerticalShift(subsample=100)
 
-        with pytest.warns(UserWarning,
-                          match=re.escape("Subsample argument passed to fit() will override non-default "
-                                                       "subsample value defined at instantiation. To silence this "
-                                                       "warning: only define 'subsample' in either fit(subsample=...) "
-                                                       "or instantiation e.g. VerticalShift(subsample=...).")):
+        with pytest.warns(
+            UserWarning,
+            match=re.escape(
+                "Subsample argument passed to fit() will override non-default "
+                "subsample value defined at instantiation. To silence this "
+                "warning: only define 'subsample' in either fit(subsample=...) "
+                "or instantiation e.g. VerticalShift(subsample=...)."
+            ),
+        ):
             vshift.fit(**self.fit_params, subsample=1000)
 
         # Same for a pipeline
         pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp()
-        with pytest.warns(UserWarning,
-                          match=re.escape("Subsample argument passed to fit() will override non-default "
-                                                       "subsample values defined for individual steps of the pipeline. "
-                                                       "To silence this warning: only define 'subsample' in either "
-                                                       "fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...).")):
+        with pytest.warns(
+            UserWarning,
+            match=re.escape(
+                "Subsample argument passed to fit() will override non-default "
+                "subsample values defined for individual steps of the pipeline. "
+                "To silence this warning: only define 'subsample' in either "
+                "fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
+            ),
+        ):
             pipe.fit(**self.fit_params, subsample=1000)
 
         # Same for a blockwise co-registration
         block = coreg.BlockwiseCoreg(coreg.VerticalShift(subsample=200), subdivision=4)
-        with pytest.warns(UserWarning,
-                          match=re.escape("Subsample argument passed to fit() will override non-default subsample "
-                                          "values defined in the step within the blockwise method. To silence this "
-                                          "warning: only define 'subsample' in either fit(subsample=...) or "
-                                          "instantiation e.g., VerticalShift(subsample=...).")):
+        with pytest.warns(
+            UserWarning,
+            match=re.escape(
+                "Subsample argument passed to fit() will override non-default subsample "
+                "values defined in the step within the blockwise method. To silence this "
+                "warning: only define 'subsample' in either fit(subsample=...) or "
+                "instantiation e.g., VerticalShift(subsample=...)."
+            ),
+        ):
             block.fit(**self.fit_params, subsample=1000)
 
     def test_coreg_raster_and_ndarray_args(self) -> None:
