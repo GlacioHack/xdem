@@ -19,4 +19,4 @@ dependencies:
   - pip
 
   - pip:
-     - git+https://github.com/GlacioHack/GeoUtils.git
+     - git+https://github.com/GlacioHack/geoutils.git
