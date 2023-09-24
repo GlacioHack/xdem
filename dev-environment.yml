@@ -15,7 +15,7 @@ dependencies:
   - tqdm
   - scikit-image
   - scikit-gstat>=1.0
-#  - geoutils=0.0.13
+#  - geoutils=0.0.14
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
