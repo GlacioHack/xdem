@@ -147,7 +147,7 @@ class TestAffineCoreg:
         assert nuth_kaab._meta["vshift"] == pytest.approx(-1.987523471566405)
 
     def test_gradientdescending(
-        self, subsample: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
+        self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False
     ) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
@@ -161,7 +161,7 @@ class TestAffineCoreg:
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit_pts(
-            self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1"
+            self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, subsample=subsample, z_name="b1"
         )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
@@ -265,20 +265,20 @@ class TestAffineCoreg:
         # Check that the z shift is close to the original vertical shift.
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + vshift) < 0.1
 
-    def test_deramping(self) -> None:
+    def test_tilt(self) -> None:
         warnings.simplefilter("error")
 
         # Try a 1st degree deramping.
-        deramp = coreg.Tilt()
+        tilt = coreg.Tilt()
 
         # Fit the data
-        deramp.fit(**self.fit_params)
+        tilt.fit(**self.fit_params)
 
         # Apply the deramping to a DEM
-        deramped_dem = deramp.apply(self.tba)
+        tilted_dem = tilt.apply(self.tba)
 
         # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref - deramped_dem)[self.inlier_mask]
+        periglacial_offset = (self.ref - tilted_dem)[self.inlier_mask]
         # Get the periglacial offset before deramping
         pre_offset = (self.ref - self.tba)[self.inlier_mask]
 

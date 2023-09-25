@@ -144,7 +144,7 @@ def _residuals_df(
 
 
 def _df_sampling_from_dem(
-    dem: RasterType, tba_dem: RasterType, samples: int = 10000, order: int = 1, offset: str | None = None
+    dem: RasterType, tba_dem: RasterType, subsample: int = 10000, order: int = 1, offset: str | None = None
 ) -> pd.DataFrame:
     """
     Generate a dataframe from a dem by random sampling.
@@ -161,9 +161,18 @@ def _df_sampling_from_dem(
         else:
             offset = "center"
 
+    # Convert subsample to int
+    valid_mask = np.logical_and(~dem.mask, ~tba_dem.mask)
+    if (subsample <= 1) & (subsample > 0):
+        npoints = int(subsample * np.count_nonzero(valid_mask))
+    elif subsample > 1:
+        npoints = int(subsample)
+    else:
+        raise ValueError("`subsample` must be > 0")
+
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape
-    i, j = np.random.randint(10, width - 10, samples), np.random.randint(10, length - 10, samples)
+    i, j = np.random.randint(10, width - 10, npoints), np.random.randint(10, length - 10, npoints)
     mask = dem.data.mask
 
     # Get value
@@ -911,7 +920,6 @@ class Coreg:
         dem_to_be_aligned: RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
         transform: rio.transform.Affine | None = None,
-        samples: int = 10000,
         subsample: float | int = 1.0,
         verbose: bool = False,
         mask_high_curv: bool = False,
@@ -926,7 +934,6 @@ class Coreg:
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param samples: The sample count to run co-registration on. Equivalent to subsample.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
         :param order: interpolation 0=nearest, 1=linear, 2=cubic.
@@ -946,7 +953,7 @@ class Coreg:
         # How to make sure sample point locates in stable terrain?
         if isinstance(reference_dem, (np.ndarray, gu.Raster)):
             reference_dem = _df_sampling_from_dem(
-                reference_dem, dem_to_be_aligned, samples=samples, order=1, offset=None
+                reference_dem, dem_to_be_aligned, subsample=subsample, order=1, offset=None
             )
 
         # Validate that at least one input is a valid point data type.
