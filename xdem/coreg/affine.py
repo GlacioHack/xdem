@@ -621,6 +621,7 @@ class Tilt(AffineCoreg):
     ) -> None:
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
         ddem = ref_dem - tba_dem
+        ddem[~inlier_mask] = np.nan
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
         fit_ramp, coefs = deramping(
             ddem, x_coords, y_coords, degree=self.poly_order, subsample=self._meta["subsample"], verbose=verbose
