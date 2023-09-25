@@ -18,5 +18,5 @@ dependencies:
   - geoutils=0.0.15
   - pip
 
-  - pip:
+#  - pip:
 #     - git+https://github.com/GlacioHack/geoutils.git

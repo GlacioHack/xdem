@@ -144,7 +144,7 @@ def _residuals_df(
 
 
 def _df_sampling_from_dem(
-    dem: RasterType, tba_dem: RasterType, subsample: int = 10000, order: int = 1, offset: str | None = None
+    dem: RasterType, tba_dem: RasterType, subsample: float | int = 10000, order: int = 1, offset: str | None = None
 ) -> pd.DataFrame:
     """
     Generate a dataframe from a dem by random sampling.

@@ -146,9 +146,7 @@ class TestAffineCoreg:
         assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.14225262689582596)
         assert nuth_kaab._meta["vshift"] == pytest.approx(-1.987523471566405)
 
-    def test_gradientdescending(
-        self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False
-    ) -> None:
+    def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
@@ -161,7 +159,12 @@ class TestAffineCoreg:
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit_pts(
-            self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, subsample=subsample, z_name="b1"
+            self.ref.to_points().ds,
+            self.tba,
+            inlier_mask=inlier_mask,
+            verbose=verbose,
+            subsample=subsample,
+            z_name="b1",
         )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
