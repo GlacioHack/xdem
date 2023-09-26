@@ -98,7 +98,14 @@ def generate_pip_from_conda(conda_path: pathlib.Path, pip_path: pathlib.Path, co
             if conda_dep:
                 pip_deps.append(conda_dep)
         elif isinstance(dep, dict) and len(dep) == 1 and "pip" in dep:
-            pip_deps.extend(dep["pip"])
+            # If pulled directly from GitHub (temporary CI passing),
+            # such as git+https://github.com/GlacioHack/geoutils.git,
+            # rename to the package repo name
+            dep_pips = dep["pip"]
+            for dep_pip in dep_pips:
+                if "+" in dep_pip and dep_pip.split("+")[0] == "git":
+                    dep_pip = dep_pip.split("/")[-1].split(".git")[0]
+                pip_deps.append(dep_pip)
         else:
             raise ValueError(f"Unexpected dependency {dep}")
 

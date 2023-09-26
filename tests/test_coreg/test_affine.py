@@ -139,16 +139,14 @@ class TestAffineCoreg:
 
         # Run co-registration
         nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose)
+        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output metadata is always the same
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.46255704521968716)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.13618536563846081)
-        assert nuth_kaab._meta["vshift"] == pytest.approx(-1.9815309753424906)
+        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.45061858808956284)
+        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.14225262689582596)
+        assert nuth_kaab._meta["vshift"] == pytest.approx(-1.987523471566405)
 
-    def test_gradientdescending(
-        self, downsampling: int = 10000, samples: int = 5000, inlier_mask: bool = True, verbose: bool = False
-    ) -> None:
+    def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
@@ -159,9 +157,14 @@ class TestAffineCoreg:
             inlier_mask = self.inlier_mask
 
         # Run co-registration
-        gds = xdem.coreg.GradientDescending(downsampling=downsampling)
+        gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit_pts(
-            self.ref.to_points().ds, self.tba, inlier_mask=inlier_mask, verbose=verbose, samples=samples, z_name="b1"
+            self.ref.to_points().ds,
+            self.tba,
+            inlier_mask=inlier_mask,
+            verbose=verbose,
+            subsample=subsample,
+            z_name="b1",
         )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
@@ -170,7 +173,7 @@ class TestAffineCoreg:
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
     @pytest.mark.parametrize("points_or_raster", ["raster", "points"])
-    def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, downsampling=5000):
+    def test_coreg_example_shift(self, shift_px, coreg_class, points_or_raster, verbose=False, subsample=5000):
         """
         For comparison of coreg algorithms:
         Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
@@ -182,12 +185,12 @@ class TestAffineCoreg:
         shifted_ref = self.ref.copy()
         shifted_ref.shift(shift_px[0] * res, shift_px[1] * res)
 
-        shifted_ref_points = shifted_ref.to_points(as_array=False, subset=downsampling, pixel_offset="center").ds
+        shifted_ref_points = shifted_ref.to_points(as_array=False, subset=subsample, pixel_offset="center").ds
         shifted_ref_points["E"] = shifted_ref_points.geometry.x
         shifted_ref_points["N"] = shifted_ref_points.geometry.y
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)
 
-        kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"downsampling": downsampling}
+        kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"subsample": subsample}
 
         coreg_obj = coreg_class(**kwargs)
 
@@ -265,20 +268,20 @@ class TestAffineCoreg:
         # Check that the z shift is close to the original vertical shift.
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + vshift) < 0.1
 
-    def test_deramping(self) -> None:
+    def test_tilt(self) -> None:
         warnings.simplefilter("error")
 
         # Try a 1st degree deramping.
-        deramp = coreg.Tilt()
+        tilt = coreg.Tilt()
 
         # Fit the data
-        deramp.fit(**self.fit_params)
+        tilt.fit(**self.fit_params)
 
         # Apply the deramping to a DEM
-        deramped_dem = deramp.apply(self.tba)
+        tilted_dem = tilt.apply(self.tba)
 
         # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref - deramped_dem)[self.inlier_mask]
+        periglacial_offset = (self.ref - tilted_dem)[self.inlier_mask]
         # Get the periglacial offset before deramping
         pre_offset = (self.ref - self.tba)[self.inlier_mask]
 
@@ -286,7 +289,7 @@ class TestAffineCoreg:
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
 
         # Check that the mean periglacial offset is low
-        assert np.abs(np.mean(periglacial_offset)) < 1
+        assert np.abs(np.mean(periglacial_offset)) < 0.01
 
     def test_icp_opencv(self) -> None:
         warnings.simplefilter("error")

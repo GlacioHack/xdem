@@ -11,7 +11,7 @@ import rasterio as rio
 import scipy
 
 import xdem.spatialstats
-from xdem._typing import NDArrayf
+from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg
 from xdem.fit import (
     polynomial_1d,
@@ -48,6 +48,7 @@ class BiasCorr(Coreg):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
         bias_var_names: Iterable[str] = None,
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate a bias correction object.
@@ -130,6 +131,9 @@ class BiasCorr(Coreg):
             }
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
+        # Add subsample attribute
+        self._meta["subsample"] = subsample
+
         # Update attributes
         self._fit_or_bin = fit_or_bin
         self._is_affine = False
@@ -139,6 +143,7 @@ class BiasCorr(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -149,8 +154,6 @@ class BiasCorr(Coreg):
         """Should only be called through subclassing."""
 
         # This is called by subclasses, so the bias_var should always be defined
-        # TODO: Move this up to Coreg class, checking kwargs of fit(), or better to overload function
-        #  description in fit() here?
         if bias_vars is None:
             raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
 
@@ -166,13 +169,19 @@ class BiasCorr(Coreg):
             self._meta["bias_var_names"] = list(bias_vars.keys())
 
         # Compute difference and mask of valid data
+        # TODO: Move the check up to Coreg.fit()?
+
         diff = ref_dem - tba_dem
-        ind_valid = np.logical_and.reduce((np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values())))
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values()))
+        )
 
         # Raise errors if all values are NaN after introducing masks from the variables
         # (Others are already checked in Coreg.fit())
-        if np.all(~ind_valid):
-            raise ValueError("One of the 'bias_vars' had only NaNs.")
+        if np.all(~valid_mask):
+            raise ValueError("Some 'bias_vars' have only NaNs in the inlier mask.")
+
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask, verbose=verbose)
 
         # Get number of variables
         nd = len(bias_vars)
@@ -207,9 +216,9 @@ class BiasCorr(Coreg):
 
             results = self._meta["fit_optimizer"](
                 f=self._meta["fit_func"],
-                xdata=np.array([var[ind_valid].flatten() for var in bias_vars.values()]).squeeze(),
-                ydata=diff[ind_valid].flatten(),
-                sigma=weights[ind_valid].flatten() if weights is not None else None,
+                xdata=np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze(),
+                ydata=diff[subsample_mask].flatten(),
+                sigma=weights[subsample_mask].flatten() if weights is not None else None,
                 absolute_sigma=True,
                 **kwargs,
             )
@@ -224,8 +233,8 @@ class BiasCorr(Coreg):
                 )
 
             df = xdem.spatialstats.nd_binning(
-                values=diff[ind_valid],
-                list_var=[var[ind_valid] for var in bias_vars.values()],
+                values=diff[subsample_mask],
+                list_var=[var[subsample_mask] for var in bias_vars.values()],
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=bin_sizes,
                 statistics=(self._meta["bin_statistic"], "count"),
@@ -246,8 +255,8 @@ class BiasCorr(Coreg):
                 )
 
             df = xdem.spatialstats.nd_binning(
-                values=diff[ind_valid],
-                list_var=[var[ind_valid] for var in bias_vars.values()],
+                values=diff[subsample_mask],
+                list_var=[var[subsample_mask] for var in bias_vars.values()],
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=bin_sizes,
                 statistics=(self._meta["bin_statistic"], "count"),
@@ -263,6 +272,7 @@ class BiasCorr(Coreg):
             # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
             #  sigma values would have to be binned above also
 
+            # Valid values for the binning output
             ind_valid = np.logical_and.reduce((np.isfinite(new_diff), *(np.isfinite(var) for var in new_vars)))
 
             if np.all(~ind_valid):
@@ -375,6 +385,7 @@ class BiasCorr1D(BiasCorr):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
         bias_var_names: Iterable[str] = None,
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate a 1D bias correction.
@@ -388,15 +399,24 @@ class BiasCorr1D(BiasCorr):
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            bias_var_names,
+            subsample,
         )
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -416,6 +436,7 @@ class BiasCorr1D(BiasCorr):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            inlier_mask=inlier_mask,
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
@@ -439,6 +460,7 @@ class BiasCorr2D(BiasCorr):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
         bias_var_names: Iterable[str] = None,
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate a 2D bias correction.
@@ -452,15 +474,24 @@ class BiasCorr2D(BiasCorr):
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            bias_var_names,
+            subsample,
         )
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -479,6 +510,7 @@ class BiasCorr2D(BiasCorr):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            inlier_mask=inlier_mask,
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
@@ -504,6 +536,7 @@ class BiasCorrND(BiasCorr):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
         bias_var_names: Iterable[str] = None,
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate an N-D bias correction.
@@ -517,15 +550,24 @@ class BiasCorrND(BiasCorr):
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, bias_var_names
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            bias_var_names,
+            subsample,
         )
 
     def _fit_func(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -541,6 +583,7 @@ class BiasCorrND(BiasCorr):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            inlier_mask=inlier_mask,
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
@@ -564,6 +607,7 @@ class DirectionalBias(BiasCorr1D):
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate a directional bias correction.
@@ -577,8 +621,11 @@ class DirectionalBias(BiasCorr1D):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"])
+        super().__init__(
+            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"], subsample
+        )
         self._meta["angle"] = angle
         self._needs_vars = False
 
@@ -586,6 +633,7 @@ class DirectionalBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] = None,
@@ -611,6 +659,7 @@ class DirectionalBias(BiasCorr1D):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            inlier_mask=inlier_mask,
             bias_vars={"angle": x},
             transform=transform,
             crs=crs,
@@ -660,6 +709,7 @@ class TerrainBias(BiasCorr1D):
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate a terrain bias correction.
@@ -673,10 +723,18 @@ class TerrainBias(BiasCorr1D):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
 
         super().__init__(
-            fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, [terrain_attribute]
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            [terrain_attribute],
+            subsample,
         )
         # This is the same as bias_var_names, but let's leave the duplicate for clarity
         self._meta["terrain_attribute"] = terrain_attribute
@@ -686,6 +744,7 @@ class TerrainBias(BiasCorr1D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] = None,
@@ -706,6 +765,7 @@ class TerrainBias(BiasCorr1D):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            inlier_mask=inlier_mask,
             bias_vars={self._meta["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
@@ -750,6 +810,7 @@ class Deramp(BiasCorr2D):
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
+        subsample: float | int = 1.0,
     ):
         """
         Instantiate a directional bias correction.
@@ -763,8 +824,18 @@ class Deramp(BiasCorr2D):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        super().__init__(fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["xx", "yy"])
+        super().__init__(
+            fit_or_bin,
+            fit_func,
+            fit_optimizer,
+            bin_sizes,
+            bin_statistic,
+            bin_apply_method,
+            ["xx", "yy"],
+            subsample,
+        )
         self._meta["poly_order"] = poly_order
         self._needs_vars = False
 
@@ -772,6 +843,7 @@ class Deramp(BiasCorr2D):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -789,6 +861,7 @@ class Deramp(BiasCorr2D):
         super()._fit_func(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
+            inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
             transform=transform,
             crs=crs,

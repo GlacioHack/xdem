@@ -21,7 +21,7 @@ import scipy.optimize
 from geoutils.raster import Raster, RasterType, get_array_and_mask
 from tqdm import trange
 
-from xdem._typing import NDArrayf
+from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
@@ -214,10 +214,18 @@ class AffineCoreg(Coreg):
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
 
-    def __init__(self, meta: CoregDict | None = None, matrix: NDArrayf | None = None) -> None:
-        """Instantiate a generic Coreg method."""
+    def __init__(
+        self,
+        subsample: float | int = 1.0,
+        matrix: NDArrayf | None = None,
+        meta: CoregDict | None = None,
+    ) -> None:
+        """Instantiate a generic AffineCoreg method."""
 
         super().__init__(meta=meta)
+
+        # Define subsample size
+        self._meta["subsample"] = subsample
 
         if matrix is not None:
             with warnings.catch_warnings():
@@ -295,6 +303,7 @@ class AffineCoreg(Coreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -328,21 +337,25 @@ class VerticalShift(AffineCoreg):
     Estimates the mean (or median, weighted avg., etc.) vertical offset between two DEMs.
     """
 
-    def __init__(self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average) -> None:  # pylint:
+    def __init__(
+        self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0
+    ) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a vertical shift correction object.
 
         :param vshift_func: The function to use for calculating the vertical shift. Default: (weighted) average.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_func": vshift_func})
+        super().__init__(meta={"vshift_func": vshift_func}, subsample=subsample)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -351,10 +364,15 @@ class VerticalShift(AffineCoreg):
         **kwargs: Any,
     ) -> None:
         """Estimate the vertical shift using the vshift_func."""
+
         if verbose:
             print("Estimating the vertical shift...")
         diff = ref_dem - tba_dem
-        diff = diff[np.isfinite(diff)]
+
+        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(diff)))
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
+
+        diff = diff[subsample_mask]
 
         if np.count_nonzero(np.isfinite(diff)) == 0:
             raise ValueError("No finite values in vertical shift comparison.")
@@ -412,7 +430,12 @@ class ICP(AffineCoreg):
     """
 
     def __init__(
-        self, max_iterations: int = 100, tolerance: float = 0.05, rejection_scale: float = 2.5, num_levels: int = 6
+        self,
+        max_iterations: int = 100,
+        tolerance: float = 0.05,
+        rejection_scale: float = 2.5,
+        num_levels: int = 6,
+        subsample: float | int = 5e5,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -421,20 +444,24 @@ class ICP(AffineCoreg):
         :param tolerance: The residual change threshold after which to stop the iterations.
         :param rejection_scale: The threshold (std * rejection_scale) to consider points as outliers.
         :param num_levels: Number of octree levels to consider. A higher number is faster but may be more inaccurate.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         if not _has_cv2:
             raise ValueError("Optional dependency needed. Install 'opencv'")
+
+        # TODO: Move these to _meta?
         self.max_iterations = max_iterations
         self.tolerance = tolerance
         self.rejection_scale = rejection_scale
         self.num_levels = num_levels
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -456,17 +483,20 @@ class ICP(AffineCoreg):
         normal_north = np.sin(np.arctan(gradient_x / resolution))
         normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
 
-        valid_mask = ~np.isnan(ref_dem) & ~np.isnan(normal_east) & ~np.isnan(normal_north)
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(ref_dem), np.isfinite(normal_east), np.isfinite(normal_north))
+        )
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
         ref_pts = pd.DataFrame(
             np.dstack(
                 [
-                    x_coords[valid_mask],
-                    y_coords[valid_mask],
-                    ref_dem[valid_mask],
-                    normal_east[valid_mask],
-                    normal_north[valid_mask],
-                    normal_up[valid_mask],
+                    x_coords[subsample_mask],
+                    y_coords[subsample_mask],
+                    ref_dem[subsample_mask],
+                    normal_east[subsample_mask],
+                    normal_north[subsample_mask],
+                    normal_up[subsample_mask],
                 ]
             ).squeeze(),
             columns=["E", "N", "z", "nx", "ny", "nz"],
@@ -571,20 +601,17 @@ class Tilt(AffineCoreg):
         """
         Instantiate a tilt correction object.
 
-        :param subsample: Factor for subsampling the input raster for speed-up.
-            If <= 1, will be considered a fraction of valid pixels to extract.
-            If > 1 will be considered the number of pixels to extract.
-
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self.poly_order = 1
-        self.subsample = subsample
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -594,9 +621,10 @@ class Tilt(AffineCoreg):
     ) -> None:
         """Fit the dDEM between the DEMs to a least squares polynomial equation."""
         ddem = ref_dem - tba_dem
+        ddem[~inlier_mask] = np.nan
         x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
         fit_ramp, coefs = deramping(
-            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self.subsample, verbose=verbose
+            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self._meta["subsample"], verbose=verbose
         )
 
         self._meta["coefficients"] = coefs[0]
@@ -651,23 +679,25 @@ class NuthKaab(AffineCoreg):
     https://doi.org/10.5194/tc-5-271-2011
     """
 
-    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05) -> None:
+    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param max_iterations: The maximum allowed iterations before stopping.
         :param offset_threshold: The residual offset threshold after which to stop the iterations.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_func(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -693,6 +723,11 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         # Calculate slope and aspect maps from the reference DEM
         if verbose:
             print("   Calculate slope and aspect")
+
+        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem)))
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
+        # TODO: Make this consistent with other subsampling once NK is updated (work on vector, not 2D with NaN)
+        ref_dem[~subsample_mask] = np.nan
 
         slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
 
@@ -983,36 +1018,35 @@ class GradientDescending(AffineCoreg):
 
     def __init__(
         self,
-        downsampling: int = 6000,
         x0: tuple[float, float] = (0, 0),
         bounds: tuple[float, float] = (-3, 3),
         deltainit: int = 2,
         deltatol: float = 0.004,
         feps: float = 0.0001,
+        subsample: int | float = 6000,
     ) -> None:
         """
         Instantiate gradient descending coregistration object.
 
-        :param downsampling: The number of points of downsampling the df to run the coreg. Set None to disable it.
         :param x0: The initial point of gradient descending iteration.
         :param bounds: The boundary of the maximum shift.
         :param deltainit: Initial pattern size.
         :param deltatol: Target pattern size, or the precision you want achieve.
         :param feps: Parameters for algorithm. Smallest difference in function value to resolve.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
 
         The algorithm terminates when the iteration is locally optimal at the target pattern size 'deltatol',
         or when the function value differs by less than the tolerance 'feps' along all directions.
 
         """
         self._meta: CoregDict
-        self.downsampling = downsampling
         self.bounds = bounds
         self.x0 = x0
         self.deltainit = deltainit
         self.deltatol = deltatol
         self.feps = feps
 
-        super().__init__()
+        super().__init__(subsample=subsample)
 
     def _fit_pts_func(
         self,
@@ -1034,9 +1068,9 @@ class GradientDescending(AffineCoreg):
         if not _has_noisyopt:
             raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
-        # downsampling if downsampling != None
-        if self.downsampling and len(ref_dem) > self.downsampling:
-            ref_dem = ref_dem.sample(frac=self.downsampling / len(ref_dem), random_state=random_state).copy()
+        # Perform downsampling if subsample != None
+        if self._meta["subsample"] and len(ref_dem) > self._meta["subsample"]:
+            ref_dem = ref_dem.sample(frac=self._meta["subsample"] / len(ref_dem), random_state=random_state).copy()
         else:
             ref_dem = ref_dem.copy()
 
@@ -1052,7 +1086,7 @@ class GradientDescending(AffineCoreg):
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
-            if self.downsampling:
+            if self._meta["subsample"]:
                 print("Running on downsampling. The length of the gdf:", len(ref_dem))
 
             elevation_difference = _residuals_df(tba_dem, ref_dem, (0, 0), 0, z_name=z_name)
@@ -1104,6 +1138,7 @@ class GradientDescending(AffineCoreg):
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,

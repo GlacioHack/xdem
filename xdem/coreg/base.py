@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import inspect
 import warnings
 from typing import (
     Any,
@@ -46,7 +47,7 @@ from geoutils.raster import (
 )
 from tqdm import tqdm
 
-from xdem._typing import MArrayf, NDArrayf
+from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.spatialstats import nmad
 from xdem.terrain import get_terrain_attribute
 
@@ -143,7 +144,7 @@ def _residuals_df(
 
 
 def _df_sampling_from_dem(
-    dem: RasterType, tba_dem: RasterType, samples: int = 10000, order: int = 1, offset: str | None = None
+    dem: RasterType, tba_dem: RasterType, subsample: float | int = 10000, order: int = 1, offset: str | None = None
 ) -> pd.DataFrame:
     """
     Generate a dataframe from a dem by random sampling.
@@ -160,9 +161,18 @@ def _df_sampling_from_dem(
         else:
             offset = "center"
 
+    # Convert subsample to int
+    valid_mask = np.logical_and(~dem.mask, ~tba_dem.mask)
+    if (subsample <= 1) & (subsample > 0):
+        npoints = int(subsample * np.count_nonzero(valid_mask))
+    elif subsample > 1:
+        npoints = int(subsample)
+    else:
+        raise ValueError("`subsample` must be > 0")
+
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape
-    i, j = np.random.randint(10, width - 10, samples), np.random.randint(10, length - 10, samples)
+    i, j = np.random.randint(10, width - 10, npoints), np.random.randint(10, length - 10, npoints)
     mask = dem.data.mask
 
     # Get value
@@ -202,7 +212,7 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
 
 def _calculate_ddem_stats(
     ddem: NDArrayf | MArrayf,
-    inlier_mask: NDArrayf | None = None,
+    inlier_mask: NDArrayb | None = None,
     stats_list: tuple[Callable[[NDArrayf], Number], ...] | None = None,
     stats_labels: tuple[str, ...] | None = None,
 ) -> dict[str, float]:
@@ -289,12 +299,10 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
 def _preprocess_coreg_raster_input(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-    inlier_mask: NDArrayf | Mask | None = None,
+    inlier_mask: NDArrayb | Mask | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
-    subsample: float | int = 1.0,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
-) -> tuple[NDArrayf, NDArrayf, affine.Affine, rio.crs.CRS]:
+) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, rio.crs.CRS]:
 
     # Validate that both inputs are valid array-like (or Raster) types.
     if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
@@ -339,8 +347,10 @@ def _preprocess_coreg_raster_input(
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
     # Get a NaN array covering nodatas from the raster, masked array or integer-type array
-    ref_dem, ref_mask = get_array_and_mask(reference_dem)
-    tba_dem, tba_mask = get_array_and_mask(dem_to_be_aligned)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(action="ignore", category=UserWarning)
+        ref_dem, ref_mask = get_array_and_mask(reference_dem, copy=True)
+        tba_dem, tba_mask = get_array_and_mask(dem_to_be_aligned, copy=True)
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
@@ -352,29 +362,21 @@ def _preprocess_coreg_raster_input(
 
         if np.all(~inlier_mask):
             raise ValueError("'inlier_mask' had no inliers.")
-
-        ref_dem[~inlier_mask] = np.nan
-        tba_dem[~inlier_mask] = np.nan
+    else:
+        inlier_mask = np.ones(np.shape(ref_dem), dtype=bool)
 
     if np.all(ref_mask):
         raise ValueError("'reference_dem' had only NaNs")
     if np.all(tba_mask):
         raise ValueError("'dem_to_be_aligned' had only NaNs")
 
-    # If subsample is not equal to one, subsampling should be performed.
-    if subsample != 1.0:
+    # Isolate all invalid values
+    invalid_mask = np.logical_or.reduce((~inlier_mask, ref_mask, tba_mask))
 
-        indices = gu.raster.subsample_array(
-            ref_dem, subsample=subsample, return_indices=True, random_state=random_state
-        )
+    if np.all(invalid_mask):
+        raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
 
-        mask_subsample = np.zeros(np.shape(ref_dem), dtype=bool)
-        mask_subsample[indices[0], indices[1]] = True
-
-        ref_dem[~mask_subsample] = np.nan
-        tba_dem[~mask_subsample] = np.nan
-
-    return ref_dem, tba_dem, transform, crs
+    return ref_dem, tba_dem, inlier_mask, transform, crs
 
 
 # TODO: Re-structure AffineCoreg apply function and move there?
@@ -653,6 +655,10 @@ class CoregDict(TypedDict, total=False):
     # The pipeline metadata can have any value of the above
     pipeline: list[Any]
 
+    # Affine + BiasCorr classes
+    subsample: int | float
+    random_state: np.random.RandomState | np.random.Generator | int | None
+
     # BiasCorr classes generic metadata
 
     # 1/ Inputs
@@ -725,16 +731,56 @@ class Coreg:
 
         return self._is_affine
 
+    def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
+        """
+        Get mask of values to subsample on valid mask.
+
+        :param valid_mask: Mask of valid values (inlier and not nodata).
+        """
+
+        # This should never happen
+        if self._meta["subsample"] is None:
+            raise ValueError("Subsample should have been defined in metadata before reaching this class method.")
+
+        # If subsample is not equal to one, subsampling should be performed.
+        elif self._meta["subsample"] != 1.0:
+
+            # Build a low memory masked array with invalid values masked to pass to subsampling
+            ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
+            # Take a subsample within the valid values
+            indices = gu.raster.subsample_array(
+                ma_valid,
+                subsample=self._meta["subsample"],
+                return_indices=True,
+                random_state=self._meta["random_state"],
+            )
+
+            # We return a boolean mask of the subsample within valid values
+            subsample_mask = np.zeros(np.shape(valid_mask), dtype=bool)
+            subsample_mask[indices[0], indices[1]] = True
+        else:
+            # If no subsample is taken, use all valid values
+            subsample_mask = valid_mask
+
+        if verbose:
+            print(
+                "Using a subsample of {} among {} valid values.".format(
+                    np.count_nonzero(valid_mask), np.count_nonzero(subsample_mask)
+                )
+            )
+
+        return subsample_mask
+
     def fit(
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType,
         dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-        inlier_mask: NDArrayf | Mask | None = None,
+        inlier_mask: NDArrayb | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
-        subsample: float | int = 1.0,
+        subsample: float | int | None = None,
         verbose: bool = False,
         random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
@@ -757,25 +803,46 @@ class Coreg:
         if weights is not None:
             raise NotImplementedError("Weights have not yet been implemented")
 
+        # Override subsample argument of instantiation if passed to fit
+        if subsample is not None:
+
+            # Check if subsample argument was also defined at instantiation (not default value), and raise warning
+            argspec = inspect.getfullargspec(self.__class__)
+            sub_meta = self._meta["subsample"]
+            if argspec.defaults is None or "subsample" not in argspec.args:
+                raise ValueError("The subsample argument and default need to be defined in this Coreg class.")
+            sub_is_default = argspec.defaults[argspec.args.index("subsample") - 1] == sub_meta  # type: ignore
+            if not sub_is_default:
+                warnings.warn(
+                    "Subsample argument passed to fit() will override non-default subsample value defined at "
+                    "instantiation. To silence this warning: only define 'subsample' in either fit(subsample=...) or "
+                    "instantiation e.g. VerticalShift(subsample=...)."
+                )
+
+            # In any case, override!
+            self._meta["subsample"] = subsample
+
+        # Save random_state is a subsample is used
+        if self._meta["subsample"] != 1:
+            self._meta["random_state"] = random_state
+
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, tba_dem, transform, crs = _preprocess_coreg_raster_input(
+        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
             reference_dem=reference_dem,
             dem_to_be_aligned=dem_to_be_aligned,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
-            subsample=subsample,
-            random_state=random_state,
         )
 
         main_args = {
             "ref_dem": ref_dem,
             "tba_dem": tba_dem,
+            "inlier_mask": inlier_mask,
             "transform": transform,
             "crs": crs,
             "weights": weights,
             "verbose": verbose,
-            "random_state": random_state,
         }
 
         # If bias_vars are defined, update dictionary content to array
@@ -804,7 +871,7 @@ class Coreg:
         self,
         reference_dem: NDArrayf,
         dem_to_be_aligned: NDArrayf,
-        inlier_mask: NDArrayf | None = None,
+        inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         subsample: float | int = 1.0,
@@ -828,14 +895,12 @@ class Coreg:
         aligned_dem = self.apply(dem_to_be_aligned, transform=transform, crs=crs)[0]
 
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, align_dem, transform, crs = _preprocess_coreg_raster_input(
+        ref_dem, align_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
             reference_dem=reference_dem,
             dem_to_be_aligned=aligned_dem,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
-            subsample=subsample,
-            random_state=random_state,
         )
 
         # Calculate the DEM difference
@@ -853,9 +918,8 @@ class Coreg:
         self: CoregType,
         reference_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
         dem_to_be_aligned: RasterType,
-        inlier_mask: NDArrayf | Mask | None = None,
+        inlier_mask: NDArrayb | Mask | None = None,
         transform: rio.transform.Affine | None = None,
-        samples: int = 10000,
         subsample: float | int = 1.0,
         verbose: bool = False,
         mask_high_curv: bool = False,
@@ -870,7 +934,6 @@ class Coreg:
         :param dem_to_be_aligned: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param samples: The sample count to run co-registration on. Equivalent to subsample.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param verbose: Print progress messages to stdout.
         :param order: interpolation 0=nearest, 1=linear, 2=cubic.
@@ -890,7 +953,7 @@ class Coreg:
         # How to make sure sample point locates in stable terrain?
         if isinstance(reference_dem, (np.ndarray, gu.Raster)):
             reference_dem = _df_sampling_from_dem(
-                reference_dem, dem_to_be_aligned, samples=samples, order=1, offset=None
+                reference_dem, dem_to_be_aligned, subsample=subsample, order=1, offset=None
             )
 
         # Validate that at least one input is a valid point data type.
@@ -1214,7 +1277,7 @@ class Coreg:
         reference_dem: NDArrayf,
         dem_to_be_aligned: NDArrayf,
         error_type: list[str],
-        inlier_mask: NDArrayf | None = None,
+        inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
     ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
@@ -1226,7 +1289,7 @@ class Coreg:
         reference_dem: NDArrayf,
         dem_to_be_aligned: NDArrayf,
         error_type: str = "nmad",
-        inlier_mask: NDArrayf | None = None,
+        inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int:
@@ -1237,7 +1300,7 @@ class Coreg:
         reference_dem: NDArrayf,
         dem_to_be_aligned: NDArrayf,
         error_type: str | list[str] = "nmad",
-        inlier_mask: NDArrayf | None = None,
+        inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
@@ -1306,6 +1369,7 @@ class Coreg:
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         weights: NDArrayf | None,
@@ -1400,34 +1464,65 @@ class CoregPipeline(Coreg):
         # Add subset dict for this pipeline step to args of fit and apply
         return {n: bias_vars[n] for n in var_names}
 
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
+    def fit(
+        self: CoregType,
+        reference_dem: NDArrayf | MArrayf | RasterType,
+        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        inlier_mask: NDArrayb | Mask | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
         verbose: bool = False,
+        random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
-    ) -> None:
-        """Fit each processing step with the previously transformed DEM."""
+    ) -> CoregType:
+
+        # Check if subsample arguments are different from their default value for any of the coreg steps:
+        # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
+        argspec = [inspect.getfullargspec(c.__class__) for c in self.pipeline]
+        sub_meta = [c._meta["subsample"] for c in self.pipeline]
+        sub_is_default = [
+            argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
+            for i in range(len(argspec))
+        ]
+        if subsample is not None and not all(sub_is_default):
+            warnings.warn(
+                "Subsample argument passed to fit() will override non-default subsample values defined for"
+                " individual steps of the pipeline. To silence this warning: only define 'subsample' in "
+                "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
+            )
+
+        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
+        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
+            reference_dem=reference_dem,
+            dem_to_be_aligned=dem_to_be_aligned,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+        )
+
         tba_dem_mod = tba_dem.copy()
+        out_transform = transform
 
         for i, coreg in enumerate(self.pipeline):
             if verbose:
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
 
             main_args_fit = {
-                "ref_dem": ref_dem,
-                "tba_dem": tba_dem_mod,
-                "transform": transform,
+                "reference_dem": ref_dem,
+                "dem_to_be_aligned": tba_dem,
+                "inlier_mask": inlier_mask,
+                "transform": out_transform,
                 "crs": crs,
                 "weights": weights,
                 "verbose": verbose,
+                "subsample": subsample,
+                "random_state": random_state,
             }
 
-            main_args_apply = {"dem": tba_dem_mod, "transform": transform, "crs": crs}
+            main_args_apply = {"dem": tba_dem_mod, "transform": out_transform, "crs": crs}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1436,10 +1531,14 @@ class CoregPipeline(Coreg):
                 main_args_fit.update({"bias_vars": step_bias_vars})
                 main_args_apply.update({"bias_vars": step_bias_vars})
 
-            coreg._fit_func(**main_args_fit)
-            coreg._fit_called = True
+            coreg.fit(**main_args_fit)
 
             tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
+
+        # Flag that the fitting function has been called.
+        self._fit_called = True
+
+        return self
 
     def _fit_pts_func(
         self: CoregType,
@@ -1575,19 +1674,48 @@ class BlockwiseCoreg(Coreg):
 
         self._meta: CoregDict = {"step_meta": []}
 
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
+    def fit(
+        self: CoregType,
+        reference_dem: NDArrayf | MArrayf | RasterType,
+        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        inlier_mask: NDArrayb | Mask | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
         verbose: bool = False,
+        random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
-    ) -> None:
-        """Fit the coreg approach for each subdivision."""
+    ) -> CoregType:
 
+        # Check if subsample arguments are different from their default value for any of the coreg steps:
+        # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
+        if not isinstance(self.procstep, CoregPipeline):
+            steps = [self.procstep]
+        else:
+            steps = list(self.procstep.pipeline)
+        argspec = [inspect.getfullargspec(s.__class__) for s in steps]
+        sub_meta = [s._meta["subsample"] for s in steps]
+        sub_is_default = [
+            argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
+            for i in range(len(argspec))
+        ]
+        if subsample is not None and not all(sub_is_default):
+            warnings.warn(
+                "Subsample argument passed to fit() will override non-default subsample values defined in the"
+                " step within the blockwise method. To silence this warning: only define 'subsample' in "
+                "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
+            )
+
+        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
+        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
+            reference_dem=reference_dem,
+            dem_to_be_aligned=dem_to_be_aligned,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+        )
         groups = self.subdivide_array(tba_dem.shape)
 
         indices = np.unique(groups)
@@ -1617,7 +1745,7 @@ class BlockwiseCoreg(Coreg):
                 return None
             mask_subset = inlier_mask[arrayslice].copy()
             west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
-            transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)
+            transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)  # type: ignore
             procstep = self.procstep.copy()
 
             # Try to run the coregistration. If it fails for any reason, skip it and save the exception.
@@ -1627,7 +1755,12 @@ class BlockwiseCoreg(Coreg):
                     dem_to_be_aligned=tba_subset,
                     transform=transform_subset,
                     inlier_mask=mask_subset,
+                    bias_vars=bias_vars,
+                    weights=weights,
                     crs=crs,
+                    subsample=subsample,
+                    random_state=random_state,
+                    verbose=verbose,
                 )
                 nmad, median = procstep.error(
                     reference_dem=ref_subset,
@@ -1725,6 +1858,11 @@ class BlockwiseCoreg(Coreg):
         if isinstance(self.procstep, CoregPipeline):
             for step in self.procstep.pipeline:
                 step._fit_called = True
+
+        # Flag that the fitting function has been called.
+        self._fit_called = True
+
+        return self
 
     def _restore_metadata(self, meta: CoregDict) -> None:
         """

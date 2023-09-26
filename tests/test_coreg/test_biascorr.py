@@ -39,7 +39,7 @@ class TestBiasCorr:
         reference_dem=ref,
         dem_to_be_aligned=tba,
         inlier_mask=inlier_mask,
-        verbose=False,
+        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -144,7 +144,7 @@ class TestBiasCorr:
             scipy.optimize.curve_fit,
         ],
     )  # type: ignore
-    def test_biascorr__fit_1d(self, fit_func, fit_optimizer) -> None:
+    def test_biascorr__fit_1d(self, fit_func, fit_optimizer, capsys) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
         # Create a bias correction object

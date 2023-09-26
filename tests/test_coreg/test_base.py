@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 import warnings
 from typing import Any, Callable
@@ -106,66 +107,143 @@ class TestCoregClass:
         assert i == pytest.approx(10)
         assert j == pytest.approx(20)
 
-    def test_subsample(self) -> None:
+    @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])  # type: ignore
+    def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
+        """Test the subsampling function called by all subclasses"""
+
+        # Define a valid mask
+        width = height = 50
+        np.random.seed(42)
+        valid_mask = np.random.randint(low=0, high=2, size=(width, height), dtype=bool)
+
+        # Define a class with a subsample and random_state in the metadata
+        coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
+        subsample_mask = coreg._get_subsample_on_valid_mask(valid_mask=valid_mask)
+
+        # Check that it returns a same-shaped array that is boolean
+        assert np.shape(valid_mask) == np.shape(subsample_mask)
+        assert subsample_mask.dtype == bool
+        # Check that the subsampled values are all within valid values
+        assert all(valid_mask[subsample_mask])
+        # Check that the number of subsampled value is coherent, or the maximum possible
+        if subsample <= 1:
+            # If value lower than 1, fraction of valid pixels
+            subsample_val: float | int = int(subsample * np.count_nonzero(valid_mask))
+        else:
+            # Otherwise the number of pixels
+            subsample_val = subsample
+        assert np.count_nonzero(subsample_mask) == min(subsample_val, np.count_nonzero(valid_mask))
+
+    # TODO: Activate NuthKaab once subsampling there is made consistent
+    all_coregs = [
+        coreg.VerticalShift,
+        # coreg.NuthKaab,
+        coreg.ICP,
+        coreg.Deramp,
+        coreg.TerrainBias,
+        coreg.DirectionalBias,
+    ]
+
+    @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
+    def test_subsample(self, coreg: Callable) -> None:  # type: ignore
         warnings.simplefilter("error")
 
+        # Check that default value is set properly
+        coreg_full = coreg()
+        argspec = inspect.getfullargspec(coreg)
+        assert coreg_full._meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+
+        # But can be overridden during fit
+        coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
+        assert coreg_full._meta["subsample"] == 10000
+
         # Test subsampled vertical shift correction
-        vshift_sub = coreg.VerticalShift()
+        coreg_sub = coreg(subsample=0.1)
+        assert coreg_sub._meta["subsample"] == 0.1
 
-        # Fit the vertical shift using 50% of the unmasked data using a fraction
-        vshift_sub.fit(**self.fit_params, subsample=0.5)
+        # Fit the vertical shift using 10% of the unmasked data using a fraction
+        coreg_sub.fit(**self.fit_params, random_state=42)
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        vshift_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+        coreg_sub = coreg(subsample=self.tba.data.size // 10)
+        assert coreg_sub._meta["subsample"] == self.tba.data.size // 10
+        coreg_sub.fit(**self.fit_params, random_state=42)
 
-        # Do full vertical shift corr to compare
-        vshift_full = coreg.VerticalShift()
-        vshift_full.fit(**self.fit_params)
+        # Add a few performance checks
+        coreg_name = coreg.__name__
+        if coreg_name == "VerticalShift":
+            # Check that the estimated vertical shifts are similar
+            assert abs(coreg_sub._meta["vshift"] - coreg_full._meta["vshift"]) < 0.1
 
-        # Check that the estimated vertical shifts are similar
-        assert abs(vshift_sub._meta["vshift"] - vshift_full._meta["vshift"]) < 0.1
+        elif coreg_name == "NuthKaab":
+            # Calculate the difference in the full vs. subsampled matrices
+            matrix_diff = np.abs(coreg_full.to_matrix() - coreg_sub.to_matrix())
+            # Check that the x/y/z differences do not exceed 30cm
+            assert np.count_nonzero(matrix_diff > 0.5) == 0
 
-        # Test NuthKaab with subsampling
-        nuthkaab_full = coreg.NuthKaab()
-        nuthkaab_sub = coreg.NuthKaab()
+        elif coreg_name == "Tilt":
+            # Check that the estimated biases are similar
+            assert coreg_sub._meta["coefficients"] == pytest.approx(coreg_full._meta["coefficients"], rel=1e-1)
 
-        # Measure the start and stop time to get the duration
-        # start_time = time.time()
-        nuthkaab_full.fit(**self.fit_params)
-        # icp_full_duration = time.time() - start_time
+    def test_subsample__pipeline(self) -> None:
+        """Test that the subsample argument works as intended for pipelines"""
 
-        # Do the same with 50% subsampling
-        # start_time = time.time()
-        nuthkaab_sub.fit(**self.fit_params, subsample=0.5)
-        # icp_sub_duration = time.time() - start_time
+        # Check definition during instantiation
+        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=5000)
 
-        # Make sure that the subsampling increased performance
-        # Temporarily add a fallback assertion that if it's slower, it shouldn't be much slower (2021-05-17).
-        # This doesn't work with GitHub's CI, but it works locally. I'm disabling this for now (2021-05-20).
-        # assert icp_full_duration > icp_sub_duration or (abs(icp_full_duration - icp_sub_duration) < 1)
+        # Check the arguments are properly defined
+        assert pipe.pipeline[0]._meta["subsample"] == 200
+        assert pipe.pipeline[1]._meta["subsample"] == 5000
 
-        # Calculate the difference in the full vs. subsampled matrices
-        matrix_diff = np.abs(nuthkaab_full.to_matrix() - nuthkaab_sub.to_matrix())
-        # Check that the x/y/z differences do not exceed 30cm
-        assert np.count_nonzero(matrix_diff > 0.5) == 0
+        # Check definition during fit
+        pipe = coreg.VerticalShift() + coreg.Deramp()
+        pipe.fit(**self.fit_params, subsample=1000)
+        assert pipe.pipeline[0]._meta["subsample"] == 1000
+        assert pipe.pipeline[1]._meta["subsample"] == 1000
 
-        # Test subsampled deramping
-        deramp_sub = coreg.Tilt()
+    def test_subsample__errors(self) -> None:
+        """Check proper errors are raised when using the subsample argument"""
 
-        # Fit the bias using 50% of the unmasked data using a fraction
-        deramp_sub.fit(**self.fit_params, subsample=0.5)
-        # Do the same but specify the pixel count instead.
-        # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
-        # But this would just repeat the subsample code, so that makes little sense to test.
-        deramp_sub.fit(**self.fit_params, subsample=self.tba.data.size // 2)
+        # A warning should be raised when overriding with fit if non-default parameter was passed during instantiation
+        vshift = coreg.VerticalShift(subsample=100)
 
-        # Do full bias corr to compare
-        deramp_full = coreg.Tilt()
-        deramp_full.fit(**self.fit_params)
+        with pytest.warns(
+            UserWarning,
+            match=re.escape(
+                "Subsample argument passed to fit() will override non-default "
+                "subsample value defined at instantiation. To silence this "
+                "warning: only define 'subsample' in either fit(subsample=...) "
+                "or instantiation e.g. VerticalShift(subsample=...)."
+            ),
+        ):
+            vshift.fit(**self.fit_params, subsample=1000)
 
-        # Check that the estimated biases are similar
-        assert deramp_sub._meta["coefficients"] == pytest.approx(deramp_full._meta["coefficients"], rel=1e-1)
+        # Same for a pipeline
+        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp()
+        with pytest.warns(
+            UserWarning,
+            match=re.escape(
+                "Subsample argument passed to fit() will override non-default "
+                "subsample values defined for individual steps of the pipeline. "
+                "To silence this warning: only define 'subsample' in either "
+                "fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
+            ),
+        ):
+            pipe.fit(**self.fit_params, subsample=1000)
+
+        # Same for a blockwise co-registration
+        block = coreg.BlockwiseCoreg(coreg.VerticalShift(subsample=200), subdivision=4)
+        with pytest.warns(
+            UserWarning,
+            match=re.escape(
+                "Subsample argument passed to fit() will override non-default subsample "
+                "values defined in the step within the blockwise method. To silence this "
+                "warning: only define 'subsample' in either fit(subsample=...) or "
+                "instantiation e.g., VerticalShift(subsample=...)."
+            ),
+        ):
+            block.fit(**self.fit_params, subsample=1000)
 
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
@@ -423,7 +501,7 @@ class TestCoregPipeline:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=False,
+        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
