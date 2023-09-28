@@ -724,12 +724,13 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         if verbose:
             print("   Calculate slope and aspect")
 
-        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem)))
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
-        # TODO: Make this consistent with other subsampling once NK is updated (work on vector, not 2D with NaN)
-        ref_dem[~subsample_mask] = np.nan
-
         slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
+
+        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem),
+                                            np.isfinite(slope_tan)))
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
+
+        ref_dem[~subsample_mask] = np.nan
 
         # Make index grids for the east and north dimensions
         east_grid = np.arange(ref_dem.shape[1])
