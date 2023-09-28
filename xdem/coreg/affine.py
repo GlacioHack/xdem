@@ -726,8 +726,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
         slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
 
-        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem),
-                                            np.isfinite(slope_tan)))
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem), np.isfinite(slope_tan))
+        )
         subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
         ref_dem[~subsample_mask] = np.nan
