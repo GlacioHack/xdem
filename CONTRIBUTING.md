@@ -20,11 +20,11 @@ The technical steps to contributing to xDEM are:
 
 ## Development environment
 
-xDEM currently supports Python versions of 3.8 to 3.10 (see `dev-environment.yml` for detailed dependencies), which are
+xDEM currently supports Python versions of 3.9 to 3.11 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
 When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
-supported Python versions (3.8, 3.9 and 3.10) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
+supported Python versions (3.9, 3.10 and 3.11) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
 be reported by CoverAlls.
 
 ### Setup
