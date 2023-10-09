@@ -134,10 +134,9 @@ class TestCoregClass:
             subsample_val = subsample
         assert np.count_nonzero(subsample_mask) == min(subsample_val, np.count_nonzero(valid_mask))
 
-    # TODO: Activate NuthKaab once subsampling there is made consistent
     all_coregs = [
         coreg.VerticalShift,
-        # coreg.NuthKaab,
+        coreg.NuthKaab,
         coreg.ICP,
         coreg.Deramp,
         coreg.TerrainBias,
@@ -156,6 +155,8 @@ class TestCoregClass:
         # But can be overridden during fit
         coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
         assert coreg_full._meta["subsample"] == 10000
+        # Check that the random state is properly set when subsampling explicitly or implicitly
+        assert coreg_full._meta["random_state"] == 42
 
         # Test subsampled vertical shift correction
         coreg_sub = coreg(subsample=0.1)

@@ -822,7 +822,7 @@ class Coreg:
             # In any case, override!
             self._meta["subsample"] = subsample
 
-        # Save random_state is a subsample is used
+        # Save random_state if a subsample is used
         if self._meta["subsample"] != 1:
             self._meta["random_state"] = random_state
 
