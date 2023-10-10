@@ -22,6 +22,9 @@ def environment_yml_nopy(fn_env: str, print_dep: str = "both") -> None:
 
     conda_dep_env_without_python = [dep for dep in conda_dep_env if "python" not in dep]
 
+    # Put lower version into brackets for support on Windows
+    conda_dep_env_without_python = ['"'+dep+'"' if "<" in dep else dep for dep in conda_dep_env_without_python]
+
     # Join the lists
     joined_list_conda_dep = " ".join(conda_dep_env_without_python)
     joined_list_pip_dep = " ".join(pip_dep_env)
