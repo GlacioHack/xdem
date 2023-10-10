@@ -11,7 +11,7 @@ dependencies:
   - matplotlib
   - pyproj>=3.4
   - rasterio>=1.3
-  - scipy <= 1.11.0
+  - "scipy <= 1.11.0"
   - tqdm
   - scikit-image
   - scikit-gstat>=1.0
