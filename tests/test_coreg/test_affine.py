@@ -274,7 +274,7 @@ class TestAffineCoreg:
         tilt = coreg.Tilt()
 
         # Fit the data
-        tilt.fit(**self.fit_params)
+        tilt.fit(**self.fit_params, random_state=42)
 
         # Apply the deramping to a DEM
         tilted_dem = tilt.apply(self.tba)
