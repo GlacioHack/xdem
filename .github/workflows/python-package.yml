@@ -37,8 +37,7 @@ jobs:
         use-mamba: true
         channel-priority: strict
         activate-environment: xdem-dev
-        environment-file: environment.yml
-        python-version: ${{ matrix.python-version }}
+        python-version:
 
     - name: Get month for resetting cache
       id: get-date
@@ -53,6 +52,19 @@ jobs:
       env:
         CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
       id: cache
+
+    # The trick below is necessary because the generic environment file does not specify a Python version, and ONLY
+    # "conda env update" CAN BE USED WITH CACHING, which upgrades the Python version when using the base environment
+    # (we add "graphviz" from dev-environment to solve all dependencies at once, at graphviz relies on image
+    # processing packages very much like geo-packages; not a problem for docs, dev installs where all is done at once)
+    - name: Install base environment with a fixed Python version
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,opencv"
+        mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
+
+    - name: Install project
+      run: pip install -e . --no-dependencies
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files

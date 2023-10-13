@@ -1,54 +1,52 @@
 import argparse
-import os
 
 import yaml  # type: ignore
 
 
-def environment_yml_nopy(fn_env: str, print_dep: str = "both") -> None:
+def environment_yml_nopy(fn_env: str, py_version: float, add_deps: list[str] = None) -> None:
     """
-    List dependencies in environment.yml without python version for setup of continuous integration.
+    Generate temporary environment-py3.XX.yml files forcing python versions for setup of continuous integration.
 
     :param fn_env: Filename path to environment.yml
-    :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
+    :param py_version: Python version to force.
+    :param add_deps: Additional dependencies to solve for directly (for instance graphviz fails with mamba update).
     """
 
     # Load the yml as dictionary
     yaml_env = yaml.safe_load(open(fn_env))
     conda_dep_env = list(yaml_env["dependencies"])
 
-    if isinstance(conda_dep_env[-1], dict):
-        pip_dep_env = list(conda_dep_env.pop()["pip"])
-    else:
-        pip_dep_env = ["None"]
+    # Force python version
+    conda_dep_env_forced_py = ["python="+str(py_version) if "python" in dep else dep for dep in conda_dep_env]
 
-    conda_dep_env_without_python = [dep for dep in conda_dep_env if "python" not in dep]
+    # Optionally, add other dependencies
+    if add_deps is not None:
+        conda_dep_env_forced_py.extend(add_deps)
 
-    # Join the lists
-    joined_list_conda_dep = " ".join(conda_dep_env_without_python)
-    joined_list_pip_dep = " ".join(pip_dep_env)
+    # Copy back to new yaml dict
+    yaml_out = yaml_env.copy()
+    yaml_out["dependencies"] = conda_dep_env_forced_py
 
-    # Print to be captured in bash
-    if print_dep == "both":
-        print(joined_list_conda_dep)
-        print(joined_list_pip_dep)
-    elif print_dep == "conda":
-        print(joined_list_conda_dep)
-    elif print_dep == "pip":
-        print(joined_list_pip_dep)
-    else:
-        raise ValueError('The argument "print_dep" can only be "conda", "pip" or "both".')
+    with open("environment-ci-py"+str(py_version)+".yml", 'w') as outfile:
+        yaml.dump(yaml_out, outfile, default_flow_style=False)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Get environment list without python version.")
-    parser.add_argument("fn_env", metavar="fn_env", type=str, help="Path to the environment file.")
+    parser = argparse.ArgumentParser(description="Generate environment files for CI with fixed python versions.")
+    parser.add_argument("fn_env", metavar="fn_env", type=str, help="Path to the generic environment file.")
     parser.add_argument(
-        "--p",
-        dest="print_dep",
-        default="both",
-        type=str,
-        help="Whether to print conda dependencies, pip ones, or both.",
+        "--pyv",
+        dest="py_versions",
+        default=3.9,
+        type=list,
+        help="List of Python versions to force.",
     )
-
+    parser.add_argument(
+        "--add",
+        dest="add_deps",
+        default=None,
+        type=str,
+        help="List of dependencies to add.",
+    )
     args = parser.parse_args()
-    environment_yml_nopy(fn_env=args.fn_env, print_dep=args.print_dep)
+    environment_yml_nopy(fn_env=args.fn_env, py_versions=args.py_versions, add_deps=args.add_deps.split(","))
