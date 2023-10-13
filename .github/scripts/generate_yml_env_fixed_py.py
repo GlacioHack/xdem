@@ -36,7 +36,7 @@ if __name__ == "__main__":
     parser.add_argument("fn_env", metavar="fn_env", type=str, help="Path to the generic environment file.")
     parser.add_argument(
         "--pyv",
-        dest="py_versions",
+        dest="py_version",
         default=3.9,
         type=list,
         help="List of Python versions to force.",
