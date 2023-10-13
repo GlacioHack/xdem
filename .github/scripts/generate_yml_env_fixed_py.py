@@ -49,4 +49,4 @@ if __name__ == "__main__":
         help="List of dependencies to add.",
     )
     args = parser.parse_args()
-    environment_yml_nopy(fn_env=args.fn_env, py_versions=args.py_versions, add_deps=args.add_deps.split(","))
+    environment_yml_nopy(fn_env=args.fn_env, py_version=args.py_version, add_deps=args.add_deps.split(","))
