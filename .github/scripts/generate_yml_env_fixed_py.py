@@ -3,7 +3,7 @@ import argparse
 import yaml  # type: ignore
 
 
-def environment_yml_nopy(fn_env: str, py_version: float, add_deps: list[str] = None) -> None:
+def environment_yml_nopy(fn_env: str, py_version: str, add_deps: list[str] = None) -> None:
     """
     Generate temporary environment-py3.XX.yml files forcing python versions for setup of continuous integration.
 
@@ -17,7 +17,7 @@ def environment_yml_nopy(fn_env: str, py_version: float, add_deps: list[str] = N
     conda_dep_env = list(yaml_env["dependencies"])
 
     # Force python version
-    conda_dep_env_forced_py = ["python="+str(py_version) if "python" in dep else dep for dep in conda_dep_env]
+    conda_dep_env_forced_py = ["python="+py_version if "python" in dep else dep for dep in conda_dep_env]
 
     # Optionally, add other dependencies
     if add_deps is not None:
@@ -27,7 +27,7 @@ def environment_yml_nopy(fn_env: str, py_version: float, add_deps: list[str] = N
     yaml_out = yaml_env.copy()
     yaml_out["dependencies"] = conda_dep_env_forced_py
 
-    with open("environment-ci-py"+str(py_version)+".yml", 'w') as outfile:
+    with open("environment-ci-py"+py_version+".yml", 'w') as outfile:
         yaml.dump(yaml_out, outfile, default_flow_style=False)
 
 
@@ -37,8 +37,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--pyv",
         dest="py_version",
-        default=3.9,
-        type=list,
+        default="3.9",
+        type=str,
         help="List of Python versions to force.",
     )
     parser.add_argument(
