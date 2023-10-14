@@ -918,7 +918,6 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    @pytest.mark.skip("Need to wait until SciPy publishes 1.11.3 with fix.")  # type: ignore
     def test_empirical_fit_plotting(self) -> None:
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
 
