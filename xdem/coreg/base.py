@@ -822,7 +822,7 @@ class Coreg:
             # In any case, override!
             self._meta["subsample"] = subsample
 
-        # Save random_state is a subsample is used
+        # Save random_state if a subsample is used
         if self._meta["subsample"] != 1:
             self._meta["random_state"] = random_state
 
@@ -926,6 +926,7 @@ class Coreg:
         order: int = 1,
         z_name: str = "z",
         weights: str | None = None,
+        random_state: None | np.random.RandomState | np.random.Generator | int = None,
     ) -> CoregType:
         """
         Estimate the coregistration transform between a DEM and a reference point elevation data.
@@ -940,6 +941,7 @@ class Coreg:
         :param z_name: the column name of dataframe used for elevation differencing
         :param mask_high_curv: Mask out high-curvature points (>5 maxc) to increase the robustness.
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
         """
 
         # Validate that at least one input is a valid array-like (or Raster) types.
@@ -1039,7 +1041,9 @@ class Coreg:
         if subsample != 1.0:
 
             # Randomly pick N inliers in the full_mask where N=subsample
-            random_valids = subsample_array(ref_dem[z_name].values, subsample=subsample, return_indices=True)
+            random_valids = subsample_array(
+                ref_dem[z_name].values, subsample=subsample, return_indices=True, random_state=random_state
+            )
 
             # Subset to the N random inliers
             ref_dem = ref_dem.iloc[random_valids]

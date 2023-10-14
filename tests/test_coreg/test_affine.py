@@ -142,9 +142,8 @@ class TestAffineCoreg:
         nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output metadata is always the same
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(-0.45061858808956284)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(-0.14225262689582596)
-        assert nuth_kaab._meta["vshift"] == pytest.approx(-1.987523471566405)
+        shifts = (nuth_kaab._meta["offset_east_px"], nuth_kaab._meta["offset_north_px"], nuth_kaab._meta["vshift"])
+        assert shifts == pytest.approx((-0.463, -0.133, -1.9876264671765433))
 
     def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
@@ -197,9 +196,9 @@ class TestAffineCoreg:
         best_east_diff = 1e5
         best_north_diff = 1e5
         if points_or_raster == "raster":
-            coreg_obj.fit(shifted_ref, self.ref, verbose=verbose)
+            coreg_obj.fit(shifted_ref, self.ref, verbose=verbose, random_state=42)
         elif points_or_raster == "points":
-            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose)
+            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose, random_state=42)
 
         if coreg_class.__name__ == "ICP":
             matrix = coreg_obj.to_matrix()
@@ -275,7 +274,7 @@ class TestAffineCoreg:
         tilt = coreg.Tilt()
 
         # Fit the data
-        tilt.fit(**self.fit_params)
+        tilt.fit(**self.fit_params, random_state=42)
 
         # Apply the deramping to a DEM
         tilted_dem = tilt.apply(self.tba)

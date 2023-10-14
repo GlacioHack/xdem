@@ -186,12 +186,11 @@ def get_horizontal_shift(
 
     # Round results above the tolerance to get fixed results on different OS
     a_parameter, b_parameter, c_parameter = results.x
-    a_parameter = np.round(a_parameter, 2)
-    b_parameter = np.round(b_parameter, 2)
+    c_parameter = np.round(c_parameter, 3)
 
     # Calculate the easting and northing offsets from the above parameters
-    east_offset = a_parameter * np.sin(b_parameter)
-    north_offset = a_parameter * np.cos(b_parameter)
+    east_offset = np.round(a_parameter * np.sin(b_parameter), 3)
+    north_offset = np.round(a_parameter * np.cos(b_parameter), 3)
 
     return east_offset, north_offset, c_parameter
 
@@ -724,12 +723,14 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         if verbose:
             print("   Calculate slope and aspect")
 
-        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem)))
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
-        # TODO: Make this consistent with other subsampling once NK is updated (work on vector, not 2D with NaN)
-        ref_dem[~subsample_mask] = np.nan
-
         slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
+
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem), np.isfinite(slope_tan))
+        )
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
+
+        ref_dem[~subsample_mask] = np.nan
 
         # Make index grids for the east and north dimensions
         east_grid = np.arange(ref_dem.shape[1])
