@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import argparse
 
 import yaml  # type: ignore
@@ -18,7 +19,7 @@ def environment_yml_nopy(fn_env: str, py_version: str, add_deps: list[str] = Non
     conda_dep_env = list(yaml_env["dependencies"])
 
     # Force python version
-    conda_dep_env_forced_py = ["python="+py_version if "python" in dep else dep for dep in conda_dep_env]
+    conda_dep_env_forced_py = ["python=" + py_version if "python" in dep else dep for dep in conda_dep_env]
 
     # Optionally, add other dependencies
     if add_deps is not None:
@@ -28,7 +29,7 @@ def environment_yml_nopy(fn_env: str, py_version: str, add_deps: list[str] = Non
     yaml_out = yaml_env.copy()
     yaml_out["dependencies"] = conda_dep_env_forced_py
 
-    with open("environment-ci-py"+py_version+".yml", 'w') as outfile:
+    with open("environment-ci-py" + py_version + ".yml", "w") as outfile:
         yaml.dump(yaml_out, outfile, default_flow_style=False)
 
 
