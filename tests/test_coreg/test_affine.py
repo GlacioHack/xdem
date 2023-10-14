@@ -143,7 +143,7 @@ class TestAffineCoreg:
 
         # Check the output metadata is always the same
         shifts = (nuth_kaab._meta["offset_east_px"], nuth_kaab._meta["offset_north_px"], nuth_kaab._meta["vshift"])
-        assert shifts == pytest.approx((-0.46, -0.13, -1.9919472839357297))
+        assert shifts == pytest.approx((-0.463, -0.133, -1.9876264671765433))
 
     def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
@@ -196,9 +196,9 @@ class TestAffineCoreg:
         best_east_diff = 1e5
         best_north_diff = 1e5
         if points_or_raster == "raster":
-            coreg_obj.fit(shifted_ref, self.ref, verbose=verbose)
+            coreg_obj.fit(shifted_ref, self.ref, verbose=verbose, random_state=42)
         elif points_or_raster == "points":
-            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose)
+            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose, random_state=42)
 
         if coreg_class.__name__ == "ICP":
             matrix = coreg_obj.to_matrix()

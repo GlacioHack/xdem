@@ -186,11 +186,11 @@ def get_horizontal_shift(
 
     # Round results above the tolerance to get fixed results on different OS
     a_parameter, b_parameter, c_parameter = results.x
-    c_parameter = np.round(c_parameter, 2)
+    c_parameter = np.round(c_parameter, 3)
 
     # Calculate the easting and northing offsets from the above parameters
-    east_offset = np.round(a_parameter * np.sin(b_parameter), 2)
-    north_offset = np.round(a_parameter * np.cos(b_parameter), 2)
+    east_offset = np.round(a_parameter * np.sin(b_parameter), 3)
+    north_offset = np.round(a_parameter * np.cos(b_parameter), 3)
 
     return east_offset, north_offset, c_parameter
 
