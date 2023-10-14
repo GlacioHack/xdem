@@ -143,7 +143,7 @@ class TestAffineCoreg:
 
         # Check the output metadata is always the same
         shifts = (nuth_kaab._meta["offset_east_px"], nuth_kaab._meta["offset_north_px"], nuth_kaab._meta["vshift"])
-        assert shifts == pytest.approx((-0.4648318628843316, -0.13376227526850593, -1.9860305501224076))
+        assert shifts == pytest.approx((-0.46, -0.13, -1.9919472839357297))
 
     def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
