@@ -45,7 +45,7 @@ profc_arr = profc[~mask_glacier].filled(np.nan)
 maxc_arr = np.maximum(np.abs(planc_arr), np.abs(profc_arr))
 
 # Remove large outliers
-dh_arr[np.abs(dh_arr) > 7 * xdem.spatialstats.nmad(dh_arr)] = np.nan
+dh_arr[np.abs(dh_arr) > 4 * xdem.spatialstats.nmad(dh_arr)] = np.nan
 
 # Define bins for 2D binning
 custom_bin_slope = np.unique(
@@ -97,11 +97,6 @@ z_dh = dh.data / dh_err
 z_dh.data[mask_glacier.data] = np.nan
 z_dh.data[np.abs(z_dh.data) > 4] = np.nan
 
-from scipy.stats import kurtosis
-kbef = kurtosis(dh_arr, nan_policy="omit")
-kaft = kurtosis(z_dh.flatten(), nan_policy="omit")
-print("Excess kurtosis before standardization: {}".format(kbef))
-print("Excess kurtosis after standardization: {}".format(kaft))
 
 # %%
 # We perform a scale-correction for the standardization, to ensure that the spread of the data is exactly 1.
