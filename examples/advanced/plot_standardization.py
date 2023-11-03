@@ -97,7 +97,6 @@ z_dh = dh.data / dh_err
 z_dh.data[mask_glacier.data] = np.nan
 z_dh.data[np.abs(z_dh.data) > 4] = np.nan
 
-
 # %%
 # We perform a scale-correction for the standardization, to ensure that the spread of the data is exactly 1.
 # The NMAD is used as a robust measure for the spread (see :ref:`robuststats-nmad`).
