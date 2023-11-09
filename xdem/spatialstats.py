@@ -355,6 +355,16 @@ def interp_nd_binning(
     values_interp = values_grid[ind_valid_interp]
     # Coordinate of valid values
     points_valid_interp = tuple(points_grid[i][ind_valid_interp] for i in range(len(points_grid)))
+
+    # First extrapolate once with nearest neighbour on the original grid,
+    # this ensures that when the grid is extended (below) the nearest neighbour
+    # extrapolation will work as expected (else, there would be problems with
+    # extrapolation happening in a diagonal direction (along more than one grid dimension,
+    # as that could be the nearest bin in some cases), resulting in a final extrapolation
+    # that would not actually use nearest neighbour (when using interpolate_method = "linear"):
+    # sometimes producing unphysical negative uncertainties.
+    values_grid_nearest1 = griddata(points_valid_interp, values_interp, points_grid, method="nearest")
+
     # Extend grid by a value of "1" the point coordinates in all directions to ensure
     # that 3/ will extrapolate linearly as for "nearest"
     list_bmid_extended = []
@@ -371,14 +381,14 @@ def interp_nd_binning(
     shape_extended = tuple(x + 2 for x in shape)
 
     # Extrapolate on extended grid with nearest neighbour
-    values_grid_nearest = griddata(points_valid_interp, values_interp, points_grid_extended, method="nearest")
-    values_grid_nearest = values_grid_nearest.reshape(shape_extended)
+    values_grid_nearest2 = griddata(points_grid, values_grid_nearest1, points_grid_extended, method="nearest")
+    values_grid_nearest2 = values_grid_nearest2.reshape(shape_extended)
 
     # 3/ Use RegularGridInterpolator to perform interpolation **between points** of the grid, with extrapolation forced
     # to nearest neighbour by duplicating edge points
     # (does not support NaNs, hence the need for 2/ above)
     interp_fun = RegularGridInterpolator(
-        tuple(list_bmid_extended), values_grid_nearest, method="linear", bounds_error=False, fill_value=None
+        tuple(list_bmid_extended), values_grid_nearest2, method="linear", bounds_error=False, fill_value=None
     )
 
     return interp_fun  # type: ignore
