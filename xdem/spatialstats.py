@@ -1681,6 +1681,7 @@ def fit_sum_model_variogram(
     empirical_variogram: pd.DataFrame,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
+    maxfev: int = None,
 ) -> tuple[Callable[[NDArrayf], NDArrayf], pd.DataFrame]:
     """
     Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
@@ -1694,6 +1695,8 @@ def fit_sum_model_variogram(
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill
         lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
+    :param maxfev: Maximum number of function evaluations before the termination, passed to scipy.optimize.curve_fit().
+        Convergence problems can sometimes be fixed by changing this value (default None: automatically determine the number).
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
@@ -1756,6 +1759,7 @@ def fit_sum_model_variogram(
             method="trf",
             p0=p0,
             bounds=final_bounds,
+            maxfev=maxfev,
         )
     # Otherwise, use a weighted fit
     else:
@@ -1769,6 +1773,7 @@ def fit_sum_model_variogram(
             p0=p0,
             bounds=final_bounds,
             sigma=empirical_variogram.err_exp.values[valid],
+            maxfev=maxfev,
         )
 
     # Store optimized parameters
