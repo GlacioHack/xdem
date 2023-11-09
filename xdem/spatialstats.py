@@ -3083,6 +3083,7 @@ def plot_variogram(
     ylabel: str = None,
     xlim: str = None,
     ylim: str = None,
+    out_fname: str = None,
 ) -> None:
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
@@ -3100,6 +3101,7 @@ def plot_variogram(
     :param ylabel: Label of Y-axis
     :param xlim: Limits of X-axis
     :param ylim: Limits of Y-axis
+    :param out_fname: File to save the variogram plot to
     :return:
     """
 
@@ -3254,6 +3256,9 @@ def plot_variogram(
         else:
             ax1.set_yticks([])
 
+    if out_fname is not None:
+        plt.savefig(out_fname)
+
 
 def plot_1d_binning(
     df: pd.DataFrame,
@@ -3263,6 +3268,7 @@ def plot_1d_binning(
     label_statistic: str | None = None,
     min_count: int = 30,
     ax: matplotlib.axes.Axes | None = None,
+    out_fname: str = None,
 ) -> None:
     """
     Plot a statistic and its count along a single binning variable.
@@ -3275,6 +3281,7 @@ def plot_1d_binning(
     :param label_statistic: Label of statistic of interest
     :param min_count: Removes statistic values computed with a count inferior to this minimum value
     :param ax: Plotting ax to use, creates a new one by default
+    :param out_fname: File to save the variogram plot to
     """
 
     # Create axes
@@ -3353,6 +3360,9 @@ def plot_1d_binning(
     ax1.set_ylabel(label_statistic)
     ax1.set_xlim((np.min(interval_var.left), np.max(interval_var.right)))
 
+    if out_fname is not None:
+        plt.savefig(out_fname)
+
 
 def plot_2d_binning(
     df: pd.DataFrame,
@@ -3370,6 +3380,7 @@ def plot_2d_binning(
     vmax: np.floating[Any] = None,
     nodata_color: str | tuple[float, float, float, float] = "yellow",
     ax: matplotlib.axes.Axes | None = None,
+    out_fname: str = None,
 ) -> None:
     """
     Plot one statistic and its count along two binning variables.
@@ -3390,6 +3401,7 @@ def plot_2d_binning(
     :param vmax: Maximum statistic value in colormap range
     :param nodata_color: Color for no data bins
     :param ax: Plotting ax to use, creates a new one by default
+    :param out_fname: File to save the variogram plot to
     """
 
     # Create axes
@@ -3605,3 +3617,6 @@ def plot_2d_binning(
     nodata.set_xticks([])
     nodata.set_yticks([])
     nodata.text(0.5, -0.25, "No data", ha="center", va="top")
+
+    if out_fname is not None:
+        plt.savefig(out_fname)
