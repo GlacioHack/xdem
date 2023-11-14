@@ -1696,7 +1696,8 @@ def fit_sum_model_variogram(
         lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
     :param maxfev: Maximum number of function evaluations before the termination, passed to scipy.optimize.curve_fit().
-        Convergence problems can sometimes be fixed by changing this value (default None: automatically determine the number).
+        Convergence problems can sometimes be fixed by changing this value (default None: automatically determine the
+        number).
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
