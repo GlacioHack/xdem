@@ -269,6 +269,23 @@ class TestBinning:
                         ].values[0]
                     )
 
+        # Check that the linear extrapolation respects nearest neighbour and doesn't go negative
+
+        # The following example used to give a negative value
+        df = pd.DataFrame(
+            {
+                "var1": [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4],
+                "var2": [0, 0, 0, 0, 5, 5, 5, 5, 5.5, 5.5, 5.5, 5.5, 6, 6, 6, 6],
+                "statistic": [0, 0, 0, 0, 1, 1, 1, 1, np.nan, 1, 1, np.nan, np.nan, 0, 0, np.nan],
+            }
+        )
+        fun = xdem.spatialstats.interp_nd_binning(
+            df, list_var_names=["var1", "var2"], statistic="statistic", min_count=None
+        )
+
+        # Check it is now positive or equal to zero
+        assert fun((5, 100)) >= 0
+
     def test_interp_nd_binning_realdata(self) -> None:
         """Check that the function works well with outputs from the nd_binning function"""
 
