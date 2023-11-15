@@ -3301,7 +3301,7 @@ def plot_1d_binning(
         raise ValueError(f'The statistic "{statistic_name}" is not part of the provided dataframe column names.')
 
     # Re-format pandas interval if read from CSV as string
-    if all(isinstance(x, pd.Interval) for x in df[var_name].values):
+    if any(isinstance(x, pd.Interval) for x in df[var_name].values):
         pass
     # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
     # pd.Interval into strings)
@@ -3435,7 +3435,7 @@ def plot_2d_binning(
 
     # Re-format pandas interval if read from CSV as string
     for var in [var_name_1, var_name_2]:
-        if all(isinstance(x, pd.Interval) for x in df[var].values):
+        if any(isinstance(x, pd.Interval) for x in df[var].values):
             pass
         # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
         # pd.Interval into strings)
