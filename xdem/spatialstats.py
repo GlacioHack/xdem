@@ -355,6 +355,16 @@ def interp_nd_binning(
     values_interp = values_grid[ind_valid_interp]
     # Coordinate of valid values
     points_valid_interp = tuple(points_grid[i][ind_valid_interp] for i in range(len(points_grid)))
+
+    # First extrapolate once with nearest neighbour on the original grid,
+    # this ensures that when the grid is extended (below) the nearest neighbour
+    # extrapolation will work as expected (else, there would be problems with
+    # extrapolation happening in a diagonal direction (along more than one grid dimension,
+    # as that could be the nearest bin in some cases), resulting in a final extrapolation
+    # that would not actually use nearest neighbour (when using interpolate_method = "linear"):
+    # sometimes producing unphysical negative uncertainties.
+    values_grid_nearest1 = griddata(points_valid_interp, values_interp, points_grid, method="nearest")
+
     # Extend grid by a value of "1" the point coordinates in all directions to ensure
     # that 3/ will extrapolate linearly as for "nearest"
     list_bmid_extended = []
@@ -371,14 +381,14 @@ def interp_nd_binning(
     shape_extended = tuple(x + 2 for x in shape)
 
     # Extrapolate on extended grid with nearest neighbour
-    values_grid_nearest = griddata(points_valid_interp, values_interp, points_grid_extended, method="nearest")
-    values_grid_nearest = values_grid_nearest.reshape(shape_extended)
+    values_grid_nearest2 = griddata(points_grid, values_grid_nearest1, points_grid_extended, method="nearest")
+    values_grid_nearest2 = values_grid_nearest2.reshape(shape_extended)
 
     # 3/ Use RegularGridInterpolator to perform interpolation **between points** of the grid, with extrapolation forced
     # to nearest neighbour by duplicating edge points
     # (does not support NaNs, hence the need for 2/ above)
     interp_fun = RegularGridInterpolator(
-        tuple(list_bmid_extended), values_grid_nearest, method="linear", bounds_error=False, fill_value=None
+        tuple(list_bmid_extended), values_grid_nearest2, method="linear", bounds_error=False, fill_value=None
     )
 
     return interp_fun  # type: ignore
@@ -1671,6 +1681,7 @@ def fit_sum_model_variogram(
     empirical_variogram: pd.DataFrame,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
+    maxfev: int = None,
 ) -> tuple[Callable[[NDArrayf], NDArrayf], pd.DataFrame]:
     """
     Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
@@ -1684,6 +1695,9 @@ def fit_sum_model_variogram(
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper, sill
         lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
+    :param maxfev: Maximum number of function evaluations before the termination, passed to scipy.optimize.curve_fit().
+        Convergence problems can sometimes be fixed by changing this value (default None: automatically determine the
+        number).
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
@@ -1746,6 +1760,7 @@ def fit_sum_model_variogram(
             method="trf",
             p0=p0,
             bounds=final_bounds,
+            maxfev=maxfev,
         )
     # Otherwise, use a weighted fit
     else:
@@ -1759,6 +1774,7 @@ def fit_sum_model_variogram(
             p0=p0,
             bounds=final_bounds,
             sigma=empirical_variogram.err_exp.values[valid],
+            maxfev=maxfev,
         )
 
     # Store optimized parameters
@@ -3068,6 +3084,7 @@ def plot_variogram(
     ylabel: str = None,
     xlim: str = None,
     ylim: str = None,
+    out_fname: str = None,
 ) -> None:
     """
     Plot empirical variogram, and optionally also plot one or several model fits.
@@ -3085,6 +3102,7 @@ def plot_variogram(
     :param ylabel: Label of Y-axis
     :param xlim: Limits of X-axis
     :param ylim: Limits of Y-axis
+    :param out_fname: File to save the variogram plot to
     :return:
     """
 
@@ -3239,6 +3257,9 @@ def plot_variogram(
         else:
             ax1.set_yticks([])
 
+    if out_fname is not None:
+        plt.savefig(out_fname)
+
 
 def plot_1d_binning(
     df: pd.DataFrame,
@@ -3248,6 +3269,7 @@ def plot_1d_binning(
     label_statistic: str | None = None,
     min_count: int = 30,
     ax: matplotlib.axes.Axes | None = None,
+    out_fname: str = None,
 ) -> None:
     """
     Plot a statistic and its count along a single binning variable.
@@ -3260,6 +3282,7 @@ def plot_1d_binning(
     :param label_statistic: Label of statistic of interest
     :param min_count: Removes statistic values computed with a count inferior to this minimum value
     :param ax: Plotting ax to use, creates a new one by default
+    :param out_fname: File to save the variogram plot to
     """
 
     # Create axes
@@ -3276,6 +3299,17 @@ def plot_1d_binning(
 
     if statistic_name not in df.columns.values:
         raise ValueError(f'The statistic "{statistic_name}" is not part of the provided dataframe column names.')
+
+    # Re-format pandas interval if read from CSV as string
+    if any(isinstance(x, pd.Interval) for x in df[var_name].values):
+        pass
+    # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
+    # pd.Interval into strings)
+    elif any(isinstance(_pandas_str_to_interval(x), pd.Interval) for x in df[var_name].values):
+        intervalindex_vals = [_pandas_str_to_interval(x) for x in df[var_name].values]
+        df[var_name] = pd.IntervalIndex(intervalindex_vals)
+    else:
+        raise ValueError("The variable columns must be provided as string or pd.Interval values.")
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -3338,6 +3372,9 @@ def plot_1d_binning(
     ax1.set_ylabel(label_statistic)
     ax1.set_xlim((np.min(interval_var.left), np.max(interval_var.right)))
 
+    if out_fname is not None:
+        plt.savefig(out_fname)
+
 
 def plot_2d_binning(
     df: pd.DataFrame,
@@ -3355,6 +3392,7 @@ def plot_2d_binning(
     vmax: np.floating[Any] = None,
     nodata_color: str | tuple[float, float, float, float] = "yellow",
     ax: matplotlib.axes.Axes | None = None,
+    out_fname: str = None,
 ) -> None:
     """
     Plot one statistic and its count along two binning variables.
@@ -3375,6 +3413,7 @@ def plot_2d_binning(
     :param vmax: Maximum statistic value in colormap range
     :param nodata_color: Color for no data bins
     :param ax: Plotting ax to use, creates a new one by default
+    :param out_fname: File to save the variogram plot to
     """
 
     # Create axes
@@ -3393,6 +3432,18 @@ def plot_2d_binning(
 
     if statistic_name not in df.columns.values:
         raise ValueError(f'The statistic "{statistic_name}" is not part of the provided dataframe column names.')
+
+    # Re-format pandas interval if read from CSV as string
+    for var in [var_name_1, var_name_2]:
+        if any(isinstance(x, pd.Interval) for x in df[var].values):
+            pass
+        # Check for any unformatted interval (saving and reading a pd.DataFrame without MultiIndexing transforms
+        # pd.Interval into strings)
+        elif any(isinstance(_pandas_str_to_interval(x), pd.Interval) for x in df[var].values):
+            intervalindex_vals = [_pandas_str_to_interval(x) for x in df[var].values]
+            df[var] = pd.IntervalIndex(intervalindex_vals)
+        else:
+            raise ValueError("The variable columns must be provided as string or pd.Interval values.")
 
     # Hide axes for the main subplot (which will be subdivded)
     ax.axis("off")
@@ -3590,3 +3641,6 @@ def plot_2d_binning(
     nodata.set_xticks([])
     nodata.set_yticks([])
     nodata.text(0.5, -0.25, "No data", ha="center", va="top")
+
+    if out_fname is not None:
+        plt.savefig(out_fname)
