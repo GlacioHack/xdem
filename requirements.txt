@@ -9,7 +9,7 @@ numpy
 matplotlib
 pyproj>=3.4
 rasterio>=1.3
-scipy<1.11.1
+scipy
 tqdm
 scikit-image
 scikit-gstat>=1.0
