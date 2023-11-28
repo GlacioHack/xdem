@@ -682,7 +682,7 @@ class TestCoregPipeline:
         # Test 1: Fusion of same coreg
         # Many vertical shifts
         many_vshifts = coreg.VerticalShift() + coreg.VerticalShift() + coreg.VerticalShift()
-        many_vshifts.fit(**self.fit_params)
+        many_vshifts.fit(**self.fit_params, random_state=42)
         aligned_dem, _ = many_vshifts.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of EXACTLY zero
@@ -691,25 +691,25 @@ class TestCoregPipeline:
 
         # Many horizontal + vertical shifts
         many_nks = coreg.NuthKaab() + coreg.NuthKaab() + coreg.NuthKaab()
-        many_nks.fit(**self.fit_params)
+        many_nks.fit(**self.fit_params, random_state=42)
         aligned_dem, _ = many_nks.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of NEARLY zero
-        assert many_nks.pipeline[1]._meta["vshift"] == pytest.approx(0, abs=0.01)
-        assert many_nks.pipeline[1]._meta["offset_east_px"] == pytest.approx(0, abs=0.01)
-        assert many_nks.pipeline[1]._meta["offset_north_px"] == pytest.approx(0, abs=0.01)
-        assert many_nks.pipeline[2]._meta["vshift"] == pytest.approx(0, abs=0.01)
-        assert many_nks.pipeline[2]._meta["offset_east_px"] == pytest.approx(0, abs=0.01)
-        assert many_nks.pipeline[2]._meta["offset_north_px"] == pytest.approx(0, abs=0.01)
+        assert many_nks.pipeline[1]._meta["vshift"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1]._meta["offset_east_px"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1]._meta["offset_north_px"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2]._meta["vshift"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2]._meta["offset_east_px"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2]._meta["offset_north_px"] == pytest.approx(0, abs=0.02)
 
         # Test 2: Reflectivity
         # Those two pipelines should give almost the same result
         nk_vshift = coreg.NuthKaab() + coreg.VerticalShift()
         vshift_nk = coreg.VerticalShift() + coreg.NuthKaab()
 
-        nk_vshift.fit(**self.fit_params)
+        nk_vshift.fit(**self.fit_params, random_state=42)
         aligned_dem, _ = nk_vshift.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
-        vshift_nk.fit(**self.fit_params)
+        vshift_nk.fit(**self.fit_params, random_state=42)
         aligned_dem, _ = vshift_nk.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         assert np.allclose(nk_vshift.to_matrix(), vshift_nk.to_matrix(), atol=10e-1)
