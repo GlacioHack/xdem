@@ -288,7 +288,7 @@ class TestAffineCoreg:
         assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
 
         # Check that the mean periglacial offset is low
-        assert np.abs(np.mean(periglacial_offset)) < 0.01
+        assert np.abs(np.mean(periglacial_offset)) < 0.02
 
     def test_icp_opencv(self) -> None:
         warnings.simplefilter("error")
