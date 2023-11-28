@@ -1516,7 +1516,7 @@ class CoregPipeline(Coreg):
 
             main_args_fit = {
                 "reference_dem": ref_dem,
-                "dem_to_be_aligned": tba_dem,
+                "dem_to_be_aligned": tba_dem_mod,
                 "inlier_mask": inlier_mask,
                 "transform": out_transform,
                 "crs": crs,
@@ -1542,26 +1542,6 @@ class CoregPipeline(Coreg):
         # Flag that the fitting function has been called.
         self._fit_called = True
 
-        return self
-
-    def _fit_pts_func(
-        self: CoregType,
-        ref_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
-        tba_dem: RasterType,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> CoregType:
-
-        tba_dem_mod = tba_dem.copy()
-
-        for i, coreg in enumerate(self.pipeline):
-            if verbose:
-                print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
-
-            coreg._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem_mod, verbose=verbose, **kwargs)
-            coreg._fit_called = True
-
-            tba_dem_mod = coreg.apply(tba_dem_mod)
         return self
 
     def _apply_func(
