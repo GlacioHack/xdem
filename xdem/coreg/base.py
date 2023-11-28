@@ -1516,7 +1516,7 @@ class CoregPipeline(Coreg):
 
             main_args_fit = {
                 "reference_dem": ref_dem,
-                "dem_to_be_aligned": tba_dem,
+                "dem_to_be_aligned": tba_dem_mod,
                 "inlier_mask": inlier_mask,
                 "transform": out_transform,
                 "crs": crs,
