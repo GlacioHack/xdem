@@ -676,7 +676,7 @@ class TestCoregPipeline:
         vshift5 = vshift3 + vshift3
         assert vshift5.to_matrix()[2, 3] == vshift * 4
 
-    def test_pipeline_consistency(self):
+    def test_pipeline_consistency(self) -> None:
         """Check that pipelines properties are respected: reflectivity, fusion of same coreg"""
 
         # Test 1: Fusion of same coreg
@@ -713,6 +713,7 @@ class TestCoregPipeline:
         aligned_dem, _ = vshift_nk.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         assert np.allclose(nk_vshift.to_matrix(), vshift_nk.to_matrix(), atol=10e-1)
+
 
 class TestBlockwiseCoreg:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
