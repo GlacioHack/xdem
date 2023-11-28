@@ -35,6 +35,7 @@ dependencies:
 
   # Doc dependencies
   - sphinx
+  - pydata-sphinx-theme==0.13.3
   - sphinx-book-theme
   - sphinxcontrib-programoutput
   - sphinx-design
