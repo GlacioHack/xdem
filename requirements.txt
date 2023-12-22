@@ -15,5 +15,5 @@ scikit-image
 scikit-gstat>=1.0
 geoutils==0.0.15
 pip
-setuptools>=42
-setuptools_scm[toml]>=6.2
+setuptools>=64
+setuptools_scm[toml]>=8
