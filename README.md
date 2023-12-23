@@ -1,7 +1,7 @@
 # xDEM: robust analysis of DEMs in Python.
 
 [![Documentation Status](https://readthedocs.org/projects/xdem/badge/?version=latest)](https://xdem.readthedocs.io/en/latest/?badge=latest)
-[![build](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml/badge.svg)](https://github.com/GlacioHack/xdem/actions/workflows/python-package.yml)
+[![build](https://github.com/GlacioHack/xdem/actions/workflows/python-tests.yml/badge.svg)](https://github.com/GlacioHack/xdem/actions/workflows/python-tests.yml)
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Conda Platforms](https://img.shields.io/conda/pn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
 [![Conda Downloads](https://img.shields.io/conda/dn/conda-forge/xdem.svg)](https://anaconda.org/conda-forge/xdem)
