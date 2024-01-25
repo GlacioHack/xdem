@@ -20,7 +20,7 @@ from geoutils.raster import (
     Raster,
     RasterType,
     get_array_and_mask,
-    subsample_array,
+    sample_array,
 )
 from geoutils.vector import Vector, VectorType
 from numpy.typing import ArrayLike
@@ -974,7 +974,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
+    index = sample_array(values_sp, sample=subsample, return_indices=True, random_state=rnd)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -2402,7 +2402,7 @@ def number_effective_samples(
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(rst=rasterize_resolution, as_array=True).squeeze()
+            mask = V.create_mask(raster=rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
             coords_on_mask = coords[:, mask].T
 

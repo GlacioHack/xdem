@@ -259,7 +259,7 @@ class TestCoregClass:
         dem1.data[1, 1] = 100
 
         # Translate the DEM 1 "meter" right and add a vertical shift
-        dem2 = dem1.reproject(dst_bounds=rio.coords.BoundingBox(1, 0, 6, 5), silent=True)
+        dem2 = dem1.reproject(bounds=rio.coords.BoundingBox(1, 0, 6, 5), silent=True)
         dem2 += 1
 
         # Create a vertical shift correction for Rasters ("_r") and for arrays ("_a")
@@ -783,8 +783,8 @@ class TestBlockwiseCoreg:
     def test_blockwise_coreg_large_gaps(self) -> None:
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
         warnings.simplefilter("error")
-        reference_dem = self.ref.reproject(dst_crs="EPSG:3413", dst_res=self.ref.res, resampling="bilinear")
-        dem_to_be_aligned = self.tba.reproject(dst_ref=reference_dem, resampling="bilinear")
+        reference_dem = self.ref.reproject(crs="EPSG:3413", res=self.ref.res, resampling="bilinear")
+        dem_to_be_aligned = self.tba.reproject(ref=reference_dem, resampling="bilinear")
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
 

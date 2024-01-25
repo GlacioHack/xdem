@@ -98,7 +98,7 @@ class TestDEM:
         # Tests 2: instantiation with a file that has a 3D CRS
         # Create such a file
         dem = DEM(fn_img)
-        dem_reproj = dem.reproject(dst_crs=4979)
+        dem_reproj = dem.reproject(crs=4979)
 
         # Save to temporary folder
         temp_dir = tempfile.TemporaryDirectory()
@@ -263,7 +263,7 @@ class TestDEM:
         dem = DEM(fn_dem)
 
         # Reproject in WGS84 2D
-        dem = dem.reproject(dst_crs=4326)
+        dem = dem.reproject(crs=4326)
         dem_before_trans = dem.copy()
 
         # Set ellipsoid as vertical reference
