@@ -42,8 +42,8 @@ from geoutils.raster import (
     RasterType,
     get_array_and_mask,
     raster,
-    subdivide_array,
     sample_array,
+    subdivide_array,
 )
 from tqdm import tqdm
 

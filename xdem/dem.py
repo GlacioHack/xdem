@@ -234,14 +234,19 @@ class DEM(SatelliteImage):  # type: ignore
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
     ) -> None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
         :param vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
-        :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `dst_vcrs`.
+        :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `vcrs`.
 
         :return:
         """
