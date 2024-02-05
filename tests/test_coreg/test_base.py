@@ -374,7 +374,7 @@ class TestCoregClass:
                 "dem1.crs",
                 "fit",
                 "warns",
-                "'reference_dem' .* overrides the given 'transform'",
+                "'reference_dem' .* overrides the given *",
             ),
             ("dem1.data", "dem2", "dem1.transform", "None", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
             (

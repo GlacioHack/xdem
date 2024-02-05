@@ -175,7 +175,7 @@ dh_arr = gu.raster.get_array_and_mask(dh)[0]
 slope_arr = gu.raster.get_array_and_mask(slope)[0]
 
 # Subsample to run the snipped code faster
-indices = gu.raster.subsample_array(dh_arr, subsample=10000, return_indices=True, random_state=42)
+indices = gu.raster.sample_array(dh_arr, sample=10000, return_indices=True, random_state=42)
 dh_arr = dh_arr[indices]
 slope_arr = slope_arr[indices]
 ```
