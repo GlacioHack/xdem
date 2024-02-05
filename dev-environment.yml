@@ -25,7 +25,7 @@ dependencies:
   #  - richdem
 
   # Test dependencies
-  - pytest=7.*
+  - pytest
   - pytest-xdist
   - pyyaml
   - flake8
