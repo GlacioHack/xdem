@@ -15,8 +15,8 @@ dependencies:
   - tqdm
   - scikit-image
   - scikit-gstat>=1.0
-  - geoutils=0.0.15
+#  - geoutils=0.0.15
   - pip
 
-#  - pip:
-#     - git+https://github.com/GlacioHack/geoutils.git
+  - pip:
+     - git+https://github.com/GlacioHack/geoutils.git
