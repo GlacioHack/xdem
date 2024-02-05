@@ -22,7 +22,7 @@ import xdem
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 subset_extent = [523000, 8660000, 529000, 8665000]
-dem.crop(subset_extent)
+dem = dem.crop(subset_extent)
 
 # %%
 # Let's plot a hillshade of the mountain for context.

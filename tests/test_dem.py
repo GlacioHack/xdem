@@ -186,7 +186,7 @@ class TestDEM:
         assert isinstance(r2, xdem.dem.DEM)
 
         # Check all immutable attributes are equal
-        # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+        # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'bands', 'nodata',
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
         # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
@@ -271,7 +271,7 @@ class TestDEM:
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
         # Transform to EGM96 geoid
-        dem.to_vcrs(dst_vcrs="EGM96")
+        dem.to_vcrs(vcrs="EGM96")
         median_after = np.nanmean(dem)
 
         # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
