@@ -29,7 +29,7 @@ jobs:
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
-      uses: conda-incubator/setup-miniconda@v2
+      uses: conda-incubator/setup-miniconda@v3
       with:
         miniforge-variant: Mambaforge
         miniforge-version: latest
