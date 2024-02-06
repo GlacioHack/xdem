@@ -20,7 +20,7 @@ Additionally, xDEM aims to be **efficient**, **scalable** and **state-of-the-art
 :class: margin
 xDEM is in early stages of development and its features might evolve rapidly. Note the version you are working on for
 **reproducibility**!
-We are working on making features fully consistent for the first long-term release ``v0.1`` (likely sometime in 2023).
+We are working on making features fully consistent for the first long-term release ``v0.1`` (planned early 2024).
 ```
 
 In details, those mean:
