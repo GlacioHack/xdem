@@ -14,8 +14,8 @@ kernelspec:
 
 # Quick start
 
-A short example show-casing some main functionalities of xDEM.
-To find an example about a specific functionality, jump to {ref}`quick-gallery` right below.
+Below is a short example show-casing some of the core functionalities of xDEM.
+To find an example about a specific functionality, jump directly to {ref}`quick-gallery`.
 
 ## Short example
 
@@ -26,11 +26,12 @@ xDEM relies largely on [its sister-package GeoUtils](https://geoutils.readthedoc
 (NumPy interface). 🙂
 ```
 
-The package functionalities revolve around the {class}`~xdem.DEM` class (a subclass of {class}`~geoutils.Raster`), from 
-which most methods can be called and {class}`~xdem.coreg.Coreg` classes to build coregistration pipelines.
+xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geoutils.Raster`), from 
+which most methods can be called and the {class}`~xdem.coreg.Coreg` classes to build modular coregistration pipelines.
 
-Below, in a few lines, we load a raster and a vector, crop them to a common extent, re-assign raster values around
-a buffer of the vector, perform calculations on the modified raster, and finally plot and save it!
+Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop them to a common extent, 
+align the DEMs using coregistration and estimate a map of error in elevation difference using stable terrain, and 
+finally plot and save the result!
 
 ```{code-cell} ipython3
 import xdem
@@ -92,8 +93,8 @@ os.remove("my_dem_error.tif")
 ## More examples
 
 To dive into more illustrated code, explore our gallery of examples that is composed of:
-- An {ref}`examples-basic` section using the simpler features in xDEM (terrain, pre-defined coregistration and uncertainty pipelines),
-- An {ref}`examples-advanced` section using advanced features (detailed coregistration and uncertainty analyses).
+- An {ref}`examples-basic` section on simpler routines (terrain attributes, pre-defined coregistration and uncertainty pipelines),
+- An {ref}`examples-advanced` section using advanced pipelines (for in-depth coregistration and uncertainty analysis).
 
 See also the concatenated list of examples below.
 
