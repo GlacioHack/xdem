@@ -21,16 +21,16 @@ To find an example about a specific functionality, jump directly to {ref}`quick-
 
 ```{note}
 :class: margin
-xDEM relies largely on [its sister-package GeoUtils](https://geoutils.readthedocs.io/) for geospatial handling 
-(reprojection, cropping, raster-vector interface, point interpolation) as well as numerics 
+xDEM relies largely on [its sister-package GeoUtils](https://geoutils.readthedocs.io/) for geospatial handling
+(reprojection, cropping, raster-vector interface, point interpolation) as well as numerics
 (NumPy interface). 🙂
 ```
 
-xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geoutils.Raster`), from 
+xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geoutils.Raster`), from
 which most methods can be called and the {class}`~xdem.coreg.Coreg` classes to build modular coregistration pipelines.
 
-Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop them to a common extent, 
-align the DEMs using coregistration and estimate a map of error in elevation difference using stable terrain, and 
+Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop them to a common extent,
+align the DEMs using coregistration and estimate a map of error in elevation difference using stable terrain, and
 finally plot and save the result!
 
 ```{code-cell} ipython3
@@ -70,7 +70,7 @@ slope, maximum_curvature = xdem.terrain.get_terrain_attribute(
     dem_ref, attribute=["slope", "maximum_curvature"]
 )
 
-# Estimate elevation change error from stable terrain as a function of slope and curvature 
+# Estimate elevation change error from stable terrain as a function of slope and curvature
 dem_error = xdem.spatialstats.infer_heteroscedasticity_from_stable(
     dh, list_var=[slope, maximum_curvature], unstable_mask=mask_gla
 )[0]
