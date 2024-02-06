@@ -90,7 +90,6 @@ quick_start
 :caption: Background
 :maxdepth: 2
 
-intro_dems
 intro_robuststats
 intro_accuracy_precision
 ```
@@ -103,7 +102,6 @@ vertical_ref
 terrain
 coregistration
 biascorr
-filters
 comparison
 spatialstats
 ```
