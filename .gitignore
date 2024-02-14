@@ -153,6 +153,7 @@ examples/data/*.csv
 doc/source/basic_examples/
 doc/source/advanced_examples/
 doc/source/gen_modules/
+doc/source/sg_execution_times.rst
 examples/basic/temp.tif
 
 # Directory where myst_nb executes jupyter code

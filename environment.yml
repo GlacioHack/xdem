@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.9,<3.12
-  - geopandas>=0.12.0,<0.14
+  - geopandas>=0.12.0
   - numba=0.*
   - numpy=1.*
   - matplotlib=3.*
@@ -13,7 +13,7 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0
-  - geoutils=0.0.15
+  - geoutils=0.1.*
   - pip
 
 #  - pip:

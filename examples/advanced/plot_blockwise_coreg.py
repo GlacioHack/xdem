@@ -48,7 +48,7 @@ plt_extent = [
 
 diff_before = reference_dem - dem_to_be_aligned
 
-diff_before.show(cmap="coolwarm_r", vmin=-10, vmax=10)
+diff_before.plot(cmap="coolwarm_r", vmin=-10, vmax=10)
 plt.show()
 
 # %%
@@ -92,7 +92,7 @@ for _, row in blockwise.stats().iterrows():
 
 diff_after = reference_dem - aligned_dem
 
-diff_after.show(cmap="coolwarm_r", vmin=-10, vmax=10)
+diff_after.plot(cmap="coolwarm_r", vmin=-10, vmax=10)
 plt.show()
 
 # %%

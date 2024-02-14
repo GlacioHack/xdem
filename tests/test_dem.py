@@ -98,7 +98,7 @@ class TestDEM:
         # Tests 2: instantiation with a file that has a 3D CRS
         # Create such a file
         dem = DEM(fn_img)
-        dem_reproj = dem.reproject(dst_crs=4979)
+        dem_reproj = dem.reproject(crs=4979)
 
         # Save to temporary folder
         temp_dir = tempfile.TemporaryDirectory()
@@ -186,7 +186,7 @@ class TestDEM:
         assert isinstance(r2, xdem.dem.DEM)
 
         # Check all immutable attributes are equal
-        # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'indexes', 'nodata',
+        # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'bands', 'nodata',
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
         # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
@@ -263,7 +263,7 @@ class TestDEM:
         dem = DEM(fn_dem)
 
         # Reproject in WGS84 2D
-        dem = dem.reproject(dst_crs=4326)
+        dem = dem.reproject(crs=4326)
         dem_before_trans = dem.copy()
 
         # Set ellipsoid as vertical reference
@@ -271,7 +271,7 @@ class TestDEM:
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
         # Transform to EGM96 geoid
-        dem.to_vcrs(dst_vcrs="EGM96")
+        dem.to_vcrs(vcrs="EGM96")
         median_after = np.nanmean(dem)
 
         # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid

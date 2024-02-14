@@ -99,8 +99,8 @@ class DEM(SatelliteImage):  # type: ignore
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
                 super().__init__(filename_or_dataset, silent=silent, **kwargs)
 
-        # Ensure DEM has only one band: self.indexes can be None when data is not loaded through the Raster class
-        if self.indexes is not None and len(self.indexes) > 1:
+        # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
+        if self.bands is not None and len(self.bands) > 1:
             raise ValueError("DEM rasters should be composed of one band only")
 
         # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
@@ -233,39 +233,44 @@ class DEM(SatelliteImage):  # type: ignore
 
     def to_vcrs(
         self,
-        dst_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        src_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None = None,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
     ) -> None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
-        :param dst_vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
+        :param vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
-        :param src_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `dst_vcrs`.
+        :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `vcrs`.
 
         :return:
         """
 
-        if self.vcrs is None and src_vcrs is None:
+        if self.vcrs is None and force_source_vcrs is None:
             raise ValueError(
                 "The current DEM has no vertical reference, define one with .set_vref() "
                 "or by passing `src_vcrs` to perform a conversion."
             )
 
         # Initial Compound CRS (only exists if vertical CRS is not None, as checked above)
-        if src_vcrs is not None:
+        if force_source_vcrs is not None:
             # Warn if a vertical CRS already existed for that DEM
             if self.vcrs is not None:
                 warnings.warn(
                     category=UserWarning,
                     message="Overriding the vertical CRS of the DEM with the one provided in `src_vcrs`.",
                 )
-            src_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=src_vcrs)
+            src_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=force_source_vcrs)
         else:
             src_ccrs = self.ccrs
 
         # New destination Compound CRS
-        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=dst_vcrs))
+        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=vcrs))
 
         # If both compound CCRS are equal, do not run any transform
         if src_ccrs.equals(dst_ccrs):
@@ -284,4 +289,4 @@ class DEM(SatelliteImage):  # type: ignore
         self._data = zz_trans.astype(self.dtypes[0])  # type: ignore
 
         # Update vcrs (which will update ccrs if called)
-        self.set_vcrs(new_vcrs=dst_vcrs)
+        self.set_vcrs(new_vcrs=vcrs)
