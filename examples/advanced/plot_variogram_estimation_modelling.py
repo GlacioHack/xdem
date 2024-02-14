@@ -50,7 +50,7 @@ print(f"NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.")
 # **Does this mean that every pixel has an independent measurement error of** :math:`\pm` **2.5 meters?**
 # Let's plot the elevation differences to visually check the quality of the data.
 plt.figure(figsize=(8, 5))
-dh.show(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation differences (m)")
+dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation differences (m)")
 
 # %%
 # We clearly see that the residual elevation differences on stable terrain are not random. The positive and negative
@@ -66,7 +66,7 @@ dh.set_mask(np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data))
 # %%
 # We plot the elevation differences after filtering to check that we successively removed glacier signals.
 plt.figure(figsize=(8, 5))
-dh.show(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation differences (m)")
+dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation differences (m)")
 
 # %%
 # To quantify the spatial correlation of the data, we sample an empirical variogram.

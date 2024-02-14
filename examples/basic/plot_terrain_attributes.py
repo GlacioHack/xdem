@@ -34,7 +34,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     else:
         vlims = {}
 
-    attribute.show(ax=ax, cmap=cmap, add_cbar=add_cbar, cbar_title=label, **vlims)
+    attribute.plot(ax=ax, cmap=cmap, add_cbar=add_cbar, cbar_title=label, **vlims)
 
     plt.xticks([])
     plt.yticks([])

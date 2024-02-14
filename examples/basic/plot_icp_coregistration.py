@@ -26,7 +26,7 @@ dem = dem.crop(subset_extent)
 
 # %%
 # Let's plot a hillshade of the mountain for context.
-xdem.terrain.hillshade(dem).show(cmap="gray")
+xdem.terrain.hillshade(dem).plot(cmap="gray")
 
 # %%
 # To try the effects of rotation, we can artificially rotate the DEM using a transformation matrix.
@@ -51,7 +51,7 @@ rotated_dem = xdem.DEM.from_array(rotated_dem_data, transform=dem.transform, crs
 # We can plot the difference between the original and rotated DEM.
 # It is now artificially tilting from east down to the west.
 diff_before = dem - rotated_dem
-diff_before.show(cmap="coolwarm_r", vmin=-20, vmax=20)
+diff_before.plot(cmap="coolwarm_r", vmin=-20, vmax=20)
 plt.show()
 
 # %%
@@ -83,7 +83,7 @@ for i, (approach, name) in enumerate(approaches):
 
     ax = plt.subplot(3, 1, i + 1)
     plt.title(name)
-    diff.show(cmap="coolwarm_r", vmin=-20, vmax=20, ax=ax)
+    diff.plot(cmap="coolwarm_r", vmin=-20, vmax=20, ax=ax)
 
 plt.tight_layout()
 plt.show()

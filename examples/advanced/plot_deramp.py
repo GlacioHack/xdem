@@ -26,7 +26,7 @@ inlier_mask = ~glacier_outlines.create_mask(reference_dem)
 # These can be visualized by plotting a change map:
 
 diff_before = reference_dem - dem_to_be_aligned
-diff_before.show(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation change (m)")
+diff_before.plot(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation change (m)")
 
 
 # %%
@@ -41,7 +41,7 @@ corrected_dem = deramp.apply(dem_to_be_aligned)
 # Then, the new difference can be plotted.
 
 diff_after = reference_dem - corrected_dem
-diff_after.show(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation change (m)")
+diff_after.plot(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation change (m)")
 
 
 # %%
