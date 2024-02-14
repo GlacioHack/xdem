@@ -163,7 +163,7 @@ def nd_binning(
     if len(list_var) > 2:
         for j, statistic in enumerate(statistics):
             stats_binned_2d, list_bedges = binned_statistic_dd(
-                subsample=list_var, values=values, statistic=statistic, bins=list_var_bins, range=list_ranges
+                sample=list_var, values=values, statistic=statistic, bins=list_var_bins, range=list_ranges
             )[0:2]
             df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
         list_ii = []

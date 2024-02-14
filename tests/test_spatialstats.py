@@ -73,7 +73,7 @@ class TestBinning:
 
         # Subsampler
         indices = gu.raster.subsample_array(
-            self.diff.data.flatten(), sample=10000, return_indices=True, random_state=42
+            self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
         # 1D binning, by default will create 10 bins

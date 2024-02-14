@@ -750,7 +750,7 @@ class Coreg:
             # Take a subsample within the valid values
             indices = gu.raster.subsample_array(
                 ma_valid,
-                sample=self._meta["subsample"],
+                subsample=self._meta["subsample"],
                 return_indices=True,
                 random_state=self._meta["random_state"],
             )
@@ -1042,7 +1042,7 @@ class Coreg:
 
             # Randomly pick N inliers in the full_mask where N=subsample
             random_valids = subsample_array(
-                ref_dem[z_name].values, sample=subsample, return_indices=True, random_state=random_state
+                ref_dem[z_name].values, subsample=subsample, return_indices=True, random_state=random_state
             )
 
             # Subset to the N random inliers
