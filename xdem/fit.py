@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 import scipy
-from geoutils.raster import sample_array
+from geoutils.raster import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
 from xdem._typing import NDArrayf
@@ -376,7 +376,7 @@ def robust_norder_polynomial_fit(
 
     # Subsample data
     if subsample != 1:
-        subsamp = sample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
+        subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
         x = x[subsamp]
         y = y[subsamp]
 

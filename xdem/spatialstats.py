@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.raster import Mask, Raster, RasterType, get_array_and_mask, sample_array
+from geoutils.raster import Mask, Raster, RasterType, get_array_and_mask, subsample_array
 from geoutils.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from scipy import integrate
@@ -157,7 +157,7 @@ def nd_binning(
     if len(list_var) > 2:
         for j, statistic in enumerate(statistics):
             stats_binned_2d, list_bedges = binned_statistic_dd(
-                sample=list_var, values=values, statistic=statistic, bins=list_var_bins, range=list_ranges
+                subsample=list_var, values=values, statistic=statistic, bins=list_var_bins, range=list_ranges
             )[0:2]
             df_stats_nd[statistics_name[j]] = stats_binned_2d.flatten()
         list_ii = []
@@ -968,7 +968,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = sample_array(values_sp, sample=subsample, return_indices=True, random_state=rnd)
+    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 

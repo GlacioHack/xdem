@@ -184,7 +184,7 @@ class TestAffineCoreg:
         shifted_ref = self.ref.copy()
         shifted_ref.shift(shift_px[0] * res, shift_px[1] * res, inplace=True)
 
-        shifted_ref_points = shifted_ref.to_points(as_array=False, sample=subsample, pixel_offset="center").ds
+        shifted_ref_points = shifted_ref.to_points(as_array=False, subsample=subsample, pixel_offset="center").ds
         shifted_ref_points["E"] = shifted_ref_points.geometry.x
         shifted_ref_points["N"] = shifted_ref_points.geometry.y
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)

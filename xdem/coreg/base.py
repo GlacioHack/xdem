@@ -42,7 +42,7 @@ from geoutils.raster import (
     RasterType,
     get_array_and_mask,
     raster,
-    sample_array,
+    subsample_array,
     subdivide_array,
 )
 from tqdm import tqdm
@@ -450,7 +450,7 @@ def deramping(
         print("Estimating deramp function...")
 
     # reduce number of elements for speed
-    rand_indices = sample_array(x_coords, sample=subsample, return_indices=True)
+    rand_indices = subsample_array(x_coords, subsample=subsample, return_indices=True)
     x_coords = x_coords[rand_indices]
     y_coords = y_coords[rand_indices]
     ddem = ddem[rand_indices]
@@ -748,7 +748,7 @@ class Coreg:
             # Build a low memory masked array with invalid values masked to pass to subsampling
             ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
             # Take a subsample within the valid values
-            indices = gu.raster.sample_array(
+            indices = gu.raster.subsample_array(
                 ma_valid,
                 sample=self._meta["subsample"],
                 return_indices=True,
@@ -1041,7 +1041,7 @@ class Coreg:
         if subsample != 1.0:
 
             # Randomly pick N inliers in the full_mask where N=subsample
-            random_valids = sample_array(
+            random_valids = subsample_array(
                 ref_dem[z_name].values, sample=subsample, return_indices=True, random_state=random_state
             )
 
