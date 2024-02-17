@@ -35,7 +35,7 @@ errors, df_binning, error_function = xdem.spatialstats.infer_heteroscedasticity_
 
 # %%
 # The first output corresponds to the error map for the DEM (:math:`\pm` 1\ :math:`\sigma` level):
-errors.show(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
+errors.plot(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
 
 # %%
 # The second output is the dataframe of 2D binning with slope and maximum curvature:

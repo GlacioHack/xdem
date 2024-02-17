@@ -11,7 +11,7 @@ scipy==1.*
 tqdm
 scikit-image==0.*
 scikit-gstat>=1.0
+geoutils==0.1.*
 pip
-geoutils
 setuptools>=64
 setuptools_scm[toml]>=8

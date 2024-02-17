@@ -440,7 +440,7 @@ class TestBiasCorr:
             synth = self.ref.copy(new_array=synthetic_bias.reshape(np.shape(self.ref.data)))
             import matplotlib.pyplot as plt
 
-            synth.show()
+            synth.plot()
             plt.show()
 
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)

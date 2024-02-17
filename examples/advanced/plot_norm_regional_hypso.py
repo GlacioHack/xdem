@@ -61,7 +61,7 @@ plt_extent = [
 np.random.seed(42)
 random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5) > 0.7) & (glacier_index_map > 0)
 
-random_nans.show()
+random_nans.plot()
 
 # %%
 # The normalized hypsometric signal shows the tendency for elevation change as a function of elevation.

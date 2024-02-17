@@ -269,4 +269,4 @@ for s, c in [(0.0, 0.1), (50.0, 0.1), (0.0, 20.0), (50.0, 20.0)]:
 maxc = np.maximum(np.abs(profc), np.abs(planc))
 errors = dh.copy(new_array=dh_err_fun((slope.data, maxc.data)))
 
-errors.show(cmap="Reds", vmin=2, vmax=8, cbar_title=r"Elevation error ($1\sigma$, m)")
+errors.plot(cmap="Reds", vmin=2, vmax=8, cbar_title=r"Elevation error ($1\sigma$, m)")
