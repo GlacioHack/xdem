@@ -30,7 +30,7 @@ xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geouti
 which most methods can be called and the {class}`~xdem.coreg.Coreg` classes to build modular coregistration pipelines.
 
 Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop them to a common extent,
-align the DEMs using coregistration, estimate the elevation change, estimate elevation change error using stable 
+align the DEMs using coregistration, estimate the elevation change, estimate elevation change error using stable
 terrain, and finally plot and save the result!
 
 ```{code-cell} ipython3
