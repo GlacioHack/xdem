@@ -30,23 +30,28 @@ xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geouti
 which most methods can be called and the {class}`~xdem.coreg.Coreg` classes to build modular coregistration pipelines.
 
 Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop them to a common extent,
-align the DEMs using coregistration and estimate a map of error in elevation difference using stable terrain, and
-finally plot and save the result!
+align the DEMs using coregistration, estimate the elevation change, estimate elevation change error using stable 
+terrain, and finally plot and save the result!
 
 ```{code-cell} ipython3
 import xdem
 import geoutils as gu
 
-# Examples files: filepaths to two DEMs and glacier outlines
-filename_dem_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-filename_dem_tba = xdem.examples.get_path("longyearbyen_tba_dem")
-filename_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
+# Examples files: filenames of two DEMs and some glacier outlines
+fn_dem_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+fn_dem_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+fn_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
 
+# Print filenames
+print(f"DEM 1: {fn_dem_ref}, \nDEM 2: {fn_dem_tba}, \nOutlines: {fn_glacier_outlines}")
+```
+
+```{code-cell} ipython3
 # Open files by instantiating DEM and Vector
 # (DEMs are loaded lazily = only metadata but not array unless required)
-dem_ref = xdem.DEM(filename_dem_ref)
-dem_tba = xdem.DEM(filename_dem_tba)
-vect_gla = gu.Vector(filename_glacier_outlines)
+dem_ref = xdem.DEM(fn_dem_ref)
+dem_tba = xdem.DEM(fn_dem_tba)
+vect_gla = gu.Vector(fn_glacier_outlines)
 
 # Clip outlines to extent of reference DEM (method from GeoUtils)
 vect_gla = vect_gla.crop(dem_ref, clip=True)
@@ -71,22 +76,25 @@ slope, maximum_curvature = xdem.terrain.get_terrain_attribute(
 )
 
 # Estimate elevation change error from stable terrain as a function of slope and curvature
-dem_error = xdem.spatialstats.infer_heteroscedasticity_from_stable(
+dh_err = xdem.spatialstats.infer_heteroscedasticity_from_stable(
     dh, list_var=[slope, maximum_curvature], unstable_mask=mask_gla
 )[0]
 
-# Plot error map of elevation difference and glacier outlines
-dem_error.plot(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
-vect_gla.plot(dem_error, fc='none', ec='k', lw=0.5)
+# Plot dh, glacier outlines and its error map
+dh.plot(cmap="RdYlBu", cbar_title="Elevation change (m)")
+vect_gla.plot(dh, fc='none', ec='k', lw=0.5)
+
+dh_err.plot(ax="new", vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation change error (1$\sigma$, m)")
+vect_gla.plot(dh_err, fc='none', ec='k', lw=0.5)
 
 # Save to file
-dem_error.save("my_dem_error.tif")
+dh_err.save("dh_error.tif")
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
 import os
-os.remove("my_dem_error.tif")
+os.remove("dh_error.tif")
 ```
 
 (quick-gallery)=
