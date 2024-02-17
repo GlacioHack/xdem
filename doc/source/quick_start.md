@@ -37,7 +37,7 @@ finally plot and save the result!
 import xdem
 import geoutils as gu
 
-# Examples files: paths to two GeoTIFFs and an ESRI shapefile of glacier outlines
+# Examples files: filepaths to two DEMs and glacier outlines
 filename_dem_ref = xdem.examples.get_path("longyearbyen_ref_dem")
 filename_dem_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 filename_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
@@ -76,8 +76,8 @@ dem_error = xdem.spatialstats.infer_heteroscedasticity_from_stable(
 )[0]
 
 # Plot error map of elevation difference and glacier outlines
-dem_error.show(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
-vect_gla.show(dem_error, fc='none', ec='k', lw=0.5)
+dem_error.plot(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
+vect_gla.plot(dem_error, fc='none', ec='k', lw=0.5)
 
 # Save to file
 dem_error.save("my_dem_error.tif")
