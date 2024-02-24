@@ -130,6 +130,49 @@ def deprecate(removal_version: Version = None, details: str = None) -> Callable[
     return deprecator_func
 
 
+def copy_doc(
+    module_to_copy: object,
+    remove_dem_res_params: bool = False,
+) -> Callable:  # type: ignore
+    """
+    A decorator to copy docstring from a function to another one while replacing the docstring.
+    Used for copying xdem.terrain documentation to xdem.DEM.
+
+    :param module_to_copy: Name of module to copy the function from
+    :param remove_dem_res_params: To remove the parameters dem: and resolution: in the terrain docstring,
+        as they are useless for the DEM class.
+    """
+
+    def decorator(decorated: Callable) -> Callable:  # type: ignore
+        # Get name of decorated object
+        # If object is a property, get name through fget
+        try:
+            decorated_name = decorated.fget.__name__
+        # Otherwise, directly with the name attribute
+        except AttributeError:
+            decorated_name = decorated.__name__
+
+        # Get parent doc
+        other_doc = getattr(module_to_copy, decorated_name).__doc__
+
+        # Replace argument description of dem and resolution (not used in the DEM class, only in terrain)
+        if remove_dem_res_params:
+
+            # Find and remove them if they exist
+            if ":param dem:" in other_doc:
+                dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+                other_doc = other_doc.replace(dem_section, "")
+            if ":param resolution:" in other_doc:
+                resolution_section = "\n    :param resolution:" + \
+                                     other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                other_doc = other_doc.replace(resolution_section, "")
+
+        decorated.__doc__ = other_doc
+
+        return decorated
+
+    return decorator
+
 def diff_environment_yml(
     fn_env: str | dict[str, Any], fn_devenv: str | dict[str, Any], print_dep: str = "both", input_dict: bool = False
 ) -> None:

@@ -1134,7 +1134,7 @@ def slope(
     :param dem: The DEM to generate a slope map for.
     :param resolution: The X/Y or (X, Y) resolution of the DEM.
     :param method: Method to calculate slope: "Horn" or "ZevenbergThorne".
-    :param degrees: Return a slope map in degrees (False means radians).
+    :param degrees: Whether to use degrees or radians (False means radians).
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:
@@ -1192,7 +1192,7 @@ def aspect(
 
     :param dem: The DEM to calculate the aspect from.
     :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
-    :param degrees: Return an aspect map in degrees (if False, returns radians)
+    :param degrees: Whether to use degrees or radians (False means radians).
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:
