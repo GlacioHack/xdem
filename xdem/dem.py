@@ -404,11 +404,10 @@ class DEM(SatelliteImage):  # type: ignore
         """
         Coregister DEM to another DEM in three dimensions.
 
-        By default, the other DEM is the reference. Any coregistration method or pipeline can be passed,
-        default is only horizontal and vertical shift of Nuth and Kääb (2011).
+        Any coregistration method or pipeline can be passed, default is only horizontal and vertical shift of
+        Nuth and Kääb (2011).
 
-        :param reference_dem: Other DEM used as reference by default (switch argument `other_is_reference` to True to
-            use this DEM).
+        :param reference_dem: Reference DEM the alignment is made towards.
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.

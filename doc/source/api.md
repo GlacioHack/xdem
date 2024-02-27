@@ -179,6 +179,25 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.BlockwiseCoreg
 ```
 
+#### Fitting and applying transforms
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.Coreg.fit
+    xdem.coreg.Coreg.apply
+```
+
+#### Other functionalities
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.Coreg.residuals
+```
+
 ### Affine coregistration methods
 
 
