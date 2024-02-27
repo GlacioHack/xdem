@@ -98,6 +98,7 @@ intro_accuracy_precision
 :caption: Features
 :maxdepth: 2
 
+elevation_objects
 vertical_ref
 terrain
 coregistration
