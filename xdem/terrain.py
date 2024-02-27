@@ -18,6 +18,21 @@ try:
 except ImportError:
     _has_rd = False
 
+available_attributes = [
+    "slope",
+    "aspect",
+    "hillshade",
+    "curvature",
+    "planform_curvature",
+    "profile_curvature",
+    "maximum_curvature",
+    "topographic_position_index",
+    "terrain_ruggedness_index",
+    "roughness",
+    "rugosity",
+    "fractal_roughness",
+]
+
 
 def _raster_to_rda(rst: RasterType) -> rd.rdarray:
     """

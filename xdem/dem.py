@@ -9,12 +9,18 @@ import numpy as np
 import rasterio as rio
 from affine import Affine
 from geoutils import SatelliteImage
-from geoutils.raster import RasterType, Mask
+from geoutils.raster import Mask, RasterType
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
 
-from xdem._typing import MArrayf, NDArrayf
+from xdem import coreg, terrain
+from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem.misc import copy_doc
+from xdem.spatialstats import (
+    infer_heteroscedasticity_from_stable,
+    infer_spatial_correlation_from_stable,
+)
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
     _grid_from_user_input,
@@ -23,10 +29,6 @@ from xdem.vcrs import (
     _vcrs_from_crs,
     _vcrs_from_user_input,
 )
-from xdem.coreg import Coreg
-from xdem import terrain
-from xdem.misc import copy_doc
-from xdem.spatialstats import estimate_model_heteroscedasticity, estimate_model_spatial_correlation
 
 dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
 
@@ -298,11 +300,12 @@ class DEM(SatelliteImage):  # type: ignore
         self.set_vcrs(new_vcrs=vcrs)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(self,
-              method: str = "Horn",
-              degrees: bool = True,
-              use_richdem: bool = False,
-              ) -> RasterType:
+    def slope(
+        self,
+        method: str = "Horn",
+        degrees: bool = True,
+        use_richdem: bool = False,
+    ) -> RasterType:
         return terrain.slope(self, method=method, degrees=degrees, use_richdem=use_richdem)
 
     @copy_doc(terrain, remove_dem_res_params=True)
@@ -325,12 +328,14 @@ class DEM(SatelliteImage):  # type: ignore
         use_richdem: bool = False,
     ) -> RasterType:
 
-        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor, use_richdem=use_richdem)
+        return terrain.hillshade(
+            self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor, use_richdem=use_richdem
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def curvature(
-            self,
-            use_richdem: bool = False,
+        self,
+        use_richdem: bool = False,
     ) -> RasterType:
 
         return terrain.curvature(self, use_richdem=use_richdem)
@@ -345,16 +350,16 @@ class DEM(SatelliteImage):  # type: ignore
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def profile_curvature(
-            self,
-            use_richdem: bool = False,
+        self,
+        use_richdem: bool = False,
     ) -> RasterType:
 
         return terrain.profile_curvature(self, use_richdem=use_richdem)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def maximum_curvature(
-            self,
-            use_richdem: bool = False,
+        self,
+        use_richdem: bool = False,
     ) -> RasterType:
 
         return terrain.maximum_curvature(self, use_richdem=use_richdem)
@@ -365,9 +370,7 @@ class DEM(SatelliteImage):  # type: ignore
         return terrain.topographic_position_index(self, window_size=window_size)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def terrain_ruggedness_index(
-            self, method: str = "Riley", window_size: int = 3
-    ) -> RasterType:
+    def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
 
         return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
 
@@ -387,25 +390,26 @@ class DEM(SatelliteImage):  # type: ignore
         return terrain.fractal_roughness(self, window_size=window_size)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def get_terrain_attribute(self,
-                              attribute: str | list[str],
-                              **kwargs) -> RasterType | list[RasterType]:
+    def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
-    def coregister_3d(self,
-                      reference_dem: DEM,
-                      coreg: Coreg = None,
-                      inlier_mask: Mask | np.ndarray = None,
-                      bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-                      **kwargs: Any) -> DEM:
+    def coregister_3d(
+        self,
+        reference_dem: DEM,
+        coreg_method: coreg.Coreg = None,
+        inlier_mask: Mask | NDArrayb = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
+        **kwargs: Any,
+    ) -> DEM:
         """
         Coregister DEM to another DEM in three dimensions.
 
         By default, the other DEM is the reference. Any coregistration method or pipeline can be passed,
         default is only horizontal and vertical shift of Nuth and Kääb (2011).
 
-        :param reference_dem: Other DEM used as reference by default (switch argument `other_is_reference` to True to use this DEM),
-        :param coreg: Coregistration method or pipeline.
+        :param reference_dem: Other DEM used as reference by default (switch argument `other_is_reference` to True to
+            use this DEM).
+        :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
         :param kwargs: Keyword arguments passed to Coreg.fit().
@@ -413,36 +417,64 @@ class DEM(SatelliteImage):  # type: ignore
         :return: Coregistered DEM.
         """
 
-        coreg.fit(reference_dem=reference_dem, dem_to_be_aligned=self, inlier_mask=inlier_mask, bias_vars=bias_vars, **kwargs)
-        return coreg.apply(self)
+        if coreg_method is None:
+            coreg_method = coreg.NuthKaab()
 
-    def estimate_uncertainty(self,
-            other_dem: DEM,
-            stable_terrain: Mask | np.ndarray,
-            precision_of_other: Literal["finer"] | Literal["same"] = "finer",
-            list_vars: list[RasterType] = None,
-            variogram_model: str = "spherical+spherical",
-            ) -> tuple[RasterType, Variogram]:
+        coreg_method.fit(
+            reference_dem=reference_dem, dem_to_be_aligned=self, inlier_mask=inlier_mask, bias_vars=bias_vars, **kwargs
+        )
+        return coreg_method.apply(self)
+
+    def estimate_uncertainty(
+        self,
+        other_dem: DEM,
+        stable_terrain: Mask | NDArrayb = None,
+        precision_of_other: Literal["finer"] | Literal["same"] = "finer",
+        list_vars: tuple[RasterType | str, ...] = ("slope", "maximum_curvature"),
+        list_vario_models: str | tuple[str, ...] = ("spherical", "spherical"),
+    ) -> tuple[RasterType, Variogram]:
         """
         Estimate uncertainty of DEM.
 
-        Returns a map of per-pixel errors (based on slope and curvature by default) and a function describing the
-        spatial correlation of error.
+        Derives a map of per-pixel errors (based on slope and curvature by default) and a function describing the
+        spatial correlation of error (between 0 and 1) with spatial lag (distance between observations).
 
-        Uses stable terrain as an error proxy and assumes a higher-precision DEM is used as reference,
+        Uses stable terrain as an error proxy and assumes a higher or similar-precision DEM is used as reference,
         see Hugonnet et al. (2022).
 
         :param other_dem: Other DEM to use for estimation, either of finer or similar precision for reliable estimates.
         :param stable_terrain: Mask of stable terrain to use as error proxy.
         :param precision_of_other: Whether finer precision (3 times more precise = 95% of estimated error will come from
             this DEM) or similar precision (for instance another acquisition of the same DEM).
-        :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity).
-            Defaults to slope and maximum curvature of the DEM.
-        :param variogram_model: Variogram forms to model the spatial correlation of error.
+        :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity). Either rasters
+            or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
+        :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
+            a sum of models.
 
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """
 
+        # Elevation change
+        dh = other_dem.reproject(self) - self
 
-        estimate_model_heteroscedasticity()
+        # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
+        # See Equation 7 and 8 of Hugonnet et al. (2022)
+        if precision_of_other == "same":
+            dh /= np.sqrt(2)
 
+        # Derive terrain attributes of DEM if string are passed in the list of variables
+        list_var_rast = []
+        for var in list_vars:
+            if isinstance(var, str):
+                list_var_rast.append(getattr(terrain, var)(self))
+            else:
+                list_var_rast.append(var)
+
+        # Estimate per-pixel uncertainty
+        sig_dh = infer_heteroscedasticity_from_stable(dvalues=dh, list_var=list_var_rast, stable_mask=stable_terrain)[0]
+
+        # Estimate spatial correlation
+        corr_sig = infer_spatial_correlation_from_stable(
+            dvalues=dh, list_models=list(list_vario_models), stable_mask=stable_terrain, errors=sig_dh
+        )[2]
+        return sig_dh, corr_sig

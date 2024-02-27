@@ -163,8 +163,9 @@ def copy_doc(
                 dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
                 other_doc = other_doc.replace(dem_section, "")
             if ":param resolution:" in other_doc:
-                resolution_section = "\n    :param resolution:" + \
-                                     other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                resolution_section = (
+                    "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                )
                 other_doc = other_doc.replace(resolution_section, "")
 
         decorated.__doc__ = other_doc
@@ -172,6 +173,7 @@ def copy_doc(
         return decorated
 
     return decorator
+
 
 def diff_environment_yml(
     fn_env: str | dict[str, Any], fn_devenv: str | dict[str, Any], print_dep: str = "both", input_dict: bool = False

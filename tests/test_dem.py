@@ -6,8 +6,7 @@ import tempfile
 import warnings
 from typing import Any
 
-import geoutils.raster as gr
-import geoutils.raster.satimg as si
+import geoutils as gu
 import numpy as np
 import pytest
 import rasterio as rio
@@ -36,14 +35,14 @@ class TestDEM:
         assert isinstance(dem2, DEM)
 
         # From Raster
-        r = gr.Raster(fn_img)
+        r = gu.Raster(fn_img)
         dem3 = DEM(r)
         assert isinstance(dem3, DEM)
 
         # From SatelliteImage
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Parse metadata from file not implemented")
-            img = si.SatelliteImage(fn_img)
+            img = gu.SatelliteImage(fn_img)
         dem4 = DEM(img)
         assert isinstance(dem4, DEM)
 
@@ -51,7 +50,7 @@ class TestDEM:
 
         # Check all attributes
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + gu.raster.satimg.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
             assert all(at == attrs_per_dem[0] for at in attrs_per_dem)
@@ -193,7 +192,7 @@ class TestDEM:
 
         # using list directly available in Class
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + si.satimg_attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + gu.raster.satimg.satimg_attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)
 
@@ -338,3 +337,44 @@ class TestDEM:
 
         # Check the shift is the one expect within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
+
+    @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)  # type: ignore
+    def test_terrain_attributes_wrappers(self, terrain_attribute: str) -> None:
+        """Check the terrain attributes corresponds to the ones derived in the terrain module."""
+
+        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem = DEM(fn_dem)
+
+        dem_class_attr = getattr(dem, terrain_attribute)()
+        terrain_module_attr = getattr(xdem.terrain, terrain_attribute)(dem)
+
+        assert dem_class_attr.raster_equal(terrain_module_attr)
+
+    def test_coregister_3d_wrapper(self) -> None:
+
+        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+
+        dem_class_aligned = dem_tba.coregister_3d(dem_ref, random_state=42)
+
+        nk = xdem.coreg.NuthKaab()
+        nk.fit(dem_ref, dem_tba, random_state=42)
+        coreg_module_aligned = nk.apply(dem_tba)
+
+        assert dem_class_aligned.raster_equal(coreg_module_aligned)
+
+    def test_estimate_uncertainty(self) -> None:
+
+        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+
+        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref)
+
+        assert isinstance(sig_h, gu.Raster)
+        assert callable(corr_sig)
