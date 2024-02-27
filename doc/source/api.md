@@ -19,8 +19,8 @@ documentation.
 ## DEM
 
 ```{important}
-A {class}`~xdem.DEM` inherits all raster methods and attributes from the {class}`~geoutils.Raster` object of GeoUtils. 
-Below, we only repeat the core attributes and methods of GeoUtils, see 
+A {class}`~xdem.DEM` inherits all raster methods and attributes from the {class}`~geoutils.Raster` object of GeoUtils.
+Below, we only repeat the core attributes and methods of GeoUtils, see
 [the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 

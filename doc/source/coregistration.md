@@ -27,8 +27,8 @@ Those transformations include for instance:
 
 Coregistrations are defined using either a single method or pipeline of {class}`~xdem.coreg.Coreg` methods, that are listed below.
 
-Performing the coregistration on a pair of DEM is done either by using {func}`xdem.DEM.coregister_3d` from the DEM that will be aligned, or 
-by specifying the {func}`xdem.coreg.Coreg.fit` and {func}`xdem.coreg.Coreg.apply` steps, which allows array inputs and 
+Performing the coregistration on a pair of DEM is done either by using {func}`xdem.DEM.coregister_3d` from the DEM that will be aligned, or
+by specifying the {func}`xdem.coreg.Coreg.fit` and {func}`xdem.coreg.Coreg.apply` steps, which allows array inputs and
 to apply the same fitted transformation to several objects (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ## Introduction
