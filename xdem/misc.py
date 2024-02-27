@@ -168,6 +168,9 @@ def copy_doc(
                 )
                 other_doc = other_doc.replace(resolution_section, "")
 
+        # Remove docstring examples
+        other_doc = other_doc.split(":examples:")[0]
+
         decorated.__doc__ = other_doc
 
         return decorated

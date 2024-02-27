@@ -21,11 +21,11 @@ Below, a summary of the {class}`~xdem.DEM` object and its methods.
 ## Object definition and attributes
 
 A {class}`~xdem.DEM` is a {class}`~geoutils.Raster` with an additional georeferenced vertical dimension stored in the attribute {attr}`~xdem.DEM.vcrs`.
-It inherits the **four main attributes** of {class}`~geoutils.Raster` which are {attr}`~xdem.DEM.data`, 
+It inherits the **four main attributes** of {class}`~geoutils.Raster` which are {attr}`~xdem.DEM.data`,
 {attr}`~xdem.DEM.transform`, {attr}`~xdem.DEM.crs` and {attr}`~xdem.DEM.nodata`.
 
-Many other useful raster attributes, such as {attr}`~xdem.DEM.bounds` and {attr}`~xdem.DEM.res` and raster methods 
-such {attr}`~xdem.DEM.reproject` or {attr}`~xdem.DEM.crop` are available through the {class}`~geoutils.Raster` object. 
+Many other useful raster attributes, such as {attr}`~xdem.DEM.bounds` and {attr}`~xdem.DEM.res` and raster methods
+such {attr}`~xdem.DEM.reproject` or {attr}`~xdem.DEM.crop` are available through the {class}`~geoutils.Raster` object.
 
 ```{important}
 Below, we only cover a few core aspects linked to the {class}`~geoutils.Raster` object. For more details, see [GeoUtils' Raster documentation page](https://geoutils.readthedocs.io/en/stable/raster_class.html).
@@ -69,6 +69,3 @@ dem.save("mydem.tif")
 import os
 os.remove("mydem.tif")
 ```
-
-
-
