@@ -11,11 +11,17 @@ documentation.
 .. currentmodule:: xdem
 ```
 
-## DEM
-
 ```{eval-rst}
 .. minigallery:: xdem.DEM
       :add-heading:
+```
+
+## DEM
+
+```{important}
+A {class}`~xdem.DEM` inherits all raster methods and attributes from the {class}`~geoutils.Raster` object of GeoUtils. 
+Below, we only repeat the core attributes and methods of GeoUtils, see 
+[the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 
 ### Opening a DEM
@@ -41,9 +47,19 @@ documentation.
 
 ### Unique attributes
 
-```{note}
-A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Raster`, see [the dedicated section of GeoUtils' API](https://geoutils.readthedocs.io/en/latest/api.html#unique-attributes).
+#### Inherited from {class}`~geoutils.Raster`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.data
+    DEM.crs
+    DEM.transform
+    DEM.nodata
 ```
+
+#### Specific to {class}`~xdem.DEM`
 
 ```{eval-rst}
 .. autosummary::
@@ -52,16 +68,19 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
     DEM.vcrs
 ```
 
-### Derived attributes
+### Georeferencing
+
+#### Inherited from {class}`~geoutils.Raster`
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    DEM.ccrs
+    DEM.reproject
+    DEM.crop
 ```
 
-### Vertical referencing
+#### Vertical referencing for {class}`~xdem.DEM`
 
 ```{eval-rst}
 .. autosummary::
@@ -69,6 +88,53 @@ A {class}`~xdem.DEM` inherits four unique attributes from {class}`~geoutils.Rast
 
     DEM.set_vcrs
     DEM.to_vcrs
+```
+
+### Raster-vector interface
+
+```{note}
+See the full list of vector methods in [GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/api.html#vector).
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.polygonize
+    DEM.proximity
+```
+
+### Coregistration
+
+```{tip}
+To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.coregister_3d
+```
+
+### Terrain attributes
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.slope
+    DEM.aspect
+    DEM.hillshade
+    DEM.curvature
+    DEM.profile_curvature
+    DEM.planform_curvature
+    DEM.maximum_curvature
+    DEM.topographic_position_index
+    DEM.terrain_ruggedness_index
+    DEM.roughness
+    DEM.rugosity
+    DEM.fractal_roughness
 ```
 
 ## dDEM
