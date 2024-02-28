@@ -24,7 +24,7 @@ A {class}`~xdem.DEM` is a {class}`~geoutils.Raster` with an additional georefere
 It inherits the **four main attributes** of {class}`~geoutils.Raster` which are {attr}`~xdem.DEM.data`,
 {attr}`~xdem.DEM.transform`, {attr}`~xdem.DEM.crs` and {attr}`~xdem.DEM.nodata`.
 
-Many other useful raster attributes and methods are available through the {class}`~geoutils.Raster` object, such as 
+Many other useful raster attributes and methods are available through the {class}`~geoutils.Raster` object, such as
 {attr}`~geoutils.Raster.bounds`, {attr}`~geoutils.Raster.res`, {func}`~xdem.DEM.reproject` and {func}`~xdem.DEM.crop` .
 
 ```{tip}
@@ -88,7 +88,7 @@ vect_gla.plot(dem)  # We pass the DEM as reference for the plot CRS/extent
 
 ## Vertical referencing
 
-The vertical reference of a {class}`~xdem.DEM` is stored in {attr}`~xdem.DEM.vcrs`, and derived either from its 
+The vertical reference of a {class}`~xdem.DEM` is stored in {attr}`~xdem.DEM.vcrs`, and derived either from its
 {attr}`~xdem.DEM.crs` (if 3D) or assessed from the DEM product name during instantiation.
 
 ```{code-cell} ipython3
@@ -96,7 +96,7 @@ The vertical reference of a {class}`~xdem.DEM` is stored in {attr}`~xdem.DEM.vcr
 dem.vcrs
 ```
 
-In this case, the DEM has no defined vertical CRS, which is quite common. To set the vertical CRS manually, 
+In this case, the DEM has no defined vertical CRS, which is quite common. To set the vertical CRS manually,
 use {class}`~xdem.DEM.set_vcrs`. Then, to transform into another vertical CRS, use {class}`~xdem.DEM.to_vcrs`.
 
 ```{code-cell} ipython3
@@ -112,7 +112,7 @@ For more details on vertical referencing, see the {ref}`vertical-ref` page.
 
 ## Terrain attributes
 
-A wide range of terrain attributes can be derived from a {class}`~xdem.DEM`, with several methods and options available, 
+A wide range of terrain attributes can be derived from a {class}`~xdem.DEM`, with several methods and options available,
 by calling the function corresponding to the attribute name such as {func}`~xdem.DEM.slope`.
 
 ```{code-cell} ipython3
@@ -127,8 +127,8 @@ For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 
 ## Coregistration
 
-3D coregistration is performed with {func}`~xdem.DEM.coregister_3d`, which aligns the 
-{class}`~xdem.DEM` to another DEM using a pipeline defined with a {class}`~xdem.coreg.Coreg` 
+3D coregistration is performed with {func}`~xdem.DEM.coregister_3d`, which aligns the
+{class}`~xdem.DEM` to another DEM using a pipeline defined with a {class}`~xdem.coreg.Coreg`
 object (defaults to horizontal and vertical shifts).
 
 ```{code-cell} ipython3
@@ -150,9 +150,9 @@ For more details on building coregistration pipelines and accessing metadata, se
 
 ## Uncertainty analysis
 
-Estimation of DEM-related uncertainty can be performed with {func}`~xdem.DEM.estimate_uncertainty`, which estimates both 
-**an error map** considering variable per-pixel errors and **the spatial correlation of errors**. The workflow relies 
-on an independent elevation data object that is **assumed to have either much finer or similar precision**, and uses 
+Estimation of DEM-related uncertainty can be performed with {func}`~xdem.DEM.estimate_uncertainty`, which estimates both
+**an error map** considering variable per-pixel errors and **the spatial correlation of errors**. The workflow relies
+on an independent elevation data object that is **assumed to have either much finer or similar precision**, and uses
 stable terrain as a proxy.
 
 ```{code-cell} ipython3

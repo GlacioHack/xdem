@@ -35,7 +35,7 @@ In particular, they help to:
 
 
 Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics), are essential
-for the analysis of observations distributed in space. Spatial statistics are valid if the variable of interest 
+for the analysis of observations distributed in space. Spatial statistics are valid if the variable of interest
 verifies [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
 That is, if the three following assumptions are verified:
 
