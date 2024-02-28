@@ -104,7 +104,7 @@ terrain
 coregistration
 biascorr
 comparison
-spatialstats
+uncertainty
 ```
 
 ```{toctree}

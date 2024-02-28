@@ -10,21 +10,19 @@ kernelspec:
   language: python
   name: xdem
 ---
-(spatialstats)=
+(uncertainty)=
 
-# Spatial statistics
+# Uncertainty analysis
 
-Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics), are essential
-for the analysis of observations distributed in space.
-To analyze DEMs, xDEM integrates spatial statistics tools specific to DEMs described in recent literature,
+To analyze DEMs, xDEM integrates spatial uncertainty analysis tools from the recent DEM literature,
 in particular in [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922) and
 [Rolstad et al. (2009)](https://doi.org/10.3189/002214309789470950). The implementation of these methods relies
-partially on the package [scikit-gstat](https://mmaelicke.github.io/scikit-gstat/index.html).
+partially on the package [scikit-gstat](https://mmaelicke.github.io/scikit-gstat/index.html) for spatial statistics.
 
-The spatial statistics tools can be used to assess the precision of DEMs (see the definition of precision in {ref}`intro`).
-In particular, these tools help to:
+The uncertainty analysis tools can be used to assess the precision of DEMs (see the definition of precision in {ref}`intro`).
+In particular, they help to:
 
-> - account for elevation heteroscedasticity (e.g., varying precision with terrain slope),
+> - account for elevation heteroscedasticity (e.g., varying precision such as with terrain slope or stereo-correlation),
 > - quantify the spatial correlation of errors in DEMs (e.g., native spatial resolution, instrument noise),
 > - estimate robust errors for observations analyzed in space (e.g., average or sum of elevation, or of elevation changes),
 > - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
@@ -35,7 +33,10 @@ In particular, these tools help to:
 
 ### Assumptions for statistical inference in spatial statistics
 
-Spatial statistics are valid if the variable of interest verifies [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
+
+Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics), are essential
+for the analysis of observations distributed in space. Spatial statistics are valid if the variable of interest 
+verifies [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
 That is, if the three following assumptions are verified:
 
 > 1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,

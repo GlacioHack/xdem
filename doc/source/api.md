@@ -24,7 +24,7 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
 [the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 
-### Opening a DEM
+### Opening or saving a DEM
 
 ```{eval-rst}
 .. autosummary::
@@ -32,6 +32,17 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
 
     DEM
     DEM.info
+    DEM.save
+```
+
+### Plotting a DEM
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM
+    DEM.plot
 ```
 
 ### Create from an array
