@@ -141,8 +141,8 @@ class BiasCorr(Coreg):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
@@ -171,7 +171,7 @@ class BiasCorr(Coreg):
         # Compute difference and mask of valid data
         # TODO: Move the check up to Coreg.fit()?
 
-        diff = ref_dem - tba_dem
+        diff = ref_elev - tba_elev
         valid_mask = np.logical_and.reduce(
             (inlier_mask, np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values()))
         )
@@ -319,7 +319,7 @@ class BiasCorr(Coreg):
 
     def _apply_rst(  # type: ignore
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -362,7 +362,7 @@ class BiasCorr(Coreg):
                     statistic=self._meta["bin_statistic"],
                 )
 
-        dem_corr = dem + corr
+        dem_corr = elev + corr
 
         return dem_corr, transform
 
@@ -414,8 +414,8 @@ class BiasCorr1D(BiasCorr):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
@@ -434,8 +434,8 @@ class BiasCorr1D(BiasCorr):
             )
 
         super()._fit_rst_rst(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars=bias_vars,
             transform=transform,
@@ -489,8 +489,8 @@ class BiasCorr2D(BiasCorr):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
@@ -508,8 +508,8 @@ class BiasCorr2D(BiasCorr):
             )
 
         super()._fit_rst_rst(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars=bias_vars,
             transform=transform,
@@ -565,8 +565,8 @@ class BiasCorrND(BiasCorr):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
@@ -581,8 +581,8 @@ class BiasCorrND(BiasCorr):
             raise ValueError('At least three variables have to be provided through the argument "bias_vars".')
 
         super()._fit_rst_rst(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars=bias_vars,
             transform=transform,
@@ -631,8 +631,8 @@ class DirectionalBias(BiasCorr1D):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
@@ -646,7 +646,7 @@ class DirectionalBias(BiasCorr1D):
             print("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=ref_dem, crs=crs, transform=transform),
+            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform),
             along_track_angle=self._meta["angle"],
         )
 
@@ -657,8 +657,8 @@ class DirectionalBias(BiasCorr1D):
             kwargs.update({"hop_length": average_res})
 
         super()._fit_rst_rst(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"angle": x},
             transform=transform,
@@ -670,7 +670,7 @@ class DirectionalBias(BiasCorr1D):
 
     def _apply_rst(
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -679,11 +679,11 @@ class DirectionalBias(BiasCorr1D):
 
         # Define the coordinates for applying the correction
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=dem, crs=crs, transform=transform),
+            raster=gu.Raster.from_array(data=elev, crs=crs, transform=transform),
             along_track_angle=self._meta["angle"],
         )
 
-        return super()._apply_rst(dem=dem, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
+        return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
 
 
 class TerrainBias(BiasCorr1D):
@@ -742,8 +742,8 @@ class TerrainBias(BiasCorr1D):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
@@ -755,16 +755,16 @@ class TerrainBias(BiasCorr1D):
 
         # Derive terrain attribute
         if self._meta["terrain_attribute"] == "elevation":
-            attr = ref_dem
+            attr = ref_elev
         else:
             attr = xdem.terrain.get_terrain_attribute(
-                dem=ref_dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                dem=ref_elev, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
             )
 
         # Run the parent function
         super()._fit_rst_rst(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={self._meta["terrain_attribute"]: attr},
             transform=transform,
@@ -776,7 +776,7 @@ class TerrainBias(BiasCorr1D):
 
     def _apply_rst(
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -786,14 +786,14 @@ class TerrainBias(BiasCorr1D):
         if bias_vars is None:
             # Derive terrain attribute
             if self._meta["terrain_attribute"] == "elevation":
-                attr = dem
+                attr = elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=dem, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                    dem=elev, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
                 )
             bias_vars = {self._meta["terrain_attribute"]: attr}
 
-        return super()._apply_rst(dem=dem, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
+        return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
 
 class Deramp(BiasCorr2D):
@@ -841,8 +841,8 @@ class Deramp(BiasCorr2D):
 
     def _fit_rst_rst(  # type: ignore
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
@@ -856,11 +856,11 @@ class Deramp(BiasCorr2D):
         p0 = np.ones(shape=((self._meta["poly_order"] + 1) * (self._meta["poly_order"] + 1)))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
-        xx, yy = np.meshgrid(np.arange(0, ref_dem.shape[1]), np.arange(0, ref_dem.shape[0]))
+        xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
 
         super()._fit_rst_rst(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
             transform=transform,
@@ -873,7 +873,7 @@ class Deramp(BiasCorr2D):
 
     def _apply_rst(
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: None | dict[str, NDArrayf] = None,
@@ -881,6 +881,6 @@ class Deramp(BiasCorr2D):
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         # Define the coordinates for applying the correction
-        xx, yy = np.meshgrid(np.arange(0, dem.shape[1]), np.arange(0, dem.shape[0]))
+        xx, yy = np.meshgrid(np.arange(0, elev.shape[1]), np.arange(0, elev.shape[0]))
 
-        return super()._apply_rst(dem=dem, transform=transform, crs=crs, bias_vars={"xx": xx, "yy": yy}, **kwargs)
+        return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"xx": xx, "yy": yy}, **kwargs)

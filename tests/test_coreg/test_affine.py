@@ -6,6 +6,7 @@ import warnings
 
 import numpy as np
 import pytest
+import geopandas as gpd
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
@@ -40,7 +41,9 @@ class TestAffineCoreg:
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
+                           data={"z": points_arr[2, :]})
 
     def test_from_classmethods(self) -> None:
         warnings.simplefilter("error")

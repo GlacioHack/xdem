@@ -46,6 +46,7 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
+from geoutils.misc import resampling_method_from_str
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -497,7 +498,76 @@ def _preprocess_coreg_apply(
 
     return elev_out, transform, crs
 
-# TODO: Re-structure AffineCoreg apply function and move there?
+def _postprocess_coreg_apply_pts(
+        applied_elev: gpd.GeoDataFrame,
+) -> gpd.GeoDataFrame:
+    # TODO: Convert CRS back if the CRS did not match the one of the fit?
+    return applied_elev
+
+def _postprocess_coreg_apply_rst(
+        elev: NDArrayf | gu.Raster,
+        applied_elev: NDArrayf,
+        transform: affine.Affine,
+        out_transform: affine.Affine,
+        crs: rio.crs.CRS,
+        resample: bool,
+        resampling: rio.warp.Resampling | None = None,
+) -> tuple[NDArrayf | gu.Raster, affine.Affine]:
+    # Ensure the dtype is OK
+    applied_elev = applied_elev.astype("float32")
+
+    # Set default dst_nodata
+    if isinstance(elev, gu.Raster):
+        nodata = elev.nodata
+    else:
+        nodata = raster._default_nodata(elev.dtype)
+
+    # Resample the array on the original grid
+    if resample:
+        applied_rst = gu.Raster.from_array(applied_elev, out_transform, crs=crs, nodata=nodata)
+        if not isinstance(elev, gu.Raster):
+            match_rst = gu.Raster.from_array(elev, transform, crs=crs, nodata=nodata)
+        else:
+            match_rst = elev
+        applied_rst.reproject(match_rst, resampling=resampling)
+        applied_dem = applied_rst.data
+
+    # Calculate final mask
+    final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == nodata)
+
+    # If the DEM was a masked_array, copy the mask to the new DEM
+    if isinstance(elev, (np.ma.masked_array, gu.Raster)):
+        applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
+    else:
+        applied_dem[final_mask] = np.nan
+
+    # If the input was a Raster, returns a Raster, else returns array and transform
+    if isinstance(elev, gu.Raster):
+        out_dem = elev.from_array(applied_dem, out_transform, crs, nodata=elev.nodata)
+        return out_dem, out_transform
+    else:
+        return applied_dem, out_transform
+
+def _postprocess_coreg_apply(
+        elev: NDArrayf | gu.Raster | gpd.GeoDataFrame,
+        applied_elev: NDArrayf | gpd.GeoDataFrame,
+        transform: affine.Affine,
+        out_transform: affine.Affine,
+        crs: rio.crs.CRS,
+        resample: bool,
+        resampling: rio.warp.Resampling | None = None,
+) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
+
+    if isinstance(applied_elev, np.ndarray):
+        applied_elev, out_transform = _postprocess_coreg_apply_rst(elev=elev, applied_elev=applied_elev,
+                                                                   transform=transform, crs=crs,
+                                                                   out_transform=out_transform,
+                                                                   resample=resample,
+                                                                   resampling=resampling)
+    else:
+        applied_elev = _postprocess_coreg_apply_pts(applied_elev)
+
+    return applied_elev, out_transform
 
 
 def deramping(
@@ -605,7 +675,7 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         return pytransform3d.transformations.invert_transform(checked_matrix)
 
 
-def apply_matrix(
+def apply_matrix_rst(
     dem: NDArrayf,
     transform: rio.transform.Affine,
     matrix: NDArrayf,
@@ -615,7 +685,7 @@ def apply_matrix(
     fill_max_search: int = 0,
 ) -> NDArrayf:
     """
-    Apply a 3D transformation matrix to a 2.5D DEM.
+    Apply a 3D affine transformation matrix to a 2.5D DEM.
 
     The transformation is applied as a value correction using linear deramping, and 2D image warping.
 
@@ -627,17 +697,17 @@ def apply_matrix(
     6. Apply the pixel-wise displacement in 2D using the new pixel coordinates.
     7. Apply the same displacement to a nodata-mask to exclude previous and/or new nans.
 
-    :param dem: The DEM to transform.
-    :param transform: The Affine transform object (georeferencing) of the DEM.
-    :param matrix: A 4x4 transformation matrix to apply to the DEM.
-    :param invert: Invert the transformation matrix.
-    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0)
+    :param dem: DEM to transform.
+    :param transform: Geotransform of the DEM.
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0).
     :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
     :param fill_max_search: Set to > 0 value to fill the DEM before applying the transformation, to avoid spreading\
     gaps. The DEM will be filled with rasterio.fill.fillnodata with max_search_distance set to fill_max_search.\
     This is experimental, use at your own risk !
 
-    :returns: The transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
+    :returns: Transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
     """
     # Parse the resampling argument given.
     if isinstance(resampling, (int, np.integer)):
@@ -743,6 +813,47 @@ def apply_matrix(
 
     return transformed_dem
 
+def apply_matrix_pts(
+    epc: gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    z_name: str = "z",
+) -> gpd.GeoDataFrame:
+    """
+    Apply a 3D affine transformation matrix to a 3D elevation point cloud.
+
+    :param epc: Elevation point cloud.
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0).
+    :param z_name:
+
+    :return: Transformed elevation point cloud.
+    """
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # First, get Nx3 array to pass to opencv
+    points = np.array([epc.geometry.x.values, epc.geometry.y.values, epc[z_name].values])
+
+    # Transform the points (around the centroid if it exists).
+    if centroid is not None:
+        points -= centroid
+    transformed_points = cv2.perspectiveTransform(points.reshape(1, -1, 3),
+                                                  matrix.squeeze())
+    if centroid is not None:
+        transformed_points += centroid
+
+    # Finally, transform back to a new GeoDataFrame
+    transformed_epc = epc.copy()
+    transformed_epc.geometry.x.values = points[0]
+    transformed_epc.geometry.y.values = points[1]
+    transformed_epc[z_name].values = points[2]
+
+    return transformed_epc
 
 ###########################################
 # Generic coregistration processing classes
@@ -775,6 +886,7 @@ class CoregDict(TypedDict, total=False):
 
     # Affine + BiasCorr classes
     subsample: int | float
+    subsample_final: int
     random_state: np.random.RandomState | np.random.Generator | int | None
 
     # BiasCorr classes generic metadata
@@ -887,6 +999,9 @@ class Coreg:
                 )
             )
 
+        # Write final subsample to class
+        self._meta["subsample_final"] = np.count_nonzero(subsample_mask)
+
         return subsample_mask
 
     def fit(
@@ -959,8 +1074,8 @@ class Coreg:
         )
 
         main_args = {
-            "ref_dem": ref_dem,
-            "tba_dem": tba_dem,
+            "ref_elev": ref_dem,
+            "tba_elev": tba_dem,
             "inlier_mask": inlier_mask,
             "transform": transform,
             "crs": crs,
@@ -979,7 +1094,8 @@ class Coreg:
 
             main_args.update({"bias_vars": bias_vars})
 
-        # Run the associated fitting function
+        # Run the associated fitting function, which has fallback logic for "raster-raster", "raster-point" or
+        # "point-point" depending on what is available for a certain Coreg function
         self._fit_func(
             **main_args,
             **kwargs,
@@ -990,15 +1106,115 @@ class Coreg:
 
         return self
 
-    def residuals(
+    @overload
+    def apply(
         self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        inlier_mask: NDArrayb | None = None,
+        elev: MArrayf,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        resample: bool = True,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        subsample: float | int = 1.0,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
+        z_name: str = "z",
+        **kwargs: Any,
+    ) -> tuple[MArrayf, rio.transform.Affine]:
+        ...
+
+    @overload
+    def apply(
+        self,
+        elev: NDArrayf,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        resample: bool = True,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        **kwargs: Any,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        ...
+
+    @overload
+    def apply(
+        self,
+        elev: RasterType | gpd.GeoDataFrame,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        resample: bool = True,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        **kwargs: Any,
+    ) -> RasterType | gpd.GeoDataFrame:
+        ...
+
+    def apply(
+        self,
+        elev: RasterType | NDArrayf | MArrayf | gpd.GeoDataFrame,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        **kwargs: Any,
+    ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
+        """
+        Apply the estimated transform to a DEM.
+
+        :param elev: Elevation to apply the transform to, either a DEM or an elevation point cloud.
+        :param bias_vars: Only for some bias correction classes. 2D array of bias variables used.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
+        only the transform might be updated and no resampling is done.
+        :param resampling: Resampling method if resample is used. Defaults to "bilinear".
+        :param transform: Geotransform of the elevation, only if provided as 2D array.
+        :param crs: CRS of elevation, only if provided as 2D array.
+        :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param kwargs: Any optional arguments to be passed to either self._apply_rst or apply_matrix.
+
+        :returns: The transformed DEM.
+        """
+        if not self._fit_called and self._meta.get("matrix") is None:
+            raise AssertionError(".fit() does not seem to have been called yet")
+
+        elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
+
+        main_args = {"elev": elev_array, "transform": transform, "crs": crs, "resample": resample, "z_name": z_name}
+
+        # If bias_vars are defined, update dictionary content to array
+        if bias_vars is not None:
+            # Check if the current class actually requires bias_vars
+            if self._is_affine:
+                warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
+
+            for var in bias_vars.keys():
+                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
+
+            main_args.update({"bias_vars": bias_vars})
+
+        # Call _apply_func to choose method depending on point/raster input and if specific apply method exists
+        applied_elev, out_transform = self._apply_func(**main_args, **kwargs)
+
+        # Define resampling
+        resampling = resampling if isinstance(resampling, rio.warp.Resampling) else resampling_method_from_str(resampling)
+
+        # Post-process output depending on input type
+        applied_elev, out_transform = _postprocess_coreg_apply(elev=elev, applied_elev=applied_elev, transform=transform,
+                                                               out_transform=out_transform, crs=crs, resample=resample,
+                                                               resampling=resampling)
+
+        # Only return object if raster or geodataframe, also return transform if object was an array
+        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame)):
+            return applied_elev
+        else:
+            return applied_elev, out_transform
+
+    def residuals(
+            self,
+            reference_elev: NDArrayf,
+            to_be_aligned_elev: NDArrayf,
+            inlier_mask: NDArrayb | None = None,
+            transform: rio.transform.Affine | None = None,
+            crs: rio.crs.CRS | None = None,
+            subsample: float | int = 1.0,
+            random_state: None | np.random.RandomState | np.random.Generator | int = None,
     ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
@@ -1036,159 +1252,6 @@ class Coreg:
 
         # Return the difference values within the full inlier mask
         return diff[full_mask]
-
-    @overload
-    def apply(
-        self,
-        elev: MArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
-
-    @overload
-    def apply(
-        self,
-        elev: NDArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
-
-    @overload
-    def apply(
-        self,
-        elev: RasterType | gpd.GeoDataFrame,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
-
-    def apply(
-        self,
-        elev: RasterType | NDArrayf | MArrayf | gpd.GeoDataFrame,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        **kwargs: Any,
-    ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
-        """
-        Apply the estimated transform to a DEM.
-
-        :param elev: Elevation to apply the transform to, either a DEM or an elevation point cloud.
-        :param bias_vars: Only for some bias correction classes. 2D array of bias variables used.
-        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
-        only the transform might be updated and no resampling is done.
-        :param transform: Geotransform of the elevation, only if provided as 2D array.
-        :param crs: CRS of elevation, only if provided as 2D array.
-        :param kwargs: Any optional arguments to be passed to either self._apply_rst or apply_matrix.
-        Kwarg `resampling` can be set to any rio.warp.Resampling to use a different resampling in case \
-        `resample` is True, default is bilinear.
-
-        :returns: The transformed DEM.
-        """
-        if not self._fit_called and self._meta.get("matrix") is None:
-            raise AssertionError(".fit() does not seem to have been called yet")
-
-        elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
-
-        main_args = {"dem": elev_array, "transform": transform, "crs": crs}
-
-        # If bias_vars are defined, update dictionary content to array
-        if bias_vars is not None:
-            # Check if the current class actually requires bias_vars
-            if self._is_affine:
-                warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
-
-            for var in bias_vars.keys():
-                bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
-
-            main_args.update({"bias_vars": bias_vars})
-
-        # See if a _apply_rst or _apply_pts exists
-        try:
-            # arg `resample` must be passed to _apply_rst, otherwise will be overwritten in CoregPipeline
-            kwargs["resample"] = resample
-
-            # Run the associated apply function
-            applied_dem, out_transform = self._apply_func(
-                **main_args, **kwargs
-            )  # pylint: disable=assignment-from-no-return
-
-        # If it doesn't exist, use apply_matrix()
-        except NotImplementedError:
-
-            # In this case, resampling is necessary
-            if not resample:
-                raise NotImplementedError(f"Option `resample=False` not implemented for coreg method {self.__class__}")
-            kwargs.pop("resample")  # Need to removed before passing to apply_matrix
-
-            if self.is_affine:  # This only works on it's affine, however.
-
-                # Apply the matrix around the centroid (if defined, otherwise just from the center).
-                applied_dem = apply_matrix(
-                    elev,
-                    transform=transform,
-                    matrix=self.to_matrix(),
-                    centroid=self._meta.get("centroid"),
-                    **kwargs,
-                )
-                out_transform = transform
-            else:
-                raise ValueError("Coreg method is non-rigid but has no implemented _apply_rst")
-
-        # Ensure the dtype is OK
-        applied_dem = applied_dem.astype("float32")
-
-        # Set default dst_nodata
-        if isinstance(elev, gu.Raster):
-            dst_nodata = elev.nodata
-        else:
-            dst_nodata = raster._default_nodata(applied_dem.dtype)
-
-        # Resample the array on the original grid
-        if resample:
-            # Set default resampling method if not specified in kwargs
-            resampling = kwargs.get("resampling", rio.warp.Resampling.bilinear)
-            if not isinstance(resampling, rio.warp.Resampling):
-                raise ValueError("`resampling` must be a rio.warp.Resampling algorithm")
-
-            applied_dem, out_transform = rio.warp.reproject(
-                applied_dem,
-                destination=applied_dem,
-                src_transform=out_transform,
-                dst_transform=transform,
-                src_crs=crs,
-                dst_crs=crs,
-                resampling=resampling,
-                dst_nodata=dst_nodata,
-            )
-
-        # Calculate final mask
-        final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == dst_nodata)
-
-        # If the DEM was a masked_array, copy the mask to the new DEM
-        if isinstance(elev, (np.ma.masked_array, gu.Raster)):
-            applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
-        else:
-            applied_dem[final_mask] = np.nan
-
-        # If the input was a Raster, returns a Raster, else returns array and transform
-        if isinstance(elev, gu.Raster):
-            out_dem = elev.from_array(applied_dem, out_transform, crs, nodata=elev.nodata)
-            return out_dem
-        else:
-            return applied_dem, out_transform
 
     @overload
     def error(
@@ -1294,9 +1357,9 @@ class Coreg:
         """
 
         # Determine if input is raster-raster, raster-point or point-point
-        if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
+        if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "r-r"
-        elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
+        elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "p-p"
         else:
             rop = "r-p"
@@ -1352,79 +1415,124 @@ class Coreg:
                 else:
                     raise NotImplementedError(f"No point-point method found for coregistration {self.__class__.__name__}.")
 
-    def _apply_func(self, **kwargs: Any):
-        """Distribute to _apply_rst and _apply_pts based on input and method availability"""
+    def _apply_func(self, **kwargs: Any) -> tuple[np.ndarray | gpd.GeoDataFrame, affine.Affine]:
+        """Distribute to _apply_rst and _apply_pts based on input and method availability."""
 
-        if isinstance(kwargs["dem"], np.ndarray):
-            return self._apply_rst(**kwargs)
+        # If input is a raster
+        if isinstance(kwargs["elev"], np.ndarray):
+
+            # See if a _apply_rst exists
+            try:
+                # Run the associated apply function
+                applied_elev, out_transform = self._apply_rst(**kwargs)  # pylint: disable=assignment-from-no-return
+
+            # If it doesn't exist, use apply_matrix()
+            except NotImplementedError:
+
+                if self.is_affine:  # This only works for affine, however.
+
+                    # In this case, resampling is necessary
+                    if not kwargs["resample"]:
+                        raise NotImplementedError(
+                            f"Option `resample=False` not implemented for coreg method {self.__class__}")
+                    kwargs.pop("resample")  # Need to removed before passing to apply_matrix
+
+                    # Apply the matrix around the centroid (if defined, otherwise just from the center).
+                    applied_elev = apply_matrix_rst(
+                        dem=kwargs["elev"],
+                        transform=kwargs["transform"],
+                        matrix=self.to_matrix(),
+                        centroid=self._meta.get("centroid"),
+                        **kwargs,
+                    )
+                    out_transform = kwargs["transform"]
+                else:
+                    raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_rst.")
+
+        # If input is a point
         else:
-            return self._apply_pts(**kwargs)
+            # See if an _apply_pts_func exists
+            try:
+                applied_elev = self._apply_pts(**kwargs)
+
+            # If it doesn't exist, use opencv's perspectiveTransform
+            except NotImplementedError:
+                if self.is_affine:  # This only works on it's rigid, however.
+
+                    applied_elev = apply_matrix_pts(epc=kwargs["elev"],
+                                                    matrix=self.to_matrix(),
+                                                    centroid=self._meta.get("centroid"),
+                                                    z_name=kwargs["z_name"])
+
+                else:
+                    raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_pts.")
+
+        return applied_elev, out_transform
 
     def _fit_rst_rst(self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        # FOR DEVELOPERS: This function needs to be implemented.
+                     ref_elev: NDArrayf,
+                     tba_elev: NDArrayf,
+                     inlier_mask: NDArrayb,
+                     transform: rio.transform.Affine,
+                     crs: rio.crs.CRS,
+                     weights: NDArrayf | None,
+                     bias_vars: dict[str, NDArrayf] | None = None,
+                     verbose: bool = False,
+                     **kwargs: Any,
+                     ) -> None:
+        # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _fit_rst_pts(self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        # FOR DEVELOPERS: This function needs to be implemented.
+                     ref_elev: NDArrayf,
+                     tba_elev: NDArrayf,
+                     inlier_mask: NDArrayb,
+                     transform: rio.transform.Affine,
+                     crs: rio.crs.CRS,
+                     weights: NDArrayf | None,
+                     bias_vars: dict[str, NDArrayf] | None = None,
+                     verbose: bool = False,
+                     **kwargs: Any,
+                     ) -> None:
+        # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _fit_pts_pts(self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        # FOR DEVELOPERS: This function needs to be implemented.
+                     ref_elev: gpd.GeoDataFrame,
+                     tba_elev: gpd.GeoDataFrame,
+                     inlier_mask: NDArrayb,
+                     transform: rio.transform.Affine,
+                     crs: rio.crs.CRS,
+                     weights: NDArrayf | None,
+                     bias_vars: dict[str, NDArrayf] | None = None,
+                     verbose: bool = False,
+                     **kwargs: Any,
+                     ) -> None:
+        # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
     def _apply_rst(
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
+        # FOR DEVELOPERS: This function needs to be implemented by subclassing.
+        raise NotImplementedError("This should have been implemented by subclassing.")
 
     def _apply_pts(
         self,
-        dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
+        elev: gpd.GeoDataFrame,
+        z_name: str = "z",
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
+    ) -> gpd.GeoDataFrame:
 
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
+        # FOR DEVELOPERS: This function needs to be implemented by subclassing.
+        raise NotImplementedError("This should have been implemented by subclassing.")
 
 
 class CoregPipeline(Coreg):
@@ -1574,14 +1682,14 @@ class CoregPipeline(Coreg):
     # TODO: Override parent method into an "apply()"?
     def _apply_rst(
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the coregistration steps sequentially to a DEM."""
-        dem_mod = dem.copy()
+        dem_mod = elev.copy()
         out_transform = copy.copy(transform)
 
         for i, coreg in enumerate(self.pipeline):
@@ -1968,15 +2076,15 @@ class BlockwiseCoreg(Coreg):
 
     def _apply_rst(
         self,
-        dem: NDArrayf,
+        elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
-        if np.count_nonzero(np.isfinite(dem)) == 0:
-            return dem, transform
+        if np.count_nonzero(np.isfinite(elev)) == 0:
+            return elev, transform
 
         # Other option than resample=True is not implemented for this case
         if "resample" in kwargs and kwargs["resample"] is not True:
@@ -1984,9 +2092,9 @@ class BlockwiseCoreg(Coreg):
 
         points = self.to_points()
 
-        bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
+        bounds, resolution = _transform_to_bounds_and_res(elev.shape, transform)
 
-        representative_height = np.nanmean(dem)
+        representative_height = np.nanmean(elev)
         edges_source = np.array(
             [
                 [bounds.left + resolution / 2, bounds.top - resolution / 2, representative_height],
@@ -2001,7 +2109,7 @@ class BlockwiseCoreg(Coreg):
         all_points = np.append(points, edges, axis=0)
 
         warped_dem = warp_dem(
-            dem=dem,
+            dem=elev,
             transform=transform,
             source_coords=all_points[:, :, 0],
             destination_coords=all_points[:, :, 1],

@@ -44,7 +44,7 @@ rotation_matrix = np.array(
 )
 
 # This will apply the matrix along the center of the DEM
-rotated_dem_data = xdem.coreg.apply_matrix(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
+rotated_dem_data = xdem.coreg.apply_matrix_rst(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
 rotated_dem = xdem.DEM.from_array(rotated_dem_data, transform=dem.transform, crs=dem.crs, nodata=-9999)
 
 # %%

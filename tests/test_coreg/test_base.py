@@ -19,7 +19,7 @@ with warnings.catch_warnings():
     import xdem
     from xdem import coreg, examples, misc, spatialstats
     from xdem._typing import NDArrayf
-    from xdem.coreg.base import Coreg, apply_matrix
+    from xdem.coreg.base import Coreg, apply_matrix_rst
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -831,7 +831,7 @@ def test_apply_matrix() -> None:
     vshift = 5
     matrix = np.diag(np.ones(4, float))
     matrix[2, 3] = vshift
-    transformed_dem = apply_matrix(ref_arr, ref.transform, matrix)
+    transformed_dem = apply_matrix_rst(ref_arr, ref.transform, matrix)
     reverted_dem = transformed_dem - vshift
 
     # Check that the reverted DEM has the exact same values as the initial one
@@ -850,7 +850,7 @@ def test_apply_matrix() -> None:
     matrix[0, 3] = pixel_shift * tba.res[0]
     matrix[2, 3] = -vshift
 
-    transformed_dem = apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
+    transformed_dem = apply_matrix_rst(shifted_dem, ref.transform, matrix, resampling="bilinear")
     diff = np.asarray(ref_arr - transformed_dem)
 
     # Check that the median is very close to zero
@@ -876,14 +876,14 @@ def test_apply_matrix() -> None:
         np.mean([ref.bounds.top, ref.bounds.bottom]),
         ref.data.mean(),
     )
-    rotated_dem = apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
+    rotated_dem = apply_matrix_rst(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
     # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
     assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
     assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
 
     # Apply a rotation in the opposite direction
     unrotated_dem = (
-        apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
+            apply_matrix_rst(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
     )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
