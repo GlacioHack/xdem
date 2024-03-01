@@ -317,7 +317,7 @@ class BiasCorr(Coreg):
         elif self._fit_or_bin in ["bin", "bin_and_fit"]:
             self._meta["bin_dataframe"] = df
 
-    def _apply_func(  # type: ignore
+    def _apply_rst(  # type: ignore
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
@@ -668,7 +668,7 @@ class DirectionalBias(BiasCorr1D):
             **kwargs,
         )
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -683,7 +683,7 @@ class DirectionalBias(BiasCorr1D):
             along_track_angle=self._meta["angle"],
         )
 
-        return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
+        return super()._apply_rst(dem=dem, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
 
 
 class TerrainBias(BiasCorr1D):
@@ -774,7 +774,7 @@ class TerrainBias(BiasCorr1D):
             **kwargs,
         )
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -793,7 +793,7 @@ class TerrainBias(BiasCorr1D):
                 )
             bias_vars = {self._meta["terrain_attribute"]: attr}
 
-        return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
+        return super()._apply_rst(dem=dem, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
 
 class Deramp(BiasCorr2D):
@@ -871,7 +871,7 @@ class Deramp(BiasCorr2D):
             **kwargs,
         )
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -883,4 +883,4 @@ class Deramp(BiasCorr2D):
         # Define the coordinates for applying the correction
         xx, yy = np.meshgrid(np.arange(0, dem.shape[1]), np.arange(0, dem.shape[0]))
 
-        return super()._apply_func(dem=dem, transform=transform, crs=crs, bias_vars={"xx": xx, "yy": yy}, **kwargs)
+        return super()._apply_rst(dem=dem, transform=transform, crs=crs, bias_vars={"xx": xx, "yy": yy}, **kwargs)

@@ -39,14 +39,14 @@ class TestCoregClass:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=False,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     def test_init(self) -> None:
@@ -280,7 +280,7 @@ class TestCoregClass:
 
         # De-shift dem2
         dem2_r = vshiftcorr_r.apply(dem2)
-        dem2_a, _ = vshiftcorr_a.apply(dem2.data, dem2.transform, dem2.crs)
+        dem2_a, _ = vshiftcorr_a.apply(dem2.data, transform=dem2.transform, crs=dem2.crs)
 
         # Validate that the return formats were the expected ones, and that they are equal.
         # Issue - dem2_a does not have the same shape, the first dimension is being squeezed
@@ -497,14 +497,14 @@ class TestCoregPipeline:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=True,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
@@ -641,7 +641,7 @@ class TestCoregPipeline:
         ref_points.rename(columns={"b1": "z"}, inplace=True)
 
         # Check that this runs without error
-        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
+        pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)
 
         for part in pipeline.pipeline:
             assert np.abs(part._meta["offset_east_px"]) > 0
@@ -720,14 +720,14 @@ class TestBlockwiseCoreg:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=False,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     @pytest.mark.parametrize(

@@ -313,7 +313,7 @@ class AffineCoreg(Coreg):
         # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -324,7 +324,7 @@ class AffineCoreg(Coreg):
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+    def _apply_pts(self, coords: NDArrayf) -> NDArrayf:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -391,7 +391,7 @@ class VerticalShift(AffineCoreg):
 
         self._meta["vshift"] = vshift
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -402,7 +402,7 @@ class VerticalShift(AffineCoreg):
         """Apply the VerticalShift function to a DEM."""
         return dem + self._meta["vshift"], transform
 
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+    def _apply_pts(self, coords: NDArrayf) -> NDArrayf:
         """Apply the VerticalShift function to a set of points."""
         new_coords = coords.copy()
         new_coords[:, 2] += self._meta["vshift"]
@@ -629,7 +629,7 @@ class Tilt(AffineCoreg):
         self._meta["coefficients"] = coefs[0]
         self._meta["func"] = fit_ramp
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -644,7 +644,7 @@ class Tilt(AffineCoreg):
 
         return dem + ramp, transform
 
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+    def _apply_pts(self, coords: NDArrayf) -> NDArrayf:
         """Apply the deramp function to a set of points."""
         new_coords = coords.copy()
 
@@ -983,7 +983,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
         return matrix
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -999,7 +999,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         vshift = self._meta["vshift"]
         return dem + vshift, updated_transform
 
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
+    def _apply_pts(self, coords: NDArrayf) -> NDArrayf:
         """Apply the Nuth & Kaab shift to a set of points."""
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]

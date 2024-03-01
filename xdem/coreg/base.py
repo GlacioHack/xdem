@@ -470,8 +470,7 @@ def _preprocess_coreg_apply(
         elev_out = elev
 
     # If input is a raster or array
-    elif isinstance(elev, (gu.Raster, np.ndarray)):
-
+    else:
         # If input is raster
         if isinstance(elev, gu.Raster):
             if transform is None:
@@ -1092,7 +1091,7 @@ class Coreg:
         only the transform might be updated and no resampling is done.
         :param transform: Geotransform of the elevation, only if provided as 2D array.
         :param crs: CRS of elevation, only if provided as 2D array.
-        :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
+        :param kwargs: Any optional arguments to be passed to either self._apply_rst or apply_matrix.
         Kwarg `resampling` can be set to any rio.warp.Resampling to use a different resampling in case \
         `resample` is True, default is bilinear.
 
@@ -1101,7 +1100,7 @@ class Coreg:
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        elev_array = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
+        elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
 
         main_args = {"dem": elev_array, "transform": transform, "crs": crs}
 
@@ -1116,9 +1115,9 @@ class Coreg:
 
             main_args.update({"bias_vars": bias_vars})
 
-        # See if a _apply_func exists
+        # See if a _apply_rst or _apply_pts exists
         try:
-            # arg `resample` must be passed to _apply_func, otherwise will be overwritten in CoregPipeline
+            # arg `resample` must be passed to _apply_rst, otherwise will be overwritten in CoregPipeline
             kwargs["resample"] = resample
 
             # Run the associated apply function
@@ -1146,7 +1145,7 @@ class Coreg:
                 )
                 out_transform = transform
             else:
-                raise ValueError("Coreg method is non-rigid but has no implemented _apply_func")
+                raise ValueError("Coreg method is non-rigid but has no implemented _apply_rst")
 
         # Ensure the dtype is OK
         applied_dem = applied_dem.astype("float32")
@@ -1295,7 +1294,7 @@ class Coreg:
         """
 
         # Determine if input is raster-raster, raster-point or point-point
-        if all(isinstance(dem, NDArrayf) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
+        if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
             rop = "r-r"
         elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
             rop = "p-p"
@@ -1353,6 +1352,14 @@ class Coreg:
                 else:
                     raise NotImplementedError(f"No point-point method found for coregistration {self.__class__.__name__}.")
 
+    def _apply_func(self, **kwargs: Any):
+        """Distribute to _apply_rst and _apply_pts based on input and method availability"""
+
+        if isinstance(kwargs["dem"], np.ndarray):
+            return self._apply_rst(**kwargs)
+        else:
+            return self._apply_pts(**kwargs)
+
     def _fit_rst_rst(self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -1395,7 +1402,7 @@ class Coreg:
         # FOR DEVELOPERS: This function needs to be implemented.
         raise NotImplementedError("This step has to be implemented by subclassing.")
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -1403,6 +1410,19 @@ class Coreg:
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
+
+        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
+        raise NotImplementedError("This should have been implemented by subclassing")
+
+    def _apply_pts(
+        self,
+        dem: NDArrayf,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -1522,8 +1542,8 @@ class CoregPipeline(Coreg):
                 print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
 
             main_args_fit = {
-                "reference_dem": ref_dem,
-                "dem_to_be_aligned": tba_dem_mod,
+                "reference_elev": ref_dem,
+                "to_be_aligned_elev": tba_dem_mod,
                 "inlier_mask": inlier_mask,
                 "transform": out_transform,
                 "crs": crs,
@@ -1533,7 +1553,7 @@ class CoregPipeline(Coreg):
                 "random_state": random_state,
             }
 
-            main_args_apply = {"dem": tba_dem_mod, "transform": out_transform, "crs": crs}
+            main_args_apply = {"elev": tba_dem_mod, "transform": out_transform, "crs": crs}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1551,7 +1571,8 @@ class CoregPipeline(Coreg):
 
         return self
 
-    def _apply_func(
+    # TODO: Override parent method into an "apply()"?
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -1565,7 +1586,7 @@ class CoregPipeline(Coreg):
 
         for i, coreg in enumerate(self.pipeline):
 
-            main_args_apply = {"dem": dem_mod, "transform": out_transform, "crs": crs}
+            main_args_apply = {"elev": dem_mod, "transform": out_transform, "crs": crs}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1886,7 +1907,7 @@ class BlockwiseCoreg(Coreg):
             x_coord, y_coord = meta["representative_x"], meta["representative_y"]
 
             old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))
-            new_position = self.procstep.apply_pts(old_position)
+            new_position = self.procstep.apply(old_position)
 
             points = np.append(points, np.dstack((old_position, new_position)), axis=0)
 
@@ -1945,7 +1966,7 @@ class BlockwiseCoreg(Coreg):
             shape = (shape[1], shape[2])
         return subdivide_array(shape, count=self.subdivision)
 
-    def _apply_func(
+    def _apply_rst(
         self,
         dem: NDArrayf,
         transform: rio.transform.Affine,
@@ -1974,7 +1995,7 @@ class BlockwiseCoreg(Coreg):
                 [bounds.right - resolution / 2, bounds.bottom + resolution / 2, representative_height],
             ]
         )
-        edges_dest = self.apply_pts(edges_source)
+        edges_dest = self.apply(edges_source)
         edges = np.dstack((edges_source, edges_dest))
 
         all_points = np.append(points, edges, axis=0)

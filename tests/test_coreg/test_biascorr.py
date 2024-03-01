@@ -36,12 +36,12 @@ class TestBiasCorr:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref,
-        dem_to_be_aligned=tba,
+        reference_elev=ref,
+        to_be_aligned_elev=tba,
         inlier_mask=inlier_mask,
         verbose=True,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     def test_biascorr(self) -> None:

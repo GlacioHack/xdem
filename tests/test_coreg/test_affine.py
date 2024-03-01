@@ -32,14 +32,14 @@ class TestAffineCoreg:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=False,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     def test_from_classmethods(self) -> None:
@@ -50,13 +50,13 @@ class TestAffineCoreg:
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[2, 3] = vshift
         coreg_obj = AffineCoreg.from_matrix(matrix)
-        transformed_points = coreg_obj.apply_pts(self.points)
+        transformed_points = coreg_obj.apply(self.points)
         assert transformed_points[0, 2] == vshift
 
         # Check that the from_translation function works as expected.
         x_offset = 5
         coreg_obj2 = AffineCoreg.from_translation(x_off=x_offset)
-        transformed_points2 = coreg_obj2.apply_pts(self.points)
+        transformed_points2 = coreg_obj2.apply(self.points)
         assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
 
         # Try to make a Coreg object from a nan translation (should fail).
@@ -86,10 +86,10 @@ class TestAffineCoreg:
         assert matrix[2, 3] == vshift, matrix
 
         # Check that the first z coordinate is now the vertical shift
-        assert vshiftcorr.apply_pts(self.points)[0, 2] == vshiftcorr._meta["vshift"]
+        assert vshiftcorr.apply(self.points)[0, 2] == vshiftcorr._meta["vshift"]
 
         # Apply the model to correct the DEM
-        tba_unshifted, _ = vshiftcorr.apply(self.tba.data, self.ref.transform, self.ref.crs)
+        tba_unshifted, _ = vshiftcorr.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # Create a new vertical shift correction model
         vshiftcorr2 = coreg.VerticalShift()
@@ -157,7 +157,7 @@ class TestAffineCoreg:
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
-        gds.fit_pts(
+        gds.fit(
             self.ref.to_points().ds,
             self.tba,
             inlier_mask=inlier_mask,
@@ -198,7 +198,7 @@ class TestAffineCoreg:
         if points_or_raster == "raster":
             coreg_obj.fit(shifted_ref, self.ref, verbose=verbose, random_state=42)
         elif points_or_raster == "points":
-            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose, random_state=42)
+            coreg_obj.fit(shifted_ref_points, self.ref, verbose=verbose, random_state=42)
 
         if coreg_class.__name__ == "ICP":
             matrix = coreg_obj.to_matrix()
@@ -260,7 +260,7 @@ class TestAffineCoreg:
         assert np.sqrt(np.mean(np.square(diff))) < 1
 
         # Transform some arbitrary points.
-        transformed_points = nuth_kaab.apply_pts(self.points)
+        transformed_points = nuth_kaab.apply(self.points)
 
         # Check that the x shift is close to the pixel_shift * image resolution
         assert abs((transformed_points[0, 0] - self.points[0, 0]) - pixel_shift * self.ref.res[0]) < 0.1
@@ -297,6 +297,6 @@ class TestAffineCoreg:
         icp = coreg.ICP(max_iterations=3)
         icp.fit(**self.fit_params)
 
-        aligned_dem, _ = icp.apply(self.tba.data, self.ref.transform, self.ref.crs)
+        aligned_dem, _ = icp.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape
