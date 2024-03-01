@@ -267,10 +267,10 @@ class TestCoregClass:
         vshiftcorr_a = vshiftcorr_r.copy()
 
         # Fit the data
-        vshiftcorr_r.fit(reference_dem=dem1, dem_to_be_aligned=dem2)
+        vshiftcorr_r.fit(reference_elev=dem1, to_be_aligned_elev=dem2)
         vshiftcorr_a.fit(
-            reference_dem=dem1.data,
-            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
+            reference_elev=dem1.data,
+            to_be_aligned_elev=dem2.reproject(dem1, silent=True).data,
             transform=dem1.transform,
             crs=dem1.crs,
         )

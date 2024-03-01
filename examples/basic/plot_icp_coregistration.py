@@ -73,11 +73,11 @@ plt.figure(figsize=(6, 12))
 
 for i, (approach, name) in enumerate(approaches):
     approach.fit(
-        reference_dem=dem,
-        dem_to_be_aligned=rotated_dem,
+        reference_elev=dem,
+        to_be_aligned_elev=rotated_dem,
     )
 
-    corrected_dem = approach.apply(dem=rotated_dem)
+    corrected_dem = approach.apply(elev=rotated_dem)
 
     diff = dem - corrected_dem
 

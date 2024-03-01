@@ -29,6 +29,7 @@ import fiona
 import geoutils as gu
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import scipy
@@ -295,14 +296,14 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
 
     return mask_array
 
-
-def _preprocess_coreg_raster_input(
+def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
     inlier_mask: NDArrayb | Mask | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
 ) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, rio.crs.CRS]:
+    """Pre-processing and checks of fit() for two raster input."""
 
     # Validate that both inputs are valid array-like (or Raster) types.
     if not all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_dem, dem_to_be_aligned)):
@@ -378,6 +379,124 @@ def _preprocess_coreg_raster_input(
 
     return ref_dem, tba_dem, inlier_mask, transform, crs
 
+def _preprocess_coreg_fit_raster_point(
+    raster_elev: NDArrayf | MArrayf | RasterType,
+    point_elev: gpd.GeoDataFrame,
+    inlier_mask: NDArrayb | Mask | None = None,
+    transform: rio.transform.Affine | None = None,
+    crs: rio.crs.CRS | None = None,):
+    """Pre-processing and checks of fit for raster-point input."""
+
+    # TODO: Convert to point cloud once class is done
+    if isinstance(raster_elev, gu.Raster):
+        ref_dem = raster_elev.data
+        crs = raster_elev.crs
+        transform = raster_elev.transform
+    else:
+        ref_dem = raster_elev
+        crs = crs
+        transform = transform
+
+    if transform is None:
+        raise ValueError("'transform' must be given if both DEMs are array-like.")
+
+    if crs is None:
+        raise ValueError("'crs' must be given if both DEMs are array-like.")
+
+    # TODO: Convert to point cloud?
+    # Convert geodataframe to vector
+    tba_dem = point_elev.to_crs(crs=crs)
+
+    return ref_dem, tba_dem, inlier_mask, transform, crs
+
+def _preprocess_coreg_fit_point_point(
+    reference_elev: gpd.GeoDataFrame,
+    to_be_aligned_elev: gpd.GeoDataFrame):
+    """Pre-processing and checks of fit for point-point input."""
+
+    ref_dem = reference_elev
+    tba_dem = to_be_aligned_elev.to_crs(crs=reference_elev.crs)
+
+    return ref_dem, tba_dem
+
+def _preprocess_coreg_fit(
+    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb | Mask | None = None,
+    transform: rio.transform.Affine | None = None,
+    crs: rio.crs.CRS | None = None,):
+    """Pre-processing and checks of fit for any input."""
+
+    if not all(isinstance(dem, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for dem in (reference_elev, to_be_aligned_elev)):
+        raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
+
+    # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
+    if all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
+        ref_dem, tba_dem, inlier_mask, transform, crs = \
+            _preprocess_coreg_fit_raster_raster(reference_dem=reference_elev, dem_to_be_aligned=to_be_aligned_elev,
+                                                  inlier_mask=inlier_mask, transform=transform, crs=crs)
+
+    # If one input is raster, and the other is point, we reproject the point data to the same CRS and extract arrays
+    elif any(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
+        if isinstance(reference_elev, (np.ndarray, gu.Raster)):
+            raster_dem = reference_elev
+            point_dem = to_be_aligned_elev
+        else:
+            raster_dem = to_be_aligned_elev
+            point_dem = reference_elev
+
+        ref_dem, tba_dem, inlier_mask, transform, crs = \
+            _preprocess_coreg_fit_raster_point(raster_elev=raster_dem, point_elev=point_dem,
+                                                 inlier_mask=inlier_mask, transform=transform, crs=crs)
+
+    # If both inputs are points, simply reproject to the same CRS
+    else:
+        ref_dem, tba_dem = _preprocess_coreg_fit_point_point(reference_elev=reference_elev,
+                                                               to_be_aligned_elev=to_be_aligned_elev)
+
+    return ref_dem, tba_dem, inlier_mask, transform, crs
+
+def _preprocess_coreg_apply(
+    elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+    transform: rio.transform.Affine | None = None,
+    crs: rio.crs.CRS | None = None):
+    """Pre-processing and checks of apply for any input."""
+
+    if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)):
+        raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
+
+    # If input is geodataframe
+    if isinstance(elev, gpd.GeoDataFrame):
+        elev_out = elev
+
+    # If input is a raster or array
+    elif isinstance(elev, (gu.Raster, np.ndarray)):
+
+        # If input is raster
+        if isinstance(elev, gu.Raster):
+            if transform is None:
+                transform = elev.transform
+            else:
+                warnings.warn(f"DEM of type {type(elev)} overrides the given 'transform'")
+            if crs is None:
+                crs = elev.crs
+            else:
+                warnings.warn(f"DEM of type {type(elev)} overrides the given 'crs'")
+
+        # If input is an array
+        else:
+            if transform is None:
+                raise ValueError("'transform' must be given if DEM is array-like.")
+            if crs is None:
+                raise ValueError("'crs' must be given if DEM is array-like.")
+
+        # The array to provide the functions will be an ndarray with NaNs for masked out areas.
+        elev_out, elev_mask = get_array_and_mask(elev)
+
+        if np.all(elev_mask):
+            raise ValueError("'dem' had only NaNs")
+
+    return elev_out, transform, crs
 
 # TODO: Re-structure AffineCoreg apply function and move there?
 
@@ -773,14 +892,15 @@ class Coreg:
 
     def fit(
         self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType,
-        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         inlier_mask: NDArrayb | Mask | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
         verbose: bool = False,
         random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
@@ -788,16 +908,17 @@ class Coreg:
         """
         Estimate the coregistration transform on the given DEMs.
 
-        :param reference_dem: 2D array of elevation values acting reference.
-        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory if DEM provided as array.
-        :param crs: Optional. CRS of the reference_dem. Mandatory if DEM provided as array.
-        :param bias_vars: Optional, only for some bias correction classes. 2D array of bias variables used.
-        :param weights: Optional. Per-pixel weights for the coregistration.
+        :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
+        :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
+        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
+        :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
-        :param verbose: Print progress messages to stdout.
-        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
+        :param transform: Transform of the reference elevation, only if provided as 2D array.
+        :param crs: CRS of the reference elevation, only if provided as 2D array.
+        :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param verbose: Print progress messages.
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling).
         """
 
         if weights is not None:
@@ -826,10 +947,13 @@ class Coreg:
         if self._meta["subsample"] != 1:
             self._meta["random_state"] = random_state
 
-        # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
-            reference_dem=reference_dem,
-            dem_to_be_aligned=dem_to_be_aligned,
+        # TODO: Add preproc for points too
+        # TODO: Rename into "checks", because not much is preprocessed in the end
+        #  (has to happen in the _fit_func itself, whether for subsampling or
+        # Pre-process the inputs, by reprojecting and converting to arrays
+        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
@@ -869,8 +993,8 @@ class Coreg:
 
     def residuals(
         self,
-        reference_dem: NDArrayf,
-        dem_to_be_aligned: NDArrayf,
+        reference_elev: NDArrayf,
+        to_be_aligned_elev: NDArrayf,
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
@@ -880,8 +1004,8 @@ class Coreg:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
 
-        :param reference_dem: 2D array of elevation values acting reference.
-        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param reference_elev: 2D array of elevation values acting reference.
+        :param to_be_aligned_elev: 2D array of elevation values to be aligned.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
@@ -892,12 +1016,12 @@ class Coreg:
         """
 
         # Apply the transformation to the dem to be aligned
-        aligned_dem = self.apply(dem_to_be_aligned, transform=transform, crs=crs)[0]
+        aligned_dem = self.apply(to_be_aligned_elev, transform=transform, crs=crs)[0]
 
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, align_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
-            reference_dem=reference_dem,
-            dem_to_be_aligned=aligned_dem,
+        ref_dem, align_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
@@ -914,164 +1038,14 @@ class Coreg:
         # Return the difference values within the full inlier mask
         return diff[full_mask]
 
-    def fit_pts(
-        self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
-        dem_to_be_aligned: RasterType,
-        inlier_mask: NDArrayb | Mask | None = None,
-        transform: rio.transform.Affine | None = None,
-        subsample: float | int = 1.0,
-        verbose: bool = False,
-        mask_high_curv: bool = False,
-        order: int = 1,
-        z_name: str = "z",
-        weights: str | None = None,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
-    ) -> CoregType:
-        """
-        Estimate the coregistration transform between a DEM and a reference point elevation data.
-
-        :param reference_dem: Point elevation data acting reference.
-        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
-        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
-        :param verbose: Print progress messages to stdout.
-        :param order: interpolation 0=nearest, 1=linear, 2=cubic.
-        :param z_name: the column name of dataframe used for elevation differencing
-        :param mask_high_curv: Mask out high-curvature points (>5 maxc) to increase the robustness.
-        :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
-        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
-        """
-
-        # Validate that at least one input is a valid array-like (or Raster) types.
-        if not isinstance(dem_to_be_aligned, (np.ndarray, gu.Raster)):
-            raise ValueError(
-                "The dem_to_be_aligned needs to be array-like (implement a numpy array interface)."
-                f"'dem_to_be_aligned': {dem_to_be_aligned}"
-            )
-
-        # DEM to dataframe if ref_dem is raster
-        # How to make sure sample point locates in stable terrain?
-        if isinstance(reference_dem, (np.ndarray, gu.Raster)):
-            reference_dem = _df_sampling_from_dem(
-                reference_dem, dem_to_be_aligned, subsample=subsample, order=1, offset=None
-            )
-
-        # Validate that at least one input is a valid point data type.
-        if not isinstance(reference_dem, pd.DataFrame):
-            raise ValueError(
-                "The reference_dem needs to be point data format (pd.Dataframe)." f"'reference_dem': {reference_dem}"
-            )
-
-        # If any input is a Raster, use its transform if 'transform is None'.
-        # If 'transform' was given and any input is a Raster, trigger a warning.
-        # Finally, extract only the data of the raster.
-        for name, dem in [("dem_to_be_aligned", dem_to_be_aligned)]:
-            if hasattr(dem, "transform"):
-                if transform is None:
-                    transform = dem.transform
-                elif transform is not None:
-                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
-
-        if transform is None:
-            raise ValueError("'transform' must be given if the dem_to_be_align DEM is array-like.")
-
-        _, tba_mask = get_array_and_mask(dem_to_be_aligned)
-
-        if np.all(tba_mask):
-            raise ValueError("'dem_to_be_aligned' had only NaNs")
-
-        tba_dem = dem_to_be_aligned.copy()
-        ref_valid = np.isfinite(reference_dem[z_name].values)
-
-        if np.all(~ref_valid):
-            raise ValueError("'reference_dem' point data only contains NaNs")
-
-        ref_dem = reference_dem[ref_valid]
-
-        if mask_high_curv:
-            maxc = np.maximum(
-                np.abs(get_terrain_attribute(tba_dem, attribute=["planform_curvature", "profile_curvature"])), axis=0
-            )
-            # Mask very high curvatures to avoid resolution biases
-            mask_hc = maxc.data > 5.0
-        else:
-            mask_hc = np.zeros(tba_dem.data.mask.shape, dtype=bool)
-            if "planc" in ref_dem.columns and "profc" in ref_dem.columns:
-                ref_dem = ref_dem.query("planc < 5 and profc < 5")
-            else:
-                print("Warning: There is no curvature in dataframe. Set mask_high_curv=True for more robust results")
-
-        if any(col not in ref_dem for col in ["E", "N"]):
-            if "geometry" in ref_dem:
-                ref_dem["E"] = ref_dem.geometry.x
-                ref_dem["N"] = ref_dem.geometry.y
-            else:
-                raise ValueError("Reference points need E/N columns or point geometries")
-
-        points = np.array((ref_dem["E"].values, ref_dem["N"].values)).T
-
-        # Make sure that the mask has an expected format.
-        if inlier_mask is not None:
-            if isinstance(inlier_mask, Mask):
-                inlier_mask = inlier_mask.data.filled(False).squeeze()
-            else:
-                inlier_mask = np.asarray(inlier_mask).squeeze()
-                assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
-
-            if np.all(~inlier_mask):
-                raise ValueError("'inlier_mask' had no inliers.")
-
-            final_mask = np.logical_and.reduce((~tba_dem.data.mask, inlier_mask, ~mask_hc))
-        else:
-            final_mask = np.logical_and(~tba_dem.data.mask, ~mask_hc)
-
-        mask_raster = tba_dem.copy(new_array=final_mask.astype(np.float32))
-
-        ref_inlier = mask_raster.interp_points(points, order=0)
-        ref_inlier = ref_inlier.astype(bool)
-
-        if np.all(~ref_inlier):
-            raise ValueError("Intersection of 'reference_dem' and 'dem_to_be_aligned' had only NaNs")
-
-        ref_dem = ref_dem[ref_inlier]
-
-        # If subsample is not equal to one, subsampling should be performed.
-        if subsample != 1.0:
-
-            # Randomly pick N inliers in the full_mask where N=subsample
-            random_valids = subsample_array(
-                ref_dem[z_name].values, subsample=subsample, return_indices=True, random_state=random_state
-            )
-
-            # Subset to the N random inliers
-            ref_dem = ref_dem.iloc[random_valids]
-
-        # Run the associated fitting function
-        self._fit_pts_func(
-            ref_dem=ref_dem,
-            tba_dem=tba_dem,
-            transform=transform,
-            weights=weights,
-            verbose=verbose,
-            order=order,
-            z_name=z_name,
-        )
-
-        # Flag that the fitting function has been called.
-        self._fit_called = True
-
-        return self
-
     @overload
     def apply(
         self,
-        dem: MArrayf,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
+        elev: MArrayf,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]:
         ...
@@ -1079,11 +1053,11 @@ class Coreg:
     @overload
     def apply(
         self,
-        dem: NDArrayf,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
+        elev: NDArrayf,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         ...
@@ -1091,33 +1065,33 @@ class Coreg:
     @overload
     def apply(
         self,
-        dem: RasterType,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
+        elev: RasterType | gpd.GeoDataFrame,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         **kwargs: Any,
-    ) -> RasterType:
+    ) -> RasterType | gpd.GeoDataFrame:
         ...
 
     def apply(
         self,
-        dem: RasterType | NDArrayf | MArrayf,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
+        elev: RasterType | NDArrayf | MArrayf | gpd.GeoDataFrame,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
         **kwargs: Any,
     ) -> RasterType | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
         """
         Apply the estimated transform to a DEM.
 
-        :param dem: A DEM array or Raster to apply the transform on.
-        :param transform: Optional. The transform object of the DEM. Mandatory if 'dem' provided as array.
-        :param crs: Optional. CRS of the reference_dem. Mandatory if 'dem' provided as array.
-        :param bias_vars: Optional, only for some bias correction classes. 2D array of bias variables used.
+        :param elev: Elevation to apply the transform to, either a DEM or an elevation point cloud.
+        :param bias_vars: Only for some bias correction classes. 2D array of bias variables used.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
         only the transform might be updated and no resampling is done.
+        :param transform: Geotransform of the elevation, only if provided as 2D array.
+        :param crs: CRS of elevation, only if provided as 2D array.
         :param kwargs: Any optional arguments to be passed to either self._apply_func or apply_matrix.
         Kwarg `resampling` can be set to any rio.warp.Resampling to use a different resampling in case \
         `resample` is True, default is bilinear.
@@ -1127,29 +1101,9 @@ class Coreg:
         if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        if isinstance(dem, gu.Raster):
-            if transform is None:
-                transform = dem.transform
-            else:
-                warnings.warn(f"DEM of type {type(dem)} overrides the given 'transform'")
-            if crs is None:
-                crs = dem.crs
-            else:
-                warnings.warn(f"DEM of type {type(dem)} overrides the given 'crs'")
+        elev_array = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
 
-        else:
-            if transform is None:
-                raise ValueError("'transform' must be given if DEM is array-like.")
-            if crs is None:
-                raise ValueError("'crs' must be given if DEM is array-like.")
-
-        # The array to provide the functions will be an ndarray with NaNs for masked out areas.
-        dem_array, dem_mask = get_array_and_mask(dem)
-
-        if np.all(dem_mask):
-            raise ValueError("'dem' had only NaNs")
-
-        main_args = {"dem": dem_array, "transform": transform, "crs": crs}
+        main_args = {"dem": elev_array, "transform": transform, "crs": crs}
 
         # If bias_vars are defined, update dictionary content to array
         if bias_vars is not None:
@@ -1184,7 +1138,7 @@ class Coreg:
 
                 # Apply the matrix around the centroid (if defined, otherwise just from the center).
                 applied_dem = apply_matrix(
-                    dem_array,
+                    elev,
                     transform=transform,
                     matrix=self.to_matrix(),
                     centroid=self._meta.get("centroid"),
@@ -1198,8 +1152,8 @@ class Coreg:
         applied_dem = applied_dem.astype("float32")
 
         # Set default dst_nodata
-        if isinstance(dem, gu.Raster):
-            dst_nodata = dem.nodata
+        if isinstance(elev, gu.Raster):
+            dst_nodata = elev.nodata
         else:
             dst_nodata = raster._default_nodata(applied_dem.dtype)
 
@@ -1225,61 +1179,23 @@ class Coreg:
         final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == dst_nodata)
 
         # If the DEM was a masked_array, copy the mask to the new DEM
-        if isinstance(dem, (np.ma.masked_array, gu.Raster)):
+        if isinstance(elev, (np.ma.masked_array, gu.Raster)):
             applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
         else:
             applied_dem[final_mask] = np.nan
 
         # If the input was a Raster, returns a Raster, else returns array and transform
-        if isinstance(dem, gu.Raster):
-            out_dem = dem.from_array(applied_dem, out_transform, crs, nodata=dem.nodata)
+        if isinstance(elev, gu.Raster):
+            out_dem = elev.from_array(applied_dem, out_transform, crs, nodata=elev.nodata)
             return out_dem
         else:
             return applied_dem, out_transform
 
-    def apply_pts(self, coords: NDArrayf) -> NDArrayf:
-        """
-        Apply the estimated transform to a set of 3D points.
-
-        :param coords: A (N, 3) array of X/Y/Z coordinates or one coordinate of shape (3,).
-
-        :returns: The transformed coordinates.
-        """
-        if not self._fit_called and self._meta.get("matrix") is None:
-            raise AssertionError(".fit() does not seem to have been called yet")
-        # If the coordinates represent just one coordinate
-        if np.shape(coords) == (3,):
-            coords = np.reshape(coords, (1, 3))
-
-        assert (
-            len(np.shape(coords)) == 2 and np.shape(coords)[1] == 3
-        ), f"'coords' shape must be (N, 3). Given shape: {np.shape(coords)}"
-
-        coords_c = coords.copy()
-
-        # See if an _apply_pts_func exists
-        try:
-            transformed_points = self._apply_pts_func(coords)
-        # If it doesn't exist, use opencv's perspectiveTransform
-        except NotImplementedError:
-            if self.is_affine:  # This only works on it's rigid, however.
-                # Transform the points (around the centroid if it exists).
-                if self._meta.get("centroid") is not None:
-                    coords_c -= self._meta["centroid"]
-                transformed_points = cv2.perspectiveTransform(coords_c.reshape(1, -1, 3), self.to_matrix()).squeeze()
-                if self._meta.get("centroid") is not None:
-                    transformed_points += self._meta["centroid"]
-
-            else:
-                raise ValueError("Coreg method is non-rigid but has not implemented _apply_pts_func")
-
-        return transformed_points
-
     @overload
     def error(
         self,
-        reference_dem: NDArrayf,
-        dem_to_be_aligned: NDArrayf,
+        reference_elev: NDArrayf,
+        to_be_aligned_elev: NDArrayf,
         error_type: list[str],
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
@@ -1290,8 +1206,8 @@ class Coreg:
     @overload
     def error(
         self,
-        reference_dem: NDArrayf,
-        dem_to_be_aligned: NDArrayf,
+        reference_elev: NDArrayf,
+        to_be_aligned_elev: NDArrayf,
         error_type: str = "nmad",
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
@@ -1301,8 +1217,8 @@ class Coreg:
 
     def error(
         self,
-        reference_dem: NDArrayf,
-        dem_to_be_aligned: NDArrayf,
+        reference_elev: NDArrayf,
+        to_be_aligned_elev: NDArrayf,
         error_type: str | list[str] = "nmad",
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
@@ -1320,8 +1236,8 @@ class Coreg:
             - "mae": The mean absolute error of the residuals.
             - "count": The residual count.
 
-        :param reference_dem: 2D array of elevation values acting reference.
-        :param dem_to_be_aligned: 2D array of elevation values to be aligned.
+        :param reference_elev: 2D array of elevation values acting reference.
+        :param to_be_aligned_elev: 2D array of elevation values to be aligned.
         :param error_type: The type of error measure to calculate. May be a list of error types.
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
@@ -1333,8 +1249,8 @@ class Coreg:
             error_type = [error_type]
 
         residuals = self.residuals(
-            reference_dem=reference_dem,
-            dem_to_be_aligned=dem_to_be_aligned,
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
@@ -1371,6 +1287,101 @@ class Coreg:
 
     def _fit_func(
         self,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Distribute to _fit_rst_rst, fit_rst_pts or fit_pts_pts depending on input and method availability.
+        Needs to be _fit_func of the main class to simplify calls from CoregPipeline and BlockwiseCoreg.
+        """
+
+        # Determine if input is raster-raster, raster-point or point-point
+        if all(isinstance(dem, NDArrayf) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
+            rop = "r-r"
+        elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_dem"], kwargs["tba_dem"])):
+            rop = "p-p"
+        else:
+            rop = "r-p"
+
+        # Fallback logic is always the same: 1/ raster-raster, 2/ raster-point, 3/ point-point
+        try_rp = False
+        try_pp = False
+
+        # For raster-raster
+        if rop == "r-r":
+            # Check if raster-raster function exists, if yes run it and stop
+            try:
+                self._fit_rst_rst(**kwargs)
+            # Otherwise, convert the tba raster to points and try raster-points
+            except NotImplementedError:
+                warnings.warn(
+                    f"No raster-raster method found for coregistration {self.__class__.__name__}, "
+                    f"trying raster-point method by converting to-be-aligned DEM to points.",
+                    UserWarning
+                )
+                tba_dem_pts = gu.Raster.from_array(data=kwargs["tba_dem"], transform=kwargs["transform"],
+                                                   crs=kwargs["crs"]).to_points().ds
+                kwargs.update({"tba_dem": tba_dem_pts})
+                try_rp = True
+
+        # For raster-point
+        if rop == "r-p" or try_rp:
+            try:
+                self._fit_rst_pts(**kwargs)
+            except NotImplementedError:
+                warnings.warn(
+                    f"No raster-point method found for coregistration {self.__class__.__name__}, "
+                    f"trying point-point method by converting all elevation data to points.",
+                    UserWarning
+                )
+                ref_dem_pts = gu.Raster.from_array(data=kwargs["ref_dem"], transform=kwargs["transform"],
+                                                   crs=kwargs["crs"]).to_points().ds
+                kwargs.update({"ref_dem": ref_dem_pts})
+                try_pp = True
+
+        # For point-point
+        if rop == "p-p" or try_pp:
+            try:
+                self._fit_pts_pts(**kwargs)
+            except NotImplementedError:
+                if try_pp and try_rp:
+                    raise NotImplementedError(
+                        f"No raster-raster, raster-point or point-point method found for "
+                        f"coregistration {self.__class__.__name__}.")
+                elif try_pp:
+                    raise NotImplementedError(
+                        f"No raster-point or point-point method found for coregistration {self.__class__.__name__}.")
+                else:
+                    raise NotImplementedError(f"No point-point method found for coregistration {self.__class__.__name__}.")
+
+    def _fit_rst_rst(self,
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        verbose: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        # FOR DEVELOPERS: This function needs to be implemented.
+        raise NotImplementedError("This step has to be implemented by subclassing.")
+
+    def _fit_rst_pts(self,
+        ref_dem: NDArrayf,
+        tba_dem: NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        verbose: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        # FOR DEVELOPERS: This function needs to be implemented.
+        raise NotImplementedError("This step has to be implemented by subclassing.")
+
+    def _fit_pts_pts(self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
         inlier_mask: NDArrayb,
@@ -1392,10 +1403,6 @@ class Coreg:
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
-
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
         # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
         raise NotImplementedError("This should have been implemented by subclassing")
 
@@ -1470,8 +1477,8 @@ class CoregPipeline(Coreg):
 
     def fit(
         self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType,
-        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        reference_elev: NDArrayf | MArrayf | RasterType,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
@@ -1499,9 +1506,9 @@ class CoregPipeline(Coreg):
             )
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
-            reference_dem=reference_dem,
-            dem_to_be_aligned=dem_to_be_aligned,
+        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
@@ -1544,26 +1551,6 @@ class CoregPipeline(Coreg):
 
         return self
 
-    def _fit_pts_func(
-        self: CoregType,
-        ref_dem: NDArrayf | MArrayf | RasterType | pd.DataFrame,
-        tba_dem: RasterType,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> CoregType:
-
-        tba_dem_mod = tba_dem.copy()
-
-        for i, coreg in enumerate(self.pipeline):
-            if verbose:
-                print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
-
-            coreg._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem_mod, verbose=verbose, **kwargs)
-            coreg._fit_called = True
-
-            tba_dem_mod = coreg.apply(tba_dem_mod)
-        return self
-
     def _apply_func(
         self,
         dem: NDArrayf,
@@ -1588,15 +1575,6 @@ class CoregPipeline(Coreg):
             dem_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
 
         return dem_mod, out_transform
-
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        """Apply the coregistration steps sequentially to a set of points."""
-        coords_mod = coords.copy()
-
-        for coreg in self.pipeline:
-            coords_mod = coreg.apply_pts(coords_mod).reshape(coords_mod.shape)
-
-        return coords_mod
 
     def __iter__(self) -> Generator[Coreg, None, None]:
         """Iterate over the pipeline steps."""
@@ -1680,8 +1658,8 @@ class BlockwiseCoreg(Coreg):
 
     def fit(
         self: CoregType,
-        reference_dem: NDArrayf | MArrayf | RasterType,
-        dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
+        reference_elev: NDArrayf | MArrayf | RasterType,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
@@ -1713,13 +1691,15 @@ class BlockwiseCoreg(Coreg):
             )
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_raster_input(
-            reference_dem=reference_dem,
-            dem_to_be_aligned=dem_to_be_aligned,
+        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
         )
+
+        # TODO: Blockwise can only work if one of the two is a Raster... or by defining a grid somehow?
         groups = self.subdivide_array(tba_dem.shape)
 
         indices = np.unique(groups)
@@ -1755,8 +1735,8 @@ class BlockwiseCoreg(Coreg):
             # Try to run the coregistration. If it fails for any reason, skip it and save the exception.
             try:
                 procstep.fit(
-                    reference_dem=ref_subset,
-                    dem_to_be_aligned=tba_subset,
+                    reference_elev=ref_subset,
+                    to_be_aligned_elev=tba_subset,
                     transform=transform_subset,
                     inlier_mask=mask_subset,
                     bias_vars=bias_vars,
@@ -1767,8 +1747,8 @@ class BlockwiseCoreg(Coreg):
                     verbose=verbose,
                 )
                 nmad, median = procstep.error(
-                    reference_dem=ref_subset,
-                    dem_to_be_aligned=tba_subset,
+                    reference_elev=ref_subset,
+                    to_be_aligned_elev=tba_subset,
                     error_type=["nmad", "median"],
                     inlier_mask=mask_subset,
                     transform=transform_subset,
@@ -2008,27 +1988,6 @@ class BlockwiseCoreg(Coreg):
         )
 
         return warped_dem, transform
-
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        """Apply the scaling model to a set of points."""
-        points = self.to_points()
-
-        new_coords = coords.copy()
-
-        for dim in range(0, 3):
-            with warnings.catch_warnings():
-                # ZeroDivisionErrors may happen when the transformation is empty (which is fine)
-                warnings.filterwarnings("ignore", message="ZeroDivisionError")
-                model = scipy.interpolate.Rbf(
-                    points[:, 0, 0],
-                    points[:, 1, 0],
-                    points[:, dim, 1] - points[:, dim, 0],
-                    function="linear",
-                )
-
-            new_coords[:, dim] += model(coords[:, 0], coords[:, 1])
-
-        return new_coords
 
 
 def warp_dem(

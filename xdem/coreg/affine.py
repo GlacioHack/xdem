@@ -298,7 +298,7 @@ class AffineCoreg(Coreg):
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -350,7 +350,7 @@ class VerticalShift(AffineCoreg):
 
         super().__init__(meta={"vshift_func": vshift_func}, subsample=subsample)
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -456,7 +456,7 @@ class ICP(AffineCoreg):
 
         super().__init__(subsample=subsample)
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -501,9 +501,9 @@ class ICP(AffineCoreg):
             columns=["E", "N", "z", "nx", "ny", "nz"],
         )
 
-        self._fit_pts_func(ref_dem=ref_pts, tba_dem=tba_dem, transform=transform, verbose=verbose, z_name="z")
+        self._fit_rst_pts(ref_dem=ref_pts, tba_dem=tba_dem, transform=transform, verbose=verbose, z_name="z")
 
-    def _fit_pts_func(
+    def _fit_rst_pts(
         self,
         ref_dem: pd.DataFrame,
         tba_dem: RasterType | NDArrayf,
@@ -606,7 +606,7 @@ class Tilt(AffineCoreg):
 
         super().__init__(subsample=subsample)
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -692,7 +692,7 @@ class NuthKaab(AffineCoreg):
 
         super().__init__(subsample=subsample)
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -830,7 +830,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
 
-    def _fit_pts_func(
+    def _fit_rst_pts(
         self,
         ref_dem: pd.DataFrame,
         tba_dem: RasterType,
@@ -1049,7 +1049,7 @@ class GradientDescending(AffineCoreg):
 
         super().__init__(subsample=subsample)
 
-    def _fit_pts_func(
+    def _fit_rst_pts(
         self,
         ref_dem: pd.DataFrame,
         tba_dem: RasterType,
@@ -1135,7 +1135,7 @@ class GradientDescending(AffineCoreg):
         self._meta["vshift"] = vshift
         self._meta["resolution"] = resolution
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -1157,7 +1157,7 @@ class GradientDescending(AffineCoreg):
         ref_dem["N"] = ref_dem.geometry.y
         ref_dem.rename(columns={"b1": "z"}, inplace=True)
         tba_dem = Raster.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.0)
-        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, **kwargs)
+        self._fit_rst_pts(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, **kwargs)
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

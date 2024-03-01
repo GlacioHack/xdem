@@ -97,8 +97,8 @@ class TestAffineCoreg:
         assert vshiftcorr is not vshiftcorr2
         # Fit the corrected DEM to see if the vertical shift will be close to or at zero
         vshiftcorr2.fit(
-            reference_dem=self.ref.data,
-            dem_to_be_aligned=tba_unshifted,
+            reference_elev=self.ref.data,
+            to_be_aligned_elev=tba_unshifted,
             transform=self.ref.transform,
             crs=self.ref.crs,
             inlier_mask=self.inlier_mask,

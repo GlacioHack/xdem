@@ -167,7 +167,7 @@ class TestBiasCorr:
         assert bcorr._meta["bias_var_names"] == ["elevation"]
 
         # Apply the correction
-        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+        bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize(
         "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c**d)
@@ -197,7 +197,7 @@ class TestBiasCorr:
         assert bcorr._meta["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
-        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+        bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (0, 500, 1000)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
@@ -219,7 +219,7 @@ class TestBiasCorr:
         assert bcorr._meta["bias_var_names"] == ["elevation"]
 
         # Apply the correction
-        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+        bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
@@ -241,7 +241,7 @@ class TestBiasCorr:
         assert bcorr._meta["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
-        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+        bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize(
         "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
@@ -283,7 +283,7 @@ class TestBiasCorr:
         assert bcorr._meta["bias_var_names"] == ["elevation"]
 
         # Apply the correction
-        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+        bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize(
         "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c**d)
@@ -321,7 +321,7 @@ class TestBiasCorr:
         assert bcorr._meta["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
-        bcorr.apply(dem=self.tba, bias_vars=bias_vars_dict)
+        bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     def test_biascorr1d(self) -> None:
         """
@@ -444,7 +444,7 @@ class TestBiasCorr:
             plt.show()
 
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
-            dirbias.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42)
+            dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, subsample=10000, random_state=42)
             xdem.spatialstats.plot_1d_binning(
                 df=dirbias._meta["bin_dataframe"], var_name="angle", statistic_name="nanmedian", min_count=0
             )
@@ -464,8 +464,8 @@ class TestBiasCorr:
             (0, 2 * np.pi),
         ]
         dirbias.fit(
-            reference_dem=self.ref,
-            dem_to_be_aligned=bias_dem,
+            reference_elev=self.ref,
+            to_be_aligned_elev=bias_dem,
             subsample=10000,
             random_state=42,
             bounds_amp_wave_phase=bounds,
@@ -516,7 +516,7 @@ class TestBiasCorr:
 
         # Fit
         deramp = biascorr.Deramp(poly_order=order)
-        deramp.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, subsample=10000, random_state=42)
+        deramp.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, subsample=10000, random_state=42)
 
         # Check high-order parameters are the same within 10%
         fit_params = deramp._meta["fit_params"]
@@ -569,7 +569,7 @@ class TestBiasCorr:
         )
         # We don't want to subsample here, otherwise it might be very hard to derive maximum curvature...
         # TODO: Add the option to get terrain attribute before subsampling in the fit subclassing logic?
-        tb.fit(reference_dem=self.ref, dem_to_be_aligned=bias_dem, random_state=42)
+        tb.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, random_state=42)
 
         # Check high-order parameters are the same within 10%
         bin_df = tb._meta["bin_dataframe"]

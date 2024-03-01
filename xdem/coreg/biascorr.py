@@ -139,7 +139,7 @@ class BiasCorr(Coreg):
         self._is_affine = False
         self._needs_vars = True
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -412,7 +412,7 @@ class BiasCorr1D(BiasCorr):
             subsample,
         )
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -433,7 +433,7 @@ class BiasCorr1D(BiasCorr):
                 "got {}.".format(len(bias_vars))
             )
 
-        super()._fit_func(
+        super()._fit_rst_rst(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
             inlier_mask=inlier_mask,
@@ -487,7 +487,7 @@ class BiasCorr2D(BiasCorr):
             subsample,
         )
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -507,7 +507,7 @@ class BiasCorr2D(BiasCorr):
                 ", got {}.".format(len(bias_vars))
             )
 
-        super()._fit_func(
+        super()._fit_rst_rst(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
             inlier_mask=inlier_mask,
@@ -563,7 +563,7 @@ class BiasCorrND(BiasCorr):
             subsample,
         )
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -580,7 +580,7 @@ class BiasCorrND(BiasCorr):
         if bias_vars is None or len(bias_vars) <= 2:
             raise ValueError('At least three variables have to be provided through the argument "bias_vars".')
 
-        super()._fit_func(
+        super()._fit_rst_rst(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
             inlier_mask=inlier_mask,
@@ -629,7 +629,7 @@ class DirectionalBias(BiasCorr1D):
         self._meta["angle"] = angle
         self._needs_vars = False
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -656,7 +656,7 @@ class DirectionalBias(BiasCorr1D):
             average_res = (transform[0] + abs(transform[4])) / 2
             kwargs.update({"hop_length": average_res})
 
-        super()._fit_func(
+        super()._fit_rst_rst(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
             inlier_mask=inlier_mask,
@@ -740,7 +740,7 @@ class TerrainBias(BiasCorr1D):
         self._meta["terrain_attribute"] = terrain_attribute
         self._needs_vars = False
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -762,7 +762,7 @@ class TerrainBias(BiasCorr1D):
             )
 
         # Run the parent function
-        super()._fit_func(
+        super()._fit_rst_rst(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
             inlier_mask=inlier_mask,
@@ -839,7 +839,7 @@ class Deramp(BiasCorr2D):
         self._meta["poly_order"] = poly_order
         self._needs_vars = False
 
-    def _fit_func(  # type: ignore
+    def _fit_rst_rst(  # type: ignore
         self,
         ref_dem: NDArrayf,
         tba_dem: NDArrayf,
@@ -858,7 +858,7 @@ class Deramp(BiasCorr2D):
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, ref_dem.shape[1]), np.arange(0, ref_dem.shape[0]))
 
-        super()._fit_func(
+        super()._fit_rst_rst(
             ref_dem=ref_dem,
             tba_dem=tba_dem,
             inlier_mask=inlier_mask,
