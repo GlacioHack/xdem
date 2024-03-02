@@ -42,8 +42,8 @@ class TestAffineCoreg:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
-                           data={"z": points_arr[2, :]})
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
+                              data={"z": points_arr[:, 2]})
 
     def test_from_classmethods(self) -> None:
 
@@ -59,7 +59,7 @@ class TestAffineCoreg:
         x_offset = 5
         coreg_obj2 = AffineCoreg.from_translation(x_off=x_offset)
         transformed_points2 = coreg_obj2.apply(self.points)
-        assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
+        assert np.array_equal(self.points.geometry.x.values + x_offset, transformed_points2.geometry.x.values)
 
         # Try to make a Coreg object from a nan translation (should fail).
         try:

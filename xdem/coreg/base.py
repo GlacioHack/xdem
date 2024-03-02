@@ -846,19 +846,20 @@ def apply_matrix_pts(
         matrix = invert_matrix(matrix)
 
     # First, get Nx3 array to pass to opencv
-    points = np.array([epc.geometry.x.values, epc.geometry.y.values, epc[z_name].values])
+    points = np.array([epc.geometry.x.values, epc.geometry.y.values, epc[z_name].values]).T
 
     # Transform the points (around the centroid if it exists).
     if centroid is not None:
         points -= centroid
     transformed_points = cv2.perspectiveTransform(points.reshape(1, -1, 3),
-                                                  matrix.squeeze())
+                                                  matrix).squeeze()
     if centroid is not None:
         transformed_points += centroid
 
     # Finally, transform back to a new GeoDataFrame
-    transformed_epc = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points[0, :], y=points[1, :], crs=epc.crs),
-                              data={"z": points[2, :]})
+    transformed_epc = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=transformed_points[:, 0],
+                                                                   y=transformed_points[:, 1], crs=epc.crs),
+                              data={"z": transformed_points[:, 2]})
 
     return transformed_epc
 
@@ -1086,6 +1087,7 @@ class Coreg:
             "inlier_mask": inlier_mask,
             "transform": transform,
             "crs": crs,
+            "z_name": z_name,
             "weights": weights,
             "verbose": verbose,
         }
@@ -1445,13 +1447,14 @@ class Coreg:
                     kwargs.pop("resample")  # Need to removed before passing to apply_matrix
 
                     # Apply the matrix around the centroid (if defined, otherwise just from the center).
+                    transform = kwargs.pop("transform")
                     applied_elev = apply_matrix_rst(
                         dem=kwargs.pop("elev"),
-                        transform=kwargs.pop("transform"),
+                        transform=transform,
                         matrix=self.to_matrix(),
                         centroid=self._meta.get("centroid")
                     )
-                    out_transform = kwargs["transform"]
+                    out_transform = transform
                 else:
                     raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_rst.")
 
@@ -1616,11 +1619,12 @@ class CoregPipeline(Coreg):
         reference_elev: NDArrayf | MArrayf | RasterType,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
         verbose: bool = False,
         random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
@@ -1663,13 +1667,14 @@ class CoregPipeline(Coreg):
                 "inlier_mask": inlier_mask,
                 "transform": out_transform,
                 "crs": crs,
+                "z_name": z_name,
                 "weights": weights,
                 "verbose": verbose,
                 "subsample": subsample,
                 "random_state": random_state,
             }
 
-            main_args_apply = {"elev": tba_dem_mod, "transform": out_transform, "crs": crs}
+            main_args_apply = {"elev": tba_dem_mod, "transform": out_transform, "crs": crs, "z_name": z_name}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1693,6 +1698,7 @@ class CoregPipeline(Coreg):
         elev: NDArrayf,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str = "z",
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
@@ -1702,7 +1708,7 @@ class CoregPipeline(Coreg):
 
         for i, coreg in enumerate(self.pipeline):
 
-            main_args_apply = {"elev": dem_mod, "transform": out_transform, "crs": crs}
+            main_args_apply = {"elev": dem_mod, "transform": out_transform, "crs": crs, "z_name": z_name}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1798,11 +1804,12 @@ class BlockwiseCoreg(Coreg):
         reference_elev: NDArrayf | MArrayf | RasterType,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
         verbose: bool = False,
         random_state: None | np.random.RandomState | np.random.Generator | int = None,
         **kwargs: Any,
@@ -1879,6 +1886,7 @@ class BlockwiseCoreg(Coreg):
                     bias_vars=bias_vars,
                     weights=weights,
                     crs=crs,
+                    z_name=z_name,
                     subsample=subsample,
                     random_state=random_state,
                     verbose=verbose,

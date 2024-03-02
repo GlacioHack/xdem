@@ -49,8 +49,8 @@ class TestCoregClass:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
-                              data={"z": points_arr[2, :]})
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
+                              data={"z": points_arr[:, 2]})
 
     def test_init(self) -> None:
         """Test instantiation of Coreg"""
@@ -509,8 +509,8 @@ class TestCoregPipeline:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
-                              data={"z": points_arr[2, :]})
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
+                              data={"z": points_arr[:, 2]})
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -734,8 +734,8 @@ class TestBlockwiseCoreg:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
-                              data={"z": points_arr[2, :]})
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
+                              data={"z": points_arr[:, 2]})
 
     @pytest.mark.parametrize(
         "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
