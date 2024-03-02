@@ -206,7 +206,7 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
     elif isinstance(df, np.ndarray):
         pts = df
 
-    ref_inlier = mask_raster.interp_points(pts, input_latlon=False, order=0)
+    ref_inlier = mask_raster.interp_points(pts)
     new_df = df[ref_inlier.astype(bool)].copy()
 
     return new_df, ref_inlier.astype(bool)
@@ -390,11 +390,11 @@ def _preprocess_coreg_fit_raster_point(
 
     # TODO: Convert to point cloud once class is done
     if isinstance(raster_elev, gu.Raster):
-        ref_dem = raster_elev.data
+        rst_elev = raster_elev.data
         crs = raster_elev.crs
         transform = raster_elev.transform
     else:
-        ref_dem = raster_elev
+        rst_elev = raster_elev
         crs = crs
         transform = transform
 
@@ -406,9 +406,9 @@ def _preprocess_coreg_fit_raster_point(
 
     # TODO: Convert to point cloud?
     # Convert geodataframe to vector
-    tba_dem = point_elev.to_crs(crs=crs)
+    point_elev = point_elev.to_crs(crs=crs)
 
-    return ref_dem, tba_dem, inlier_mask, transform, crs
+    return rst_elev, point_elev, inlier_mask, transform, crs
 
 def _preprocess_coreg_fit_point_point(
     reference_elev: gpd.GeoDataFrame,
@@ -428,34 +428,43 @@ def _preprocess_coreg_fit(
     crs: rio.crs.CRS | None = None,):
     """Pre-processing and checks of fit for any input."""
 
-    if not all(isinstance(dem, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for dem in (reference_elev, to_be_aligned_elev)):
+    if not all(isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for elev in (reference_elev, to_be_aligned_elev)):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
-    if all(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
-        ref_dem, tba_dem, inlier_mask, transform, crs = \
+    if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):
+        ref_elev, tba_elev, inlier_mask, transform, crs = \
             _preprocess_coreg_fit_raster_raster(reference_dem=reference_elev, dem_to_be_aligned=to_be_aligned_elev,
-                                                  inlier_mask=inlier_mask, transform=transform, crs=crs)
+                                                inlier_mask=inlier_mask, transform=transform, crs=crs)
 
     # If one input is raster, and the other is point, we reproject the point data to the same CRS and extract arrays
     elif any(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
         if isinstance(reference_elev, (np.ndarray, gu.Raster)):
-            raster_dem = reference_elev
-            point_dem = to_be_aligned_elev
+            raster_elev = reference_elev
+            point_elev = to_be_aligned_elev
+            ref = "raster"
         else:
-            raster_dem = to_be_aligned_elev
-            point_dem = reference_elev
+            raster_elev = to_be_aligned_elev
+            point_elev = reference_elev
+            ref = "point"
 
-        ref_dem, tba_dem, inlier_mask, transform, crs = \
-            _preprocess_coreg_fit_raster_point(raster_elev=raster_dem, point_elev=point_dem,
-                                                 inlier_mask=inlier_mask, transform=transform, crs=crs)
+        rst_elev, point_elev, inlier_mask, transform, crs = \
+            _preprocess_coreg_fit_raster_point(raster_elev=raster_elev, point_elev=point_elev,
+                                               inlier_mask=inlier_mask, transform=transform, crs=crs)
+
+        if ref == "raster":
+            ref_elev = rst_elev
+            tba_elev = point_elev
+        else:
+            ref_elev = point_elev
+            tba_elev = rst_elev
 
     # If both inputs are points, simply reproject to the same CRS
     else:
-        ref_dem, tba_dem = _preprocess_coreg_fit_point_point(reference_elev=reference_elev,
+        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(reference_elev=reference_elev,
                                                                to_be_aligned_elev=to_be_aligned_elev)
 
-    return ref_dem, tba_dem, inlier_mask, transform, crs
+    return ref_elev, tba_elev, inlier_mask, transform, crs
 
 def _preprocess_coreg_apply(
     elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
@@ -670,7 +679,7 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
 
-        checked_matrix = pytransform3d.transformations.check_matrix(matrix)
+        checked_matrix = pytransform3d.transformations.check_transform(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
 
@@ -848,10 +857,8 @@ def apply_matrix_pts(
         transformed_points += centroid
 
     # Finally, transform back to a new GeoDataFrame
-    transformed_epc = epc.copy()
-    transformed_epc.geometry.x.values = points[0]
-    transformed_epc.geometry.y.values = points[1]
-    transformed_epc[z_name].values = points[2]
+    transformed_epc = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points[0, :], y=points[1, :], crs=epc.crs),
+                              data={"z": points[2, :]})
 
     return transformed_epc
 
@@ -956,7 +963,7 @@ class Coreg:
             try:  # See if to_matrix() raises an error.
                 self.to_matrix()
                 self._is_affine = True
-            except (ValueError, NotImplementedError):
+            except (AttributeError, ValueError, NotImplementedError):
                 self._is_affine = False
 
         return self._is_affine
@@ -1065,7 +1072,7 @@ class Coreg:
         # TODO: Rename into "checks", because not much is preprocessed in the end
         #  (has to happen in the _fit_func itself, whether for subsampling or
         # Pre-process the inputs, by reprojecting and converting to arrays
-        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+        ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
@@ -1074,8 +1081,8 @@ class Coreg:
         )
 
         main_args = {
-            "ref_elev": ref_dem,
-            "tba_elev": tba_dem,
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
             "inlier_mask": inlier_mask,
             "transform": transform,
             "crs": crs,
@@ -1439,11 +1446,10 @@ class Coreg:
 
                     # Apply the matrix around the centroid (if defined, otherwise just from the center).
                     applied_elev = apply_matrix_rst(
-                        dem=kwargs["elev"],
-                        transform=kwargs["transform"],
+                        dem=kwargs.pop("elev"),
+                        transform=kwargs.pop("transform"),
                         matrix=self.to_matrix(),
-                        centroid=self._meta.get("centroid"),
-                        **kwargs,
+                        centroid=self._meta.get("centroid")
                     )
                     out_transform = kwargs["transform"]
                 else:
@@ -1451,6 +1457,8 @@ class Coreg:
 
         # If input is a point
         else:
+            out_transform = None
+
             # See if an _apply_pts_func exists
             try:
                 applied_elev = self._apply_pts(**kwargs)
@@ -1462,7 +1470,7 @@ class Coreg:
                     applied_elev = apply_matrix_pts(epc=kwargs["elev"],
                                                     matrix=self.to_matrix(),
                                                     centroid=self._meta.get("centroid"),
-                                                    z_name=kwargs["z_name"])
+                                                    z_name=kwargs.pop("z_name"))
 
                 else:
                     raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_pts.")
@@ -2014,10 +2022,16 @@ class BlockwiseCoreg(Coreg):
             # meta["representative_col"])
             x_coord, y_coord = meta["representative_x"], meta["representative_y"]
 
-            old_position = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))
-            new_position = self.procstep.apply(old_position)
+            old_pos_arr = np.reshape([x_coord, y_coord, meta["representative_val"]], (1, 3))
+            old_position = \
+                gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=old_pos_arr[:, 0], y=old_pos_arr[:, 1], crs=None),
+                             data={"z": old_pos_arr[:, 2]})
 
-            points = np.append(points, np.dstack((old_position, new_position)), axis=0)
+            new_position = self.procstep.apply(old_position)
+            new_pos_arr = np.reshape([new_position.geometry.x.values, new_position.geometry.y.values,
+                                      new_position["z"].values], (1, 3))
+
+            points = np.append(points, np.dstack((old_pos_arr, new_pos_arr)), axis=0)
 
         return points
 
@@ -2095,7 +2109,7 @@ class BlockwiseCoreg(Coreg):
         bounds, resolution = _transform_to_bounds_and_res(elev.shape, transform)
 
         representative_height = np.nanmean(elev)
-        edges_source = np.array(
+        edges_source_arr = np.array(
             [
                 [bounds.left + resolution / 2, bounds.top - resolution / 2, representative_height],
                 [bounds.right - resolution / 2, bounds.top - resolution / 2, representative_height],
@@ -2103,8 +2117,14 @@ class BlockwiseCoreg(Coreg):
                 [bounds.right - resolution / 2, bounds.bottom + resolution / 2, representative_height],
             ]
         )
+        edges_source = \
+            gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=edges_source_arr[:, 0], y=edges_source_arr[:, 1], crs=None),
+                             data={"z": edges_source_arr[:, 2]})
+
         edges_dest = self.apply(edges_source)
-        edges = np.dstack((edges_source, edges_dest))
+        edges_dest_arr = np.reshape([edges_dest.geometry.x.values, edges_dest.geometry.y.values,
+                                  edges_dest["z"].values], (1, 3))
+        edges = np.dstack((edges_source_arr, edges_dest_arr))
 
         all_points = np.append(points, edges, axis=0)
 

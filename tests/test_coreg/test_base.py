@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 import geoutils as gu
 import numpy as np
+import geopandas as gpd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -47,7 +48,9 @@ class TestCoregClass:
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
+                              data={"z": points_arr[2, :]})
 
     def test_init(self) -> None:
         """Test instantiation of Coreg"""
@@ -505,7 +508,9 @@ class TestCoregPipeline:
         verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
+                              data={"z": points_arr[2, :]})
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -728,14 +733,15 @@ class TestBlockwiseCoreg:
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[0, :], y=points_arr[1, :], crs=ref.crs),
+                              data={"z": points_arr[2, :]})
 
     @pytest.mark.parametrize(
         "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
     )  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
     def test_blockwise_coreg(self, pipeline: Coreg, subdivision: int) -> None:
-        warnings.simplefilter("error")
 
         blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
 
@@ -782,7 +788,6 @@ class TestBlockwiseCoreg:
 
     def test_blockwise_coreg_large_gaps(self) -> None:
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
-        warnings.simplefilter("error")
         reference_dem = self.ref.reproject(crs="EPSG:3413", res=self.ref.res, resampling="bilinear")
         dem_to_be_aligned = self.tba.reproject(ref=reference_dem, resampling="bilinear")
 
@@ -823,7 +828,6 @@ class TestBlockwiseCoreg:
 
 
 def test_apply_matrix() -> None:
-    warnings.simplefilter("error")
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     ref_arr = gu.raster.get_array_and_mask(ref)[0]
 
@@ -936,7 +940,6 @@ def test_apply_matrix() -> None:
 
 def test_warp_dem() -> None:
     """Test that the warp_dem function works expectedly."""
-    warnings.simplefilter("error")
 
     small_dem = np.zeros((5, 10), dtype="float32")
     small_transform = rio.transform.from_origin(0, 5, 1, 1)

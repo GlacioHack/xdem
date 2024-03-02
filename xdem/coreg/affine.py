@@ -5,6 +5,8 @@ from __future__ import annotations
 import warnings
 from typing import Any, Callable, TypeVar
 
+import xdem.coreg.base
+
 try:
     import cv2
 
@@ -420,7 +422,7 @@ class VerticalShift(AffineCoreg):
 
         """Apply the VerticalShift function to a set of points."""
         dem_copy = elev.copy()
-        dem_copy[z_name].values += self._meta["vshift"]
+        dem_copy[z_name] += self._meta["vshift"]
         return dem_copy
 
     def _to_matrix_func(self) -> NDArrayf:
@@ -502,48 +504,50 @@ class ICP(AffineCoreg):
         )
         subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
-        ref_pts = pd.DataFrame(
-            np.dstack(
-                [
-                    x_coords[subsample_mask],
-                    y_coords[subsample_mask],
-                    ref_elev[subsample_mask],
-                    normal_east[subsample_mask],
-                    normal_north[subsample_mask],
-                    normal_up[subsample_mask],
-                ]
-            ).squeeze(),
-            columns=["E", "N", "z", "nx", "ny", "nz"],
-        )
+        ref_pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=x_coords[subsample_mask],
+                                                               y=y_coords[subsample_mask],
+                                                               crs=None),
+                                   data={"z": ref_elev[subsample_mask], "nx": normal_east[subsample_mask],
+                                   "ny": normal_north[subsample_mask], "nz": normal_up[subsample_mask]})
 
-        self._fit_rst_pts(ref_elev=ref_pts, tba_elev=tba_elev, transform=transform, verbose=verbose, z_name="z")
+        self._fit_rst_pts(ref_elev=ref_pts, tba_elev=tba_elev, inlier_mask=inlier_mask,
+                          transform=transform, crs=crs, verbose=verbose, z_name="z")
 
     def _fit_rst_pts(
         self,
-        ref_elev: pd.DataFrame,
-        tba_elev: RasterType | NDArrayf,
-        transform: rio.transform.Affine | None,
+        ref_elev: gpd.GeoDataFrame | NDArrayf,
+        tba_elev: gpd.GeoDataFrame | NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None = None,
         verbose: bool = False,
         z_name: str = "z",
         **kwargs: Any,
     ) -> None:
 
-        if transform is None and hasattr(tba_elev, "transform"):
-            transform = tba_elev.transform  # type: ignore
-        if hasattr(tba_elev, "transform"):
-            tba_elev = tba_elev.data
+        # Check which one is reference
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            point_elev = ref_elev
+            rst_elev = tba_elev
+            ref = "point"
+        else:
+            point_elev = tba_elev
+            rst_elev = ref_elev
+            ref = "raster"
 
-        ref_elev = ref_elev.dropna(how="any", subset=["E", "N", z_name])
-        bounds, resolution = _transform_to_bounds_and_res(tba_elev.shape, transform)
-        points: dict[str, NDArrayf] = {}
+        # Pre-process point data
+        point_elev = point_elev.dropna(how="any", subset=[z_name])
+        bounds, resolution = _transform_to_bounds_and_res(rst_elev.shape, transform)
+
         # Generate the x and y coordinates for the TBA DEM
-        x_coords, y_coords = _get_x_and_y_coords(tba_elev.shape, transform)
+        x_coords, y_coords = _get_x_and_y_coords(rst_elev.shape, transform)
         centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= centroid[0]
         y_coords -= centroid[1]
 
-        gradient_x, gradient_y = np.gradient(tba_elev)
+        gradient_x, gradient_y = np.gradient(rst_elev)
 
         # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
         dem_kwargs = {"transform": transform, "crs": rio.CRS.from_epsg(32633), "nodata": -9999.0}
@@ -551,30 +555,35 @@ class ICP(AffineCoreg):
         normal_north = Raster.from_array(np.sin(np.arctan(gradient_x / resolution)), **dem_kwargs)
         normal_up = Raster.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
 
-        valid_mask = ~np.isnan(tba_elev) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
+        valid_mask = ~np.isnan(rst_elev) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
 
-        points["tba"] = np.dstack(
+        points: dict[str, NDArrayf] = {}
+        points["raster"] = np.dstack(
             [
                 x_coords[valid_mask],
                 y_coords[valid_mask],
-                tba_elev[valid_mask],
+                rst_elev[valid_mask],
                 normal_east.data[valid_mask],
                 normal_north.data[valid_mask],
                 normal_up.data[valid_mask],
             ]
         ).squeeze()
 
-        if any(col not in ref_elev for col in ["nx", "ny", "nz"]):
+        # TODO: Should be a way to not duplicate this column and just feed it directly
+        point_elev["E"] = point_elev.geometry.x.values
+        point_elev["N"] = point_elev.geometry.y.values
+
+        if any(col not in point_elev for col in ["nx", "ny", "nz"]):
             for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
                 raster.tags["AREA_OR_POINT"] = "Area"
-                ref_elev[key] = raster.interp_points(
-                    ref_elev[["E", "N"]].values, shift_area_or_point=True, mode="nearest"
+                point_elev[key] = raster.interp_points(
+                    point_elev[["E", "N"]].values, shift_area_or_point=True,
                 )
 
-        ref_elev["E"] -= centroid[0]
-        ref_elev["N"] -= centroid[1]
+        point_elev["E"] -= centroid[0]
+        point_elev["N"] -= centroid[1]
 
-        points["ref"] = ref_elev[["E", "N", z_name, "nx", "ny", "nz"]].values
+        points["point"] = point_elev[["E", "N", z_name, "nx", "ny", "nz"]].values
 
         for key in points:
             points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
@@ -584,7 +593,8 @@ class ICP(AffineCoreg):
         if verbose:
             print("Running ICP...")
         try:
-            _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+            # Use points as reference
+            _, residual, matrix = icp.registerModelToScene(points["raster"], points["point"])
         except cv2.error as exception:
             if "(expected: 'n > 0'), where" not in str(exception):
                 raise exception
@@ -594,6 +604,11 @@ class ICP(AffineCoreg):
                 f"'reference_dem' had {points['ref'].size} valid points."
                 f"'dem_to_be_aligned' had {points['tba'].size} valid points."
             )
+
+        # If raster was reference, invert the matrix
+        # TODO: Move matrix/invert_matrix to affine module?
+        if ref == "raster":
+            matrix = xdem.coreg.base.invert_matrix(matrix)
 
         if verbose:
             print("ICP finished")
@@ -852,12 +867,13 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
     def _fit_rst_pts(
         self,
-        ref_elev: pd.DataFrame,
-        tba_elev: RasterType,
-        transform: rio.transform.Affine | None,
-        weights: NDArrayf | None,
+        ref_elev: gpd.GeoDataFrame | NDArrayf,
+        tba_elev: gpd.GeoDataFrame | NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None = None,
         verbose: bool = False,
-        order: int = 1,
         z_name: str = "z",
     ) -> None:
         """
@@ -869,13 +885,24 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
         """
 
+        # Check which one is reference
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            point_elev = ref_elev
+            rst_elev = tba_elev
+            ref = "point"
+        else:
+            point_elev = tba_elev
+            rst_elev = ref_elev
+            ref = "raster"
+
         if verbose:
             print("Running Nuth and Kääb (2011) coregistration. Shift pts instead of shifting dem")
 
-        tba_arr, _ = get_array_and_mask(tba_elev)
+        rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs)
+        tba_arr, _ = get_array_and_mask(rst_elev)
 
-        resolution = tba_elev.res[0]
-        x_coords, y_coords = (ref_elev["E"].values, ref_elev["N"].values)
+        bounds, resolution = _transform_to_bounds_and_res(ref_elev.shape, transform)
+        x_coords, y_coords = (point_elev["E"].values, point_elev["N"].values)
 
         # Assume that the coordinates represent the center of a theoretical pixel.
         # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
@@ -886,7 +913,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         # This needs to be consistent, so it's cardcoded here
         area_or_point = "Area"
         # Make a new DEM which will be modified inplace
-        aligned_dem = tba_elev.copy()
+        aligned_dem = rst_elev.copy()
         aligned_dem.tags["AREA_OR_POINT"] = area_or_point
 
         # Calculate slope and aspect maps from the reference DEM
@@ -894,23 +921,23 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("   Calculate slope and aspect")
         slope, aspect = _calculate_slope_and_aspect_nuthkaab(tba_arr)
 
-        slope_r = tba_elev.copy(new_array=np.ma.masked_array(slope[None, :, :], mask=~np.isfinite(slope[None, :, :])))
+        slope_r = rst_elev.copy(new_array=np.ma.masked_array(slope[None, :, :], mask=~np.isfinite(slope[None, :, :])))
         slope_r.tags["AREA_OR_POINT"] = area_or_point
-        aspect_r = tba_elev.copy(new_array=np.ma.masked_array(aspect[None, :, :], mask=~np.isfinite(aspect[None, :, :])))
+        aspect_r = rst_elev.copy(new_array=np.ma.masked_array(aspect[None, :, :], mask=~np.isfinite(aspect[None, :, :])))
         aspect_r.tags["AREA_OR_POINT"] = area_or_point
 
         # Initialise east and north pixel offset variables (these will be incremented up and down)
         offset_east, offset_north, vshift = 0.0, 0.0, 0.0
 
         # Calculate initial DEM statistics
-        slope_pts = slope_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
-        aspect_pts = aspect_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
-        tba_pts = aligned_dem.interp_points(pts, mode="nearest", shift_area_or_point=True)
+        slope_pts = slope_r.interp_points(pts, shift_area_or_point=True)
+        aspect_pts = aspect_r.interp_points(pts, shift_area_or_point=True)
+        tba_pts = aligned_dem.interp_points(pts, shift_area_or_point=True)
 
         # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
         new_pts = pts.copy()
 
-        elevation_difference = ref_elev[z_name].values - tba_pts
+        elevation_difference = point_elev[z_name].values - tba_pts
         vshift = float(np.nanmedian(elevation_difference))
         nmad_old = nmad(elevation_difference)
 
@@ -942,16 +969,16 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             new_pts += [east_diff * resolution, north_diff * resolution]
 
             # Get new values
-            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest", shift_area_or_point=True)
-            elevation_difference = ref_elev[z_name].values - tba_pts
+            tba_pts = aligned_dem.interp_points(new_pts, shift_area_or_point=True)
+            elevation_difference = point_elev[z_name].values - tba_pts
 
             # Mask out no data by dem's mask
-            pts_, mask_ = _mask_dataframe_by_dem(new_pts, tba_elev)
+            pts_, mask_ = _mask_dataframe_by_dem(new_pts, rst_elev)
 
             # Update values relataed to shifted pts
             elevation_difference = elevation_difference[mask_]
-            slope_pts = slope_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
-            aspect_pts = aspect_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
+            slope_pts = slope_r.interp_points(pts_, shift_area_or_point=True)
+            aspect_pts = aspect_r.interp_points(pts_, shift_area_or_point=True)
             vshift = float(np.nanmedian(elevation_difference))
 
             # Update statistics
@@ -985,9 +1012,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}")
 
-        self._meta["offset_east_px"] = offset_east
-        self._meta["offset_north_px"] = offset_north
-        self._meta["vshift"] = vshift
+        self._meta["offset_east_px"] = offset_east if ref == "point" else -offset_east
+        self._meta["offset_north_px"] = offset_north if ref == "point" else -offset_north
+        self._meta["vshift"] = vshift if ref == "point" else -vshift
         self._meta["resolution"] = resolution
         self._meta["nmad"] = nmad_new
 
@@ -1031,12 +1058,12 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
         offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
-        dem_copy = elev.copy()
-        dem_copy.geometry.x.values += offset_east
-        dem_copy.geometry.y.values += offset_north
-        dem_copy[z_name].values += self._meta["vshift"]
+        applied_epc = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=elev.geometry.x.values + offset_east,
+                                                     y=elev.geometry.y.values + offset_north,
+                                                     crs=elev.crs),
+                                       data={z_name: elev[z_name].values + self._meta["vshift"]})
 
-        return dem_copy
+        return applied_epc
 
 
 class GradientDescending(AffineCoreg):
@@ -1078,17 +1105,20 @@ class GradientDescending(AffineCoreg):
 
     def _fit_rst_pts(
         self,
-        ref_elev: pd.DataFrame,
-        tba_elev: RasterType,
+        ref_elev: gpd.GeoDataFrame | NDArrayf,
+        tba_elev: gpd.GeoDataFrame | NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        weights: NDArrayf | None = None,
         verbose: bool = False,
         z_name: str = "z",
-        weights: str | None = None,
         random_state: int = 42,
         **kwargs: Any,
     ) -> None:
         """Estimate the x/y/z offset between two DEMs.
-        :param ref_elev: the dataframe used as ref
-        :param tba_elev: the dem to be aligned
+        :param point_elev: the dataframe used as ref
+        :param rst_elev: the dem to be aligned
         :param z_name: the column name of dataframe used for elevation differencing
         :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
         :param random_state: The random state of the subsampling.
@@ -1096,28 +1126,44 @@ class GradientDescending(AffineCoreg):
         if not _has_noisyopt:
             raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
-        # Perform downsampling if subsample != None
-        if self._meta["subsample"] and len(ref_elev) > self._meta["subsample"]:
-            ref_elev = ref_elev.sample(frac=self._meta["subsample"] / len(ref_elev), random_state=random_state).copy()
+        # Check which one is reference
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            point_elev = ref_elev
+            rst_elev = tba_elev
+            ref = "point"
         else:
-            ref_elev = ref_elev.copy()
+            point_elev = tba_elev
+            rst_elev = ref_elev
+            ref = "raster"
 
-        resolution = tba_elev.res[0]
+        rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs)
+
+        # Perform downsampling if subsample != None
+        if self._meta["subsample"] and len(point_elev) > self._meta["subsample"]:
+            point_elev = point_elev.sample(frac=self._meta["subsample"] / len(point_elev), random_state=random_state).copy()
+        else:
+            point_elev = point_elev.copy()
+
+        bounds, resolution = _transform_to_bounds_and_res(ref_elev.shape, transform)
         # Assume that the coordinates represent the center of a theoretical pixel.
         # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
-        ref_elev["E"] -= resolution / 2
-        ref_elev["N"] += resolution / 2
-        area_or_point = "Area"
 
-        old_aop = tba_elev.tags.get("AREA_OR_POINT", None)
-        tba_elev.tags["AREA_OR_POINT"] = area_or_point
+        # TODO: Should be a way to not duplicate this column and just feed it directly
+        point_elev["E"] = point_elev.geometry.x.values
+        point_elev["N"] = point_elev.geometry.y.values
+        point_elev["E"] -= resolution / 2
+        point_elev["N"] += resolution / 2
+
+        area_or_point = "Area"
+        old_aop = rst_elev.tags.get("AREA_OR_POINT", None)
+        rst_elev.tags["AREA_OR_POINT"] = area_or_point
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
             if self._meta["subsample"]:
-                print("Running on downsampling. The length of the gdf:", len(ref_elev))
+                print("Running on downsampling. The length of the gdf:", len(point_elev))
 
-            elevation_difference = _residuals_df(tba_elev, ref_elev, (0, 0), 0, z_name=z_name)
+            elevation_difference = _residuals_df(rst_elev, point_elev, (0, 0), 0, z_name=z_name)
             nmad_old = nmad(elevation_difference)
             vshift = np.nanmedian(elevation_difference)
             print("   Statistics on initial dh:")
@@ -1125,7 +1171,7 @@ class GradientDescending(AffineCoreg):
 
         # start iteration, find the best shifting px
         def func_cost(x: tuple[float, float]) -> np.floating[Any]:
-            return nmad(_residuals_df(tba_elev, ref_elev, x, 0, z_name=z_name, weight=weights))
+            return nmad(_residuals_df(rst_elev, point_elev, x, 0, z_name=z_name, weight=weights))
 
         res = minimizeCompass(
             func_cost,
@@ -1139,12 +1185,12 @@ class GradientDescending(AffineCoreg):
         )
 
         # Send the best solution to find all results
-        elevation_difference = _residuals_df(tba_elev, ref_elev, (res.x[0], res.x[1]), 0, z_name=z_name)
+        elevation_difference = _residuals_df(rst_elev, point_elev, (res.x[0], res.x[1]), 0, z_name=z_name)
 
         if old_aop is None:
-            del tba_elev.tags["AREA_OR_POINT"]
+            del rst_elev.tags["AREA_OR_POINT"]
         else:
-            tba_elev.tags["AREA_OR_POINT"] = old_aop
+            rst_elev.tags["AREA_OR_POINT"] = old_aop
 
         # results statistics
         vshift = np.nanmedian(elevation_difference)
@@ -1157,9 +1203,12 @@ class GradientDescending(AffineCoreg):
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.4f} - NMAD = {nmad_new:.4f}")
 
-        self._meta["offset_east_px"] = res.x[0]
-        self._meta["offset_north_px"] = res.x[1]
-        self._meta["vshift"] = vshift
+        offset_east = res.x[0]
+        offset_north = res.x[1]
+
+        self._meta["offset_east_px"] = offset_east if ref == "point" else -offset_east
+        self._meta["offset_north_px"] = offset_north if ref == "point" else -offset_north
+        self._meta["vshift"] = vshift if ref == "point" else -vshift
         self._meta["resolution"] = resolution
 
     def _fit_rst_rst(
@@ -1169,7 +1218,7 @@ class GradientDescending(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
-        weights: NDArrayf | None,
+        weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
@@ -1183,8 +1232,8 @@ class GradientDescending(AffineCoreg):
         ref_elev["E"] = ref_elev.geometry.x
         ref_elev["N"] = ref_elev.geometry.y
         ref_elev.rename(columns={"b1": "z"}, inplace=True)
-        tba_elev = Raster.from_array(tba_elev, transform=transform, crs=crs, nodata=-9999.0)
-        self._fit_rst_pts(ref_elev=ref_elev, tba_elev=tba_elev, transform=transform, **kwargs)
+        self._fit_rst_pts(ref_elev=ref_elev, tba_elev=tba_elev, transform=transform, crs=crs, inlier_mask=inlier_mask,
+                          **kwargs)
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
