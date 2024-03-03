@@ -510,6 +510,8 @@ def _preprocess_coreg_apply(
 def _postprocess_coreg_apply_pts(
         applied_elev: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
+    """Post-processing and checks of apply for point input."""
+
     # TODO: Convert CRS back if the CRS did not match the one of the fit?
     return applied_elev
 
@@ -522,6 +524,8 @@ def _postprocess_coreg_apply_rst(
         resample: bool,
         resampling: rio.warp.Resampling | None = None,
 ) -> tuple[NDArrayf | gu.Raster, affine.Affine]:
+    """Post-processing and checks of apply for raster input."""
+
     # Ensure the dtype is OK
     applied_elev = applied_elev.astype("float32")
 
@@ -539,23 +543,23 @@ def _postprocess_coreg_apply_rst(
         else:
             match_rst = elev
         applied_rst.reproject(match_rst, resampling=resampling)
-        applied_dem = applied_rst.data
+        applied_elev = applied_rst.data
 
     # Calculate final mask
-    final_mask = np.logical_or(~np.isfinite(applied_dem), applied_dem == nodata)
+    final_mask = np.logical_or(~np.isfinite(applied_elev), applied_elev == nodata)
 
     # If the DEM was a masked_array, copy the mask to the new DEM
     if isinstance(elev, (np.ma.masked_array, gu.Raster)):
-        applied_dem = np.ma.masked_array(applied_dem, mask=final_mask)  # type: ignore
+        applied_elev = np.ma.masked_array(applied_elev, mask=final_mask)  # type: ignore
     else:
-        applied_dem[final_mask] = np.nan
+        applied_elev[final_mask] = np.nan
 
     # If the input was a Raster, returns a Raster, else returns array and transform
     if isinstance(elev, gu.Raster):
-        out_dem = elev.from_array(applied_dem, out_transform, crs, nodata=elev.nodata)
+        out_dem = elev.from_array(applied_elev, out_transform, crs, nodata=elev.nodata)
         return out_dem, out_transform
     else:
-        return applied_dem, out_transform
+        return applied_elev, out_transform
 
 def _postprocess_coreg_apply(
         elev: NDArrayf | gu.Raster | gpd.GeoDataFrame,
@@ -566,6 +570,7 @@ def _postprocess_coreg_apply(
         resample: bool,
         resampling: rio.warp.Resampling | None = None,
 ) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
+    """Post-processing and checks of apply for any input."""
 
     if isinstance(applied_elev, np.ndarray):
         applied_elev, out_transform = _postprocess_coreg_apply_rst(elev=elev, applied_elev=applied_elev,
@@ -1171,7 +1176,7 @@ class Coreg:
         :param elev: Elevation to apply the transform to, either a DEM or an elevation point cloud.
         :param bias_vars: Only for some bias correction classes. 2D array of bias variables used.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
-        only the transform might be updated and no resampling is done.
+            only the transform might be updated and no resampling is done.
         :param resampling: Resampling method if resample is used. Defaults to "bilinear".
         :param transform: Geotransform of the elevation, only if provided as 2D array.
         :param crs: CRS of elevation, only if provided as 2D array.
@@ -1383,6 +1388,7 @@ class Coreg:
             try:
                 self._fit_rst_rst(**kwargs)
             # Otherwise, convert the tba raster to points and try raster-points
+            # TODO: This is also capturing other "NotImplementedError" for resampling and failing test_apply_resample[inputs4]
             except NotImplementedError:
                 warnings.warn(
                     f"No raster-raster method found for coregistration {self.__class__.__name__}, "
@@ -1486,6 +1492,7 @@ class Coreg:
                      inlier_mask: NDArrayb,
                      transform: rio.transform.Affine,
                      crs: rio.crs.CRS,
+                     z_name: str,
                      weights: NDArrayf | None,
                      bias_vars: dict[str, NDArrayf] | None = None,
                      verbose: bool = False,
@@ -1500,6 +1507,7 @@ class Coreg:
                      inlier_mask: NDArrayb,
                      transform: rio.transform.Affine,
                      crs: rio.crs.CRS,
+                     z_name: str,
                      weights: NDArrayf | None,
                      bias_vars: dict[str, NDArrayf] | None = None,
                      verbose: bool = False,
@@ -1514,6 +1522,7 @@ class Coreg:
                      inlier_mask: NDArrayb,
                      transform: rio.transform.Affine,
                      crs: rio.crs.CRS,
+                     z_name: str,
                      weights: NDArrayf | None,
                      bias_vars: dict[str, NDArrayf] | None = None,
                      verbose: bool = False,

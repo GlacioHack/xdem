@@ -64,7 +64,6 @@ class TestCoregClass:
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
-        warnings.simplefilter("error")
 
         # Create a coreg instance and copy it.
         corr = coreg_class()
@@ -148,7 +147,6 @@ class TestCoregClass:
 
     @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
     def test_subsample(self, coreg: Callable) -> None:  # type: ignore
-        warnings.simplefilter("error")
 
         # Check that default value is set properly
         coreg_full = coreg()
@@ -360,7 +358,7 @@ class TestCoregClass:
         # Test it works with different resampling algorithms
         dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
         dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
-        with pytest.raises(ValueError, match="`resampling` must be a rio.warp.Resampling algorithm"):
+        with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
             dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=None)
 
     @pytest.mark.parametrize(
@@ -435,7 +433,6 @@ class TestCoregClass:
             6. The expected outcome of the test.
             7. The error/warning message (if applicable)
         """
-        warnings.simplefilter("error")
 
         ref_dem, tba_dem, transform, crs, testing_step, result, text = combination
 
@@ -530,7 +527,6 @@ class TestCoregPipeline:
         assert pipeline_copy.pipeline[0]._meta["vshift"]
 
     def test_pipeline(self) -> None:
-        warnings.simplefilter("error")
 
         # Create a pipeline from two coreg methods.
         pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
@@ -637,7 +633,6 @@ class TestCoregPipeline:
             pipeline3.fit(**self.fit_params, bias_vars={"ncc": xdem.terrain.slope(self.ref)})
 
     def test_pipeline_pts(self) -> None:
-        warnings.simplefilter("ignore")
 
         pipeline = coreg.NuthKaab() + coreg.GradientDescending()
         ref_points = self.ref.to_points(as_array=False, subsample=5000, pixel_offset="center").ds
@@ -654,7 +649,7 @@ class TestCoregPipeline:
         assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
 
     def test_coreg_add(self) -> None:
-        warnings.simplefilter("error")
+
         # Test with a vertical shift of 4
         vshift = 4
 

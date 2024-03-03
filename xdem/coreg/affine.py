@@ -308,6 +308,7 @@ class AffineCoreg(Coreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         weights: NDArrayf | None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
@@ -367,6 +368,7 @@ class VerticalShift(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         weights: NDArrayf | None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
@@ -480,6 +482,7 @@ class ICP(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         weights: NDArrayf | None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
@@ -643,6 +646,7 @@ class Tilt(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         weights: NDArrayf | None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
@@ -734,6 +738,7 @@ class NuthKaab(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         weights: NDArrayf | None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
@@ -1218,6 +1223,7 @@ class GradientDescending(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
@@ -1231,7 +1237,7 @@ class GradientDescending(AffineCoreg):
         )
         ref_elev["E"] = ref_elev.geometry.x
         ref_elev["N"] = ref_elev.geometry.y
-        ref_elev.rename(columns={"b1": "z"}, inplace=True)
+        ref_elev.rename(columns={"b1": z_name}, inplace=True)
         self._fit_rst_pts(ref_elev=ref_elev, tba_elev=tba_elev, transform=transform, crs=crs, inlier_mask=inlier_mask,
                           **kwargs)
 

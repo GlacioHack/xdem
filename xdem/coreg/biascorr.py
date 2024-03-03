@@ -146,6 +146,7 @@ class BiasCorr(Coreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        z_name: str,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
@@ -420,6 +421,7 @@ class BiasCorr1D(BiasCorr):
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        z_name: str,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -440,6 +442,7 @@ class BiasCorr1D(BiasCorr):
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -495,6 +498,7 @@ class BiasCorr2D(BiasCorr):
         bias_vars: dict[str, NDArrayf],
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        z_name: str,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -514,6 +518,7 @@ class BiasCorr2D(BiasCorr):
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -571,6 +576,7 @@ class BiasCorrND(BiasCorr):
         bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        z_name: str,
         weights: None | NDArrayf = None,
         verbose: bool = False,
         **kwargs,
@@ -587,6 +593,7 @@ class BiasCorrND(BiasCorr):
             bias_vars=bias_vars,
             transform=transform,
             crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -636,6 +643,7 @@ class DirectionalBias(BiasCorr1D):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
@@ -663,6 +671,7 @@ class DirectionalBias(BiasCorr1D):
             bias_vars={"angle": x},
             transform=transform,
             crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -747,6 +756,7 @@ class TerrainBias(BiasCorr1D):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
@@ -769,6 +779,7 @@ class TerrainBias(BiasCorr1D):
             bias_vars={self._meta["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -846,6 +857,7 @@ class Deramp(BiasCorr2D):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
@@ -865,6 +877,7 @@ class Deramp(BiasCorr2D):
             bias_vars={"xx": xx, "yy": yy},
             transform=transform,
             crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             p0=p0,
