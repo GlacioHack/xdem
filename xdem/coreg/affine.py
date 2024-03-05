@@ -301,44 +301,6 @@ class AffineCoreg(Coreg):
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        z_name: str,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        # FOR DEVELOPERS: This function needs to be implemented.
-        raise NotImplementedError("This step has to be implemented by subclassing.")
-
-    def _apply_rst(
-        self,
-        elev: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
-
-    def _apply_pts(
-            self,
-            elev: gpd.GeoDataFrame,
-            z_name: str = "z",
-            bias_vars: dict[str, NDArrayf] | None = None,
-            **kwargs: Any,
-    ) -> gpd.GeoDataFrame:
-
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
-
 
 class VerticalShift(AffineCoreg):
     """

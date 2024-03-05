@@ -478,19 +478,19 @@ def _preprocess_coreg_apply(
     # If input is geodataframe
     if isinstance(elev, gpd.GeoDataFrame):
         elev_out = elev
+        new_transform = None
+        new_crs = None
 
     # If input is a raster or array
     else:
         # If input is raster
         if isinstance(elev, gu.Raster):
-            if transform is None:
-                transform = elev.transform
-            else:
+            if transform is not None:
                 warnings.warn(f"DEM of type {type(elev)} overrides the given 'transform'")
-            if crs is None:
-                crs = elev.crs
-            else:
+            if crs is not None:
                 warnings.warn(f"DEM of type {type(elev)} overrides the given 'crs'")
+            new_transform = elev.transform
+            new_crs = elev.crs
 
         # If input is an array
         else:
@@ -498,6 +498,8 @@ def _preprocess_coreg_apply(
                 raise ValueError("'transform' must be given if DEM is array-like.")
             if crs is None:
                 raise ValueError("'crs' must be given if DEM is array-like.")
+            new_transform = transform
+            new_crs = crs
 
         # The array to provide the functions will be an ndarray with NaNs for masked out areas.
         elev_out, elev_mask = get_array_and_mask(elev)
@@ -505,7 +507,7 @@ def _preprocess_coreg_apply(
         if np.all(elev_mask):
             raise ValueError("'dem' had only NaNs")
 
-    return elev_out, transform, crs
+    return elev_out, new_transform, new_crs
 
 def _postprocess_coreg_apply_pts(
         applied_elev: gpd.GeoDataFrame,
@@ -537,13 +539,16 @@ def _postprocess_coreg_apply_rst(
 
     # Resample the array on the original grid
     if resample:
+        # Reproject the DEM from its out_transform onto the transform
         applied_rst = gu.Raster.from_array(applied_elev, out_transform, crs=crs, nodata=nodata)
         if not isinstance(elev, gu.Raster):
             match_rst = gu.Raster.from_array(elev, transform, crs=crs, nodata=nodata)
         else:
             match_rst = elev
-        applied_rst.reproject(match_rst, resampling=resampling)
+        applied_rst = applied_rst.reproject(match_rst, resampling=resampling)
         applied_elev = applied_rst.data
+        # Now that the raster data is reprojected, the new out_transform is set as the original transform
+        out_transform = transform
 
     # Calculate final mask
     final_mask = np.logical_or(~np.isfinite(applied_elev), applied_elev == nodata)
@@ -857,7 +862,7 @@ def apply_matrix_pts(
     if centroid is not None:
         points -= centroid
     transformed_points = cv2.perspectiveTransform(points.reshape(1, -1, 3),
-                                                  matrix).squeeze()
+                                                  matrix)[0, :, :]  # Select the first dimension that is one
     if centroid is not None:
         transformed_points += centroid
 
@@ -872,6 +877,16 @@ def apply_matrix_pts(
 # Generic coregistration processing classes
 ###########################################
 
+class NotImplementedCoregFit(NotImplementedError):
+    """
+    Error subclass for not implemented coregistration fit methods; mainly to differentiate with NotImplementedError
+    """
+
+
+class NotImplementedCoregApply(NotImplementedError):
+    """
+    Error subclass for not implemented coregistration fit methods; mainly to differentiate with NotImplementedError
+    """
 
 class CoregDict(TypedDict, total=False):
     """
@@ -1245,19 +1260,19 @@ class Coreg:
         """
 
         # Apply the transformation to the dem to be aligned
-        aligned_dem = self.apply(to_be_aligned_elev, transform=transform, crs=crs)[0]
+        aligned_elev = self.apply(to_be_aligned_elev, transform=transform, crs=crs)[0]
 
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, align_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+        ref_dem, align_elev, inlier_mask, transform, crs = _preprocess_coreg_fit(
             reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
+            to_be_aligned_elev=aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
         )
 
         # Calculate the DEM difference
-        diff = ref_dem - align_dem
+        diff = ref_dem - align_elev
 
         # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
         full_mask = np.isfinite(diff)
@@ -1388,8 +1403,7 @@ class Coreg:
             try:
                 self._fit_rst_rst(**kwargs)
             # Otherwise, convert the tba raster to points and try raster-points
-            # TODO: This is also capturing other "NotImplementedError" for resampling and failing test_apply_resample[inputs4]
-            except NotImplementedError:
+            except NotImplementedCoregFit:
                 warnings.warn(
                     f"No raster-raster method found for coregistration {self.__class__.__name__}, "
                     f"trying raster-point method by converting to-be-aligned DEM to points.",
@@ -1404,7 +1418,7 @@ class Coreg:
         if rop == "r-p" or try_rp:
             try:
                 self._fit_rst_pts(**kwargs)
-            except NotImplementedError:
+            except NotImplementedCoregFit:
                 warnings.warn(
                     f"No raster-point method found for coregistration {self.__class__.__name__}, "
                     f"trying point-point method by converting all elevation data to points.",
@@ -1419,16 +1433,16 @@ class Coreg:
         if rop == "p-p" or try_pp:
             try:
                 self._fit_pts_pts(**kwargs)
-            except NotImplementedError:
+            except NotImplementedCoregFit:
                 if try_pp and try_rp:
-                    raise NotImplementedError(
+                    raise NotImplementedCoregFit(
                         f"No raster-raster, raster-point or point-point method found for "
                         f"coregistration {self.__class__.__name__}.")
                 elif try_pp:
-                    raise NotImplementedError(
+                    raise NotImplementedCoregFit(
                         f"No raster-point or point-point method found for coregistration {self.__class__.__name__}.")
                 else:
-                    raise NotImplementedError(f"No point-point method found for coregistration {self.__class__.__name__}.")
+                    raise NotImplementedCoregFit(f"No point-point method found for coregistration {self.__class__.__name__}.")
 
     def _apply_func(self, **kwargs: Any) -> tuple[np.ndarray | gpd.GeoDataFrame, affine.Affine]:
         """Distribute to _apply_rst and _apply_pts based on input and method availability."""
@@ -1442,7 +1456,7 @@ class Coreg:
                 applied_elev, out_transform = self._apply_rst(**kwargs)  # pylint: disable=assignment-from-no-return
 
             # If it doesn't exist, use apply_matrix()
-            except NotImplementedError:
+            except NotImplementedCoregApply:
 
                 if self.is_affine:  # This only works for affine, however.
 
@@ -1473,7 +1487,7 @@ class Coreg:
                 applied_elev = self._apply_pts(**kwargs)
 
             # If it doesn't exist, use opencv's perspectiveTransform
-            except NotImplementedError:
+            except NotImplementedCoregApply:
                 if self.is_affine:  # This only works on it's rigid, however.
 
                     applied_elev = apply_matrix_pts(epc=kwargs["elev"],
@@ -1499,7 +1513,7 @@ class Coreg:
                      **kwargs: Any,
                      ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
-        raise NotImplementedError("This step has to be implemented by subclassing.")
+        raise NotImplementedCoregFit("This step has to be implemented by subclassing.")
 
     def _fit_rst_pts(self,
                      ref_elev: NDArrayf,
@@ -1514,7 +1528,7 @@ class Coreg:
                      **kwargs: Any,
                      ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
-        raise NotImplementedError("This step has to be implemented by subclassing.")
+        raise NotImplementedCoregFit("This step has to be implemented by subclassing.")
 
     def _fit_pts_pts(self,
                      ref_elev: gpd.GeoDataFrame,
@@ -1529,7 +1543,7 @@ class Coreg:
                      **kwargs: Any,
                      ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
-        raise NotImplementedError("This step has to be implemented by subclassing.")
+        raise NotImplementedCoregFit("This step has to be implemented by subclassing.")
 
     def _apply_rst(
         self,
@@ -1541,7 +1555,7 @@ class Coreg:
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
-        raise NotImplementedError("This should have been implemented by subclassing.")
+        raise NotImplementedCoregApply("This should have been implemented by subclassing.")
 
     def _apply_pts(
         self,
@@ -1552,7 +1566,7 @@ class Coreg:
     ) -> gpd.GeoDataFrame:
 
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
-        raise NotImplementedError("This should have been implemented by subclassing.")
+        raise NotImplementedCoregApply("This should have been implemented by subclassing.")
 
 
 class CoregPipeline(Coreg):
@@ -2119,7 +2133,7 @@ class BlockwiseCoreg(Coreg):
 
         # Other option than resample=True is not implemented for this case
         if "resample" in kwargs and kwargs["resample"] is not True:
-            raise NotImplementedError()
+            raise NotImplementedError("Option `resample=False` not implemented for coreg method BlockwiseCoreg.")
 
         points = self.to_points()
 
@@ -2139,8 +2153,8 @@ class BlockwiseCoreg(Coreg):
                              data={"z": edges_source_arr[:, 2]})
 
         edges_dest = self.apply(edges_source)
-        edges_dest_arr = np.reshape([edges_dest.geometry.x.values, edges_dest.geometry.y.values,
-                                  edges_dest["z"].values], (1, 3))
+        edges_dest_arr = np.array([edges_dest.geometry.x.values, edges_dest.geometry.y.values,
+                                  edges_dest["z"].values]).T
         edges = np.dstack((edges_source_arr, edges_dest_arr))
 
         all_points = np.append(points, edges, axis=0)
@@ -2155,6 +2169,34 @@ class BlockwiseCoreg(Coreg):
 
         return warped_dem, transform
 
+    def _apply_pts(self,
+        elev: gpd.GeoDataFrame,
+        z_name: str = "z",
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any) -> gpd.GeoDataFrame:
+        """Apply the scaling model to a set of points."""
+        points = self.to_points()
+
+        new_coords = np.array([elev.geometry.x.values, elev.geometry.y.values, elev["z"].values]).T
+
+        for dim in range(0, 3):
+            with warnings.catch_warnings():
+                # ZeroDivisionErrors may happen when the transformation is empty (which is fine)
+                warnings.filterwarnings("ignore", message="ZeroDivisionError")
+                model = scipy.interpolate.Rbf(
+                    points[:, 0, 0],
+                    points[:, 1, 0],
+                    points[:, dim, 1] - points[:, dim, 0],
+                    function="linear",
+                )
+
+            new_coords[:, dim] += model(elev.geometry.x.values, elev.geometry.y.values)
+
+        gdf_new_coords = \
+            gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=new_coords[:, 0], y=new_coords[:, 1], crs=None),
+                             data={"z": new_coords[:, 2]})
+
+        return gdf_new_coords
 
 def warp_dem(
     dem: NDArrayf,

@@ -262,9 +262,9 @@ class TestAffineCoreg:
         transformed_points = nuth_kaab.apply(self.points)
 
         # Check that the x shift is close to the pixel_shift * image resolution
-        assert abs((transformed_points[0, 0] - self.points[0, 0]) - pixel_shift * self.ref.res[0]) < 0.1
+        assert all(abs((transformed_points.geometry.x.values - self.points.geometry.x.values) - pixel_shift * self.ref.res[0]) < 0.1)
         # Check that the z shift is close to the original vertical shift.
-        assert abs((transformed_points[0, 2] - self.points[0, 2]) + vshift) < 0.1
+        assert all(abs((transformed_points["z"].values - self.points["z"].values) + vshift) < 0.1)
 
     def test_tilt(self) -> None:
 

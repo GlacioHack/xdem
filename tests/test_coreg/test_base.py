@@ -336,7 +336,7 @@ class TestCoregClass:
         # If not implemented, should raise an error
         if not is_implemented:
             with pytest.raises(NotImplementedError, match="Option `resample=False` not implemented for coreg method *"):
-                dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+                coreg_method.apply(tba_dem, resample=False)
             return
         else:
             dem_coreg_resample = coreg_method.apply(tba_dem)
@@ -356,10 +356,10 @@ class TestCoregClass:
             # assert np.count_nonzero(diff.data) == 0
 
         # Test it works with different resampling algorithms
-        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
-        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
+        coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
+        coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
         with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
-            dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=None)
+            coreg_method.apply(tba_dem, resample=True, resampling=None)
 
     @pytest.mark.parametrize(
         "combination",
@@ -415,7 +415,8 @@ class TestCoregClass:
                 "'crs' must be given if DEM is array-like.",
             ),
             ("dem1", "dem2", "dem2.transform", "None", "apply", "warns", "DEM .* overrides the given 'transform'"),
-            ("None", "None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+            ("None", "None", "None", "None", "fit", "error", "Input elevation data should be a raster, "
+                                                             "an array or a geodataframe."),
             ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
