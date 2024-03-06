@@ -404,6 +404,19 @@ def _preprocess_coreg_fit_raster_point(
     if crs is None:
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
+    # Make sure that the mask has an expected format.
+    if inlier_mask is not None:
+        if isinstance(inlier_mask, Mask):
+            inlier_mask = inlier_mask.data.filled(False).squeeze()
+        else:
+            inlier_mask = np.asarray(inlier_mask).squeeze()
+            assert inlier_mask.dtype == bool, f"Invalid mask dtype: '{inlier_mask.dtype}'. Expected 'bool'"
+
+        if np.all(~inlier_mask):
+            raise ValueError("'inlier_mask' had no inliers.")
+    else:
+        inlier_mask = np.ones(np.shape(rst_elev), dtype=bool)
+
     # TODO: Convert to point cloud?
     # Convert geodataframe to vector
     point_elev = point_elev.to_crs(crs=crs)
@@ -1015,7 +1028,10 @@ class Coreg:
 
             # We return a boolean mask of the subsample within valid values
             subsample_mask = np.zeros(np.shape(valid_mask), dtype=bool)
-            subsample_mask[indices[0], indices[1]] = True
+            if len(indices) == 2:
+                subsample_mask[indices[0], indices[1]] = True
+            else:
+                subsample_mask[indices[0]] = True
         else:
             # If no subsample is taken, use all valid values
             subsample_mask = valid_mask
@@ -1409,9 +1425,9 @@ class Coreg:
                     f"trying raster-point method by converting to-be-aligned DEM to points.",
                     UserWarning
                 )
-                tba_dem_pts = gu.Raster.from_array(data=kwargs["tba_dem"], transform=kwargs["transform"],
+                tba_elev_pts = gu.Raster.from_array(data=kwargs["tba_elev"], transform=kwargs["transform"],
                                                    crs=kwargs["crs"]).to_points().ds
-                kwargs.update({"tba_dem": tba_dem_pts})
+                kwargs.update({"tba_elev": tba_elev_pts})
                 try_rp = True
 
         # For raster-point
@@ -1424,9 +1440,9 @@ class Coreg:
                     f"trying point-point method by converting all elevation data to points.",
                     UserWarning
                 )
-                ref_dem_pts = gu.Raster.from_array(data=kwargs["ref_dem"], transform=kwargs["transform"],
+                ref_elev_pts = gu.Raster.from_array(data=kwargs["ref_elev"], transform=kwargs["transform"],
                                                    crs=kwargs["crs"]).to_points().ds
-                kwargs.update({"ref_dem": ref_dem_pts})
+                kwargs.update({"ref_elev": ref_elev_pts})
                 try_pp = True
 
         # For point-point

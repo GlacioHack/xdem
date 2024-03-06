@@ -673,10 +673,9 @@ class Tilt(AffineCoreg):
 
 class NuthKaab(AffineCoreg):
     """
-    Nuth and Kääb (2011) DEM coregistration.
+    Nuth and Kääb (2011) DEM coregistration: iterative registration of horizontal and vertical shift using slope/aspect.
 
-    Implemented after the paper:
-    https://doi.org/10.5194/tc-5-271-2011
+    Implemented after the paper: https://doi.org/10.5194/tc-5-271-2011.
     """
 
     def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
@@ -684,7 +683,7 @@ class NuthKaab(AffineCoreg):
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param max_iterations: The maximum allowed iterations before stopping.
-        :param offset_threshold: The residual offset threshold after which to stop the iterations.
+        :param offset_threshold: The residual offset threshold after which to stop the iterations (in pixels).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict
