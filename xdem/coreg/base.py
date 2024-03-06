@@ -707,7 +707,47 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         return pytransform3d.transformations.invert_transform(checked_matrix)
 
 
-def apply_matrix_rst(
+def apply_matrix(
+    elev: gu.Raster | NDArrayf | gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: int | str = "bilinear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+) -> NDArrayf | gu.Raster | gpd.GeoDataFrame:
+    """
+    Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
+
+    :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
+        geodataframe (requires z_name).
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0).
+    :param resampling: The resampling method to use, only for DEM 2.5D transformation. Can be `nearest`, `bilinear`,
+        `cubic` or an integer from 0-5.
+    :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
+    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :return:
+    """
+
+    if isinstance(elev, gpd.GeoDataFrame):
+        return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
+    else:
+        if isinstance(elev, gu.Raster):
+            transform = elev.transform
+            dem = elev.data
+        else:
+            dem = elev
+
+        # TODO: Add exception for translation to update only geotransform, maybe directly in apply_matrix?
+        applied_dem = _apply_matrix_rst(dem=dem, transform=transform, matrix=matrix, invert=invert, centroid=centroid,
+                                        resampling=resampling)
+        if isinstance(elev, gu.Raster):
+            applied_dem = gu.Raster.from_array(applied_dem, transform, elev.crs, elev.nodata)
+        return applied_dem
+
+def _apply_matrix_rst(
     dem: NDArrayf,
     transform: rio.transform.Affine,
     matrix: NDArrayf,
@@ -845,7 +885,7 @@ def apply_matrix_rst(
 
     return transformed_dem
 
-def apply_matrix_pts(
+def _apply_matrix_pts(
     epc: gpd.GeoDataFrame,
     matrix: NDArrayf,
     invert: bool = False,
@@ -859,7 +899,7 @@ def apply_matrix_pts(
     :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations. Defaults to the midpoint (Z=0).
-    :param z_name:
+    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
 
     :return: Transformed elevation point cloud.
     """
@@ -1484,7 +1524,7 @@ class Coreg:
 
                     # Apply the matrix around the centroid (if defined, otherwise just from the center).
                     transform = kwargs.pop("transform")
-                    applied_elev = apply_matrix_rst(
+                    applied_elev = _apply_matrix_rst(
                         dem=kwargs.pop("elev"),
                         transform=transform,
                         matrix=self.to_matrix(),
@@ -1506,10 +1546,10 @@ class Coreg:
             except NotImplementedCoregApply:
                 if self.is_affine:  # This only works on it's rigid, however.
 
-                    applied_elev = apply_matrix_pts(epc=kwargs["elev"],
-                                                    matrix=self.to_matrix(),
-                                                    centroid=self._meta.get("centroid"),
-                                                    z_name=kwargs.pop("z_name"))
+                    applied_elev = _apply_matrix_pts(epc=kwargs["elev"],
+                                                     matrix=self.to_matrix(),
+                                                     centroid=self._meta.get("centroid"),
+                                                     z_name=kwargs.pop("z_name"))
 
                 else:
                     raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_pts.")

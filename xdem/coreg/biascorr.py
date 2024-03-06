@@ -891,7 +891,7 @@ class TerrainBias(BiasCorr1D):
     ) -> None:
 
         # If already passed by user, pass along
-        if self._meta["terrain_attribute"] in bias_vars:
+        if bias_vars is not None and self._meta["terrain_attribute"] in bias_vars:
             attr = bias_vars[self._meta["terrain_attribute"]]
 
         # If only declared during instantiation
@@ -933,7 +933,7 @@ class TerrainBias(BiasCorr1D):
     ) -> None:
 
         # If already passed by user, pass along
-        if self._meta["terrain_attribute"] in bias_vars:
+        if bias_vars is not None and self._meta["terrain_attribute"] in bias_vars:
             attr = bias_vars[self._meta["terrain_attribute"]]
 
         # If only declared during instantiation

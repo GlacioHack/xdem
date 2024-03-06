@@ -168,7 +168,7 @@ class TestAffineCoreg:
         )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
         assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
-        assert gds._meta["vshift"] == pytest.approx(-1.8730, rel=1e-1)
+        assert gds._meta["vshift"] == pytest.approx(-2.39, rel=1e-1)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore

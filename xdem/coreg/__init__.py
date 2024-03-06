@@ -10,7 +10,7 @@ from xdem.coreg.affine import (  # noqa
     Tilt,
     VerticalShift,
 )
-from xdem.coreg.base import BlockwiseCoreg, Coreg, CoregPipeline, apply_matrix_rst  # noqa
+from xdem.coreg.base import BlockwiseCoreg, Coreg, CoregPipeline, apply_matrix, invert_matrix  # noqa
 from xdem.coreg.biascorr import (  # noqa
     BiasCorr,
     BiasCorr1D,
