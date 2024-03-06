@@ -18,6 +18,21 @@ try:
 except ImportError:
     _has_rd = False
 
+available_attributes = [
+    "slope",
+    "aspect",
+    "hillshade",
+    "curvature",
+    "planform_curvature",
+    "profile_curvature",
+    "maximum_curvature",
+    "topographic_position_index",
+    "terrain_ruggedness_index",
+    "roughness",
+    "rugosity",
+    "fractal_roughness",
+]
+
 
 def _raster_to_rda(rst: RasterType) -> rd.rdarray:
     """
@@ -1134,7 +1149,7 @@ def slope(
     :param dem: The DEM to generate a slope map for.
     :param resolution: The X/Y or (X, Y) resolution of the DEM.
     :param method: Method to calculate slope: "Horn" or "ZevenbergThorne".
-    :param degrees: Return a slope map in degrees (False means radians).
+    :param degrees: Whether to use degrees or radians (False means radians).
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:
@@ -1192,7 +1207,7 @@ def aspect(
 
     :param dem: The DEM to calculate the aspect from.
     :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
-    :param degrees: Return an aspect map in degrees (if False, returns radians)
+    :param degrees: Whether to use degrees or radians (False means radians).
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:

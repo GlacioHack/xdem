@@ -2,12 +2,21 @@
 
 # Terrain attributes
 
-For analytic and visual purposes, deriving certain attributes of a DEM may be required.
-Some are useful for direct analysis, such as a slope map to differentiate features of different angles, while others, like the hillshade, are great tools for visualizing a DEM.
+xDEM can derive a wide range of **terrain attributes** from a DEM.
+
+Attributes are derived in pure Python for modularity (e.g., varying window size) and other uses (e.g., uncertainty),
+and tested for consistency against [gdaldem](https://gdal.org/programs/gdaldem.html) and [RichDEM](https://richdem.readthedocs.io/).
+
+## Quick use
+
+Terrain attribute methods can either be called directly from a {class}`~xdem.DEM` (e.g., {func}`xdem.DEM.slope`) or
+through the {class}`~xdem.terrain` module which allows array input. If computational performance
+is key, xDEM can rely on [RichDEM](https://richdem.readthedocs.io/) by specifying `use_richdem=True` for speed-up
+of its supported attributes (slope, aspect, curvature).
 
 ## Slope
 
-{func}`xdem.terrain.slope`
+{func}`xdem.DEM.slope`
 
 The slope of a DEM describes the tilt, or gradient, of each pixel in relation to its neighbours.
 It is most often described in degrees, where a flat surface is 0° and a vertical cliff is 90°.
@@ -29,7 +38,7 @@ example.
 
 ## Aspect
 
-{func}`xdem.terrain.aspect`
+{func}`xdem.DEM.aspect`
 
 The aspect describes the orientation of strongest slope.
 It is often reported in degrees, where a slope tilting straight north corresponds to an aspect of 0°, and an eastern
@@ -48,7 +57,7 @@ As the aspect is directly based on the slope, it varies between the method of [H
 
 ## Hillshade
 
-{func}`xdem.terrain.hillshade`
+{func}`xdem.DEM.hillshade`
 
 The hillshade is a slope map, shaded by the aspect of the slope.
 The slope map is a good tool to visualize terrain, but it does not distinguish between a mountain and a valley.
@@ -73,7 +82,7 @@ It therefore has little analytic purpose, but it still constitutes a great visua
 
 ## Curvature
 
-{func}`xdem.terrain.curvature`
+{func}`xdem.DEM.curvature`
 
 The curvature map is the second derivative of elevation, which highlights the convexity or concavity of the terrain.
 If a surface is convex (like a mountain peak), it will have positive curvature.
@@ -93,7 +102,7 @@ The curvature is based on the method of [Zevenbergen and Thorne (1987)](http://d
 
 ## Planform curvature
 
-{func}`xdem.terrain.planform_curvature`
+{func}`xdem.DEM.planform_curvature`
 
 The planform curvature is the curvature perpendicular to the direction of slope, reported in 100 m{sup}`-1`.
 
@@ -110,7 +119,7 @@ It is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/1
 
 ## Profile curvature
 
-{func}`xdem.terrain.profile_curvature`
+{func}`xdem.DEM.profile_curvature`
 
 The profile curvature is the curvature parallel to the direction of slope, reported in 100 m{sup}`-1`..
 
@@ -127,7 +136,7 @@ It is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/1
 
 ## Topographic Position Index
 
-{func}`xdem.terrain.topographic_position_index`
+{func}`xdem.DEM.topographic_position_index`
 
 The Topographic Position Index (TPI) is a metric of slope position, based on the method of [Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf) that corresponds to the difference of the elevation of a central
 pixel with the average of that of neighbouring pixels. Its unit is that of the DEM (typically meters) and it can be
@@ -144,7 +153,7 @@ computed for any window size (default 3x3 pixels).
 
 ## Terrain Ruggedness Index
 
-{func}`xdem.terrain.terrain_ruggedness_index`
+{func}`xdem.DEM.terrain_ruggedness_index`
 
 The Terrain Ruggedness Index (TRI) is a metric of terrain ruggedness, based on cumulated differences in elevation between
 a central pixel and its surroundings. Its unit is that of the DEM (typically meters) and it can be computed for any
@@ -167,7 +176,7 @@ where the TRI is defined by the mean absolute difference with neighbouring pixel
 
 ## Roughness
 
-{func}`xdem.terrain.roughness`
+{func}`xdem.DEM.roughness`
 
 The roughness is a metric of terrain ruggedness, based on the maximum difference in elevation in the surroundings.
 The roughness is based on the method of [Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081). Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
@@ -183,7 +192,7 @@ The roughness is based on the method of [Dartnell (2000)](http://dx.doi.org/10.1
 
 ## Rugosity
 
-{func}`xdem.terrain.rugosity`
+{func}`xdem.DEM.rugosity`
 
 The rugosity is a metric of terrain ruggedness, based on the ratio between planimetric and real surface area. The
 rugosity is based on the method of [Jenness (2004)](<https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>).
@@ -200,7 +209,7 @@ It is unitless, and is only supported for a 3x3 window size.
 
 ## Fractal roughness
 
-{func}`xdem.terrain.fractal_roughness`
+{func}`xdem.DEM.fractal_roughness`
 
 The fractal roughness is a metric of terrain ruggedness based on the local fractal dimension estimated by the volume
 box-counting method of [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622).
@@ -221,7 +230,7 @@ DEM pixels. Its unit is that of a dimension, and is always between 1 (dimension 
 
 Often, one may seek more terrain attributes than one, e.g. both the slope and the aspect.
 Since both are dependent on the gradient of the DEM, calculating them separately is computationally repetitive.
-Multiple terrain attributes can be calculated from the same gradient using the {func}`xdem.terrain.get_terrain_attribute` function.
+Multiple terrain attributes can be calculated from the same gradient using the {func}`xdem.DEM.get_terrain_attribute` function.
 
 ```{eval-rst}
 .. minigallery:: xdem.terrain.get_terrain_attribute
