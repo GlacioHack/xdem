@@ -1220,7 +1220,8 @@ class GradientDescending(AffineCoreg):
         ref_elev["N"] = ref_elev.geometry.y
         ref_elev.rename(columns={"b1": z_name}, inplace=True)
         self._fit_rst_pts(
-            ref_elev=ref_elev, tba_elev=tba_elev, transform=transform, crs=crs, inlier_mask=inlier_mask, **kwargs
+            ref_elev=ref_elev, tba_elev=tba_elev, transform=transform, crs=crs, inlier_mask=inlier_mask, z_name=z_name,
+            **kwargs
         )
 
     def _to_matrix_func(self) -> NDArrayf:

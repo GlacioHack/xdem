@@ -1753,6 +1753,7 @@ class CoregPipeline(Coreg):
         # Add subset dict for this pipeline step to args of fit and apply
         return {n: bias_vars[n] for n in var_names}
 
+    # Need to override base Coreg method to work on pipeline steps
     def fit(
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
@@ -1822,9 +1823,14 @@ class CoregPipeline(Coreg):
                 main_args_fit.update({"bias_vars": step_bias_vars})
                 main_args_apply.update({"bias_vars": step_bias_vars})
 
+            # Perform the step fit
             coreg.fit(**main_args_fit)
 
-            tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
+            # Step apply: one return for a geodataframe, two returns for array/transform
+            if isinstance(tba_dem_mod, gpd.GeoDataFrame):
+                tba_dem_mod = coreg.apply(**main_args_apply)
+            else:
+                tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -1873,6 +1879,7 @@ class CoregPipeline(Coreg):
     ) -> RasterType | gpd.GeoDataFrame:
         ...
 
+    # Need to override base Coreg method to work on pipeline steps
     def apply(
         self,
         elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame,
@@ -1891,20 +1898,26 @@ class CoregPipeline(Coreg):
 
         elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
 
-        elev_mod = elev.copy()
+        elev_mod = elev_array.copy()
         out_transform = copy.copy(transform)
 
         # Apply each step of the coregistration
         for i, coreg in enumerate(self.pipeline):
 
-            main_args_apply = {"elev": elev_mod, "transform": out_transform, "crs": crs, "z_name": z_name}
+            main_args_apply = {"elev": elev_mod, "transform": out_transform, "crs": crs, "z_name": z_name,
+                               "resample": resample, "resampling": resampling}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
                 step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
                 main_args_apply.update({"bias_vars": step_bias_vars})
 
-            elev_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
+            # Step apply: one return for a geodataframe, two returns for array/transform
+            if isinstance(elev_mod, gpd.GeoDataFrame):
+                elev_mod = coreg.apply(**main_args_apply, **kwargs)
+            else:
+                elev_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
+
 
         # Post-process output depending on input type
         applied_elev, out_transform = _postprocess_coreg_apply(
