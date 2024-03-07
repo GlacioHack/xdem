@@ -1904,8 +1904,14 @@ class CoregPipeline(Coreg):
         # Apply each step of the coregistration
         for i, coreg in enumerate(self.pipeline):
 
-            main_args_apply = {"elev": elev_mod, "transform": out_transform, "crs": crs, "z_name": z_name,
-                               "resample": resample, "resampling": resampling}
+            main_args_apply = {
+                "elev": elev_mod,
+                "transform": out_transform,
+                "crs": crs,
+                "z_name": z_name,
+                "resample": resample,
+                "resampling": resampling,
+            }
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -1917,7 +1923,6 @@ class CoregPipeline(Coreg):
                 elev_mod = coreg.apply(**main_args_apply, **kwargs)
             else:
                 elev_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
-
 
         # Post-process output depending on input type
         applied_elev, out_transform = _postprocess_coreg_apply(
