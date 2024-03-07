@@ -4,9 +4,9 @@ from __future__ import annotations
 import re
 import warnings
 
+import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import geopandas as gpd
 import pytest
 import scipy
 
@@ -504,8 +504,14 @@ class TestBiasCorr:
             bias_elev = bias_dem.to_points(subsample=50000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
         else:
             bias_elev = bias_dem
-        dirbias.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=40000, random_state=42,
-                    bounds_amp_wave_phase=bounds, niter=10)
+        dirbias.fit(
+            elev_fit_args["reference_elev"],
+            to_be_aligned_elev=bias_elev,
+            subsample=40000,
+            random_state=42,
+            bounds_amp_wave_phase=bounds,
+            niter=10,
+        )
 
         # Check all fit parameters are the same within 10%
         fit_params = dirbias._meta["fit_params"]
@@ -616,8 +622,13 @@ class TestBiasCorr:
             bias_elev = bias_dem.to_points(subsample=20000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
         else:
             bias_elev = bias_dem
-        tb.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=10000, random_state=42, bias_vars={
-            "maximum_curvature": maxc})
+        tb.fit(
+            elev_fit_args["reference_elev"],
+            to_be_aligned_elev=bias_elev,
+            subsample=10000,
+            random_state=42,
+            bias_vars={"maximum_curvature": maxc},
+        )
 
         # Check high-order parameters are the same within 10%
         bin_df = tb._meta["bin_dataframe"]
@@ -631,4 +642,3 @@ class TestBiasCorr:
         corrected_dem = tb.apply(bias_dem, bias_vars={"maximum_curvature": maxc})
         # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
         assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01
-

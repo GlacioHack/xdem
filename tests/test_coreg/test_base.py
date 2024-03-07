@@ -7,9 +7,9 @@ import re
 import warnings
 from typing import Any, Callable
 
+import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import geopandas as gpd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -49,8 +49,9 @@ class TestCoregClass:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
-                              data={"z": points_arr[:, 2]})
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     def test_init(self) -> None:
         """Test instantiation of Coreg"""
@@ -415,8 +416,15 @@ class TestCoregClass:
                 "'crs' must be given if DEM is array-like.",
             ),
             ("dem1", "dem2", "dem2.transform", "None", "apply", "warns", "DEM .* overrides the given 'transform'"),
-            ("None", "None", "None", "None", "fit", "error", "Input elevation data should be a raster, "
-                                                             "an array or a geodataframe."),
+            (
+                "None",
+                "None",
+                "None",
+                "None",
+                "fit",
+                "error",
+                "Input elevation data should be a raster, " "an array or a geodataframe.",
+            ),
             ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
@@ -507,8 +515,9 @@ class TestCoregPipeline:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
-                              data={"z": points_arr[:, 2]})
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -730,8 +739,9 @@ class TestBlockwiseCoreg:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
-                              data={"z": points_arr[:, 2]})
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     @pytest.mark.parametrize(
         "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
@@ -883,7 +893,7 @@ def test_apply_matrix() -> None:
 
     # Apply a rotation in the opposite direction
     unrotated_dem = (
-            _apply_matrix_rst(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
+        _apply_matrix_rst(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
     )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)

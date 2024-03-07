@@ -4,9 +4,9 @@ from __future__ import annotations
 import copy
 import warnings
 
+import geopandas as gpd
 import numpy as np
 import pytest
-import geopandas as gpd
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
@@ -42,8 +42,9 @@ class TestAffineCoreg:
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs),
-                              data={"z": points_arr[:, 2]})
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     def test_from_classmethods(self) -> None:
 
@@ -262,7 +263,10 @@ class TestAffineCoreg:
         transformed_points = nuth_kaab.apply(self.points)
 
         # Check that the x shift is close to the pixel_shift * image resolution
-        assert all(abs((transformed_points.geometry.x.values - self.points.geometry.x.values) - pixel_shift * self.ref.res[0]) < 0.1)
+        assert all(
+            abs((transformed_points.geometry.x.values - self.points.geometry.x.values) - pixel_shift * self.ref.res[0])
+            < 0.1
+        )
         # Check that the z shift is close to the original vertical shift.
         assert all(abs((transformed_points["z"].values - self.points["z"].values) + vshift) < 0.1)
 

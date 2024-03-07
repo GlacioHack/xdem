@@ -4,10 +4,10 @@ from __future__ import annotations
 import inspect
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
+import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 import rasterio as rio
 import scipy
 
@@ -322,22 +322,33 @@ class BiasCorr(Coreg):
         elif self._fit_or_bin in ["bin", "bin_and_fit"]:
             self._meta["bin_dataframe"] = df
 
-    def _fit_rst_rst(self,
-                     ref_elev: NDArrayf,
-                     tba_elev: NDArrayf,
-                     inlier_mask: NDArrayb,
-                     transform: rio.transform.Affine,
-                     crs: rio.crs.CRS,
-                     z_name: str,
-                     weights: NDArrayf | None,
-                     bias_vars: dict[str, NDArrayf] | None = None,
-                     verbose: bool = False,
-                     **kwargs: Any,
-                     ) -> None:
+    def _fit_rst_rst(
+        self,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        verbose: bool = False,
+        **kwargs: Any,
+    ) -> None:
         """Should only be called through subclassing"""
 
-        self._fit_biascorr(ref_elev=ref_elev, tba_elev=tba_elev, inlier_mask=inlier_mask, transform=transform,
-                           crs=crs, z_name=z_name, weights=weights, bias_vars=bias_vars, verbose=verbose, **kwargs)
+        self._fit_biascorr(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            verbose=verbose,
+            **kwargs,
+        )
 
     def _fit_rst_pts(  # type: ignore
         self,
@@ -360,9 +371,14 @@ class BiasCorr(Coreg):
 
         pts = np.array((pts_elev.geometry.x.values, pts_elev.geometry.y.values)).T
 
-        valid_mask = np.logical_and.reduce(
-            (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in bias_vars.values()))
-        )
+        # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
+        if bias_vars is not None:
+            valid_mask = np.logical_and.reduce(
+                (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in bias_vars.values()))
+            )
+        else:
+            valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(rst_elev)))
+
         # Convert inlier mask to points to be able to determine subsample later
         inlier_rst = gu.Raster.from_array(data=valid_mask, transform=transform, crs=crs)
         # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
@@ -391,15 +407,25 @@ class BiasCorr(Coreg):
         if bias_vars is not None:
             bias_vars_pts = {}
             for var in bias_vars.keys():
-                bias_vars_pts[var] = gu.Raster.from_array(bias_vars[var], transform=transform, crs=crs).interp_points(pts)
+                bias_vars_pts[var] = gu.Raster.from_array(bias_vars[var], transform=transform, crs=crs).interp_points(
+                    pts
+                )
         else:
             bias_vars_pts = None
 
         # Send to raster-raster fit
-        self._fit_biascorr(ref_elev=ref_elev_pts, tba_elev=tba_elev_pts, inlier_mask=inlier_pts_alltrue,
-                           bias_vars=bias_vars_pts, transform=transform, crs=crs, z_name=z_name, weights=weights,
-                           verbose=verbose, **kwargs)
-
+        self._fit_biascorr(
+            ref_elev=ref_elev_pts,
+            tba_elev=tba_elev_pts,
+            inlier_mask=inlier_pts_alltrue,
+            bias_vars=bias_vars_pts,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
+            weights=weights,
+            verbose=verbose,
+            **kwargs,
+        )
 
     def _apply_rst(  # type: ignore
         self,
@@ -761,17 +787,17 @@ class DirectionalBias(BiasCorr1D):
         )
 
     def _fit_rst_pts(  # type: ignore
-            self,
-            ref_elev: NDArrayf | gpd.GeoDataFrame,
-            tba_elev: NDArrayf | gpd.GeoDataFrame,
-            inlier_mask: NDArrayb,
-            transform: rio.transform.Affine,
-            crs: rio.crs.CRS,
-            z_name: str,
-            bias_vars: dict[str, NDArrayf] = None,
-            weights: None | NDArrayf = None,
-            verbose: bool = False,
-            **kwargs,
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        z_name: str,
+        bias_vars: dict[str, NDArrayf] = None,
+        weights: None | NDArrayf = None,
+        verbose: bool = False,
+        **kwargs,
     ) -> None:
 
         # Figure out which data is raster format to get gridded attributes
@@ -901,8 +927,10 @@ class TerrainBias(BiasCorr1D):
                 attr = ref_elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=ref_elev, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
-            )
+                    dem=ref_elev,
+                    attribute=self._meta["terrain_attribute"],
+                    resolution=(transform[0], abs(transform[4])),
+                )
 
         # Run the parent function
         self._fit_biascorr(
@@ -946,7 +974,9 @@ class TerrainBias(BiasCorr1D):
                 attr = rast_elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=rast_elev, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                    dem=rast_elev,
+                    attribute=self._meta["terrain_attribute"],
+                    resolution=(transform[0], abs(transform[4])),
                 )
 
         # Run the parent function
