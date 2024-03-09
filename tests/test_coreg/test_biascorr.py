@@ -47,10 +47,10 @@ class TestBiasCorr:
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     # TODO: Simplify once this GeoUtils issue is resolved: https://github.com/GlacioHack/geoutils/issues/499
-    tba_pts = tba.to_points(subsample=50000, pixel_offset="ul").ds
+    tba_pts = tba.to_points(subsample=100000, pixel_offset="ul").ds
     tba_pts = tba_pts.rename(columns={"b1": "z"})
 
-    ref_pts = ref.to_points(subsample=50000, pixel_offset="ul").ds
+    ref_pts = ref.to_points(subsample=100000, pixel_offset="ul").ds
     ref_pts = ref_pts.rename(columns={"b1": "z"})
 
     # Raster-Point
@@ -501,13 +501,13 @@ class TestBiasCorr:
         ]
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_points(subsample=50000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
+            bias_elev = bias_dem.to_points(subsample=100000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
         else:
             bias_elev = bias_dem
         dirbias.fit(
             elev_fit_args["reference_elev"],
             to_be_aligned_elev=bias_elev,
-            subsample=40000,
+            subsample=80000,
             random_state=42,
             bounds_amp_wave_phase=bounds,
             niter=10,
