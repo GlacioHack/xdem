@@ -5,9 +5,9 @@ import pathlib
 import warnings
 from typing import Any, Literal
 
+import geopandas as gpd
 import numpy as np
 import rasterio as rio
-import geopandas as gpd
 from affine import Affine
 from geoutils import SatelliteImage
 from geoutils.raster import Mask, RasterType
@@ -421,7 +421,11 @@ class DEM(SatelliteImage):  # type: ignore
             coreg_method = coreg.NuthKaab()
 
         coreg_method.fit(
-            reference_elev=reference_elev, to_be_aligned_elev=self, inlier_mask=inlier_mask, bias_vars=bias_vars, **kwargs
+            reference_elev=reference_elev,
+            to_be_aligned_elev=self,
+            inlier_mask=inlier_mask,
+            bias_vars=bias_vars,
+            **kwargs,
         )
         return coreg_method.apply(self)
 
