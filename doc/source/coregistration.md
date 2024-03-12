@@ -151,7 +151,7 @@ aligned_dem = nuth_kaab.apply(tba_dem)
 - **Recommended for:** Data with no horizontal offset and low to moderate rotational differences.
 
 Tilt correction works by estimating and correcting for an 1-order polynomial over the entire dDEM between a reference and the DEM to be aligned.
-This may be useful for correcting small rotations in the dataset, or nonlinear errors that for example often occur in structure-from-motion derived optical DEMs (e.g. Rosnell and Honkavaara [2012](https://doi.org/10.3390/s120100453); Javernick et al. [2014](https://doi.org/10.1016/j.geomorph.2014.01.006); Girod et al. [2017](https://doi.org/10.5194/tc-11827-2017)).
+This may be useful for correcting small rotations in the dataset, or nonlinear errors that for example often occur in structure-from-motion derived optical DEMs (e.g. Rosnell and Honkavaara [2012](https://doi.org/10.3390/s120100453); Javernick et al. [2014](https://doi.org/10.1016/j.geomorph.2014.01.006); Girod et al. [2017](https://doi.org/10.5194/tc-11-827-2017)).
 
 ### Limitations
 
