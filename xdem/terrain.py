@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Sized, overload
+from typing import Sized, overload, Literal
 
 import geoutils as gu
 import numba
@@ -61,6 +61,90 @@ def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") 
 
     return np.array(terrattr)
 
+def get_quadratic_coefficients_convolution(dem: NDArrayf,
+                                           resolution: float,
+                                           method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+                                           only_slope_aspect: bool= False,
+                                           only_curvature: bool = False):
+    """
+    Get quadratic coefficients using convolution: faster but only applicable with NaN fill or edge method.
+
+    :return:
+    """
+
+    # Matches the Z indexes in the other get_quadratic functions, with matrix index arrangement as below
+    #   0, 3, 6,
+    #   1, 4, 7,
+    #   2, 5, 8
+
+    # Zevenberg and Thorne (1987) coefficients as matrixes, Equations 3 to 11
+    # A, B, C and I are effectively unused for terrain attributes, only useful to get quadric fit
+    A = np.array([[ 1/4, -1/2, 1/4],
+                  [-1/2,  1,  -1/2],
+                  [ 1/4, -1/2, 1/4]])
+    B = np.array([[ 1/4, 0, -1/4],
+                  [-1/2, 0,  1/2],
+                  [ 1/4, 0, -1/4]])
+    C = np.array([[-1/4, 1/2, -1/4],
+                  [0,  0,  0],
+                  [ 1/4, -1/2, 1/4]])
+    I = np.array([[0, 0, 0],
+                  [0, 1, 0],
+                  [0, 0, 0]])
+
+    # All below useful for curvature
+    D = np.array([[0,  1/2, 0],
+                  [0, -1,   0],
+                  [0,  1/2, 0]])
+    E = np.array([[0, 0, 0],
+                  [1/2,  -1,  1/2],
+                  [0, 0, 0]])
+    F = np.array([[-1/4, 0, 1/4],
+                  [0,    0,  0],
+                  [ 1/4, 0, -1/4]])
+
+    # The G and H coefficients are the only ones needed for slope/aspect/hillshade
+    G = np.array([[0, -1/2, 0],
+                  [0,  0,   0],
+                  [0,  1/2, 0]])
+    H = np.array([[0, 0, 0],
+                  [1/2, 0, -1/2],
+                  [0, 0, 0]])
+
+    # Horn (1981) coefficients, page 18 bottom left equations.
+    H1 = np.array([[-1, 0, 1],
+                  [-2, 1, 2],
+                  [-1, 0, 1]])
+    H2 = np.array([[1, 2, 1],
+                  [0, 1, 0],
+                  [-1, -2, -1]])
+
+    # Store all coefficients
+    coefs = {"A": A, "B": B, "C": C, "D": D, "E": E, "F": F, "G": G, "H": H, "I": I, "H1": H1, "H2": H2}
+    # Rename resolution consistently with other functions
+    L = resolution
+    divider = {"A": L**4, "B": L**3, "C": L**3, "D": L**2, "E": L**2, "F": L**2, "G": L, "H": L, "I": 1, "H1": 8*L, "H2": 8*L}
+
+
+    # Get only useful coefficients
+    if only_slope_aspect and method == "Horn":
+        coefs_to_compute = ["H1", "H2"]
+    elif only_slope_aspect and method == "ZevenbergThorne":
+        coefs_to_compute = ["G", "H"]
+    elif only_curvature:
+        coefs_to_compute = ["D", "E", "F", "G", "H"]
+    else:
+        coefs_to_compute = list(coefs.keys())
+
+    # Stack coefficients into a 3D convolution kernel along the first axis
+    kern3d = np.stack([coefs[c] for c in coefs_to_compute], axis=0)
+
+    from xdem.spatialstats import convolution
+    # Perform convolution and squeeze output into 3D array
+    outputs = convolution(imgs=dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d).squeeze()
+    # Divide by resolution factors
+    for i in range(len(coefs_to_compute)):
+        outputs[i] /= divider[coefs_to_compute[i]]
 
 @numba.njit(parallel=True)  # type: ignore
 def _get_quadric_coefficients(
