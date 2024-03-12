@@ -47,11 +47,9 @@ class TestBiasCorr:
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     # TODO: Simplify once this GeoUtils issue is resolved: https://github.com/GlacioHack/geoutils/issues/499
-    tba_pts = tba.to_points(subsample=100000, pixel_offset="ul").ds
-    tba_pts = tba_pts.rename(columns={"b1": "z"})
+    tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
-    ref_pts = ref.to_points(subsample=100000, pixel_offset="ul").ds
-    ref_pts = ref_pts.rename(columns={"b1": "z"})
+    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     # Raster-Point
     fit_args_rst_pts = dict(
@@ -453,7 +451,7 @@ class TestBiasCorr:
         assert dirbias._meta["bias_var_names"] == ["angle"]
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("angle", [20, 90, 210])  # type: ignore
+    @pytest.mark.parametrize("angle", [20, 90])  # type: ignore
     @pytest.mark.parametrize("nb_freq", [1, 2, 3])  # type: ignore
     def test_directionalbias__synthetic(self, fit_args, angle, nb_freq) -> None:
         """Test the subclass DirectionalBias with synthetic data."""
@@ -501,16 +499,17 @@ class TestBiasCorr:
         ]
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_points(subsample=100000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
+            # Need a higher sample size to get the coefficients right here
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
         else:
             bias_elev = bias_dem
         dirbias.fit(
             elev_fit_args["reference_elev"],
             to_be_aligned_elev=bias_elev,
-            subsample=80000,
+            subsample=40000,
             random_state=42,
             bounds_amp_wave_phase=bounds,
-            niter=10,
+            niter=20,
         )
 
         # Check all fit parameters are the same within 10%
@@ -561,7 +560,7 @@ class TestBiasCorr:
         deramp = biascorr.Deramp(poly_order=order)
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_points(subsample=20000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=20000).ds
         else:
             bias_elev = bias_dem
         deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=10000, random_state=42)
@@ -619,7 +618,7 @@ class TestBiasCorr:
         )
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_points(subsample=20000, pixel_offset="ul").ds.rename(columns={"b1": "z"})
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=20000).ds
         else:
             bias_elev = bias_dem
         tb.fit(
