@@ -13,5 +13,3 @@ scikit-image==0.*
 scikit-gstat>=1.0
 geoutils==0.1.*
 pip
-setuptools>=64
-setuptools_scm[toml]>=8
