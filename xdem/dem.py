@@ -5,6 +5,7 @@ import pathlib
 import warnings
 from typing import Any, Literal
 
+import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
@@ -395,19 +396,19 @@ class DEM(SatelliteImage):  # type: ignore
 
     def coregister_3d(
         self,
-        reference_dem: DEM,
+        reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg = None,
         inlier_mask: Mask | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         **kwargs: Any,
     ) -> DEM:
         """
-        Coregister DEM to another DEM in three dimensions.
+        Coregister DEM to a reference DEM in three dimensions.
 
-        Any coregistration method or pipeline can be passed, default is only horizontal and vertical shift of
-        Nuth and Kääb (2011).
+        Any coregistration method or pipeline from xdem.Coreg can be passed. Default is only horizontal and vertical
+        shifts of Nuth and Kääb (2011).
 
-        :param reference_dem: Reference DEM the alignment is made towards.
+        :param reference_elev: Reference elevation, DEM or elevation point cloud, for the alignment.
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
@@ -420,7 +421,11 @@ class DEM(SatelliteImage):  # type: ignore
             coreg_method = coreg.NuthKaab()
 
         coreg_method.fit(
-            reference_dem=reference_dem, dem_to_be_aligned=self, inlier_mask=inlier_mask, bias_vars=bias_vars, **kwargs
+            reference_elev=reference_elev,
+            to_be_aligned_elev=self,
+            inlier_mask=inlier_mask,
+            bias_vars=bias_vars,
+            **kwargs,
         )
         return coreg_method.apply(self)
 

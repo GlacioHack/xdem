@@ -7,6 +7,7 @@ import re
 import warnings
 from typing import Any, Callable
 
+import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pytest
@@ -17,7 +18,7 @@ from geoutils.raster import RasterType
 import xdem
 from xdem import coreg, examples, misc, spatialstats
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, apply_matrix
+from xdem.coreg.base import Coreg, _apply_matrix_rst
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -36,15 +37,18 @@ class TestCoregClass:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=False,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     def test_init(self) -> None:
         """Test instantiation of Coreg"""
@@ -262,10 +266,10 @@ class TestCoregClass:
         vshiftcorr_a = vshiftcorr_r.copy()
 
         # Fit the data
-        vshiftcorr_r.fit(reference_dem=dem1, dem_to_be_aligned=dem2)
+        vshiftcorr_r.fit(reference_elev=dem1, to_be_aligned_elev=dem2)
         vshiftcorr_a.fit(
-            reference_dem=dem1.data,
-            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
+            reference_elev=dem1.data,
+            to_be_aligned_elev=dem2.reproject(dem1, silent=True).data,
             transform=dem1.transform,
             crs=dem1.crs,
         )
@@ -275,7 +279,7 @@ class TestCoregClass:
 
         # De-shift dem2
         dem2_r = vshiftcorr_r.apply(dem2)
-        dem2_a, _ = vshiftcorr_a.apply(dem2.data, dem2.transform, dem2.crs)
+        dem2_a, _ = vshiftcorr_a.apply(dem2.data, transform=dem2.transform, crs=dem2.crs)
 
         # Validate that the return formats were the expected ones, and that they are equal.
         # Issue - dem2_a does not have the same shape, the first dimension is being squeezed
@@ -330,7 +334,7 @@ class TestCoregClass:
         # If not implemented, should raise an error
         if not is_implemented:
             with pytest.raises(NotImplementedError, match="Option `resample=False` not implemented for coreg method *"):
-                dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+                coreg_method.apply(tba_dem, resample=False)
             return
         else:
             dem_coreg_resample = coreg_method.apply(tba_dem)
@@ -350,10 +354,10 @@ class TestCoregClass:
             # assert np.count_nonzero(diff.data) == 0
 
         # Test it works with different resampling algorithms
-        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
-        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
-        with pytest.raises(ValueError, match="`resampling` must be a rio.warp.Resampling algorithm"):
-            dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=None)
+        coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
+        coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
+        with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
+            coreg_method.apply(tba_dem, resample=True, resampling=None)
 
     @pytest.mark.parametrize(
         "combination",
@@ -409,7 +413,15 @@ class TestCoregClass:
                 "'crs' must be given if DEM is array-like.",
             ),
             ("dem1", "dem2", "dem2.transform", "None", "apply", "warns", "DEM .* overrides the given 'transform'"),
-            ("None", "None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+            (
+                "None",
+                "None",
+                "None",
+                "None",
+                "fit",
+                "error",
+                "Input elevation data should be a raster, " "an array or a geodataframe.",
+            ),
             ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
@@ -491,15 +503,18 @@ class TestCoregPipeline:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=True,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -633,7 +648,7 @@ class TestCoregPipeline:
         ref_points.rename(columns={"b1": "z"}, inplace=True)
 
         # Check that this runs without error
-        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
+        pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)
 
         for part in pipeline.pipeline:
             assert np.abs(part._meta["offset_east_px"]) > 0
@@ -641,6 +656,7 @@ class TestCoregPipeline:
         assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
 
     def test_coreg_add(self) -> None:
+
         # Test with a vertical shift of 4
         vshift = 4
 
@@ -711,15 +727,18 @@ class TestBlockwiseCoreg:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=False,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     @pytest.mark.parametrize(
         "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
@@ -820,7 +839,7 @@ def test_apply_matrix() -> None:
     vshift = 5
     matrix = np.diag(np.ones(4, float))
     matrix[2, 3] = vshift
-    transformed_dem = apply_matrix(ref_arr, ref.transform, matrix)
+    transformed_dem = _apply_matrix_rst(ref_arr, ref.transform, matrix)
     reverted_dem = transformed_dem - vshift
 
     # Check that the reverted DEM has the exact same values as the initial one
@@ -839,7 +858,7 @@ def test_apply_matrix() -> None:
     matrix[0, 3] = pixel_shift * tba.res[0]
     matrix[2, 3] = -vshift
 
-    transformed_dem = apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
+    transformed_dem = _apply_matrix_rst(shifted_dem, ref.transform, matrix, resampling="bilinear")
     diff = np.asarray(ref_arr - transformed_dem)
 
     # Check that the median is very close to zero
@@ -865,14 +884,14 @@ def test_apply_matrix() -> None:
         np.mean([ref.bounds.top, ref.bounds.bottom]),
         ref.data.mean(),
     )
-    rotated_dem = apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
+    rotated_dem = _apply_matrix_rst(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
     # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
     assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
     assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
 
     # Apply a rotation in the opposite direction
     unrotated_dem = (
-        apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
+        _apply_matrix_rst(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
     )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
 
     diff = np.asarray(ref.data.squeeze() - unrotated_dem)
