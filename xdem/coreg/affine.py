@@ -1213,7 +1213,7 @@ class GradientDescending(AffineCoreg):
 
         ref_elev = (
             Raster.from_array(ref_elev, transform=transform, crs=crs, nodata=-9999.0)
-            .to_points(as_array=False, pixel_offset="center")
+            .to_pointcloud()
             .ds
         )
         ref_elev["E"] = ref_elev.geometry.x

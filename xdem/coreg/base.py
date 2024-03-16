@@ -576,7 +576,7 @@ def _postprocess_coreg_apply_rst(
             match_rst = gu.Raster.from_array(elev, transform, crs=crs, nodata=nodata)
         else:
             match_rst = elev
-        applied_rst = applied_rst.reproject(match_rst, resampling=resampling)
+        applied_rst = applied_rst.reproject(match_rst, resampling=resampling, silent=True)
         applied_elev = applied_rst.data
         # Now that the raster data is reprojected, the new out_transform is set as the original transform
         out_transform = transform
@@ -1511,7 +1511,7 @@ class Coreg:
                 )
                 tba_elev_pts = (
                     gu.Raster.from_array(data=kwargs["tba_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
-                    .to_points()
+                    .to_pointcloud()
                     .ds
                 )
                 kwargs.update({"tba_elev": tba_elev_pts})
@@ -1529,7 +1529,7 @@ class Coreg:
                 )
                 ref_elev_pts = (
                     gu.Raster.from_array(data=kwargs["ref_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
-                    .to_points()
+                    .to_pointcloud()
                     .ds
                 )
                 kwargs.update({"ref_elev": ref_elev_pts})
