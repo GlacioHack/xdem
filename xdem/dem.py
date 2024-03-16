@@ -459,7 +459,7 @@ class DEM(SatelliteImage):  # type: ignore
         """
 
         # Elevation change
-        dh = other_dem.reproject(self) - self
+        dh = other_dem.reproject(self, silent=True) - self
 
         # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
         # See Equation 7 and 8 of Hugonnet et al. (2022)

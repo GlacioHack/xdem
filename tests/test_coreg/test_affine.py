@@ -163,7 +163,6 @@ class TestAffineCoreg:
             self.tba,
             inlier_mask=inlier_mask,
             verbose=verbose,
-            subsample=subsample,
             z_name="b1",
         )
         assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)

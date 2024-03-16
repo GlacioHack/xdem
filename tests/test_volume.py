@@ -40,7 +40,7 @@ class TestLocalHypsometric:
         assert ddem_stds["value"].mean() < 50
         assert np.abs(np.mean(ddem_bins["value"] - ddem_bins_masked["value"])) < 0.01
 
-    def test_interpolate_ddem_bins(self) -> pd.Series:
+    def test_interpolate_ddem_bins(self) -> None:
         """Test dDEM bin interpolation."""
         ddem = self.dem_2009 - self.dem_1990
 
@@ -61,13 +61,18 @@ class TestLocalHypsometric:
         # Check that no nans exist.
         assert not np.any(np.isnan(interpolated_bins))
 
-        # Return the value so that they can be used in other tests.
-        return interpolated_bins
-
     def test_area_calculation(self) -> None:
         """Test the area calculation function."""
-        ddem_bins = self.test_interpolate_ddem_bins()
 
+        ddem = self.dem_2009 - self.dem_1990
+
+        ddem_bins = xdem.volume.hypsometric_binning(ddem[self.mask], self.dem_2009[self.mask])
+
+        # Simulate a missing bin
+        ddem_bins.iloc[3, 0] = np.nan
+
+        # Interpolate the bins and exclude bins with low pixel counts from the interpolation.
+        interpolated_bins = xdem.volume.interpolate_hypsometric_bins(ddem_bins, count_threshold=200)
         # Test the area calculation with normal parameters.
         bin_area = xdem.volume.calculate_hypsometry_area(
             ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0]

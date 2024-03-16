@@ -365,9 +365,9 @@ class TestBinning:
             # Get the value at the random point for elevation, slope, aspect
             x = xrand[i]
             y = yrand[i]
-            h = self.ref.data[x, y]
-            slp = self.slope.data[x, y]
-            asp = self.aspect.data[x, y]
+            h = self.ref.data.filled(np.nan)[x, y]
+            slp = self.slope.data.filled(np.nan)[x, y]
+            asp = self.aspect.data.filled(np.nan)[x, y]
 
             if np.logical_or.reduce((np.isnan(h), np.isnan(slp), np.isnan(asp))):
                 continue

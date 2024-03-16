@@ -763,7 +763,7 @@ class DirectionalBias(BiasCorr1D):
             print("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform),
+            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
             along_track_angle=self._meta["angle"],
         )
 
@@ -807,7 +807,7 @@ class DirectionalBias(BiasCorr1D):
             print("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=rast_elev, crs=crs, transform=transform),
+            raster=gu.Raster.from_array(data=rast_elev, crs=crs, transform=transform, nodata=-9999),
             along_track_angle=self._meta["angle"],
         )
 
@@ -841,7 +841,7 @@ class DirectionalBias(BiasCorr1D):
 
         # Define the coordinates for applying the correction
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=elev, crs=crs, transform=transform),
+            raster=gu.Raster.from_array(data=elev, crs=crs, transform=transform, nodata=-9999),
             along_track_angle=self._meta["angle"],
         )
 

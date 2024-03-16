@@ -1784,6 +1784,8 @@ class CoregPipeline(Coreg):
                 " individual steps of the pipeline. To silence this warning: only define 'subsample' in "
                 "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
             )
+            # Filter warnings of individual pipelines now that the one above was raised
+            warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
         ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
