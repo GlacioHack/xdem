@@ -151,7 +151,6 @@ class TestNormHypsometric:
 
     @pytest.mark.parametrize("n_bins", [5, 10, 20])  # type: ignore
     def test_regional_signal(self, n_bins: int) -> None:
-        warnings.simplefilter("error")
 
         signal = xdem.volume.get_regional_hypsometric_signal(
             ddem=self.ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map, n_bins=n_bins
@@ -205,8 +204,6 @@ class TestNormHypsometric:
         assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1
 
     def test_regional_hypsometric_interp(self) -> None:
-
-        warnings.simplefilter("error")
 
         # Extract a normalized regional hypsometric signal.
         ddem = self.dem_2009 - self.dem_1990

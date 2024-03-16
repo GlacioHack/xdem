@@ -13,20 +13,17 @@ import xdem.terrain
 
 PLOT = False
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    from xdem import examples
-    from xdem.coreg import biascorr
-    from xdem.fit import polynomial_2d, sumsin_1d
+from xdem import examples
+from xdem.coreg import biascorr
+from xdem.fit import polynomial_2d, sumsin_1d
 
 
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
     """Load example files to try coregistration methods with."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        reference_raster = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
+    reference_raster = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_raster = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
+    glacier_mask = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 

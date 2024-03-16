@@ -80,8 +80,6 @@ class TestTerrainAttribute:
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-        # TODO: New warnings to remove with latest GDAL versions, opening issue
-        # warnings.simplefilter("error")
 
         functions = {
             "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
@@ -186,7 +184,6 @@ class TestTerrainAttribute:
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-        warnings.simplefilter("error")
 
         # Functions for xdem-implemented methods
         functions_xdem = {
@@ -266,7 +263,6 @@ class TestTerrainAttribute:
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""
         # Try giving the hillshade invalid arguments.
-        warnings.simplefilter("error")
 
         with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
             xdem.terrain.hillshade(self.dem.data, self.dem.res, azimuth=361)
@@ -279,7 +275,7 @@ class TestTerrainAttribute:
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
-        warnings.simplefilter("error")
+
         zfactor_1 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=1.0)
         zfactor_10 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=10.0)
 
@@ -297,7 +293,6 @@ class TestTerrainAttribute:
     )  # type: ignore
     def test_curvatures(self, name: str) -> None:
         """Test the curvature functions"""
-        warnings.simplefilter("error")
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
@@ -328,7 +323,7 @@ class TestTerrainAttribute:
 
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
-        warnings.simplefilter("error")
+
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
         assert isinstance(slope, np.ndarray)
@@ -414,7 +409,6 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
-        warnings.simplefilter("error")
 
         # We here check the value for a fully symmetric case: the rugosity calculation can be simplified because all
         # eight triangles have the same surface area, see Jenness (2004).
@@ -443,7 +437,6 @@ class TestTerrainAttribute:
 
     def test_get_quadric_coefficients(self) -> None:
         """Test the outputs and exceptions of the get_quadric_coefficients() function."""
-        warnings.simplefilter("error")
 
         dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
 

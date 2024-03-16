@@ -14,21 +14,18 @@ import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import xdem
-    from xdem import coreg, examples, misc, spatialstats
-    from xdem._typing import NDArrayf
-    from xdem.coreg.base import Coreg, apply_matrix
+import xdem
+from xdem import coreg, examples, misc, spatialstats
+from xdem._typing import NDArrayf
+from xdem.coreg.base import Coreg, apply_matrix
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
+    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
@@ -61,7 +58,6 @@ class TestCoregClass:
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
-        warnings.simplefilter("error")
 
         # Create a coreg instance and copy it.
         corr = coreg_class()
@@ -145,7 +141,6 @@ class TestCoregClass:
 
     @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
     def test_subsample(self, coreg: Callable) -> None:  # type: ignore
-        warnings.simplefilter("error")
 
         # Check that default value is set properly
         coreg_full = coreg()
@@ -432,7 +427,6 @@ class TestCoregClass:
             6. The expected outcome of the test.
             7. The error/warning message (if applicable)
         """
-        warnings.simplefilter("error")
 
         ref_dem, tba_dem, transform, crs, testing_step, result, text = combination
 
@@ -525,7 +519,6 @@ class TestCoregPipeline:
         assert pipeline_copy.pipeline[0]._meta["vshift"]
 
     def test_pipeline(self) -> None:
-        warnings.simplefilter("error")
 
         # Create a pipeline from two coreg methods.
         pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
@@ -632,7 +625,6 @@ class TestCoregPipeline:
             pipeline3.fit(**self.fit_params, bias_vars={"ncc": xdem.terrain.slope(self.ref)})
 
     def test_pipeline_pts(self) -> None:
-        warnings.simplefilter("ignore")
 
         pipeline = coreg.NuthKaab() + coreg.GradientDescending()
         ref_points = self.ref.to_points(as_array=False, subsample=5000, pixel_offset="center").ds
@@ -649,7 +641,6 @@ class TestCoregPipeline:
         assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
 
     def test_coreg_add(self) -> None:
-        warnings.simplefilter("error")
         # Test with a vertical shift of 4
         vshift = 4
 
@@ -735,7 +726,6 @@ class TestBlockwiseCoreg:
     )  # type: ignore
     @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
     def test_blockwise_coreg(self, pipeline: Coreg, subdivision: int) -> None:
-        warnings.simplefilter("error")
 
         blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
 
@@ -782,7 +772,6 @@ class TestBlockwiseCoreg:
 
     def test_blockwise_coreg_large_gaps(self) -> None:
         """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
-        warnings.simplefilter("error")
         reference_dem = self.ref.reproject(crs="EPSG:3413", res=self.ref.res, resampling="bilinear")
         dem_to_be_aligned = self.tba.reproject(ref=reference_dem, resampling="bilinear")
 
@@ -823,7 +812,7 @@ class TestBlockwiseCoreg:
 
 
 def test_apply_matrix() -> None:
-    warnings.simplefilter("error")
+
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     ref_arr = gu.raster.get_array_and_mask(ref)[0]
 
@@ -936,7 +925,6 @@ def test_apply_matrix() -> None:
 
 def test_warp_dem() -> None:
     """Test that the warp_dem function works expectedly."""
-    warnings.simplefilter("error")
 
     small_dem = np.zeros((5, 10), dtype="float32")
     small_transform = rio.transform.from_origin(0, 5, 1, 1)

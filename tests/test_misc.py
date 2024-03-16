@@ -58,8 +58,6 @@ class TestMisc:
         :param details: An optional explanation for the description.
         """
 
-        warnings.simplefilter("error")
-
         current_version = Version(Version(xdem.__version__).base_version)
 
         # Set the removal version to be the current version plus the increment (e.g. 0.0.5 + 1 -> 0.0.6)

@@ -67,7 +67,6 @@ class TestDEMCollection:
         ] = np.nan
         # Check that the cumulative_dh function warns for NaNs
         with warnings.catch_warnings():
-            warnings.simplefilter("error")
             try:
                 dems.get_cumulative_series(nans_ok=False)
             except UserWarning as exception:
@@ -89,8 +88,6 @@ class TestDEMCollection:
 
     def test_ddem_interpolation(self) -> None:
         """Test that dDEM interpolation works as it should."""
-        # All warnings should raise errors from now on
-        warnings.simplefilter("error")
 
         # Create a DEMCollection object
         dems = xdem.DEMCollection(

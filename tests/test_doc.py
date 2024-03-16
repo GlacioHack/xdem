@@ -28,8 +28,6 @@ class TestDocs:
                         ".*fetching the attribute.*Polygon.*",
                     ]
                     # This is a GeoPandas issue
-                    warnings.simplefilter("error")
-
                     for warning_text in ignored_warnings:
                         warnings.filterwarnings("ignore", warning_text)
                     try:

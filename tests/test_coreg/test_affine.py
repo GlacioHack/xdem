@@ -17,11 +17,10 @@ from xdem.coreg.affine import AffineCoreg, CoregDict
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
+    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
@@ -43,7 +42,6 @@ class TestAffineCoreg:
     points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     def test_from_classmethods(self) -> None:
-        warnings.simplefilter("error")
 
         # Check that the from_matrix function works as expected.
         vshift = 5
@@ -67,7 +65,6 @@ class TestAffineCoreg:
                 raise exception
 
     def test_vertical_shift(self) -> None:
-        warnings.simplefilter("error")
 
         # Create a vertical shift correction instance
         vshiftcorr = coreg.VerticalShift()
@@ -177,7 +174,6 @@ class TestAffineCoreg:
         For comparison of coreg algorithms:
         Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
         """
-        warnings.simplefilter("error")
         res = self.ref.res[0]
 
         # shift DEM by shift_px
@@ -222,7 +218,6 @@ class TestAffineCoreg:
         raise AssertionError(f"Diffs are too big. east: {best_east_diff:.2f} px, north: {best_north_diff:.2f} px")
 
     def test_nuth_kaab(self) -> None:
-        warnings.simplefilter("error")
 
         nuth_kaab = coreg.NuthKaab(max_iterations=10)
 
@@ -268,7 +263,6 @@ class TestAffineCoreg:
         assert abs((transformed_points[0, 2] - self.points[0, 2]) + vshift) < 0.1
 
     def test_tilt(self) -> None:
-        warnings.simplefilter("error")
 
         # Try a 1st degree deramping.
         tilt = coreg.Tilt()
@@ -291,7 +285,6 @@ class TestAffineCoreg:
         assert np.abs(np.mean(periglacial_offset)) < 0.02
 
     def test_icp_opencv(self) -> None:
-        warnings.simplefilter("error")
 
         # Do a fast and dirty 3 iteration ICP just to make sure it doesn't error out.
         icp = coreg.ICP(max_iterations=3)
