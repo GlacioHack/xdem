@@ -878,7 +878,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         if verbose:
             print("Running Nuth and Kääb (2011) coregistration. Shift pts instead of shifting dem")
 
-        rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs)
+        rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs, nodata=-9999)
         tba_arr, _ = get_array_and_mask(rst_elev)
 
         bounds, resolution = _transform_to_bounds_and_res(ref_elev.shape, transform)
@@ -1120,7 +1120,7 @@ class GradientDescending(AffineCoreg):
             rst_elev = ref_elev
             ref = "raster"
 
-        rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs)
+        rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs, nodata=-9999)
 
         # Perform downsampling if subsample != None
         if self._meta["subsample"] and len(point_elev) > self._meta["subsample"]:
@@ -1213,7 +1213,7 @@ class GradientDescending(AffineCoreg):
 
         ref_elev = (
             Raster.from_array(ref_elev, transform=transform, crs=crs, nodata=-9999.0)
-            .to_pointcloud()
+            .to_pointcloud(force_pixel_offset="center")
             .ds
         )
         ref_elev["E"] = ref_elev.geometry.x

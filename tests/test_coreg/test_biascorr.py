@@ -194,7 +194,7 @@ class TestBiasCorr:
 
     @pytest.mark.parametrize("fit_args", [fit_args_rst_pts, fit_args_rst_rst])  # type: ignore
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c**d)
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)
     )  # type: ignore
     @pytest.mark.parametrize(
         "fit_optimizer",
@@ -284,6 +284,10 @@ class TestBiasCorr:
     def test_biascorr__bin_and_fit_1d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
 
+        # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
+        # We don't care for this test
+        warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
+
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(
             fit_or_bin="bin_and_fit",
@@ -314,7 +318,7 @@ class TestBiasCorr:
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c**d)
+        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)
     )  # type: ignore
     @pytest.mark.parametrize(
         "fit_optimizer",

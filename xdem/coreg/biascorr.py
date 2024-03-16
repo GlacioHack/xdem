@@ -380,7 +380,7 @@ class BiasCorr(Coreg):
             valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(rst_elev)))
 
         # Convert inlier mask to points to be able to determine subsample later
-        inlier_rst = gu.Raster.from_array(data=valid_mask, transform=transform, crs=crs, nodata=-9999)
+        inlier_rst = gu.Raster.from_array(data=valid_mask, transform=transform, crs=crs)
         # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
         valid_pts = np.floor(inlier_rst.interp_points(pts)).astype(bool)  # Interpolates boolean mask as integers
 
