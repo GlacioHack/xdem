@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-import warnings
 
 import geopandas as gpd
 import numpy as np
@@ -183,7 +182,9 @@ class TestAffineCoreg:
         shifted_ref = self.ref.copy()
         shifted_ref.shift(shift_px[0] * res, shift_px[1] * res, inplace=True)
 
-        shifted_ref_points = shifted_ref.to_pointcloud(subsample=subsample, force_pixel_offset="center", random_state=42).ds
+        shifted_ref_points = shifted_ref.to_pointcloud(
+            subsample=subsample, force_pixel_offset="center", random_state=42
+        ).ds
         shifted_ref_points["E"] = shifted_ref_points.geometry.x
         shifted_ref_points["N"] = shifted_ref_points.geometry.y
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)

@@ -11,12 +11,11 @@ import pytest
 import scipy
 
 import xdem.terrain
-
-PLOT = False
-
 from xdem import examples
 from xdem.coreg import biascorr
 from xdem.fit import polynomial_2d, sumsin_1d
+
+PLOT = False
 
 
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:

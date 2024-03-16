@@ -1,5 +1,4 @@
 """Functions to test the difference of DEMs tools."""
-import warnings
 
 import geoutils as gu
 import numpy as np

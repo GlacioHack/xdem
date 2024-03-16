@@ -407,9 +407,9 @@ class BiasCorr(Coreg):
         if bias_vars is not None:
             bias_vars_pts = {}
             for var in bias_vars.keys():
-                bias_vars_pts[var] = gu.Raster.from_array(bias_vars[var], transform=transform, crs=crs, nodata=-9999).interp_points(
-                    pts
-                )
+                bias_vars_pts[var] = gu.Raster.from_array(
+                    bias_vars[var], transform=transform, crs=crs, nodata=-9999
+                ).interp_points(pts)
         else:
             bias_vars_pts = None
 

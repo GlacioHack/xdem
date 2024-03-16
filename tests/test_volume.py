@@ -1,9 +1,7 @@
 """Functions to test the volume estimation tools."""
-import warnings
 
 import geoutils as gu
 import numpy as np
-import pandas as pd
 import pytest
 
 import xdem
@@ -71,8 +69,6 @@ class TestLocalHypsometric:
         # Simulate a missing bin
         ddem_bins.iloc[3, 0] = np.nan
 
-        # Interpolate the bins and exclude bins with low pixel counts from the interpolation.
-        interpolated_bins = xdem.volume.interpolate_hypsometric_bins(ddem_bins, count_threshold=200)
         # Test the area calculation with normal parameters.
         bin_area = xdem.volume.calculate_hypsometry_area(
             ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0]
