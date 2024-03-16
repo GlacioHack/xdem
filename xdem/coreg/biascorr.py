@@ -380,7 +380,7 @@ class BiasCorr(Coreg):
             valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(rst_elev)))
 
         # Convert inlier mask to points to be able to determine subsample later
-        inlier_rst = gu.Raster.from_array(data=valid_mask, transform=transform, crs=crs)
+        inlier_rst = gu.Raster.from_array(data=valid_mask, transform=transform, crs=crs, nodata=-9999)
         # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
         valid_pts = np.floor(inlier_rst.interp_points(pts)).astype(bool)  # Interpolates boolean mask as integers
 
@@ -395,11 +395,11 @@ class BiasCorr(Coreg):
 
         # Convert ref or tba depending on which is the point dataset
         if isinstance(ref_elev, gpd.GeoDataFrame):
-            tba_rst = gu.Raster.from_array(data=tba_elev, transform=transform, crs=crs)
+            tba_rst = gu.Raster.from_array(data=tba_elev, transform=transform, crs=crs, nodata=-9999)
             tba_elev_pts = tba_rst.interp_points(pts)
             ref_elev_pts = ref_elev[z_name].values[subsample_mask]
         else:
-            ref_rst = gu.Raster.from_array(data=ref_elev, transform=transform, crs=crs)
+            ref_rst = gu.Raster.from_array(data=ref_elev, transform=transform, crs=crs, nodata=-9999)
             ref_elev_pts = ref_rst.interp_points(pts)
             tba_elev_pts = tba_elev[z_name].values[subsample_mask]
 
@@ -407,7 +407,7 @@ class BiasCorr(Coreg):
         if bias_vars is not None:
             bias_vars_pts = {}
             for var in bias_vars.keys():
-                bias_vars_pts[var] = gu.Raster.from_array(bias_vars[var], transform=transform, crs=crs).interp_points(
+                bias_vars_pts[var] = gu.Raster.from_array(bias_vars[var], transform=transform, crs=crs, nodata=-9999).interp_points(
                     pts
                 )
         else:
