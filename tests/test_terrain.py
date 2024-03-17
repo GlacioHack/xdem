@@ -21,6 +21,7 @@ def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> M
     """Run GDAL's DEMProcessing and return the read numpy array."""
     # Rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
+
     gdal.UseExceptions()
 
     # Converting string into gdal processing options here to avoid import gdal outside this function:
