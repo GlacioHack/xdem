@@ -21,6 +21,7 @@ def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> M
     """Run GDAL's DEMProcessing and return the read numpy array."""
     # Rasterio strongly recommends against importing gdal along rio, so this is done here instead.
     from osgeo import gdal
+    gdal.UseExceptions()
 
     # Converting string into gdal processing options here to avoid import gdal outside this function:
     # Riley or Wilson for Terrain Ruggedness, and Zevenberg or Horn for slope, aspect and hillshade
@@ -123,7 +124,10 @@ class TestTerrainAttribute:
 
         # For hillshade, we round into an integer to match GDAL's output
         if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
-            attr_xdem = attr_xdem.astype("int").astype("float32")
+            with warnings.catch_warnings():
+                # Normal that a warning would be raised here, so we catch it
+                warnings.filterwarnings("ignore", message="invalid value encountered in cast", category=RuntimeWarning)
+                attr_xdem = attr_xdem.astype("int").astype("float32")
 
         # We compute the difference and keep only valid values
         diff = (attr_xdem - attr_gdal).filled(np.nan)
@@ -171,9 +175,6 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
 
-    @pytest.mark.skip(
-        "richdem wheels don't build on latest GDAL versions, " "need to circumvent that problem..."
-    )  # type: ignore
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],

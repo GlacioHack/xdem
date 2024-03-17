@@ -853,6 +853,8 @@ class TestVariogram:
     def test_estimate_model_spatial_correlation_and_infer_from_stable(self) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
 
+        warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
+
         # Keep only data on stable
         diff_on_stable = self.diff.copy()
         diff_on_stable.set_mask(self.mask)

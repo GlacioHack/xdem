@@ -321,7 +321,7 @@ class TestDEM:
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         dem = DEM.from_array(
-            data=np.array([[100]]),
+            data=np.array([[100, 100]]),
             transform=rio.transform.from_bounds(
                 grid_shifts["lon"], grid_shifts["lat"], grid_shifts["lon"] + 0.01, grid_shifts["lat"] + 0.01, 0.01, 0.01
             ),
