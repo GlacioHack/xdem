@@ -51,4 +51,4 @@ dependencies:
     - noisyopt
 
     # To run CI against latest GeoUtils
-    - git+https://github.com/rhugonnet/geoutils@fix_to_points
+    - git+https://github.com/rhugonnet/geoutils.git@fix_to_points
