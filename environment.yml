@@ -13,9 +13,9 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0
-  - geoutils=0.1.*
+#  - geoutils=0.1.*
   - pip
 
-  # To run CI against latest GeoUtils
-  # - pip:
-  #   - git+https://github.com/GlacioHack/geoutils.git
+   # To run CI against latest GeoUtils
+  - pip:
+    - https://github.com/rhugonnet/geoutils.git@fix_to_points
