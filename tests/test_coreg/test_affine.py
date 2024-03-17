@@ -158,15 +158,15 @@ class TestAffineCoreg:
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit(
-            self.ref.to_pointcloud().ds,
+            self.ref.to_pointcloud(data_column_name="z").ds,
             self.tba,
             inlier_mask=inlier_mask,
             verbose=verbose,
-            z_name="b1",
+            random_state=42
         )
-        assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
-        assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
-        assert gds._meta["vshift"] == pytest.approx(-2.39, rel=1e-1)
+
+        shifts = (gds._meta["offset_east_px"], gds._meta["offset_north_px"], gds._meta["vshift"])
+        assert shifts == pytest.approx((0.03525, -0.59775, -2.39144), abs=10e-5)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
