@@ -12,4 +12,4 @@ tqdm
 scikit-image==0.*
 scikit-gstat>=1.0
 pip
-https://github.com/rhugonnet/geoutils.git@fix_to_points
+geoutils@fix_to_points

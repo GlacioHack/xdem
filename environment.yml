@@ -18,4 +18,4 @@ dependencies:
 
    # To run CI against latest GeoUtils
   - pip:
-    - https://github.com/rhugonnet/geoutils.git@fix_to_points
+    - git+https://github.com/rhugonnet/geoutils@fix_to_points
