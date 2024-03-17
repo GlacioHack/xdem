@@ -162,7 +162,7 @@ class TestAffineCoreg:
             self.tba,
             inlier_mask=inlier_mask,
             verbose=verbose,
-            random_state=42
+            random_state=42,
         )
 
         shifts = (gds._meta["offset_east_px"], gds._meta["offset_north_px"], gds._meta["vshift"])
