@@ -78,9 +78,7 @@ dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 # conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
 # Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 
-df = xdem.spatialstats.sample_empirical_variogram(
-    values=dh.data, gsd=dh.res[0], subsample=100, n_variograms=10, estimator="dowd", random_state=42
-)
+df = xdem.spatialstats.sample_empirical_variogram(values=dh, subsample=1000, n_variograms=10, estimator="dowd", random_state=42)
 
 # %%
 # *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
