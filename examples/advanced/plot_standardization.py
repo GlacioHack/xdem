@@ -128,7 +128,7 @@ plt.show()
 df_vgm = xdem.spatialstats.sample_empirical_variogram(
     values=z_dh.data.squeeze(),
     gsd=dh.res[0],
-    subsample=300,
+    subsample=1000,
     n_variograms=10,
     estimator="dowd",
     random_state=42,
