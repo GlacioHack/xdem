@@ -1114,9 +1114,9 @@ def get_terrain_attribute(
 @overload
 def slope(
     dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     degrees: bool = True,
+    resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
 ) -> NDArrayf:
     ...
@@ -1125,9 +1125,9 @@ def slope(
 @overload
 def slope(
     dem: RasterType,
-    resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     degrees: bool = True,
+    resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
 ) -> Raster:
     ...
@@ -1135,9 +1135,9 @@ def slope(
 
 def slope(
     dem: NDArrayf | MArrayf | RasterType,
-    resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     degrees: bool = True,
+    resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
 ) -> NDArrayf | Raster:
     """
@@ -1147,9 +1147,9 @@ def slope(
     http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to generate a slope map for.
-    :param resolution: The X/Y or (X, Y) resolution of the DEM.
     :param method: Method to calculate slope: "Horn" or "ZevenbergThorne".
     :param degrees: Whether to use degrees or radians (False means radians).
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:
@@ -1205,6 +1205,8 @@ def aspect(
 
     0=N, 90=E, 180=S, 270=W.
 
+    Note that aspect, representing only the orientation of the slope, is independent of the grid resolution.
+
     :param dem: The DEM to calculate the aspect from.
     :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
     :param degrees: Whether to use degrees or radians (False means radians).
@@ -1234,11 +1236,11 @@ def aspect(
 @overload
 def hillshade(
     dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
+    resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
 ) -> NDArrayf:
     ...
@@ -1247,11 +1249,11 @@ def hillshade(
 @overload
 def hillshade(
     dem: RasterType,
-    resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
+    resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
 ) -> RasterType:
     ...
@@ -1259,11 +1261,11 @@ def hillshade(
 
 def hillshade(
     dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
     method: str = "Horn",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
+    resolution: float | tuple[float, float] | None = None,
     use_richdem: bool = False,
 ) -> NDArrayf | RasterType:
     """
@@ -1272,11 +1274,11 @@ def hillshade(
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
     :param dem: The input DEM to calculate the hillshade from.
-    :param resolution: One or two values specifying the resolution of the DEM.
     :param method: Method to calculate the slope and aspect used for hillshading.
     :param azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param z_factor: Vertical exaggeration factor.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param use_richdem: Whether to use RichDEM to compute the slope and aspect used for the hillshade.
 
 
@@ -1334,7 +1336,7 @@ def curvature(
                See xdem.terrain.get_quadric_coefficients() for more information.
 
     :param dem: The DEM to calculate the curvature from.
-    :param resolution: The X/Y resolution of the DEM.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
@@ -1380,7 +1382,7 @@ def planform_curvature(
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
-    :param resolution: The X/Y resolution of the DEM.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
@@ -1433,7 +1435,7 @@ def profile_curvature(
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
-    :param resolution: The X/Y resolution of the DEM.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
@@ -1485,7 +1487,7 @@ def maximum_curvature(
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
-    :param resolution: The X/Y resolution of the DEM.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
@@ -1648,7 +1650,7 @@ def rugosity(
     Based on: Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
 
     :param dem: The DEM to calculate the rugosity from.
-    :param resolution: The X/Y resolution of the DEM.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
 
     :raises ValueError: If the inputs are poorly formatted.
 
