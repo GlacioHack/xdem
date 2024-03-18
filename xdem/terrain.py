@@ -1205,6 +1205,8 @@ def aspect(
 
     0=N, 90=E, 180=S, 270=W.
 
+    Note that aspect, representing only the orientation of the slope, is independent of the grid resolution.
+
     :param dem: The DEM to calculate the aspect from.
     :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
     :param degrees: Whether to use degrees or radians (False means radians).
