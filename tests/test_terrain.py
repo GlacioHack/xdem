@@ -91,7 +91,9 @@ class TestTerrainAttribute:
                 dem.data, resolution=dem.res, method="ZevenbergThorne", degrees=True
             ),
             "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
-            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res, method="ZevenbergThorne"),
+            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(
+                dem.data, resolution=dem.res, method="ZevenbergThorne"
+            ),
             "tri_Riley": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Riley"),
             "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Wilson"),
             "tpi": lambda dem: xdem.terrain.topographic_position_index(dem.data),
