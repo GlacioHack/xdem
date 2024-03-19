@@ -22,7 +22,7 @@ dependencies:
   - opencv
   - openh264
   - pytransform3d
-  #  - richdem
+  - richdem
 
   # Test dependencies
   - pytest

@@ -346,9 +346,6 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    @pytest.mark.skip(
-        "richdem wheels don't build on latest GDAL versions, " "need to circumvent that problem..."
-    )  # type: ignore
     def test_get_terrain_attribute_errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
