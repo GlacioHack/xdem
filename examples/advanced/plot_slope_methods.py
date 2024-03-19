@@ -98,7 +98,7 @@ aspect_horn = xdem.terrain.aspect(dem)
 aspect_zevenberg = xdem.terrain.aspect(dem, method="ZevenbergThorne")
 
 diff_aspect = aspect_horn - aspect_zevenberg
-diff_aspect_mod = np.minimum(np.mod(diff_aspect, 360), 360 - np.mod(diff_aspect, 360))
+diff_aspect_mod = np.minimum(diff_aspect % 360, 360 - diff_aspect % 360)
 
 plot_attribute(
     diff_aspect_mod, "Spectral", "Aspect of Horn (1981) minus\n aspect of Zevenberg and Thorne (1987) (°)", vlim=[0, 90]
