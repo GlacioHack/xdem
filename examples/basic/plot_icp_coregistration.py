@@ -1,12 +1,12 @@
 """
 Iterative closest point coregistration
 ======================================
-Some DEMs are erroneously rotated in the X, Y or Z directions.
-Coregistration approaches such as :ref:`coregistration-nuthkaab` work well for X, Y and Z *translations*, but rotation is not accounted for at all.
 
-Iterative Closest Point (ICP) is a method that takes both rotation and translation into account.
-It is however not as good as :ref:`coregistration-nuthkaab` when it comes to sub-pixel accuracy.
-Fortunately, xDEM provides the best of two worlds by allowing a combination of the two in a pipeline.
+Iterative Closest Point (ICP) is a registration methods accounting for both rotation and translation.
+
+It is used primarily to correct rotations, as it performs worse than :ref:`coregistration-nuthkaab` for sub-pixel shifts.
+Fortunately, xDEM provides the best of two worlds by allowing a combination of the two methods in a pipeline,
+demonstrated below!
 
 **Reference**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
 """
@@ -17,7 +17,7 @@ import numpy as np
 import xdem
 
 # %%
-# Let's load a DEM and crop it to a single mountain on Svalbard, called Battfjellet.
+# We load a DEM and crop it to a single mountain on Svalbard, called Battfjellet.
 # Its aspects vary in every direction, and is therefore a good candidate for coregistration exercises.
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 

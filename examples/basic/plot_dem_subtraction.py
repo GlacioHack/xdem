@@ -4,14 +4,14 @@ DEM differencing
 
 Subtracting a DEM with another one should be easy.
 
-xDEM allows directly using any operator on :class:`xdem.DEM` objects, such as :func:`+<operator.add>` or :func:``-<operator.sub>`` as well as most NumPy functions,
-while respecting nodata values and checking that georeferencing is consistent.
-This functionality is inherited from `GeoUtils' Raster class <https://geoutils.readthedocs.io>`_.
+xDEM allows to use any operator on :class:`xdem.DEM` objects, such as :func:`+<operator.add>` or :func:``-<operator.sub>`` as well as most NumPy functions
+while respecting nodata values and checking that georeferencing is consistent. This functionality is inherited from `GeoUtils' Raster class <https://geoutils.readthedocs.io>`_.
 
 Before DEMs can be compared, they need to be reprojected to the same grid and have the same 3D CRSs. The :func:`geoutils.Raster.reproject` and :func:`xdem.DEM.to_vcrs` methods are used for this.
 
 """
 import geoutils as gu
+
 import xdem
 
 # %%
