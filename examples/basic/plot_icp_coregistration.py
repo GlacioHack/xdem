@@ -1,12 +1,12 @@
 """
-Iterative Closest Point coregistration
+Iterative closest point coregistration
 ======================================
-Some DEMs may for one or more reason be erroneously rotated in the X, Y or Z directions.
-Established coregistration approaches like :ref:`coregistration-nuthkaab` work great for X, Y and Z *translations*, but rotation is not accounted for at all.
+Some DEMs are erroneously rotated in the X, Y or Z directions.
+Coregistration approaches such as :ref:`coregistration-nuthkaab` work well for X, Y and Z *translations*, but rotation is not accounted for at all.
 
-Iterative Closest Point (ICP) is one method that takes both rotation and translation into account.
+Iterative Closest Point (ICP) is a method that takes both rotation and translation into account.
 It is however not as good as :ref:`coregistration-nuthkaab` when it comes to sub-pixel accuracy.
-Fortunately, ``xdem`` provides the best of two worlds by allowing a combination of the two.
+Fortunately, xDEM provides the best of two worlds by allowing a combination of the two in a pipeline.
 
 **Reference**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
 """
