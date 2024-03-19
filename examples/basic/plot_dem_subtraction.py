@@ -4,7 +4,7 @@ DEM differencing
 
 Subtracting a DEM with another one should be easy.
 
-xDEM allows to use any operator on :class:`xdem.DEM` objects, such as :func:`+<operator.add>` or :func:``-<operator.sub>`` as well as most NumPy functions
+xDEM allows to use any operator on :class:`xdem.DEM` objects, such as :func:`+<operator.add>` or :func:`-<operator.sub>` as well as most NumPy functions
 while respecting nodata values and checking that georeferencing is consistent. This functionality is inherited from `GeoUtils' Raster class <https://geoutils.readthedocs.io>`_.
 
 Before DEMs can be compared, they need to be reprojected to the same grid and have the same 3D CRSs. The :func:`geoutils.Raster.reproject` and :func:`xdem.DEM.to_vcrs` methods are used for this.
@@ -50,6 +50,7 @@ ddem.info(stats=True)
 
 # Load the outlines
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+glacier_outlines = glacier_outlines.crop(ddem, clip=True)
 ddem.plot(cmap="coolwarm_r", vmin=-20, vmax=20, cbar_title="Elevation change (m)")
 glacier_outlines.plot(ref_crs=ddem, fc="none", ec="k")
 
