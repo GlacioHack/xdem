@@ -296,7 +296,7 @@ class DEM(SatelliteImage):  # type: ignore
 
         # Transform elevation with new vertical CRS
         zz = self.data
-        xx, yy = self.coords(offset="center")
+        xx, yy = self.coords()
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
 
         # Update DEM

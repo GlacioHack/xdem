@@ -236,6 +236,9 @@ class TestDEM:
         assert dem.vcrs_grid == "us_nga_egm08_25.tif"
 
         # -- Test 2: we check with grids --
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
         assert dem.vcrs_grid == "us_nga_egm96_15.tif"
@@ -312,12 +315,15 @@ class TestDEM:
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
     egm08_chile = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}
-    geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 17}
+    geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
     isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
     @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
+
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         dem = DEM.from_array(

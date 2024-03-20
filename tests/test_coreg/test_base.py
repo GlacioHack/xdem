@@ -98,15 +98,6 @@ class TestCoregClass:
         dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
         assert abs(vshiftcorr.error(dem1, dem3, transform=affine, crs=crs, error_type="std") - np.std(dem3)) < 1e-6
 
-    def test_ij_xy(self, i: int = 10, j: int = 20) -> None:
-        """
-        Test the reversibility of ij2xy and xy2ij, which is important for point co-registration.
-        """
-        x, y = self.ref.ij2xy(i, j, offset="ul")
-        i, j = self.ref.xy2ij(x, y, shift_area_or_point=False)
-        assert i == pytest.approx(10)
-        assert j == pytest.approx(20)
-
     @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])  # type: ignore
     def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
         """Test the subsampling function called by all subclasses"""

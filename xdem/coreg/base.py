@@ -133,9 +133,7 @@ def _residuals_df(
     arr_ = dem.data.astype(np.float32)
 
     # get residual error at the point on DEM.
-    i, j = dem.xy2ij(
-        df_shifted["E"].values, df_shifted["N"].values, op=np.float32, shift_area_or_point=("AREA_OR_POINT" in dem.tags)
-    )
+    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values)
 
     # ndimage return
     dem_h = scipy.ndimage.map_coordinates(arr_, [i, j], order=1, mode="nearest", **kwargs)
@@ -177,7 +175,7 @@ def _df_sampling_from_dem(
     mask = dem.data.mask
 
     # Get value
-    x, y = dem.ij2xy(i[~mask[i, j]], j[~mask[i, j]], offset=offset)
+    x, y = dem.ij2xy(i[~mask[i, j]], j[~mask[i, j]])
     z = scipy.ndimage.map_coordinates(
         dem.data.astype(np.float32), [i[~mask[i, j]], j[~mask[i, j]]], order=order, mode="nearest"
     )
