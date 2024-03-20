@@ -30,15 +30,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     else:
         vlims = {}
 
-    plt.imshow(
-        attribute.squeeze(),
-        cmap=cmap,
-        extent=[dem.bounds.left, dem.bounds.right, dem.bounds.bottom, dem.bounds.top],
-        **vlims,
-    )
-    if label is not None:
-        cbar = plt.colorbar()
-        cbar.set_label(label)
+    attribute.plot(cmap=cmap, cbar_title=label)
 
     plt.xticks([])
     plt.yticks([])
@@ -51,14 +43,14 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
 # Slope with method of `Horn (1981) <http://dx.doi.org/10.1109/PROC.1981.11918>`_ (GDAL default), based on a refined
 # approximation of the gradient  (page 18, bottom left, and pages 20-21).
 
-slope_horn = xdem.terrain.slope(dem.data, resolution=dem.res)
+slope_horn = xdem.terrain.slope(dem)
 
 plot_attribute(slope_horn, "Reds", "Slope of Horn (1981) (°)")
 
 # %%
 # Slope with method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_, Equation 13.
 
-slope_zevenberg = xdem.terrain.slope(dem.data, resolution=dem.res, method="ZevenbergThorne")
+slope_zevenberg = xdem.terrain.slope(dem, method="ZevenbergThorne")
 
 plot_attribute(slope_zevenberg, "Reds", "Slope of Zevenberg and Thorne (1987) (°)")
 
@@ -73,7 +65,7 @@ plot_attribute(diff_slope, "RdYlBu", "Slope of Horn (1981) minus\n slope of Zeve
 # The differences are negative, implying that the method of Horn always provides flatter slopes.
 # Additionally, they seem to occur in places of high curvatures. We verify this by plotting the maximum curvature.
 
-maxc = xdem.terrain.maximum_curvature(dem.data, resolution=dem.res)
+maxc = xdem.terrain.maximum_curvature(dem)
 
 plot_attribute(maxc, "RdYlBu", "Maximum curvature (100 m $^{-1}$)", vlim=2)
 
@@ -102,11 +94,11 @@ xdem.spatialstats.plot_1d_binning(
 # We perform the same exercise to analyze the differences in terrain aspect. We compute the difference modulo 360°,
 # to account for the circularity of aspect.
 
-aspect_horn = xdem.terrain.aspect(dem.data)
-aspect_zevenberg = xdem.terrain.aspect(dem.data, method="ZevenbergThorne")
+aspect_horn = xdem.terrain.aspect(dem)
+aspect_zevenberg = xdem.terrain.aspect(dem, method="ZevenbergThorne")
 
 diff_aspect = aspect_horn - aspect_zevenberg
-diff_aspect_mod = np.minimum(np.mod(diff_aspect, 360), 360 - np.mod(diff_aspect, 360))
+diff_aspect_mod = np.minimum(diff_aspect % 360, 360 - diff_aspect % 360)
 
 plot_attribute(
     diff_aspect_mod, "Spectral", "Aspect of Horn (1981) minus\n aspect of Zevenberg and Thorne (1987) (°)", vlim=[0, 90]
