@@ -16,7 +16,7 @@ fallback_version = "0.0.1"
 target_version = ['py36']
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules"
+addopts = "--doctest-modules -W error::UserWarning"
 testpaths = [
 	"tests",
 	"xdem"

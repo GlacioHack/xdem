@@ -1,12 +1,9 @@
 """Functions to test the difference of DEMs tools."""
-import warnings
 
 import geoutils as gu
 import numpy as np
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import xdem
+import xdem
 
 
 class TestdDEM:

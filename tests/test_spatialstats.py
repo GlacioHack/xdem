@@ -365,9 +365,9 @@ class TestBinning:
             # Get the value at the random point for elevation, slope, aspect
             x = xrand[i]
             y = yrand[i]
-            h = self.ref.data[x, y]
-            slp = self.slope.data[x, y]
-            asp = self.aspect.data[x, y]
+            h = self.ref.data.filled(np.nan)[x, y]
+            slp = self.slope.data.filled(np.nan)[x, y]
+            asp = self.aspect.data.filled(np.nan)[x, y]
 
             if np.logical_or.reduce((np.isnan(h), np.isnan(slp), np.isnan(asp))):
                 continue
@@ -853,6 +853,8 @@ class TestVariogram:
     def test_estimate_model_spatial_correlation_and_infer_from_stable(self) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
 
+        warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
+
         # Keep only data on stable
         diff_on_stable = self.diff.copy()
         diff_on_stable.set_mask(self.mask)
@@ -1254,7 +1256,6 @@ class TestSubSampling:
 
     def test_ring_masking(self) -> None:
         """Test that the ring masking works as intended"""
-        warnings.simplefilter("error")
 
         # by default, the mask is only an outside circle (ring of size 0)
         ring1 = xdem.spatialstats._create_ring_mask((5, 5))

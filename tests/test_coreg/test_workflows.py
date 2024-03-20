@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -18,11 +17,10 @@ from xdem.coreg.workflows import create_inlier_mask, dem_coregistration
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
+    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
@@ -30,7 +28,6 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
 class TestWorkflows:
     def test_create_inlier_mask(self) -> None:
         """Test that the create_inlier_mask function works expectedly."""
-        warnings.simplefilter("error")
 
         ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and outlines
 

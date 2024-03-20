@@ -28,8 +28,6 @@ class TestDocs:
                         ".*fetching the attribute.*Polygon.*",
                     ]
                     # This is a GeoPandas issue
-                    warnings.simplefilter("error")
-
                     for warning_text in ignored_warnings:
                         warnings.filterwarnings("ignore", warning_text)
                     try:
@@ -55,6 +53,11 @@ class TestDocs:
 
     def test_build(self) -> None:
         """Try building the doc and see if it works."""
+
+        # Ignore all warnings raised in the documentation
+        # (some UserWarning are shown on purpose in certain examples, so they shouldn't make the test fail,
+        # and most other warnings are for Sphinx developers, not meant to be seen by us; or we can check on RTD)
+        warnings.filterwarnings("ignore")
 
         # Test only on Linux
         if platform.system() == "Linux":

@@ -50,6 +50,9 @@ class TestRobustFitting:
 
     def test_robust_norder_polynomial_fit_noise_and_outliers(self) -> None:
 
+        # Ignore sklearn convergence warnings
+        warnings.filterwarnings("ignore", category=UserWarning, message="lbfgs failed to converge")
+
         np.random.seed(42)
 
         # Define x vector

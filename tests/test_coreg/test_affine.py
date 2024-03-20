@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import copy
-import warnings
 
+import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio as rio
@@ -17,11 +17,10 @@ from xdem.coreg.affine import AffineCoreg, CoregDict
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
+    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
@@ -32,32 +31,34 @@ class TestAffineCoreg:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
         verbose=False,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     def test_from_classmethods(self) -> None:
-        warnings.simplefilter("error")
 
         # Check that the from_matrix function works as expected.
         vshift = 5
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[2, 3] = vshift
         coreg_obj = AffineCoreg.from_matrix(matrix)
-        transformed_points = coreg_obj.apply_pts(self.points)
-        assert transformed_points[0, 2] == vshift
+        transformed_points = coreg_obj.apply(self.points)
+        assert all(transformed_points["z"].values == vshift)
 
         # Check that the from_translation function works as expected.
         x_offset = 5
         coreg_obj2 = AffineCoreg.from_translation(x_off=x_offset)
-        transformed_points2 = coreg_obj2.apply_pts(self.points)
-        assert np.array_equal(self.points[:, 0] + x_offset, transformed_points2[:, 0])
+        transformed_points2 = coreg_obj2.apply(self.points)
+        assert np.array_equal(self.points.geometry.x.values + x_offset, transformed_points2.geometry.x.values)
 
         # Try to make a Coreg object from a nan translation (should fail).
         try:
@@ -67,7 +68,6 @@ class TestAffineCoreg:
                 raise exception
 
     def test_vertical_shift(self) -> None:
-        warnings.simplefilter("error")
 
         # Create a vertical shift correction instance
         vshiftcorr = coreg.VerticalShift()
@@ -86,10 +86,10 @@ class TestAffineCoreg:
         assert matrix[2, 3] == vshift, matrix
 
         # Check that the first z coordinate is now the vertical shift
-        assert vshiftcorr.apply_pts(self.points)[0, 2] == vshiftcorr._meta["vshift"]
+        assert all(vshiftcorr.apply(self.points)["z"].values == vshiftcorr._meta["vshift"])
 
         # Apply the model to correct the DEM
-        tba_unshifted, _ = vshiftcorr.apply(self.tba.data, self.ref.transform, self.ref.crs)
+        tba_unshifted, _ = vshiftcorr.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # Create a new vertical shift correction model
         vshiftcorr2 = coreg.VerticalShift()
@@ -97,8 +97,8 @@ class TestAffineCoreg:
         assert vshiftcorr is not vshiftcorr2
         # Fit the corrected DEM to see if the vertical shift will be close to or at zero
         vshiftcorr2.fit(
-            reference_dem=self.ref.data,
-            dem_to_be_aligned=tba_unshifted,
+            reference_elev=self.ref.data,
+            to_be_aligned_elev=tba_unshifted,
             transform=self.ref.transform,
             crs=self.ref.crs,
             inlier_mask=self.inlier_mask,
@@ -157,17 +157,16 @@ class TestAffineCoreg:
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
-        gds.fit_pts(
-            self.ref.to_points().ds,
+        gds.fit(
+            self.ref.to_pointcloud(data_column_name="z").ds,
             self.tba,
             inlier_mask=inlier_mask,
             verbose=verbose,
-            subsample=subsample,
-            z_name="b1",
+            random_state=42,
         )
-        assert gds._meta["offset_east_px"] == pytest.approx(-0.496000, rel=1e-1, abs=0.1)
-        assert gds._meta["offset_north_px"] == pytest.approx(-0.1875, rel=1e-1, abs=0.1)
-        assert gds._meta["vshift"] == pytest.approx(-1.8730, rel=1e-1)
+
+        shifts = (gds._meta["offset_east_px"], gds._meta["offset_north_px"], gds._meta["vshift"])
+        assert shifts == pytest.approx((0.03525, -0.59775, -2.39144), abs=10e-5)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
@@ -177,14 +176,15 @@ class TestAffineCoreg:
         For comparison of coreg algorithms:
         Shift a ref_dem on purpose, e.g. shift_px = (1,1), and then applying coreg to shift it back.
         """
-        warnings.simplefilter("error")
         res = self.ref.res[0]
 
         # shift DEM by shift_px
         shifted_ref = self.ref.copy()
         shifted_ref.shift(shift_px[0] * res, shift_px[1] * res, inplace=True)
 
-        shifted_ref_points = shifted_ref.to_points(as_array=False, subsample=subsample, pixel_offset="center").ds
+        shifted_ref_points = shifted_ref.to_pointcloud(
+            subsample=subsample, force_pixel_offset="center", random_state=42
+        ).ds
         shifted_ref_points["E"] = shifted_ref_points.geometry.x
         shifted_ref_points["N"] = shifted_ref_points.geometry.y
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)
@@ -198,7 +198,7 @@ class TestAffineCoreg:
         if points_or_raster == "raster":
             coreg_obj.fit(shifted_ref, self.ref, verbose=verbose, random_state=42)
         elif points_or_raster == "points":
-            coreg_obj.fit_pts(shifted_ref_points, self.ref, verbose=verbose, random_state=42)
+            coreg_obj.fit(shifted_ref_points, self.ref, verbose=verbose, random_state=42)
 
         if coreg_class.__name__ == "ICP":
             matrix = coreg_obj.to_matrix()
@@ -222,7 +222,6 @@ class TestAffineCoreg:
         raise AssertionError(f"Diffs are too big. east: {best_east_diff:.2f} px, north: {best_north_diff:.2f} px")
 
     def test_nuth_kaab(self) -> None:
-        warnings.simplefilter("error")
 
         nuth_kaab = coreg.NuthKaab(max_iterations=10)
 
@@ -260,15 +259,17 @@ class TestAffineCoreg:
         assert np.sqrt(np.mean(np.square(diff))) < 1
 
         # Transform some arbitrary points.
-        transformed_points = nuth_kaab.apply_pts(self.points)
+        transformed_points = nuth_kaab.apply(self.points)
 
         # Check that the x shift is close to the pixel_shift * image resolution
-        assert abs((transformed_points[0, 0] - self.points[0, 0]) - pixel_shift * self.ref.res[0]) < 0.1
+        assert all(
+            abs((transformed_points.geometry.x.values - self.points.geometry.x.values) - pixel_shift * self.ref.res[0])
+            < 0.1
+        )
         # Check that the z shift is close to the original vertical shift.
-        assert abs((transformed_points[0, 2] - self.points[0, 2]) + vshift) < 0.1
+        assert all(abs((transformed_points["z"].values - self.points["z"].values) + vshift) < 0.1)
 
     def test_tilt(self) -> None:
-        warnings.simplefilter("error")
 
         # Try a 1st degree deramping.
         tilt = coreg.Tilt()
@@ -291,12 +292,11 @@ class TestAffineCoreg:
         assert np.abs(np.mean(periglacial_offset)) < 0.02
 
     def test_icp_opencv(self) -> None:
-        warnings.simplefilter("error")
 
         # Do a fast and dirty 3 iteration ICP just to make sure it doesn't error out.
         icp = coreg.ICP(max_iterations=3)
         icp.fit(**self.fit_params)
 
-        aligned_dem, _ = icp.apply(self.tba.data, self.ref.transform, self.ref.crs)
+        aligned_dem, _ = icp.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         assert aligned_dem.shape == self.ref.data.squeeze().shape

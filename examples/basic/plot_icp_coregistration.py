@@ -44,8 +44,7 @@ rotation_matrix = np.array(
 )
 
 # This will apply the matrix along the center of the DEM
-rotated_dem_data = xdem.coreg.apply_matrix(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
-rotated_dem = xdem.DEM.from_array(rotated_dem_data, transform=dem.transform, crs=dem.crs, nodata=-9999)
+rotated_dem = xdem.coreg.apply_matrix(dem, matrix=rotation_matrix)
 
 # %%
 # We can plot the difference between the original and rotated DEM.
@@ -73,11 +72,11 @@ plt.figure(figsize=(6, 12))
 
 for i, (approach, name) in enumerate(approaches):
     approach.fit(
-        reference_dem=dem,
-        dem_to_be_aligned=rotated_dem,
+        reference_elev=dem,
+        to_be_aligned_elev=rotated_dem,
     )
 
-    corrected_dem = approach.apply(dem=rotated_dem)
+    corrected_dem = approach.apply(elev=rotated_dem)
 
     diff = dem - corrected_dem
 

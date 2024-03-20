@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import warnings
 from typing import Any
 
 import numpy as np
@@ -66,6 +67,9 @@ class TestVCRS:
     def test_vcrs_from_user_input(self, vcrs_input: str | pathlib.Path | int | CRS) -> None:
         """Tests the function _vcrs_from_user_input for varying user inputs, for which it will return a CRS."""
 
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+
         # Get user input
         vcrs = xdem.dem._vcrs_from_user_input(vcrs_input)
 
@@ -116,6 +120,9 @@ class TestVCRS:
     def test_build_vcrs_from_grid(self, grid: str) -> None:
         """Test that vertical CRS are correctly built from grid"""
 
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+
         # Build vertical CRS
         vcrs = xdem.vcrs._build_vcrs_from_grid(grid=grid)
         assert vcrs.is_vertical
@@ -131,6 +138,9 @@ class TestVCRS:
     @pytest.mark.parametrize("vcrs_input", [CRS("EPSG:5773"), "is_lmi_Icegeoid_ISN93.tif", "EGM96"])  # type: ignore
     def test_build_ccrs_from_crs_and_vcrs(self, crs: CRS, vcrs_input: CRS | str) -> None:
         """Test the function build_ccrs_from_crs_and_vcrs."""
+
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
         # Get the vertical CRS from user input
         vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs_input)
@@ -179,6 +189,9 @@ class TestVCRS:
     @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
     def test_transform_zz(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
+
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         zz = 100

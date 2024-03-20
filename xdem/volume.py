@@ -9,7 +9,12 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
-from geoutils.raster import RasterType, get_array_and_mask, get_mask, get_valid_extent
+from geoutils.raster import (
+    RasterType,
+    get_array_and_mask,
+    get_mask_from_array,
+    get_valid_extent,
+)
 from tqdm import tqdm
 
 try:
@@ -51,7 +56,7 @@ def hypsometric_binning(
     ddem, _ = get_array_and_mask(ddem)
 
     # Extract only the valid values, i.e. valid in ref_dem
-    valid_mask = ~get_mask(ref_dem)
+    valid_mask = ~get_mask_from_array(ref_dem)
     ddem = np.array(ddem[valid_mask])
     ref_dem = np.array(ref_dem.squeeze()[valid_mask])
 
@@ -299,7 +304,7 @@ to interpolate from. The default is 10.
         raise ValueError("Optional dependency needed. Install 'opencv'")
 
     # Create a mask for where nans exist
-    nan_mask = get_mask(array)
+    nan_mask = get_mask_from_array(array)
 
     interpolated_array = rasterio.fill.fillnodata(
         array.copy(), mask=(~nan_mask).astype("uint8"), max_search_distance=max_search_distance
