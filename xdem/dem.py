@@ -185,7 +185,9 @@ class DEM(SatelliteImage):  # type: ignore
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
-        rast = SatelliteImage.from_array(data=data, transform=transform, crs=crs, nodata=nodata, area_or_point=area_or_point, tags=tags)
+        rast = SatelliteImage.from_array(
+            data=data, transform=transform, crs=crs, nodata=nodata, area_or_point=area_or_point, tags=tags
+        )
         # Then add the vcrs to the class call (that builds on top of the parent class)
         return cls(filename_or_dataset=rast, vcrs=vcrs)
 
