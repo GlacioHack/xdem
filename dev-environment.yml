@@ -13,7 +13,7 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0
-  - geoutils=0.1.*
+  - geoutils>=0.1.2
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
@@ -51,4 +51,4 @@ dependencies:
     - noisyopt
 
     # To run CI against latest GeoUtils
-    - git+https://github.com/rhugonnet/geoutils.git@fix_to_points
+#    - git+https://github.com/rhugonnet/geoutils.git@fix_to_points
