@@ -84,14 +84,16 @@ class TestTerrainAttribute:
         """
 
         functions = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, resolution=dem.res, degrees=True),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
             "slope_Zevenberg": lambda dem: xdem.terrain.slope(
-                dem.data, dem.res, method="ZevenbergThorne", degrees=True
+                dem.data, resolution=dem.res, method="ZevenbergThorne", degrees=True
             ),
             "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
-            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(dem.data, dem.res, method="ZevenbergThorne"),
+            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(
+                dem.data, resolution=dem.res, method="ZevenbergThorne"
+            ),
             "tri_Riley": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Riley"),
             "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Wilson"),
             "tpi": lambda dem: xdem.terrain.topographic_position_index(dem.data),
@@ -189,12 +191,12 @@ class TestTerrainAttribute:
 
         # Functions for xdem-implemented methods
         functions_xdem = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem, dem.res, degrees=True),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem, resolution=dem.res, degrees=True),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
-            "curvature": lambda dem: xdem.terrain.curvature(dem.data, dem.res),
-            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, dem.res),
-            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, dem.res),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
+            "curvature": lambda dem: xdem.terrain.curvature(dem.data, resolution=dem.res),
+            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, resolution=dem.res),
+            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, resolution=dem.res),
         }
 
         # Functions for RichDEM wrapper methods
@@ -267,25 +269,25 @@ class TestTerrainAttribute:
         # Try giving the hillshade invalid arguments.
 
         with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
-            xdem.terrain.hillshade(self.dem.data, self.dem.res, azimuth=361)
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, azimuth=361)
 
         with pytest.raises(ValueError, match="Altitude must be a value between 0 and 90"):
-            xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=91)
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=91)
 
         with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
-            xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=np.inf)
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
 
-        zfactor_1 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=1.0)
-        zfactor_10 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=10.0)
+        zfactor_1 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=1.0)
+        zfactor_10 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=10.0)
 
         # A higher z-factor should be more variable than a low one.
         assert np.nanstd(zfactor_1) < np.nanstd(zfactor_10)
 
-        low_altitude = xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=10)
-        high_altitude = xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=80)
+        low_altitude = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=10)
+        high_altitude = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=80)
 
         # A low altitude should be darker than a high altitude.
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
@@ -336,7 +338,7 @@ class TestTerrainAttribute:
         )
 
         # Create a hillshade using its own function
-        hillshade2 = xdem.terrain.hillshade(self.dem.data, self.dem.res)
+        hillshade2 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res)
 
         # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
         assert np.array_equal(hillshade, hillshade2, equal_nan=True)
