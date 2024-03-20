@@ -13,8 +13,8 @@ from pyproj import CRS
 import xdem
 import xdem.vcrs
 
-class TestVCRS:
 
+class TestVCRS:
     def test_parse_vcrs_name_from_product(self) -> None:
         """Test parsing of vertical CRS name from DEM product name."""
 
