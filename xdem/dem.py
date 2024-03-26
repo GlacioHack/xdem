@@ -159,6 +159,8 @@ class DEM(SatelliteImage):  # type: ignore
         transform: tuple[float, ...] | Affine,
         crs: CRS | int | None,
         nodata: int | float | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,  # Add this line
+        tags: dict[str, Any] = None,
         vcrs: Literal["Ellipsoid"]
         | Literal["EGM08"]
         | Literal["EGM96"]
@@ -181,7 +183,7 @@ class DEM(SatelliteImage):  # type: ignore
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
-        rast = SatelliteImage.from_array(data=data, transform=transform, crs=crs, nodata=nodata)
+        rast = SatelliteImage.from_array(data=data, transform=transform, crs=crs, nodata=nodata, area_or_point=area_or_point)
         # Then add the vcrs to the class call (that builds on top of the parent class)
         return cls(filename_or_dataset=rast, vcrs=vcrs)
 
