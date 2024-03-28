@@ -583,7 +583,6 @@ class ICP(AffineCoreg):
             )
 
         # If raster was reference, invert the matrix
-        # TODO: Move matrix/invert_matrix to affine module?
         if ref == "raster":
             matrix = xdem.coreg.base.invert_matrix(matrix)
 

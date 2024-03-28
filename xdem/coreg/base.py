@@ -429,10 +429,10 @@ def _preprocess_coreg_fit_point_point(
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Pre-processing and checks of fit for point-point input."""
 
-    ref_dem = reference_elev
-    tba_dem = to_be_aligned_elev.to_crs(crs=reference_elev.crs)
+    ref_elev = reference_elev
+    tba_elev = to_be_aligned_elev.to_crs(crs=reference_elev.crs)
 
-    return ref_dem, tba_dem
+    return ref_elev, tba_elev
 
 
 def _preprocess_coreg_fit(
@@ -472,16 +472,16 @@ def _preprocess_coreg_fit(
             point_elev = reference_elev
             ref = "point"
 
-        rst_elev, point_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_raster_point(
+        raster_elev, point_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_raster_point(
             raster_elev=raster_elev, point_elev=point_elev, inlier_mask=inlier_mask, transform=transform, crs=crs
         )
 
         if ref == "raster":
-            ref_elev = rst_elev
+            ref_elev = raster_elev
             tba_elev = point_elev
         else:
             ref_elev = point_elev
-            tba_elev = rst_elev
+            tba_elev = raster_elev
 
     # If both inputs are points, simply reproject to the same CRS
     else:
@@ -555,7 +555,12 @@ def _postprocess_coreg_apply_rst(
     resample: bool,
     resampling: rio.warp.Resampling | None = None,
 ) -> tuple[NDArrayf | gu.Raster, affine.Affine]:
-    """Post-processing and checks of apply for raster input."""
+    """
+    Post-processing and checks of apply for raster input.
+
+    Here, "elev" and "transform" corresponds to user input, and are required to transform back the output that is
+    composed of "applied_elev" and "out_transform".
+    """
 
     # Ensure the dtype is OK
     applied_elev = applied_elev.astype("float32")
@@ -605,7 +610,12 @@ def _postprocess_coreg_apply(
     resample: bool,
     resampling: rio.warp.Resampling | None = None,
 ) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
-    """Post-processing and checks of apply for any input."""
+    """
+    Post-processing and checks of apply for any input.
+
+    Here, "elev" and "transform" corresponds to user input, and are required to transform back the output that is
+    composed of "applied_elev" and "out_transform".
+    """
 
     # Define resampling
     resampling = resampling if isinstance(resampling, rio.warp.Resampling) else resampling_method_from_str(resampling)
@@ -1181,9 +1191,6 @@ class Coreg:
         if self._meta["subsample"] != 1:
             self._meta["random_state"] = random_state
 
-        # TODO: Add preproc for points too
-        # TODO: Rename into "checks", because not much is preprocessed in the end
-        #  (has to happen in the _fit_func itself, whether for subsampling or
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit(
             reference_elev=reference_elev,
@@ -2037,6 +2044,9 @@ class BlockwiseCoreg(Coreg):
         **kwargs: Any,
     ) -> CoregType:
 
+        if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(to_be_aligned_elev, gpd.GeoDataFrame):
+            raise NotImplementedError("Blockwise coregistration does not yet support two elevation point cloud inputs.")
+
         # Check if subsample arguments are different from their default value for any of the coreg steps:
         # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
         if not isinstance(self.procstep, CoregPipeline):
@@ -2065,8 +2075,7 @@ class BlockwiseCoreg(Coreg):
             crs=crs,
         )
 
-        # TODO: Blockwise can only work if one of the two is a Raster... or by defining a grid somehow?
-        groups = self.subdivide_array(tba_dem.shape)
+        groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
 
         indices = np.unique(groups)
 

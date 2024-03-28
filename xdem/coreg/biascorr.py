@@ -392,6 +392,7 @@ class BiasCorr(Coreg):
         inlier_pts_alltrue = np.ones(len(pts), dtype=bool)
 
         # Below, we derive 1D arrays for the rst_rst function to take over after interpolating to the point coordinates
+        # (as rst_rst works for 1D arrays as well as 2D arrays, as long as coordinates match)
 
         # Convert ref or tba depending on which is the point dataset
         if isinstance(ref_elev, gpd.GeoDataFrame):
@@ -413,7 +414,7 @@ class BiasCorr(Coreg):
         else:
             bias_vars_pts = None
 
-        # Send to raster-raster fit
+        # Send to raster-raster fit but using 1D arrays instead of 2D arrays (flattened anyway during analysis)
         self._fit_biascorr(
             ref_elev=ref_elev_pts,
             tba_elev=tba_elev_pts,
@@ -1073,7 +1074,7 @@ class Deramp(BiasCorr2D):
     ) -> None:
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) * (self._meta["poly_order"] + 1)))
+        p0 = np.ones(shape=((self._meta["poly_order"] + 1) **2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
@@ -1110,7 +1111,7 @@ class Deramp(BiasCorr2D):
         rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) * (self._meta["poly_order"] + 1)))
+        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, rast_elev.shape[1]), np.arange(0, rast_elev.shape[0]))
