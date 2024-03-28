@@ -1074,7 +1074,7 @@ class Deramp(BiasCorr2D):
     ) -> None:
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) **2))
+        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
