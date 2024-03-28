@@ -294,7 +294,7 @@ class DEM(SatelliteImage):  # type: ignore
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
 
         # Update DEM
-        self._data = zz_trans.astype(self.dtypes[0])  # type: ignore
+        self._data = zz_trans.astype(self.dtype)  # type: ignore
 
         # Update vcrs (which will update ccrs if called)
         self.set_vcrs(new_vcrs=vcrs)
