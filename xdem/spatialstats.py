@@ -1191,16 +1191,17 @@ def _get_cdist_empirical_variogram(
 
     """
 
-    if subsample_method == "cdist_equidistant" and "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
+    if subsample_method == "cdist_equidistant":
 
-        # We define subparameters for the equidistant technique to match the number of pairwise comparison
-        # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
-        runs, samples, ratio_subsample = _choose_cdist_equidistant_sampling_parameters(**kwargs)
+        if "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
+            # We define subparameters for the equidistant technique to match the number of pairwise comparison
+            # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
+            runs, samples, ratio_subsample = _choose_cdist_equidistant_sampling_parameters(**kwargs)
+            kwargs["ratio_subsample"] = ratio_subsample
+            kwargs["runs"] = runs
+            # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
+            kwargs["samples"] = samples
 
-        kwargs["runs"] = runs
-        # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
-        kwargs["samples"] = samples
-        kwargs["ratio_subsample"] = ratio_subsample
         kwargs.pop("subsample")
 
     elif subsample_method == "cdist_point":

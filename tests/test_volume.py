@@ -1,9 +1,7 @@
 """Functions to test the volume estimation tools."""
-import warnings
 
 import geoutils as gu
 import numpy as np
-import pandas as pd
 import pytest
 
 import xdem
@@ -40,7 +38,7 @@ class TestLocalHypsometric:
         assert ddem_stds["value"].mean() < 50
         assert np.abs(np.mean(ddem_bins["value"] - ddem_bins_masked["value"])) < 0.01
 
-    def test_interpolate_ddem_bins(self) -> pd.Series:
+    def test_interpolate_ddem_bins(self) -> None:
         """Test dDEM bin interpolation."""
         ddem = self.dem_2009 - self.dem_1990
 
@@ -61,12 +59,15 @@ class TestLocalHypsometric:
         # Check that no nans exist.
         assert not np.any(np.isnan(interpolated_bins))
 
-        # Return the value so that they can be used in other tests.
-        return interpolated_bins
-
     def test_area_calculation(self) -> None:
         """Test the area calculation function."""
-        ddem_bins = self.test_interpolate_ddem_bins()
+
+        ddem = self.dem_2009 - self.dem_1990
+
+        ddem_bins = xdem.volume.hypsometric_binning(ddem[self.mask], self.dem_2009[self.mask])
+
+        # Simulate a missing bin
+        ddem_bins.iloc[3, 0] = np.nan
 
         # Test the area calculation with normal parameters.
         bin_area = xdem.volume.calculate_hypsometry_area(
@@ -151,7 +152,6 @@ class TestNormHypsometric:
 
     @pytest.mark.parametrize("n_bins", [5, 10, 20])  # type: ignore
     def test_regional_signal(self, n_bins: int) -> None:
-        warnings.simplefilter("error")
 
         signal = xdem.volume.get_regional_hypsometric_signal(
             ddem=self.ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map, n_bins=n_bins
@@ -205,8 +205,6 @@ class TestNormHypsometric:
         assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1
 
     def test_regional_hypsometric_interp(self) -> None:
-
-        warnings.simplefilter("error")
 
         # Extract a normalized regional hypsometric signal.
         ddem = self.dem_2009 - self.dem_1990

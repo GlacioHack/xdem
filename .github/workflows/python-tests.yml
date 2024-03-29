@@ -61,7 +61,7 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,opencv,pytransform3d" "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,pytransform3d" "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
     - name: Install project
@@ -98,6 +98,11 @@ jobs:
 
     - name: Setup pip dependencies
       run: pip install pytest-cov coveralls coveragepy-lcov
+
+    - name: Print conda environment (for debugging)
+      run: |
+        conda info
+        conda list
 
     - name: Test with pytest
       run: |

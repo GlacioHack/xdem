@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import re
-import warnings
 
 import pytest
 import yaml  # type: ignore
@@ -57,8 +56,6 @@ class TestMisc:
         :param deprecation_increment: The version number relative to the current version.
         :param details: An optional explanation for the description.
         """
-
-        warnings.simplefilter("error")
 
         current_version = Version(Version(xdem.__version__).base_version)
 

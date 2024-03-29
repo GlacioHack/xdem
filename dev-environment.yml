@@ -13,16 +13,14 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0
-  - geoutils=0.1.*
+  - geoutils>=0.1.2
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
 
   # Optional dependencies
-  - opencv
-  - openh264
   - pytransform3d
-  #  - richdem
+  - richdem
 
   # Test dependencies
   - pytest
@@ -49,6 +47,8 @@ dependencies:
 
     # Optional dependencies
     - noisyopt
+    # "Headless" needed for opencv to install without requiring system dependencies
+    - opencv-contrib-python-headless
 
     # To run CI against latest GeoUtils
-    # - git+https://github.com/GlacioHack/geoutils.git
+#    - git+https://github.com/rhugonnet/geoutils.git@fix_to_points
