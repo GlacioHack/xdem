@@ -99,6 +99,11 @@ jobs:
     - name: Setup pip dependencies
       run: pip install pytest-cov coveralls coveragepy-lcov
 
+    - name: Print conda environment
+      run: |
+        conda info
+        conda list
+
     - name: Test with pytest
       run: |
         # We unset the PROJ_DATA environment variable to make PROJ work on Windows
