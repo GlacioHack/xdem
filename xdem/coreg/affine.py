@@ -11,7 +11,7 @@ try:
     import cv2
 
     _has_cv2 = True
-except ImportError as e:
+except ImportError:
     _has_cv2 = False
 import geopandas as gpd
 import numpy as np
