@@ -11,8 +11,9 @@ try:
     import cv2
 
     _has_cv2 = True
-except ImportError:
+except ImportError as e:
     _has_cv2 = False
+    raise e
 import geopandas as gpd
 import numpy as np
 import rasterio as rio
