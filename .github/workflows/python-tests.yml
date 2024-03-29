@@ -26,6 +26,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    # To ensure opencv finds the right paths
+    - uses: Dovyski/setup-opencv-action@v1.1
+      with:
+        opencv-version: '4.0.0'
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
@@ -61,7 +65,7 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,pytransform3d" "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,pytransform3d,opencv" "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
     - name: Install project
@@ -99,7 +103,7 @@ jobs:
     - name: Setup pip dependencies
       run: pip install pytest-cov coveralls coveragepy-lcov
 
-    - name: Print conda environment
+    - name: Print conda environment (for debugging)
       run: |
         conda info
         conda list
