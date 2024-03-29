@@ -13,7 +13,7 @@ try:
     _has_cv2 = True
 except ImportError as e:
     _has_cv2 = False
-    raise e
+    # raise e
 import geopandas as gpd
 import numpy as np
 import rasterio as rio
