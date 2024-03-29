@@ -26,10 +26,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    # To ensure opencv finds the right paths
-    - uses: Dovyski/setup-opencv-action@v1.1
-      with:
-        opencv-version: '4.0.0'
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
