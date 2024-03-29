@@ -19,8 +19,6 @@ dependencies:
   - pip
 
   # Optional dependencies
-  - opencv
-  - openh264
   - pytransform3d
   - richdem
 
@@ -45,6 +43,7 @@ dependencies:
   - numpydoc
 
   - pip:
+    - opencv-python
     - -e ./
 
     # Optional dependencies
