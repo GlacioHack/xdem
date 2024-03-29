@@ -19,8 +19,6 @@ dependencies:
   - pip
 
   # Optional dependencies
-  - opencv
-  - openh264
   - pytransform3d
   - richdem
 
@@ -49,6 +47,7 @@ dependencies:
 
     # Optional dependencies
     - noisyopt
+    - opencv-python-headless
 
     # To run CI against latest GeoUtils
 #    - git+https://github.com/rhugonnet/geoutils.git@fix_to_points
