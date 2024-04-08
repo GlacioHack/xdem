@@ -167,7 +167,7 @@ def _df_sampling_from_dem(
     elif subsample > 1:
         npoints = int(subsample)
     else:
-        raise ValueError("`subsample` must be > 0")
+        raise ValueError("Argument `subsample` must be > 0.")
 
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape

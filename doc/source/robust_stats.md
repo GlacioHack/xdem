@@ -1,4 +1,4 @@
-(robuststats)=
+(robust-stats)=
 
 # The need for robust statistics
 

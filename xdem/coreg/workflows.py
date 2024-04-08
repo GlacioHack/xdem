@@ -55,14 +55,14 @@ be excluded.
     # - Sanity check on inputs - #
     # Check correct input type of shp_list
     if not isinstance(shp_list, (list, tuple)):
-        raise ValueError("`shp_list` must be a list/tuple")
+        raise ValueError("Argument `shp_list` must be a list/tuple.")
     for el in shp_list:
         if not isinstance(el, (str, gu.Vector)):
-            raise ValueError("`shp_list` must be a list/tuple of strings or geoutils.Vector instance")
+            raise ValueError("Argument `shp_list` must be a list/tuple of strings or geoutils.Vector instance.")
 
     # Check correct input type of inout
     if not isinstance(inout, (list, tuple)):
-        raise ValueError("`inout` must be a list/tuple")
+        raise ValueError("Argument `inout` must be a list/tuple.")
 
     if len(shp_list) > 0:
         if len(inout) == 0:
@@ -72,18 +72,18 @@ be excluded.
             # Check that inout contains only 1 and -1
             not_valid = [el for el in np.unique(inout) if ((el != 1) & (el != -1))]
             if len(not_valid) > 0:
-                raise ValueError("`inout` must contain only 1 and -1")
+                raise ValueError("Argument `inout` must contain only 1 and -1.")
         else:
-            raise ValueError("`inout` must be of same length as shp")
+            raise ValueError("Argument `inout` must be of same length as shp.")
 
     # Check slope_lim type
     if not isinstance(slope_lim, (list, tuple)):
-        raise ValueError("`slope_lim` must be a list/tuple")
+        raise ValueError("Argument `slope_lim` must be a list/tuple.")
     if len(slope_lim) != 2:
-        raise ValueError("`slope_lim` must contain 2 elements")
+        raise ValueError("Argument `slope_lim` must contain 2 elements.")
     for el in slope_lim:
         if (not isinstance(el, (int, float, np.integer, np.floating))) or (el < 0) or (el > 90):
-            raise ValueError("`slope_lim` must be a tuple/list of 2 elements in the range [0-90]")
+            raise ValueError("Argument `slope_lim` must be a tuple/list of 2 elements in the range [0-90].")
 
     # Initialize inlier_mask with no masked pixel
     inlier_mask = np.ones(src_dem.data.shape, dtype="bool")
@@ -176,25 +176,25 @@ coregistration and 4) the inlier_mask used.
     """
     # Check inputs
     if not isinstance(coreg_method, Coreg):
-        raise ValueError("`coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())")
+        raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
     if isinstance(ref_dem_path, str):
         if not isinstance(src_dem_path, str):
             raise ValueError(
-                f"`ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
+                f"Argument `ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
                 "Both must have same type."
             )
     elif isinstance(ref_dem_path, gu.Raster):
         if not isinstance(src_dem_path, gu.Raster):
             raise ValueError(
-                f"`ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
+                f"Argument `ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
                 "Both must have same type."
             )
     else:
-        raise ValueError("`ref_dem_path` must be either a string or a Raster")
+        raise ValueError("Argument `ref_dem_path` must be either a string or a Raster.")
 
     if grid not in ["ref", "src"]:
-        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+        raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
 
     # Load both DEMs
     if verbose:

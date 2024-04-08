@@ -87,11 +87,12 @@ quick_start
 ```
 
 ```{toctree}
-:caption: Background
+:caption: Resources
 :maxdepth: 2
 
-intro_robuststats
-intro_accuracy_precision
+elevation_intricacies
+stats_for_elevation
+cheatsheet
 ```
 
 ```{toctree}
@@ -116,10 +117,11 @@ advanced_examples/index.rst
 ```
 
 ```{toctree}
-:caption: API Reference
+:caption: API reference
 :maxdepth: 2
 
-api.rst
+api
+background
 ```
 
 # Indices and tables

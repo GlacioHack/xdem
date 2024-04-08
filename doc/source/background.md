@@ -1,17 +1,8 @@
-(about-xdem)=
+(background)=
 
-# About xDEM
+# Background
 
-## What is xDEM?
-
-xDEM is a [Python](https://www.python.org/) package for the analysis of DEMs, with name standing for _cross-DEM analysis_[^sn1]
-and echoing its dependency on [Xarray](https://docs.xarray.dev/en/stable/). It is designed for all Earth and planetary
-observation science.
-
-[^sn1]: The core features of xDEM rely on cross-analysis of surface elevation, for example for DEM alignment or uncertainty analysis.
-
-## Why use GeoUtils?
-
+## Mission
 
 ```{epigraph}
 The core mission of xDEM is to be **easy-of-use**, **modular**, **robust**, **reproducible** and **fully open**.
@@ -53,7 +44,7 @@ And, additionally:
 - **State-of-the-art**: all methods should be at the cutting edge of remote sensing science, to provide users with the most reliable and up-to-date tools.
 
 
-# The people behind xDEM
+## The people behind xDEM
 
 ```{margin}
 <sup>2</sup>More on our GlacioHack founder at [adehecq.github.io](https://adehecq.github.io/)!
