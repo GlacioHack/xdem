@@ -11,5 +11,5 @@ scipy==1.*
 tqdm
 scikit-image==0.*
 scikit-gstat>=1.0
-geoutils==0.1.*
+geoutils>=0.1.4,<0.2
 pip
