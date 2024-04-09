@@ -162,6 +162,7 @@ class DEM(SatelliteImage):  # type: ignore
         nodata: int | float | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
         tags: dict[str, Any] = None,
+        cast_nodata: bool = True,
         vcrs: Literal["Ellipsoid"]
         | Literal["EGM08"]
         | Literal["EGM96"]
@@ -180,13 +181,21 @@ class DEM(SatelliteImage):  # type: ignore
         :param nodata: Nodata value.
         :param area_or_point: Pixel interpretation of the raster, will be stored in AREA_OR_POINT metadata.
         :param tags: Metadata stored in a dictionary.
+        :param cast_nodata: Automatically cast nodata value to the default nodata for the new array type if not
+            compatible. If False, will raise an error when incompatible.
         :param vcrs: Vertical coordinate reference system.
 
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
         rast = SatelliteImage.from_array(
-            data=data, transform=transform, crs=crs, nodata=nodata, area_or_point=area_or_point, tags=tags
+            data=data,
+            transform=transform,
+            crs=crs,
+            nodata=nodata,
+            area_or_point=area_or_point,
+            tags=tags,
+            cast_nodata=cast_nodata,
         )
         # Then add the vcrs to the class call (that builds on top of the parent class)
         return cls(filename_or_dataset=rast, vcrs=vcrs)
