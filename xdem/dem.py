@@ -5,6 +5,7 @@ import pathlib
 import warnings
 from typing import Any, Literal
 
+import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
@@ -159,6 +160,8 @@ class DEM(SatelliteImage):  # type: ignore
         transform: tuple[float, ...] | Affine,
         crs: CRS | int | None,
         nodata: int | float | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
+        tags: dict[str, Any] = None,
         vcrs: Literal["Ellipsoid"]
         | Literal["EGM08"]
         | Literal["EGM96"]
@@ -173,15 +176,18 @@ class DEM(SatelliteImage):  # type: ignore
         :param data: Input array.
         :param transform: Affine 2D transform. Either a tuple(x_res, 0.0, top_left_x,
             0.0, y_res, top_left_y) or an affine.Affine object.
-        :param crs: Coordinate reference system. Either a rasterio CRS,
-            or an EPSG integer.
+        :param crs: Coordinate reference system. Either a rasterio CRS, or an EPSG integer.
         :param nodata: Nodata value.
+        :param area_or_point: Pixel interpretation of the raster, will be stored in AREA_OR_POINT metadata.
+        :param tags: Metadata stored in a dictionary.
         :param vcrs: Vertical coordinate reference system.
 
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
-        rast = SatelliteImage.from_array(data=data, transform=transform, crs=crs, nodata=nodata)
+        rast = SatelliteImage.from_array(
+            data=data, transform=transform, crs=crs, nodata=nodata, area_or_point=area_or_point, tags=tags
+        )
         # Then add the vcrs to the class call (that builds on top of the parent class)
         return cls(filename_or_dataset=rast, vcrs=vcrs)
 
@@ -290,7 +296,7 @@ class DEM(SatelliteImage):  # type: ignore
 
         # Transform elevation with new vertical CRS
         zz = self.data
-        xx, yy = self.coords(offset="center")
+        xx, yy = self.coords()
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
 
         # Update DEM
@@ -395,19 +401,19 @@ class DEM(SatelliteImage):  # type: ignore
 
     def coregister_3d(
         self,
-        reference_dem: DEM,
+        reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg = None,
         inlier_mask: Mask | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         **kwargs: Any,
     ) -> DEM:
         """
-        Coregister DEM to another DEM in three dimensions.
+        Coregister DEM to a reference DEM in three dimensions.
 
-        Any coregistration method or pipeline can be passed, default is only horizontal and vertical shift of
-        Nuth and Kääb (2011).
+        Any coregistration method or pipeline from xdem.Coreg can be passed. Default is only horizontal and vertical
+        shifts of Nuth and Kääb (2011).
 
-        :param reference_dem: Reference DEM the alignment is made towards.
+        :param reference_elev: Reference elevation, DEM or elevation point cloud, for the alignment.
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
@@ -420,7 +426,11 @@ class DEM(SatelliteImage):  # type: ignore
             coreg_method = coreg.NuthKaab()
 
         coreg_method.fit(
-            reference_dem=reference_dem, dem_to_be_aligned=self, inlier_mask=inlier_mask, bias_vars=bias_vars, **kwargs
+            reference_elev=reference_elev,
+            to_be_aligned_elev=self,
+            inlier_mask=inlier_mask,
+            bias_vars=bias_vars,
+            **kwargs,
         )
         return coreg_method.apply(self)
 
@@ -454,7 +464,7 @@ class DEM(SatelliteImage):  # type: ignore
         """
 
         # Elevation change
-        dh = other_dem.reproject(self) - self
+        dh = other_dem.reproject(self, silent=True) - self
 
         # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
         # See Equation 7 and 8 of Hugonnet et al. (2022)
