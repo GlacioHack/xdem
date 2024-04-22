@@ -149,6 +149,7 @@ examples/data/Longyearbyen/data/
 examples/data/Longyearbyen/processed/
 examples/data/*.tif
 examples/data/*.csv
+examples/data/*.nc
 
 doc/source/basic_examples/
 doc/source/advanced_examples/
