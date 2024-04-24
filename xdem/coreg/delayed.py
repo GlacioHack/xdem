@@ -11,6 +11,7 @@ import numpy as np
 import dask.delayed
 import dask.array as da
 
+import rasterio as rio
 from scipy.interpolate import interpn
 
 # 1/ SUBSAMPLING
@@ -38,8 +39,10 @@ def _random_state_from_user_input(random_state: np.random.RandomState | int | No
 def _get_subsample_size_from_user_input(subsample: int | float, total_nb_valids: int) -> int:
     """Get subsample size based on a user input of either integer size or fraction of the number of valid points."""
 
+    # If value is between 0 and 1, use a fraction
     if (subsample <= 1) & (subsample > 0):
         npoints = int(subsample * total_nb_valids)
+    # Otherwise use the value directly
     elif subsample > 1:
         # Use the number of valid points if larger than subsample asked by user
         npoints = min(int(subsample), total_nb_valids)
@@ -235,7 +238,7 @@ def _get_interp_indices_per_block(interp_x, interp_y, starts, num_chunks, chunks
 
 
 @dask.delayed
-def _delayed_interp_block(arr_chunk: np.ndarray, block_id: dict[str, Any], interp_coords: np.ndarray) -> np.ndarray:
+def _delayed_interp_points_block(arr_chunk: np.ndarray, block_id: dict[str, Any], interp_coords: np.ndarray) -> np.ndarray:
     """
     Interpolate block in 2D out-of-memory for a regular or equal grid.
     """
@@ -307,14 +310,14 @@ def delayed_interp_points(darr: da.Array,
                  for i in range(len(blocks))]
 
     # Compute values delayed
-    list_interp = [_delayed_interp_block(blocks[i],
-                                    block_ids[i],
-                                    points[:, ind_per_block[i]])
-                                    for i, data_chunk in enumerate(blocks)
-                                    if len(ind_per_block[i]) > 0
-              ]
+    list_interp = [_delayed_interp_points_block(blocks[i],
+                                                block_ids[i],
+                                                points[:, ind_per_block[i]])
+                                                for i, data_chunk in enumerate(blocks)
+                                                if len(ind_per_block[i]) > 0
+                   ]
 
-    # Use np.nan for unknown chunk sizes https://dask.pydata.org/en/latest/array-chunks.html#unknown-chunks
+    # We define the expected output shape and dtype to simplify things for Dask
     list_interp_delayed = [da.from_delayed(p, shape=(1, len(ind_per_block[i])), dtype=darr.dtype) for i, p in enumerate(list_interp)]
     interp_points = np.concatenate(dask.compute(*list_interp_delayed), axis=0)
 
@@ -325,7 +328,167 @@ def delayed_interp_points(darr: da.Array,
 
     return interp_points
 
-# 3/ TERRAIN ATTRIBUTES AND APPLY_MATRIX
+# 3/ REPROJECT
+# Part of the code (defining geotiling/grids as a class) in inspired by https://github.com/opendatacube/odc-geo/pull/88,
+# modified to rely only on Rasterio/GeoPandas
+# Could be submitted as a PR to Rioxarray (but not sure the dependency to GeoPandas would work for them)
+
+from xdem.geogrid import ChunkedGeoGrid, GeoGrid
+
+def _chunks2d_from_chunksizes_shape(chunksizes: tuple[int, int], shape: tuple[int, int]):
+    """Get tuples of chunk sizes for X/Y dimensions based on chunksizes and array shape."""
+
+    # Chunksize is fixed, except for the last chunk depending on the shape
+    chunks_y = tuple(min(chunksizes[0], shape[0] - i*chunksizes[0],) for i in range(int(np.ceil(shape[0]/chunksizes[0]))))
+    chunks_x = tuple(min(chunksizes[1], shape[1] - i*chunksizes[1],) for i in range(int(np.ceil(shape[1]/chunksizes[1]))))
+
+    return chunks_y, chunks_x
+
+def _combined_blocks_shape_transform(sub_block_ids: list[dict[str, int]], src_geogrid: GeoGrid) -> tuple[dict[str, Any], list[dict[str, int]]]:
+    """Derive combined shape and transform from a subset of several blocks (for source input during reprojection)."""
+
+    # Get combined shape by taking min of X/Y starting indices, max of X/Y ending indices
+    all_xs, all_ys, all_xe, all_ye = ([b[s] for b in sub_block_ids] for s in ["xs", "ys", "xe", "ye"])
+    minmaxs = {"min_xs": np.min(all_xs), "max_xe": np.max(all_xe), "min_ys": np.min(all_ys), "max_ye": np.max(all_ye)}
+    combined_shape = (minmaxs["max_ye"] - minmaxs["min_ys"], minmaxs["max_xe"] - minmaxs["min_xs"])
+
+    # Shift source transform with start indexes to get the one for combined block location
+    combined_transform = src_geogrid.shift(xoff=minmaxs["min_xs"], yoff=-minmaxs["min_ys"]).transform
+
+    # Compute relative block indexes that will be needed to reconstruct a square array in the delayed function,
+    # by subtracting the minimum starting indices in X/Y
+    relative_block_indexes = [{"r"+s1+s2: b[s1+s2] - minmaxs["min_"+s1+"s"] for s1 in ["x", "y"] for s2 in ["s", "e"]} for b in sub_block_ids]
+
+    combined_meta = {"src_shape": combined_shape, "src_transform": tuple(combined_transform)}
+
+    return combined_meta, relative_block_indexes
+
+
+@dask.delayed
+def _delayed_reproject_per_block(*src_arrs: tuple[np.ndarray], block_ids: list[dict[str, int]], combined_meta: dict[str, Any], **kwargs: Any) -> np.ndarray:
+    """
+    Delayed reprojection per destination block (need to rebuild a square source array combined from intersecting blocks).
+    """
+
+    # If no source chunk intersects, we return a chunk of destination nodata values
+    if len(src_arrs) == 0:
+        dst_arr = np.zeros(combined_meta["dst_shape"], dtype=np.dtype("float64"))
+        dst_arr[:] = kwargs["dst_nodata"]
+        return dst_arr
+
+    # First, we build an empty array with the combined shape, only with nodata values
+    comb_src_arr = np.ones((combined_meta["src_shape"]), dtype=src_arrs[0].dtype)
+    comb_src_arr[:] = kwargs["src_nodata"]
+
+    # Then fill it with the source chunks values
+    for i, arr in enumerate(src_arrs):
+        bid = block_ids[i]
+        comb_src_arr[bid["rys"]:bid["rye"], bid["rxs"]:bid["rxe"]] = arr
+
+    # Now, we can simply call Rasterio!
+
+    # We build the combined transform from tuple
+    src_transform = rio.transform.Affine(*combined_meta["src_transform"])
+    dst_transform = rio.transform.Affine(*combined_meta["dst_transform"])
+
+    # Reproject
+    dst_arr = np.zeros(combined_meta["dst_shape"], dtype=comb_src_arr.dtype)
+
+    _ = rio.warp.reproject(
+            comb_src_arr,
+            dst_arr,
+            src_transform=src_transform,
+            src_crs=kwargs["src_crs"],
+            dst_transform=dst_transform,
+            dst_crs=kwargs["dst_crs"],
+            resampling=kwargs["resampling"],
+            src_nodata=kwargs["src_nodata"],
+            dst_nodata=kwargs["dst_nodata"],
+        )
+
+    return dst_arr
+
+
+def delayed_reproject(darr: da.Array,
+                      src_transform: rio.transform.Affine,
+                      src_crs: rio.crs.CRS,
+                      dst_transform: rio.transform.Affine,
+                      dst_shape: tuple[int, int],
+                      dst_crs: rio.crs.CRS,
+                      resampling: rio.enums.Resampling,
+                      src_nodata: int | float = None,
+                      dst_nodata: int | float = None,
+                      dst_chunksizes: tuple[int, int] = None,
+                      **kwargs: Any):
+    """
+    Reproject georeferenced raster on out-of-memory chunks.
+
+    Part of the code (defining geotiling/grids as a class) in inspired by https://github.com/opendatacube/odc-geo/pull/88,
+    modified to rely only on Rasterio/GeoPandas(Shapely).
+    Could be submitted as a PR to Rioxarray (but not sure the dependency to GeoPandas would work for them)
+    """
+
+    # 1/ Define source and destination georeferenced grid and tiling through simple classes storing CRS/transform/shape,
+    # which allows to consistently derive shape/transform for each block and its projected footprints
+
+    # Georeferenced grids for source/destination array
+    src_geogrid = GeoGrid(transform=src_transform, shape=darr.shape, crs=src_crs)
+    dst_geogrid = GeoGrid(transform=dst_transform, shape=dst_shape, crs=dst_crs)
+
+    # Adding a tiling
+    # For source, we can use the .chunks attribute
+    src_chunks = darr.chunks
+    src_geotiling = ChunkedGeoGrid(grid=src_geogrid, chunks=src_chunks)
+
+    # For destination, we need to create the chunks based on destination chunksizes
+    dst_chunks = _chunks2d_from_chunksizes_shape(chunksizes=dst_chunksizes, shape=dst_shape)
+    dst_geotiling = ChunkedGeoGrid(grid=dst_geogrid, chunks=dst_chunks)
+
+    # 2/ Get footprints of tiles in CRS of destination array, with a buffer of 2 pixels for destination ones,
+    # and indexes of source blocks that intersect a given destination block
+    src_footprints = src_geotiling.get_block_footprints(crs=dst_crs)
+    dst_footprints = dst_geotiling.get_block_footprints().buffer(2 * max(dst_geogrid.res))
+    dest2source = [np.where(dst.intersects(src_footprints).geometry.values)[0] for dst in dst_footprints]
+
+    # 3/ To reconstruct a square source array during chunked reprojection, we need to derive the combined shape and
+    # transform of each tuples of source blocks
+    src_block_ids = np.array(src_geotiling.get_block_locations())
+    meta_params = [_combined_blocks_shape_transform(sub_block_ids=src_block_ids[sbid], src_geogrid=src_geogrid) if len(sbid) > 0 else ({}, []) for sbid in dest2source]
+    # We also add the output transform/shape for this destination chunk in the combined meta
+    # (those are the only two that are chunk-specific)
+    dst_block_geogrids = dst_geotiling.get_blocks_as_geogrids()
+    for i, (c, _) in enumerate(meta_params):
+        c.update({"dst_shape": dst_block_geogrids[i].shape, "dst_transform": tuple(dst_block_geogrids[i].transform)})
+
+    # 4/ Call a delayed function that uses rio.warp to reproject the combined source block(s) to each destination block
+    kwargs.update({"src_nodata": src_nodata, "dst_nodata": dst_nodata, "resampling": resampling,
+                   "src_crs": src_crs, "dst_crs": dst_crs})
+
+    # Create a delayed object for each block, and flatten the blocks into a 1d shape
+    blocks = darr.to_delayed().ravel()
+    # Run the delayed reprojection, looping for each destination block
+    list_reproj = [_delayed_reproject_per_block(*blocks[dest2source[i]],
+                                                block_ids=meta_params[i][1],
+                                                combined_meta=meta_params[i][0],
+                                                **kwargs)
+                   for i in range(len(dest2source))
+                   ]
+
+    # We pass the expected output shape and dtype to simplify things for Dask
+    list_reproj_delayed = [da.from_delayed(r, shape=dst_block_geogrids[i].shape, dtype=darr.dtype) for i, r in
+                           enumerate(list_reproj)]
+
+    # Array comes out as nb flat blocks x chunksize0 (varying) x chunksize1 (varying), so we can't reshape directly
+    # We need to unravel the flattened blocks indices, align X/Y and concatenate all columns, then the other way
+    indexes_xi, indexes_yi = np.unravel_index(np.arange(len(dest2source)), shape=(len(dst_chunks[0]), len(dst_chunks[1])))
+
+    lists_columns = [[l for i, l in enumerate(list_reproj_delayed) if j == indexes_xi[i]] for j in range(len(dst_chunks[0]))]
+    concat_columns = [da.concatenate(c, axis=1) for c in lists_columns]
+    concat_all = da.concatenate(concat_columns, axis=0)
+
+    return concat_all
+
+# 4/ TERRAIN ATTRIBUTES AND APPLY_MATRIX
 # Output array is same shape as input, so we can use directly map_overlap here!
 
 # def delayed_get_terrain_attribute(darr: da.Array, attribute: str | list[str], resolution: float | tuple[float], **kwargs):

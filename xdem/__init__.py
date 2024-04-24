@@ -4,6 +4,7 @@ from xdem import (  # noqa
     examples,
     filters,
     fit,
+    geogrid,
     spatialstats,
     terrain,
     volume,

@@ -4,9 +4,13 @@ import os
 import numpy as np
 import pytest
 import xarray as xr
+import dask.array as da
+from pyproj import CRS
+import rasterio as rio
+import dask
 
 from xdem.examples import _EXAMPLES_DIRECTORY
-from xdem.coreg.delayed import delayed_subsample, delayed_interp_points, _random_state_from_user_input
+from xdem.coreg.delayed import delayed_subsample, delayed_interp_points, delayed_reproject
 
 class TestDelayed:
 
@@ -14,8 +18,8 @@ class TestDelayed:
     fn_tmp = os.path.join(_EXAMPLES_DIRECTORY, "test.nc")
     if not os.path.exists(fn_tmp):
         data = np.random.normal(size=400000000).reshape(20000, 20000)
-        da = xr.DataArray(data=data, dims=["x", "y"])
-        ds = xr.Dataset(data_vars={"test": da})
+        data_arr = xr.DataArray(data=data, dims=["x", "y"])
+        ds = xr.Dataset(data_vars={"test": data_arr})
         encoding_kwargs = {"test": {"chunksizes": (100, 100)}}
         ds.to_netcdf(fn_tmp, encoding=encoding_kwargs)
         del ds, da, data
@@ -69,4 +73,82 @@ class TestDelayed:
 
         assert np.array_equal(interp1, interp2, equal_nan=True)
 
+    # Let's check a lot of different scenarios
+    def test_delayed_reproject(self):
 
+        # Open dataset with chunks
+        ds = xr.open_dataset(self.fn_tmp, chunks={"x": self.chunksize, "y": self.chunksize})
+        darr = ds["test"].data
+
+        dask.config.set(scheduler='single-threaded')
+
+        src_shape = darr.shape
+
+        # src_shape = (150, 100)
+        # src_chunksizes = (25, 10)
+        # rng = da.random.default_rng(seed=42)
+        # darr = rng.normal(size=src_shape, chunks=src_chunksizes)
+        # darr = da.ones(src_shape, chunks=src_chunksizes)
+        src_crs = CRS(4326)
+        src_transform = rio.transform.from_bounds(0, 0, 5, 5, src_shape[0], src_shape[1])
+
+        dst_shape = (77, 50)
+        dst_crs = CRS(32631)
+        dst_chunksizes = (7, 5)
+
+        # Build an intersecting dst_transform that is not aligned
+        src_res = (src_transform[0], abs(src_transform[4]))
+        bounds = rio.coords.BoundingBox(*rio.transform.array_bounds(src_shape[0], src_shape[1], src_transform))
+        # First, an aligned transform in the new CRS that allows to get
+        # temporary new bounds and resolution in the units of the new CRS
+        tmp_transform = rio.warp.calculate_default_transform(
+            src_crs,
+            dst_crs,
+            src_shape[1],
+            src_shape[0],
+            left=bounds.left,
+            right=bounds.right,
+            top=bounds.top,
+            bottom=bounds.bottom,
+            dst_width=dst_shape[1],
+            dst_height=dst_shape[0],
+        )[0]
+        tmp_res = (tmp_transform[0], abs(tmp_transform[4]))
+        tmp_bounds = rio.coords.BoundingBox(*rio.transform.array_bounds(dst_shape[0], dst_shape[1], tmp_transform))
+        # Now we modify the destination grid by changing bounds by a bit + the resolution
+        dst_transform = rio.transform.from_origin(tmp_bounds.left + 100*tmp_res[0], tmp_bounds.top + 150*tmp_res[0],
+                                                  tmp_res[0]*2.5, tmp_res[1]*0.7)
+
+        # Other arguments
+        src_nodata = -9999
+        dst_nodata = 99999
+        resampling = rio.enums.Resampling.bilinear
+
+        # Run delayed reproject
+        reproj_arr = delayed_reproject(darr, src_transform=src_transform, src_crs=src_crs, dst_transform=dst_transform,
+                                       dst_crs=dst_crs, dst_shape=dst_shape, src_nodata=src_nodata, dst_nodata=dst_nodata,
+                                       resampling=resampling, dst_chunksizes=dst_chunksizes)
+
+        # Save file out-of-memory
+        # TODO: Would need to wrap the georef data in the netCDF, but not needed to test this
+        fn_tmp_out = os.path.join(_EXAMPLES_DIRECTORY, "test_reproj.nc")
+        data_arr = xr.DataArray(data=reproj_arr, dims=["x", "y"])
+        ds_out = xr.Dataset(data_vars={"test_reproj": data_arr})
+        write_delayed = ds_out.to_netcdf(fn_tmp_out, compute=False)
+        write_delayed.compute()
+
+        # Load in-memory and compare with a direct reproject
+        dst_arr = np.zeros(dst_shape)
+        _ = rio.warp.reproject(
+            np.array(darr),
+            dst_arr,
+            src_transform=src_transform,
+            src_crs=src_crs,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=resampling,
+            src_nodata=src_nodata,
+            dst_nodata=dst_nodata,
+        )
+
+        assert np.allclose(reproj_arr.compute(), dst_arr, atol=0.02)
