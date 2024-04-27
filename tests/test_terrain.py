@@ -172,8 +172,9 @@ class TestTerrainAttribute:
             raise exception
 
         # Introduce some nans
+        rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
@@ -257,8 +258,9 @@ class TestTerrainAttribute:
             raise exception
 
         # Introduce some nans
+        rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
         output = functions_richdem[attribute](dem)
@@ -320,8 +322,9 @@ class TestTerrainAttribute:
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
+        rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 

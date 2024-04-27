@@ -58,8 +58,7 @@ plt_extent = [
 # %%
 # To test the method, we can generate a semi-random mask to assign nans to glacierized areas.
 # Let's remove 30% of the data.
-np.random.seed(42)
-random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5) > 0.7) & (glacier_index_map > 0)
+random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5, random_state=42) > 0.7) & (glacier_index_map > 0)
 
 random_nans.plot()
 

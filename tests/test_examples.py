@@ -50,8 +50,8 @@ class TestExamples:
 
         rst = rst_and_truevals[0]
         truevals = rst_and_truevals[1]
-        np.random.seed(42)
-        values = np.random.choice(rst.data.data.flatten(), size=5, replace=False)
+        rng = np.random.default_rng(42)
+        values = rng.choice(rst.data.data.flatten(), size=5, replace=False)
 
         assert values == pytest.approx(truevals)
 

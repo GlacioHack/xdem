@@ -53,7 +53,7 @@ class TestRobustFitting:
         # Ignore sklearn convergence warnings
         warnings.filterwarnings("ignore", category=UserWarning, message="lbfgs failed to converge")
 
-        np.random.seed(42)
+        rng = np.random.default_rng(42)
 
         # Define x vector
         x = np.linspace(1, 10, 1000)
@@ -61,7 +61,7 @@ class TestRobustFitting:
         true_coefs = [-100, 5, 3, 2]
         y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
         # Add some noise on top
-        y += np.random.normal(loc=0, scale=3, size=1000)
+        y += rng.normal(loc=0, scale=3, size=1000)
         # Add some outliers
         y[50:75] = 0.0
         y[900:925] = 1000.0
@@ -150,7 +150,7 @@ class TestRobustFitting:
     def test_robust_nfreq_simsin_fit_noise_and_outliers(self) -> None:
 
         # Check robustness to outliers
-        np.random.seed(42)
+        rng = np.random.default_rng(42)
         # Define X vector
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
@@ -158,7 +158,7 @@ class TestRobustFitting:
         y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Add some noise
-        y += np.random.normal(loc=0, scale=0.25, size=1000)
+        y += rng.normal(loc=0, scale=0.25, size=1000)
         # Add some outliers
         y[50:75] = -10
         y[900:925] = 10

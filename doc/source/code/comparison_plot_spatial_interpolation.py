@@ -13,7 +13,7 @@ ddem = xdem.dDEM(dem_2009 - dem_1990, start_time=np.datetime64("1990-08-01"), en
 # The example DEMs are void-free, so let's make some random voids.
 ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)  # Reset the mask
 # Introduce 50000 nans randomly throughout the dDEM.
-ddem.data.mask.ravel()[np.random.choice(ddem.data.size, 50000, replace=False)] = True
+ddem.data.mask.ravel()[np.random.default_rng(42).choice(ddem.data.size, 50000, replace=False)] = True
 
 ddem.interpolate(method="linear")
 

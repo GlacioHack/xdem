@@ -5,8 +5,8 @@ import numpy as np
 # Example x vector
 mu = 15
 sig = 5
-np.random.seed(42)
-y = np.random.normal(mu, sig, size=300)
+rng = np.random.default_rng(42)
+y = rng.normal(mu, sig, size=300)
 
 fig, ax1 = plt.subplots(figsize=(8, 3))
 

@@ -60,10 +60,11 @@ class TestDEMCollection:
         # Simple check that the dV number is of a greater magnitude than the dH number.
         assert abs(cumulative_dv.iloc[-1]) > abs(cumulative_dh.iloc[-1])
 
+        rng = np.random.default_rng(42)
         # Generate 10000 NaN values randomly in one of the dDEMs
         dems.ddems[0].data[
-            np.random.randint(0, dems.ddems[0].data.shape[0], 100),
-            np.random.randint(0, dems.ddems[0].data.shape[1], 100),
+            rng.integers(0, dems.ddems[0].data.shape[0], 100),
+            rng.integers(0, dems.ddems[0].data.shape[1], 100),
         ] = np.nan
         # Check that the cumulative_dh function warns for NaNs
         with warnings.catch_warnings():
@@ -108,9 +109,10 @@ class TestDEMCollection:
                 raise exception
 
         # Generate 10000 NaN values randomly in one of the dDEMs
+        rng = np.random.default_rng(42)
         dems.ddems[0].data[
-            np.random.randint(0, dems.ddems[0].data.shape[0], 100),
-            np.random.randint(0, dems.ddems[0].data.shape[1], 100),
+            rng.integers(0, dems.ddems[0].data.shape[0], 100),
+            rng.integers(0, dems.ddems[0].data.shape[1], 100),
         ] = np.nan
 
         # Make sure that filled_data is not available anymore, since the data now has nans

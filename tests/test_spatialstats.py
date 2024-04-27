@@ -356,9 +356,9 @@ class TestBinning:
             df[var] = [xdem.spatialstats._pandas_str_to_interval(x) for x in df[var]]
 
         # Take 1000 random points in the array
-        np.random.seed(42)
-        xrand = np.random.randint(low=0, high=perbin_values.shape[0], size=1000)
-        yrand = np.random.randint(low=0, high=perbin_values.shape[1], size=1000)
+        rng = np.random.default_rng(42)
+        xrand = rng.integers(low=0, high=perbin_values.shape[0], size=1000)
+        yrand = rng.integers(low=0, high=perbin_values.shape[1], size=1000)
 
         for i in range(len(xrand)):
 
@@ -579,7 +579,7 @@ class TestVariogram:
         # Shape
         shape = values.shape
         # Random state
-        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(42)))
+        rng = np.random.default_rng(42)
 
         keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape, "verbose": False}
         runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(
@@ -597,7 +597,7 @@ class TestVariogram:
             samples=samples,
             ratio_subsample=ratio_subsample,
             runs=runs,
-            rnd=rnd,
+            rnd=rng,
         )
         V = skgstat.Variogram(
             rems,
@@ -759,8 +759,8 @@ class TestVariogram:
 
         # Add some noise on top of it
         sig = 0.025
-        np.random.seed(42)
-        y_noise = np.random.normal(0, sig, size=len(x))
+        rng = np.random.default_rng(42)
+        y_noise = rng.normal(0, sig, size=len(x))
 
         y_simu = y + y_noise
         sigma = np.ones(len(x)) * sig
