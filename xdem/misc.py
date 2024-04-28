@@ -40,10 +40,10 @@ def generate_random_field(
 
     :examples:
         >>> generate_random_field((4, 5), corr_size=2, random_state=1).round(2)
-        array([[0.47, 0.5 , 0.56, 0.63, 0.65],
-               [0.49, 0.51, 0.56, 0.62, 0.64],
-               [0.56, 0.56, 0.57, 0.59, 0.59],
-               [0.57, 0.57, 0.57, 0.58, 0.58]])
+        array([[0.74, 0.74, 0.75, 0.75, 0.75],
+               [0.69, 0.69, 0.7 , 0.71, 0.71],
+               [0.51, 0.51, 0.54, 0.57, 0.58],
+               [0.45, 0.47, 0.5 , 0.53, 0.54]])
 
     :returns: A numpy array of semi-random values from 0 to 1
     """

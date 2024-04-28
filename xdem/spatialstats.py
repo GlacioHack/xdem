@@ -1445,13 +1445,8 @@ def sample_empirical_variogram(
         # Define the random state if only a seed is provided
         rng = np.random.default_rng(random_state)
 
-        # Create a list of child random states
-        if n_variograms == 1:
-            # No issue if there is only one variogram run
-            list_random_state: list[None | np.random.Generator] = [rng]
-        else:
-            # Otherwise, pass a list of seeds
-            list_random_state = list(rng.choice(n_variograms, n_variograms, replace=False))
+        # Create a list of child random states per number of variograms
+        list_random_state: list[None | np.random.Generator] = list(rng.choice(n_variograms, n_variograms, replace=False))
     else:
         list_random_state = [None for i in range(n_variograms)]
 

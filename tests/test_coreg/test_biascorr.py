@@ -42,7 +42,6 @@ class TestBiasCorr:
     )
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    # TODO: Simplify once this GeoUtils issue is resolved: https://github.com/GlacioHack/geoutils/issues/499
     tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
