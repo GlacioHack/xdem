@@ -1191,7 +1191,7 @@ def _get_cdist_empirical_variogram(
         kwargs["samples"] = kwargs.pop("subsample")
 
     # Rename the "random_state" argument into "rng", also used by skgstat Metric subclasses
-    kwargs["rng"] = kwargs.pop("random_state")
+    kwargs["rnd"] = kwargs.pop("random_state")
 
     # Define MetricSpace function to be used, fetch possible keywords arguments
     if subsample_method == "cdist_point":

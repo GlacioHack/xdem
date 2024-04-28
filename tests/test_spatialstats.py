@@ -1311,7 +1311,7 @@ class TestPatchesMethod:
         assert df_full.shape == (100, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "8_16"
+        assert df_full["tile"].values[0] == "47_17"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))

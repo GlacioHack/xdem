@@ -28,17 +28,17 @@ class TestExamples:
     @pytest.mark.parametrize(
         "rst_and_truevals",
         [
-            (ref_dem, np.array([868.6489, 623.42194, 180.57921, 267.30765, 601.67615], dtype=np.float32)),
-            (tba_dem, np.array([875.2358, 625.0544, 182.9936, 272.6586, 606.2897], dtype=np.float32)),
+            (ref_dem, np.array([465.11816, 207.3236, 208.30563, 748.7337, 797.28644], dtype=np.float32)),
+            (tba_dem, np.array([464.6715, 213.7554, 207.8788, 760.8192, 797.3268], dtype=np.float32)),
             (
                 ddem,
                 np.array(
                     [
-                        -0.012023926,
-                        -0.6956787,
-                        0.14024353,
-                        1.1026001,
-                        -5.9224243,
+                        1.3048401,
+                        -1.6709595,
+                        0.09692383,
+                        -10.103027,
+                        2.46344,
                     ],
                     dtype=np.float32,
                 ),
