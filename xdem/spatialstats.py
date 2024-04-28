@@ -1446,7 +1446,9 @@ def sample_empirical_variogram(
         rng = np.random.default_rng(random_state)
 
         # Create a list of child random states per number of variograms
-        list_random_state: list[None | np.random.Generator] = list(rng.choice(n_variograms, n_variograms, replace=False))
+        list_random_state: list[None | np.random.Generator] = list(
+            rng.choice(n_variograms, n_variograms, replace=False)
+        )
     else:
         list_random_state = [None for i in range(n_variograms)]
 
