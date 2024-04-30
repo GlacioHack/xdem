@@ -16,7 +16,8 @@ kernelspec:
 # Bias correction
 
 In xDEM, bias-correction methods correspond to **transformations that cannot be described as a 3-dimensional
-affine function** (see {ref}`coregistration`).
+affine function** (see {ref}`coregistration`), and aim at correcting both systematic elevation errors and 
+spatially-structured random errors.
 
 Contrary to affine coregistration methods, bias corrections are not limited to the information in the DEMs. They can be
 passed any external variables (e.g., land cover type, processing metric) to attempt to identify and correct biases in

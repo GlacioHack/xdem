@@ -1,16 +1,16 @@
 (robust-stats)=
 
-# The need for robust statistics
+# Need for robust estimators
 
 Elevation data often contain outliers that can be traced back to instrument acquisition or processing artefacts, and which hamper further analysis.
 
 In order to mitigate their effect, the analysis of elevation data can integrate [robust statistics](https://en.wikipedia.org/wiki/Robust_statistics) at different levels:
-- **Robust optimizers for the fitting of parametric models** during {ref}`coregistration` and {ref}`biascorr`,
-- **Robust measures for the central tendency (e.g., mean) and dispersion (e.g., standard deviation)**, to evaluate DEM quality and converge during {ref}`coregistration`,
-- **Robust measures for estimating spatial autocorrelation** applied to error propagation in {ref}`uncertainty`.
+- **Robust estimators for the central tendency (e.g., mean) and dispersion (e.g., standard deviation)**, to evaluate DEM quality and converge during {ref}`coregistration`,
+- **Robust estimators for estimating spatial autocorrelation** applied to error propagation in {ref}`uncertainty`,
+- **Robust optimizers for the fitting of parametric models** during {ref}`coregistration` and {ref}`biascorr`.
 
-Yet, there is a downside to robust statistical measures. Those can yield less precise estimates for small samples sizes and,
-in some cases, hide patterns inherent to the data. This is why, when outliers show identifiable patterns, it is better
+Yet, there is a downside to robust statistical estimators. Those can yield less precise estimates for small samples sizes and,
+in some cases, hide patterns inherent to the data. This is why, when outliers show identifiable patterns, it can be better
 to first resort to outlier filtering and perform analysis using traditional statistical measures.
 
 ```{important}

@@ -15,7 +15,7 @@ kernelspec:
 # Coregistration
 
 xDEM implements a wide range of **coregistration algorithms and pipelines for 3-dimensional alignment** from the 
-peer-reviewed literature often tailored specifically to elevation data.
+peer-reviewed literature often tailored specifically to elevation data, aiming at correcting systematic elevation errors.
 
 Two categories of alignment are generally differentiated: **3D affine transformations** described below, and other 
 alignments that possibly rely on external variables described in {ref}`biascorr`.

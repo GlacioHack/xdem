@@ -9,6 +9,7 @@ elevate your analysis in relation to existing good practices!
 
 elevation_intricacies
 robust_stats
+static_surfaces
 accuracy_precision
 spatial_stats
 ```

@@ -23,6 +23,10 @@ pyplot.rcParams['savefig.dpi'] = 600
 
 # Uncertainty analysis
 
+Technically, **uncertainty analysis refers to both systematic and random errors**. For elevation data, however, systematic 
+errors are usually assessed and corrected with coregistration and bias correction, and so here uncertainty analysis refers 
+primarily to estimating and propagating random errors.
+
 To analyze DEMs, xDEM integrates spatial uncertainty analysis tools from the recent DEM literature,
 in particular in [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922) and
 [Rolstad et al. (2009)](https://doi.org/10.3189/002214309789470950). The implementation of these methods relies

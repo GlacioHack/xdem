@@ -14,13 +14,28 @@ kernelspec:
 
 # Spatial statistics for error analysis
 
-### Assumptions for statistical inference in spatial statistics
+Performing error (or uncertainty) analysis of spatial variable, such as elevation data, requires **joint knowledge from 
+two scientific fields: spatial statistics and uncertainty quantification.**
 
+Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics) for geoscience, 
+is a body of theory for the analysis of spatial variables. It primarily relies on describing the dependency of 
+variables in space (spatial autocorrelation) to understand their spatial characteristics, and 
+utilize this in further quantitative analysis.
 
-Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics), are essential
-for the analysis of observations distributed in space. However, spatial statistics are only valid if the variable of interest
-verifies [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
-That is, if the three following assumptions are verified:
+[Uncertainty quantification](https://en.wikipedia.org/wiki/Uncertainty_quantification) is the science of characterizing 
+uncertainties quantitatively. In measurement science, such as remote sensing, it is tightly linked to the field 
+of [metrology](https://en.wikipedia.org/wiki/Metrology).
+
+In the following, we describe the basics assumptions and concepts required to perform a spatial uncertainty analysis of 
+elevation data, described in the **feature page {ref}`uncertainty`**.
+
+## Assumptions for statistical inference in spatial statistics
+
+In spatial statistics, the covariance of a variable of interest is generally simplified into a spatial variogram, describing the 
+covariance only as function of the spatial lag (spatial distance between two variable values). 
+However, to utilize this simplification of the covariance in subsequent analysis, the variable of interest must 
+respect [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
+That is, verify the three following assumptions:
 
 > 1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,
 > 2. The variance of the variable of interest is stationary in space, i.e. constant over sufficiently large areas.
@@ -37,84 +52,10 @@ In other words, for a reliable analysis, the DEM should:
 > 2. Not contain measurement errors that vary significantly across space.
 > 3. Not contain factors that affect the spatial distribution of measurement errors, except for the distance between observations.
 
-### Quantifying the precision of a single DEM, or of a difference of DEMs
+## Standardize elevation differences for spatial analysis
 
-To statistically infer the precision of a DEM, it is compared against independent elevation observations.
-
-Significant measurement errors can originate from both sets of elevation observations, and the analysis of differences will represent the mixed precision of the two.
-As there is no reason for a dependency between the elevation data sets, the analysis of elevation differences yields:
-
-$$
-\sigma_{dh} = \sigma_{h_{\textrm{precision1}} - h_{\textrm{precision2}}} = \sqrt{\sigma_{h_{\textrm{precision1}}}^{2} + \sigma_{h_{\textrm{precision2}}}^{2}}
-$$
-
-If the other elevation data is known to be of higher-precision, one can assume that the analysis of differences will represent only the precision of the rougher DEM.
-
-$$
-\sigma_{dh} = \sigma_{h_{\textrm{higher precision}} - h_{\textrm{lower precision}}} \approx \sigma_{h_{\textrm{lower precision}}}
-$$
-
-### Using stable terrain as a proxy
-
-Stable terrain is the terrain that has supposedly not been subject to any elevation change. It often refers to bare-rock,
-and is generally computed by simply excluding glaciers, snow and forests.
-
-Due to the sparsity of synchronous acquisitions, elevation data cannot be easily compared for simultaneous acquisition
-times. Thus, stable terrain is used a proxy to assess the precision of a DEM on all its terrain,
-including moving terrain that is generally of greater interest for analysis.
-
-As shown in [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922), accounting for {ref}`spatialstats-heterosc` is needed to reliably
-use stable terrain as a proxy for other types of terrain.
-
-(spatialstats-metrics)=
-
-## Metrics for DEM precision
-
-Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a
-single pixel, for example $\pm 2$ meters at the 1$\sigma$ [confidence level](https://en.wikipedia.org/wiki/Confidence_interval).
-
-However, there is some limitations to this simple metric:
-
-> - the variability of the pixel-wise precision is not reported. The pixel-wise precision can vary depending on terrain- or instrument-related factors, such as the terrain slope. In rare occurrences, part of this variability has been accounted in recent DEM products, such as TanDEM-X global DEM that partitions the precision between flat and steep slopes ([Rizzoli et al. (2017)](https://doi.org/10.1016/j.isprsjprs.2017.08.008)),
-> - the area-wise precision of a DEM is generally not reported. Depending on the inherent resolution of the DEM, and patterns of noise that might plague the observations, the precision of a DEM over a surface area can vary significantly.
-
-### Pixel-wise elevation measurement error
-
-The pixel-wise measurement error corresponds directly to the dispersion $\sigma_{dh}$ of the sample $dh$.
-
-To estimate the pixel-wise measurement error for elevation data, two issues arise:
-
-> 1. The dispersion $\sigma_{dh}$ cannot be estimated directly on changing terrain,
-> 2. The dispersion $\sigma_{dh}$ can show important non-stationarities.
-
-The section {ref}`spatialstats-heterosc` describes how to quantify the measurement error as a function of
-several explanatory variables by using stable terrain as a proxy.
-
-### Spatially-integrated elevation measurement error
-
-The [standard error](https://en.wikipedia.org/wiki/Standard_error) of a statistic is the dispersion of the
-distribution of this statistic. For spatially distributed samples, the standard error of the mean corresponds to the
-error of a mean (or sum) of samples in space.
-
-The standard error $\sigma_{\overline{dh}}$ of the mean $\overline{dh}$ of the elevation changes
-samples $dh$ can be written as:
-
-$$
-\sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
-$$
-
-where $\sigma_{dh}$ is the dispersion of the samples, and $N$ is the number of **independent** observations.
-
-To estimate the standard error of the mean for elevation data, two issue arises:
-
-> 1. The dispersion of elevation differences $\sigma_{dh}$ is not stationary, a necessary assumption for spatial statistics.
-> 2. The number of pixels in the DEM $N$ does not equal the number of independent observations in the DEMs, because of spatial correlations.
-
-The sections {ref}`spatialstats-corr` and {ref}`spatialstats-errorpropag` describe how to account for spatial correlations
-and use those to integrate and propagate measurement errors in space.
-
-
-#### Standardize elevation differences for further analysis
+Elevation [heteroscedasticity](https://en.wikipedia.org/wiki/Heteroscedasticity) corresponds to a variability in
+precision of elevation observations, that are linked to terrain or instrument variables.
 
 In order to verify the assumptions of spatial statistics and be able to use stable terrain as a reliable proxy in
 further analysis (see {ref}`spatialstats`), [standardization](https://en.wikipedia.org/wiki/Standard_score)
@@ -167,16 +108,16 @@ requires an analysis of spatial correlation and a spatial integration of this co
 
 (spatialstats-corr)=
 
-### Spatial correlation of elevation measurement errors
+### Spatial correlation of elevation errors
 
-Spatial correlation of elevation measurement errors correspond to a dependency between measurement errors of spatially
+Spatial correlation of elevation errors correspond to a dependency between measurement errors of spatially
 close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
 instrument noise and deformations (mid- to long-range correlations).
 
 xDEM provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
 **model** correlations simultaneously at multiple ranges.
 
-#### Quantify and model spatial correlations
+#### Quantify and model spatial correlation
 
 [Variograms](https://en.wikipedia.org/wiki/Variogram) are functions that describe the spatial correlation of a sample.
 The variogram $2\gamma(h)$ is a function of the distance between two points, referred to as spatial lag $l$
@@ -217,3 +158,64 @@ to estimate a variogram for large grid data, subsampling is necessary.
 Random subsampling of the grid samples used is a solution, but often unsatisfactory as it creates a clustering
 of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
 few at short distances and long distances).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(spatialstats-metrics)=
+
+## Metrics for DEM precision
+
+Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a
+single pixel, for example $\pm 2$ meters at the 1$\sigma$ [confidence level](https://en.wikipedia.org/wiki/Confidence_interval).
+
+However, there is some limitations to this simple metric:
+
+> - the variability of the pixel-wise precision is not reported. The pixel-wise precision can vary depending on terrain- or instrument-related factors, such as the terrain slope. In rare occurrences, part of this variability has been accounted in recent DEM products, such as TanDEM-X global DEM that partitions the precision between flat and steep slopes ([Rizzoli et al. (2017)](https://doi.org/10.1016/j.isprsjprs.2017.08.008)),
+> - the area-wise precision of a DEM is generally not reported. Depending on the inherent resolution of the DEM, and patterns of noise that might plague the observations, the precision of a DEM over a surface area can vary significantly.
+
+### Pixel-wise elevation measurement error
+
+The pixel-wise measurement error corresponds directly to the dispersion $\sigma_{dh}$ of the sample $dh$.
+
+To estimate the pixel-wise measurement error for elevation data, two issues arise:
+
+> 1. The dispersion $\sigma_{dh}$ cannot be estimated directly on changing terrain,
+> 2. The dispersion $\sigma_{dh}$ can show important non-stationarities.
+
+The section {ref}`spatialstats-heterosc` describes how to quantify the measurement error as a function of
+several explanatory variables by using stable terrain as a proxy.
+
+### Spatially-integrated elevation measurement error
+
+The [standard error](https://en.wikipedia.org/wiki/Standard_error) of a statistic is the dispersion of the
+distribution of this statistic. For spatially distributed samples, the standard error of the mean corresponds to the
+error of a mean (or sum) of samples in space.
+
+The standard error $\sigma_{\overline{dh}}$ of the mean $\overline{dh}$ of the elevation changes
+samples $dh$ can be written as:
+
+$$
+\sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
+$$
+
+where $\sigma_{dh}$ is the dispersion of the samples, and $N$ is the number of **independent** observations.
+
+To estimate the standard error of the mean for elevation data, two issue arises:
+
+> 1. The dispersion of elevation differences $\sigma_{dh}$ is not stationary, a necessary assumption for spatial statistics.
+> 2. The number of pixels in the DEM $N$ does not equal the number of independent observations in the DEMs, because of spatial correlations.
+
+The sections {ref}`spatialstats-corr` and {ref}`spatialstats-errorpropag` describe how to account for spatial correlations
+and use those to integrate and propagate measurement errors in space.
+
