@@ -47,6 +47,8 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
+from geoutils.raster.delayed import delayed_reproject
+from rasterio.enums import Resampling
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -60,6 +62,10 @@ try:
 except ImportError:
     _HAS_P3D = False
 
+
+# from dask.array import Array
+import dask.array as da
+from xarray.core.dataarray import DataArray
 
 ###########################################
 # Generic functions for preprocessing
@@ -301,6 +307,152 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
     return mask_array
 
 
+# NOTE : should these functions be moved ?
+def _select_transform_crs(
+    transform: rio.transform.Affine | None,
+    crs: rio.crs.CRS | None,
+    transform_reference: rio.transform.Affine | None,
+    transform_other: rio.transform.Affine | None,
+    crs_reference: rio.crs.CRS | None,
+    crs_other: rio.crs.CRS | None,
+) -> tuple[rio.transform.Affine, rio.crs.CRS]:
+    """Choose the coorrect transform and CRS."""
+    # Choose the correct transform according to order of priority: dem_reference, dem_to_be_aligned, transform
+    new_transform = transform
+    if transform_reference is not None:
+        if new_transform is not None:
+            warnings.warn("transform of the reference DEM overrides the given 'transform'.")
+        new_transform = transform_reference
+    elif transform_other is not None:
+        if new_transform is not None:
+            warnings.warn("transform of the DEM to be aligned overrides the given 'transform'.")
+        new_transform = transform_other
+
+    # Choose the crs with the same priority as the transform
+    new_crs = crs
+    if crs_reference is not None:
+        if new_crs is not None:
+            warnings.warn("crs of the reference DEM overrides the given 'crs'.")
+        new_crs = crs_reference
+    elif crs_other is not None:
+        if new_crs is not None:
+            warnings.warn("crs of the DEM to be aligned overrides the given 'crs'.")
+        new_crs = crs_other
+
+    # Check that we have set the transforms
+    # transform, crs = new_transform, new_crs
+    if new_transform is None:
+        raise ValueError("'transform' must be given if both DEMs are Xarrays without a transform.")
+    if new_crs is None:
+        raise ValueError("'crs' must be given if both DEMs are Xarrays without a CRS.")
+    return new_transform, new_crs
+
+
+def _get_inlier_mask(mask: da.Array | None) -> da.Array:
+    """Get the inlier mask."""
+
+    # 1 if mask is None -> create a mask
+    if mask is None:
+        # initialize a dask array for the mask as big as the input with all True.
+        # mask = da.ones(da.shape(ref_dem),chunks=(), dtype=bool)
+        raise NotImplementedError("Handle this case. Initializing a boolean dask array.")
+
+    # make sure its a boolean mask
+    if mask.dtype != bool:
+        raise TypeError(f"Invalid mask dtype: '{mask.dtype}'")
+
+    # make sure its not all inliers
+    # TODO is True of False an inlier?
+    if da.all(~mask):
+        raise ValueError("'inlier_mask' had no inliers.")
+
+    return mask
+
+
+def _get_valid_data_mask(data: da.Array, nodata_value: float | int) -> tuple[da.Array, da.Array]:
+    """Get the mask for invalid data in the array."""
+
+    # TODO see if these functions get evaluated on a chunk by chunk basis.
+
+    # create a mask for nodata and non-finite values
+    mask = da.where(da.logical_or(~da.isfinite(data), data == nodata_value), True, False)
+
+    # check if entire data is invalid
+    if da.all(mask):
+        raise ValueError("Input 'dem' had only NaNs")
+
+    # set all masked values to np.nan in the original data
+    masked_data = da.where(mask, np.nan, data)
+
+    return mask, masked_data
+
+
+def _validate_masks(inlier_mask: da.Array, ref_mask: da.Array, tba_mask: da.Array) -> None:
+    """Validate if there is valid data in combined maskes."""
+    invalid_mask = da.logical_or(~inlier_mask, np.logical_or(ref_mask, tba_mask))
+    if da.all(invalid_mask):
+        raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
+
+
+def _preprocess_coreg_fit_xarray_xarray(
+    reference_dem: DataArray,
+    dem_to_be_aligned: DataArray,
+    inlier_mask: DataArray | None = None,
+    transform: rio.transform.Affine | None = None,
+    crs: rio.crs.CRS | None = None,
+) -> tuple[da.Array, da.Array, da.Array, affine.Affine, rio.crs.CRS]:
+    """Pre-processing and checks of fit() for xarray(dask) inputs."""
+
+    # validate that both inputs are valid xarrays
+    if not all(isinstance(dem, DataArray) for dem in (reference_dem, dem_to_be_aligned)):
+        raise TypeError("Both DEMs need to be xarrays.")
+    if (inlier_mask is not None) and (not isinstance(inlier_mask, DataArray)):
+        raise TypeError(f"Mask has invalid type: {type(inlier_mask)}. Expected {DataArray}.")
+
+    # TODO make sure the underlying data format is a chunked dask array ?... otherwise throw error
+    # TODO do we need to make sure that the inputs have aligned chunks? - would there be a problem with dask?
+
+    transform, crs = _select_transform_crs(
+        transform=transform,
+        crs=crs,
+        transform_reference=reference_dem.rio.transform(),
+        transform_other=dem_to_be_aligned.rio.transform(),
+        crs_reference=reference_dem.rio.crs,
+        crs_other=dem_to_be_aligned.rio.crs,
+    )
+    # this is needed for _get_valid_mask
+    dem_tba_nodata = dem_to_be_aligned.rio.nodata
+
+    # reproject DEM to be aligned if it is not in the correct grid.
+    dem_to_be_aligned = delayed_reproject(
+        darr=dem_to_be_aligned.data,
+        src_transform=dem_to_be_aligned.rio.transform(),
+        src_crs=dem_to_be_aligned.rio.crs,
+        dst_transform=reference_dem.rio.transform(),
+        dst_shape=reference_dem.shape,
+        dst_crs=reference_dem.rio.crs,
+        resampling=Resampling.bilinear,  # TODO is it ok to make this the default resampling method?
+        src_nodata=dem_to_be_aligned.rio.nodata,
+        dst_nodata=reference_dem.rio.nodata,
+        dst_chunksizes=None,  # reproject will use the destination chunksizes if set to None.
+    )
+
+    reference_dem, reference_mask = _get_valid_data_mask(
+        data=reference_dem.data,
+        nodata_value=reference_dem.rio.nodata,
+    )
+    tba_dem, tba_mask = _get_valid_data_mask(
+        data=dem_to_be_aligned,
+        nodata_value=dem_tba_nodata,
+    )
+    inlier_mask = _get_inlier_mask(mask=inlier_mask)
+
+    # TODO this still raises an error
+    # _validate_masks(inlier_mask=inlier_mask, ref_mask=reference_mask, tba_mask=tba_mask)
+
+    return reference_dem, tba_dem, inlier_mask, transform, crs
+
+
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
@@ -442,9 +594,9 @@ def _preprocess_coreg_fit_point_point(
 
 
 def _preprocess_coreg_fit(
-    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | Mask | None = None,
+    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
+    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
+    inlier_mask: NDArrayb | Mask | DataArray | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
 ) -> tuple[
@@ -453,7 +605,8 @@ def _preprocess_coreg_fit(
     """Pre-processing and checks of fit for any input."""
 
     if not all(
-        isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for elev in (reference_elev, to_be_aligned_elev)
+        isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, DataArray))
+        for elev in (reference_elev, to_be_aligned_elev)
     ):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
 
@@ -488,6 +641,17 @@ def _preprocess_coreg_fit(
         else:
             ref_elev = point_elev
             tba_elev = raster_elev
+
+    # if both inputs are xarray/ dask arrays
+    elif any(isinstance(elev, DataArray) for elev in (reference_elev, to_be_aligned_elev)):
+
+        ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_xarray_xarray(
+            reference_dem=reference_elev,
+            dem_to_be_aligned=to_be_aligned_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+        )
 
     # If both inputs are points, simply reproject to the same CRS
     else:
@@ -1152,10 +1316,10 @@ class Coreg:
 
     def fit(
         self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | da.Array,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | da.Array,
+        inlier_mask: NDArrayb | Mask | None = None | da.Array,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType | da.Array] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
