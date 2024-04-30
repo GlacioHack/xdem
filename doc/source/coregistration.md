@@ -14,22 +14,79 @@ kernelspec:
 
 # Coregistration
 
-Coregistration between DEMs correspond to aligning the digital elevation models in three dimensions.
+xDEM implements a wide range of **coregistration algorithms and pipelines for 3-dimensional alignment** from the 
+peer-reviewed literature often tailored specifically to elevation data.
 
-Transformations that can be described by a 3-dimensional [affine](https://en.wikipedia.org/wiki/Affine_transformation) function are included in coregistration methods.
+Two categories of alignment are generally differentiated: **3D affine transformations** described below, and other 
+alignments that possibly rely on external variables described in {ref}`biascorr`.
+
+## Quick use
+
+Coregistration pipelines are defined by combining {class}`~xdem.coreg.Coreg` objects:
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 600
+pyplot.rcParams['savefig.dpi'] = 600
+```
+
+```{code-cell} ipython3
+import xdem
+
+# Create a coregistration pipeline
+my_coreg_pipeline = xdem.coreg.NuthKaab() + xdem.coreg.ICP()
+```
+
+Then, coregistering a pair of elevation data can be done by calling {func}`xdem.DEM.coregister_3d` from the DEM that should be aligned.
+
+```{code-cell} ipython3
+:tags: [hide-cell]
+:mystnb:
+:  code_prompt_show: "Show the opening of example files and inlier mask definition."
+:  code_prompt_hide: "Hide the opening of example files and inlier mask definition."
+
+import geoutils as gu
+
+# Open a reference DEM from 2009
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+# Open a to-be-aligned DEM from 1990
+tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(ref_dem, silent=True)
+
+# Open glacier polygons from 1990, corresponding to unstable ground
+glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+# Create an inlier mask of terrain outside the glacier polygons
+inlier_mask = glacier_outlines.create_mask(ref_dem)
+```
+
+```{code-cell} ipython3
+# Coregister by calling the DEM method
+aligned_tba_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline, inlier_mask=inlier_mask)
+```
+
+Alternatively, the coregistration can be applied by sequentially calling the {func}`xdem.coreg.Coreg.fit` and {func}`xdem.coreg.Coreg.apply` steps, 
+which allows a broader variety of inputs, and re-using the same transformation to several objects (e.g., horizontal shift of both a stereo DEM and its ortho-image).
+
+```{code-cell} ipython3
+# Or, all fit and apply in two calls
+my_coreg_pipeline.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
+aligned_tba_dem = my_coreg_pipeline.apply(tba_dem)
+```
+
+## What is coregistration?
+
+Coregistration is the process of finding a transformation to align data in a certain number of dimensions. In the case 
+of elevation data, in three dimensions.
+
+Transformations that can be described by a 3-dimensional [affine](https://en.wikipedia.org/wiki/Affine_transformation) 
+function are included in coregistration methods.
 Those transformations include for instance:
 
 - vertical and horizontal translations,
 - rotations, reflections,
 - scalings.
-
-## Quick use
-
-Coregistrations are defined using either a single method or pipeline of {class}`~xdem.coreg.Coreg` methods, that are listed below.
-
-Performing the coregistration on a pair of DEM is done either by using {func}`xdem.DEM.coregister_3d` from the DEM that will be aligned, or
-by specifying the {func}`xdem.coreg.Coreg.fit` and {func}`xdem.coreg.Coreg.apply` steps, which allows array inputs and
-to apply the same fitted transformation to several objects (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ## Introduction
 
@@ -44,27 +101,6 @@ Unless the entire terrain is assumed to be stable, a mask layer is required.
 
 There are multiple approaches for coregistration, and each have their own strengths and weaknesses.
 Below is a summary of how each method works, and when it should (and should not) be used.
-
-**Example data**
-
-Examples are given using data close to Longyearbyen on Svalbard. These can be loaded as:
-
-```{code-cell} ipython3
-import geoutils as gu
-import numpy as np
-
-import xdem
-
-# Open a reference DEM from 2009
-ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-# Open a to-be-aligned DEM from 1990
-tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem")).reproject(ref_dem, silent=True)
-
-# Open glacier polygons from 1990, corresponding to unstable ground
-glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-# Create an inlier mask of terrain outside the glacier polygons
-inlier_mask = glacier_outlines.create_mask(ref_dem)
-```
 
 (coreg_object)=
 ## The {class}`~xdem.Coreg` object
@@ -198,6 +234,7 @@ vshift.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 shifted_dem = vshift.apply(tba_dem)
 
 # Use median shift instead
+import numpy as np
 vshift_median = coreg.VerticalShift(vshift_func=np.median)
 ```
 

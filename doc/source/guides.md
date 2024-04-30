@@ -1,0 +1,14 @@
+(guides)=
+# Guides to elevated analysis
+
+This section is a collection of guides gathering background knowledge related to elevation data to help grasp how to best 
+elevate your analysis in relation to existing good practices!
+
+```{toctree}
+:maxdepth: 2
+
+elevation_intricacies
+robust_stats
+accuracy_precision
+spatial_stats
+```

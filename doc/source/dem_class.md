@@ -36,6 +36,14 @@ The complete list of {class}`~geoutils.Raster` attributes and methods can be fou
 A {class}`~xdem.DEM` is opened by instantiating with either a {class}`str`, a {class}`pathlib.Path`, a {class}`rasterio.io.DatasetReader` or a
 {class}`rasterio.io.MemoryFile`, as for a {class}`~geoutils.Raster`.
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 400
+pyplot.rcParams['savefig.dpi'] = 400
+```
 
 ```{code-cell} ipython3
 import xdem
@@ -118,7 +126,7 @@ by calling the function corresponding to the attribute name such as {func}`~xdem
 ```{code-cell} ipython3
 # Derive slope using the Zevenberg and Thorne (1987) method
 slope = dem.slope(method="ZevenbergThorne")
-slope.plot(cmap="Reds", cbar_title="Slope (degrees)")
+slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
 ```{note}
@@ -140,7 +148,7 @@ dem_tba = xdem.DEM(filename_tba)
 dem_tba_coreg = dem_tba.coregister_3d(dem)
 
 # Plot the elevation change of the DEM due to coregistration
-dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba)
+dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)
 dh_tba.plot(cmap="Spectral", cbar_title="Elevation change due to coreg (m)")
 ```
 

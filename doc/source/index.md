@@ -58,13 +58,13 @@ Run a short example of the package functionalities.
 :::
 
 :::{grid-item-card} {material-regular}`preview;2em` Features
-:link: vertical-ref
+:link: dem-class
 :link-type: ref
 
 Dive into the full documentation.
 
 +++
-[Learn more »](vertical-ref)
+[Learn more »](dem-class)
 :::
 
 ::::
@@ -87,15 +87,6 @@ quick_start
 ```
 
 ```{toctree}
-:caption: Resources
-:maxdepth: 2
-
-elevation_intricacies
-stats_for_elevation
-cheatsheet
-```
-
-```{toctree}
 :caption: Features
 :maxdepth: 2
 
@@ -109,6 +100,15 @@ uncertainty
 ```
 
 ```{toctree}
+:caption: Resources
+:maxdepth: 2
+
+guides
+cheatsheet
+ecosystem
+```
+
+```{toctree}
 :caption: Gallery of examples
 :maxdepth: 2
 
@@ -117,7 +117,7 @@ advanced_examples/index.rst
 ```
 
 ```{toctree}
-:caption: API reference
+:caption: Reference
 :maxdepth: 2
 
 api

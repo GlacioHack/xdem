@@ -33,6 +33,16 @@ Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop t
 align the DEMs using coregistration, estimate the elevation change, estimate elevation change error using stable
 terrain, and finally plot and save the result!
 
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 600
+pyplot.rcParams['savefig.dpi'] = 600
+```
+
 ```{code-cell} ipython3
 import xdem
 import geoutils as gu

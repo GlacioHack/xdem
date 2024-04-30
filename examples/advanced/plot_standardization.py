@@ -5,7 +5,7 @@ Standardization for stable terrain as error proxy
 Digital elevation models have both a precision that can vary with terrain or instrument-related variables, and
 a spatial correlation of errors that can be due to effects of resolution, processing or instrument noise.
 Accouting for non-stationarities in elevation errors is essential to use stable terrain as a proxy to infer the
-precision on other types of terrain and reliably use spatial statistics (see :ref:`spatialstats`).
+precision on other types of terrain and reliably use spatial statistics (see :ref:`uncertainty`).
 
 Here, we show an example of standardization of the data based on terrain-dependent explanatory variables
 (see :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`) and combine it with an analysis of spatial correlation

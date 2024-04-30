@@ -1,5 +1,5 @@
 (elevation-intricacies)=
-# Elevation data and its intricacies
+# Georeferencing intricacies
 
 ## Types of elevation data
 

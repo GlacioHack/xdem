@@ -2,37 +2,29 @@
 
 # Background
 
+Below, some more information on xDEM's mission and the people behind the package .
+
 ## Mission
 
 ```{epigraph}
-The core mission of xDEM is to be **easy-of-use**, **modular**, **robust**, **reproducible** and **fully open**.
+The core mission of xDEM is to be **easy-of-use**, **modular** and **robust**.
 
-Additionally, xDEM aims to be **efficient**, **scalable** and **state-of-the-art**.
-```
+It also attempts to be as **efficient**, **scalable** and **state-of-the-art** as possible.
 
-```{important}
-:class: margin
-xDEM is in early stages of development and its features might evolve rapidly. Note the version you are working on for
-**reproducibility**!
-We are working on making features fully consistent for the first long-term release ``v0.1`` (planned early 2024).
+Finally, as an open source package, it aspires to foster **reproducibility** and **open science**.
 ```
 
 In details, those mean:
 
-- **Ease-of-use:** all DEM basic operations or methods from published works should only require a few lines of code to be performed;
+- **Ease-of-use:** all basic operations or methods from published works should only require a few lines of code to be performed;
 
-- **Modularity:** all DEM methods should be fully customizable, to allow both flexibility and inter-comparison;
+- **Modularity:** all methods should be fully customizable, to allow both flexibility and inter-comparison;
 
-- **Robustness:** all DEM methods should be tested within our continuous integration test-suite, to enforce that they always perform as expected;
-
-- **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependent
-  packages and works;
-
-- **Open-source:** all code should be accessible and re-usable to anyone in the community, for transparency and open governance.
+- **Robustness:** all methods should be tested within our continuous integration test-suite, to enforce that they always perform as expected;
 
 ```{note}
 :class: margin
-Additional mission points, in particular **scalability**, are partly developed but not a priority until our first long-term release ``v0.1`` is reached. Those will be further developed specifically in a subsequent version ``v0.2``.
+**Scalability** is currently being improved towards a first major release ``v1.0``.
 ```
 
 And, additionally:
@@ -43,6 +35,13 @@ And, additionally:
 
 - **State-of-the-art**: all methods should be at the cutting edge of remote sensing science, to provide users with the most reliable and up-to-date tools.
 
+And finally: 
+
+- **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependent
+  packages and works;
+
+- **Open-source:** all code should be accessible and re-usable to anyone in the community, for transparency and open governance.
+
 
 ## The people behind xDEM
 
@@ -50,7 +49,7 @@ And, additionally:
 <sup>2</sup>More on our GlacioHack founder at [adehecq.github.io](https://adehecq.github.io/)!
 ```
 
-xDEM was created during the [GlacioHack](https://github.com/GlacioHack) hackaton event, that was initiated by
+xDEM was created during the **[GlacioHack](https://github.com/GlacioHack) hackathon**, that was initiated by
 Amaury Dehecq<sup>2</sup> and took place online on November 8, 2020.
 
 ```{margin}
@@ -63,5 +62,5 @@ Grenobles Alpes.
 
 We are not software developers but geoscientists, and we try our best to offer tools that can be useful to a larger group,
 documented, reliable and maintained. All development and maintenance is made on a voluntary basis and we welcome
-any new contributors. See some information on how to contribute in the dedicated page of our
+any new contributors! See some information on how to contribute in the dedicated page of our
 [GitHub repository](https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md).

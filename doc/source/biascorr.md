@@ -15,13 +15,33 @@ kernelspec:
 
 # Bias correction
 
-In xDEM, bias-correction methods correspond to non-rigid transformations that cannot be described as a 3-dimensional
-affine function (see {ref}`coregistration`).
+In xDEM, bias-correction methods correspond to **transformations that cannot be described as a 3-dimensional
+affine function** (see {ref}`coregistration`).
 
-Contrary to rigid coregistration methods, bias corrections are not limited to the information in the DEMs. They can be
+Contrary to affine coregistration methods, bias corrections are not limited to the information in the DEMs. They can be
 passed any external variables (e.g., land cover type, processing metric) to attempt to identify and correct biases in
 the DEM. Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain
 (e.g., curvature- or elevation-dependant corrections), derived solely from the DEM.
+
+## Quick use
+
+Bias-correction methods are used in the same way as other coregistrations, and can be combined in a single pipeline:
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 600
+pyplot.rcParams['savefig.dpi'] = 600
+```
+
+```{code-cell} ipython3
+import xdem
+
+# Create a coregistration pipeline from a bias-correction and an affine method
+my_coreg_pipeline = xdem.coreg.DirectionalBias() + xdem.coreg.NuthKaab()
+```
 
 ## The {class}`~xdem.BiasCorr` object
 

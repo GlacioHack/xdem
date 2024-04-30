@@ -12,6 +12,15 @@ kernelspec:
 ---
 (vertical-ref)=
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 600
+pyplot.rcParams['savefig.dpi'] = 600
+```
+
 # Vertical referencing
 
 xDEM supports the use of **vertical coordinate reference systems (vertical CRSs)** and vertical transformations for DEMs
@@ -21,6 +30,20 @@ by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.
 **A {class}`~xdem.DEM` already possesses a {class}`~xdem.DEM.crs` attribute that defines its 2- or 3D CRS**, inherited from
 {class}`~geoutils.Raster`. Unfortunately, most DEM products do not yet come with a 3D CRS in their raster metadata, and
 vertical CRSs often have to be set by the user. See {ref}`vref-setting` below.
+```
+
+## Quick use
+
+
+The parsing, setting and transformation of vertical CRSs revolves around **three methods**, all described in details further below:
+- The **instantiation** of {class}`~xdem.DEM` that implicitly tries to set the vertical CRS from the metadata (or explicitly through the `vcrs` argument),
+- The **setting** method {func}`~xdem.DEM.set_vcrs` to explicitly set the vertical CRS of a {class}`~xdem.DEM`,
+- The **transformation** method {func}`~xdem.DEM.to_vcrs` to explicitly transform the vertical CRS of a {class}`~xdem.DEM`.
+
+```{caution}
+As of now, **[Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection** (even if the CRS
+provided contains a vertical axis).
+We therefore advise to perform horizontal transformation and vertical transformation independently using {func}`DEM.reproject<xdem.DEM.reproject>` and {func}`DEM.to_vcrs<xdem.DEM.to_vcrs>`, respectively.
 ```
 
 ## What is a vertical CRS?
@@ -36,19 +59,6 @@ In xDEM, we merge these into a single vertical CRS attribute {class}`DEM.vcrs<xd
 - a {class}`pyproj.CRS<pyproj.crs.CRS>` with only a vertical axis for a CRS based on geoid heights (e.g., the EGM96 geoid).
 
 In practice, a {class}`pyproj.CRS<pyproj.crs.CRS>` with only a vertical axis is either a {class}`~pyproj.crs.BoundCRS` (when created from a grid) or a {class}`~pyproj.crs.VerticalCRS` (when created in any other manner).
-
-## Methods to manipulate vertical CRSs
-
-The parsing, setting and transformation of vertical CRSs revolves around **three methods**, all described in details further below:
-- The **instantiation** of {class}`~xdem.DEM` that implicitly tries to set the vertical CRS from the metadata (or explicitly through the `vcrs` argument),
-- The **setting** method {func}`~xdem.DEM.set_vcrs` to explicitly set the vertical CRS of a {class}`~xdem.DEM`,
-- The **transformation** method {func}`~xdem.DEM.to_vcrs` to explicitly transform the vertical CRS of a {class}`~xdem.DEM`.
-
-```{caution}
-As of now, **[Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection** (even if the CRS
-provided contains a vertical axis).
-We therefore advise to perform horizontal transformation and vertical transformation independently using {func}`DEM.reproject<xdem.DEM.reproject>` and {func}`DEM.to_vcrs<xdem.DEM.to_vcrs>`, respectively.
-```
 
 (vref-setting)=
 ## Automated vertical CRS detection

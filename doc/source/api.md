@@ -115,19 +115,6 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.proximity
 ```
 
-### Coregistration
-
-```{tip}
-To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
-```
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    DEM.coregister_3d
-```
-
 ### Terrain attributes
 
 ```{eval-rst}
@@ -146,6 +133,36 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     DEM.roughness
     DEM.rugosity
     DEM.fractal_roughness
+```
+
+Or to get multiple related terrain attributes at once (for performance):
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.get_terrain_attribute
+```
+
+### Coregistration and bias corrections
+
+```{tip}
+To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.coregister_3d
+```
+
+### Uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.estimate_uncertainty
 ```
 
 ## dDEM
@@ -309,4 +326,13 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     :toctree: gen_modules/
 
     xdem.spatialstats
+```
+
+## Stand-alone functions (moved)
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.spatialstats.nmad
 ```

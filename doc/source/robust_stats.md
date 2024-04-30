@@ -2,16 +2,20 @@
 
 # The need for robust statistics
 
-Digital elevation models often contain outliers that can be traced back to instrument acquisition or processing artefacts, and which hamper further analysis.
+Elevation data often contain outliers that can be traced back to instrument acquisition or processing artefacts, and which hamper further analysis.
 
-In order to mitigate their effect, xDEM integrates [robust statistics](https://en.wikipedia.org/wiki/Robust_statistics) at different levels:
-- Robust optimizers for the fitting of parametric models during {ref}`coregistration` and {ref}`biascorr`,
-- Robust measures for the central tendency (e.g., mean) and dispersion (e.g., standard deviation), to evaluate DEM quality and converge during {ref}`coregistration`,
-- Robust measures for estimating spatial autocorrelation for uncertainty analysis in {ref}`spatialstats`.
+In order to mitigate their effect, the analysis of elevation data can integrate [robust statistics](https://en.wikipedia.org/wiki/Robust_statistics) at different levels:
+- **Robust optimizers for the fitting of parametric models** during {ref}`coregistration` and {ref}`biascorr`,
+- **Robust measures for the central tendency (e.g., mean) and dispersion (e.g., standard deviation)**, to evaluate DEM quality and converge during {ref}`coregistration`,
+- **Robust measures for estimating spatial autocorrelation** applied to error propagation in {ref}`uncertainty`.
 
 Yet, there is a downside to robust statistical measures. Those can yield less precise estimates for small samples sizes and,
 in some cases, hide patterns inherent to the data. This is why, when outliers show identifiable patterns, it is better
-to first resort to outlier filtering (see {ref}`filters`) and perform analysis using traditional statistical measures.
+to first resort to outlier filtering and perform analysis using traditional statistical measures.
+
+```{important}
+In xDEM, robust estimators are used everywhere by default.
+```
 
 (robuststats-meanstd)=
 
@@ -20,7 +24,7 @@ to first resort to outlier filtering (see {ref}`filters`) and perform analysis u
 ### Central tendency
 
 The [central tendency](https://en.wikipedia.org/wiki/Central_tendency) represents the central value of a sample, and is
-core to the analysis of sample accuracy (see {ref}`intro`). It is most often measured by the [mean](https://en.wikipedia.org/wiki/Mean).
+core to the analysis of sample accuracy (see {ref}`accuracy-precision`). It is most often measured by the [mean](https://en.wikipedia.org/wiki/Mean).
 However, the mean is a measure sensitive to outliers. Therefore, in many cases (e.g., when working with unfiltered
 DEMs) using the [median](https://en.wikipedia.org/wiki/Median) as measure of central tendency is preferred.
 
@@ -28,14 +32,14 @@ When working with weighted data, the [weighted median](https://en.wikipedia.org/
 to the 50{sup}`th` [weighted percentile](https://en.wikipedia.org/wiki/Percentile#Weighted_percentile) can be
 used as a robust measure of central tendency.
 
-The median is used by default in the alignment routines of {ref}`coregistration` and {ref}`biascorr`.
+The {func}`numpy.median` is used by default in the alignment routines of **{ref}`coregistration` and {ref}`biascorr`**.
 
 (robuststats-nmad)=
 
 ### Dispersion
 
 The [statistical dispersion](https://en.wikipedia.org/wiki/Statistical_dispersion) represents the spread of a sample,
-and is core to the analysis of sample precision (see {ref}`intro`). It is typically measured by the [standard deviation](https://en.wikipedia.org/wiki/Standard_deviation).
+and is core to the analysis of sample precision (see {ref}`accuracy-precision`). It is typically measured by the [standard deviation](https://en.wikipedia.org/wiki/Standard_deviation).
 However, very much like the mean, the standard deviation is a measure sensitive to outliers.
 
 The median equivalent of a standard deviation is the normalized median absolute deviation (NMAD), which corresponds to the [median absolute deviation](https://en.wikipedia.org/wiki/Median_absolute_deviation) scaled by a factor of ~1.4826 to match the dispersion of a
@@ -49,10 +53,6 @@ $$
 
 where $x$ is the sample.
 
-```python
-nmad = xdem.spatialstats.nmad
-```
-
 ```{note}
 The NMAD estimator has a good synergy with {ref}`Dowd's variogram<robuststats-corr>` for spatial autocorrelation, as their median-based measure of dispersion is the same.
 ```
@@ -61,9 +61,7 @@ The half difference between 84{sup}`th` and 16{sup}`th` percentiles, or the abso
 can also be used as a robust dispersion measure equivalent to the standard deviation.
 When working with weighted data, the difference between the 84{sup}`th` and 16{sup}`th` [weighted percentile](https://en.wikipedia.org/wiki/Percentile#Weighted_percentile), or the absolute 68{sup}`th` weighted percentile can be used as a robust measure of dispersion.
 
-```{important}
-The NMAD is used by default for estimating elevation measurement errors in {ref}`spatialstats`.
-```
+The {func}`xdem.spatialstats.nmad` is used by default in **{ref}`coregistration`, {ref}`biascorr` and {ref}`uncertainty`**.
 
 (robuststats-corr)=
 
@@ -86,9 +84,7 @@ Dowd's estimator has a good synergy with the {ref}`NMAD<robuststats-nmad>` for e
 
 Other estimators can be chosen from [SciKit-GStat's list of estimators](https://scikit-gstat.readthedocs.io/en/latest/reference/estimator.html).
 
-```{important}
-Dowd's variogram is used by default to estimate spatial auto-correlation of elevation measurement errors in {ref}`spatialstats`.
-```
+Dowd's variogram is used by default to estimate spatial auto-correlation of elevation measurement errors in **{ref}`uncertainty`**.
 
 (robuststats-regression)=
 
@@ -98,7 +94,7 @@ Dowd's variogram is used by default to estimate spatial auto-correlation of elev
 
 When performing least-squares linear regression, the traditional [loss functions](https://en.wikipedia.org/wiki/Loss_function) that are used are not robust to outliers.
 
-A robust soft L1 loss default is used by default when xDEM performs least-squares regression through [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html#).
+A robust soft L1 loss default is used by default to perform least-squares regression through [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html#) in **{ref}`coregistration` and {ref}`biascorr`**.
 
 ### Robust estimators
 

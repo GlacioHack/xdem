@@ -1,31 +1,34 @@
 (accuracy-precision)=
 
-# Understanding accuracy and precision
+# Grasping accuracy and precision
 
-Digital Elevation Models are numerical, gridded representations of elevation. They are generated from different
-instruments (e.g., optical sensors, radar, lidar), acquired in different conditions (e.g., ground, airborne, satellite)
-, and using different post-processing techniques (e.g., photogrammetry, interferometry).
+Below, a small guide explaining what accuracy and precision are, and their relation to elevation data (or any spatial data!).
 
-While some complexities are specific to certain instruments and methods, all DEMs generally possess:
+## Why do we need to understand accuracy and precision?
 
-- a [ground sampling distance](https://en.wikipedia.org/wiki/Ground_sample_distance) (GSD), or pixel size, **that does not necessarily represent the underlying spatial resolution of the observations**,
+Elevation data comes from a wide range of instruments (optical, radar, lidar) acquiring in different conditions (ground, 
+airborne, spaceborne) and relying on specific post-processing techniques (e.g., photogrammetry, interferometry).
+
+While some complexities are specific to certain instruments and methods, all elevation data generally possesses:
+
+- a [ground sampling distance](https://en.wikipedia.org/wiki/Ground_sample_distance), or pixel size, **that does not necessarily represent the underlying spatial resolution of the observations**,
 - a [georeferencing](https://en.wikipedia.org/wiki/Georeferencing) **that can be subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated processing schemes,
-- a large number of [outliers](https://en.wikipedia.org/wiki/Outlier) **that remain difficult to filter** as they can originate from various sources (e.g., photogrammetric blunders, clouds).
+- a large number of [outliers](https://en.wikipedia.org/wiki/Outlier) **that remain difficult to filter** as they can originate from various sources (e.g., blunders, clouds).
 
-These factors lead to difficulties in assessing the accuracy and precision of DEMs, which are necessary to perform
-further analysis.
+All of these factors lead to difficulties in assessing the reliability of elevation data, required to 
+perform additional quantitative analysis, which calls for defining the concepts relating to accuracy and precision for elevation data.
 
-In xDEM, we provide a framework with state-of-the-art methods published in the scientific literature to make DEM
-calculations consistent, reproducible, and easy.
+## Accuracy and precision of elevation data
 
-## Accuracy and precision
+### What are accuracy and precision?
 
-[Accuracy and precision](https://en.wikipedia.org/wiki/Accuracy_and_precision) describe random and systematic errors,
-respectively.
+[Accuracy and precision](https://en.wikipedia.org/wiki/Accuracy_and_precision) describe random and systematic errors, respectively. 
+A more accurate measurement is on average closer to the true value (less systematic error), while a more precise measurement has 
+less spread in measurement error (less random error), as shown in the simple schematic below.
 
-*Note: sometimes "accuracy" is also used to describe both types of errors, and "trueness" systematic errors, as defined
-in* [ISO 5725-1](https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en) *. Here, we used accuracy for systematic
-errors as, to our knowledge, it is a more commonly used terminology in remote sensing applications.*
+*Note: sometimes "accuracy" is also used to describe both types of errors, while "trueness" refers to systematic errors, as defined
+in* [ISO 5725-1](https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en) *. Here, we use accuracy for systematic
+errors as, to our knowledge, it is a more commonly used terminology for remote sensing applications.*
 
 :::{figure} imgs/precision_accuracy.png
 :width: 80%
@@ -33,15 +36,27 @@ errors as, to our knowledge, it is a more commonly used terminology in remote se
 Source: [antarcticglaciers.org](http://www.antarcticglaciers.org/glacial-geology/dating-glacial-sediments2/precision-and-accuracy-glacial-geology/), accessed 29.06.21.
 :::
 
-For DEMs, we thus have:
+### Translating these concepts for elevation data
 
-- **DEM accuracy** (systematic error) describes how close a DEM is to the true location of measured elevations on the Earth's surface,
-- **DEM precision** (random error) of a DEM describes the typical spread of its error in measurement, independently of a possible bias from the true positioning.
+However, elevation data rarely consists of a single independent measurement but of a **series of measurement** (image grid, 
+ground track) **related to a spatial support** (horizontal georeferencing, independent of height), which complexifies 
+the notion of accuracy and precision. 
 
-The spatial structure of DEMs complexifies the notion of accuracy and precision, however. Spatially structured
-systematic errors are often related to the gridded nature of DEMs, creating **affine biases** while other, **specific
-biases** exist at the pixel scale. For random errors, a variability in error magnitude or **heteroscedasticity** exists
-across the DEM, while spatially structured patterns of errors are linked to **spatial correlations**.
+Due to this, spatially consistent systematic errors can arise in elevation data independently of the error in elevation itself, 
+such as **affine biases** (systematic georeferencing shifts), in addition to **specific biases** known to exist locally 
+(e.g., signal penetration in land cover type).
+
+For random errors, a variability in error magnitude or **heteroscedasticity** is common in elevation data (e.g., 
+large errors on steep slopes). Finally, spatially structured yet random patterns of errors (e.g., along-track undulations) 
+also exist and force us to consider the **spatial correlation of errors**.
+
+Translating the accuracy and precision concepts to elevation data, we can thus define:
+
+- **Elevation accuracy** (systematic error) describes how close an elevation data is to the true elevation on the Earth's surface, both for errors **common to the entire spatial support**
+(DEM grid, altimetric track) and errors **specific to a location** (pixel, footprint),
+- **Elevation precision** (random error) describes the random spread of elevation error in measurement, independently of a possible bias from the true positioning, both for errors **structured over the spatial support** and **specific to a location**.
+
+These categories are depicted in the figure below.
 
 :::{figure} https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
 :width: 100%
@@ -49,63 +64,51 @@ across the DEM, while spatially structured patterns of errors are linked to **sp
 Source: [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922).
 :::
 
-## Absolute or relative accuracy
+### Absolute or relative elevation accuracy
 
-The measure of accuracy can be further divided into two aspects:
+Accuracy is generally considered from two focus points:
 
-- the **absolute accuracy** of a DEM describes the average shift to the true positioning. Studies interested in analyzing features of a single DEM in relation to other georeferenced data might give great importance to this potential bias.
-- the **relative accuracy** of a DEM is related to the potential shifts, tilts, and deformations with reference to other elevation data that does not necessarily matches the true positioning. Studies interested in comparing DEMs between themselves might be only interested in this accuracy.
+- **Absolute elevation accuracy** describes systematic errors to the true positioning, usually important when analysis focuses on the exact location of topographic features at a specific epoch.
+- **Relative elevation accuracy** describes systematic errors with reference to other elevation data that does not necessarily matches the true positioning, important for analyses interested in topographic change over time. 
 
-TODO: Add another little schematic!
+## How to get the best accuracy and precision of your elevation data? 
 
-## Optimizing DEM absolute accuracy
+### Quantifying and improving absolute and relative elevation accuracy
 
-Shifts due to poor absolute accuracy are common in elevation datasets, and can be easily corrected by performing a DEM
-co-registration to precise and accurate, quality-controlled elevation data such as [ICESat](https://icesat.gsfc.nasa.gov/icesat/) and [ICESat-2](https://icesat-2.gsfc.nasa.gov/).
-Quality-controlled DEMs aligned on high-accuracy data also exists, such as TanDEM-X global DEM (see [Rizzoli et al.
-(2017)](https://doi.org/10.1016/j.isprsjprs.2017.08.008)).
+Misalignments due to poor absolute or relative accuracy are common in elevation datasets, and are usually assessed and 
+corrected by performing **three-dimensional elevation coregistration and bias corrections to an independent source 
+of elevation data**.
 
-Those biases can be corrected using the methods described in {ref}`coregistration`.
+In the case of absolute accuracy, this independent source must be precise and accurate, such as altimetric data from
+[ICESat](https://icesat.gsfc.nasa.gov/icesat/) and [ICESat-2](https://icesat-2.gsfc.nasa.gov/) elevations, or coarser yet 
+quality-controlled DEMs themselves aligned on altimetric data such as the 
+[Copernicus DEM](https://portal.opentopography.org/raster?opentopoID=OTSDEM.032021.4326.3).
+
+To use coregistration and bias correction pipelines in xDEM, see the **feature pages on {ref}`coregistration` and {ref}`biascorr`**.
 
 ```{eval-rst}
 .. minigallery:: xdem.coreg.Coreg
-    :add-heading: Examples that use coregistration functions
+    :add-heading: Examples that use coregistration and bias corrections
 ```
 
-## Optimizing DEM relative accuracy
+### Quantifying and improving assessing elevation precision
 
-As the **absolute accuracy** can be corrected a posteriori using reference elevation datasets, many analyses only focus
-on **relative accuracy**, i.e. the remaining biases between several DEMs co-registered relative one to another.
-By harnessing the denser, nearly continuous sampling of raster DEMs (in opposition to the sparser sampling of
-higher-accuracy point elevation data), one can identify and correct other types of biases:
+While assessing accuracy is fairly straightforward as it consists of computing the mean differences (biases) between
+two or multiple datasets, assessing precision of elevation data can be much more complex. The spread in measurement 
+errors cannot be quantified by a single difference and require statistical inference. 
 
-- Terrain-related biases that can originate from the difference of resolution of DEMs, or instrument processing deformations (e.g., curvature-related biases described in [Gardelle et al. (2012)](https://doi.org/10.3189/2012JoG11J175)).
-- Directional biases that can be linked to instrument noise, such as along-track oscillations observed in many widepsread DEM products such as SRTM, ASTER, SPOT, Pléiades (e.g., [Girod et al. (2017)](https://doi.org/10.3390/rs9070704)).
+Assessing precision usually means applying **spatial statistics combined to uncertainty quantification**, 
+to account for the spatial variability and the spatial correlation in errors. For this it is usually necessary, as 
+for coregistration, to **rely on an independent source of elevation data on static surfaces similarly**. More background 
+on this topic is available on the **{ref}`spatial-stats` guide page**.
 
-Those biases can be tackled by iteratively combining co-registration and bias-correction methods described
-in {ref}`coregistration` and {ref}`biascorr`.
+To use spatial statistics for quantifying precision in xDEM, see **the feature page on {ref}`uncertainty`**.
 
-TODO: add mini-gallery for bias correction methods
-
-## Quantifying DEM precision
-
-While dealing with **accuracy** is quite straightforward as it consists of minimizing the differences (biases) between
-several datasets, assessing the **precision** of DEMs can be much more complex.
-Measurement errors of a DEM cannot be quantified by a simple difference and require statistical inference.
-
-The **precision** of DEMs has historically been reported by a single metric (e.g., precision of $\pm$ 2 m), but
-recent studies (e.g., [Rolstad et al. (2009)](https://doi.org/10.3189/002214309789470950), [Dehecq et al. (2020)](https://doi.org/10.3389/feart.2020.566802) and [Hugonnet et al. (2021)](https://doi.org/10.1038/s41586-021-03436-z))
-have shown the limitations of such simple metrics and provide more statistically-advanced methods to account for
-potential variabilities in precision and related correlations in space.
-However, the lack of implementations of these methods in a modern programming language makes them hard to reproduce,
-validate, and apply consistently. This is why one of the main goals of xDEM is to simplify state-of-the-art
-statistical measures, to allow accurate DEM uncertainty estimation for everyone.
-
-The tools for quantifying DEM precision are described in {ref}`spatialstats`.
+Additionally, improving the precision of elevation data is sometimes possible by correcting random structured 
+errors using, as for accuracy, **bias correction methods but here applied to pseudo-periodic errors**.
 
 % Functions that are used in several examples create duplicate examples instead of being merged into the list.
 % Circumventing manually by selecting functions used only once in each example for now.
-
 ```{eval-rst}
 .. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.get_variogram_model_func xdem.spatialstats.sample_empirical_variogram
     :add-heading: Examples that use spatial statistics functions

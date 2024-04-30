@@ -18,9 +18,9 @@
 
 It aims at **providing modular and robust tools for the most common analyses needed with DEMs**, including both geospatial
 operations specific to DEMs and a wide range of 3D alignment and correction methods from published, peer-reviewed studies.
-The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around `DEM` and `dDEM` classes** (that, notably, re-implements all tools
+The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around a `DEM` class** (that, notably, re-implements all tools
 of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are **built around
-modular `Coreg`, `BiasCorr` and `Filter` classes that easily interface between themselves**. Finally, xDEM includes advanced
+modular `Coreg`, `BiasCorr` classes that easily interface between themselves**. Finally, xDEM includes advanced
 uncertainty analysis tools based on spatial statistics of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/).
 
 Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as
