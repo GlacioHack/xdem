@@ -259,14 +259,14 @@ class DEM(SatelliteImage):  # type: ignore
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
         force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
         *,
         inplace: Literal[False] = False,
-    ) -> DEM | None:
+    ) -> DEM:
         ...
 
     @overload
@@ -274,14 +274,14 @@ class DEM(SatelliteImage):  # type: ignore
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
         force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
         *,
         inplace: Literal[True],
-    ) -> DEM | None:
+    ) -> None:
         ...
 
     @overload
@@ -289,11 +289,12 @@ class DEM(SatelliteImage):  # type: ignore
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
         force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
+        *,
         inplace: bool = False,
     ) -> DEM | None:
         ...
@@ -359,10 +360,19 @@ class DEM(SatelliteImage):  # type: ignore
         if inplace:
             self._data = new_data
             self.set_vcrs(new_vcrs=vcrs)
+            return None
         # Otherwise, return new DEM
         else:
-            return DEM.from_array(data=new_data, transform=self.transform, crs=self.crs, nodata=self.nodata,
-                                  area_or_point=self.area_or_point, tags=self.tags, vcrs=vcrs, cast_nodata=False)
+            return DEM.from_array(
+                data=new_data,
+                transform=self.transform,
+                crs=self.crs,
+                nodata=self.nodata,
+                area_or_point=self.area_or_point,
+                tags=self.tags,
+                vcrs=vcrs,
+                cast_nodata=False,
+            )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
