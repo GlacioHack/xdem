@@ -19,9 +19,6 @@ from xdem.coreg.base import (  # noqa
 )
 from xdem.coreg.biascorr import (  # noqa
     BiasCorr,
-    BiasCorr1D,
-    BiasCorr2D,
-    BiasCorrND,
     Deramp,
     DirectionalBias,
     TerrainBias,
