@@ -228,7 +228,7 @@ trans_dem = dem.to_vcrs("EGM96")
 trans_dem.vcrs
 ```
 
-The operation returns a new {class}`~xdem.DEM` by default, but can also be done in-place. It vertically shifts 
+The operation returns a new {class}`~xdem.DEM` by default, but can also be done in-place. It vertically shifts
 each pixel value by the transformation at their coordinates:
 
 ```{code-cell} ipython3
