@@ -1,4 +1,4 @@
-(robust-stats)=
+(robust-estimators)=
 
 # Need for robust estimators
 

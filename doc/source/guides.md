@@ -8,8 +8,8 @@ elevate your analysis in relation to existing good practices!
 :maxdepth: 2
 
 elevation_intricacies
-robust_stats
 static_surfaces
 accuracy_precision
+robust_estimators
 spatial_stats
 ```

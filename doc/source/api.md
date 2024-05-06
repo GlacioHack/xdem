@@ -20,7 +20,7 @@ documentation.
 
 ```{important}
 A {class}`~xdem.DEM` inherits all raster methods and attributes from the {class}`~geoutils.Raster` object of GeoUtils.
-Below, we only repeat the core attributes and methods of GeoUtils, see
+Below, we only repeat some core attributes and methods of GeoUtils, see
 [the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 
@@ -77,6 +77,23 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
     :toctree: gen_modules/
 
     DEM.vcrs
+```
+
+### Other attributes
+
+#### Inherited from {class}`~geoutils.Raster`
+
+See the full list in [the Raster API of GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster).
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.res
+    DEM.bounds
+    DEM.width
+    DEM.height
+    DEM.shape
 ```
 
 ### Georeferencing
@@ -136,6 +153,7 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
 ```
 
 Or to get multiple related terrain attributes at once (for performance):
+
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
@@ -192,8 +210,8 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 **Overview of co-registration class structure**:
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
-        :top-classes: xdem.Coreg
+.. inheritance-diagram:: xdem.coreg.base.Coreg xdem.coreg.affine xdem.coreg.biascorr
+        :top-classes: xdem.coreg.Coreg
 ```
 
 ### Coregistration, pipeline and blockwise
@@ -226,10 +244,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.Coreg.residuals
 ```
 
-### Affine coregistration methods
+### Affine coregistration
 
-
-**Generic parent class:**
+#### Parent object (to define custom methods)
 
 ```{eval-rst}
 .. autosummary::
@@ -238,7 +255,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.AffineCoreg
 ```
 
-**Convenience classes for specific coregistrations:**
+#### Coregistration methods
 
 ```{eval-rst}
 .. autosummary::
@@ -250,9 +267,21 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.Tilt
 ```
 
-### Bias-correction (including non-affine coregistration) methods
+#### Manipulating affine transforms
 
-**Generic parent class:**
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.AffineCoreg.from_matrix
+    xdem.coreg.AffineCoreg.to_matrix
+    xdem.coreg.apply_matrix
+    xdem.coreg.invert_matrix
+```
+
+### Bias-correction
+
+#### Parent object (to define custom methods)
 
 ```{eval-rst}
 .. autosummary::
@@ -261,18 +290,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.BiasCorr
 ```
 
-**Classes for any 1-, 2- and N-D biases:**
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    xdem.coreg.BiasCorr1D
-    xdem.coreg.BiasCorr2D
-    xdem.coreg.BiasCorrND
-```
-
-**Convenience classes for specific corrections:**
+#### Bias-correction methods
 
 ```{eval-rst}
 .. autosummary::

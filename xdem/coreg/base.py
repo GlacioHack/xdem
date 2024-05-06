@@ -51,6 +51,7 @@ from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.spatialstats import nmad
+from xdem.dem import DEM
 
 try:
     import pytransform3d.transformations
@@ -781,7 +782,7 @@ def apply_matrix(
             dem=dem, transform=transform, matrix=matrix, invert=invert, centroid=centroid, resampling=resampling
         )
         if isinstance(elev, gu.Raster):
-            applied_dem = gu.Raster.from_array(applied_dem, transform, elev.crs, elev.nodata)
+            applied_dem = DEM.from_array(applied_dem, transform, elev.crs, elev.nodata)
         return applied_dem
 
 

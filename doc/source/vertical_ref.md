@@ -23,17 +23,18 @@ pyplot.rcParams['savefig.dpi'] = 600
 
 # Vertical referencing
 
-xDEM supports the use of **vertical coordinate reference systems (vertical CRSs)** and vertical transformations for DEMs
+xDEM supports the use of **vertical coordinate reference systems (vertical CRSs) and vertical transformations for elevation data** 
 by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.io/pyproj/stable/) in the {class}`~xdem.DEM` class.
 
-```{important}
+```{note}
 **A {class}`~xdem.DEM` already possesses a {class}`~xdem.DEM.crs` attribute that defines its 2- or 3D CRS**, inherited from
 {class}`~geoutils.Raster`. Unfortunately, most DEM products do not yet come with a 3D CRS in their raster metadata, and
 vertical CRSs often have to be set by the user. See {ref}`vref-setting` below.
+
+For more reading on referencing for elevation data, see the **{ref}`elevation-intricacies` guide page.**
 ```
 
 ## Quick use
-
 
 The parsing, setting and transformation of vertical CRSs revolves around **three methods**, all described in details further below:
 - The **instantiation** of {class}`~xdem.DEM` that implicitly tries to set the vertical CRS from the metadata (or explicitly through the `vcrs` argument),
@@ -44,6 +45,34 @@ The parsing, setting and transformation of vertical CRSs revolves around **three
 As of now, **[Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection** (even if the CRS
 provided contains a vertical axis).
 We therefore advise to perform horizontal transformation and vertical transformation independently using {func}`DEM.reproject<xdem.DEM.reproject>` and {func}`DEM.to_vcrs<xdem.DEM.to_vcrs>`, respectively.
+```
+
+To pass a vertical CRS argument, xDEM accepts string of the most commonly used (`"EGM96"`, `"EGM08"` and `"Ellipsoid"`), 
+any {class}`pyproj.crs.CRS` objects and any PROJ grid name (available at [https://cdn.proj.org/](https://cdn.proj.org/)) which is **automatically downloaded**.
+
+```{code-cell} ipython3
+:tags: [hide-cell]
+:mystnb:
+:  code_prompt_show: "Show the code for opening example data"
+:  code_prompt_hide: "Hide the code for opening example data"
+
+import xdem
+import matplotlib.pyplot as plt
+
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+```
+
+```{code-cell} ipython3
+# Copy reference DEM to compare back later
+ref_copy = ref_dem.copy()
+
+# Set current vertical CRS
+ref_dem.set_vcrs("EGM96")
+# Transform to a local reference system from https://cdn.proj.org/
+ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
+
+# Plot the elevation differences of the vertical transformation
+(ref_copy - ref_dem).plot(cmap='RdYlBu', cbar_title="Elevation differences of\n vertical transform (m)")
 ```
 
 ## What is a vertical CRS?
@@ -227,7 +256,8 @@ To transform a {class}`~xdem.DEM` to a different vertical CRS, {func}`~xdem.DEM.
 
 ```{note}
 If your transformation requires a grid that is not available locally, it will be **downloaded automatically**.
-xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`, considering the area-of-interest as the DEM extent {class}`~xdem.DEM.bounds`.
+xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`, 
+considering the area-of-interest as the DEM extent {attr}`~xdem.DEM.bounds`.
 ```
 
 ```{code-cell} ipython3

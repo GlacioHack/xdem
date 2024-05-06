@@ -23,25 +23,30 @@ pyplot.rcParams['savefig.dpi'] = 600
 
 # Uncertainty analysis
 
-Technically, **uncertainty analysis refers to both systematic and random errors**. For elevation data, however, systematic 
-errors are usually assessed and corrected with coregistration and bias correction, and so here uncertainty analysis refers 
-primarily to estimating and propagating random errors.
+xDEM integrates spatial uncertainty analysis tools from the recent literature that **rely on methods from the 
+fields of spatial statistics and uncertainty quantification**.
 
-To analyze DEMs, xDEM integrates spatial uncertainty analysis tools from the recent DEM literature,
-in particular in [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922) and
-[Rolstad et al. (2009)](https://doi.org/10.3189/002214309789470950). The implementation of these methods relies
-partially on the package [scikit-gstat](https://mmaelicke.github.io/scikit-gstat/index.html) for spatial statistics.
+While uncertainty analysis technically refers to both systematic and random errors, systematic errors of elevation data 
+are corrected using {ref}`coregistration` and {ref}`biascorr`, so we here refer to **uncertainty analysis for quantifying and 
+propagating random errors**.
 
-The uncertainty analysis tools can be used to assess the precision of DEMs (see the definition of precision in {ref}`accuracy-precision`).
-In particular, they help to:
+:::{admonition} More reading
+:class: tip
 
-> - account for elevation heteroscedasticity (e.g., varying precision such as with terrain slope or stereo-correlation),
-> - quantify the spatial correlation of errors in DEMs (e.g., native spatial resolution, instrument noise),
-> - estimate robust errors for observations analyzed in space (e.g., average or sum of elevation, or of elevation changes),
-> - propagate errors between spatial ensembles at different scales (e.g., sum of glacier volume changes).
+For an introduction on spatial statistics applied to uncertainty quantification for elevation data, we recommend reading 
+the **{ref}`spatial-stats` guide page** and, for details on variography, the **documentation of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/)**.
+
+Additionally, we recommend reading the **{ref}`static-surfaces` guide page** on which uncertainty analysis relies.
+:::
+
+
 
 ## Quick use
 
+
+1. Account for elevation heteroscedasticity (e.g., varying precision such as with terrain slope or stereo-correlation), 
+2. Quantify the spatial correlation of errors (e.g., native spatial resolution, instrument noise), 
+3. Propagate errors in space (e.g., average or sum of elevation, or of elevation changes).
 
 
 (spatialstats-heterosc)=
@@ -110,10 +115,7 @@ df_ns = xdem.spatialstats.nd_binning(
 )
 ```
 
-```{eval-rst}
-.. plot:: code/spatialstats_heterosc_slope.py
-    :width: 90%
-```
+
 
 The most common explanatory variables are:
 
@@ -176,12 +178,6 @@ func_sum_vgm, params_variogram_model = xdem.spatialstats.fit_sum_model_variogram
 )
 ```
 
-```{eval-rst}
-.. minigallery:: xdem.spatialstats.infer_spatial_correlation_from_stable xdem.spatialstats.sample_empirical_variogram
-        :add-heading: Examples that deal with spatial correlations
-        :heading-level: "
-```
-
 
 
 (spatialstats-errorpropag)=
@@ -200,3 +196,12 @@ TODO: Add this section based on Rolstad et al. (2009), Hugonnet et al. (in prep)
 ### Propagation of correlated errors
 
 TODO: Add this section based on Krige's relation (Webster & Oliver, 2007), Hugonnet et al. (in prep)
+
+
+
+```{eval-rst}
+.. minigallery:: xdem.spatialstats.infer_spatial_correlation_from_stable xdem.spatialstats.sample_empirical_variogram
+        :add-heading: Examples that deal with spatial correlations
+        :heading-level: "
+```
+

@@ -5,7 +5,7 @@ Bias correction with deramping
 (On latest only) Update will follow soon with more consistent bias correction examples.
 In ``xdem``, this approach is implemented through the :class:`xdem.biascorr.Deramp` class.
 
-For more information about the approach, see :ref:`biascorr-deramp`.
+For more information about the approach, see :ref:`deramp`.
 """
 import geoutils as gu
 import numpy as np

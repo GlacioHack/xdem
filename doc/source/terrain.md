@@ -63,45 +63,46 @@ If computational performance is key, xDEM can rely on [RichDEM](https://richdem.
    :widths: 1 1 1
    :header-rows: 1
    :stub-columns: 1
-
-   * - *Attribute*
-     - *Unit (if DEM in meters)*
-     - *Reference*
-   * - Slope
+   
+   * - Attribute
+     - Unit (if DEM in meters)
+     - Reference
+   * - {ref}`slope`
      - Degrees (default) or radians
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Aspect
+   * - {ref}`aspect`
      - Degrees (default) or radians
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Hillshade
+   * - {ref}`hillshade`
      - Unitless
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Curvature
+   * - {ref}`curv`
      - Meters{sup}`-1` * 100
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Planform curvature
+   * - {ref}`plancurv`
      - Meters{sup}`-1` * 100
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Profile curvature
+   * - {ref}`profcurv`
      - Meters{sup}`-1` * 100
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Topographic position index
+   * - {ref}`tpi`
      - Meters
      - [Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf)
-   * - Terrain ruggedness index
+   * - {ref}`tri`
      - Meters
      - [Riley et al. (1999)](http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf) or [Wilson et al. (2007)](http://dx.doi.org/10.1080/01490410701295962)
-   * - Roughness
+   * - {ref}`roughness`
      - Meters
      - [Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081)
-   * - Rugosity
+   * - {ref}`rugosity`
      - Unitless
      - [Jenness (2004)](<https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>)
-   * - Fractal roughness
+   * - {ref}`fractrough`
      - Fractal dimension number (1 to 3)
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
 ```
 
+(slope)=
 ## Slope
 
 {func}`xdem.DEM.slope`
@@ -114,7 +115,7 @@ The slope $\alpha$ can be computed either by the method of [Horn (1981)](http://
 based on a refined gradient formulation on a 3x3 pixel window, or by the method of 
 [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) based on a plane fit on a 3x3 pixel window.
 
-For both methods, $\alpha = arctan(\sqrt{p^{2} + q^{2}})$ where $p$ and $q$ are the gradient component west-to-east and south-to-north, respectively, with for [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918): 
+For both methods, $\alpha = arctan(\sqrt{p^{2} + q^{2}})$ where $p$ and $q$ are the gradient components west-to-east and south-to-north, respectively, with for [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918): 
 
 $$
 p_{\textrm{Horn}}=\left[(h_{++} + 2h_{+0} + h_{+-}) - (h_{-+} + 2h_{-0} + h_{--})\right]/ 8 \Delta x,\\
@@ -139,6 +140,7 @@ slope = dem.slope()
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
+(aspect)=
 ## Aspect
 
 {func}`xdem.DEM.aspect`
@@ -157,11 +159,17 @@ $$
 
 with $p$ and $q$ defined above.
 
+```{warning}
+A north aspect represents the upper direction of the Y axis in the coordinate reference system of the 
+input, {attr}`xdem.DEM.crs`, which might not represent the true north.
+```
+
 ```{code-cell} ipython3
 aspect = dem.aspect()
 aspect.plot(cmap="twilight", cbar_title="Aspect (°)")
 ```
 
+(hillshade)=
 ## Hillshade
 
 {func}`xdem.DEM.hillshade`
@@ -187,6 +195,7 @@ hillshade = dem.hillshade()
 hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
 ```
 
+(curv)=
 ## Curvature
 
 {func}`xdem.DEM.curvature`
@@ -210,6 +219,7 @@ curvature = dem.curvature()
 curvature.plot(cmap="RdGy_r", cbar_title="Curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
+(plancurv)=
 ## Planform curvature
 
 {func}`xdem.DEM.planform_curvature`
@@ -230,6 +240,7 @@ planform_curvature = dem.planform_curvature()
 planform_curvature.plot(cmap="RdGy_r", cbar_title="Planform curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
+(profcurv)=
 ## Profile curvature
 
 {func}`xdem.DEM.profile_curvature`
@@ -251,6 +262,7 @@ profile_curvature = dem.profile_curvature()
 profile_curvature.plot(cmap="RdGy_r", cbar_title="Profile curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
+(tpi)=
 ## Topographic position index
 
 {func}`xdem.DEM.topographic_position_index`
@@ -268,6 +280,7 @@ tpi = dem.topographic_position_index()
 tpi.plot(cmap="Spectral", cbar_title="Topographic position index (m)", vmin=-5, vmax=5)
 ```
 
+(tri)=
 ## Terrain ruggedness index
 
 {func}`xdem.DEM.terrain_ruggedness_index`
@@ -295,6 +308,7 @@ tri = dem.terrain_ruggedness_index()
 tri.plot(cmap="Purples", cbar_title="Terrain ruggedness index (m)")
 ```
 
+(roughness)=
 ## Roughness
 
 {func}`xdem.DEM.roughness`
@@ -311,6 +325,7 @@ roughness = dem.roughness()
 roughness.plot(cmap="Oranges", cbar_title="Roughness (m)")
 ```
 
+(rugosity)=
 ## Rugosity
 
 {func}`xdem.DEM.rugosity`
@@ -331,6 +346,7 @@ rugosity = dem.rugosity()
 rugosity.plot(cmap="YlOrRd", cbar_title="Rugosity")
 ```
 
+(fractrough)=
 ## Fractal roughness
 
 {func}`xdem.DEM.fractal_roughness`

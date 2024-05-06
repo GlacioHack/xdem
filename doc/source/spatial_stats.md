@@ -17,22 +17,23 @@ kernelspec:
 Performing error (or uncertainty) analysis of spatial variable, such as elevation data, requires **joint knowledge from 
 two scientific fields: spatial statistics and uncertainty quantification.**
 
-Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics) for geoscience, 
-is a body of theory for the analysis of spatial variables. It primarily relies on describing the dependency of 
-variables in space (spatial autocorrelation) to understand their spatial characteristics, and 
+Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics) in geoscience, 
+is a body of theory for the analysis of spatial variables. It primarily relies on modelling the dependency of 
+variables in space (spatial autocorrelation) to better describe their spatial characteristics, and 
 utilize this in further quantitative analysis.
 
 [Uncertainty quantification](https://en.wikipedia.org/wiki/Uncertainty_quantification) is the science of characterizing 
-uncertainties quantitatively. In measurement science, such as remote sensing, it is tightly linked to the field 
+uncertainties quantitatively, and includes a wide range of methods including in particular theoretical error propagation. 
+In measurement science, such as remote sensing, such uncertainty propagation is tightly linked with the field 
 of [metrology](https://en.wikipedia.org/wiki/Metrology).
 
 In the following, we describe the basics assumptions and concepts required to perform a spatial uncertainty analysis of 
 elevation data, described in the **feature page {ref}`uncertainty`**.
 
-## Assumptions for statistical inference in spatial statistics
+## Assumptions for inference in spatial statistics
 
-In spatial statistics, the covariance of a variable of interest is generally simplified into a spatial variogram, describing the 
-covariance only as function of the spatial lag (spatial distance between two variable values). 
+In spatial statistics, the covariance of a variable of interest is generally simplified into a spatial variogram, which 
+**describes the covariance only as function of the spatial lag** (spatial distance between two variable values). 
 However, to utilize this simplification of the covariance in subsequent analysis, the variable of interest must 
 respect [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
 That is, verify the three following assumptions:
@@ -46,28 +47,55 @@ That is, verify the three following assumptions:
     :width: 90%
 ```
 
-In other words, for a reliable analysis, the DEM should:
+In other words, for a reliable analysis, elevation data should:
 
-> 1. Not contain systematic biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
-> 2. Not contain measurement errors that vary significantly across space.
-> 3. Not contain factors that affect the spatial distribution of measurement errors, except for the distance between observations.
+> 1. Not contain elevation biases that do not average out over sufficiently large distances (e.g., shifts, tilts), but can contain pseudo-periodic biases (e.g., along-track undulations),
+> 2. Not contain random elevation errors that vary significantly across space.
+> 3. Not contain factors that affect the spatial distribution of elevation errors, except for the distance between observations.
 
-## Standardize elevation differences for spatial analysis
+While assumption **1.** is verified after coregistration and bias corrections, other assumptions are generally not 
+(e.g., larger errors on steep slope). To address this, we must estimate the variability of our random errors 
+(or heteroscedasticity), to then transform our data to achieve second-order stationarity.
+
+```{note}
+If there is no significant spatial variability in random errors in your elevation data (e.g., lidar), 
+you can **jump directly to the {ref}`spatialstats-corr` section**.
+```
+
+## Heteroscedasticity
 
 Elevation [heteroscedasticity](https://en.wikipedia.org/wiki/Heteroscedasticity) corresponds to a variability in
 precision of elevation observations, that are linked to terrain or instrument variables.
 
+$$
+\sigma_{dh} = \sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...}) \neq \textrm{constant}
+$$
+
+While a single elevation difference (for a pixel or footpring) does not allow to capture random errors, larger samples 
+do. [Data binning](https://en.wikipedia.org/wiki/Data_binning), for instance, is a method that allows to estimate the 
+statistical spread of a sample per category, and can easily be used with one or more explanatory variables, 
+such as slope:
+
+```{eval-rst}
+.. plot:: code/spatialstats_heterosc_slope.py
+    :width: 90%
+```
+
+Then, a model (parametric or not) can be fit to infer the variability of random errors at any data location.
+
+## Standardization
+
 In order to verify the assumptions of spatial statistics and be able to use stable terrain as a reliable proxy in
 further analysis (see {ref}`spatialstats`), [standardization](https://en.wikipedia.org/wiki/Standard_score)
-of the elevation differences are required to reach a stationary variance.
+of the elevation differences by their mean $\mu$ and spread $\sigma$ are required to reach a stationary variance.
 
 ```{eval-rst}
 .. plot:: code/spatialstats_standardizing.py
     :width: 90%
 ```
 
-For application to DEM precision estimation, the mean is already centered on zero and the variance is non-stationary,
-which yields:
+For elevation differences, the mean is already centered on zero but the variance is non-stationary,
+which yields more simply:
 
 $$
 z_{dh} = \frac{dh(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}
@@ -75,8 +103,65 @@ $$
 
 where $z_{dh}$ is the standardized elevation difference sample.
 
-Code-wise, standardization is as simple as a division of the elevation differences `dh` using the estimated measurement
-error:
+(spatialstats-corr)=
+
+## Spatial correlation of errors
+
+Spatial correlation of elevation errors correspond to a dependency between measurement errors of spatially
+close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
+instrument noise and deformations (mid- to long-range correlations).
+
+[Variograms](https://en.wikipedia.org/wiki/Variogram) are functions that describe the spatial correlation of a sample.
+The variogram $2\gamma(h)$ is a function of the distance between two points, referred to as spatial lag $d$.
+The output of a variogram is the correlated variance of the sample.
+
+$$
+2\gamma(d) = \textrm{var}\left(Z(\textrm{s}_{1}) - Z(\textrm{s}_{2})\right)
+$$
+
+where $Z(\textrm{s}_{i})$ is the value taken by the sample at location $\textrm{s}_{i}$, and sample positions
+$\textrm{s}_{1}$ and $\textrm{s}_{2}$ are separated by a distance $d$.
+
+```{eval-rst}
+.. plot:: code/spatialstats_variogram_covariance.py
+    :width: 90%
+```
+
+For elevation differences $dh$, this translates into:
+
+$$
+2\gamma_{dh}(d) = \textrm{var}\left(dh(\textrm{s}_{1}) - dh(\textrm{s}_{2})\right)
+$$
+
+The variogram essentially describes the spatial covariance $C$ in relation to the variance of the entire sample
+$\sigma_{dh}^{2}$:
+
+$$
+\gamma_{dh}(d) = \sigma_{dh}^{2} - C_{dh}(d)
+$$
+
+
+Empirical variograms are variograms estimated directly by [binned](https://en.wikipedia.org/wiki/Data_binning) analysis
+of variance of the data. Historically, empirical variograms were estimated for point data by calculating all possible
+pairwise differences in the samples. This amounts to $N^2$ pairwise calculations for $N$ samples, which is
+not well-suited to grid data that contains many millions of points and would be impossible to comupute. Thus, in order
+to estimate a variogram for large grid data, subsampling is necessary.
+Random subsampling of the grid samples used is a solution, but often unsatisfactory as it creates a clustering
+of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
+few at short distances and long distances).
+
+For more details on variography, **we refer to [the documentation of SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/userguide/userguide.html).**
+
+
+## Error propagation
+
+
+
+
+
+
+
+## De-standardization
 
 To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
 possibly after further analysis of {ref}`spatialstats-corr` and {ref}`spatialstats-errorpropag`,
@@ -100,122 +185,9 @@ $$
 Estimating the standard error of the mean of the standardized data $\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}$
 requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
 
-```{eval-rst}
-.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.nd_binning
-        :add-heading: Examples that deal with elevation heteroscedasticity
-        :heading-level: "
-```
-
-(spatialstats-corr)=
-
-### Spatial correlation of elevation errors
-
-Spatial correlation of elevation errors correspond to a dependency between measurement errors of spatially
-close pixels in elevation data. Those can be related to the resolution of the data (short-range correlation), or to
-instrument noise and deformations (mid- to long-range correlations).
-
-xDEM provides tools to **quantify** these spatial correlation with pairwise sampling optimized for grid data and to
-**model** correlations simultaneously at multiple ranges.
-
-#### Quantify and model spatial correlation
-
-[Variograms](https://en.wikipedia.org/wiki/Variogram) are functions that describe the spatial correlation of a sample.
-The variogram $2\gamma(h)$ is a function of the distance between two points, referred to as spatial lag $l$
-(usually noted $h$, here avoided to avoid confusion with the elevation and elevation differences).
-The output of a variogram is the correlated variance of the sample.
-
-$$
-2\gamma(l) = \textrm{var}\left(Z(\textrm{s}_{1}) - Z(\textrm{s}_{2})\right)
-$$
-
-where $Z(\textrm{s}_{i})$ is the value taken by the sample at location $\textrm{s}_{i}$, and sample positions
-$\textrm{s}_{1}$ and $\textrm{s}_{2}$ are separated by a distance $l$.
-
-For elevation differences $dh$, this translates into:
-
-$$
-2\gamma_{dh}(l) = \textrm{var}\left(dh(\textrm{s}_{1}) - dh(\textrm{s}_{2})\right)
-$$
-
-The variogram essentially describes the spatial covariance $C$ in relation to the variance of the entire sample
-$\sigma_{dh}^{2}$:
-
-$$
-\gamma_{dh}(l) = \sigma_{dh}^{2} - C_{dh}(l)
-$$
-
-```{eval-rst}
-.. plot:: code/spatialstats_variogram_covariance.py
-    :width: 90%
-```
-
-Empirical variograms are variograms estimated directly by [binned](https://en.wikipedia.org/wiki/Data_binning) analysis
-of variance of the data. Historically, empirical variograms were estimated for point data by calculating all possible
-pairwise differences in the samples. This amounts to $N^2$ pairwise calculations for $N$ samples, which is
-not well-suited to grid data that contains many millions of points and would be impossible to comupute. Thus, in order
-to estimate a variogram for large grid data, subsampling is necessary.
-
-Random subsampling of the grid samples used is a solution, but often unsatisfactory as it creates a clustering
-of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
-few at short distances and long distances).
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-(spatialstats-metrics)=
-
-## Metrics for DEM precision
-
-Historically, the precision of DEMs has been reported as a single value indicating the random error at the scale of a
-single pixel, for example $\pm 2$ meters at the 1$\sigma$ [confidence level](https://en.wikipedia.org/wiki/Confidence_interval).
-
-However, there is some limitations to this simple metric:
-
-> - the variability of the pixel-wise precision is not reported. The pixel-wise precision can vary depending on terrain- or instrument-related factors, such as the terrain slope. In rare occurrences, part of this variability has been accounted in recent DEM products, such as TanDEM-X global DEM that partitions the precision between flat and steep slopes ([Rizzoli et al. (2017)](https://doi.org/10.1016/j.isprsjprs.2017.08.008)),
-> - the area-wise precision of a DEM is generally not reported. Depending on the inherent resolution of the DEM, and patterns of noise that might plague the observations, the precision of a DEM over a surface area can vary significantly.
-
-### Pixel-wise elevation measurement error
-
-The pixel-wise measurement error corresponds directly to the dispersion $\sigma_{dh}$ of the sample $dh$.
-
-To estimate the pixel-wise measurement error for elevation data, two issues arise:
-
-> 1. The dispersion $\sigma_{dh}$ cannot be estimated directly on changing terrain,
-> 2. The dispersion $\sigma_{dh}$ can show important non-stationarities.
-
-The section {ref}`spatialstats-heterosc` describes how to quantify the measurement error as a function of
-several explanatory variables by using stable terrain as a proxy.
-
-### Spatially-integrated elevation measurement error
-
-The [standard error](https://en.wikipedia.org/wiki/Standard_error) of a statistic is the dispersion of the
-distribution of this statistic. For spatially distributed samples, the standard error of the mean corresponds to the
-error of a mean (or sum) of samples in space.
-
-The standard error $\sigma_{\overline{dh}}$ of the mean $\overline{dh}$ of the elevation changes
-samples $dh$ can be written as:
-
-$$
-\sigma_{\overline{dh}} = \frac{\sigma_{dh}}{\sqrt{N}},
-$$
-
-where $\sigma_{dh}$ is the dispersion of the samples, and $N$ is the number of **independent** observations.
-
-To estimate the standard error of the mean for elevation data, two issue arises:
-
-> 1. The dispersion of elevation differences $\sigma_{dh}$ is not stationary, a necessary assumption for spatial statistics.
-> 2. The number of pixels in the DEM $N$ does not equal the number of independent observations in the DEMs, because of spatial correlations.
-
-The sections {ref}`spatialstats-corr` and {ref}`spatialstats-errorpropag` describe how to account for spatial correlations
-and use those to integrate and propagate measurement errors in space.
 

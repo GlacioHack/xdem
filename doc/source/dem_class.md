@@ -171,4 +171,4 @@ sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="s
 sig_dem.plot(cmap="Purples", cbar_title=r"Error in elevation (1$\sigma$, m)")
 
 # The spatial correlation function represents how much errors are correlated at a certain distance
-rho_sig(1000)  # Correlation at 1 km
+print("Elevation errors at a distance of 1 km are correlated at {:.2f} %.".format(rho_sig(1000) * 100))

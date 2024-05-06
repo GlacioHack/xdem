@@ -11,8 +11,8 @@ with name standing for _cross-DEM analysis_[^sn1] and echoing its dependency on 
 
 ## Why use xDEM?
 
-xDEM implements a wide range of high-level operations required for analyzing elevation data in a consistent framework that is 
-extensively tested to ensure the accuracy of these operations, yet still allows for modular user input to facilitate all kinds of analysis.
+xDEM implements a wide range of high-level operations required for analyzing elevation data in a consistent framework 
+tested to ensure the accuracy of these operations.
 
 It has three main focus points:
 

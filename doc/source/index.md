@@ -95,7 +95,7 @@ vertical_ref
 terrain
 coregistration
 biascorr
-comparison
+gapfill
 uncertainty
 ```
 
