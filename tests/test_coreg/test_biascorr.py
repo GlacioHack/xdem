@@ -161,15 +161,16 @@ class TestBiasCorr:
         # Copy fit parameters
         fit_args = self.fit_args_rst_rst.copy()
         with pytest.raises(
-                ValueError, match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', " "got 2.")
+            ValueError,
+            match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', " "got 2."),
         ):
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
             bcorr1d = biascorr.BiasCorr(bias_var_names=["elevation"])
             bcorr1d.fit(**fit_args, bias_vars=bias_vars_dict)
 
         with pytest.raises(
-                ValueError,
-                match=re.escape("A number of 2 variable(s) has to be provided through the argument " "'bias_vars', got 1.")
+            ValueError,
+            match=re.escape("A number of 2 variable(s) has to be provided through the argument " "'bias_vars', got 1."),
         ):
             bias_vars_dict = {"elevation": self.ref}
             bcorr2d = biascorr.BiasCorr(bias_var_names=["elevation", "slope"])
@@ -177,21 +178,21 @@ class TestBiasCorr:
 
         # When variables don't match
         with pytest.raises(
-                ValueError,
-                match=re.escape(
-                    "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
-                ),
+            ValueError,
+            match=re.escape(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
+            ),
         ):
             bcorr1d2 = biascorr.BiasCorr(bias_var_names=["ncc"])
             bias_vars_dict = {"elevation": self.ref}
             bcorr1d2.fit(**fit_args, bias_vars=bias_vars_dict)
 
         with pytest.raises(
-                ValueError,
-                match=re.escape(
-                    "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                    "instantiation: ['elevation', 'ncc']."
-                ),
+            ValueError,
+            match=re.escape(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                "instantiation: ['elevation', 'ncc']."
+            ),
         ):
             bcorr2d2 = biascorr.BiasCorr(bias_var_names=["elevation", "ncc"])
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}

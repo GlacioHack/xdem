@@ -135,8 +135,8 @@ class BiasCorr(Coreg):
         # Add subsample attribute
         self._meta["subsample"] = subsample
 
-        # Add number of dimensions attribute (expected length of bias_vars)
-        self._meta["nd"] = len(bias_var_names) if bias_var_names is not None else None
+        # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
+        self._meta["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
 
         # Update attributes
         self._fit_or_bin = fit_or_bin
