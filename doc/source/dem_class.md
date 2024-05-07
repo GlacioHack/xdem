@@ -168,7 +168,8 @@ stable terrain as a proxy.
 sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same")
 
 # The error map variability is estimated from slope and curvature by default
-sig_dem.plot(cmap="Purples", cbar_title=r"Error in elevation (1$\sigma$, m)")
+sig_dem.plot(cmap="Purples", cbar_title=r"Random error in elevation (1$\sigma$, m)")
 
 # The spatial correlation function represents how much errors are correlated at a certain distance
 print("Elevation errors at a distance of 1 km are correlated at {:.2f} %.".format(rho_sig(1000) * 100))
+```

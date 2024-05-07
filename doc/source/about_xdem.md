@@ -26,8 +26,8 @@ Although modularity can sometimes hamper performance, we also aim to **preserve 
 
 We particularly take to heart to verify the accuracy of our methods. For instance, our terrain attributes 
 which have their own modular Python-based implementation, are tested to match exactly 
-[gdalDEM](https://gdal.org/programs/gdaldem.html) (slope, aspect, hillshade, roughness) and 
-[richDEM](https://richdem.readthedocs.io/en/latest/) (curvatures).
+[gdaldem](https://gdal.org/programs/gdaldem.html) (slope, aspect, hillshade, roughness) and 
+[RichDEM](https://richdem.readthedocs.io/en/latest/) (curvatures).
 
 More details about the people behind xDEM and the package's objectives can be found on the **{ref}`background` reference 
 page**.
