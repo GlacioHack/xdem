@@ -349,7 +349,7 @@ class TestBiasCorr:
             elev_fit_args.update({"niter": 1})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        bcorr.fit(**elev_fit_args, subsample=100, random_state=42)
+        bcorr.fit(**elev_fit_args, subsample=1000, random_state=42)
 
         # Check that variable names are defined during fit
         assert bcorr._meta["bias_var_names"] == ["elevation"]
@@ -521,10 +521,10 @@ class TestBiasCorr:
         deramp = biascorr.Deramp(poly_order=order)
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=30000).ds
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=50000).ds
         else:
             bias_elev = bias_dem
-        deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=20000, random_state=42)
+        deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=40000, random_state=42)
 
         # Check high-order fit parameters are the same within 10%
         fit_params = deramp._meta["fit_params"]
