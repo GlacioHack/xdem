@@ -97,7 +97,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Setup pip dependencies
-      run: pip install pytest-cov coveralls coveragepy-lcov
+      run: pip install pytest-cov coveralls coveragepy-lcov 'coverage<7'
 
     - name: Print conda environment (for debugging)
       run: |
