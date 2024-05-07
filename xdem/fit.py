@@ -535,7 +535,7 @@ def robust_nfreq_sumsin_fit(
         # Insert in a scipy bounds object
         scipy_bounds = scipy.optimize.Bounds(lb, ub)
         # First guess for the mean parameters
-        p0 = np.divide(lb + ub, 2).squeeze()
+        p0 = ((lb + ub) / 2).squeeze()
 
         if verbose:
             print("Bounds")
