@@ -244,17 +244,6 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.BiasCorr
 ```
 
-**Classes for any 1-, 2- and N-D biases:**
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    xdem.coreg.BiasCorr1D
-    xdem.coreg.BiasCorr2D
-    xdem.coreg.BiasCorrND
-```
-
 **Convenience classes for specific corrections:**
 
 ```{eval-rst}

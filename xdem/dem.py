@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import geopandas as gpd
 import numpy as np
@@ -254,6 +254,7 @@ class DEM(SatelliteImage):  # type: ignore
         else:
             return None
 
+    @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
@@ -263,15 +264,61 @@ class DEM(SatelliteImage):  # type: ignore
         | VerticalCRS
         | int
         | None = None,
+        *,
+        inplace: Literal[False] = False,
+    ) -> DEM:
+        ...
+
+    @overload
+    def to_vcrs(
+        self,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
+        *,
+        inplace: Literal[True],
     ) -> None:
+        ...
+
+    @overload
+    def to_vcrs(
+        self,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
+        *,
+        inplace: bool = False,
+    ) -> DEM | None:
+        ...
+
+    def to_vcrs(
+        self,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
+        | str
+        | pathlib.Path
+        | VerticalCRS
+        | int
+        | None = None,
+        inplace: bool = False,
+    ) -> DEM | None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
         :param vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
         :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `vcrs`.
+        :param inplace: Whether to return a new DEM (default) or the same DEM updated in-place.
 
-        :return:
+        :return: DEM with vertical reference transformed, or None.
         """
 
         if self.vcrs is None and force_source_vcrs is None:
@@ -307,12 +354,25 @@ class DEM(SatelliteImage):  # type: ignore
         zz = self.data
         xx, yy = self.coords()
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
+        new_data = zz_trans.astype(self.dtype)  # type: ignore
 
-        # Update DEM
-        self._data = zz_trans.astype(self.dtype)  # type: ignore
-
-        # Update vcrs (which will update ccrs if called)
-        self.set_vcrs(new_vcrs=vcrs)
+        # If inplace, update DEM and vcrs
+        if inplace:
+            self._data = new_data
+            self.set_vcrs(new_vcrs=vcrs)
+            return None
+        # Otherwise, return new DEM
+        else:
+            return DEM.from_array(
+                data=new_data,
+                transform=self.transform,
+                crs=self.crs,
+                nodata=self.nodata,
+                area_or_point=self.area_or_point,
+                tags=self.tags,
+                vcrs=vcrs,
+                cast_nodata=False,
+            )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(

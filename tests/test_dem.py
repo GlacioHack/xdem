@@ -273,9 +273,20 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="Ellipsoid")
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
-        # Transform to EGM96 geoid
-        dem.to_vcrs(vcrs="EGM96")
-        median_after = np.nanmean(dem)
+        # Transform to EGM96 geoid not inplace (default)
+        trans_dem = dem.to_vcrs(vcrs="EGM96")
+
+        # The output should be a DEM, input shouldn't have changed
+        assert isinstance(trans_dem, DEM)
+        assert dem.raster_equal(dem_before_trans)
+
+        # Compare to inplace
+        should_be_none = dem.to_vcrs(vcrs="EGM96", inplace=True)
+        assert should_be_none is None
+        assert dem.raster_equal(trans_dem)
+
+        # Save the median of after
+        median_after = np.nanmean(trans_dem)
 
         # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
@@ -337,10 +348,10 @@ class TestDEM:
         dem.set_vcrs("Ellipsoid")
 
         # Transform to the vertical CRS of the grid
-        dem.to_vcrs(grid_shifts["grid"])
+        trans_dem = dem.to_vcrs(grid_shifts["grid"])
 
         # Compare the elevation difference
-        z_diff = 100 - dem.data[0, 0]
+        z_diff = 100 - trans_dem.data[0, 0]
 
         # Check the shift is the one expect within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)

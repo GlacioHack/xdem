@@ -1027,6 +1027,7 @@ class CoregDict(TypedDict, total=False):
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear"] | Literal["per_bin"]
     bias_var_names: list[str]
+    nd: int | None
 
     # 2/ Outputs
     fit_params: NDArrayf

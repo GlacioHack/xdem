@@ -158,16 +158,3 @@ terbias.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 # Apply the transformation
 corrected_dem = terbias.apply(tba_dem)
 ```
-
-## Generic 1-D, 2-D and N-D classes
-
-All bias-corrections methods are inherited from generic classes that perform corrections in 1-, 2- or N-D. Having these
-separate helps the user navigating the dimensionality of the functions, optimizer, binning or variables used.
-
-{class}`xdem.coreg.BiasCorr1D`
-{class}`xdem.coreg.BiasCorr2D`
-{class}`xdem.coreg.BiasCorrND`
-
-- **Performs:** Correct biases with any function and optimizer, or any binning, in 1-, 2- or N-D.
-- **Supports weights** Yes.
-- **Recommended for:** Anything.
