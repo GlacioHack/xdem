@@ -17,13 +17,5 @@ from xdem.coreg.base import (  # noqa
     apply_matrix,
     invert_matrix,
 )
-from xdem.coreg.biascorr import (  # noqa
-    BiasCorr,
-    BiasCorr1D,
-    BiasCorr2D,
-    BiasCorrND,
-    Deramp,
-    DirectionalBias,
-    TerrainBias,
-)
+from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
 from xdem.coreg.workflows import dem_coregistration  # noqa
