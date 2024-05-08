@@ -13,7 +13,7 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0
-#  - geoutils>=0.1.4,<0.2
+  - geoutils>=0.1.4,<0.2
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
@@ -51,4 +51,4 @@ dependencies:
     - opencv-contrib-python-headless
 
     # To run CI against latest GeoUtils
-    - git+https://github.com/rhugonnet/geoutils.git
+#    - git+https://github.com/rhugonnet/geoutils.git
