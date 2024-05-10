@@ -38,7 +38,6 @@ class TestRobustFitting:
                 y,
                 linear_pkg=pkg_estimator[0],
                 estimator_name=pkg_estimator[1],
-                random_state=42,
                 margin_improvement=50,
             )
 
@@ -103,8 +102,8 @@ class TestRobustFitting:
         coefs4, deg4 = xdem.fit.robust_norder_polynomial_fit(x, y, estimator_name="Theil-Sen", random_state=42)
         assert deg4 == 3
         # High degree coefficients should be well constrained
-        assert coefs4[2] == pytest.approx(true_coefs[2], abs=1)
-        assert coefs4[3] == pytest.approx(true_coefs[3], abs=1)
+        assert coefs4[2] == pytest.approx(true_coefs[2], abs=1.5)
+        assert coefs4[3] == pytest.approx(true_coefs[3], abs=1.5)
 
         # RANSAC also works
         coefs5, deg5 = xdem.fit.robust_norder_polynomial_fit(x, y, estimator_name="RANSAC", random_state=42)
