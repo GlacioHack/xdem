@@ -327,6 +327,8 @@ class TestBiasCorr:
         # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
         # We don't care for this test
         warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
+        # Apply the transform can create data exactly equal to the nodata
+        warnings.filterwarnings("ignore", category=UserWarning, message="Unmasked values equal to the nodata value*")
 
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(
