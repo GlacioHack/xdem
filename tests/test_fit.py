@@ -38,6 +38,7 @@ class TestRobustFitting:
                 y,
                 linear_pkg=pkg_estimator[0],
                 estimator_name=pkg_estimator[1],
+                random_state=42,
                 margin_improvement=50,
             )
 
