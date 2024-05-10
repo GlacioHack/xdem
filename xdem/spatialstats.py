@@ -917,25 +917,6 @@ def _create_ring_mask(
     return mask_ring
 
 
-def _random_state_definition(
-    random_state: None | np.random.RandomState | int = None,
-) -> np.random.RandomState | np.random.Generator:
-    """
-    Define random state based on input
-    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
-    :return:
-    """
-
-    if random_state is None:
-        rnd: np.random.RandomState | np.random.Generator = np.random.default_rng()
-    elif isinstance(random_state, np.random.RandomState):
-        rnd = random_state
-    else:
-        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
-
-    return rnd
-
-
 def _subsample_wrapper(
     values: NDArrayf,
     coords: NDArrayf,
@@ -944,7 +925,7 @@ def _subsample_wrapper(
     subsample_method: str = "pdist_ring",
     inside_radius: float = 0,
     outside_radius: float = None,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
     (Not used by default)
@@ -952,13 +933,13 @@ def _subsample_wrapper(
     """
     nx, ny = shape
 
-    rnd = _random_state_definition(random_state=random_state)
+    rng = np.random.default_rng(random_state)
 
     # Subsample spatially for disk/ring methods
     if subsample_method in ["pdist_disk", "pdist_ring"]:
         # Select random center coordinates
-        center_x = rnd.choice(nx, 1)[0]
-        center_y = rnd.choice(ny, 1)[0]
+        center_x = rng.choice(nx, 1)[0]
+        center_y = rng.choice(ny, 1)[0]
         if subsample_method == "pdist_ring":
             subindex = _create_ring_mask(
                 (nx, ny), center=(center_x, center_y), in_radius=inside_radius, out_radius=outside_radius
@@ -974,7 +955,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
+    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -1209,7 +1190,7 @@ def _get_cdist_empirical_variogram(
         # We set the samples to match the subsample argument if the method is random points
         kwargs["samples"] = kwargs.pop("subsample")
 
-    # Rename the "random_state" argument into "rnd", also used by skgstat Metric subclasses
+    # Rename the "random_state" argument into "rng", also used by skgstat Metric subclasses
     kwargs["rnd"] = kwargs.pop("random_state")
 
     # Define MetricSpace function to be used, fetch possible keywords arguments
@@ -1295,7 +1276,7 @@ def sample_empirical_variogram(
     n_variograms: int = 1,
     n_jobs: int = 1,
     verbose: bool = False,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
     # **kwargs: **EmpiricalVariogramKArgs, # This will work in Python 3.12, fails in the meantime, we'll be able to
     # remove some type ignores from this function in the future
     **kwargs: int | list[float] | float | str | Any,
@@ -1462,20 +1443,12 @@ def sample_empirical_variogram(
     # provide exactly the same sampling and results
     if random_state is not None:
         # Define the random state if only a seed is provided
-        if isinstance(random_state, np.random.RandomState):
-            rnd = random_state
-        elif isinstance(random_state, np.random.Generator):
-            rnd = np.random.RandomState(random_state)
-        else:
-            rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
+        rng = np.random.default_rng(random_state)
 
-        # Create a list of child random states
-        if n_variograms == 1:
-            # No issue if there is only one variogram run
-            list_random_state: list[None | np.random.RandomState] = [rnd]
-        else:
-            # Otherwise, pass a list of seeds
-            list_random_state = list(rnd.choice(n_variograms, n_variograms, replace=False))
+        # Create a list of child random states per number of variograms
+        list_random_state: list[None | np.random.Generator] = list(
+            rng.choice(n_variograms, n_variograms, replace=False)
+        )
     else:
         list_random_state = [None for i in range(n_variograms)]
 
@@ -1813,7 +1786,7 @@ def estimate_model_spatial_correlation(
     n_variograms: int = 1,
     n_jobs: int = 1,
     verbose: bool = False,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
     **kwargs: Any,
@@ -1891,7 +1864,7 @@ def infer_spatial_correlation_from_stable(
     verbose: bool = False,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[NDArrayf], NDArrayf]]:
     """
@@ -2249,7 +2222,7 @@ def neff_hugonnet_approx(
     params_variogram_model: pd.DataFrame,
     subsample: int = 1000,
     vectorized: bool = True,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
@@ -2270,7 +2243,7 @@ def neff_hugonnet_approx(
     """
 
     # Define random state
-    rnd = _random_state_definition(random_state=random_state)
+    rng = np.random.default_rng(random_state)
 
     # Check input dataframe
     _check_validity_params_variogram(params_variogram_model)
@@ -2286,7 +2259,7 @@ def neff_hugonnet_approx(
     subsample = min(subsample, n)
 
     # Get random subset of points for one of the sums
-    rand_points = rnd.choice(n, size=subsample, replace=False)
+    rand_points = rng.choice(n, size=subsample, replace=False)
 
     # Now we compute the double covariance sum
     # Either using for-loop-version
@@ -2761,7 +2734,7 @@ def _patches_loop_quadrants(
     statistics_in_patch: Iterable[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
     statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
     verbose: bool = False,
-    random_state: None | int | np.random.RandomState = None,
+    random_state: int | np.random.Generator | None = None,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
@@ -2793,7 +2766,7 @@ def _patches_loop_quadrants(
     statistics_name = [f if isinstance(f, str) else f.__name__ for f in list_statistics_in_patch]
 
     # Define random state
-    rnd = _random_state_definition(random_state=random_state)
+    rng = np.random.default_rng(random_state)
 
     # Divide raster in quadrants where we can sample
     nx, ny = np.shape(values)
@@ -2824,7 +2797,7 @@ def _patches_loop_quadrants(
 
         # Draw a random coordinate from the list of quadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
-        list_idx_quadrant = rnd.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
+        list_idx_quadrant = rng.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
 
         for idx_quadrant in list_idx_quadrant:
 
@@ -2912,7 +2885,7 @@ def patches_method(
     verbose: bool = False,
     *,
     return_in_patch_statistics: Literal[False] = False,
-    random_state: None | int | np.random.RandomState = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> pd.DataFrame:
     ...
 
@@ -2934,7 +2907,7 @@ def patches_method(
     verbose: bool = False,
     *,
     return_in_patch_statistics: Literal[True],
-    random_state: None | int | np.random.RandomState = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     ...
 
@@ -2954,7 +2927,7 @@ def patches_method(
     n_patches: int = 1000,
     verbose: bool = False,
     return_in_patch_statistics: bool = False,
-    random_state: None | int | np.random.RandomState = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
 
     """

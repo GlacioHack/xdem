@@ -230,7 +230,8 @@ class TestNormHypsometric:
 
         # Try the normalized regional hypsometric interpolation.
         # Synthesize random nans in 80% of the data.
-        ddem.data.mask.ravel()[np.random.choice(ddem.data.size, int(ddem.data.size * 0.80), replace=False)] = True
+        rng = np.random.default_rng(42)
+        ddem.data.mask.ravel()[rng.choice(ddem.data.size, int(ddem.data.size * 0.80), replace=False)] = True
         # Fill the dDEM using the de-normalized signal.
         filled_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
             voided_ddem=ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map

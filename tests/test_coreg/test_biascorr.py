@@ -42,7 +42,6 @@ class TestBiasCorr:
     )
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    # TODO: Simplify once this GeoUtils issue is resolved: https://github.com/GlacioHack/geoutils/issues/499
     tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
@@ -328,6 +327,8 @@ class TestBiasCorr:
         # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
         # We don't care for this test
         warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
+        # Apply the transform can create data exactly equal to the nodata
+        warnings.filterwarnings("ignore", category=UserWarning, message="Unmasked values equal to the nodata value*")
 
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(
@@ -421,7 +422,6 @@ class TestBiasCorr:
         xx = gu.raster.get_xy_rotated(self.ref, along_track_angle=angle)[0]
 
         # Get random parameters (3 parameters needed per frequency)
-        np.random.seed(42)
         params = np.array([(5, 3000, np.pi), (1, 300, 0), (0.5, 100, np.pi / 2)]).flatten()
         nb_freq = 1
         params = params[0 : 3 * nb_freq]
@@ -510,8 +510,8 @@ class TestBiasCorr:
         nb_params = int((order + 1) * (order + 1))
 
         # Get a random number of parameters
-        np.random.seed(42)
-        params = np.random.normal(size=nb_params)
+        rng = np.random.default_rng(42)
+        params = rng.normal(size=nb_params)
 
         # Create a synthetic bias and add to the DEM
         synthetic_bias = polynomial_2d((xx, yy), *params)

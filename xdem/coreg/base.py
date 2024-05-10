@@ -171,7 +171,8 @@ def _df_sampling_from_dem(
 
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape
-    i, j = np.random.randint(10, width - 10, npoints), np.random.randint(10, length - 10, npoints)
+    rng = np.random.default_rng()
+    i, j = rng.integers(10, width - 10, npoints), rng.integers(10, length - 10, npoints)
     mask = dem.data.mask
 
     # Get value
@@ -1014,7 +1015,7 @@ class CoregDict(TypedDict, total=False):
     # Affine + BiasCorr classes
     subsample: int | float
     subsample_final: int
-    random_state: np.random.RandomState | np.random.Generator | int | None
+    random_state: int | np.random.Generator | None
 
     # BiasCorr classes generic metadata
 
@@ -1147,7 +1148,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         verbose: bool = False,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
+        random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
         """
@@ -1349,7 +1350,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         subsample: float | int = 1.0,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
+        random_state: int | np.random.Generator | None = None,
     ) -> NDArrayf:
         """
         Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
@@ -1772,7 +1773,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         verbose: bool = False,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
+        random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
 
@@ -2041,7 +2042,7 @@ class BlockwiseCoreg(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         verbose: bool = False,
-        random_state: None | np.random.RandomState | np.random.Generator | int = None,
+        random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
 

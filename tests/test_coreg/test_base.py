@@ -95,7 +95,8 @@ class TestCoregClass:
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == -2
 
         # Create random noise and see if the standard deviation is equal (it should)
-        dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
+        rng = np.random.default_rng(42)
+        dem3 = dem1.copy() + rng.random(size=dem1.size).reshape(dem1.shape)
         assert abs(vshiftcorr.error(dem1, dem3, transform=affine, crs=crs, error_type="std") - np.std(dem3)) < 1e-6
 
     @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])  # type: ignore
@@ -104,8 +105,8 @@ class TestCoregClass:
 
         # Define a valid mask
         width = height = 50
-        np.random.seed(42)
-        valid_mask = np.random.randint(low=0, high=2, size=(width, height), dtype=bool)
+        rng = np.random.default_rng(42)
+        valid_mask = rng.integers(low=0, high=2, size=(width, height), dtype=bool)
 
         # Define a class with a subsample and random_state in the metadata
         coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
