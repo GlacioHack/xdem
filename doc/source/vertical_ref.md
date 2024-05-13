@@ -264,17 +264,22 @@ considering the area-of-interest as the DEM extent {attr}`~xdem.DEM.bounds`.
 # Open a DEM and set its CRS
 filename_dem = xdem.examples.get_path("longyearbyen_ref_dem")
 dem = xdem.DEM(filename_dem, vcrs="Ellipsoid")
-dem.to_vcrs("EGM96")
-dem.vcrs
+trans_dem = dem.to_vcrs("EGM96")
+trans_dem.vcrs
 ```
 
-The operation updates the DEM array **in-place**, shifting each pixel by the transformation at their coordinates:
+The operation returns a new {class}`~xdem.DEM` by default, but can also be done in-place. It vertically shifts
+each pixel value by the transformation at their coordinates:
 
 ```{code-cell} ipython3
 import numpy as np
 
+diff = trans_dem - dem
 # Mean difference after transformation (about 30 m in Svalbard)
-dem_orig = xdem.DEM(filename_dem)
-diff = dem_orig - dem
 np.nanmean(diff)
+```
+
+```{code-cell} ipython3
+# Plot the elevation differences due to the vertical transformation
+diff.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
 ```

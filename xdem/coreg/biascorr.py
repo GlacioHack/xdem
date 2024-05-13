@@ -135,6 +135,9 @@ class BiasCorr(Coreg):
         # Add subsample attribute
         self._meta["subsample"] = subsample
 
+        # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
+        self._meta["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
+
         # Update attributes
         self._fit_or_bin = fit_or_bin
         self._is_affine = False
@@ -161,6 +164,14 @@ class BiasCorr(Coreg):
         # This is called by subclasses, so the bias_var should always be defined
         if bias_vars is None:
             raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
+
+        # Check number of variables
+        nd = self._meta["nd"]
+        if nd is not None and len(bias_vars) != nd:
+            raise ValueError(
+                "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
+                "got {}.".format(nd, len(bias_vars))
+            )
 
         # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
         if self._meta["bias_var_names"] is not None:
@@ -478,239 +489,7 @@ class BiasCorr(Coreg):
         return dem_corr, transform
 
 
-class BiasCorr1D(BiasCorr):
-    """
-    Bias-correction along a single variable (e.g., angle, terrain attribute).
-
-    The correction can be done by fitting a function along the variable, or binning with that variable.
-    """
-
-    def __init__(
-        self,
-        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
-        bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
-        bias_var_names: Iterable[str] = None,
-        subsample: float | int = 1.0,
-    ):
-        """
-        Instantiate a 1D bias correction.
-
-        :param fit_or_bin: Whether to fit or bin. Use "fit" to correct by optimizing a function or
-            "bin" to correct with a statistic of central tendency in defined bins.
-        :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
-        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-        :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
-            between bins, or "per_bin" to apply the statistic for each bin.
-        :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-        super().__init__(
-            fit_or_bin,
-            fit_func,
-            fit_optimizer,
-            bin_sizes,
-            bin_statistic,
-            bin_apply_method,
-            bias_var_names,
-            subsample,
-        )
-
-    def _fit_biascorr(  # type: ignore
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        bias_vars: dict[str, NDArrayf],
-        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
-        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
-        z_name: str,
-        weights: None | NDArrayf = None,
-        verbose: bool = False,
-        **kwargs,
-    ) -> None:
-        """Estimate the bias along the single provided variable using the bias function."""
-
-        # Check number of variables
-        if len(bias_vars) != 1:
-            raise ValueError(
-                "A single variable has to be provided through the argument 'bias_vars', "
-                "got {}.".format(len(bias_vars))
-            )
-
-        super()._fit_biascorr(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            bias_vars=bias_vars,
-            transform=transform,
-            crs=crs,
-            z_name=z_name,
-            weights=weights,
-            verbose=verbose,
-            **kwargs,
-        )
-
-
-class BiasCorr2D(BiasCorr):
-    """
-    Bias-correction along two variables (e.g., X/Y coordinates, slope and curvature simultaneously).
-    """
-
-    def __init__(
-        self,
-        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
-        fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
-        bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
-        bias_var_names: Iterable[str] = None,
-        subsample: float | int = 1.0,
-    ):
-        """
-        Instantiate a 2D bias correction.
-
-        :param fit_or_bin: Whether to fit or bin. Use "fit" to correct by optimizing a function or
-            "bin" to correct with a statistic of central tendency in defined bins.
-        :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
-        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-        :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
-            between bins, or "per_bin" to apply the statistic for each bin.
-        :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-        super().__init__(
-            fit_or_bin,
-            fit_func,
-            fit_optimizer,
-            bin_sizes,
-            bin_statistic,
-            bin_apply_method,
-            bias_var_names,
-            subsample,
-        )
-
-    def _fit_biascorr(  # type: ignore
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        bias_vars: dict[str, NDArrayf],
-        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
-        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
-        z_name: str,
-        weights: None | NDArrayf = None,
-        verbose: bool = False,
-        **kwargs,
-    ) -> None:
-
-        # Check number of variables
-        if len(bias_vars) != 2:
-            raise ValueError(
-                "Exactly two variables have to be provided through the argument 'bias_vars'"
-                ", got {}.".format(len(bias_vars))
-            )
-
-        super()._fit_biascorr(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            bias_vars=bias_vars,
-            transform=transform,
-            crs=crs,
-            z_name=z_name,
-            weights=weights,
-            verbose=verbose,
-            **kwargs,
-        )
-
-
-class BiasCorrND(BiasCorr):
-    """
-    Bias-correction along N variables (e.g., simultaneously slope, curvature, aspect and elevation).
-    """
-
-    def __init__(
-        self,
-        fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
-        bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
-        bias_var_names: Iterable[str] = None,
-        subsample: float | int = 1.0,
-    ):
-        """
-        Instantiate an N-D bias correction.
-
-        :param fit_or_bin: Whether to fit or bin. Use "fit" to correct by optimizing a function or
-            "bin" to correct with a statistic of central tendency in defined bins.
-        :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
-        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-        :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
-            between bins, or "per_bin" to apply the statistic for each bin.
-        :param bias_var_names: (Optional) For pipelines, explicitly define bias variables names to use during .fit().
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-        super().__init__(
-            fit_or_bin,
-            fit_func,
-            fit_optimizer,
-            bin_sizes,
-            bin_statistic,
-            bin_apply_method,
-            bias_var_names,
-            subsample,
-        )
-
-    def _fit_biascorr(  # type: ignore
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        bias_vars: dict[str, NDArrayf],  # Never None thanks to BiasCorr.fit() pre-process
-        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
-        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
-        z_name: str,
-        weights: None | NDArrayf = None,
-        verbose: bool = False,
-        **kwargs,
-    ) -> None:
-
-        # Check bias variable
-        if bias_vars is None or len(bias_vars) <= 2:
-            raise ValueError('At least three variables have to be provided through the argument "bias_vars".')
-
-        super()._fit_biascorr(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            bias_vars=bias_vars,
-            transform=transform,
-            crs=crs,
-            z_name=z_name,
-            weights=weights,
-            verbose=verbose,
-            **kwargs,
-        )
-
-
-class DirectionalBias(BiasCorr1D):
+class DirectionalBias(BiasCorr):
     """
     Bias correction for directional biases, for example along- or across-track of satellite angle.
     """
@@ -849,7 +628,7 @@ class DirectionalBias(BiasCorr1D):
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
 
 
-class TerrainBias(BiasCorr1D):
+class TerrainBias(BiasCorr):
     """
     Correct a bias according to terrain, such as elevation or curvature.
 
@@ -1016,7 +795,7 @@ class TerrainBias(BiasCorr1D):
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
 
-class Deramp(BiasCorr2D):
+class Deramp(BiasCorr):
     """
     Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations.
     """

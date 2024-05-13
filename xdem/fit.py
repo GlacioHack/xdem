@@ -329,7 +329,7 @@ def robust_norder_polynomial_fit(
     subsample: float | int = 1,
     linear_pkg: str = "scipy",
     verbose: bool = False,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: int | np.random.Generator | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, int]:
     """
@@ -446,7 +446,7 @@ def robust_nfreq_sumsin_fit(
     cost_func: Callable[[NDArrayf], float] = soft_loss,
     subsample: float | int = 1,
     hop_length: float | None = None,
-    random_state: None | np.random.RandomState | np.random.Generator | int = None,
+    random_state: int | np.random.Generator | None = None,
     verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[NDArrayf, int]:
@@ -535,7 +535,7 @@ def robust_nfreq_sumsin_fit(
         # Insert in a scipy bounds object
         scipy_bounds = scipy.optimize.Bounds(lb, ub)
         # First guess for the mean parameters
-        p0 = np.divide(lb + ub, 2).squeeze()
+        p0 = ((lb + ub) / 2).squeeze()
 
         if verbose:
             print("Bounds")

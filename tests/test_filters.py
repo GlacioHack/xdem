@@ -37,8 +37,9 @@ class TestFilters:
 
         # Test that it works with NaNs too
         nan_count = 1000
-        cols = np.random.randint(0, high=self.dem_1990.width - 1, size=nan_count, dtype=int)
-        rows = np.random.randint(0, high=self.dem_1990.height - 1, size=nan_count, dtype=int)
+        rng = np.random.default_rng(42)
+        cols = rng.integers(0, high=self.dem_1990.width - 1, size=nan_count, dtype=int)
+        rows = rng.integers(0, high=self.dem_1990.height - 1, size=nan_count, dtype=int)
         dem_with_nans = np.copy(self.dem_1990.data).squeeze()
         dem_with_nans[rows, cols] = np.nan
 
@@ -71,8 +72,9 @@ class TestFilters:
 
         # Add random outliers
         count = 1000
-        cols = np.random.randint(0, high=self.dem_1990.width - 1, size=count, dtype=int)
-        rows = np.random.randint(0, high=self.dem_1990.height - 1, size=count, dtype=int)
+        rng = np.random.default_rng(42)
+        cols = rng.integers(0, high=self.dem_1990.width - 1, size=count, dtype=int)
+        rows = rng.integers(0, high=self.dem_1990.height - 1, size=count, dtype=int)
         ddem.data[rows, cols] = 5000
 
         # Filter gross outliers

@@ -8,10 +8,10 @@ import xdem
 x = np.linspace(0, 1, 200)
 
 sig = 0.2
-np.random.seed(42)
-y_rand1 = np.random.normal(0, sig, size=len(x))
-y_rand2 = np.random.normal(0, sig, size=len(x))
-y_rand3 = np.random.normal(0, sig, size=len(x))
+rng = np.random.default_rng(42)
+y_rand1 = rng.normal(0, sig, size=len(x))
+y_rand2 = rng.normal(0, sig, size=len(x))
+y_rand3 = rng.normal(0, sig, size=len(x))
 
 
 y_mean = np.array([0.5 * xval - 0.25 if xval > 0.5 else 0.5 * (1 - xval) - 0.25 for xval in x])

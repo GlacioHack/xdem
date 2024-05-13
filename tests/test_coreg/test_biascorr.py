@@ -42,7 +42,6 @@ class TestBiasCorr:
     )
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    # TODO: Simplify once this GeoUtils issue is resolved: https://github.com/GlacioHack/geoutils/issues/499
     tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
@@ -155,6 +154,48 @@ class TestBiasCorr:
             ),
         ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)  # type: ignore
+
+        # When wrong number of parameters are passed
+
+        # Copy fit parameters
+        fit_args = self.fit_args_rst_rst.copy()
+        with pytest.raises(
+            ValueError,
+            match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', " "got 2."),
+        ):
+            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
+            bcorr1d = biascorr.BiasCorr(bias_var_names=["elevation"])
+            bcorr1d.fit(**fit_args, bias_vars=bias_vars_dict)
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape("A number of 2 variable(s) has to be provided through the argument " "'bias_vars', got 1."),
+        ):
+            bias_vars_dict = {"elevation": self.ref}
+            bcorr2d = biascorr.BiasCorr(bias_var_names=["elevation", "slope"])
+            bcorr2d.fit(**fit_args, bias_vars=bias_vars_dict)
+
+        # When variables don't match
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
+            ),
+        ):
+            bcorr1d2 = biascorr.BiasCorr(bias_var_names=["ncc"])
+            bias_vars_dict = {"elevation": self.ref}
+            bcorr1d2.fit(**fit_args, bias_vars=bias_vars_dict)
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                "instantiation: ['elevation', 'ncc']."
+            ),
+        ):
+            bcorr2d2 = biascorr.BiasCorr(bias_var_names=["elevation", "ncc"])
+            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
+            bcorr2d2.fit(**fit_args, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize(
@@ -286,6 +327,8 @@ class TestBiasCorr:
         # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
         # We don't care for this test
         warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
+        # Apply the transform can create data exactly equal to the nodata
+        warnings.filterwarnings("ignore", category=UserWarning, message="Unmasked values equal to the nodata value*")
 
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(
@@ -307,7 +350,7 @@ class TestBiasCorr:
             elev_fit_args.update({"niter": 1})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        bcorr.fit(**elev_fit_args, subsample=100, random_state=42)
+        bcorr.fit(**elev_fit_args, subsample=1000, random_state=42)
 
         # Check that variable names are defined during fit
         assert bcorr._meta["bias_var_names"] == ["elevation"]
@@ -354,87 +397,6 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", [fit_args_rst_pts, fit_args_rst_rst])  # type: ignore
-    def test_biascorr1d(self, fit_args) -> None:
-        """
-        Test the subclass BiasCorr1D, which defines default parameters for 1D.
-        The rest is already tested in test_biascorr.
-        """
-
-        # Try default "fit" parameters instantiation
-        bcorr1d = biascorr.BiasCorr1D()
-
-        assert bcorr1d._meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
-        assert bcorr1d._meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
-        assert bcorr1d._needs_vars is True
-
-        # Try default "bin" parameter instantiation
-        bcorr1d = biascorr.BiasCorr1D(fit_or_bin="bin")
-
-        assert bcorr1d._meta["bin_sizes"] == 10
-        assert bcorr1d._meta["bin_statistic"] == np.nanmedian
-        assert bcorr1d._meta["bin_apply_method"] == "linear"
-
-        elev_fit_args = fit_args.copy()
-        # Raise error when wrong number of parameters are passed
-        with pytest.raises(
-            ValueError, match="A single variable has to be provided through the argument 'bias_vars', " "got 2."
-        ):
-            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
-            bcorr1d.fit(**elev_fit_args, bias_vars=bias_vars_dict)
-
-        # Raise error when variables don't match
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
-            ),
-        ):
-            bcorr1d2 = biascorr.BiasCorr1D(bias_var_names=["ncc"])
-            bias_vars_dict = {"elevation": self.ref}
-            bcorr1d2.fit(**elev_fit_args, bias_vars=bias_vars_dict)
-
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    def test_biascorr2d(self, fit_args) -> None:
-        """
-        Test the subclass BiasCorr2D, which defines default parameters for 2D.
-        The rest is already tested in test_biascorr.
-        """
-
-        # Try default "fit" parameters instantiation
-        bcorr2d = biascorr.BiasCorr2D()
-
-        assert bcorr2d._meta["fit_func"] == polynomial_2d
-        assert bcorr2d._meta["fit_optimizer"] == scipy.optimize.curve_fit
-        assert bcorr2d._needs_vars is True
-
-        # Try default "bin" parameter instantiation
-        bcorr2d = biascorr.BiasCorr2D(fit_or_bin="bin")
-
-        assert bcorr2d._meta["bin_sizes"] == 10
-        assert bcorr2d._meta["bin_statistic"] == np.nanmedian
-        assert bcorr2d._meta["bin_apply_method"] == "linear"
-
-        elev_fit_args = fit_args.copy()
-        # Raise error when wrong number of parameters are passed
-        with pytest.raises(
-            ValueError, match="Exactly two variables have to be provided through the argument " "'bias_vars', got 1."
-        ):
-            bias_vars_dict = {"elevation": self.ref}
-            bcorr2d.fit(**elev_fit_args, bias_vars=bias_vars_dict)
-
-        # Raise error when variables don't match
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                "instantiation: ['elevation', 'ncc']."
-            ),
-        ):
-            bcorr2d2 = biascorr.BiasCorr2D(bias_var_names=["elevation", "ncc"])
-            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
-            bcorr2d2.fit(**elev_fit_args, bias_vars=bias_vars_dict)
-
     def test_directionalbias(self) -> None:
         """Test the subclass DirectionalBias."""
 
@@ -460,7 +422,6 @@ class TestBiasCorr:
         xx = gu.raster.get_xy_rotated(self.ref, along_track_angle=angle)[0]
 
         # Get random parameters (3 parameters needed per frequency)
-        np.random.seed(42)
         params = np.array([(5, 3000, np.pi), (1, 300, 0), (0.5, 100, np.pi / 2)]).flatten()
         nb_freq = 1
         params = params[0 : 3 * nb_freq]
@@ -549,8 +510,8 @@ class TestBiasCorr:
         nb_params = int((order + 1) * (order + 1))
 
         # Get a random number of parameters
-        np.random.seed(42)
-        params = np.random.normal(size=nb_params)
+        rng = np.random.default_rng(42)
+        params = rng.normal(size=nb_params)
 
         # Create a synthetic bias and add to the DEM
         synthetic_bias = polynomial_2d((xx, yy), *params)
@@ -560,7 +521,7 @@ class TestBiasCorr:
         deramp = biascorr.Deramp(poly_order=order)
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=30000).ds
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=30000, random_state=42).ds
         else:
             bias_elev = bias_dem
         deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=20000, random_state=42)
@@ -618,7 +579,7 @@ class TestBiasCorr:
         )
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=20000).ds
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=20000, random_state=42).ds
         else:
             bias_elev = bias_dem
         tb.fit(

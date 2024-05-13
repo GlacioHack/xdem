@@ -356,9 +356,9 @@ class TestBinning:
             df[var] = [xdem.spatialstats._pandas_str_to_interval(x) for x in df[var]]
 
         # Take 1000 random points in the array
-        np.random.seed(42)
-        xrand = np.random.randint(low=0, high=perbin_values.shape[0], size=1000)
-        yrand = np.random.randint(low=0, high=perbin_values.shape[1], size=1000)
+        rng = np.random.default_rng(42)
+        xrand = rng.integers(low=0, high=perbin_values.shape[0], size=1000)
+        yrand = rng.integers(low=0, high=perbin_values.shape[1], size=1000)
 
         for i in range(len(xrand)):
 
@@ -372,7 +372,7 @@ class TestBinning:
             if np.logical_or.reduce((np.isnan(h), np.isnan(slp), np.isnan(asp))):
                 continue
 
-            # Isolate the bin in the dataframe, should be only one
+            # Isolate the bin in the dataframe
             index_bin = np.logical_and.reduce(
                 (
                     [h in interv for interv in df["elevation"]],
@@ -380,6 +380,10 @@ class TestBinning:
                     [asp in interv for interv in df["aspect"]],
                 )
             )
+            # It might not exist in the binning intervals (if extreme values were not subsampled in test_nd_binning)
+            if np.count_nonzero(index_bin) == 0:
+                continue
+            # Otherwise there should be only one
             assert np.count_nonzero(index_bin) == 1
 
             # Get the statistic value and verify that this was the one returned by the function
@@ -513,7 +517,7 @@ class TestVariogram:
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
         # assert df["exp"][15] == pytest.approx(5.11900520324707, abs=1e-3)
         assert df["lags"][15] == pytest.approx(5120)
-        assert df["count"][15] == 5
+        assert df["count"][15] == 2
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
@@ -578,8 +582,6 @@ class TestVariogram:
         extent = (np.min(coords[:, 0]), np.max(coords[:, 0]), np.min(coords[:, 1]), np.max(coords[:, 1]))
         # Shape
         shape = values.shape
-        # Random state
-        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(42)))
 
         keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape, "verbose": False}
         runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(
@@ -597,7 +599,8 @@ class TestVariogram:
             samples=samples,
             ratio_subsample=ratio_subsample,
             runs=runs,
-            rnd=rnd,
+            # Now even for a n_variograms=1 we sample other integers for the random number generator
+            rnd=np.random.default_rng(42).choice(1, 1, replace=False),
         )
         V = skgstat.Variogram(
             rems,
@@ -759,8 +762,8 @@ class TestVariogram:
 
         # Add some noise on top of it
         sig = 0.025
-        np.random.seed(42)
-        y_noise = np.random.normal(0, sig, size=len(x))
+        rng = np.random.default_rng(42)
+        y_noise = rng.normal(0, sig, size=len(x))
 
         y_simu = y + y_noise
         sigma = np.ones(len(x)) * sig
@@ -1156,16 +1159,16 @@ class TestNeffEstimation:
             rasterize_resolution=self.ref,
             random_state=42,
         )
-        # The value should be nearly the same within 5% (the discretization grid is different so affects a tiny bit the
+        # The value should be nearly the same within 10% (the discretization grid is different so affects a tiny bit the
         # result)
-        assert neff3 == pytest.approx(neff2, rel=0.05)
+        assert neff3 == pytest.approx(neff2, rel=0.1)
 
-        # Check that the number of effective samples matches that of the circular approximation within 20%
+        # Check that the number of effective samples matches that of the circular approximation within 25%
         area_brom = np.sum(outlines_brom.ds.area.values)
         neff4 = xdem.spatialstats.number_effective_samples(
             area=area_brom, params_variogram_model=params_variogram_model
         )
-        assert neff4 == pytest.approx(neff2, rel=0.2)
+        assert neff4 == pytest.approx(neff2, rel=0.25)
         # The circular approximation is always conservative, so should yield a smaller value
         assert neff4 < neff2
 
@@ -1311,7 +1314,7 @@ class TestPatchesMethod:
         assert df_full.shape == (100, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "8_16"
+        assert df_full["tile"].values[0] == "47_17"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))

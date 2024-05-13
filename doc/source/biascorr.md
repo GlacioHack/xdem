@@ -374,9 +374,7 @@ _ = ax[1].set_yticklabels([])
 All bias-corrections methods are inherited from generic classes that perform corrections in 1-, 2- or N-D. Having these
 separate helps the user navigating the dimensionality of the functions, optimizer, binning or variables used.
 
-{class}`xdem.coreg.BiasCorr1D`
-{class}`xdem.coreg.BiasCorr2D`
-{class}`xdem.coreg.BiasCorrND`
+{class}`xdem.coreg.BiasCorr`
 
 - **Performs:** Correct biases with any function and optimizer, or any binning, in 1-, 2- or N-D.
 - **Supports weights:** Yes.
@@ -405,7 +403,7 @@ tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab())
 ```{code-cell} ipython3
 # Create a bias correction defining three custom variable names that will be passed later
 # We force a binning method, more simple in 3D
-biascorr = xdem.coreg.BiasCorrND(bias_var_names=["aspect", "slope", "elevation"], fit_or_bin="bin", bin_sizes=5)
+biascorr = xdem.coreg.BiasCorr(bias_var_names=["aspect", "slope", "elevation"], fit_or_bin="bin", bin_sizes=5)
 
 # Derive curvature and slope
 aspect, slope = ref_dem.get_terrain_attribute(["aspect", "slope"])
