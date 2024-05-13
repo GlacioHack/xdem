@@ -22,6 +22,6 @@ SlideRule, Icepyx, PDAL, RichDEM
 
 # Applications
 
-OGGM, 
+OGGM,
 
 ## Julia

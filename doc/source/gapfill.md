@@ -16,7 +16,7 @@ kernelspec:
 xDEM contains routines to gap-fill elevation data or elevation differences depending on the type of terrain.
 
 ```{important}
-Some of the approaches below are application-specific (e.g., glaciers) and might be moved to a separate package 
+Some of the approaches below are application-specific (e.g., glaciers) and might be moved to a separate package
 in future releases.
 ```
 
@@ -67,7 +67,7 @@ outlines = {
 }
 
 # Cropping DEMs to a smaller extent to visualize the gap-filling better
-bounds = (dem_2009.bounds.left, dem_2009.bounds.bottom, 
+bounds = (dem_2009.bounds.left, dem_2009.bounds.bottom,
           dem_2009.bounds.left + 200 * dem_2009.res[0], dem_2009.bounds.bottom + 150 * dem_2009.res[1])
 dem_2009 = dem_2009.crop(bounds)
 dem_1990 = dem_1990.crop(bounds)

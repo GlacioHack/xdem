@@ -14,27 +14,27 @@ kernelspec:
 
 # Spatial statistics for error analysis
 
-Performing error (or uncertainty) analysis of spatial variable, such as elevation data, requires **joint knowledge from 
+Performing error (or uncertainty) analysis of spatial variable, such as elevation data, requires **joint knowledge from
 two scientific fields: spatial statistics and uncertainty quantification.**
 
-Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics) in geoscience, 
-is a body of theory for the analysis of spatial variables. It primarily relies on modelling the dependency of 
-variables in space (spatial autocorrelation) to better describe their spatial characteristics, and 
+Spatial statistics, also referred to as [geostatistics](https://en.wikipedia.org/wiki/Geostatistics) in geoscience,
+is a body of theory for the analysis of spatial variables. It primarily relies on modelling the dependency of
+variables in space (spatial autocorrelation) to better describe their spatial characteristics, and
 utilize this in further quantitative analysis.
 
-[Uncertainty quantification](https://en.wikipedia.org/wiki/Uncertainty_quantification) is the science of characterizing 
-uncertainties quantitatively, and includes a wide range of methods including in particular theoretical error propagation. 
-In measurement science, such as remote sensing, such uncertainty propagation is tightly linked with the field 
+[Uncertainty quantification](https://en.wikipedia.org/wiki/Uncertainty_quantification) is the science of characterizing
+uncertainties quantitatively, and includes a wide range of methods including in particular theoretical error propagation.
+In measurement science, such as remote sensing, such uncertainty propagation is tightly linked with the field
 of [metrology](https://en.wikipedia.org/wiki/Metrology).
 
-In the following, we describe the basics assumptions and concepts required to perform a spatial uncertainty analysis of 
+In the following, we describe the basics assumptions and concepts required to perform a spatial uncertainty analysis of
 elevation data, described in the **feature page {ref}`uncertainty`**.
 
 ## Assumptions for inference in spatial statistics
 
-In spatial statistics, the covariance of a variable of interest is generally simplified into a spatial variogram, which 
-**describes the covariance only as function of the spatial lag** (spatial distance between two variable values). 
-However, to utilize this simplification of the covariance in subsequent analysis, the variable of interest must 
+In spatial statistics, the covariance of a variable of interest is generally simplified into a spatial variogram, which
+**describes the covariance only as function of the spatial lag** (spatial distance between two variable values).
+However, to utilize this simplification of the covariance in subsequent analysis, the variable of interest must
 respect [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
 That is, verify the three following assumptions:
 
@@ -53,12 +53,12 @@ In other words, for a reliable analysis, elevation data should:
 > 2. Not contain random elevation errors that vary significantly across space.
 > 3. Not contain factors that affect the spatial distribution of elevation errors, except for the distance between observations.
 
-While assumption **1.** is verified after coregistration and bias corrections, other assumptions are generally not 
-(e.g., larger errors on steep slope). To address this, we must estimate the variability of our random errors 
+While assumption **1.** is verified after coregistration and bias corrections, other assumptions are generally not
+(e.g., larger errors on steep slope). To address this, we must estimate the variability of our random errors
 (or heteroscedasticity), to then transform our data to achieve second-order stationarity.
 
 ```{note}
-If there is no significant spatial variability in random errors in your elevation data (e.g., lidar), 
+If there is no significant spatial variability in random errors in your elevation data (e.g., lidar),
 you can **jump directly to the {ref}`spatialstats-corr` section**.
 ```
 
@@ -71,9 +71,9 @@ $$
 \sigma_{dh} = \sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...}) \neq \textrm{constant}
 $$
 
-While a single elevation difference (for a pixel or footpring) does not allow to capture random errors, larger samples 
-do. [Data binning](https://en.wikipedia.org/wiki/Data_binning), for instance, is a method that allows to estimate the 
-statistical spread of a sample per category, and can easily be used with one or more explanatory variables, 
+While a single elevation difference (for a pixel or footpring) does not allow to capture random errors, larger samples
+do. [Data binning](https://en.wikipedia.org/wiki/Data_binning), for instance, is a method that allows to estimate the
+statistical spread of a sample per category, and can easily be used with one or more explanatory variables,
 such as slope:
 
 ```{eval-rst}
@@ -184,10 +184,3 @@ $$
 
 Estimating the standard error of the mean of the standardized data $\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}$
 requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
-
-
-
-
-
-
-

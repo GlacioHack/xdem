@@ -110,8 +110,10 @@ class DEM(SatelliteImage):  # type: ignore
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
         if self.bands is not None and len(self.bands) > 1:
-            raise ValueError("DEM rasters should be composed of one band only. Either use argument `bands` to specify "
-                             "a single band on opening, or use .split_bands() on an opened raster.")
+            raise ValueError(
+                "DEM rasters should be composed of one band only. Either use argument `bands` to specify "
+                "a single band on opening, or use .split_bands() on an opened raster."
+            )
 
         # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
         vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))

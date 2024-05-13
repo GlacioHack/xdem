@@ -248,7 +248,9 @@ def calculate_hypsometry_area(
     assert not np.any(np.isnan(ref_dem)), "The given reference DEM has NaNs. No NaNs are allowed to calculate area!"
 
     if timeframe not in ["reference", "nonreference", "mean"]:
-        raise ValueError(f"Argument 'timeframe={timeframe}' is invalid. Choices: ['reference', 'nonreference', 'mean'].")
+        raise ValueError(
+            f"Argument 'timeframe={timeframe}' is invalid. Choices: ['reference', 'nonreference', 'mean']."
+        )
 
     if isinstance(ddem_bins, pd.DataFrame):
         ddem_bins = ddem_bins["value"]

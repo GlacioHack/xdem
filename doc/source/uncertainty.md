@@ -26,20 +26,20 @@ pyplot.rcParams['savefig.dpi'] = 600
 xDEM integrates spatial uncertainty analysis tools from the recent literature that **rely on joint methods from two
 scientific fields: spatial statistics and uncertainty quantification**.
 
-While uncertainty analysis technically refers to both systematic and random errors, systematic errors of elevation data 
-are corrected using {ref}`coregistration` and {ref}`biascorr`, so we here refer to **uncertainty analysis for quantifying and 
+While uncertainty analysis technically refers to both systematic and random errors, systematic errors of elevation data
+are corrected using {ref}`coregistration` and {ref}`biascorr`, so we here refer to **uncertainty analysis for quantifying and
 propagating random errors**.
 
 In detail, we provide tools to:
 
-1. Account for elevation **heteroscedasticity** (e.g., varying precision such as with terrain slope or stereo-correlation), 
-2. Quantify the **spatial correlation of random errors** (e.g., from native spatial resolution or instrument noise), 
+1. Account for elevation **heteroscedasticity** (e.g., varying precision such as with terrain slope or stereo-correlation),
+2. Quantify the **spatial correlation of random errors** (e.g., from native spatial resolution or instrument noise),
 3. Perform an **error propagation to elevation derivatives** (e.g., spatial average, or more complex derivatives such as slope and aspect).
 
 :::{admonition} More reading
 :class: tip
 
-For an introduction on spatial statistics applied to uncertainty quantification for elevation data, we recommend reading 
+For an introduction on spatial statistics applied to uncertainty quantification for elevation data, we recommend reading
 the **{ref}`spatial-stats` guide page** and, for details on variography, the **documentation of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/)**.
 
 Additionally, we recommend reading the **{ref}`static-surfaces` guide page** on which uncertainty analysis relies.
@@ -47,7 +47,7 @@ Additionally, we recommend reading the **{ref}`static-surfaces` guide page** on 
 
 ## Quick use
 
-The estimation of the spatial structure of random errors of elevation data (heteroscedas) is conveniently 
+The estimation of the spatial structure of random errors of elevation data (heteroscedas) is conveniently
 wrapped in a single method {func}`~xdem.DEM.estimate_uncertainty`, for which the steps are detailed below.
 
 ```{code-cell} ipython3
@@ -85,12 +85,12 @@ print("Random elevation errors at a distance of 1 km are correlated at {:.2f} %.
 
 ## Summary of available methods
 
-Our methods for modelling the structure of error in DEMs and propagating errors to spatial derivatives analytically 
+Our methods for modelling the structure of error in DEMs and propagating errors to spatial derivatives analytically
 are primarily based on [Rolstad et al. (2009)]() and [Hugonnet et al. (2022)]().
 
-These frameworks are generic and thus encompass that of most other studies on the topic (e.g., Anderson et al. (2020), 
-others), referred to as "traditional" below. This is because accounting for possible multiple correlation ranges also 
-works for the case of single correlation range, or accounting for potential heteroscedasticity also works on 
+These frameworks are generic and thus encompass that of most other studies on the topic (e.g., Anderson et al. (2020),
+others), referred to as "traditional" below. This is because accounting for possible multiple correlation ranges also
+works for the case of single correlation range, or accounting for potential heteroscedasticity also works on
 homoscedastic elevation data.
 
 The tables below summarize the characteristics of these three category of methods.
@@ -102,7 +102,7 @@ The tables below summarize the characteristics of these three category of method
    :header-rows: 1
    :stub-columns: 1
    :align: center
-   
+
    * - Method
      - Heteroscedasticity
      - Correlations (single-range)
@@ -131,8 +131,8 @@ The tables below summarize the characteristics of these three category of method
    :widths: 1 1 1 1
    :header-rows: 1
    :stub-columns: 1
-   :align: center   
-    
+   :align: center
+
    * - Method
      - Accuracy
      - Computing time
@@ -155,7 +155,7 @@ The tables below summarize the characteristics of these three category of method
 
 ## Spatial structure of error
 
-Below we detail the steps used to estimate heteroscedasticity and spatial correlation of errors in 
+Below we detail the steps used to estimate heteroscedasticity and spatial correlation of errors in
 {func}`~xdem.DEM.estimate_uncertainty`, which are most easily customized by calling subfunctions independently.
 
 ### Elevation heteroscedasticity
@@ -167,7 +167,7 @@ $$
 \sigma_{h} = \sigma_{h}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...}) \neq \textrm{constant}
 $$
 
-Owing to the large number of samples of elevation data, we can easily estimate this variability by 
+Owing to the large number of samples of elevation data, we can easily estimate this variability by
 [binning](https://en.wikipedia.org/wiki/Data_binning) the data and estimating the statistical dispersion (see
 {ref}`robuststats-meanstd`) across several explanatory variables using {func}`xdem.spatialstats.nd_binning`.
 
@@ -205,7 +205,7 @@ df_ns = xdem.spatialstats.nd_binning(
 )
 ```
 
-The most common explanatory variables are the terrain slope, terrain curvature, quality of stereo-correlation and 
+The most common explanatory variables are the terrain slope, terrain curvature, quality of stereo-correlation and
 
 > - the terrain slope and terrain curvature (see {ref}`terrain-attributes`) that can explain a large part of the terrain-related variability in error,
 > - the quality of stereo-correlation that can explain a large part of the measurement error of DEMs generated by stereophotogrammetry,
@@ -279,5 +279,3 @@ After quantifying and modelling spatial correlations, those an effective sample 
 ```
 
 ### Other derivatives
-
-

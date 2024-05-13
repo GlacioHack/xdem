@@ -18,11 +18,11 @@ kernelspec:
 # Bias correction
 
 In xDEM, bias-correction methods correspond to **transformations that cannot be described as a 3-dimensional
-affine function** (see {ref}`coregistration`), and aim at correcting both systematic elevation errors and 
+affine function** (see {ref}`coregistration`), and aim at correcting both systematic elevation errors and
 spatially-structured random errors.
 
 Contrary to affine coregistration methods, bias corrections are **not limited to the information in the elevation data**. They can be
-passed any external variables (e.g., land cover type, processing metric) to attempt to identify and correct biases. 
+passed any external variables (e.g., land cover type, processing metric) to attempt to identify and correct biases.
 Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain
 (e.g., curvature- or elevation-dependant corrections), derived solely from the elevation data.
 
@@ -48,7 +48,7 @@ biascorr = xdem.coreg.DirectionalBias(angle=45, fit_or_bin="bin", bin_sizes=200,
 ```
 
 Bias correction can estimate and correct the bias **by a parametric fit** using `fit_or_bin="fit"` linked to  `fit_` parameters, **by applying
-a binned statistic** using `fit_or_bin="bin"` linked to `bin_` parameters, or **by a parametric fit on the binned data** using `fit_or_bin="bin_and_fit"` 
+a binned statistic** using `fit_or_bin="bin"` linked to `bin_` parameters, or **by a parametric fit on the binned data** using `fit_or_bin="bin_and_fit"`
 linked to all parameters.
 
 Predefined bias corrections usually take additional arguments such as `angle` for {class}`~xdem.coreg.DirectionalBias`,
@@ -69,7 +69,7 @@ ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 ```
 
-Once defined, they can be applied the same two ways as for coregistration (using {func}`~xdem.coreg.Coreg.fit` and 
+Once defined, they can be applied the same two ways as for coregistration (using {func}`~xdem.coreg.Coreg.fit` and
 {func}`~xdem.coreg.Coreg.apply` separately allows to re-apply the same correction to different elevation data).
 
 ```{code-cell} ipython3
@@ -80,8 +80,8 @@ biascorr.fit(ref_dem, tba_dem)
 corrected_dem = biascorr.apply(tba_dem)
 ```
 
-Additionally, **bias corrections can be customized to use any number of variables to correct simultaneously**, 
-by defining `bias_var_names` in {class}`~xdem.coreg.BiasCorr`  and passing a `bias_vars` dictionary arrays or rasters 
+Additionally, **bias corrections can be customized to use any number of variables to correct simultaneously**,
+by defining `bias_var_names` in {class}`~xdem.coreg.BiasCorr`  and passing a `bias_vars` dictionary arrays or rasters
 to {func}`~xdem.coreg.Coreg.fit` and  {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
 
 
@@ -100,9 +100,9 @@ applied in a block-wise manner through {class}`~xdem.coreg.BlockwiseCoreg`.
         :top-classes: xdem.coreg.Coreg
 ```
 
-The main difference with {class}`~xdem.coreg.Coreg` is that a {class}`~xdem.coreg.BiasCorr` has a new `bias_var_names` 
-argument which allows to declare the names of N bias-correction variables that will be passed, which **corresponds to the 
-number of simultaneous dimensions in which the bias correction is performed**. 
+The main difference with {class}`~xdem.coreg.Coreg` is that a {class}`~xdem.coreg.BiasCorr` has a new `bias_var_names`
+argument which allows to declare the names of N bias-correction variables that will be passed, which **corresponds to the
+number of simultaneous dimensions in which the bias correction is performed**.
 This step is implicit for predefined methods such as {class}`~xdem.coreg.DirectionalBias`.
 
 ### Modular estimation
@@ -123,14 +123,14 @@ The parameters related to fitting or binning are the same for every {func}`~xdem
 
 - `fit_or_bin` to either fit a parametric model to the bias by passing **"fit"**, perform an empirical binning of the bias by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (recommended)**,
 - `fit_func` to pass any parametric function to fit to the bias,
-- `fit_optimizer` to pass any optimizer function to perform the fit minimization, 
+- `fit_optimizer` to pass any optimizer function to perform the fit minimization,
 - `bin_sizes` to pass the size or edges of the bins for each variable,
 - `bin_statistic` to pass the statistic to compute in each bin,
 - `bin_apply_method` to pass the method to apply the binning for correction.
 
-For predefined methods, the default values of these parameters differ. For instance, a {class}`~xdem.coreg.Deramp` generally performs well 
+For predefined methods, the default values of these parameters differ. For instance, a {class}`~xdem.coreg.Deramp` generally performs well
 with a **"fit"** estimation on a subsample, and thus has a fixed `fit_func` (2D polynomial) solved by the classic optimizer {func}`scipy.optimize.curve_fit`.
-In constrast, a {class}`~xdem.coreg.TerrainBias` is generally hard to model parametrically, and thus defaults to a **"bin"** estimation.
+In contrast, a {class}`~xdem.coreg.TerrainBias` is generally hard to model parametrically, and thus defaults to a **"bin"** estimation.
 
 Finally, each bias-correction approach has the following methods:
 
@@ -216,7 +216,7 @@ _ = ax[1].set_yticklabels([])
 - **Pros:** Correcting undulations or jitter, common in both stereo and radar DEMs, or strips common in scanned imagery.
 - **Cons:** Long optimization for a sum of sinusoids.
 
-The default optimizer for directional biases fits a sum of sinusoids using 1 to 3 different frequencies and 
+The default optimizer for directional biases fits a sum of sinusoids using 1 to 3 different frequencies and
 keeps the best performing fit, which is useful for periodic along-track errors common to DEMs:
 
 ```{code-cell} ipython3
@@ -262,7 +262,7 @@ ax[1].set_title("After directional\nde-biasing")
 _ = ax[1].set_yticklabels([])
 ```
 
-For strip-like errors, performing an empirical correction using only a binning with `fit_or_bin="bin"` allows more 
+For strip-like errors, performing an empirical correction using only a binning with `fit_or_bin="bin"` allows more
 flexibility, but requires a larger amount of static surfacesd:
 
 ```{code-cell} ipython3
@@ -318,7 +318,7 @@ _ = ax[1].set_yticklabels([])
 - **Pros:** Useful to correct for instance curvature bias due to different native resolution between elevation data.
 - **Cons:** For curvature biases, only works for elevation data with relatively close natire resolution.
 
-The default optimizer for terrain biases optimizes a 1D polynomial with an order from 1 to 6, 
+The default optimizer for terrain biases optimizes a 1D polynomial with an order from 1 to 6,
 and keeps the best performing fit.
 
 ```{code-cell} ipython3
@@ -343,7 +343,7 @@ tbc_dem_curv = ref_dem + synthetic_bias
 
 ```{code-cell} ipython3
 # Instantiate a 1st order terrain bias correction for curvature
-terbias = xdem.coreg.TerrainBias(terrain_attribute="maximum_curvature", 
+terbias = xdem.coreg.TerrainBias(terrain_attribute="maximum_curvature",
                                  bin_sizes={"maximum_curvature": np.linspace(-5, 5, 1000)},
                                  bin_apply_method="per_bin")
 # Fit and apply to the data
@@ -414,8 +414,8 @@ corrected_dem = biascorr.apply(tba_dem_nk, bias_vars={"aspect": aspect, "slope":
 ```
 
 ```{warning}
-Using any custom variables, and especially in many dimensions, **it becomes easy to over-correct and introduce new errors**. 
-For instance, elevation-dependent corrections (as shown below) typically introduce new errors (due to more high curvatures 
+Using any custom variables, and especially in many dimensions, **it becomes easy to over-correct and introduce new errors**.
+For instance, elevation-dependent corrections (as shown below) typically introduce new errors (due to more high curvatures
 at high elevation such as peaks, and low curvatures at low elevation with flat terrain).
 
 For this reason, it is important to check the sanity of elevation differences after correction!

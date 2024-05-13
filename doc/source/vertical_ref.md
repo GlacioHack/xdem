@@ -23,7 +23,7 @@ pyplot.rcParams['savefig.dpi'] = 600
 
 # Vertical referencing
 
-xDEM supports the use of **vertical coordinate reference systems (vertical CRSs) and vertical transformations for elevation data** 
+xDEM supports the use of **vertical coordinate reference systems (vertical CRSs) and vertical transformations for elevation data**
 by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.io/pyproj/stable/) in the {class}`~xdem.DEM` class.
 
 ```{note}
@@ -47,7 +47,7 @@ provided contains a vertical axis).
 We therefore advise to perform horizontal transformation and vertical transformation independently using {func}`DEM.reproject<xdem.DEM.reproject>` and {func}`DEM.to_vcrs<xdem.DEM.to_vcrs>`, respectively.
 ```
 
-To pass a vertical CRS argument, xDEM accepts string of the most commonly used (`"EGM96"`, `"EGM08"` and `"Ellipsoid"`), 
+To pass a vertical CRS argument, xDEM accepts string of the most commonly used (`"EGM96"`, `"EGM08"` and `"Ellipsoid"`),
 any {class}`pyproj.crs.CRS` objects and any PROJ grid name (available at [https://cdn.proj.org/](https://cdn.proj.org/)) which is **automatically downloaded**.
 
 ```{code-cell} ipython3
@@ -256,7 +256,7 @@ To transform a {class}`~xdem.DEM` to a different vertical CRS, {func}`~xdem.DEM.
 
 ```{note}
 If your transformation requires a grid that is not available locally, it will be **downloaded automatically**.
-xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`, 
+xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`,
 considering the area-of-interest as the DEM extent {attr}`~xdem.DEM.bounds`.
 ```
 

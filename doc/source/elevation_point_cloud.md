@@ -16,5 +16,5 @@ kernelspec:
 
 In construction, planned for 2024.
 
-However, **elevation point clouds are already supported for coregistration and bias correction** by passing a {class}`geopandas.GeoDataFrame` 
+However, **elevation point clouds are already supported for coregistration and bias correction** by passing a {class}`geopandas.GeoDataFrame`
 associated to an elevation column name argument `z_name` to {func}`xdem.coreg.Coreg.fit` or {func}`xdem.coreg.Coreg.apply`.

@@ -23,7 +23,7 @@ and tested for consistency against [gdaldem](https://gdal.org/programs/gdaldem.h
 
 Terrain attribute methods can either be called directly from a {class}`~xdem.DEM` (e.g., {func}`xdem.DEM.slope`) or
 through the {class}`~xdem.terrain` module (e.g., {func}`xdem.terrain.slope`) which allows a NumPy array input but
-requires additional metadata. 
+requires additional metadata.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -54,7 +54,7 @@ slope = dem.slope()
 slope = xdem.terrain.slope(dem.data, resolution=dem.res)
 ```
 
-If computational performance is key, xDEM can rely on [RichDEM](https://richdem.readthedocs.io/) by specifying 
+If computational performance is key, xDEM can rely on [RichDEM](https://richdem.readthedocs.io/) by specifying
 `use_richdem=True` for speed-up of specific supported attributes (slope, aspect, curvature).
 
 ## Summary of supported methods
@@ -63,7 +63,7 @@ If computational performance is key, xDEM can rely on [RichDEM](https://richdem.
    :widths: 1 1 1
    :header-rows: 1
    :stub-columns: 1
-   
+
    * - Attribute
      - Unit (if DEM in meters)
      - Reference
@@ -112,10 +112,10 @@ It is most often described in degrees, where a flat surface is 0° and a vertica
 No tilt direction is stored in the slope map; a 45° tilt westward is identical to a 45° tilt eastward.
 
 The slope $\alpha$ can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default)
-based on a refined gradient formulation on a 3x3 pixel window, or by the method of 
+based on a refined gradient formulation on a 3x3 pixel window, or by the method of
 [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) based on a plane fit on a 3x3 pixel window.
 
-For both methods, $\alpha = arctan(\sqrt{p^{2} + q^{2}})$ where $p$ and $q$ are the gradient components west-to-east and south-to-north, respectively, with for [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918): 
+For both methods, $\alpha = arctan(\sqrt{p^{2} + q^{2}})$ where $p$ and $q$ are the gradient components west-to-east and south-to-north, respectively, with for [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918):
 
 $$
 p_{\textrm{Horn}}=\left[(h_{++} + 2h_{+0} + h_{+-}) - (h_{-+} + 2h_{-0} + h_{--})\right]/ 8 \Delta x,\\
@@ -129,7 +129,7 @@ p_{\textrm{ZevTho}} = (h_{+0} - h_{-0})/2 \Delta x,\\
 q_{\textrm{ZevTho}} = (h_{0+} - h_{0-})/2 \Delta y,
 $$
 
-where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ correspond to east-west and north-south directions respectively, and take values of either the center ($0$), west or south ($-$), or east or north ($+$). Finally, $\Delta x$ 
+where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ correspond to east-west and north-south directions respectively, and take values of either the center ($0$), west or south ($-$), or east or north ($+$). Finally, $\Delta x$
 and $\Delta y$ correspond to the pixel resolution west-east and south-north, respectively.
 
 The differences between methods are illustrated in the {ref}`sphx_glr_advanced_examples_plot_slope_methods.py`
@@ -149,7 +149,7 @@ The aspect describes the orientation of strongest slope.
 It is often reported in degrees, where a slope tilting straight north corresponds to an aspect of 0°, and an eastern
 aspect is 90°, south is 180° and west is 270°. By default, a flat slope is given an arbitrary aspect of 180°.
 
-The aspect $\theta$ is based on the same variables as the slope, and thus varies similarly between the method of 
+The aspect $\theta$ is based on the same variables as the slope, and thus varies similarly between the method of
 [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default) and that of
 [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
 
@@ -160,7 +160,7 @@ $$
 with $p$ and $q$ defined above.
 
 ```{warning}
-A north aspect represents the upper direction of the Y axis in the coordinate reference system of the 
+A north aspect represents the upper direction of the Y axis in the coordinate reference system of the
 input, {attr}`xdem.DEM.crs`, which might not represent the true north.
 ```
 
@@ -178,7 +178,7 @@ The hillshade is a slope map, shaded by the aspect of the slope.
 With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
 This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
 
-The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default) and that of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and 
+The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default) and that of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and
 is often scaled between 1 and 255:
 
 $$
@@ -215,7 +215,7 @@ $$
 
 ```{code-cell} ipython3
 curvature = dem.curvature()
-# Curvature is rough, we use antiliasing (Matplotlib default, turned off for rasters to avoid nodata spreading) 
+# Curvature is rough, we use antiliasing (Matplotlib default, turned off for rasters to avoid nodata spreading)
 curvature.plot(cmap="RdGy_r", cbar_title="Curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
@@ -236,7 +236,7 @@ $$
 
 ```{code-cell} ipython3
 planform_curvature = dem.planform_curvature()
-# Curvature is rough, we use antiliasing (Matplotlib default, turned off for rasters to avoid nodata spreading) 
+# Curvature is rough, we use antiliasing (Matplotlib default, turned off for rasters to avoid nodata spreading)
 planform_curvature.plot(cmap="RdGy_r", cbar_title="Planform curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
@@ -247,7 +247,7 @@ planform_curvature.plot(cmap="RdGy_r", cbar_title="Planform curvature (100 / m)"
 
 The profile curvature is the curvature parallel to the direction of slope, reported in 100 m{sup}`-1`.
 
-It is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107): 
+It is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
 
 $$
 
@@ -258,7 +258,7 @@ $$
 
 ```{code-cell} ipython3
 profile_curvature = dem.profile_curvature()
-# Curvature is rough, we use antiliasing (Matplotlib default, turned off for rasters to avoid nodata spreading) 
+# Curvature is rough, we use antiliasing (Matplotlib default, turned off for rasters to avoid nodata spreading)
 profile_curvature.plot(cmap="RdGy_r", cbar_title="Profile curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
@@ -313,7 +313,7 @@ tri.plot(cmap="Purples", cbar_title="Terrain ruggedness index (m)")
 
 {func}`xdem.DEM.roughness`
 
-The roughness is a metric of terrain ruggedness, based on the maximum difference in elevation in the surroundings, 
+The roughness is a metric of terrain ruggedness, based on the maximum difference in elevation in the surroundings,
 described in [Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081). Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
 
 $$
@@ -330,7 +330,7 @@ roughness.plot(cmap="Oranges", cbar_title="Roughness (m)")
 
 {func}`xdem.DEM.rugosity`
 
-The rugosity is a metric of terrain ruggedness, based on the ratio between planimetric and real surface area, 
+The rugosity is a metric of terrain ruggedness, based on the ratio between planimetric and real surface area,
 described in [Jenness (2004)](<https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>).
 It is unitless, and is only supported for a 3x3 window size.
 
@@ -338,7 +338,7 @@ $$
 r_{\textrm{J}} = \sum_{k \in [1,8]} A(T_{00, k}) / (\Delta x \Delta y).
 $$
 
-where $A(T_{00,k})$ is the area of one of the 8 triangles connected from the center of the center pixel $00$ to the 
+where $A(T_{00,k})$ is the area of one of the 8 triangles connected from the center of the center pixel $00$ to the
 centers of its 8 neighbouring pixels $k$, cropped to intersect only the center pixel. This surface area is computed in three dimensions, accounting for elevation differences.
 
 ```{code-cell} ipython3

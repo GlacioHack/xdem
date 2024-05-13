@@ -44,4 +44,3 @@ To estimate the standard error of the mean for elevation data, two issue arises:
 
 The sections {ref}`spatialstats-corr` and {ref}`spatialstats-errorpropag` describe how to account for spatial correlations
 and use those to integrate and propagate measurement errors in space.
-

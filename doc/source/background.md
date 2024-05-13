@@ -35,7 +35,7 @@ And, additionally:
 
 - **State-of-the-art**: all methods should be at the cutting edge of remote sensing science, to provide users with the most reliable and up-to-date tools.
 
-And finally: 
+And finally:
 
 - **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependent
   packages and works;

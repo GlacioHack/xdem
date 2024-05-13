@@ -14,10 +14,10 @@ kernelspec:
 
 # Coregistration
 
-xDEM implements a wide range of **coregistration algorithms and pipelines for 3-dimensional alignment** from the 
+xDEM implements a wide range of **coregistration algorithms and pipelines for 3-dimensional alignment** from the
 peer-reviewed literature often tailored specifically to elevation data, aiming at correcting systematic elevation errors.
 
-Two categories of alignment are generally differentiated: **3D affine transformations** described below, and other 
+Two categories of alignment are generally differentiated: **3D affine transformations** described below, and other
 alignments that possibly rely on external variables described in {ref}`biascorr`.
 
 
@@ -71,7 +71,7 @@ tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 ```
 
-Alternatively, the coregistration can be applied by sequentially calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps, 
+Alternatively, the coregistration can be applied by sequentially calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
 which allows a broader variety of arguments at each step, and re-using the same transformation to several objects (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ```{code-cell} ipython3
@@ -86,10 +86,10 @@ Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to iso
 
 ## What is coregistration?
 
-Coregistration is the process of finding a transformation to align data in a certain number of dimensions. In the case 
+Coregistration is the process of finding a transformation to align data in a certain number of dimensions. In the case
 of elevation data, in three dimensions.
 
-Transformations that can be described by a 3-dimensional [affine](https://en.wikipedia.org/wiki/Affine_transformation) 
+Transformations that can be described by a 3-dimensional [affine](https://en.wikipedia.org/wiki/Affine_transformation)
 function are included in coregistration methods, which include:
 
 - vertical and horizontal translations,
@@ -138,7 +138,7 @@ See coregistration on real data in the **{ref}`examples-basic` and {ref}`example
 - **Pros:** Refines sub-pixel horizontal shifts accurately, with fast convergence.
 - **Cons:** Diverges on flat terrain, as landforms are required to constrain the fit with aspect and slope.
 
-The [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) coregistration approach estimates a horizontal 
+The [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) coregistration approach estimates a horizontal
 translation iteratively by solving a cosine equation between the terrain slope, aspect and the elevation differences.
 The iteration stops if it reaches the maximum number of iteration limit or if the tolerance does not improve.
 
@@ -161,7 +161,7 @@ matrix = np.array(
     ]
 )
 # We create misaligned elevation data
-tba_dem_shift = xdem.coreg.apply_matrix(ref_dem, matrix) 
+tba_dem_shift = xdem.coreg.apply_matrix(ref_dem, matrix)
 ```
 
 ```{code-cell} ipython3
@@ -206,7 +206,7 @@ Tilt coregistration works by estimating and correcting for a 2D first-order poly
 :  code_prompt_hide: "Hide the code for adding a tilt"
 
 # Apply a rotation of 0.2 degrees
-rotation = np.deg2rad(0.2) 
+rotation = np.deg2rad(0.2)
 matrix = np.array(
     [
         [1, 0, 0, 0],
@@ -216,7 +216,7 @@ matrix = np.array(
     ]
 )
 # We create misaligned elevation data
-tba_dem_tilt = xdem.coreg.apply_matrix(ref_dem, matrix) 
+tba_dem_tilt = xdem.coreg.apply_matrix(ref_dem, matrix)
 ```
 
 ```{code-cell} ipython3
@@ -296,7 +296,7 @@ _ = ax[1].set_yticklabels([])
 - **Performs:** Rigid transform transformation (3D translation + 3D rotation).
 - **Does not support weights.**
 - **Pros:** Efficient at estimating rotation and shifts simultaneously.
-- **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples. 
+- **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
 
 Iterative Closest Point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955). It aims at iteratively minimizing the closest distance by apply sequential rigid transformations. If DEMs are used as inputs, they are converted to point clouds.
 As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the tolerance does not improve.
@@ -310,7 +310,7 @@ ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/
 :  code_prompt_hide: "Hide the code for adding a shift and rotation"
 
 # Apply a rotation of 0.2 degrees and X/Y/Z shifts to elevation in meters
-rotation = np.deg2rad(0.2) 
+rotation = np.deg2rad(0.2)
 x_shift = 20
 y_shift = 20
 z_shift = 5
@@ -324,7 +324,7 @@ matrix = np.array(
     ]
 )
 # We create misaligned elevation data
-tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix) 
+tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix)
 ```
 
 ```{code-cell} ipython3

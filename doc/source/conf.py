@@ -173,7 +173,7 @@ html_theme_options = {
         "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
         'to update your code see <a href="https://github.com/GlacioHack/xdem/releases/tag/v0.1.0">here</a>. ⚠️'
         "<br>Future changes will come with deprecation warnings! 🙂"
-    )
+    ),
 }
 
 # For dark mode

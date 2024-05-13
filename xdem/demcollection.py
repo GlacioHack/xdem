@@ -36,8 +36,9 @@ class DEMCollection:
         if timestamps is None:
             timestamp_attributes = [dem.datetime for dem in dems]
             if any(stamp is None for stamp in timestamp_attributes):
-                raise ValueError("Argument `timestamps` not provided and the given DEMs do not all have datetime "
-                                 "attributes")
+                raise ValueError(
+                    "Argument `timestamps` not provided and the given DEMs do not all have datetime " "attributes"
+                )
 
             timestamps = timestamp_attributes
 

@@ -50,8 +50,8 @@ from geoutils.raster import (
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.spatialstats import nmad
 from xdem.dem import DEM
+from xdem.spatialstats import nmad
 
 try:
     import pytransform3d.transformations
