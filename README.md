@@ -49,7 +49,7 @@ See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install 
 
 When using a method implemented in xDEM, please **cite both the package and the related study**:
 
-Citing xDEM: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/record/4809698)
+Citing xDEM: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/doi/10.5281/zenodo.4809697)
 
 Citing the related study:
 

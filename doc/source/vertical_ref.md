@@ -63,16 +63,13 @@ ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 ```
 
 ```{code-cell} ipython3
-# Copy reference DEM to compare back later
-ref_copy = ref_dem.copy()
-
 # Set current vertical CRS
 ref_dem.set_vcrs("EGM96")
 # Transform to a local reference system from https://cdn.proj.org/
-ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
+trans_dem = ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
 
 # Plot the elevation differences of the vertical transformation
-(ref_copy - ref_dem).plot(cmap='RdYlBu', cbar_title="Elevation differences of\n vertical transform (m)")
+(trans_dem - ref_dem).plot(cmap='RdYlBu', cbar_title="Elevation differences of\n vertical transform (m)")
 ```
 
 ## What is a vertical CRS?

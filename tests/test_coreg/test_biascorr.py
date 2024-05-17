@@ -545,7 +545,7 @@ class TestBiasCorr:
         tb = biascorr.TerrainBias()
 
         assert tb._fit_or_bin == "bin"
-        assert tb._meta["bin_sizes"] == 100
+        assert tb._meta["bin_sizes"] == 1000
         assert tb._meta["bin_statistic"] == np.nanmedian
         assert tb._meta["terrain_attribute"] == "maximum_curvature"
         assert tb._needs_vars is False
