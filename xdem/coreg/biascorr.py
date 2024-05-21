@@ -1,15 +1,18 @@
 """Bias corrections (i.e., non-affine coregistration) classes."""
+
 from __future__ import annotations
 
 import inspect
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
+import dask.array as da
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pandas as pd
 import rasterio as rio
 import scipy
+from dask.delayed import Delayed
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
@@ -41,9 +44,9 @@ class BiasCorr(Coreg):
     def __init__(
         self,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
+        fit_func: (
+            Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
+        ) = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
@@ -187,17 +190,29 @@ class BiasCorr(Coreg):
         # Compute difference and mask of valid data
         # TODO: Move the check up to Coreg.fit()?
 
-        diff = ref_elev - tba_elev
-        valid_mask = np.logical_and.reduce(
-            (inlier_mask, np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values()))
-        )
+        if all(isinstance(dem, (da.Array, Delayed)) for dem in (ref_elev, tba_elev)):
+            diff = da.subtract(ref_elev, tba_elev)
 
-        # Raise errors if all values are NaN after introducing masks from the variables
-        # (Others are already checked in Coreg.fit())
-        if np.all(~valid_mask):
-            raise ValueError("Some 'bias_vars' have only NaNs in the inlier mask.")
+            # clearing some memory
+            del ref_elev, tba_elev
 
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask, verbose=verbose)
+            # TODO the output is called mask but it's the indices. Find a nicer way to handle this
+            subsample_mask = self._get_subsample_indices_dask(data=inlier_mask)
+        else:
+            diff = ref_elev - tba_elev
+            valid_mask = np.logical_and.reduce(
+                (inlier_mask, np.isfinite(diff), *(np.isfinite(var) for var in bias_vars.values()))
+            )
+
+            # Raise errors if all values are NaN after introducing masks from the variables
+            # (Others are already checked in Coreg.fit())
+            if np.all(~valid_mask):
+                raise ValueError("Some 'bias_vars' have only NaNs in the inlier mask.")
+
+            subsample_mask = self._get_subsample_on_valid_mask(  # type: ignore [assignment]
+                valid_mask=valid_mask,
+                verbose=verbose,
+            )
 
         # Get number of variables
         nd = len(bias_vars)
@@ -230,11 +245,26 @@ class BiasCorr(Coreg):
                     "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
                 )
 
+            if isinstance(diff, np.ndarray):
+                ydata = diff[subsample_mask].flatten()
+                xdata = np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze()
+                # TODO - there is a bug here still
+                # sigma = (weights[subsample_mask].flatten() if weights is not None else None,)
+                sigma = None
+            elif isinstance(diff, da.Array):
+                ydata = diff.vindex[subsample_mask].flatten().compute()  # type:ignore [assignment]
+                xdata = [var.vindex[subsample_mask].flatten() for var in bias_vars.values()]  # type:ignore [assignment]
+                # TODO - there is a bug here still
+                # sigma = (weights[subsample_mask].flatten() if weights is not None else None,)
+                sigma = None
+            else:
+                raise TypeError(f"Incompatible input type for arrays {type(diff)}.")
+
             results = self._meta["fit_optimizer"](
                 f=self._meta["fit_func"],
-                xdata=np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze(),
-                ydata=diff[subsample_mask].flatten(),
-                sigma=weights[subsample_mask].flatten() if weights is not None else None,
+                xdata=xdata,
+                ydata=ydata,
+                sigma=sigma,
                 absolute_sigma=True,
                 **kwargs,
             )
@@ -645,9 +675,9 @@ class TerrainBias(BiasCorr):
         self,
         terrain_attribute: str = "maximum_curvature",
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
+        fit_func: (
+            Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
+        ) = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
@@ -858,7 +888,10 @@ class Deramp(BiasCorr):
         p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
-        xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
+        if type(ref_elev) == da.Array:
+            xx, yy = da.meshgrid(da.arange(0, ref_elev.shape[1]), da.arange(0, ref_elev.shape[0]))
+        else:
+            xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
 
         self._fit_biascorr(
             ref_elev=ref_elev,

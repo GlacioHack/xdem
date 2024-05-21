@@ -47,7 +47,7 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
-from geoutils.raster.delayed import delayed_reproject
+from geoutils.raster.delayed import delayed_reproject, delayed_subsample
 from rasterio.enums import Resampling
 from tqdm import tqdm
 
@@ -63,8 +63,8 @@ except ImportError:
     _HAS_P3D = False
 
 
-# from dask.array import Array
 import dask.array as da
+from dask.delayed import Delayed
 from xarray.core.dataarray import DataArray
 
 ###########################################
@@ -340,7 +340,6 @@ def _select_transform_crs(
         new_crs = crs_other
 
     # Check that we have set the transforms
-    # transform, crs = new_transform, new_crs
     if new_transform is None:
         raise ValueError("'transform' must be given if both DEMs are Xarrays without a transform.")
     if new_crs is None:
@@ -348,50 +347,17 @@ def _select_transform_crs(
     return new_transform, new_crs
 
 
-def _get_inlier_mask(mask: da.Array | None) -> da.Array:
-    """Get the inlier mask."""
+def _get_valid_data_mask(
+    ref: NDArrayf, tba: NDArrayf, mask: NDArrayb | None, ref_nodata: float | int, tba_nodata: float | int
+) -> NDArrayb:
+    """Get a mask for all valid data and inliers."""
+    mask_ref = np.where((~np.isfinite(ref)) | (ref == ref_nodata), False, True)
+    mask_tba = np.where((~np.isfinite(tba)) | (tba == tba_nodata), False, True)
+    valid_mask = np.logical_and(mask_ref, mask_tba)
 
-    # 1 if mask is None -> create a mask
-    if mask is None:
-        # initialize a dask array for the mask as big as the input with all True.
-        # mask = da.ones(da.shape(ref_dem),chunks=(), dtype=bool)
-        raise NotImplementedError("Handle this case. Initializing a boolean dask array.")
-
-    # make sure its a boolean mask
-    if mask.dtype != bool:
-        raise TypeError(f"Invalid mask dtype: '{mask.dtype}'")
-
-    # make sure its not all inliers
-    # TODO is True of False an inlier?
-    if da.all(~mask):
-        raise ValueError("'inlier_mask' had no inliers.")
-
-    return mask
-
-
-def _get_valid_data_mask(data: da.Array, nodata_value: float | int) -> tuple[da.Array, da.Array]:
-    """Get the mask for invalid data in the array."""
-
-    # TODO see if these functions get evaluated on a chunk by chunk basis.
-
-    # create a mask for nodata and non-finite values
-    mask = da.where(da.logical_or(~da.isfinite(data), data == nodata_value), True, False)
-
-    # check if entire data is invalid
-    if da.all(mask):
-        raise ValueError("Input 'dem' had only NaNs")
-
-    # set all masked values to np.nan in the original data
-    masked_data = da.where(mask, np.nan, data)
-
-    return mask, masked_data
-
-
-def _validate_masks(inlier_mask: da.Array, ref_mask: da.Array, tba_mask: da.Array) -> None:
-    """Validate if there is valid data in combined maskes."""
-    invalid_mask = da.logical_or(~inlier_mask, np.logical_or(ref_mask, tba_mask))
-    if da.all(invalid_mask):
-        raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
+    if mask is not None:
+        return np.logical_and(mask, valid_mask)
+    return valid_mask.astype(bool)
 
 
 def _preprocess_coreg_fit_xarray_xarray(
@@ -401,7 +367,7 @@ def _preprocess_coreg_fit_xarray_xarray(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
 ) -> tuple[da.Array, da.Array, da.Array, affine.Affine, rio.crs.CRS]:
-    """Pre-processing and checks of fit() for xarray(dask) inputs."""
+    """Pre-processing and checks of fit() for xarray(dask) inputs. Outputs are the core dask arrays."""
 
     # validate that both inputs are valid xarrays
     if not all(isinstance(dem, DataArray) for dem in (reference_dem, dem_to_be_aligned)):
@@ -424,33 +390,53 @@ def _preprocess_coreg_fit_xarray_xarray(
     dem_tba_nodata = dem_to_be_aligned.rio.nodata
 
     # reproject DEM to be aligned if it is not in the correct grid.
-    dem_to_be_aligned = delayed_reproject(
+    # TODO memory management for this step does not seem to be optimal yet
+    dem_to_be_aligned_reprojected = delayed_reproject(
         darr=dem_to_be_aligned.data,
         src_transform=dem_to_be_aligned.rio.transform(),
         src_crs=dem_to_be_aligned.rio.crs,
         dst_transform=reference_dem.rio.transform(),
         dst_shape=reference_dem.shape,
         dst_crs=reference_dem.rio.crs,
-        resampling=Resampling.bilinear,  # TODO is it ok to make this the default resampling method?
+        resampling=Resampling.bilinear,
         src_nodata=dem_to_be_aligned.rio.nodata,
         dst_nodata=reference_dem.rio.nodata,
         dst_chunksizes=None,  # reproject will use the destination chunksizes if set to None.
     )
+    del dem_to_be_aligned
 
-    reference_dem, reference_mask = _get_valid_data_mask(
-        data=reference_dem.data,
-        nodata_value=reference_dem.rio.nodata,
-    )
-    tba_dem, tba_mask = _get_valid_data_mask(
-        data=dem_to_be_aligned,
-        nodata_value=dem_tba_nodata,
-    )
-    inlier_mask = _get_inlier_mask(mask=inlier_mask)
+    # if a mask is passed, pass it as a positional argument
+    # dask will map over the internal blocks
+    if inlier_mask is not None:
+        inlier_mask_all = da.map_blocks(
+            _get_valid_data_mask,
+            reference_dem.data,
+            dem_to_be_aligned_reprojected,
+            inlier_mask.data,
+            ref_nodata=reference_dem.rio.nodata,
+            tba_nodata=dem_tba_nodata,
+            chunks=inlier_mask.chunks,
+            dtype=inlier_mask.dtype,
+        )
+        del inlier_mask
+    # if no mask is passed, pass a keyword argument mask=None
+    # and da.map_blocks will treat it as a static variable.
+    else:
+        inlier_mask_all = da.map_blocks(
+            _get_valid_data_mask,
+            reference_dem.data,
+            dem_to_be_aligned_reprojected,
+            mask=None,
+            ref_nodata=reference_dem.rio.nodata,
+            tba_nodata=dem_tba_nodata,
+            chunks=reference_dem.chunks,
+            dtype="bool",
+        )
 
-    # TODO this still raises an error
-    # _validate_masks(inlier_mask=inlier_mask, ref_mask=reference_mask, tba_mask=tba_mask)
+    # TODO handle mask has no inliers -> np.all(~mask)
 
-    return reference_dem, tba_dem, inlier_mask, transform, crs
+    # outputs are dask arrays
+    return reference_dem.data, dem_to_be_aligned_reprojected, inlier_mask_all, transform, crs
 
 
 def _preprocess_coreg_fit_raster_raster(
@@ -643,8 +629,9 @@ def _preprocess_coreg_fit(
             tba_elev = raster_elev
 
     # if both inputs are xarray/ dask arrays
-    elif any(isinstance(elev, DataArray) for elev in (reference_elev, to_be_aligned_elev)):
+    elif all(isinstance(elev, DataArray) for elev in (reference_elev, to_be_aligned_elev)):
 
+        # outputs are now dask arrays
         ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_xarray_xarray(
             reference_dem=reference_elev,
             dem_to_be_aligned=to_be_aligned_elev,
@@ -1314,6 +1301,19 @@ class Coreg:
 
         return subsample_mask
 
+    def _get_subsample_indices_dask(self, data: NDArrayb) -> tuple[NDArrayf, NDArrayf]:
+        """Get subsampled indices from a dask array."""
+
+        # subsample value is handled in delyyed_subsample
+        indices = delayed_subsample(
+            darr=data, subsample=self._meta["subsample"], return_indices=True, silence_max_subsample=True
+        )
+
+        # Write final subsample to class
+        self._meta["subsample_final"] = len(indices[0])
+
+        return indices
+
     def fit(
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | da.Array,
@@ -1805,7 +1805,7 @@ class Coreg:
         """
 
         # Determine if input is raster-raster, raster-point or point-point
-        if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        if all(isinstance(dem, (np.ndarray, da.Array, Delayed)) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "r-r"
         elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "p-p"
