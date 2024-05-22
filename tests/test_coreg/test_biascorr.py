@@ -1,14 +1,19 @@
 """Tests for the biascorr module (non-rigid coregistrations)."""
+
 from __future__ import annotations
 
 import re
 import warnings
 
+import dask.array as da
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pytest
+import rasterio
+import rioxarray
 import scipy
+from xarray.core.dataarray import DataArray
 
 import xdem.terrain
 from xdem import examples
@@ -28,6 +33,25 @@ def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
+def load_examples_xarray() -> tuple[DataArray, DataArray, DataArray]:
+    """Load cog example files as xarrays to try delayed / dask coregistration methods with."""
+    chunk_size = 256  # the rasters are COGs with blocksizes 256
+    reference_raster = rioxarray.open_rasterio(
+        filename=examples.get_path("longyearbyen_ref_dem_cog"), chunks={"x": chunk_size, "y": chunk_size}
+    ).squeeze()
+    to_be_aligned_raster = rioxarray.open_rasterio(
+        filename=examples.get_path("longyearbyen_tba_dem_cog"), chunks={"x": chunk_size, "y": chunk_size}
+    ).squeeze()
+    glacier_mask = rioxarray.open_rasterio(
+        filename=examples.get_path("longyearbyen_glacier_outlines_cog"), chunks={"x": chunk_size, "y": chunk_size}
+    ).squeeze()
+
+    # convert mask to a boolean array
+    inlier_mask = glacier_mask.where(glacier_mask.data == 1, True, False)
+
+    return reference_raster, to_be_aligned_raster, inlier_mask
+
+
 class TestBiasCorr:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
@@ -38,6 +62,15 @@ class TestBiasCorr:
         reference_elev=ref,
         to_be_aligned_elev=tba,
         inlier_mask=inlier_mask,
+        verbose=True,
+    )
+
+    # Load Xarray - Xarray example data
+    ref_xarr, tba_xarr, mask_xarr = load_examples_xarray()
+    fit_args_xarr_xarr = dict(
+        reference_elev=ref_xarr,
+        to_be_aligned_elev=tba_xarr,
+        inlier_mask=mask_xarr,
         verbose=True,
     )
 
@@ -63,6 +96,7 @@ class TestBiasCorr:
     )
 
     all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
+    all_fit_args_xarr = [fit_args_xarr_xarr]
 
     def test_biascorr(self) -> None:
         """Test the parent class BiasCorr instantiation."""
@@ -498,6 +532,56 @@ class TestBiasCorr:
         # Check that variable names are defined during instantiation
         assert deramp.meta["bias_var_names"] == ["xx", "yy"]
 
+    @pytest.mark.parametrize("fit_args", all_fit_args_xarr)  # type: ignore
+    @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
+    def test_deramp__synthetic_xarr(self, fit_args, order: int) -> None:
+        """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
+
+        # These warning will cause pytest to fail, even though there is no issue with the data
+        warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+
+        # Get coordinates
+        xx, yy = np.meshgrid(da.arange(0, self.ref_xarr.shape[1]), np.arange(0, self.ref_xarr.shape[0]))
+
+        # Number of parameters for a 2D order N polynomial called through np.polyval2d
+        nb_params = int((order + 1) * (order + 1))
+
+        # Get a random number of parameters
+        np.random.seed(42)
+        params = np.random.normal(size=nb_params)
+
+        # Create a synthetic bias and add to the DEM
+        synthetic_bias = polynomial_2d((xx, yy), *params)
+        bias_dem = self.ref_xarr - synthetic_bias
+
+        # Fit
+        deramp = biascorr.Deramp(poly_order=order)
+        elev_fit_args = fit_args.copy()
+
+        deramp.fit(
+            reference_elev=elev_fit_args["reference_elev"],
+            to_be_aligned_elev=bias_dem,
+            inlier_mask=elev_fit_args["inlier_mask"],
+            verbose=True,
+            subsample=20000,
+            random_state=42,
+        )
+
+        # Check high-order fit parameters are the same within 10%
+        fit_params = deramp._meta["fit_params"]
+        print(fit_params)
+        assert np.shape(fit_params) == np.shape(params)
+        assert np.allclose(
+            params.reshape(order + 1, order + 1)[-1:, -1:],
+            fit_params.reshape(order + 1, order + 1)[-1:, -1:],
+            rtol=0.1,
+        )
+
+        # Run apply and check that 99% of the variance was corrected
+        # corrected_dem = deramp.apply(bias_dem)
+        # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
+        # assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01
+
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
     def test_deramp__synthetic(self, fit_args, order: int) -> None:
@@ -524,13 +608,22 @@ class TestBiasCorr:
             bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=30000, random_state=42).ds
         else:
             bias_elev = bias_dem
-        deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=20000, random_state=42)
+
+        deramp.fit(
+            elev_fit_args["reference_elev"],
+            to_be_aligned_elev=bias_elev,
+            inlier_mask=elev_fit_args["inlier_mask"],
+            subsample=20000,
+            random_state=42,
+        )
 
         # Check high-order fit parameters are the same within 10%
         fit_params = deramp.meta["fit_params"]
         assert np.shape(fit_params) == np.shape(params)
         assert np.allclose(
-            params.reshape(order + 1, order + 1)[-1:, -1:], fit_params.reshape(order + 1, order + 1)[-1:, -1:], rtol=0.1
+            params.reshape(order + 1, order + 1)[-1:, -1:],
+            fit_params.reshape(order + 1, order + 1)[-1:, -1:],
+            rtol=0.1,
         )
 
         # Run apply and check that 99% of the variance was corrected

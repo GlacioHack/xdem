@@ -1,4 +1,5 @@
 """Utility functions to download and find example data."""
+
 import os
 import tarfile
 import tempfile
@@ -13,7 +14,12 @@ _EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 # Absolute filepaths to the example files.
 _FILEPATHS_DATA = {
     "longyearbyen_ref_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
+    "longyearbyen_ref_dem_cog": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.cog.tif"),
     "longyearbyen_tba_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.tif"),
+    "longyearbyen_tba_dem_cog": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.cog.tif"),
+    "longyearbyen_glacier_outlines_cog": os.path.join(
+        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "rasterized_CryoClim_GEO_SJ_1990.cog.tif"
+    ),
     "longyearbyen_glacier_outlines": os.path.join(
         _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
     ),

@@ -253,7 +253,9 @@ class BiasCorr(Coreg):
                 sigma = None
             elif isinstance(diff, da.Array):
                 ydata = diff.vindex[subsample_mask].flatten().compute()  # type:ignore [assignment]
-                xdata = [var.vindex[subsample_mask].flatten() for var in bias_vars.values()]  # type:ignore [assignment]
+                xdata = [
+                    var.vindex[subsample_mask].flatten().compute() for var in bias_vars.values()
+                ]  # type:ignore [assignment]
                 # TODO - there is a bug here still
                 # sigma = (weights[subsample_mask].flatten() if weights is not None else None,)
                 sigma = None
