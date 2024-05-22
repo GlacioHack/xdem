@@ -133,10 +133,10 @@ class BiasCorr(Coreg):
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
         # Add subsample attribute
-        self._meta["subsample"] = subsample
+        self.meta["subsample"] = subsample
 
         # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
-        self._meta["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
+        self.meta["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
 
         # Update attributes
         self._fit_or_bin = fit_or_bin
@@ -166,7 +166,7 @@ class BiasCorr(Coreg):
             raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
 
         # Check number of variables
-        nd = self._meta["nd"]
+        nd = self.meta["nd"]
         if nd is not None and len(bias_vars) != nd:
             raise ValueError(
                 "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
@@ -174,15 +174,15 @@ class BiasCorr(Coreg):
             )
 
         # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
-        if self._meta["bias_var_names"] is not None:
-            if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
+        if self.meta["bias_var_names"] is not None:
+            if not sorted(bias_vars.keys()) == sorted(self.meta["bias_var_names"]):
                 raise ValueError(
                     "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                    "instantiation: {}.".format(self._meta["bias_var_names"])
+                    "instantiation: {}.".format(self.meta["bias_var_names"])
                 )
         # Otherwise, store bias variable names from the dictionary
         else:
-            self._meta["bias_var_names"] = list(bias_vars.keys())
+            self.meta["bias_var_names"] = list(bias_vars.keys())
 
         # Compute difference and mask of valid data
         # TODO: Move the check up to Coreg.fit()?
@@ -204,21 +204,21 @@ class BiasCorr(Coreg):
 
         # Remove random state for keyword argument if its value is not in the optimizer function
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
-            fit_func_args = inspect.getfullargspec(self._meta["fit_optimizer"]).args
+            fit_func_args = inspect.getfullargspec(self.meta["fit_optimizer"]).args
             if "random_state" not in fit_func_args and "random_state" in kwargs:
                 kwargs.pop("random_state")
 
         # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
         if self._fit_or_bin in ["bin", "bin_and_fit"]:
-            if isinstance(self._meta["bin_sizes"], dict):
+            if isinstance(self.meta["bin_sizes"], dict):
                 var_order = list(bias_vars.keys())
                 # Declare type to write integer or tuple to the variable
                 bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
-                    np.array(self._meta["bin_sizes"][var]) for var in var_order
+                    np.array(self.meta["bin_sizes"][var]) for var in var_order
                 )
             # Otherwise, write integer directly
             else:
-                bin_sizes = self._meta["bin_sizes"]
+                bin_sizes = self.meta["bin_sizes"]
 
         # Option 1: Run fit and save optimized function parameters
         if self._fit_or_bin == "fit":
@@ -227,11 +227,11 @@ class BiasCorr(Coreg):
             if verbose:
                 print(
                     "Estimating bias correction along variables {} by fitting "
-                    "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
+                    "with function {}.".format(", ".join(list(bias_vars.keys())), self.meta["fit_func"].__name__)
                 )
 
-            results = self._meta["fit_optimizer"](
-                f=self._meta["fit_func"],
+            results = self.meta["fit_optimizer"](
+                f=self.meta["fit_func"],
                 xdata=np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze(),
                 ydata=diff[subsample_mask].flatten(),
                 sigma=weights[subsample_mask].flatten() if weights is not None else None,
@@ -245,7 +245,7 @@ class BiasCorr(Coreg):
             if verbose:
                 print(
                     "Estimating bias correction along variables {} by binning "
-                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
+                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self.meta["bin_statistic"].__name__)
                 )
 
             df = xdem.spatialstats.nd_binning(
@@ -253,7 +253,7 @@ class BiasCorr(Coreg):
                 list_var=[var[subsample_mask] for var in bias_vars.values()],
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=bin_sizes,
-                statistics=(self._meta["bin_statistic"], "count"),
+                statistics=(self.meta["bin_statistic"], "count"),
             )
 
         # Option 3: Run binning, then fitting, and save both results
@@ -265,8 +265,8 @@ class BiasCorr(Coreg):
                     "Estimating bias correction along variables {} by binning with statistic {} and then fitting "
                     "with function {}.".format(
                         ", ".join(list(bias_vars.keys())),
-                        self._meta["bin_statistic"].__name__,
-                        self._meta["fit_func"].__name__,
+                        self.meta["bin_statistic"].__name__,
+                        self.meta["fit_func"].__name__,
                     )
                 )
 
@@ -275,7 +275,7 @@ class BiasCorr(Coreg):
                 list_var=[var[subsample_mask] for var in bias_vars.values()],
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=bin_sizes,
-                statistics=(self._meta["bin_statistic"], "count"),
+                statistics=(self.meta["bin_statistic"], "count"),
             )
 
             # Now, we need to pass this new data to the fitting function and optimizer
@@ -284,7 +284,7 @@ class BiasCorr(Coreg):
 
             # We get the middle of bin values for variable, and statistic for the diff
             new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
-            new_diff = df_nd[self._meta["bin_statistic"].__name__].values
+            new_diff = df_nd[self.meta["bin_statistic"].__name__].values
             # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
             #  sigma values would have to be binned above also
 
@@ -294,8 +294,8 @@ class BiasCorr(Coreg):
             if np.all(~ind_valid):
                 raise ValueError("Only NaNs values after binning, did you pass the right bin edges?")
 
-            results = self._meta["fit_optimizer"](
-                f=self._meta["fit_func"],
+            results = self.meta["fit_optimizer"](
+                f=self.meta["fit_func"],
                 xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
                 ydata=new_diff[ind_valid].flatten(),
                 sigma=weights[ind_valid].flatten() if weights is not None else None,
@@ -310,28 +310,28 @@ class BiasCorr(Coreg):
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
 
             # Write the results to metadata in different ways depending on optimizer returns
-            if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
+            if self.meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
                 order_or_freq = results[1]
-                if self._meta["fit_optimizer"] == robust_norder_polynomial_fit:
-                    self._meta["poly_order"] = order_or_freq
+                if self.meta["fit_optimizer"] == robust_norder_polynomial_fit:
+                    self.meta["poly_order"] = order_or_freq
                 else:
-                    self._meta["nb_sin_freq"] = order_or_freq
+                    self.meta["nb_sin_freq"] = order_or_freq
 
-            elif self._meta["fit_optimizer"] == scipy.optimize.curve_fit:
+            elif self.meta["fit_optimizer"] == scipy.optimize.curve_fit:
                 params = results[0]
                 # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
                 perr = np.sqrt(np.diag(results[1]))
-                self._meta["fit_perr"] = perr
+                self.meta["fit_perr"] = perr
 
             else:
                 params = results[0]
 
-            self._meta["fit_params"] = params
+            self.meta["fit_params"] = params
 
         # Save results of binning if it was perfrmed
         elif self._fit_or_bin in ["bin", "bin_and_fit"]:
-            self._meta["bin_dataframe"] = df
+            self.meta["bin_dataframe"] = df
 
     def _fit_rst_rst(
         self,
@@ -452,24 +452,24 @@ class BiasCorr(Coreg):
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
 
         # Check the bias_vars passed match the ones stored for this bias correction class
-        if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
+        if not sorted(bias_vars.keys()) == sorted(self.meta["bias_var_names"]):
             raise ValueError(
                 "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                "instantiation or fitting: {}.".format(self._meta["bias_var_names"])
+                "instantiation or fitting: {}.".format(self.meta["bias_var_names"])
             )
 
         # Apply function to get correction (including if binning was done before)
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
-            corr = self._meta["fit_func"](tuple(bias_vars.values()), *self._meta["fit_params"])
+            corr = self.meta["fit_func"](tuple(bias_vars.values()), *self.meta["fit_params"])
 
         # Apply binning to get correction
         else:
-            if self._meta["bin_apply_method"] == "linear":
+            if self.meta["bin_apply_method"] == "linear":
                 # N-D interpolation of binning
                 bin_interpolator = xdem.spatialstats.interp_nd_binning(
-                    df=self._meta["bin_dataframe"],
+                    df=self.meta["bin_dataframe"],
                     list_var_names=list(bias_vars.keys()),
-                    statistic=self._meta["bin_statistic"],
+                    statistic=self.meta["bin_statistic"],
                 )
                 corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
                 first_var = list(bias_vars.keys())[0]
@@ -478,10 +478,10 @@ class BiasCorr(Coreg):
             else:
                 # Get N-D binning statistic for each pixel of the new list of variables
                 corr = xdem.spatialstats.get_perbin_nd_binning(
-                    df=self._meta["bin_dataframe"],
+                    df=self.meta["bin_dataframe"],
                     list_var=list(bias_vars.values()),
                     list_var_names=list(bias_vars.keys()),
-                    statistic=self._meta["bin_statistic"],
+                    statistic=self.meta["bin_statistic"],
                 )
 
         dem_corr = elev + corr
@@ -522,7 +522,7 @@ class DirectionalBias(BiasCorr):
         super().__init__(
             fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"], subsample
         )
-        self._meta["angle"] = angle
+        self.meta["angle"] = angle
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -544,7 +544,7 @@ class DirectionalBias(BiasCorr):
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
-            along_track_angle=self._meta["angle"],
+            along_track_angle=self.meta["angle"],
         )
 
         # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
@@ -588,7 +588,7 @@ class DirectionalBias(BiasCorr):
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=rast_elev, crs=crs, transform=transform, nodata=-9999),
-            along_track_angle=self._meta["angle"],
+            along_track_angle=self.meta["angle"],
         )
 
         # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
@@ -622,7 +622,7 @@ class DirectionalBias(BiasCorr):
         # Define the coordinates for applying the correction
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=elev, crs=crs, transform=transform, nodata=-9999),
-            along_track_angle=self._meta["angle"],
+            along_track_angle=self.meta["angle"],
         )
 
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
@@ -679,7 +679,7 @@ class TerrainBias(BiasCorr):
             subsample,
         )
         # This is the same as bias_var_names, but let's leave the duplicate for clarity
-        self._meta["terrain_attribute"] = terrain_attribute
+        self.meta["terrain_attribute"] = terrain_attribute
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -697,18 +697,18 @@ class TerrainBias(BiasCorr):
     ) -> None:
 
         # If already passed by user, pass along
-        if bias_vars is not None and self._meta["terrain_attribute"] in bias_vars:
-            attr = bias_vars[self._meta["terrain_attribute"]]
+        if bias_vars is not None and self.meta["terrain_attribute"] in bias_vars:
+            attr = bias_vars[self.meta["terrain_attribute"]]
 
         # If only declared during instantiation
         else:
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self.meta["terrain_attribute"] == "elevation":
                 attr = ref_elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
                     dem=ref_elev,
-                    attribute=self._meta["terrain_attribute"],
+                    attribute=self.meta["terrain_attribute"],
                     resolution=(transform[0], abs(transform[4])),
                 )
 
@@ -717,7 +717,7 @@ class TerrainBias(BiasCorr):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            bias_vars={self._meta["terrain_attribute"]: attr},
+            bias_vars={self.meta["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
             z_name=z_name,
@@ -741,8 +741,8 @@ class TerrainBias(BiasCorr):
     ) -> None:
 
         # If already passed by user, pass along
-        if bias_vars is not None and self._meta["terrain_attribute"] in bias_vars:
-            attr = bias_vars[self._meta["terrain_attribute"]]
+        if bias_vars is not None and self.meta["terrain_attribute"] in bias_vars:
+            attr = bias_vars[self.meta["terrain_attribute"]]
 
         # If only declared during instantiation
         else:
@@ -750,12 +750,12 @@ class TerrainBias(BiasCorr):
             rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self.meta["terrain_attribute"] == "elevation":
                 attr = rast_elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
                     dem=rast_elev,
-                    attribute=self._meta["terrain_attribute"],
+                    attribute=self.meta["terrain_attribute"],
                     resolution=(transform[0], abs(transform[4])),
                 )
 
@@ -764,7 +764,7 @@ class TerrainBias(BiasCorr):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            bias_vars={self._meta["terrain_attribute"]: attr},
+            bias_vars={self.meta["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
             z_name=z_name,
@@ -784,13 +784,13 @@ class TerrainBias(BiasCorr):
 
         if bias_vars is None:
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self.meta["terrain_attribute"] == "elevation":
                 attr = elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=elev, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                    dem=elev, attribute=self.meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
                 )
-            bias_vars = {self._meta["terrain_attribute"]: attr}
+            bias_vars = {self.meta["terrain_attribute"]: attr}
 
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
@@ -835,7 +835,7 @@ class Deramp(BiasCorr):
             ["xx", "yy"],
             subsample,
         )
-        self._meta["poly_order"] = poly_order
+        self.meta["poly_order"] = poly_order
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -853,7 +853,7 @@ class Deramp(BiasCorr):
     ) -> None:
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
+        p0 = np.ones(shape=((self.meta["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
@@ -890,7 +890,7 @@ class Deramp(BiasCorr):
         rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
+        p0 = np.ones(shape=((self.meta["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, rast_elev.shape[1]), np.arange(0, rast_elev.shape[0]))

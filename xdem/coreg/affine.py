@@ -226,14 +226,14 @@ class AffineCoreg(Coreg):
         super().__init__(meta=meta)
 
         # Define subsample size
-        self._meta["subsample"] = subsample
+        self.meta["subsample"] = subsample
 
         if matrix is not None:
             with warnings.catch_warnings():
                 # This error is fixed in the upcoming 1.8
                 warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
-            self._meta["matrix"] = valid_matrix
+            self.meta["matrix"] = valid_matrix
         self._is_affine = True
 
     def to_matrix(self) -> NDArrayf:
@@ -242,7 +242,7 @@ class AffineCoreg(Coreg):
 
     def centroid(self) -> tuple[float, float, float] | None:
         """Get the centroid of the coregistration, if defined."""
-        meta_centroid = self._meta.get("centroid")
+        meta_centroid = self.meta.get("centroid")
 
         if meta_centroid is None:
             return None
@@ -290,10 +290,10 @@ class AffineCoreg(Coreg):
         return cls.from_matrix(matrix)
 
     def _to_matrix_func(self) -> NDArrayf:
-        # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
+        # FOR DEVELOPERS: This function needs to be implemented if the `self.meta['matrix']` keyword is not None.
 
         # Try to see if a matrix exists.
-        meta_matrix = self._meta.get("matrix")
+        meta_matrix = self.meta.get("matrix")
         if meta_matrix is not None:
             assert meta_matrix.shape == (4, 4), f"Invalid _meta matrix shape. Expected: (4, 4), got {meta_matrix.shape}"
             return meta_matrix
@@ -305,22 +305,23 @@ class VerticalShift(AffineCoreg):
     """
     DEM vertical shift correction.
 
-    Estimates the mean (or median, weighted avg., etc.) vertical offset between two DEMs.
+    Estimates the mean vertical offset between two DEMs based on a reductor function (median, mean, or any).
     """
 
     def __init__(
-        self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0
+        self, vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median, subsample: float | int = 1.0
     ) -> None:  # pylint:
         # disable=super-init-not-called
         """
         Instantiate a vertical shift correction object.
 
-        :param vshift_func: The function to use for calculating the vertical shift. Default: (weighted) average.
+        :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
+            Defaults to the median.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
+        self.meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_func": vshift_func}, subsample=subsample)
+        super().__init__(meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample)
 
     def _fit_rst_rst(
         self,
@@ -351,9 +352,9 @@ class VerticalShift(AffineCoreg):
 
         # Use weights if those were provided.
         vshift = (
-            self._meta["vshift_func"](diff)
+            self.meta["vshift_reduc_func"](diff)
             if weights is None
-            else self._meta["vshift_func"](diff, weights)  # type: ignore
+            else self.meta["vshift_reduc_func"](diff, weights)  # type: ignore
         )
 
         # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
@@ -362,7 +363,7 @@ class VerticalShift(AffineCoreg):
         if verbose:
             print("Vertical shift estimated")
 
-        self._meta["vshift"] = vshift
+        self.meta["shift_z"] = vshift
 
     def _apply_rst(
         self,
@@ -373,7 +374,7 @@ class VerticalShift(AffineCoreg):
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the VerticalShift function to a DEM."""
-        return elev + self._meta["vshift"], transform
+        return elev + self.meta["shift_z"], transform
 
     def _apply_pts(
         self,
@@ -385,14 +386,14 @@ class VerticalShift(AffineCoreg):
 
         """Apply the VerticalShift function to a set of points."""
         dem_copy = elev.copy()
-        dem_copy[z_name] += self._meta["vshift"]
+        dem_copy[z_name] += self.meta["shift_z"]
         return dem_copy
 
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["vshift"]
+        empty_matrix[2, 3] += self.meta["shift_z"]
 
         return empty_matrix
 
@@ -591,8 +592,8 @@ class ICP(AffineCoreg):
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
-        self._meta["centroid"] = centroid
-        self._meta["matrix"] = matrix
+        self.meta["centroid"] = centroid
+        self.meta["matrix"] = matrix
 
 
 class Tilt(AffineCoreg):
@@ -630,11 +631,11 @@ class Tilt(AffineCoreg):
         ddem[~inlier_mask] = np.nan
         x_coords, y_coords = _get_x_and_y_coords(ref_elev.shape, transform)
         fit_ramp, coefs = deramping(
-            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self._meta["subsample"], verbose=verbose
+            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self.meta["subsample"], verbose=verbose
         )
 
-        self._meta["coefficients"] = coefs[0]
-        self._meta["func"] = fit_ramp
+        self.meta["fit_params"] = coefs[0]
+        self.meta["fit_func"] = fit_ramp
 
     def _apply_rst(
         self,
@@ -647,7 +648,7 @@ class Tilt(AffineCoreg):
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(elev.shape, transform)
 
-        ramp = self._meta["func"](x_coords, y_coords)
+        ramp = self.meta["fit_func"](x_coords, y_coords)
 
         return elev + ramp, transform
 
@@ -660,7 +661,7 @@ class Tilt(AffineCoreg):
     ) -> gpd.GeoDataFrame:
         """Apply the deramp function to a set of points."""
         dem_copy = elev.copy()
-        dem_copy[z_name].values += self._meta["func"](dem_copy.geometry.x.values, dem_copy.geometry.y.values)
+        dem_copy[z_name].values += self.meta["fit_func"](dem_copy.geometry.x.values, dem_copy.geometry.y.values)
 
         return dem_copy
 
@@ -677,7 +678,7 @@ class Tilt(AffineCoreg):
         # If degree==0, it's just a bias correction
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["coefficients"][0]
+        empty_matrix[2, 3] += self.meta["fit_params"][0]
 
         return empty_matrix
 
@@ -697,7 +698,7 @@ class NuthKaab(AffineCoreg):
         :param offset_threshold: The residual offset threshold after which to stop the iterations (in pixels).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        self._meta: CoregDict
+        self.meta: CoregDict
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
@@ -837,10 +838,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.2f} - NMAD = {nmad_new:.2f}")
 
-        self._meta["offset_east_px"] = offset_east
-        self._meta["offset_north_px"] = offset_north
-        self._meta["vshift"] = vshift
-        self._meta["resolution"] = resolution
+        self.meta["shift_x"] = offset_east * resolution
+        self.meta["shift_y"] = offset_north * resolution
+        self.meta["shift_z"] = vshift
 
     def _fit_rst_pts(
         self,
@@ -993,21 +993,17 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}")
 
-        self._meta["offset_east_px"] = offset_east if ref == "point" else -offset_east
-        self._meta["offset_north_px"] = offset_north if ref == "point" else -offset_north
-        self._meta["vshift"] = vshift if ref == "point" else -vshift
-        self._meta["resolution"] = resolution
-        self._meta["nmad"] = nmad_new
+        self.meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east
+        self.meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north
+        self.meta["shift_z"] = vshift if ref == "point" else -vshift
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += offset_east
-        matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["vshift"]
+        matrix[0, 3] += self.meta["shift_x"]
+        matrix[1, 3] += self.meta["shift_y"]
+        matrix[2, 3] += self.meta["shift_z"]
 
         return matrix
 
@@ -1020,11 +1016,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the Nuth & Kaab shift to a DEM."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
-        updated_transform = apply_xy_shift(transform, -offset_east, -offset_north)
-        vshift = self._meta["vshift"]
+        updated_transform = apply_xy_shift(transform, -self.meta["shift_x"], -self.meta["shift_y"])
+        vshift = self.meta["shift_z"]
         return elev + vshift, updated_transform
 
     def _apply_pts(
@@ -1034,16 +1028,13 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> gpd.GeoDataFrame:
-
-        """Apply the Nuth & Kaab shift to a set of points."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+        """Apply the Nuth & Kaab shift to an elevation point cloud."""
 
         applied_epc = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(
-                x=elev.geometry.x.values + offset_east, y=elev.geometry.y.values + offset_north, crs=elev.crs
+                x=elev.geometry.x.values + self.meta["shift_x"], y=elev.geometry.y.values + self.meta["shift_y"], crs=elev.crs
             ),
-            data={z_name: elev[z_name].values + self._meta["vshift"]},
+            data={z_name: elev[z_name].values + self.meta["shift_z"]},
         )
 
         return applied_epc
@@ -1077,7 +1068,7 @@ class GradientDescending(AffineCoreg):
         or when the function value differs by less than the tolerance 'feps' along all directions.
 
         """
-        self._meta: CoregDict
+        self.meta: CoregDict
         self.bounds = bounds
         self.x0 = x0
         self.deltainit = deltainit
@@ -1122,9 +1113,9 @@ class GradientDescending(AffineCoreg):
         rst_elev = Raster.from_array(rst_elev, transform=transform, crs=crs, nodata=-9999)
 
         # Perform downsampling if subsample != None
-        if self._meta["subsample"] and len(point_elev) > self._meta["subsample"]:
+        if self.meta["subsample"] and len(point_elev) > self.meta["subsample"]:
             point_elev = point_elev.sample(
-                frac=self._meta["subsample"] / len(point_elev), random_state=self._meta["random_state"]
+                frac=self.meta["subsample"] / len(point_elev), random_state=self.meta["random_state"]
             ).copy()
         else:
             point_elev = point_elev.copy()
@@ -1145,7 +1136,7 @@ class GradientDescending(AffineCoreg):
 
         if verbose:
             print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
-            if self._meta["subsample"]:
+            if self.meta["subsample"]:
                 print("Running on downsampling. The length of the gdf:", len(point_elev))
 
             elevation_difference = _residuals_df(rst_elev, point_elev, (0, 0), 0, z_name=z_name)
@@ -1191,10 +1182,9 @@ class GradientDescending(AffineCoreg):
         offset_east = res.x[0]
         offset_north = res.x[1]
 
-        self._meta["offset_east_px"] = offset_east if ref == "point" else -offset_east
-        self._meta["offset_north_px"] = offset_north if ref == "point" else -offset_north
-        self._meta["vshift"] = vshift if ref == "point" else -vshift
-        self._meta["resolution"] = resolution
+        self.meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east
+        self.meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north
+        self.meta["shift_z"] = vshift if ref == "point" else -vshift
 
     def _fit_rst_rst(
         self,
@@ -1230,12 +1220,10 @@ class GradientDescending(AffineCoreg):
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += offset_east
-        matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["vshift"]
+        matrix[0, 3] += self.meta["shift_x"]
+        matrix[1, 3] += self.meta["shift_y"]
+        matrix[2, 3] += self.meta["shift_z"]
 
         return matrix

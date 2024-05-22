@@ -74,19 +74,21 @@ class TestAffineCoreg:
         # Fit the vertical shift model to the data
         vshiftcorr.fit(**self.fit_params)
 
+        res = self.ref.res[0]
+
         # Check that a vertical shift was found.
-        assert vshiftcorr._meta.get("vshift") is not None
-        assert vshiftcorr._meta["vshift"] != 0.0
+        assert vshiftcorr.meta.get("shift_z") is not None
+        assert vshiftcorr.meta["shift_z"] != 0.0
 
         # Copy the vertical shift to see if it changes in the test (it shouldn't)
-        vshift = copy.copy(vshiftcorr._meta["vshift"])
+        vshift = copy.copy(vshiftcorr.meta["shift_z"])
 
         # Check that the to_matrix function works as it should
         matrix = vshiftcorr.to_matrix()
         assert matrix[2, 3] == vshift, matrix
 
         # Check that the first z coordinate is now the vertical shift
-        assert all(vshiftcorr.apply(self.points)["z"].values == vshiftcorr._meta["vshift"])
+        assert all(vshiftcorr.apply(self.points)["z"].values == vshiftcorr.meta["shift_z"])
 
         # Apply the model to correct the DEM
         tba_unshifted, _ = vshiftcorr.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
@@ -104,13 +106,13 @@ class TestAffineCoreg:
             inlier_mask=self.inlier_mask,
         )
         # Test the vertical shift
-        newmeta: CoregDict = vshiftcorr2._meta
-        new_vshift = newmeta["vshift"]
-        assert np.abs(new_vshift) < 0.01
+        newmeta: CoregDict = vshiftcorr2.meta
+        new_vshift = newmeta["shift_z"]
+        assert np.abs(new_vshift) * res < 0.01
 
         # Check that the original model's vertical shift has not changed
-        # (that the _meta dicts are two different objects)
-        assert vshiftcorr._meta["vshift"] == vshift
+        # (that the _.meta dicts are two different objects)
+        assert vshiftcorr.meta["shift_z"] == vshift
 
     def test_all_nans(self) -> None:
         """Check that the coregistration approaches fail gracefully when given only nans."""
@@ -141,9 +143,10 @@ class TestAffineCoreg:
         nuth_kaab = xdem.coreg.NuthKaab()
         nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
 
-        # Check the output metadata is always the same
-        shifts = (nuth_kaab._meta["offset_east_px"], nuth_kaab._meta["offset_north_px"], nuth_kaab._meta["vshift"])
-        assert shifts == pytest.approx((-0.463, -0.1339999, -1.9922009))
+        # Check the output .metadata is always the same
+        shifts = (nuth_kaab.meta["shift_x"], nuth_kaab.meta["shift_y"], nuth_kaab.meta["shift_z"])
+        res = self.ref.res[0]
+        assert shifts == pytest.approx((-0.463 * res, -0.1339999 * res, -1.9922009))
 
     def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
@@ -165,8 +168,9 @@ class TestAffineCoreg:
             random_state=42,
         )
 
-        shifts = (gds._meta["offset_east_px"], gds._meta["offset_north_px"], gds._meta["vshift"])
-        assert shifts == pytest.approx((0.03525, -0.59775, -2.39144), abs=10e-5)
+        res = self.ref.res[0]
+        shifts = (gds.meta["shift_x"], gds.meta["shift_y"], gds.meta["shift_z"])
+        assert shifts == pytest.approx((0.03525 * res, -0.59775 * res, -2.39144), abs=10e-5)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
@@ -205,19 +209,19 @@ class TestAffineCoreg:
             # The ICP fit only creates a matrix and doesn't normally show the alignment in pixels
             # Since the test is formed to validate pixel shifts, these calls extract the approximate pixel shift
             # from the matrix (it's not perfect since rotation/scale can change it).
-            coreg_obj._meta["offset_east_px"] = -matrix[0][3] / res
-            coreg_obj._meta["offset_north_px"] = -matrix[1][3] / res
+            coreg_obj.meta["shift_x"] = -matrix[0][3]
+            coreg_obj.meta["shift_y"] = -matrix[1][3]
 
         # ICP can never be expected to be much better than 1px on structured data, as its implementation often finds a
         # minimum between two grid points. This is clearly warned for in the documentation.
         precision = 1e-2 if coreg_class.__name__ != "ICP" else 1
 
-        if coreg_obj._meta["offset_east_px"] == pytest.approx(-shift_px[0], rel=precision) and coreg_obj._meta[
-            "offset_north_px"
-        ] == pytest.approx(-shift_px[0], rel=precision):
+        if coreg_obj.meta["shift_x"] == pytest.approx(-shift_px[0] * res, rel=precision) and coreg_obj.meta[
+            "shift_y"
+        ] == pytest.approx(-shift_px[0] * res, rel=precision):
             return
-        best_east_diff = coreg_obj._meta["offset_east_px"] - shift_px[0]
-        best_north_diff = coreg_obj._meta["offset_north_px"] - shift_px[1]
+        best_east_diff = coreg_obj.meta["shift_x"] - shift_px[0]
+        best_north_diff = coreg_obj.meta["shift_y"] - shift_px[1]
 
         raise AssertionError(f"Diffs are too big. east: {best_east_diff:.2f} px, north: {best_north_diff:.2f} px")
 
@@ -243,9 +247,10 @@ class TestAffineCoreg:
         )
 
         # Make sure that the estimated offsets are similar to what was synthesized.
-        assert nuth_kaab._meta["offset_east_px"] == pytest.approx(pixel_shift, abs=0.03)
-        assert nuth_kaab._meta["offset_north_px"] == pytest.approx(0, abs=0.03)
-        assert nuth_kaab._meta["vshift"] == pytest.approx(-vshift, 0.03)
+        res = self.ref.res[0]
+        assert nuth_kaab.meta["shift_x"] == pytest.approx(pixel_shift * res, abs=0.03)
+        assert nuth_kaab.meta["shift_y"] == pytest.approx(0, abs=0.03)
+        assert nuth_kaab.meta["shift_z"] == pytest.approx(-vshift, 0.03)
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem, _ = nuth_kaab.apply(shifted_dem, transform=self.ref.transform, crs=self.ref.crs)
