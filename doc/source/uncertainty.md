@@ -23,18 +23,18 @@ pyplot.rcParams['savefig.dpi'] = 600
 
 # Uncertainty analysis
 
-xDEM integrates spatial uncertainty analysis tools from the recent literature that **rely on joint methods from two
+xDEM integrates uncertainty analysis tools from the recent literature that **rely on joint methods from two
 scientific fields: spatial statistics and uncertainty quantification**.
 
 While uncertainty analysis technically refers to both systematic and random errors, systematic errors of elevation data
 are corrected using {ref}`coregistration` and {ref}`biascorr`, so we here refer to **uncertainty analysis for quantifying and
 propagating random errors**.
 
-In detail, we provide tools to:
+In detail, xDEM provide tools to:
 
-1. Account for elevation **heteroscedasticity** (e.g., varying precision such as with terrain slope or stereo-correlation),
-2. Quantify the **spatial correlation of random errors** (e.g., from native spatial resolution or instrument noise),
-3. Perform an **error propagation to elevation derivatives** (e.g., spatial average, or more complex derivatives such as slope and aspect).
+1. Estimate and model elevation **heteroscedasticity, i.e. variable random errors** (e.g., such as with terrain slope or stereo-correlation),
+2. Estimate and model the **spatial correlation of random errors** (e.g., from native spatial resolution or instrument noise),
+3. Perform **error propagation to elevation derivatives** (e.g., spatial average, or more complex derivatives such as slope and aspect).
 
 :::{admonition} More reading
 :class: tip
@@ -85,17 +85,29 @@ print("Random elevation errors at a distance of 1 km are correlated at {:.2f} %.
 
 ## Summary of available methods
 
-Our methods for modelling the structure of error in DEMs and propagating errors to spatial derivatives analytically
-are primarily based on [Rolstad et al. (2009)]() and [Hugonnet et al. (2022)]().
+Methods for modelling the structure of error are based on [spatial statistics](https://en.wikipedia.org/wiki/Spatial_statistics), and methods for 
+propagating errors to spatial derivatives analytically rely on [uncertainty propagation](https://en.wikipedia.org/wiki/Propagation_of_uncertainty).
 
-These frameworks are generic and thus encompass that of most other studies on the topic (e.g., Anderson et al. (2020),
-others), referred to as "traditional" below. This is because accounting for possible multiple correlation ranges also
-works for the case of single correlation range, or accounting for potential heteroscedasticity also works on
-homoscedastic elevation data.
+To improve the robustness of the uncertainty analysis, we provide refined frameworks for application to elevation data based on 
+[Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950) and [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922), 
+both for modelling the structure of error and to efficiently perform error propagation.
+**These frameworks are generic, simply extending an aspect of the uncertainty analysis to better work on elevation data**, 
+and thus generally encompass methods described in other studies on the topic (e.g., [Anderson et al. (2019)](http://dx.doi.org/10.1002/esp.4551)).
 
-The tables below summarize the characteristics of these three category of methods.
+The tables below summarize the characteristics of these methods.
 
 ### Estimating and modelling the structure of error
+
+Traditionally, in spatial statistics, a single correlation range is considered ("traditional" method below). 
+However, elevation data often contains errors with correlation ranges spanning different orders of magnitude.
+For this, [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950) and 
+[Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922) considers 
+potential multiple ranges of spatial correlation (instead of a single one). In addition, [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922) 
+considers potential heteroscedasticity or variable errors (instead of homoscedasticity, or constant errors), also common in elevation data.
+
+Because accounting for possible multiple correlation ranges also works if you have a single correlation range in your data, 
+and accounting for potential heteroscedasticity also works on homoscedastic data, **there is nothing to lose by using 
+a more advanced framework!**
 
 ```{list-table}
    :widths: 1 1 1 1 1
@@ -104,7 +116,7 @@ The tables below summarize the characteristics of these three category of method
    :align: center
 
    * - Method
-     - Heteroscedasticity
+     - Heteroscedasticity (i.e. variable error)
      - Correlations (single-range)
      - Correlations (multi-range)
      - Outlier-robust
@@ -127,6 +139,11 @@ The tables below summarize the characteristics of these three category of method
 
 ### Propagating errors to spatial derivatives
 
+Exact uncertainty propagation scales exponentially (by computing every pairwise combinations, for potentially millions of elevation data points).
+To remedy this, [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950) and [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922) 
+both provide an approximation of exact uncertainty propagations for spatial derivatives (to avoid long 
+computing times). **These approximations are valid in different contexts**, described below.
+
 ```{list-table}
    :widths: 1 1 1 1
    :header-rows: 1
@@ -136,19 +153,19 @@ The tables below summarize the characteristics of these three category of method
    * - Method
      - Accuracy
      - Computing time
-     - Remarks
+     - Validity
    * - Exact discretized
      - Exact
-     - Slow on large samples
-     - Complexity scales exponentially
+     - Slow on large samples (exponential complexity)
+     - Always
    * - R2009
      - Conservative
-     - Instantaneous
-     - Only valid for near-circular contiguous areas
+     - Instantaneous (numerical integration)
+     - Only for near-circular contiguous areas
    * - H2022 (default)
      - Accurate
-     - Fast
-     - Complexity scales linearly
+     - Fast (linear complexity)
+     - As long as variance is nearly stationary
 ```
 
 (spatialstats-heterosc)=

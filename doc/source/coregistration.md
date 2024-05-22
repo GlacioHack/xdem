@@ -96,8 +96,10 @@ function are included in coregistration methods, which include:
 - rotations, reflections,
 - scalings.
 
+## Using a coregistration  
+
 (coreg_object)=
-## The {class}`~xdem.coreg.Coreg` object
+### The {class}`~xdem.coreg.Coreg` object
 
 Each coregistration method implemented in xDEM inherits their interface from the {class}`~xdem.coreg.Coreg` class<sup>1</sup>, and has the following methods:
 - {func}`~xdem.coreg.Coreg.fit` for estimating the transform.
@@ -109,7 +111,7 @@ Each coregistration method implemented in xDEM inherits their interface from the
 <sup>1</sup>In a style inspired by [scikit-learn's pipelines](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression).
 ```
 
-First, {func}`~xdem.coreg.Coreg.fit` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
+{func}`~xdem.coreg.Coreg.fit` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
 
 **Inheritance diagram of implemented coregistrations:**
 
@@ -119,6 +121,10 @@ First, {func}`~xdem.coreg.Coreg.fit` is called to estimate the transform, and th
 ```
 
 See {ref}`biascorr` for more information on non-rigid transformations ("bias corrections").
+
+### Accessing coregistration metadata
+
+
 
 ## Coregistration methods
 
@@ -350,9 +356,12 @@ ax[1].set_title("After ICP")
 _ = ax[1].set_yticklabels([])
 ```
 
-## The {class}`~xdem.coreg.CoregPipeline` object
+## Building coregistration pipelines
 
-Often, more than one coregistration approach is necessary to obtain the best results. For example, ICP works poorly with large initial vertical shifts, so a {class}`~xdem.coreg.CoregPipeline` can be constructed to perform both sequentially:
+### The {class}`~xdem.coreg.CoregPipeline` object
+
+Often, more than one coregistration approach is necessary to obtain the best results, and several need to be combined 
+sequentially. A {class}`~xdem.coreg.CoregPipeline` can be constructed for this:
 
 ```{code-cell} ipython3
 # We can list sequential coregistration methods to apply
@@ -363,7 +372,7 @@ pipeline = xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 ```
 
 The {class}`~xdem.coreg.CoregPipeline` object exposes the same interface as the {class}`~xdem.coreg.Coreg` object.
-The results of a pipeline can be used in other programs by exporting the combined transformation matrix using {func}`~xdem.coreg.CoregPipeline.to_matrix`.
+The results of a pipeline can be used in other programs by exporting the combined transformation matrix using {func}`~xdem.coreg.Coreg.to_matrix`.
 
 ```{margin}
 <sup>2</sup>Here again, this class is heavily inspired by SciKit-Learn's [Pipeline](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn-pipeline-pipeline) and [make_pipeline()](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.make_pipeline.html#sklearn.pipeline.make_pipeline) functionalities.
@@ -411,3 +420,9 @@ Additionally, ICP tends to fail with large initial vertical differences, so a pr
 ```{code-cell} ipython3
 pipeline = xdem.coreg.VerticalShift() + xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 ```
+
+## Dividing a coregistration between blocks
+
+### The {class}`~xdem.coreg.BlockwiseCoreg` object
+
+
