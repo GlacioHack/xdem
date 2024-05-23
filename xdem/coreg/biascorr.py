@@ -798,7 +798,7 @@ class TerrainBias(BiasCorr):
 
 class Deramp(BiasCorr):
     """
-    Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations 
+    Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations
     (dome-like errors).
     """
 

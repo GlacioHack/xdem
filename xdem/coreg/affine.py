@@ -412,7 +412,8 @@ class ICP(AffineCoreg):
     "centroid". The translation parameters are also stored individually in the keys "shift_x", "shift_y" and "shift_z"
     (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift).
 
-    Requires 'opencv'. See opencv doc for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
+    Requires 'opencv'. See opencv doc for more info:
+    https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(
