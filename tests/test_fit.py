@@ -25,7 +25,7 @@ class TestRobustFitting:
     def test_robust_norder_polynomial_fit(self, pkg_estimator: str) -> None:
 
         # Define x vector
-        x = np.linspace(1, 10, 1000)
+        x = np.linspace(1, 50, 1000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
         y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
