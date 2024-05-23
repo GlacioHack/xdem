@@ -8,10 +8,9 @@ import warnings
 from typing import Any, Callable
 
 import geopandas as gpd
-import pandas as pd
-
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -33,11 +32,11 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
-def test_coreg_meta_equal(input1: Any, input2: Any):
+def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     """Short test function to check equality of coreg dictionary values."""
     if type(input1) != type(input2):
         return False
-    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, Callable, list)):
+    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
         return input1 == input2
     elif isinstance(input1, np.ndarray):
         return np.array_equal(input1, input2, equal_nan=True)
@@ -45,6 +44,7 @@ def test_coreg_meta_equal(input1: Any, input2: Any):
         return input1.equals(input2)
     else:
         raise TypeError(f"Input type {type(input1)} not supported for this test function.")
+
 
 class TestCoregClass:
 
@@ -386,7 +386,10 @@ class TestCoregClass:
         # TODO: Fix randomness of directional bias...
         if coreg_class != coreg.DirectionalBias:
             assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
-            assert all(test_coreg_meta_equal(coreg_fit_and_apply._meta[k], coreg_fit_then_apply._meta[k]) for k in coreg_fit_and_apply._meta.keys())
+            assert all(
+                assert_coreg_meta_equal(coreg_fit_and_apply._meta[k], coreg_fit_then_apply._meta[k])
+                for k in coreg_fit_and_apply._meta.keys()
+            )
 
     def test_fit_and_apply__pipeline(self) -> None:
         """Check if it works for a pipeline"""
@@ -404,13 +407,15 @@ class TestCoregClass:
 
         assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
         assert list(coreg_fit_and_apply.pipeline[0]._meta.keys()) == list(coreg_fit_then_apply.pipeline[0]._meta.keys())
-        assert all(test_coreg_meta_equal(coreg_fit_and_apply.pipeline[0]._meta[k], coreg_fit_then_apply.pipeline[0]._meta[k]) for k in
-                   coreg_fit_and_apply.pipeline[0]._meta.keys())
+        assert all(
+            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[0]._meta[k], coreg_fit_then_apply.pipeline[0]._meta[k])
+            for k in coreg_fit_and_apply.pipeline[0]._meta.keys()
+        )
         assert list(coreg_fit_and_apply.pipeline[1]._meta.keys()) == list(coreg_fit_then_apply.pipeline[1]._meta.keys())
         assert all(
-            test_coreg_meta_equal(coreg_fit_and_apply.pipeline[1]._meta[k], coreg_fit_then_apply.pipeline[1]._meta[k])
-            for k in
-            coreg_fit_and_apply.pipeline[1]._meta.keys())
+            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[1]._meta[k], coreg_fit_then_apply.pipeline[1]._meta[k])
+            for k in coreg_fit_and_apply.pipeline[1]._meta.keys()
+        )
 
     @pytest.mark.parametrize(
         "combination",
