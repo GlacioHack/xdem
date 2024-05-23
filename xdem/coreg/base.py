@@ -1342,6 +1342,117 @@ class Coreg:
         else:
             return applied_elev, out_transform
 
+
+    @overload
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: NDArrayf,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None) \
+            -> tuple[NDArrayf, rio.transform.Affine]:
+            ...
+
+    @overload
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: MArrayf,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None) \
+        -> tuple[MArrayf, rio.transform.Affine]:
+        ...
+
+    @overload
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: RasterType | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None) \
+        -> RasterType | gpd.GeoDataFrame:
+        ...
+
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None) \
+            -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
+        """Estimate and apply the coregistration to a pair of elevation data.
+
+        :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
+        :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
+        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
+        :param weights: Array of weights for the coregistration.
+        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
+        :param transform: Transform of the reference elevation, only if provided as 2D array.
+        :param crs: CRS of the reference elevation, only if provided as 2D array.
+        :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
+            only the transform might be updated and no resampling is done.
+        :param resampling: Resampling method if resample is used. Defaults to "bilinear".
+        :param verbose: Print progress messages.
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling).
+        :param fit_kwargs: Keyword arguments to be passed to fit.
+        :param apply_kwargs: Keyword argument to be passed to apply.
+        """
+
+        self.fit(reference_elev=reference_elev, to_be_aligned_elev=to_be_aligned_elev, inlier_mask=inlier_mask,
+                 bias_vars=bias_vars, weights=weights, subsample=subsample, transform=transform, crs=crs,
+                 z_name=z_name, verbose=verbose, random_state=random_state, **fit_kwargs)
+
+        aligned_dem = self.apply(elev=to_be_aligned_elev, bias_vars=bias_vars, resample=resample, resampling=resampling,
+                                 transform=transform, crs=crs, z_name=z_name, **apply_kwargs)
+
+        return aligned_dem
+
     def residuals(
         self,
         reference_elev: NDArrayf,
