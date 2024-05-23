@@ -198,7 +198,7 @@ vshift.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
 shifted_dem = vshift.apply(tba_dem)
 
 # Use median shift instead
-vshift_median = coreg.VerticalShift(vshift_func=np.median)
+vshift_median = coreg.VerticalShift(vshift_reduc_func=np.median)
 ```
 
 ## ICP

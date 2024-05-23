@@ -996,30 +996,28 @@ class CoregDict(TypedDict, total=False):
     want to change this in the future.
     """
 
-    # TODO: homogenize the naming mess!
-    vshift_func: Callable[[NDArrayf], np.floating[Any]]
-    func: Callable[[NDArrayf, NDArrayf], NDArrayf]
-    vshift: np.floating[Any] | float | np.integer[Any] | int
-    matrix: NDArrayf
-    centroid: tuple[float, float, float]
-    offset_east_px: float
-    offset_north_px: float
-    coefficients: NDArrayf
-    step_meta: list[Any]
-    resolution: float
-    nmad: np.floating[Any]
-
-    # The pipeline metadata can have any value of the above
-    pipeline: list[Any]
-
-    # Affine + BiasCorr classes
+    # Common to all coreg objects
     subsample: int | float
     subsample_final: int
     random_state: int | np.random.Generator | None
 
-    # BiasCorr classes generic metadata
+    # 1/ Affine metadata
 
-    # 1/ Inputs
+    # Common to all affine transforms
+    centroid: tuple[float, float, float]
+    matrix: NDArrayf
+
+    # For translation methods
+    shift_z: np.floating[Any] | float | np.integer[Any] | int
+    shift_x: float
+    shift_y: float
+
+    # Methods-specific
+    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+
+    # 2/ BiasCorr classes generic metadata
+
+    # Inputs
     fit_or_bin: Literal["fit"] | Literal["bin"]
     fit_func: Callable[..., NDArrayf]
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
@@ -1029,16 +1027,20 @@ class CoregDict(TypedDict, total=False):
     bias_var_names: list[str]
     nd: int | None
 
-    # 2/ Outputs
+    # Outputs
     fit_params: NDArrayf
     fit_perr: NDArrayf
     bin_dataframe: pd.DataFrame
 
-    # 3/ Specific inputs or outputs
+    # Specific inputs or outputs
     terrain_attribute: str
     angle: float
     poly_order: int
     nb_sin_freq: int
+
+    # 3/ CoregPipeline metadata
+    step_meta: list[Any]
+    pipeline: list[Any]
 
 
 CoregType = TypeVar("CoregType", bound="Coreg")
@@ -1057,6 +1059,7 @@ class Coreg:
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
     _needs_vars: bool = False
+    _meta: CoregDict
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""
@@ -1089,6 +1092,12 @@ class Coreg:
                 self._is_affine = False
 
         return self._is_affine
+
+    @property
+    def meta(self) -> CoregDict:
+        """Metadata dictionary of the coregistration."""
+
+        return self._meta
 
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
         """
@@ -1914,7 +1923,7 @@ class CoregPipeline(Coreg):
         # Check if subsample arguments are different from their default value for any of the coreg steps:
         # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
         argspec = [inspect.getfullargspec(c.__class__) for c in self.pipeline]
-        sub_meta = [c._meta["subsample"] for c in self.pipeline]
+        sub_meta = [c.meta["subsample"] for c in self.pipeline]
         sub_is_default = [
             argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
             for i in range(len(argspec))
@@ -2301,13 +2310,13 @@ class BlockwiseCoreg(Coreg):
 
             # If the coreg is a pipeline, copy its metadatas to the output meta
             if hasattr(procstep, "pipeline"):
-                meta["pipeline"] = [step._meta.copy() for step in procstep.pipeline]
+                meta["pipeline"] = [step.meta.copy() for step in procstep.pipeline]
 
             # Copy all current metadata (except for the already existing keys like "i", "min_row", etc, and the
             # "coreg_meta" key)
             # This can then be iteratively restored when the apply function should be called.
             meta.update(
-                {key: value for key, value in procstep._meta.items() if key not in ["step_meta"] + list(meta.keys())}
+                {key: value for key, value in procstep.meta.items() if key not in ["step_meta"] + list(meta.keys())}
             )
 
             progress_bar.update()
@@ -2428,7 +2437,7 @@ class BlockwiseCoreg(Coreg):
         """
         points = self.to_points()
 
-        chunk_meta = {meta["i"]: meta for meta in self._meta["step_meta"]}
+        chunk_meta = {meta["i"]: meta for meta in self.meta["step_meta"]}
 
         statistics: list[dict[str, Any]] = []
         for i in range(points.shape[0]):

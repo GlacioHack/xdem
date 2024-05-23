@@ -303,24 +303,29 @@ class AffineCoreg(Coreg):
 
 class VerticalShift(AffineCoreg):
     """
-    DEM vertical shift correction.
+    Vertical translation alignment.
 
-    Estimates the mean (or median, weighted avg., etc.) vertical offset between two DEMs.
+    Estimates the mean vertical offset between two elevation datasets based on a reductor function (median, mean, or
+    any custom reductor function).
+
+    The estimated vertical shift is stored in the `self.meta` key "shift_z" (in unit of the elevation dataset inputs,
+    typically meters).
     """
 
     def __init__(
-        self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0
+        self, vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median, subsample: float | int = 1.0
     ) -> None:  # pylint:
         # disable=super-init-not-called
         """
-        Instantiate a vertical shift correction object.
+        Instantiate a vertical shift alignment object.
 
-        :param vshift_func: The function to use for calculating the vertical shift. Default: (weighted) average.
+        :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
+            Defaults to the median.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_func": vshift_func}, subsample=subsample)
+        super().__init__(meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample)
 
     def _fit_rst_rst(
         self,
@@ -351,9 +356,9 @@ class VerticalShift(AffineCoreg):
 
         # Use weights if those were provided.
         vshift = (
-            self._meta["vshift_func"](diff)
+            self._meta["vshift_reduc_func"](diff)
             if weights is None
-            else self._meta["vshift_func"](diff, weights)  # type: ignore
+            else self._meta["vshift_reduc_func"](diff, weights)  # type: ignore
         )
 
         # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
@@ -362,7 +367,7 @@ class VerticalShift(AffineCoreg):
         if verbose:
             print("Vertical shift estimated")
 
-        self._meta["vshift"] = vshift
+        self._meta["shift_z"] = vshift
 
     def _apply_rst(
         self,
@@ -373,7 +378,7 @@ class VerticalShift(AffineCoreg):
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the VerticalShift function to a DEM."""
-        return elev + self._meta["vshift"], transform
+        return elev + self._meta["shift_z"], transform
 
     def _apply_pts(
         self,
@@ -385,27 +390,30 @@ class VerticalShift(AffineCoreg):
 
         """Apply the VerticalShift function to a set of points."""
         dem_copy = elev.copy()
-        dem_copy[z_name] += self._meta["vshift"]
+        dem_copy[z_name] += self._meta["shift_z"]
         return dem_copy
 
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["vshift"]
+        empty_matrix[2, 3] += self._meta["shift_z"]
 
         return empty_matrix
 
 
 class ICP(AffineCoreg):
     """
-    Iterative Closest Point DEM coregistration.
-    Based on 3D registration of Besl and McKay (1992), https://doi.org/10.1117/12.57955.
+    Iterative closest point registration, based on Besl and McKay (1992), https://doi.org/10.1117/12.57955.
 
-    Estimates a rigid transform (rotation + translation) between two DEMs.
+    Estimates a rigid transform (rotation + translation) between two elevation datasets.
 
-    Requires 'opencv'
-    See opencv doc for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
+    The transform is stored in the `self.meta` key "matrix", with rotation centered on the coordinates in the key
+    "centroid". The translation parameters are also stored individually in the keys "shift_x", "shift_y" and "shift_z"
+    (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift).
+
+    Requires 'opencv'. See opencv doc for more info:
+    https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(
@@ -591,15 +599,23 @@ class ICP(AffineCoreg):
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
+        # Save outputs
         self._meta["centroid"] = centroid
         self._meta["matrix"] = matrix
+        self._meta["shift_x"] = matrix[0, 3]
+        self._meta["shift_y"] = matrix[1, 3]
+        self._meta["shift_z"] = matrix[2, 3]
 
 
 class Tilt(AffineCoreg):
     """
-    DEM tilting.
+    Tilt alignment.
 
-    Estimates an 2-D plan correction between the difference of two DEMs.
+    Estimates an 2-D plan correction between the difference of two elevation datasets. This is close to a rotation
+    alignment at small angles, but introduces a scaling at large angles.
+
+    The tilt parameters are stored in the `self.meta` key "fit_parameters", with associated polynomial function in
+    the key "fit_func".
     """
 
     def __init__(self, subsample: int | float = 5e5) -> None:
@@ -633,8 +649,8 @@ class Tilt(AffineCoreg):
             ddem, x_coords, y_coords, degree=self.poly_order, subsample=self._meta["subsample"], verbose=verbose
         )
 
-        self._meta["coefficients"] = coefs[0]
-        self._meta["func"] = fit_ramp
+        self._meta["fit_params"] = coefs[0]
+        self._meta["fit_func"] = fit_ramp
 
     def _apply_rst(
         self,
@@ -647,7 +663,7 @@ class Tilt(AffineCoreg):
         """Apply the deramp function to a DEM."""
         x_coords, y_coords = _get_x_and_y_coords(elev.shape, transform)
 
-        ramp = self._meta["func"](x_coords, y_coords)
+        ramp = self._meta["fit_func"](x_coords, y_coords)
 
         return elev + ramp, transform
 
@@ -660,7 +676,7 @@ class Tilt(AffineCoreg):
     ) -> gpd.GeoDataFrame:
         """Apply the deramp function to a set of points."""
         dem_copy = elev.copy()
-        dem_copy[z_name].values += self._meta["func"](dem_copy.geometry.x.values, dem_copy.geometry.y.values)
+        dem_copy[z_name].values += self._meta["fit_func"](dem_copy.geometry.x.values, dem_copy.geometry.y.values)
 
         return dem_copy
 
@@ -677,16 +693,20 @@ class Tilt(AffineCoreg):
         # If degree==0, it's just a bias correction
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["coefficients"][0]
+        empty_matrix[2, 3] += self._meta["fit_params"][0]
 
         return empty_matrix
 
 
 class NuthKaab(AffineCoreg):
     """
-    Nuth and Kääb (2011) DEM coregistration: iterative registration of horizontal and vertical shift using slope/aspect.
+    Nuth and Kääb (2011) coregistration, https://doi.org/10.5194/tc-5-271-2011.
 
-    Implemented after the paper: https://doi.org/10.5194/tc-5-271-2011.
+    Estimate horizontal and vertical translations by iterative slope/aspect alignment.
+
+    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
+    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
+    in the "matrix" transform.
     """
 
     def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
@@ -837,10 +857,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.2f} - NMAD = {nmad_new:.2f}")
 
-        self._meta["offset_east_px"] = offset_east
-        self._meta["offset_north_px"] = offset_north
-        self._meta["vshift"] = vshift
-        self._meta["resolution"] = resolution
+        self._meta["shift_x"] = offset_east * resolution
+        self._meta["shift_y"] = offset_north * resolution
+        self._meta["shift_z"] = vshift
 
     def _fit_rst_pts(
         self,
@@ -861,7 +880,6 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         2. do not support latitude and longitude as inputs.
 
         :param z_name: the column name of dataframe used for elevation differencing
-
         """
 
         # Check which one is reference
@@ -993,21 +1011,17 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}")
 
-        self._meta["offset_east_px"] = offset_east if ref == "point" else -offset_east
-        self._meta["offset_north_px"] = offset_north if ref == "point" else -offset_north
-        self._meta["vshift"] = vshift if ref == "point" else -vshift
-        self._meta["resolution"] = resolution
-        self._meta["nmad"] = nmad_new
+        self._meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east
+        self._meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north
+        self._meta["shift_z"] = vshift if ref == "point" else -vshift
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += offset_east
-        matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["vshift"]
+        matrix[0, 3] += self._meta["shift_x"]
+        matrix[1, 3] += self._meta["shift_y"]
+        matrix[2, 3] += self._meta["shift_z"]
 
         return matrix
 
@@ -1020,11 +1034,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
         """Apply the Nuth & Kaab shift to a DEM."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
-        updated_transform = apply_xy_shift(transform, -offset_east, -offset_north)
-        vshift = self._meta["vshift"]
+        updated_transform = apply_xy_shift(transform, -self._meta["shift_x"], -self._meta["shift_y"])
+        vshift = self._meta["shift_z"]
         return elev + vshift, updated_transform
 
     def _apply_pts(
@@ -1034,16 +1046,15 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> gpd.GeoDataFrame:
-
-        """Apply the Nuth & Kaab shift to a set of points."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+        """Apply the Nuth & Kaab shift to an elevation point cloud."""
 
         applied_epc = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(
-                x=elev.geometry.x.values + offset_east, y=elev.geometry.y.values + offset_north, crs=elev.crs
+                x=elev.geometry.x.values + self._meta["shift_x"],
+                y=elev.geometry.y.values + self._meta["shift_y"],
+                crs=elev.crs,
             ),
-            data={z_name: elev[z_name].values + self._meta["vshift"]},
+            data={z_name: elev[z_name].values + self._meta["shift_z"]},
         )
 
         return applied_epc
@@ -1051,7 +1062,13 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
 class GradientDescending(AffineCoreg):
     """
-    Gradient Descending coregistration by Zhihao
+    Gradient descending coregistration.
+
+    Estimates vertical and horizontal translations.
+
+    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
+    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
+    in the "matrix" transform.
     """
 
     def __init__(
@@ -1191,10 +1208,9 @@ class GradientDescending(AffineCoreg):
         offset_east = res.x[0]
         offset_north = res.x[1]
 
-        self._meta["offset_east_px"] = offset_east if ref == "point" else -offset_east
-        self._meta["offset_north_px"] = offset_north if ref == "point" else -offset_north
-        self._meta["vshift"] = vshift if ref == "point" else -vshift
-        self._meta["resolution"] = resolution
+        self._meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east
+        self._meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north
+        self._meta["shift_z"] = vshift if ref == "point" else -vshift
 
     def _fit_rst_rst(
         self,
@@ -1230,12 +1246,10 @@ class GradientDescending(AffineCoreg):
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += offset_east
-        matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["vshift"]
+        matrix[0, 3] += self._meta["shift_x"]
+        matrix[1, 3] += self._meta["shift_y"]
+        matrix[2, 3] += self._meta["shift_z"]
 
         return matrix
