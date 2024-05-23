@@ -1444,6 +1444,11 @@ class Coreg:
         :param apply_kwargs: Keyword argument to be passed to apply.
         """
 
+        if fit_kwargs is None:
+            fit_kwargs = {}
+        if apply_kwargs is None:
+            apply_kwargs = {}
+
         self.fit(reference_elev=reference_elev, to_be_aligned_elev=to_be_aligned_elev, inlier_mask=inlier_mask,
                  bias_vars=bias_vars, weights=weights, subsample=subsample, transform=transform, crs=crs,
                  z_name=z_name, verbose=verbose, random_state=random_state, **fit_kwargs)
