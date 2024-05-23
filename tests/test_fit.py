@@ -25,7 +25,7 @@ class TestRobustFitting:
     def test_robust_norder_polynomial_fit(self, pkg_estimator: str) -> None:
 
         # Define x vector
-        x = np.linspace(1, 10, 1000)
+        x = np.linspace(-50, 50, 10000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
         y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
@@ -33,6 +33,7 @@ class TestRobustFitting:
         # Run fit
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="lbfgs failed to converge")
+            warnings.filterwarnings("ignore", message="Covariance of the parameters could not be*")
             coefs, deg = xdem.fit.robust_norder_polynomial_fit(
                 x,
                 y,

@@ -10,6 +10,7 @@ from typing import Any, Callable
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -31,17 +32,29 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
+def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
+    """Short test function to check equality of coreg dictionary values."""
+    if type(input1) != type(input2):
+        return False
+    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
+        return input1 == input2
+    elif isinstance(input1, np.ndarray):
+        return np.array_equal(input1, input2, equal_nan=True)
+    elif isinstance(input1, pd.DataFrame):
+        return input1.equals(input2)
+    else:
+        raise TypeError(f"Input type {type(input1)} not supported for this test function.")
+
+
 class TestCoregClass:
 
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_elev=ref.data,
-        to_be_aligned_elev=tba.data,
+        reference_elev=ref,
+        to_be_aligned_elev=tba,
         inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
@@ -134,12 +147,12 @@ class TestCoregClass:
         coreg.DirectionalBias,
     ]
 
-    @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
-    def test_subsample(self, coreg: Callable) -> None:  # type: ignore
+    @pytest.mark.parametrize("coreg_class", all_coregs)  # type: ignore
+    def test_subsample(self, coreg_class: Callable) -> None:  # type: ignore
 
         # Check that default value is set properly
-        coreg_full = coreg()
-        argspec = inspect.getfullargspec(coreg)
+        coreg_full = coreg_class()
+        argspec = inspect.getfullargspec(coreg_class)
         assert coreg_full.meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
 
         # But can be overridden during fit
@@ -149,7 +162,7 @@ class TestCoregClass:
         assert coreg_full.meta["random_state"] == 42
 
         # Test subsampled vertical shift correction
-        coreg_sub = coreg(subsample=0.1)
+        coreg_sub = coreg_class(subsample=0.1)
         assert coreg_sub.meta["subsample"] == 0.1
 
         # Fit the vertical shift using 10% of the unmasked data using a fraction
@@ -157,12 +170,12 @@ class TestCoregClass:
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        coreg_sub = coreg(subsample=self.tba.data.size // 10)
+        coreg_sub = coreg_class(subsample=self.tba.data.size // 10)
         assert coreg_sub.meta["subsample"] == self.tba.data.size // 10
         coreg_sub.fit(**self.fit_params, random_state=42)
 
         # Add a few performance checks
-        coreg_name = coreg.__name__
+        coreg_name = coreg_class.__name__
         if coreg_name == "VerticalShift":
             # Check that the estimated vertical shifts are similar
             assert abs(coreg_sub.meta["shift_z"] - coreg_full.meta["shift_z"]) < 0.1
@@ -349,6 +362,59 @@ class TestCoregClass:
         coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
         with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
             coreg_method.apply(tba_dem, resample=True, resampling=None)
+
+    @pytest.mark.parametrize("coreg_class", all_coregs)  # type: ignore
+    def test_fit_and_apply(self, coreg_class: Callable) -> None:  # type: ignore
+        """Check that fit_and_apply returns the same results as using fit, then apply, for any coreg."""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg_class()
+        coreg_fit_and_apply = coreg_class()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        # Check outputs are the same: aligned raster, and metadata keys and values
+
+        assert list(coreg_fit_and_apply.meta.keys()) == list(coreg_fit_then_apply.meta.keys())
+
+        # TODO: Fix randomness of directional bias...
+        if coreg_class != coreg.DirectionalBias:
+            assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+            assert all(
+                assert_coreg_meta_equal(coreg_fit_and_apply.meta[k], coreg_fit_then_apply.meta[k])
+                for k in coreg_fit_and_apply.meta.keys()
+            )
+
+    def test_fit_and_apply__pipeline(self) -> None:
+        """Check if it works for a pipeline"""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
+        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k])
+            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
+        )
+        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k])
+            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
+        )
 
     @pytest.mark.parametrize(
         "combination",
