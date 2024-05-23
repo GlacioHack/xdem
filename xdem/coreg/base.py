@@ -1059,10 +1059,11 @@ class Coreg:
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
     _needs_vars: bool = False
+    _meta = CoregDict
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""
-        self.meta: CoregDict = meta or {}  # All __init__ functions should instantiate an empty dict.
+        self._meta: CoregDict = meta or {}  # All __init__ functions should instantiate an empty dict.
 
     def copy(self: CoregType) -> CoregType:
         """Return an identical copy of the class."""
@@ -1092,6 +1093,12 @@ class Coreg:
 
         return self._is_affine
 
+    @property
+    def meta(self) -> CoregDict:
+        """Metadata dictionary of the coregistration."""
+
+        return self._meta
+
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
         """
         Get mask of values to subsample on valid mask.
@@ -1100,20 +1107,20 @@ class Coreg:
         """
 
         # This should never happen
-        if self.meta["subsample"] is None:
+        if self._meta["subsample"] is None:
             raise ValueError("Subsample should have been defined in metadata before reaching this class method.")
 
         # If subsample is not equal to one, subsampling should be performed.
-        elif self.meta["subsample"] != 1.0:
+        elif self._meta["subsample"] != 1.0:
 
             # Build a low memory masked array with invalid values masked to pass to subsampling
             ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
             # Take a subsample within the valid values
             indices = gu.raster.subsample_array(
                 ma_valid,
-                subsample=self.meta["subsample"],
+                subsample=self._meta["subsample"],
                 return_indices=True,
-                random_state=self.meta["random_state"],
+                random_state=self._meta["random_state"],
             )
 
             # We return a boolean mask of the subsample within valid values
@@ -1134,7 +1141,7 @@ class Coreg:
             )
 
         # Write final subsample to class
-        self.meta["subsample_final"] = np.count_nonzero(subsample_mask)
+        self._meta["subsample_final"] = np.count_nonzero(subsample_mask)
 
         return subsample_mask
 
@@ -1177,7 +1184,7 @@ class Coreg:
 
             # Check if subsample argument was also defined at instantiation (not default value), and raise warning
             argspec = inspect.getfullargspec(self.__class__)
-            sub_meta = self.meta["subsample"]
+            sub_meta = self._meta["subsample"]
             if argspec.defaults is None or "subsample" not in argspec.args:
                 raise ValueError("The subsample argument and default need to be defined in this Coreg class.")
             sub_is_default = argspec.defaults[argspec.args.index("subsample") - 1] == sub_meta  # type: ignore
@@ -1189,11 +1196,11 @@ class Coreg:
                 )
 
             # In any case, override!
-            self.meta["subsample"] = subsample
+            self._meta["subsample"] = subsample
 
         # Save random_state if a subsample is used
-        if self.meta["subsample"] != 1:
-            self.meta["random_state"] = random_state
+        if self._meta["subsample"] != 1:
+            self._meta["random_state"] = random_state
 
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit(
@@ -1306,7 +1313,7 @@ class Coreg:
 
         :returns: The transformed DEM.
         """
-        if not self._fit_called and self.meta.get("matrix") is None:
+        if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
         elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
@@ -1592,7 +1599,7 @@ class Coreg:
                         dem=kwargs.pop("elev"),
                         transform=transform,
                         matrix=self.to_matrix(),
-                        centroid=self.meta.get("centroid"),
+                        centroid=self._meta.get("centroid"),
                     )
                     out_transform = transform
                 else:
@@ -1613,7 +1620,7 @@ class Coreg:
                     applied_elev = _apply_matrix_pts(
                         epc=kwargs["elev"],
                         matrix=self.to_matrix(),
-                        centroid=self.meta.get("centroid"),
+                        centroid=self._meta.get("centroid"),
                         z_name=kwargs.pop("z_name"),
                     )
 
@@ -1731,7 +1738,7 @@ class CoregPipeline(Coreg):
         coreg = self.pipeline[step]
 
         # Check that all variable names of this were passed
-        var_names = coreg.meta["bias_var_names"]
+        var_names = coreg._meta["bias_var_names"]
 
         # Raise error if bias_vars is None
         if bias_vars is None:
@@ -1904,7 +1911,7 @@ class CoregPipeline(Coreg):
     ) -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
 
         # First step and preprocessing
-        if not self._fit_called and self.meta.get("matrix") is None:
+        if not self._fit_called and self._meta.get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
         elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
@@ -2030,7 +2037,7 @@ class BlockwiseCoreg(Coreg):
 
         super().__init__()
 
-        self.meta: CoregDict = {"step_meta": []}
+        self._meta: CoregDict = {"step_meta": []}
 
     def fit(
         self: CoregType,
@@ -2058,7 +2065,7 @@ class BlockwiseCoreg(Coreg):
         else:
             steps = list(self.procstep.pipeline)
         argspec = [inspect.getfullargspec(s.__class__) for s in steps]
-        sub_meta = [s.meta["subsample"] for s in steps]
+        sub_meta = [s._meta["subsample"] for s in steps]
         sub_is_default = [
             argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
             for i in range(len(argspec))
@@ -2199,12 +2206,12 @@ class BlockwiseCoreg(Coreg):
                 empty_blocks += 1
                 continue
             else:
-                self.meta["step_meta"].append(result)
+                self._meta["step_meta"].append(result)
 
         progress_bar.close()
 
         # Stop if the success rate was below the threshold
-        if ((len(self.meta["step_meta"]) + empty_blocks) / self.subdivision) <= self.success_threshold:
+        if ((len(self._meta["step_meta"]) + empty_blocks) / self.subdivision) <= self.success_threshold:
             raise ValueError(
                 f"Fitting failed for {len(exceptions)} chunks:\n"
                 + "\n".join(map(str, exceptions[:5]))
@@ -2232,13 +2239,13 @@ class BlockwiseCoreg(Coreg):
         """
         Given some metadata, set it in the right place.
 
-        :param meta: A metadata file to update self.meta
+        :param meta: A metadata file to update self._meta
         """
-        self.procstep.meta.update(meta)
+        self.procstep._meta.update(meta)
 
         if isinstance(self.procstep, CoregPipeline) and "pipeline" in meta:
             for i, step in enumerate(self.procstep.pipeline):
-                step.meta.update(meta["pipeline"][i])
+                step._meta.update(meta["pipeline"][i])
 
     def to_points(self) -> NDArrayf:
         """
@@ -2255,10 +2262,10 @@ class BlockwiseCoreg(Coreg):
 
         :returns: An array of 3D source -> destination points.
         """
-        if len(self.meta["step_meta"]) == 0:
+        if len(self._meta["step_meta"]) == 0:
             raise AssertionError("No coreg results exist. Has '.fit()' been called?")
         points = np.empty(shape=(0, 3, 2))
-        for meta in self.meta["step_meta"]:
+        for meta in self._meta["step_meta"]:
             self._restore_metadata(meta)
 
             # x_coord, y_coord = rio.transform.xy(meta["transform"], meta["representative_row"],
