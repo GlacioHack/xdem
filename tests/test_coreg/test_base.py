@@ -512,16 +512,15 @@ class TestCoregPipeline:
 
         # Create a pipeline, add some .metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0].meta["shift_z"] = 1
+        pipeline.pipeline[0]._meta["shift_z"] = 1
 
         pipeline_copy = pipeline.copy()
 
         # Add some more .metadata after copying (this should not be transferred)
-        pipeline_copy.pipeline[0].meta["shift_y"] = 0.5 * 30
+        pipeline_copy.pipeline[0]._meta["shift_y"] = 0.5 * 30
 
-        assert pipeline.meta != pipeline_copy.meta
         assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
-        assert pipeline_copy.pipeline[0].meta["shift_z"]
+        assert pipeline_copy.pipeline[0]._meta["shift_z"]
 
     def test_pipeline(self) -> None:
 
