@@ -1032,7 +1032,9 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
         applied_epc = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(
-                x=elev.geometry.x.values + self._meta["shift_x"], y=elev.geometry.y.values + self._meta["shift_y"], crs=elev.crs
+                x=elev.geometry.x.values + self._meta["shift_x"],
+                y=elev.geometry.y.values + self._meta["shift_y"],
+                crs=elev.crs,
             ),
             data={z_name: elev[z_name].values + self._meta["shift_z"]},
         )

@@ -104,9 +104,6 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
         nuth_kaab = xdem.coreg.NuthKaab()
         nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask, random_state=42)
 
-        # Check that random state is respected
-        assert nuth_kaabmeta["random_state"] == 42
-
         aligned_raster = nuth_kaab.apply(to_be_aligned_raster, resample=True)
 
         diff = reference_raster - aligned_raster

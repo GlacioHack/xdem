@@ -1059,7 +1059,7 @@ class Coreg:
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
     _needs_vars: bool = False
-    _meta = CoregDict
+    _meta: CoregDict
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""

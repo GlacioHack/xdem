@@ -68,8 +68,7 @@ class TestCoregClass:
         corr_copy = corr.copy()
 
         # Assign some attributes and .metadata after copying, respecting the CoregDict type class
-        corr.vshift = 1
-        corr.meta["resolution"] = 30
+        corr._meta["shift_z"] = 30
         # Make sure these don't appear in the copy
         assert corr_copy.meta != corr.meta
         assert not hasattr(corr_copy, "shift_z")
@@ -518,8 +517,7 @@ class TestCoregPipeline:
         pipeline_copy = pipeline.copy()
 
         # Add some more .metadata after copying (this should not be transferred)
-        pipeline.meta["resolution"] = 30
-        pipeline_copy.pipeline[0].meta["shift_y"] = 0.5
+        pipeline_copy.pipeline[0].meta["shift_y"] = 0.5 * 30
 
         assert pipeline.meta != pipeline_copy.meta
         assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
