@@ -33,6 +33,19 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
+def test_coreg_meta_equal(input1: Any, input2: Any):
+    """Short test function to check equality of coreg dictionary values."""
+    if type(input1) != type(input2):
+        return False
+    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, Callable, list)):
+        return input1 == input2
+    elif isinstance(input1, np.ndarray):
+        return np.array_equal(input1, input2, equal_nan=True)
+    elif isinstance(input1, pd.DataFrame):
+        return input1.equals(input2)
+    else:
+        raise TypeError(f"Input type {type(input1)} not supported for this test function.")
+
 class TestCoregClass:
 
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
@@ -370,23 +383,34 @@ class TestCoregClass:
 
         assert list(coreg_fit_and_apply._meta.keys()) == list(coreg_fit_then_apply._meta.keys())
 
-        def test_equal(input1: Any, input2: Any):
-            """Short test function to check equality of coreg dictionary values."""
-            if type(input1) != type(input2):
-                return False
-            elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, Callable, list)):
-                return input1 == input2
-            elif isinstance(input1, np.ndarray):
-                return np.array_equal(input1, input2, equal_nan=True)
-            elif isinstance(input1, pd.DataFrame):
-                return input1.equals(input2)
-            else:
-                raise TypeError(f"Input type {type(input1)} not supported for this test function.")
-
         # TODO: Fix randomness of directional bias...
         if coreg_class != coreg.DirectionalBias:
             assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
-            assert all(test_equal(coreg_fit_and_apply._meta[k], coreg_fit_then_apply._meta[k]) for k in coreg_fit_and_apply._meta.keys())
+            assert all(test_coreg_meta_equal(coreg_fit_and_apply._meta[k], coreg_fit_then_apply._meta[k]) for k in coreg_fit_and_apply._meta.keys())
+
+    def test_fit_and_apply__pipeline(self) -> None:
+        """Check if it works for a pipeline"""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
+        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+        assert list(coreg_fit_and_apply.pipeline[0]._meta.keys()) == list(coreg_fit_then_apply.pipeline[0]._meta.keys())
+        assert all(test_coreg_meta_equal(coreg_fit_and_apply.pipeline[0]._meta[k], coreg_fit_then_apply.pipeline[0]._meta[k]) for k in
+                   coreg_fit_and_apply.pipeline[0]._meta.keys())
+        assert list(coreg_fit_and_apply.pipeline[1]._meta.keys()) == list(coreg_fit_then_apply.pipeline[1]._meta.keys())
+        assert all(
+            test_coreg_meta_equal(coreg_fit_and_apply.pipeline[1]._meta[k], coreg_fit_then_apply.pipeline[1]._meta[k])
+            for k in
+            coreg_fit_and_apply.pipeline[1]._meta.keys())
 
     @pytest.mark.parametrize(
         "combination",
