@@ -272,7 +272,7 @@ tba_dem_vshift = ref_dem + 10
 
 ```{code-cell} ipython3
 # Define a coregistration object based on a vertical shift correction
-vshift = xdem.coreg.VerticalShift(vshift_func=np.median)
+vshift = xdem.coreg.VerticalShift(vshift_reduc_func=np.median)
 # Fit and apply
 vshift.fit(ref_dem, tba_dem_vshift)
 aligned_dem = vshift.apply(tba_dem_vshift)
@@ -295,7 +295,7 @@ _ = ax[1].set_yticklabels([])
 
 (icp)=
 
-### ICP
+### Iterative closest point
 
 {class}`xdem.coreg.ICP`
 

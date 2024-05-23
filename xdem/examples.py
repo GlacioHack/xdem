@@ -47,9 +47,11 @@ def download_longyearbyen_examples(overwrite: bool = False) -> None:
                 os.remove(fn)
 
     # Static commit hash to be bumped every time it needs to be.
-    commit = "fd832bc2e366cf2ba8b543f7e43f90ee02384f4f"
+    commit = "ff5ede952fc422ebd2a3c6340041a118850bc905"
     # The URL from which to download the repository
     url = f"https://github.com/GlacioHack/xdem-data/tarball/main#commit={commit}"
+    # To test new data from a user-branch before merging in xdem-data
+    # url = f"https://github.com/ameliefroessl/xdem-data/tarball/cog-files#commit={commit}"
 
     # Create a temporary directory to extract the tarball in.
     temp_dir = tempfile.TemporaryDirectory()
@@ -103,9 +105,6 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
 
         nuth_kaab = xdem.coreg.NuthKaab()
         nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask, random_state=42)
-
-        # Check that random state is respected
-        assert nuth_kaab._meta["random_state"] == 42
 
         aligned_raster = nuth_kaab.apply(to_be_aligned_raster, resample=True)
 

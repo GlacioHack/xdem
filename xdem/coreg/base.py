@@ -997,30 +997,28 @@ class CoregDict(TypedDict, total=False):
     want to change this in the future.
     """
 
-    # TODO: homogenize the naming mess!
-    vshift_func: Callable[[NDArrayf], np.floating[Any]]
-    func: Callable[[NDArrayf, NDArrayf], NDArrayf]
-    vshift: np.floating[Any] | float | np.integer[Any] | int
-    matrix: NDArrayf
-    centroid: tuple[float, float, float]
-    offset_east_px: float
-    offset_north_px: float
-    coefficients: NDArrayf
-    step_meta: list[Any]
-    resolution: float
-    nmad: np.floating[Any]
-
-    # The pipeline metadata can have any value of the above
-    pipeline: list[Any]
-
-    # Affine + BiasCorr classes
+    # Common to all coreg objects
     subsample: int | float
     subsample_final: int
     random_state: int | np.random.Generator | None
 
-    # BiasCorr classes generic metadata
+    # 1/ Affine metadata
 
-    # 1/ Inputs
+    # Common to all affine transforms
+    centroid: tuple[float, float, float]
+    matrix: NDArrayf
+
+    # For translation methods
+    shift_z: np.floating[Any] | float | np.integer[Any] | int
+    shift_x: float
+    shift_y: float
+
+    # Methods-specific
+    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+
+    # 2/ BiasCorr classes generic metadata
+
+    # Inputs
     fit_or_bin: Literal["fit"] | Literal["bin"]
     fit_func: Callable[..., NDArrayf]
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
@@ -1030,16 +1028,20 @@ class CoregDict(TypedDict, total=False):
     bias_var_names: list[str]
     nd: int | None
 
-    # 2/ Outputs
+    # Outputs
     fit_params: NDArrayf
     fit_perr: NDArrayf
     bin_dataframe: pd.DataFrame
 
-    # 3/ Specific inputs or outputs
+    # Specific inputs or outputs
     terrain_attribute: str
     angle: float
     poly_order: int
     nb_sin_freq: int
+
+    # 3/ CoregPipeline metadata
+    step_meta: list[Any]
+    pipeline: list[Any]
 
 
 CoregType = TypeVar("CoregType", bound="Coreg")
@@ -1058,6 +1060,7 @@ class Coreg:
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
     _needs_vars: bool = False
+    _meta: CoregDict
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""
@@ -1090,6 +1093,12 @@ class Coreg:
                 self._is_affine = False
 
         return self._is_affine
+
+    @property
+    def meta(self) -> CoregDict:
+        """Metadata dictionary of the coregistration."""
+
+        return self._meta
 
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
         """
@@ -1342,6 +1351,140 @@ class Coreg:
             return applied_elev
         else:
             return applied_elev, out_transform
+
+    @overload
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: MArrayf,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[MArrayf, rio.transform.Affine]:
+        ...
+
+    @overload
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: NDArrayf,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        ...
+
+    @overload
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: RasterType | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None,
+    ) -> RasterType | gpd.GeoDataFrame:
+        ...
+
+    def fit_and_apply(
+        self,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb | Mask | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        weights: NDArrayf | None = None,
+        subsample: float | int | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        verbose: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        fit_kwargs: dict[str, Any] | None = None,
+        apply_kwargs: dict[str, Any] | None = None,
+    ) -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
+        """Estimate and apply the coregistration to a pair of elevation data.
+
+        :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
+        :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
+        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
+        :param weights: Array of weights for the coregistration.
+        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
+        :param transform: Transform of the reference elevation, only if provided as 2D array.
+        :param crs: CRS of the reference elevation, only if provided as 2D array.
+        :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
+            only the transform might be updated and no resampling is done.
+        :param resampling: Resampling method if resample is used. Defaults to "bilinear".
+        :param verbose: Print progress messages.
+        :param random_state: Random state or seed number to use for calculations (to fix random sampling).
+        :param fit_kwargs: Keyword arguments to be passed to fit.
+        :param apply_kwargs: Keyword argument to be passed to apply.
+        """
+
+        if fit_kwargs is None:
+            fit_kwargs = {}
+        if apply_kwargs is None:
+            apply_kwargs = {}
+
+        self.fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
+            inlier_mask=inlier_mask,
+            bias_vars=bias_vars,
+            weights=weights,
+            subsample=subsample,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
+            verbose=verbose,
+            random_state=random_state,
+            **fit_kwargs,
+        )
+
+        aligned_dem = self.apply(
+            elev=to_be_aligned_elev,
+            bias_vars=bias_vars,
+            resample=resample,
+            resampling=resampling,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
+            **apply_kwargs,
+        )
+
+        return aligned_dem
 
     def residuals(
         self,
@@ -1781,7 +1924,7 @@ class CoregPipeline(Coreg):
         # Check if subsample arguments are different from their default value for any of the coreg steps:
         # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
         argspec = [inspect.getfullargspec(c.__class__) for c in self.pipeline]
-        sub_meta = [c._meta["subsample"] for c in self.pipeline]
+        sub_meta = [c.meta["subsample"] for c in self.pipeline]
         sub_is_default = [
             argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
             for i in range(len(argspec))
@@ -2168,13 +2311,13 @@ class BlockwiseCoreg(Coreg):
 
             # If the coreg is a pipeline, copy its metadatas to the output meta
             if hasattr(procstep, "pipeline"):
-                meta["pipeline"] = [step._meta.copy() for step in procstep.pipeline]
+                meta["pipeline"] = [step.meta.copy() for step in procstep.pipeline]
 
             # Copy all current metadata (except for the already existing keys like "i", "min_row", etc, and the
             # "coreg_meta" key)
             # This can then be iteratively restored when the apply function should be called.
             meta.update(
-                {key: value for key, value in procstep._meta.items() if key not in ["step_meta"] + list(meta.keys())}
+                {key: value for key, value in procstep.meta.items() if key not in ["step_meta"] + list(meta.keys())}
             )
 
             progress_bar.update()
@@ -2295,7 +2438,7 @@ class BlockwiseCoreg(Coreg):
         """
         points = self.to_points()
 
-        chunk_meta = {meta["i"]: meta for meta in self._meta["step_meta"]}
+        chunk_meta = {meta["i"]: meta for meta in self.meta["step_meta"]}
 
         statistics: list[dict[str, Any]] = []
         for i in range(points.shape[0]):

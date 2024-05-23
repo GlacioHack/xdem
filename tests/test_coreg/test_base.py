@@ -10,6 +10,7 @@ from typing import Any, Callable
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
@@ -31,17 +32,29 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     return reference_raster, to_be_aligned_raster, glacier_mask
 
 
+def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
+    """Short test function to check equality of coreg dictionary values."""
+    if type(input1) != type(input2):
+        return False
+    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
+        return input1 == input2
+    elif isinstance(input1, np.ndarray):
+        return np.array_equal(input1, input2, equal_nan=True)
+    elif isinstance(input1, pd.DataFrame):
+        return input1.equals(input2)
+    else:
+        raise TypeError(f"Input type {type(input1)} not supported for this test function.")
+
+
 class TestCoregClass:
 
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_elev=ref.data,
-        to_be_aligned_elev=tba.data,
+        reference_elev=ref,
+        to_be_aligned_elev=tba,
         inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
         verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
@@ -67,12 +80,11 @@ class TestCoregClass:
         corr = coreg_class()
         corr_copy = corr.copy()
 
-        # Assign some attributes and metadata after copying, respecting the CoregDict type class
-        corr.vshift = 1
-        corr._meta["resolution"] = 30
+        # Assign some attributes and .metadata after copying, respecting the CoregDict type class
+        corr._meta["shift_z"] = 30
         # Make sure these don't appear in the copy
-        assert corr_copy._meta != corr._meta
-        assert not hasattr(corr_copy, "vshift")
+        assert corr_copy.meta != corr.meta
+        assert not hasattr(corr_copy, "shift_z")
 
     def test_error_method(self) -> None:
         """Test different error measures."""
@@ -90,7 +102,7 @@ class TestCoregClass:
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == 0
 
         # Remove the vertical shift fit and see what happens.
-        vshiftcorr._meta["vshift"] = 0
+        vshiftcorr.meta["shift_z"] = 0
         # Now it should be equal to dem1 - dem2
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == -2
 
@@ -108,7 +120,7 @@ class TestCoregClass:
         rng = np.random.default_rng(42)
         valid_mask = rng.integers(low=0, high=2, size=(width, height), dtype=bool)
 
-        # Define a class with a subsample and random_state in the metadata
+        # Define a class with a subsample and random_state in the .metadata
         coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
         subsample_mask = coreg._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
@@ -135,38 +147,38 @@ class TestCoregClass:
         coreg.DirectionalBias,
     ]
 
-    @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
-    def test_subsample(self, coreg: Callable) -> None:  # type: ignore
+    @pytest.mark.parametrize("coreg_class", all_coregs)  # type: ignore
+    def test_subsample(self, coreg_class: Callable) -> None:  # type: ignore
 
         # Check that default value is set properly
-        coreg_full = coreg()
-        argspec = inspect.getfullargspec(coreg)
-        assert coreg_full._meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+        coreg_full = coreg_class()
+        argspec = inspect.getfullargspec(coreg_class)
+        assert coreg_full.meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
 
         # But can be overridden during fit
         coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
-        assert coreg_full._meta["subsample"] == 10000
+        assert coreg_full.meta["subsample"] == 10000
         # Check that the random state is properly set when subsampling explicitly or implicitly
-        assert coreg_full._meta["random_state"] == 42
+        assert coreg_full.meta["random_state"] == 42
 
         # Test subsampled vertical shift correction
-        coreg_sub = coreg(subsample=0.1)
-        assert coreg_sub._meta["subsample"] == 0.1
+        coreg_sub = coreg_class(subsample=0.1)
+        assert coreg_sub.meta["subsample"] == 0.1
 
         # Fit the vertical shift using 10% of the unmasked data using a fraction
         coreg_sub.fit(**self.fit_params, random_state=42)
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        coreg_sub = coreg(subsample=self.tba.data.size // 10)
-        assert coreg_sub._meta["subsample"] == self.tba.data.size // 10
+        coreg_sub = coreg_class(subsample=self.tba.data.size // 10)
+        assert coreg_sub.meta["subsample"] == self.tba.data.size // 10
         coreg_sub.fit(**self.fit_params, random_state=42)
 
         # Add a few performance checks
-        coreg_name = coreg.__name__
+        coreg_name = coreg_class.__name__
         if coreg_name == "VerticalShift":
             # Check that the estimated vertical shifts are similar
-            assert abs(coreg_sub._meta["vshift"] - coreg_full._meta["vshift"]) < 0.1
+            assert abs(coreg_sub.meta["shift_z"] - coreg_full.meta["shift_z"]) < 0.1
 
         elif coreg_name == "NuthKaab":
             # Calculate the difference in the full vs. subsampled matrices
@@ -176,7 +188,7 @@ class TestCoregClass:
 
         elif coreg_name == "Tilt":
             # Check that the estimated biases are similar
-            assert coreg_sub._meta["coefficients"] == pytest.approx(coreg_full._meta["coefficients"], rel=1e-1)
+            assert coreg_sub.meta["fit_params"] == pytest.approx(coreg_full.meta["fit_params"], rel=1e-1)
 
     def test_subsample__pipeline(self) -> None:
         """Test that the subsample argument works as intended for pipelines"""
@@ -185,14 +197,14 @@ class TestCoregClass:
         pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=5000)
 
         # Check the arguments are properly defined
-        assert pipe.pipeline[0]._meta["subsample"] == 200
-        assert pipe.pipeline[1]._meta["subsample"] == 5000
+        assert pipe.pipeline[0].meta["subsample"] == 200
+        assert pipe.pipeline[1].meta["subsample"] == 5000
 
         # Check definition during fit
         pipe = coreg.VerticalShift() + coreg.Deramp()
         pipe.fit(**self.fit_params, subsample=1000)
-        assert pipe.pipeline[0]._meta["subsample"] == 1000
-        assert pipe.pipeline[1]._meta["subsample"] == 1000
+        assert pipe.pipeline[0].meta["subsample"] == 1000
+        assert pipe.pipeline[1].meta["subsample"] == 1000
 
     def test_subsample__errors(self) -> None:
         """Check proper errors are raised when using the subsample argument"""
@@ -267,7 +279,7 @@ class TestCoregClass:
         )
 
         # Validate that they ended up giving the same result.
-        assert vshiftcorr_r._meta["vshift"] == vshiftcorr_a._meta["vshift"]
+        assert vshiftcorr_r.meta["shift_z"] == vshiftcorr_a.meta["shift_z"]
 
         # De-shift dem2
         dem2_r = vshiftcorr_r.apply(dem2)
@@ -350,6 +362,59 @@ class TestCoregClass:
         coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
         with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
             coreg_method.apply(tba_dem, resample=True, resampling=None)
+
+    @pytest.mark.parametrize("coreg_class", all_coregs)  # type: ignore
+    def test_fit_and_apply(self, coreg_class: Callable) -> None:  # type: ignore
+        """Check that fit_and_apply returns the same results as using fit, then apply, for any coreg."""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg_class()
+        coreg_fit_and_apply = coreg_class()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        # Check outputs are the same: aligned raster, and metadata keys and values
+
+        assert list(coreg_fit_and_apply.meta.keys()) == list(coreg_fit_then_apply.meta.keys())
+
+        # TODO: Fix randomness of directional bias...
+        if coreg_class != coreg.DirectionalBias:
+            assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+            assert all(
+                assert_coreg_meta_equal(coreg_fit_and_apply.meta[k], coreg_fit_then_apply.meta[k])
+                for k in coreg_fit_and_apply.meta.keys()
+            )
+
+    def test_fit_and_apply__pipeline(self) -> None:
+        """Check if it works for a pipeline"""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
+        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k])
+            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
+        )
+        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k])
+            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
+        )
 
     @pytest.mark.parametrize(
         "combination",
@@ -511,19 +576,17 @@ class TestCoregPipeline:
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
 
-        # Create a pipeline, add some metadata, and copy it
+        # Create a pipeline, add some .metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["vshift"] = 1
+        pipeline.pipeline[0]._meta["shift_z"] = 1
 
         pipeline_copy = pipeline.copy()
 
-        # Add some more metadata after copying (this should not be transferred)
-        pipeline._meta["resolution"] = 30
-        pipeline_copy.pipeline[0]._meta["offset_north_px"] = 0.5
+        # Add some more .metadata after copying (this should not be transferred)
+        pipeline_copy.pipeline[0]._meta["shift_y"] = 0.5 * 30
 
-        assert pipeline._meta != pipeline_copy._meta
-        assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
-        assert pipeline_copy.pipeline[0]._meta["vshift"]
+        assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
+        assert pipeline_copy.pipeline[0]._meta["shift_z"]
 
     def test_pipeline(self) -> None:
 
@@ -538,8 +601,8 @@ class TestCoregPipeline:
         # Make a new pipeline with two vertical shift correction approaches.
         pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
         # Set both "estimated" vertical shifts to be 1
-        pipeline2.pipeline[0]._meta["vshift"] = 1
-        pipeline2.pipeline[1]._meta["vshift"] = 1
+        pipeline2.pipeline[0].meta["shift_z"] = 1
+        pipeline2.pipeline[1].meta["shift_z"] = 1
 
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
@@ -643,9 +706,9 @@ class TestCoregPipeline:
         pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)
 
         for part in pipeline.pipeline:
-            assert np.abs(part._meta["offset_east_px"]) > 0
+            assert np.abs(part.meta["shift_x"]) > 0
 
-        assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
+        assert pipeline.pipeline[0].meta["shift_x"] != pipeline.pipeline[1].meta["shift_x"]
 
     def test_coreg_add(self) -> None:
 
@@ -657,7 +720,7 @@ class TestCoregPipeline:
 
         # Set the vertical shift attribute
         for vshift_corr in (vshift1, vshift2):
-            vshift_corr._meta["vshift"] = vshift
+            vshift_corr.meta["shift_z"] = vshift
 
         # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
         vshift3 = vshift1 + vshift2
@@ -685,8 +748,8 @@ class TestCoregPipeline:
         aligned_dem, _ = many_vshifts.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of EXACTLY zero
-        assert many_vshifts.pipeline[1]._meta["vshift"] == pytest.approx(0, abs=10e-5)
-        assert many_vshifts.pipeline[2]._meta["vshift"] == pytest.approx(0, abs=10e-5)
+        assert many_vshifts.pipeline[1].meta["shift_z"] == pytest.approx(0, abs=10e-5)
+        assert many_vshifts.pipeline[2].meta["shift_z"] == pytest.approx(0, abs=10e-5)
 
         # Many horizontal + vertical shifts
         many_nks = coreg.NuthKaab() + coreg.NuthKaab() + coreg.NuthKaab()
@@ -694,12 +757,12 @@ class TestCoregPipeline:
         aligned_dem, _ = many_nks.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of NEARLY zero
-        assert many_nks.pipeline[1]._meta["vshift"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[1]._meta["offset_east_px"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[1]._meta["offset_north_px"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2]._meta["vshift"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2]._meta["offset_east_px"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2]._meta["offset_north_px"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["shift_z"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["shift_x"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["shift_y"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2].meta["shift_z"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2].meta["shift_x"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2].meta["shift_y"] == pytest.approx(0, abs=0.02)
 
         # Test 2: Reflectivity
         # Those two pipelines should give almost the same result
@@ -763,7 +826,7 @@ class TestBlockwiseCoreg:
             coreg.BlockwiseCoreg(step=coreg.VerticalShift, subdivision=1)  # type: ignore
 
         # Metadata copying has been an issue. Validate that all chunks have unique ids
-        chunk_numbers = [m["i"] for m in blockwise._meta["step_meta"]]
+        chunk_numbers = [m["i"] for m in blockwise.meta["step_meta"]]
         assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
 
         transformed_dem = blockwise.apply(self.tba)
