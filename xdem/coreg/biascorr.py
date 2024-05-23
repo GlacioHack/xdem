@@ -32,10 +32,10 @@ BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 
 class BiasCorr(Coreg):
     """
-    Parent class of bias correction methods: non-rigid coregistrations.
+    Bias-correction (non-rigid alignment) simultaneously with any number and type of variables.
 
-    Made to be subclassed to pass default parameters/dimensions more intuitively, or to provide wrappers for specific
-    types of bias corrections (directional, terrain, etc).
+    Variables for bias-correction can include the elevation coordinates (deramping, directional biases), terrain
+    attributes (terrain corrections), or any other user-input variable (quality metrics, land cover).
     """
 
     def __init__(
@@ -508,7 +508,8 @@ class DirectionalBias(BiasCorr):
         """
         Instantiate a directional bias correction.
 
-        :param angle: Angle in which to perform the directional correction (degrees).
+        :param angle: Angle in which to perform the directional correction (degrees) with 0° corresponding to X axis
+            direction and increasing clockwise.
         :param fit_or_bin: Whether to fit or bin. Use "fit" to correct by optimizing a function or
             "bin" to correct with a statistic of central tendency in defined bins.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
@@ -797,7 +798,8 @@ class TerrainBias(BiasCorr):
 
 class Deramp(BiasCorr):
     """
-    Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations.
+    Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations
+    (dome-like errors).
     """
 
     def __init__(
