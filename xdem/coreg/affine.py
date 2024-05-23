@@ -303,9 +303,13 @@ class AffineCoreg(Coreg):
 
 class VerticalShift(AffineCoreg):
     """
-    DEM vertical shift correction.
+    Vertical translation alignment.
 
-    Estimates the mean vertical offset between two DEMs based on a reductor function (median, mean, or any).
+    Estimates the mean vertical offset between two elevation datasets based on a reductor function (median, mean, or
+    any custom reductor function).
+
+    The estimated vertical shift is stored in the `self.meta` key "shift_z" (in unit of the elevation dataset inputs,
+    typically meters).
     """
 
     def __init__(
@@ -313,7 +317,7 @@ class VerticalShift(AffineCoreg):
     ) -> None:  # pylint:
         # disable=super-init-not-called
         """
-        Instantiate a vertical shift correction object.
+        Instantiate a vertical shift alignment object.
 
         :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
             Defaults to the median.
@@ -400,13 +404,15 @@ class VerticalShift(AffineCoreg):
 
 class ICP(AffineCoreg):
     """
-    Iterative Closest Point DEM coregistration.
-    Based on 3D registration of Besl and McKay (1992), https://doi.org/10.1117/12.57955.
+    Iterative closest point registration, based on Besl and McKay (1992), https://doi.org/10.1117/12.57955.
 
-    Estimates a rigid transform (rotation + translation) between two DEMs.
+    Estimates a rigid transform (rotation + translation) between two elevation datasets.
 
-    Requires 'opencv'
-    See opencv doc for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
+    The transform is stored in the `self.meta` key "matrix", with rotation centered on the coordinates in the key
+    "centroid". The translation parameters are also stored individually in the keys "shift_x", "shift_y" and "shift_z"
+    (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift).
+
+    Requires 'opencv'. See opencv doc for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(
@@ -592,15 +598,23 @@ class ICP(AffineCoreg):
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
+        # Save outputs
         self._meta["centroid"] = centroid
         self._meta["matrix"] = matrix
+        self._meta["shift_x"] = matrix[0, 3]
+        self._meta["shift_y"] = matrix[1, 3]
+        self._meta["shift_z"] = matrix[2, 3]
 
 
 class Tilt(AffineCoreg):
     """
-    DEM tilting.
+    Tilt alignment.
 
-    Estimates an 2-D plan correction between the difference of two DEMs.
+    Estimates an 2-D plan correction between the difference of two elevation datasets. This is close to a rotation
+    alignment at small angles, but introduces a scaling at large angles.
+
+    The tilt parameters are stored in the `self.meta` key "fit_parameters", with associated polynomial function in
+    the key "fit_func".
     """
 
     def __init__(self, subsample: int | float = 5e5) -> None:
@@ -685,9 +699,13 @@ class Tilt(AffineCoreg):
 
 class NuthKaab(AffineCoreg):
     """
-    Nuth and Kääb (2011) DEM coregistration: iterative registration of horizontal and vertical shift using slope/aspect.
+    Nuth and Kääb (2011) coregistration, https://doi.org/10.5194/tc-5-271-2011.
 
-    Implemented after the paper: https://doi.org/10.5194/tc-5-271-2011.
+    Estimate horizontal and vertical translations by iterative slope/aspect alignment.
+
+    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
+    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
+    in the "matrix" transform.
     """
 
     def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
@@ -861,7 +879,6 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         2. do not support latitude and longitude as inputs.
 
         :param z_name: the column name of dataframe used for elevation differencing
-
         """
 
         # Check which one is reference
@@ -1044,7 +1061,13 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
 class GradientDescending(AffineCoreg):
     """
-    Gradient Descending coregistration by Zhihao
+    Gradient descending coregistration.
+
+    Estimates vertical and horizontal translations.
+
+    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
+    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
+    in the "matrix" transform.
     """
 
     def __init__(
