@@ -956,9 +956,15 @@ def _apply_matrix_pts(
     # Transform the points (around the centroid if it exists).
     if centroid is not None:
         points -= centroid
-    transformed_points = cv2.perspectiveTransform(points.reshape(1, -1, 3), matrix)[
-        0, :, :
-    ]  # Select the first dimension that is one
+
+    # Perform affine transformation
+
+    # Add a column of ones to get a Nx4 matrix before matrix multiplication
+    points = np.concatenate((points, np.ones(len(epc))[:, None]), axis=1)
+    # Transform using NumPy only, get only the first three columns
+    transformed_points = (matrix @ points.T)[:3, :].T
+
+    # Select the first dimension that is one
     if centroid is not None:
         transformed_points += centroid
 
