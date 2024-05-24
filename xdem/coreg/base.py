@@ -51,6 +51,13 @@ from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.spatialstats import nmad
+from xdem.fit import (
+    polynomial_1d,
+    robust_nfreq_sumsin_fit,
+    robust_norder_polynomial_fit,
+    sumsin_1d,
+)
+from xdem.spatialstats import nd_binning
 
 try:
     import pytransform3d.transformations
@@ -60,6 +67,11 @@ try:
 except ImportError:
     _HAS_P3D = False
 
+
+fit_workflows = {
+    "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
+    "nfreq_sumsin": {"func": sumsin_1d, "optimizer": robust_nfreq_sumsin_fit},
+}
 
 ###########################################
 # Generic functions for preprocessing
@@ -1060,6 +1072,7 @@ class Coreg:
     _is_affine: bool | None = None
     _needs_vars: bool = False
     _meta: CoregDict
+    _fit_or_bin: Literal["fit", "bin", "bin_and_fit"] | None = None
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""
@@ -1762,6 +1775,197 @@ class Coreg:
                     raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_pts.")
 
         return applied_elev, out_transform
+
+    def _bin_or_and_fit_nd(  # type: ignore
+        self,
+        values: NDArrayf,
+        inlier_mask: NDArrayb,
+        bias_vars: None | dict[str, NDArrayf] = None,
+        weights: None | NDArrayf = None,
+        verbose: bool = False,
+        **kwargs,
+    ) -> None:
+        """
+        Generic binning and/or fitting method to model values along N variables for a coregistration/correction,
+        used for all affine and bias-correction subclasses. Expects either 2D arrays for rasters, or 1D arrays for
+        points.
+
+        Should only be called through subclassing.
+        """
+
+        if self._fit_or_bin is None:
+            raise ValueError("This function should not be called for methods not supporting fit_or_bin logic.")
+
+        # This is called by subclasses, so the bias_var should always be defined
+        if bias_vars is None:
+            raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
+
+        # Check number of variables
+        nd = self._meta["nd"]
+        if nd is not None and len(bias_vars) != nd:
+            raise ValueError(
+                "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
+                "got {}.".format(nd, len(bias_vars))
+            )
+
+        # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
+        if self._meta["bias_var_names"] is not None:
+            if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
+                raise ValueError(
+                    "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                    "instantiation: {}.".format(self._meta["bias_var_names"])
+                )
+        # Otherwise, store bias variable names from the dictionary
+        else:
+            self._meta["bias_var_names"] = list(bias_vars.keys())
+
+        # Compute difference and mask of valid data
+        # TODO: Move the check up to Coreg.fit()?
+
+        valid_mask = np.logical_and.reduce(
+            (inlier_mask, np.isfinite(values), *(np.isfinite(var) for var in bias_vars.values()))
+        )
+
+        # Raise errors if all values are NaN after introducing masks from the variables
+        # (Others are already checked in Coreg.fit())
+        if np.all(~valid_mask):
+            raise ValueError("Some 'bias_vars' have only NaNs in the inlier mask.")
+
+        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask, verbose=verbose)
+
+        # Get number of variables
+        nd = len(bias_vars)
+
+        # Remove random state for keyword argument if its value is not in the optimizer function
+        if self._fit_or_bin in ["fit", "bin_and_fit"]:
+            fit_func_args = inspect.getfullargspec(self._meta["fit_optimizer"]).args
+            if "random_state" not in fit_func_args and "random_state" in kwargs:
+                kwargs.pop("random_state")
+
+        # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
+        if self._fit_or_bin in ["bin", "bin_and_fit"]:
+            if isinstance(self._meta["bin_sizes"], dict):
+                var_order = list(bias_vars.keys())
+                # Declare type to write integer or tuple to the variable
+                bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
+                    np.array(self._meta["bin_sizes"][var]) for var in var_order
+                )
+            # Otherwise, write integer directly
+            else:
+                bin_sizes = self._meta["bin_sizes"]
+
+        # Option 1: Run fit and save optimized function parameters
+        if self._fit_or_bin == "fit":
+
+            # Print if verbose
+            if verbose:
+                print(
+                    "Estimating alignment along variables {} by fitting "
+                    "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
+                )
+
+            results = self._meta["fit_optimizer"](
+                f=self._meta["fit_func"],
+                xdata=np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze(),
+                ydata=values[subsample_mask].flatten(),
+                sigma=weights[subsample_mask].flatten() if weights is not None else None,
+                absolute_sigma=True,
+                **kwargs,
+            )
+
+        # Option 2: Run binning and save dataframe of result
+        elif self._fit_or_bin == "bin":
+
+            if verbose:
+                print(
+                    "Estimating alignment along variables {} by binning "
+                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
+                )
+
+            df = nd_binning(
+                values=values[subsample_mask],
+                list_var=[var[subsample_mask] for var in bias_vars.values()],
+                list_var_names=list(bias_vars.keys()),
+                list_var_bins=bin_sizes,
+                statistics=(self._meta["bin_statistic"], "count"),
+            )
+
+        # Option 3: Run binning, then fitting, and save both results
+        else:
+
+            # Print if verbose
+            if verbose:
+                print(
+                    "Estimating alignment along variables {} by binning with statistic {} and then fitting "
+                    "with function {}.".format(
+                        ", ".join(list(bias_vars.keys())),
+                        self._meta["bin_statistic"].__name__,
+                        self._meta["fit_func"].__name__,
+                    )
+                )
+
+            df = nd_binning(
+                values=values[subsample_mask],
+                list_var=[var[subsample_mask] for var in bias_vars.values()],
+                list_var_names=list(bias_vars.keys()),
+                list_var_bins=bin_sizes,
+                statistics=(self._meta["bin_statistic"], "count"),
+            )
+
+            # Now, we need to pass this new data to the fitting function and optimizer
+            # We use only the N-D binning estimates (maximum dimension, equal to length of variable list)
+            df_nd = df[df.nd == len(bias_vars)]
+
+            # We get the middle of bin values for variable, and statistic for the diff
+            new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
+            new_diff = df_nd[self._meta["bin_statistic"].__name__].values
+            # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
+            #  sigma values would have to be binned above also
+
+            # Valid values for the binning output
+            ind_valid = np.logical_and.reduce((np.isfinite(new_diff), *(np.isfinite(var) for var in new_vars)))
+
+            if np.all(~ind_valid):
+                raise ValueError("Only NaN values after binning, did you pass the right bin edges?")
+
+            results = self._meta["fit_optimizer"](
+                f=self._meta["fit_func"],
+                xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
+                ydata=new_diff[ind_valid].flatten(),
+                sigma=weights[ind_valid].flatten() if weights is not None else None,
+                absolute_sigma=True,
+                **kwargs,
+            )
+
+        if verbose:
+            print(f"{nd}D bias estimated.")
+
+        # Save results if fitting was performed
+        if self._fit_or_bin in ["fit", "bin_and_fit"]:
+
+            # Write the results to metadata in different ways depending on optimizer returns
+            if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
+                params = results[0]
+                order_or_freq = results[1]
+                if self._meta["fit_optimizer"] == robust_norder_polynomial_fit:
+                    self._meta["poly_order"] = order_or_freq
+                else:
+                    self._meta["nb_sin_freq"] = order_or_freq
+
+            elif self._meta["fit_optimizer"] == scipy.optimize.curve_fit:
+                params = results[0]
+                # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
+                perr = np.sqrt(np.diag(results[1]))
+                self._meta["fit_perr"] = perr
+
+            else:
+                params = results[0]
+
+            self._meta["fit_params"] = params
+
+        # Save results of binning if it was perfrmed
+        elif self._fit_or_bin in ["bin", "bin_and_fit"]:
+            self._meta["bin_dataframe"] = df
 
     def _fit_rst_rst(
         self,
