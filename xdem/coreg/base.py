@@ -36,6 +36,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
+from scipy.interpolate import RegularGridInterpolator
 import skimage.transform
 from geoutils._typing import Number
 from geoutils.misc import resampling_method_from_str
@@ -47,6 +48,7 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
+from geoutils.raster.raster import _shift_transform
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -731,6 +733,9 @@ def deramping(
 
     return fit_ramp, coefs
 
+###############################################
+# Affine matrix manipulation and transformation
+###############################################
 
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
     """Invert a transformation matrix."""
@@ -741,190 +746,6 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         checked_matrix = pytransform3d.transformations.check_transform(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
-
-
-def apply_matrix(
-    elev: gu.Raster | NDArrayf | gpd.GeoDataFrame,
-    matrix: NDArrayf,
-    invert: bool = False,
-    centroid: tuple[float, float, float] | None = None,
-    resampling: int | str = "bilinear",
-    transform: rio.transform.Affine = None,
-    z_name: str = "z",
-) -> NDArrayf | gu.Raster | gpd.GeoDataFrame:
-    """
-    Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
-
-    :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
-        geodataframe (requires z_name).
-    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
-    :param invert: Whether to invert the transformation matrix.
-    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
-        Defaults to the midpoint (Z=0).
-    :param resampling: The resampling method to use, only for DEM 2.5D transformation. Can be `nearest`, `bilinear`,
-        `cubic` or an integer from 0-5.
-    :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
-    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
-    :return:
-    """
-
-    if isinstance(elev, gpd.GeoDataFrame):
-        return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
-    else:
-        if isinstance(elev, gu.Raster):
-            transform = elev.transform
-            dem = elev.data
-        else:
-            dem = elev
-
-        # TODO: Add exception for translation to update only geotransform, maybe directly in apply_matrix?
-        applied_dem = _apply_matrix_rst(
-            dem=dem, transform=transform, matrix=matrix, invert=invert, centroid=centroid, resampling=resampling
-        )
-        if isinstance(elev, gu.Raster):
-            applied_dem = gu.Raster.from_array(applied_dem, transform, elev.crs, elev.nodata)
-        return applied_dem
-
-
-def _apply_matrix_rst(
-    dem: NDArrayf,
-    transform: rio.transform.Affine,
-    matrix: NDArrayf,
-    invert: bool = False,
-    centroid: tuple[float, float, float] | None = None,
-    resampling: int | str = "bilinear",
-    fill_max_search: int = 0,
-) -> NDArrayf:
-    """
-    Apply a 3D affine transformation matrix to a 2.5D DEM.
-
-    The transformation is applied as a value correction using linear deramping, and 2D image warping.
-
-    1. Convert the DEM into a point cloud (not for gridding; for estimating the DEM shifts).
-    2. Transform the point cloud in 3D using the 4x4 matrix.
-    3. Measure the difference in elevation between the original and transformed points.
-    4. Estimate a linear deramp from the elevation difference, and apply the correction to the DEM values.
-    5. Convert the horizontal coordinates of the transformed points to pixel index coordinates.
-    6. Apply the pixel-wise displacement in 2D using the new pixel coordinates.
-    7. Apply the same displacement to a nodata-mask to exclude previous and/or new nans.
-
-    :param dem: DEM to transform.
-    :param transform: Geotransform of the DEM.
-    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
-    :param invert: Whether to invert the transformation matrix.
-    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
-        Defaults to the midpoint (Z=0).
-    :param resampling: The resampling method to use. Can be `nearest`, `bilinear`, `cubic` or an integer from 0-5.
-    :param fill_max_search: Set to > 0 value to fill the DEM before applying the transformation, to avoid spreading\
-    gaps. The DEM will be filled with rasterio.fill.fillnodata with max_search_distance set to fill_max_search.\
-    This is experimental, use at your own risk !
-
-    :returns: Transformed DEM with NaNs as nodata values (replaces a potential mask of the input `dem`).
-    """
-    # Parse the resampling argument given.
-    if isinstance(resampling, (int, np.integer)):
-        resampling_order = resampling
-    elif resampling == "cubic":
-        resampling_order = 3
-    elif resampling == "bilinear":
-        resampling_order = 1
-    elif resampling == "nearest":
-        resampling_order = 0
-    else:
-        raise ValueError(
-            f"`{resampling}` is not a valid resampling mode."
-            " Choices: [`nearest`, `bilinear`, `cubic`] or an integer."
-        )
-    # Copy the DEM to make sure the original is not modified, and convert it into an ndarray
-    demc = np.array(dem)
-
-    # Check if the matrix only contains a Z correction. In that case, only shift the DEM values by the vertical shift.
-    empty_matrix = np.diag(np.ones(4, float))
-    empty_matrix[2, 3] = matrix[2, 3]
-    if np.mean(np.abs(empty_matrix - matrix)) == 0.0:
-        return demc + matrix[2, 3]
-
-    # Opencv is required down from here
-    if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
-
-    nan_mask = ~np.isfinite(dem)
-    assert np.count_nonzero(~nan_mask) > 0, "Given DEM had all nans."
-    # Optionally, fill DEM around gaps to reduce spread of gaps
-    if fill_max_search > 0:
-        filled_dem = rio.fill.fillnodata(demc, mask=(~nan_mask).astype("uint8"), max_search_distance=fill_max_search)
-    else:
-        filled_dem = demc  # np.where(~nan_mask, demc, np.nan)  # I don't know why this was needed - to delete
-
-    # Get the centre coordinates of the DEM pixels.
-    x_coords, y_coords = _get_x_and_y_coords(demc.shape, transform)
-
-    bounds, resolution = _transform_to_bounds_and_res(dem.shape, transform)
-
-    # If a centroid was not given, default to the center of the DEM (at Z=0).
-    if centroid is None:
-        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
-    else:
-        assert len(centroid) == 3, f"Expected centroid to be 3D X/Y/Z coordinate. Got shape of {len(centroid)}"
-
-    # Shift the coordinates to centre around the centroid.
-    x_coords -= centroid[0]
-    y_coords -= centroid[1]
-
-    # Create a point cloud of X/Y/Z coordinates
-    point_cloud = np.dstack((x_coords, y_coords, filled_dem))
-
-    # Shift the Z components by the centroid.
-    point_cloud[:, 2] -= centroid[2]
-
-    if invert:
-        matrix = invert_matrix(matrix)
-
-    # Transform the point cloud using the matrix.
-    transformed_points = cv2.perspectiveTransform(
-        point_cloud.reshape((1, -1, 3)),
-        matrix,
-    ).reshape(point_cloud.shape)
-
-    # Estimate the vertical difference of old and new point cloud elevations.
-    deramp, coeffs = deramping(
-        (point_cloud[:, :, 2] - transformed_points[:, :, 2])[~nan_mask].flatten(),
-        point_cloud[:, :, 0][~nan_mask].flatten(),
-        point_cloud[:, :, 1][~nan_mask].flatten(),
-        degree=1,
-    )
-    # Shift the elevation values of the soon-to-be-warped DEM.
-    filled_dem -= deramp(x_coords, y_coords)
-
-    # Create arrays of x and y coordinates to be converted into index coordinates.
-    x_inds = transformed_points[:, :, 0].copy()
-    x_inds[x_inds == 0] = np.nan
-    y_inds = transformed_points[:, :, 1].copy()
-    y_inds[y_inds == 0] = np.nan
-
-    # Divide the coordinates by the resolution to create index coordinates.
-    x_inds /= resolution
-    y_inds /= resolution
-    # Shift the x coords so that bounds.left is equivalent to xindex -0.5
-    x_inds -= x_coords.min() / resolution
-    # Shift the y coords so that bounds.top is equivalent to yindex -0.5
-    y_inds = (y_coords.max() / resolution) - y_inds
-
-    # Create a skimage-compatible array of the new index coordinates that the pixels shall have after warping.
-    inds = np.vstack((y_inds.reshape((1,) + y_inds.shape), x_inds.reshape((1,) + x_inds.shape)))
-
-    with warnings.catch_warnings():
-        # An skimage warning that will hopefully be fixed soon. (2021-07-30)
-        warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
-        # Warp the DEM
-        transformed_dem = skimage.transform.warp(
-            filled_dem, inds, order=resampling_order, mode="constant", cval=np.nan, preserve_range=True
-        )
-
-    assert np.count_nonzero(~np.isnan(transformed_dem)) > 0, "Transformed DEM has all nans."
-
-    return transformed_dem
-
 
 def _apply_matrix_pts(
     epc: gpd.GeoDataFrame,
@@ -950,31 +771,287 @@ def _apply_matrix_pts(
     if invert:
         matrix = invert_matrix(matrix)
 
-    # First, get Nx3 array to pass to opencv
+    # First, get Nx3 array
     points = np.array([epc.geometry.x.values, epc.geometry.y.values, epc[z_name].values]).T
 
-    # Transform the points (around the centroid if it exists).
+    # Temporarily subtract centroid coordinates
     if centroid is not None:
         points -= centroid
 
     # Perform affine transformation
-
     # Add a column of ones to get a Nx4 matrix before matrix multiplication
     points = np.concatenate((points, np.ones(len(epc))[:, None]), axis=1)
-    # Transform using NumPy only, get only the first three columns
+    # Transform using matrix multiplication, and get only the first three columns
     transformed_points = (matrix @ points.T)[:3, :].T
 
-    # Select the first dimension that is one
+    # Add back centroid coordinates
     if centroid is not None:
         transformed_points += centroid
 
     # Finally, transform back to a new GeoDataFrame
     transformed_epc = gpd.GeoDataFrame(
         geometry=gpd.points_from_xy(x=transformed_points[:, 0], y=transformed_points[:, 1], crs=epc.crs),
-        data={"z": transformed_points[:, 2]},
+        data={z_name: transformed_points[:, 2]},
     )
 
     return transformed_epc
+
+def _iterate_affine_reproj_small_rotations(
+    dem: NDArrayf,
+    transform: rio.transform.Affine,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    verbose: bool = False,
+) -> tuple[NDArrayf, rio.transform.Affine]:
+    """
+    Iterative process to find the best reprojection of affine transformation for small rotations.
+
+    Faster than regridding point cloud by triangulation of points.
+    """
+
+    # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
+    dem_rst = gu.Raster.from_array(dem, transform=transform, crs=4326, nodata=99999)
+    epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
+
+    # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
+    trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
+
+    # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
+    # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
+    # fall exactly on regular X,Y coordinates
+
+    # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
+    # coords = dem_rst.coords(grid=False)
+    # z_interp = RegularGridInterpolator(points=(coords[1], coords[0]), values=dem, method=resampling, bounds_error=False)
+
+    # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
+    # of the nearest point from the transformed elevation point cloud
+    # (Longest step computationally)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
+        nearest = gpd.sjoin_nearest(epc, trans_epc)
+    approx_trans_epc_on_grid = epc.copy()
+    new_z = epc.z.values[nearest["index_right"]]
+
+    # 3/ We then iterate between two steps until convergence:
+    # a/ Use the Z guess to derive invert affine transform X',Y' coordinates for the original DEM,
+    # b/ Interpolate Z' at new coordinates X',Y' on the original DEM, and apply affine transform to get updated Z guess
+
+    # For small rotations, and large DEMs (elevation range smaller than the DEM extent), this converges fast
+    max_niter = 10
+    tolerance = 10**(-4)
+    res_x = dem_rst.res[0]
+    res_y = dem_rst.res[1]
+    niter = 0
+    while niter < max_niter:
+
+        # Update new transformed elevation guess Z
+        approx_trans_epc_on_grid.z = new_z
+
+        # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
+        inv_approx_epc = _apply_matrix_pts(approx_trans_epc_on_grid, matrix=matrix, invert=True, centroid=centroid)
+
+        # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
+        # new_z = z_interp((inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values))
+        new_z = dem_rst.interp_points(points=(inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values))
+        new_epc = gpd.GeoDataFrame(data={"z": new_z}, geometry=gpd.points_from_xy(x=inv_approx_epc.geometry.x.values,
+                                                                                  y=inv_approx_epc.geometry.y.values))
+        # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
+        trans_new_epc = _apply_matrix_pts(new_epc, matrix=matrix, centroid=centroid)
+
+        # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
+        diff_x = trans_new_epc.geometry.x.values - epc.geometry.x.values
+        diff_y = trans_new_epc.geometry.y.values - epc.geometry.y.values
+        valids = np.logical_and(np.isfinite(diff_x), np.isfinite(diff_y))
+
+        if verbose:
+            print(f"Iteration {niter + 1}:"
+                  f"\n    Mean diff x: {np.nanmean(np.abs(diff_x[valids]))}"
+                  f"\n    Mean diff y: {np.nanmean(np.abs(diff_y[valids]))}")
+        ind_diff_x = np.abs(diff_x[valids]) < (tolerance * res_x)
+        ind_diff_y = np.abs(diff_y[valids]) < (tolerance * res_y)
+
+        if verbose:
+            print(f"    Points not within tolerance: "
+                  f"{np.count_nonzero(~ind_diff_x)} for X; "
+                  f"{np.count_nonzero(~ind_diff_y)} for Y")
+
+        if all(np.logical_and(ind_diff_x, ind_diff_y)):
+            break
+
+        # Otherwise update Z guess and iterate again
+        new_z = trans_new_epc.z.values
+        niter += 1
+
+    # 4/ Write the regular-grid point cloud back into a raster
+    # Overwrite coordinate transformed back+forth again to avoid floating point precision issues
+    trans_new_epc.geometry = gpd.points_from_xy(x=epc.geometry.x.values, y=epc.geometry.y.values)
+    transformed_dem = dem_rst.from_pointcloud_regular(trans_new_epc, transform=transform, shape=dem.shape,
+                                                      data_column_name="z", nodata=-99999)
+
+    return transformed_dem.data.filled(np.nan), transform
+
+
+def _apply_matrix_rst(
+    dem: NDArrayf,
+    transform: rio.transform.Affine,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    verbose: bool = True,
+) -> tuple[NDArrayf, rio.transform.Affine]:
+    """
+    Apply a 3D affine transformation matrix to a 2.5D DEM.
+
+    Affine transformation of a DEM requires interpolation for re-gridding, because the exact affine transformation
+    applied to the DEM creates a point cloud for which the coordinates do not respect a regular grid anymore
+    (except if the affine transformation only has translations).
+
+    For translations, the transform is updated and a vertical shift added to the array.
+
+    For other affine transformations, this function maps which 2D point coordinates will fall back exactly onto
+    the original DEM grid coordinates after affine transformation (using the invert affine transformation).
+    Then, elevation at these points is estimated by 2D point interpolation (using `geoutils.Raster.interp_points`,
+    that relies on `scipy.interpolate.interpn`), and the exact affine transformation is applied.
+
+    :param dem: DEM to transform.
+    :param transform: Geotransform of the DEM.
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
+        Defaults to the midpoint (Z=0).
+    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more information,
+        see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+
+    :returns: Transformed DEM, Transform.
+    """
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # Check DEM has valid values
+    if np.count_nonzero(np.isfinite(dem)) == 0:
+        raise ValueError("Input DEM has all nans.")
+
+    shift_z_only_matrix = np.diag(np.ones(4, float))
+    shift_z_only_matrix[2, 3] = matrix[2, 3]
+
+    shift_only_matrix = np.diag(np.ones(4, float))
+    shift_only_matrix[:3, 3] = matrix[:3, 3]
+
+    # 1/ Check if the matrix only contains a Z correction, in that case only shift the DEM values by the vertical shift
+    if np.array_equal(shift_z_only_matrix, matrix):
+        return dem + matrix[2, 3], transform
+
+    # 2/ Check if the matrix contains only translations, in that case only shift by the DEM only by translation
+    if np.array_equal(shift_only_matrix, matrix):
+        new_transform = _shift_transform(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+        return dem + matrix[2, 3], new_transform
+
+    # 3/ If matrix contains rotations or scaling, and rotation is small, use the iterative reprojection
+    new_dem, transform = _iterate_affine_reproj_small_rotations(dem=dem, transform=transform, matrix=matrix,
+                                                                centroid=centroid, resampling=resampling,
+                                                                verbose=verbose)
+    return new_dem, transform
+
+    # TODO: Add option to force to use the following even for translations, to check for consistency in tests
+
+    # 3/ If matrix contains rotations or scaling, interpolate the DEM to the point coordinates we'd need to transform
+    # to fall back onto the original grid
+
+    # # 3.1/ Transform DEM into a point cloud
+    # dem_rst = gu.Raster.from_array(data=dem, transform=transform, crs=None)
+    # epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
+    # print(epc)
+    #
+    # # 3.2/ Map X/Y/Z to affine-transformed coordinates as functions
+    # def xyz_affine(x, y, z):
+    #     coords_mat = matrix @ np.vstack((x, y, z, np.ones(len(x))))
+    #     return coords_mat[0, :], coords_mat[1, :], coords_mat[2, :]
+    #
+    # # 3.3/ 2D interpolator on the DEM grid
+    # coords = dem_rst.coords(grid=False)
+    #
+    # def z_interpolator():
+    #     from scipy.interpolate import RegularGridInterpolator
+    #     return RegularGridInterpolator(points=(coords[1], coords[0]), values=dem, method="linear", bounds_error=False)
+    #
+    # # 3.4/ Get elevation at regular points after transformation
+    # xx, yy = dem_rst.coords()
+    # dem_interp = z_interpolator()
+    # zz = dem_interp((xx.flatten(), yy.flatten()))
+    #
+    # xx_aff, yy_aff, zz_aff = xyz_affine(xx, yy, zz)
+    # transformed_dem = zz_aff.reshape(dem.shape)
+
+    # 3.2/ Invert transform point cloud to get coordinates of points where to transform to get back to original DEM grid
+    # inv_matrix = invert_matrix(matrix)
+    # invert_epc = _apply_matrix_pts(epc=epc, matrix=inv_matrix, centroid=centroid)
+    #
+    # # 3.3/ Interpolate DEM at points from the invert transform, and replace elevations to these values
+    # z_invert = dem.interp_points(points=(invert_epc.geometry.x.values, invert_epc.geometry.y.values), method=resampling)
+    # # invert_epc["z"] = z_invert
+    # print(invert_epc)
+    #
+    # # 3.4/ Transform the point cloud with the affine matrix
+    # transformed_epc = _apply_matrix_pts(epc=invert_epc, matrix=matrix, centroid=centroid)
+    # print(transformed_epc)
+    #
+    # # 3.5/ Write the regular-grid point cloud back into a raster
+    # # Overwrite coordinate transformed back+forth again to avoid floating point precision issues
+    # # transformed_epc.geometry = gpd.points_from_xy(x=epc.geometry.x.values, y=epc.geometry.y.values)
+    # transformed_dem = dem.from_pointcloud_regular(transformed_epc, transform=transform, shape=dem.shape,
+    #                                               data_column_name="z", nodata=-99999)
+
+    # return transformed_dem.data.filled(np.nan), transform
+
+    return transformed_dem, transform
+
+
+def apply_matrix(
+    elev: gu.Raster | NDArrayf | gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+) -> tuple[NDArrayf, affine.Affine] | gu.Raster | gpd.GeoDataFrame:
+    """
+    Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
+
+    :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
+        geodataframe (requires z_name).
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
+        Defaults to the midpoint (Z=0).
+    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more information,
+        see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+    :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
+    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :return:
+    """
+
+    if isinstance(elev, gpd.GeoDataFrame):
+        return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
+    else:
+        if isinstance(elev, gu.Raster):
+            transform = elev.transform
+            dem = elev.data.filled(np.nan)
+        else:
+            dem = elev
+
+        applied_dem, out_transform = _apply_matrix_rst(
+            dem=dem, transform=transform, matrix=matrix, invert=invert, centroid=centroid, resampling=resampling
+        )
+        if isinstance(elev, gu.Raster):
+            applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
+            return applied_dem
+        return applied_dem, out_transform
 
 
 ###########################################
