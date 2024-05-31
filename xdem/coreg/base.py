@@ -351,13 +351,15 @@ def _get_valid_data_mask(
     ref: NDArrayf, tba: NDArrayf, mask: NDArrayb | None, ref_nodata: float | int, tba_nodata: float | int
 ) -> NDArrayb:
     """Get a mask for all valid data and inliers."""
-    mask_ref = np.where((~np.isfinite(ref)) | (ref == ref_nodata), False, True)
-    mask_tba = np.where((~np.isfinite(tba)) | (tba == tba_nodata), False, True)
-    valid_mask = np.logical_and(mask_ref, mask_tba)
+    # valid data are pixels that are neither nans nor nodata values
+    valid_data_ref = np.where((np.isfinite(ref)) & (ref != ref_nodata), True, False)
+    valid_data_tba = np.where((np.isfinite(tba)) & (tba != tba_nodata), True, False)
+    valid_data = np.logical_and(valid_data_ref, valid_data_tba)
 
+    # combine it with the mask
     if mask is not None:
-        return np.logical_and(mask, valid_mask)
-    return valid_mask.astype(bool)
+        return np.logical_and(mask, valid_data)
+    return valid_data
 
 
 def _preprocess_coreg_fit_xarray_xarray(
