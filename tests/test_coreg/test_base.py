@@ -8,6 +8,8 @@ import warnings
 from typing import Any, Callable
 
 import geopandas as gpd
+import pytransform3d.rotations
+
 import geoutils as gu
 import numpy as np
 import pandas as pd
@@ -25,11 +27,11 @@ from xdem.coreg.base import Coreg, apply_matrix
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    return reference_raster, to_be_aligned_raster, glacier_mask
+    return reference_dem, to_be_aligned_dem, glacier_mask
 
 
 def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
@@ -900,7 +902,7 @@ class TestAffineManipulation:
     matrix_translations = matrix_identity.copy()
     matrix_translations[:3, 3] = [0.5, 1, 1.5]
 
-    # Rotation
+    # Single rotation
     rotation = np.deg2rad(5)
     matrix_rotations = matrix_identity.copy()
     matrix_rotations[1, 1] = np.cos(rotation)
@@ -908,12 +910,23 @@ class TestAffineManipulation:
     matrix_rotations[2, 1] = -np.sin(rotation)
     matrix_rotations[1, 2] = np.sin(rotation)
 
-    list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations]
+    # Mix of translations and rotations in all axes (X, Y, Z) simultaneously
+    rotation_x = 5
+    rotation_y = 10
+    rotation_z = 3
+    e = np.deg2rad(np.array([rotation_x, rotation_y, rotation_z]))
+    # This is a 3x3 rotation matrix
+    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+    matrix_all = matrix_rotations
+    matrix_all[0:3, 0:3] = rot_matrix
+    matrix_translations[:3, 3] = [0.5, 1, 1.5]
 
-    @pytest.mark.parametrize("matrix", list_matrices)
-    def test_apply_matrix__exact_points_opencv(self, matrix: NDArrayf) -> None:
+    list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations, matrix_all]
+
+    @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
+    def test_apply_matrix__points_opencv(self, matrix: NDArrayf) -> None:
         """
-        Test that apply matrix exact transformation for points (implemented with NumPy matrix multiplication)
+        Test that apply matrix's exact transformation for points (implemented with NumPy matrix multiplication)
         is exactly the same as the one of OpenCV (optional dependency).
         """
 
@@ -932,10 +945,11 @@ class TestAffineManipulation:
         trans_numpy = np.array([trans_epc.geometry.x.values, trans_epc.geometry.y.values, trans_epc["z"].values]).T
         assert np.array_equal(trans_numpy, trans_cv2_arr)
 
-    @pytest.mark.parametrize("matrix", list_matrices)
-    def test_apply_matrix__point_raster_consistency(self, matrix: NDArrayf) -> None:
-        """Test that apply matrix gives consistent results between points and rasters
-        (thus validating raster implementation, as point implementation is validated above)."""
+    @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])  # type: ignore
+    @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
+    def test_apply_matrix__raster(self, regrid_method: None | str, matrix: NDArrayf) -> None:
+        """Test that apply matrix gives consistent results between points and rasters (thus validating raster
+        implementation, as point implementation is validated above), for all possible regridding methods."""
 
         # Create a synthetic raster and convert to point cloud
         # dem = gu.Raster(self.ref)
@@ -945,129 +959,47 @@ class TestAffineManipulation:
         epc = dem.to_pointcloud(data_column_name="z").ds
 
         # If a centroid was not given, default to the center of the DEM (at Z=0).
-        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0)
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.)
 
         # Apply affine transformation to both datasets
-        trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid)
+        trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method=regrid_method)
+        trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
+
+        # Interpolate transformed DEM at coordinates of the transformed point cloud
+        # Because the raster created as a constant slope (plan-like), the interpolated values should be very close
+        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        valids = np.isfinite(z_points)
+        assert np.count_nonzero(valids) > 0
+        assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
+
+    @pytest.mark.parametrize("regrid_method", ["iterative", "griddata"])  # type: ignore
+    def test_apply_matrix__realdata(self, regrid_method: str):
+        """Testing real data no complex matrix only to avoid all loops"""
+
+        # Use real data
+        dem = self.ref
+        dem.crop((dem.bounds.left, dem.bounds.bottom, dem.bounds.left+2000, dem.bounds.bottom+2000))
+        epc = dem.to_pointcloud(data_column_name="z").ds
+
+        matrix = self.matrix_all
+
+        # If a centroid was not given, default to the center of the DEM (at Z=0).
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.)
+
+        # Apply affine transformation to both datasets
+        trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method=regrid_method)
         trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
-        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
-                                           method="linear")
+        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+
         valids = np.isfinite(z_points)
+        diff_valids = z_points[valids] - trans_epc.z.values[valids]
+
         assert np.count_nonzero(valids) > 0
-        assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5, equal_nan=True)
-
-    def test_apply_matrix__special_cases(self) -> None:
-
-        ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-        ref_arr = gu.raster.get_array_and_mask(ref)[0]
-
-        # Test only vertical shift (it should just apply the vertical shift and not make anything else)
-        vshift = 5
-        matrix = np.diag(np.ones(4, float))
-        matrix[2, 3] = vshift
-        transformed_dem = _apply_matrix_rst(ref_arr, ref.transform, matrix)
-        reverted_dem = transformed_dem - vshift
-
-        # Check that the reverted DEM has the exact same values as the initial one
-        # (resampling is not an exact science, so this will only apply for vertical shift corrections)
-        assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(ref.data))
-
-        # Synthesize a shifted and vertically offset DEM
-        pixel_shift = 11
-        vshift = 5
-        shifted_dem = ref_arr.copy()
-        shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
-        shifted_dem[:, :pixel_shift] = np.nan
-        shifted_dem += vshift
-
-        matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] = pixel_shift * tba.res[0]
-        matrix[2, 3] = -vshift
-
-        transformed_dem = _apply_matrix_rst(shifted_dem, ref.transform, matrix, resampling="bilinear")
-        diff = np.asarray(ref_arr - transformed_dem)
-
-        # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 0.01
-        # Check that the NMAD is low
-        assert spatialstats.nmad(diff) < 0.01
-
-        def rotation_matrix(rotation: float = 30) -> NDArrayf:
-            rotation = np.deg2rad(rotation)
-            matrix = np.array(
-                [
-                    [1, 0, 0, 0],
-                    [0, np.cos(rotation), -np.sin(rotation), 0],
-                    [0, np.sin(rotation), np.cos(rotation), 0],
-                    [0, 0, 0, 1],
-                ]
-            )
-            return matrix
-
-        rotation = 4
-        centroid = (
-            np.mean([ref.bounds.left, ref.bounds.right]),
-            np.mean([ref.bounds.top, ref.bounds.bottom]),
-            ref.data.mean(),
-        )
-        rotated_dem = _apply_matrix_rst(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
-        # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
-        assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
-        assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
-
-        # Apply a rotation in the opposite direction
-        unrotated_dem = (
-            _apply_matrix_rst(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
-        )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
-
-        diff = np.asarray(ref.data.squeeze() - unrotated_dem)
-
-        # if False:
-        #     import matplotlib.pyplot as plt
-        #
-        #     vmin = 0
-        #     vmax = 1500
-        #     extent = (ref.bounds.left, ref.bounds.right, ref.bounds.bottom, ref.bounds.top)
-        #     plot_params = dict(
-        #         extent=extent,
-        #         vmin=vmin,
-        #         vmax=vmax
-        #     )
-        #     plt.figure(figsize=(22, 4), dpi=100)
-        #     plt.subplot(151)
-        #     plt.title("Original")
-        #     plt.imshow(ref.data.squeeze(), **plot_params)
-        #     plt.xlim(*extent[:2])
-        #     plt.ylim(*extent[2:])
-        #     plt.subplot(152)
-        #     plt.title(f"Rotated {rotation} degrees")
-        #     plt.imshow(rotated_dem, **plot_params)
-        #     plt.xlim(*extent[:2])
-        #     plt.ylim(*extent[2:])
-        #     plt.subplot(153)
-        #     plt.title(f"De-rotated {-rotation} degrees")
-        #     plt.imshow(unrotated_dem, **plot_params)
-        #     plt.xlim(*extent[:2])
-        #     plt.ylim(*extent[2:])
-        #     plt.subplot(154)
-        #     plt.title("Original vs. de-rotated")
-        #     plt.imshow(diff, extent=extent, vmin=-10, vmax=10, cmap="coolwarm_r")
-        #     plt.colorbar()
-        #     plt.xlim(*extent[:2])
-        #     plt.ylim(*extent[2:])
-        #     plt.subplot(155)
-        #     plt.title("Original vs. de-rotated")
-        #     plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-10, 10, 100))
-        #     plt.tight_layout(w_pad=0.05)
-        #     plt.show()
-
-        # Check that the median is very close to zero
-        assert np.abs(np.nanmedian(diff)) < 0.5
-        # Check that the NMAD is low
-        assert spatialstats.nmad(diff) < 5
-        print(np.nanmedian(diff), spatialstats.nmad(diff))
+        # Because of outliers, noise and slope near 90°, checking against the interpolated points does not work as well
+        # some points will have large elevation differences, but 90% of those should remain relatively small
+        assert np.percentile(np.abs(diff_valids), 90) < 1
 
 
 def test_warp_dem() -> None:
