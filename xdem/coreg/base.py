@@ -403,7 +403,6 @@ def _preprocess_coreg_fit_xarray_xarray(
         dst_nodata=reference_dem.rio.nodata,
         dst_chunksizes=None,  # reproject will use the destination chunksizes if set to None.
     )
-    del dem_to_be_aligned
 
     # if a mask is passed, pass it as a positional argument
     # dask will map over the internal blocks
@@ -411,7 +410,7 @@ def _preprocess_coreg_fit_xarray_xarray(
         inlier_mask_all = da.map_blocks(
             _get_valid_data_mask,
             reference_dem.data,
-            dem_to_be_aligned_reprojected,
+            dem_to_be_aligned.data,
             inlier_mask.data,
             ref_nodata=reference_dem.rio.nodata,
             tba_nodata=dem_tba_nodata,
@@ -425,7 +424,7 @@ def _preprocess_coreg_fit_xarray_xarray(
         inlier_mask_all = da.map_blocks(
             _get_valid_data_mask,
             reference_dem.data,
-            dem_to_be_aligned_reprojected,
+            dem_to_be_aligned.data,
             mask=None,
             ref_nodata=reference_dem.rio.nodata,
             tba_nodata=dem_tba_nodata,
