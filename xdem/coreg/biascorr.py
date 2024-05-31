@@ -253,9 +253,7 @@ class BiasCorr(Coreg):
                 sigma = None
             elif isinstance(diff, da.Array):
                 ydata = diff.vindex[subsample_mask].flatten().compute()  # type:ignore [assignment]
-                xdata = [
-                    var.vindex[subsample_mask].flatten().compute() for var in bias_vars.values()
-                ]  # type:ignore [assignment]
+                xdata = np.array([var.vindex[subsample_mask].flatten().compute() for var in bias_vars.values()])
                 # TODO - there is a bug here still
                 # sigma = (weights[subsample_mask].flatten() if weights is not None else None,)
                 sigma = None
@@ -828,6 +826,16 @@ class TerrainBias(BiasCorr):
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
 
+# TODO move this function somewhere sensible
+def meshgrid(_, axis="x", block_info=None):
+    """A bit of a hack to create a meshgrid for a dask array."""
+    loc = block_info[0]["array-location"]
+    mesh = np.meshgrid(np.arange(*loc[1]), np.arange(*loc[0]))
+    if axis == "x":
+        return mesh[0]
+    return mesh[1]
+
+
 class Deramp(BiasCorr):
     """
     Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations
@@ -891,7 +899,8 @@ class Deramp(BiasCorr):
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         if type(ref_elev) == da.Array:
-            xx, yy = da.meshgrid(da.arange(0, ref_elev.shape[1]), da.arange(0, ref_elev.shape[0]))
+            xx = da.map_blocks(meshgrid, ref_elev, chunks=ref_elev.chunks, dtype=ref_elev.dtype)
+            yy = da.map_blocks(meshgrid, ref_elev, axis="y", chunks=ref_elev.chunks, dtype=ref_elev.dtype)
         else:
             xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
 
