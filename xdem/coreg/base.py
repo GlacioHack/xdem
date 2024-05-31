@@ -18,13 +18,6 @@ from typing import (
 )
 
 import affine
-
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
 import fiona
 import geopandas as gpd
 import geoutils as gu
@@ -36,7 +29,6 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-from scipy.interpolate import RegularGridInterpolator, griddata
 import skimage.transform
 from geoutils._typing import Number
 from geoutils.misc import resampling_method_from_str
@@ -55,8 +47,8 @@ from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.spatialstats import nmad
 
 try:
-    import pytransform3d.transformations
     import pytransform3d.rotations
+    import pytransform3d.transformations
     from pytransform3d.transform_manager import TransformManager
 
     _HAS_P3D = True
@@ -734,9 +726,11 @@ def deramping(
 
     return fit_ramp, coefs
 
+
 ###############################################
 # Affine matrix manipulation and transformation
 ###############################################
+
 
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
     """Invert a transformation matrix."""
@@ -747,6 +741,7 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         checked_matrix = pytransform3d.transformations.check_transform(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
+
 
 def _apply_matrix_pts(
     epc: gpd.GeoDataFrame,
@@ -797,6 +792,7 @@ def _apply_matrix_pts(
 
     return transformed_epc
 
+
 def _iterate_affine_reproj_small_rotations(
     dem: NDArrayf,
     transform: rio.transform.Affine,
@@ -824,7 +820,8 @@ def _iterate_affine_reproj_small_rotations(
 
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     # coords = dem_rst.coords(grid=False)
-    # z_interp = RegularGridInterpolator(points=(coords[1], coords[0]), values=dem, method=resampling, bounds_error=False)
+    # z_interp = RegularGridInterpolator(points=(coords[1], coords[0]), values=dem, method=resampling,
+    # bounds_error=False)
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
@@ -843,7 +840,7 @@ def _iterate_affine_reproj_small_rotations(
 
     # For small rotations, and large DEMs (elevation range smaller than the DEM extent), this converges fast
     max_niter = 20
-    tolerance = 10**(-4)
+    tolerance = 10 ** (-4)
     res_x = dem_rst.res[0]
     res_y = dem_rst.res[1]
     niter = 0
@@ -857,10 +854,13 @@ def _iterate_affine_reproj_small_rotations(
 
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
         # new_z = z_interp((inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values))
-        new_z = dem_rst.interp_points(points=(inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values),
-                                      method=resampling)
-        new_epc = gpd.GeoDataFrame(data={"z": new_z}, geometry=gpd.points_from_xy(x=inv_approx_epc.geometry.x.values,
-                                                                                  y=inv_approx_epc.geometry.y.values))
+        new_z = dem_rst.interp_points(
+            points=(inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values), method=resampling
+        )
+        new_epc = gpd.GeoDataFrame(
+            data={"z": new_z},
+            geometry=gpd.points_from_xy(x=inv_approx_epc.geometry.x.values, y=inv_approx_epc.geometry.y.values),
+        )
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
         trans_new_epc = _apply_matrix_pts(new_epc, matrix=matrix, centroid=centroid)
 
@@ -870,16 +870,20 @@ def _iterate_affine_reproj_small_rotations(
         valids = np.logical_and(np.isfinite(diff_x), np.isfinite(diff_y))
 
         if verbose:
-            print(f"Iteration {niter + 1}:"
-                  f"\n    Mean diff x: {np.nanmean(np.abs(diff_x[valids]))}"
-                  f"\n    Mean diff y: {np.nanmean(np.abs(diff_y[valids]))}")
+            print(
+                f"Iteration {niter + 1}:"
+                f"\n    Mean diff x: {np.nanmean(np.abs(diff_x[valids]))}"
+                f"\n    Mean diff y: {np.nanmean(np.abs(diff_y[valids]))}"
+            )
         ind_diff_x = np.abs(diff_x[valids]) < (tolerance * res_x)
         ind_diff_y = np.abs(diff_y[valids]) < (tolerance * res_y)
 
         if verbose:
-            print(f"    Points not within tolerance: "
-                  f"{np.count_nonzero(~ind_diff_x)} for X; "
-                  f"{np.count_nonzero(~ind_diff_y)} for Y")
+            print(
+                f"    Points not within tolerance: "
+                f"{np.count_nonzero(~ind_diff_x)} for X; "
+                f"{np.count_nonzero(~ind_diff_y)} for Y"
+            )
 
         if all(np.logical_and(ind_diff_x, ind_diff_y)):
             break
@@ -891,10 +895,12 @@ def _iterate_affine_reproj_small_rotations(
     # 4/ Write the regular-grid point cloud back into a raster
     # Overwrite coordinate transformed back+forth again to avoid floating point precision issues
     trans_new_epc.geometry = gpd.points_from_xy(x=epc.geometry.x.values, y=epc.geometry.y.values)
-    transformed_dem = dem_rst.from_pointcloud_regular(trans_new_epc, transform=transform, shape=dem.shape,
-                                                      data_column_name="z", nodata=-99999)
+    transformed_dem = dem_rst.from_pointcloud_regular(
+        trans_new_epc, transform=transform, shape=dem.shape, data_column_name="z", nodata=-99999
+    )
 
     return transformed_dem.data.filled(np.nan), transform
+
 
 def _get_rotations_from_matrix(matrix: NDArrayf) -> tuple[float, float, float]:
     """
@@ -910,6 +916,7 @@ def _get_rotations_from_matrix(matrix: NDArrayf) -> tuple[float, float, float]:
     angles = pytransform3d.rotations.euler_from_matrix(R=rot_matrix, i=0, j=1, k=2, extrinsic=True)
     return np.rad2deg(angles)
 
+
 def _apply_matrix_rst(
     dem: NDArrayf,
     transform: rio.transform.Affine,
@@ -918,7 +925,7 @@ def _apply_matrix_rst(
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     verbose: bool = True,
-    force_regrid_method: Literal["iterative", "griddata"] | None = None
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Apply a 3D affine transformation matrix to a 2.5D DEM.
@@ -940,8 +947,8 @@ def _apply_matrix_rst(
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
-    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more information,
-        see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
+    information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
     :param force_regrid_method: Force re-gridding method to convert 3D point cloud to 2.5 DEM, only for testing.
 
     :returns: Transformed DEM, Transform.
@@ -972,11 +979,10 @@ def _apply_matrix_rst(
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
     rotations = _get_rotations_from_matrix(matrix)
-    if all(np.abs(rot) < 20 for rot in rotations) \
-            and force_regrid_method is None or force_regrid_method == "iterative":
-        new_dem, transform = _iterate_affine_reproj_small_rotations(dem=dem, transform=transform, matrix=matrix,
-                                                                    centroid=centroid, resampling=resampling,
-                                                                    verbose=verbose)
+    if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
+        new_dem, transform = _iterate_affine_reproj_small_rotations(
+            dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling, verbose=verbose
+        )
         return new_dem, transform
 
     # 4/ Otherwise, use a delauney triangulation interpolation of the transformed point cloud
@@ -985,10 +991,40 @@ def _apply_matrix_rst(
     epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
     from geoutils.pointcloud import _grid_pointcloud
-    new_dem = _grid_pointcloud(trans_epc, grid_coords=dem_rst.coords(grid=False),
-                               data_column_name="z", resampling=resampling)
+
+    new_dem = _grid_pointcloud(
+        trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
+    )
 
     return new_dem, transform
+
+
+@overload
+def apply_matrix(
+    elev: NDArrayf,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+    **kwargs: Any,
+) -> tuple[NDArrayf, affine.Affine]:
+    ...
+
+
+@overload
+def apply_matrix(
+    elev: gu.Raster | gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+    **kwargs: Any,
+) -> gu.Raster | gpd.GeoDataFrame:
+    ...
 
 
 def apply_matrix(
@@ -1010,8 +1046,8 @@ def apply_matrix(
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
-    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more information,
-        see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
+        information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
     :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
     :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
     :param kwargs: Keywords passed to _apply_matrix_rst for testing.
@@ -1029,7 +1065,12 @@ def apply_matrix(
             dem = elev
 
         applied_dem, out_transform = _apply_matrix_rst(
-            dem=dem, transform=transform, matrix=matrix, invert=invert, centroid=centroid, resampling=resampling,
+            dem=dem,
+            transform=transform,
+            matrix=matrix,
+            invert=invert,
+            centroid=centroid,
+            resampling=resampling,
             **kwargs,
         )
         if isinstance(elev, gu.Raster):
@@ -1796,13 +1837,12 @@ class Coreg:
 
                     # Apply the matrix around the centroid (if defined, otherwise just from the center).
                     transform = kwargs.pop("transform")
-                    applied_elev = _apply_matrix_rst(
+                    applied_elev, out_transform = _apply_matrix_rst(
                         dem=kwargs.pop("elev"),
                         transform=transform,
                         matrix=self.to_matrix(),
                         centroid=self._meta.get("centroid"),
                     )
-                    out_transform = transform
                 else:
                     raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_rst.")
 

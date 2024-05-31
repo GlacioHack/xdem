@@ -8,12 +8,11 @@ import warnings
 from typing import Any, Callable
 
 import geopandas as gpd
-import pytransform3d.rotations
-
 import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
+import pytransform3d.rotations
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
@@ -939,6 +938,7 @@ class TestAffineManipulation:
 
         # Run the same operation with openCV
         import cv2
+
         trans_cv2_arr = cv2.perspectiveTransform(points[:, :].reshape(1, -1, 3), matrix)[0, :, :]
 
         # Transform point cloud back to array
@@ -959,7 +959,7 @@ class TestAffineManipulation:
         epc = dem.to_pointcloud(data_column_name="z").ds
 
         # If a centroid was not given, default to the center of the DEM (at Z=0).
-        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.)
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
 
         # Apply affine transformation to both datasets
         trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method=regrid_method)
@@ -978,13 +978,13 @@ class TestAffineManipulation:
 
         # Use real data
         dem = self.ref
-        dem.crop((dem.bounds.left, dem.bounds.bottom, dem.bounds.left+2000, dem.bounds.bottom+2000))
+        dem.crop((dem.bounds.left, dem.bounds.bottom, dem.bounds.left + 2000, dem.bounds.bottom + 2000))
         epc = dem.to_pointcloud(data_column_name="z").ds
 
         matrix = self.matrix_all
 
         # If a centroid was not given, default to the center of the DEM (at Z=0).
-        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.)
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
 
         # Apply affine transformation to both datasets
         trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method=regrid_method)
