@@ -988,7 +988,7 @@ def _apply_matrix_rst(
     # 4/ Otherwise, use a delauney triangulation interpolation of the transformed point cloud
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
-    epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
+    epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
     from geoutils.pointcloud import _grid_pointcloud
 

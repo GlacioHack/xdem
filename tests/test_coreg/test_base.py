@@ -16,6 +16,7 @@ import pytransform3d.rotations
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples, misc, spatialstats
@@ -972,8 +973,42 @@ class TestAffineManipulation:
         assert np.count_nonzero(valids) > 0
         assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
 
+    def test_apply_matrix__raster_nodata(self) -> None:
+        """Test the nodatas created by apply_matrix are consistent between methods"""
+
+        # Use matrix with all transformations
+        matrix = self.matrix_all
+
+        # Create a synthetic raster, add NaNs, and convert to point cloud
+        dem_arr = np.linspace(0, 2, 400).reshape(20, 20)
+        dem_arr[10:14, 10:14] = np.nan
+        dem_arr[5, 5] = np.nan
+        dem_arr[:2, :] = np.nan
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+        dem = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=100)
+        epc = dem.to_pointcloud(data_column_name="z").ds
+
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
+
+        trans_dem_it = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="iterative")
+        trans_dem_gd = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="griddata")
+
+        # Get nodata mask
+        mask_nodata_it = trans_dem_it.data.mask
+        mask_nodata_gd = trans_dem_gd.data.mask
+
+        # The iterative mask should be larger and contain the other (as griddata interpolates up to 1 pixel away)
+        assert np.array_equal(np.logical_or(mask_nodata_gd, mask_nodata_it), mask_nodata_it)
+
+        # Verify nodata masks are located within two pixels of each other
+        smallest_mask = ~binary_dilation(
+            ~mask_nodata_it, iterations=2
+        )  # Invert before dilate to avoid spreading at the edges
+        # All smallest mask value should exist in the mask of griddata
+        assert np.array_equal(np.logical_or(smallest_mask, mask_nodata_gd), mask_nodata_gd)
+
     @pytest.mark.parametrize("regrid_method", ["iterative", "griddata"])  # type: ignore
-    def test_apply_matrix__realdata(self, regrid_method: str):
+    def test_apply_matrix__raster_realdata(self, regrid_method: str) -> None:
         """Testing real data no complex matrix only to avoid all loops"""
 
         # Use real data
