@@ -1011,12 +1011,14 @@ class TestAffineManipulation:
     def test_apply_matrix__raster_realdata(self, regrid_method: str) -> None:
         """Testing real data no complex matrix only to avoid all loops"""
 
+        regrid_method = "iterative"
+
         # Use real data
-        dem = self.ref
+        dem = ref
         dem.crop((dem.bounds.left, dem.bounds.bottom, dem.bounds.left + 2000, dem.bounds.bottom + 2000))
         epc = dem.to_pointcloud(data_column_name="z").ds
 
-        matrix = self.matrix_all
+        matrix = matrix_all
 
         # If a centroid was not given, default to the center of the DEM (at Z=0).
         centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)

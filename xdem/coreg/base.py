@@ -743,6 +743,29 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         return pytransform3d.transformations.invert_transform(checked_matrix)
 
 
+def _apply_matrix_pts_arr(x: NDArrayf, y: NDArrayf, z: NDArrayf, matrix: NDArrayf, centroid: tuple[float, float, float], invert: bool = False) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
+    """Apply matrix to points as arrays with array ouputs (to improve speed in some functions)."""
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # First, get 4xN array, adding a column of ones for translations during matrix multiplication
+    points = np.vstack([x, y, z, np.ones(len(x))])
+
+    # Temporarily subtract centroid coordinates
+    if centroid is not None:
+        points[:3, :] -= np.array(centroid)[:, None]
+
+    # Transform using matrix multiplication, and get only the first three columns
+    transformed_points = (matrix @ points)[:3, :]
+
+    # Add back centroid coordinates
+    if centroid is not None:
+        transformed_points += np.array(centroid)[:, None]
+
+    return transformed_points[0, :], transformed_points[1, :], transformed_points[2, :]
+
 def _apply_matrix_pts(
     epc: gpd.GeoDataFrame,
     matrix: NDArrayf,
@@ -763,31 +786,13 @@ def _apply_matrix_pts(
     :return: Transformed elevation point cloud.
     """
 
-    # Invert matrix if required
-    if invert:
-        matrix = invert_matrix(matrix)
-
-    # First, get Nx3 array
-    points = np.array([epc.geometry.x.values, epc.geometry.y.values, epc[z_name].values]).T
-
-    # Temporarily subtract centroid coordinates
-    if centroid is not None:
-        points -= centroid
-
-    # Perform affine transformation
-    # Add a column of ones to get a Nx4 matrix before matrix multiplication
-    points = np.concatenate((points, np.ones(len(epc))[:, None]), axis=1)
-    # Transform using matrix multiplication, and get only the first three columns
-    transformed_points = (matrix @ points.T)[:3, :].T
-
-    # Add back centroid coordinates
-    if centroid is not None:
-        transformed_points += centroid
+    # Apply transformation to X/Y/Z arrays
+    tx, ty, tz = _apply_matrix_pts_arr(x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc[z_name].values,
+                                       matrix=matrix, centroid=centroid, invert=invert)
 
     # Finally, transform back to a new GeoDataFrame
     transformed_epc = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=transformed_points[:, 0], y=transformed_points[:, 1], crs=epc.crs),
-        data={z_name: transformed_points[:, 2]},
+        geometry=gpd.points_from_xy(x=tx, y=ty, crs=epc.crs), data={z_name: tz},
     )
 
     return transformed_epc
@@ -799,29 +804,37 @@ def _iterate_affine_reproj_small_rotations(
     matrix: NDArrayf,
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    verbose: bool = False,
+    verbose: bool = True,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Iterative process to find the best reprojection of affine transformation for small rotations.
 
     Faster than regridding point cloud by triangulation of points.
     """
+    from time import time
+    t0 = time()
 
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
 
+    print(f"Elapsed to point cloud 1: {time() - t0}")
+
     # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
+
+    print(f"Elapsed to point cloud 2: {time() - t0}")
 
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
     # fall exactly on regular X,Y coordinates
 
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
-    # coords = dem_rst.coords(grid=False)
-    # z_interp = RegularGridInterpolator(points=(coords[1], coords[0]), values=dem, method=resampling,
-    # bounds_error=False)
+    xycoords = dem_rst.coords(grid=False)
+    z_interp = scipy.interpolate.RegularGridInterpolator(points=(np.flip(xycoords[1], axis=0), xycoords[0]),
+                                                         values=dem, method=resampling, bounds_error=False)
+
+    print(f"Elapsed to point cloud 3: {time() - t0}")
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
@@ -830,9 +843,9 @@ def _iterate_affine_reproj_small_rotations(
         warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
         nearest = gpd.sjoin_nearest(epc, trans_epc)
     # In case several points are found at exactly the same distance, take the mean of their elevations
-    new_z = nearest.groupby(by="index_right")["z_left"].mean()
+    new_z = nearest.groupby(by=epc.index)["z_left"].mean().values
 
-    approx_trans_epc_on_grid = epc.copy()
+    print(f"Elapsed to point cloud 4: {time() - t0}")
 
     # 3/ We then iterate between two steps until convergence:
     # a/ Use the Z guess to derive invert affine transform X',Y' coordinates for the original DEM,
@@ -846,27 +859,22 @@ def _iterate_affine_reproj_small_rotations(
     niter = 0
     while niter < max_niter:
 
-        # Update new transformed elevation guess Z
-        approx_trans_epc_on_grid.z = new_z
-
+        t0 = time()
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
-        inv_approx_epc = _apply_matrix_pts(approx_trans_epc_on_grid, matrix=matrix, invert=True, centroid=centroid)
+        tx, ty = _apply_matrix_pts_arr(x=epc.geometry.x.values, y=epc.geometry.y.values, z=new_z,
+                                       matrix=matrix, invert=True, centroid=centroid)[:2]
+        print(f"Elapsed 1: {time() - t0}")
 
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
-        # new_z = z_interp((inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values))
-        new_z = dem_rst.interp_points(
-            points=(inv_approx_epc.geometry.x.values, inv_approx_epc.geometry.y.values), method=resampling
-        )
-        new_epc = gpd.GeoDataFrame(
-            data={"z": new_z},
-            geometry=gpd.points_from_xy(x=inv_approx_epc.geometry.x.values, y=inv_approx_epc.geometry.y.values),
-        )
+        tz = z_interp((ty, tx))
+
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
-        trans_new_epc = _apply_matrix_pts(new_epc, matrix=matrix, centroid=centroid)
+        x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
+        print(f"Elapsed 2: {time() - t0}")
 
         # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
-        diff_x = trans_new_epc.geometry.x.values - epc.geometry.x.values
-        diff_y = trans_new_epc.geometry.y.values - epc.geometry.y.values
+        diff_x = x0 - epc.geometry.x.values
+        diff_y = y0 - epc.geometry.y.values
         valids = np.logical_and(np.isfinite(diff_x), np.isfinite(diff_y))
 
         if verbose:
@@ -877,6 +885,7 @@ def _iterate_affine_reproj_small_rotations(
             )
         ind_diff_x = np.abs(diff_x[valids]) < (tolerance * res_x)
         ind_diff_y = np.abs(diff_y[valids]) < (tolerance * res_y)
+        print(f"Elapsed 3: {time() - t0}")
 
         if verbose:
             print(
@@ -889,14 +898,13 @@ def _iterate_affine_reproj_small_rotations(
             break
 
         # Otherwise update Z guess and iterate again
-        new_z = trans_new_epc.z.values
+        new_z = z0
         niter += 1
 
     # 4/ Write the regular-grid point cloud back into a raster
-    # Overwrite coordinate transformed back+forth again to avoid floating point precision issues
-    trans_new_epc.geometry = gpd.points_from_xy(x=epc.geometry.x.values, y=epc.geometry.y.values)
+    epc.z = new_z  # We just replace the Z of the original grid to ensure exact coordinates
     transformed_dem = dem_rst.from_pointcloud_regular(
-        trans_new_epc, transform=transform, shape=dem.shape, data_column_name="z", nodata=-99999
+        epc, transform=transform, shape=dem.shape, data_column_name="z", nodata=-99999
     )
 
     return transformed_dem.data.filled(np.nan), transform
