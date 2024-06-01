@@ -743,8 +743,15 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         return pytransform3d.transformations.invert_transform(checked_matrix)
 
 
-def _apply_matrix_pts_arr(x: NDArrayf, y: NDArrayf, z: NDArrayf, matrix: NDArrayf, centroid: tuple[float, float, float], invert: bool = False) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
-    """Apply matrix to points as arrays with array ouputs (to improve speed in some functions)."""
+def _apply_matrix_pts_arr(
+    x: NDArrayf,
+    y: NDArrayf,
+    z: NDArrayf,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    invert: bool = False,
+) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
+    """Apply matrix to points as arrays with array outputs (to improve speed in some functions)."""
 
     # Invert matrix if required
     if invert:
@@ -765,6 +772,7 @@ def _apply_matrix_pts_arr(x: NDArrayf, y: NDArrayf, z: NDArrayf, matrix: NDArray
         transformed_points += np.array(centroid)[:, None]
 
     return transformed_points[0, :], transformed_points[1, :], transformed_points[2, :]
+
 
 def _apply_matrix_pts(
     epc: gpd.GeoDataFrame,
@@ -787,12 +795,19 @@ def _apply_matrix_pts(
     """
 
     # Apply transformation to X/Y/Z arrays
-    tx, ty, tz = _apply_matrix_pts_arr(x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc[z_name].values,
-                                       matrix=matrix, centroid=centroid, invert=invert)
+    tx, ty, tz = _apply_matrix_pts_arr(
+        x=epc.geometry.x.values,
+        y=epc.geometry.y.values,
+        z=epc[z_name].values,
+        matrix=matrix,
+        centroid=centroid,
+        invert=invert,
+    )
 
     # Finally, transform back to a new GeoDataFrame
     transformed_epc = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=tx, y=ty, crs=epc.crs), data={z_name: tz},
+        geometry=gpd.points_from_xy(x=tx, y=ty, crs=epc.crs),
+        data={z_name: tz},
     )
 
     return transformed_epc
@@ -812,6 +827,7 @@ def _iterate_affine_reproj_small_rotations(
     Faster than regridding point cloud by triangulation of points.
     """
     from time import time
+
     t0 = time()
 
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
@@ -831,8 +847,9 @@ def _iterate_affine_reproj_small_rotations(
 
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     xycoords = dem_rst.coords(grid=False)
-    z_interp = scipy.interpolate.RegularGridInterpolator(points=(np.flip(xycoords[1], axis=0), xycoords[0]),
-                                                         values=dem, method=resampling, bounds_error=False)
+    z_interp = scipy.interpolate.RegularGridInterpolator(
+        points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
+    )
 
     print(f"Elapsed to point cloud 3: {time() - t0}")
 
@@ -861,8 +878,9 @@ def _iterate_affine_reproj_small_rotations(
 
         t0 = time()
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
-        tx, ty = _apply_matrix_pts_arr(x=epc.geometry.x.values, y=epc.geometry.y.values, z=new_z,
-                                       matrix=matrix, invert=True, centroid=centroid)[:2]
+        tx, ty = _apply_matrix_pts_arr(
+            x=epc.geometry.x.values, y=epc.geometry.y.values, z=new_z, matrix=matrix, invert=True, centroid=centroid
+        )[:2]
         print(f"Elapsed 1: {time() - t0}")
 
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
