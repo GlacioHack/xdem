@@ -618,7 +618,7 @@ class TestCoregPipeline:
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize("coreg2", all_coregs)  # type: ignore
-    def test_pipeline_combinations__nobiasvar(self, coreg1:  Callable[[], Coreg], coreg2: Callable[[], Coreg]) -> None:
+    def test_pipeline_combinations__nobiasvar(self, coreg1: Callable[[], Coreg], coreg2: Callable[[], Coreg]) -> None:
         """Test pipelines with all combinations of coregistration subclasses (without bias variables)"""
 
         # Create a pipeline from one affine and one biascorr methods.
@@ -636,7 +636,9 @@ class TestCoregPipeline:
             dict(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
         ],
     )  # type: ignore
-    def test_pipeline_combinations__biasvar(self, coreg1: Callable[[], Coreg], coreg2_init_kwargs: dict[str, str]) -> None:
+    def test_pipeline_combinations__biasvar(
+        self, coreg1: Callable[[], Coreg], coreg2_init_kwargs: dict[str, str]
+    ) -> None:
         """Test pipelines with all combinations of coregistration subclasses with bias variables"""
 
         # Create a pipeline from one affine and one biascorr methods
