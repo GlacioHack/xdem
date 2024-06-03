@@ -380,7 +380,7 @@ class BiasCorr(Coreg):
         pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
-        pts = np.array((pts_elev.geometry.x.values, pts_elev.geometry.y.values)).T
+        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
 
         # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
         if bias_vars is not None:

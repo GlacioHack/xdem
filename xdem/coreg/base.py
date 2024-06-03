@@ -195,7 +195,7 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
     mask_raster = dem.copy(new_array=final_mask.astype(np.float32))
 
     if isinstance(df, pd.DataFrame):
-        pts = np.array((df["E"].values, df["N"].values)).T
+        pts = (df["E"].values, df["N"].values)
     elif isinstance(df, np.ndarray):
         pts = df
 

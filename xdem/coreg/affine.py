@@ -561,7 +561,7 @@ class ICP(AffineCoreg):
             for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
                 raster.tags["AREA_OR_POINT"] = "Area"
                 point_elev[key] = raster.interp_points(
-                    point_elev[["E", "N"]].values,
+                    (point_elev["E"].values, point_elev["N"].values),
                     shift_area_or_point=True,
                 )
 
@@ -906,7 +906,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         x_coords -= resolution / 2
         y_coords += resolution / 2
 
-        pts = np.array((x_coords, y_coords)).T
+        pts = (x_coords, y_coords)
         # This needs to be consistent, so it's cardcoded here
         area_or_point = "Area"
         # Make a new DEM which will be modified inplace
