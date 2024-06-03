@@ -594,7 +594,7 @@ class TestCoregPipeline:
 
         # Create a pipeline from two coreg methods.
         pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
-        pipeline.fit(**self.fit_params)
+        pipeline.fit(**self.fit_params, subsample=5000, random_state=42)
 
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
@@ -610,41 +610,45 @@ class TestCoregPipeline:
         assert pipeline2.to_matrix()[2, 3] == 2.0
 
     all_coregs = [
-        coreg.VerticalShift(),
-        coreg.NuthKaab(),
-        coreg.ICP(),
-        coreg.Deramp(),
-        coreg.TerrainBias(),
-        coreg.DirectionalBias(),
+        coreg.VerticalShift,
+        coreg.NuthKaab,
+        coreg.ICP,
+        coreg.Deramp,
+        coreg.TerrainBias,
+        coreg.DirectionalBias,
     ]
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize("coreg2", all_coregs)  # type: ignore
-    def test_pipeline_combinations__nobiasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
+    def test_pipeline_combinations__nobiasvar(self, coreg1: Callable[[], Coreg], coreg2: Callable[[], Coreg]) -> None:
         """Test pipelines with all combinations of coregistration subclasses (without bias variables)"""
 
         # Create a pipeline from one affine and one biascorr methods.
-        pipeline = coreg.CoregPipeline([coreg1, coreg2])
-        pipeline.fit(**self.fit_params)
+        pipeline = coreg.CoregPipeline([coreg1(), coreg2()])
+        pipeline.fit(**self.fit_params, subsample=5000, random_state=42)
 
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize(
-        "coreg2",
+        "coreg2_init_kwargs",
         [
-            coreg.BiasCorr(bias_var_names=["slope"], fit_or_bin="bin"),
-            coreg.BiasCorr(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
+            dict(bias_var_names=["slope"], fit_or_bin="bin"),
+            dict(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
         ],
     )  # type: ignore
-    def test_pipeline_combinations__biasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
+    def test_pipeline_combinations__biasvar(
+        self, coreg1: Callable[[], Coreg], coreg2_init_kwargs: dict[str, str]
+    ) -> None:
         """Test pipelines with all combinations of coregistration subclasses with bias variables"""
 
-        # Create a pipeline from one affine and one biascorr methods.
-        pipeline = coreg.CoregPipeline([coreg1, coreg2])
+        # Create a pipeline from one affine and one biascorr methods
+        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])
+        print(pipeline.pipeline[0].meta["subsample"])
+        print(pipeline.pipeline[1].meta["subsample"])
         bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
-        pipeline.fit(**self.fit_params, bias_vars=bias_vars)
+        pipeline.fit(**self.fit_params, bias_vars=bias_vars, subsample=5000, random_state=42)
 
         aligned_dem, _ = pipeline.apply(
             self.tba.data, transform=self.ref.transform, crs=self.ref.crs, bias_vars=bias_vars

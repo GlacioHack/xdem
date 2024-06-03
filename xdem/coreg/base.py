@@ -197,7 +197,7 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
     if isinstance(df, pd.DataFrame):
         pts = (df["E"].values, df["N"].values)
     elif isinstance(df, np.ndarray):
-        pts = df
+        pts = df  # type: ignore
 
     ref_inlier = mask_raster.interp_points(pts)
     new_df = df[ref_inlier.astype(bool)].copy()
