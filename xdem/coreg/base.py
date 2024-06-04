@@ -829,7 +829,7 @@ def _iterate_affine_regrid_small_rotations(
     """
     Iterative process to find the best reprojection of affine transformation for small rotations.
 
-    Faster than regridding point cloud by triangulation of points.
+    Faster than regridding point cloud by triangulation of points (for instance with scipy.interpolate.griddata).
     """
 
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
@@ -978,10 +978,13 @@ def _apply_matrix_rst(
 
     For translations, the transform is updated and a vertical shift added to the array.
 
-    For other affine transformations, this function maps which 2D point coordinates will fall back exactly onto
-    the original DEM grid coordinates after affine transformation (using the invert affine transformation).
-    Then, elevation at these points is estimated by 2D point interpolation (using `geoutils.Raster.interp_points`,
-    that relies on `scipy.interpolate.interpn`), and the exact affine transformation is applied.
+    For affine transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
+    point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
+    searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
+    original DEM (see geoutils.Raster.interp_points, or scipy.interpolate.interpn).
+
+    For affine transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
+    re-grid the irregular affine-transformed 3D point cloud using Delauney triangulation interpolation (slower).
 
     :param dem: DEM to transform.
     :param transform: Geotransform of the DEM.
