@@ -397,10 +397,10 @@ class BiasCorr(Coreg):
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
         subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_pts, verbose=verbose)
-        pts = pts[subsample_mask]
+        pts = (pts[0][subsample_mask], pts[1][subsample_mask])
 
         # Now all points should be valid, we can pass an inlier mask completely true
-        inlier_pts_alltrue = np.ones(len(pts), dtype=bool)
+        inlier_pts_alltrue = np.ones(len(pts[0]), dtype=bool)
 
         # Below, we derive 1D arrays for the rst_rst function to take over after interpolating to the point coordinates
         # (as rst_rst works for 1D arrays as well as 2D arrays, as long as coordinates match)

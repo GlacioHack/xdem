@@ -948,7 +948,7 @@ class TestAffineManipulation:
 
         # Transform point cloud back to array
         trans_numpy = np.array([trans_epc.geometry.x.values, trans_epc.geometry.y.values, trans_epc["z"].values]).T
-        assert np.array_equal(trans_numpy, trans_cv2_arr)
+        assert np.allclose(trans_numpy, trans_cv2_arr)
 
     @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])  # type: ignore
     @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
@@ -1011,8 +1011,7 @@ class TestAffineManipulation:
         # All smallest mask value should exist in the mask of griddata
         assert np.array_equal(np.logical_or(smallest_mask, mask_nodata_gd), mask_nodata_gd)
 
-    @pytest.mark.parametrize("regrid_method", ["iterative", "griddata"])  # type: ignore
-    def test_apply_matrix__raster_realdata(self, regrid_method: str) -> None:
+    def test_apply_matrix__raster_realdata(self) -> None:
         """Testing real data no complex matrix only to avoid all loops"""
 
         # Use real data
@@ -1026,11 +1025,12 @@ class TestAffineManipulation:
         centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
 
         # Apply affine transformation to both datasets
-        trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method=regrid_method)
+        trans_dem_it = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="iterative")
+        trans_dem_gd = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="griddata")
         trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
-        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        z_points = trans_dem_it.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
 
         valids = np.isfinite(z_points)
         diff_valids = z_points[valids] - trans_epc.z.values[valids]

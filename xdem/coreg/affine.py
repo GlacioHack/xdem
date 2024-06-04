@@ -934,7 +934,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         tba_pts = aligned_dem.interp_points(pts, shift_area_or_point=True)
 
         # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
-        new_pts = pts.copy()
+        new_pts = (pts[0].copy(), pts[1].copy())
 
         elevation_difference = point_elev[z_name].values - tba_pts
         vshift = float(np.nanmedian(elevation_difference))
@@ -965,7 +965,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
 
             # Assign offset to the coordinates of the pts
             # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
-            new_pts += [east_diff * resolution, north_diff * resolution]
+            new_pts = (new_pts[0] + east_diff * resolution, new_pts[1] + north_diff * resolution)
 
             # Get new values
             tba_pts = aligned_dem.interp_points(new_pts, shift_area_or_point=True)

@@ -184,7 +184,7 @@ def _df_sampling_from_dem(
     return df
 
 
-def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.DataFrame | NDArrayf:
+def _mask_dataframe_by_dem(df: pd.DataFrame | tuple[NDArrayf, NDArrayf], dem: RasterType) -> pd.DataFrame | tuple[NDArrayf, NDArrayf]:
     """
     Mask out the dataframe (has 'E','N' columns), or np.ndarray ([E,N]) by DEM's mask.
 
@@ -196,11 +196,14 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
 
     if isinstance(df, pd.DataFrame):
         pts = (df["E"].values, df["N"].values)
-    elif isinstance(df, np.ndarray):
+    elif isinstance(df, tuple):
         pts = df  # type: ignore
 
     ref_inlier = mask_raster.interp_points(pts)
-    new_df = df[ref_inlier.astype(bool)].copy()
+    if isinstance(df, pd.DataFrame):
+        new_df = df[ref_inlier.astype(bool)].copy()
+    else:
+        new_df = (pts[0][ref_inlier.astype(bool)], pts[1][ref_inlier.astype(bool)])
 
     return new_df, ref_inlier.astype(bool)
 
@@ -813,7 +816,7 @@ def _apply_matrix_pts(
     return transformed_epc
 
 
-def _iterate_affine_reproj_small_rotations(
+def _iterate_affine_regrid_small_rotations(
     dem: NDArrayf,
     transform: rio.transform.Affine,
     matrix: NDArrayf,
@@ -834,12 +837,8 @@ def _iterate_affine_reproj_small_rotations(
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
 
-    print(f"Elapsed to point cloud 1: {time() - t0}")
-
     # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
-
-    print(f"Elapsed to point cloud 2: {time() - t0}")
 
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
@@ -851,76 +850,97 @@ def _iterate_affine_reproj_small_rotations(
         points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
     )
 
-    print(f"Elapsed to point cloud 3: {time() - t0}")
-
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
     # (Longest step computationally)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
         nearest = gpd.sjoin_nearest(epc, trans_epc)
-    # In case several points are found at exactly the same distance, take the mean of their elevations
-    new_z = nearest.groupby(by=epc.index)["z_left"].mean().values
 
-    print(f"Elapsed to point cloud 4: {time() - t0}")
+    # In case several points are found at exactly the same distance, take the mean of their elevations
+    new_z = nearest.groupby(by=nearest.index)["z_left"].mean().values
 
     # 3/ We then iterate between two steps until convergence:
     # a/ Use the Z guess to derive invert affine transform X',Y' coordinates for the original DEM,
     # b/ Interpolate Z' at new coordinates X',Y' on the original DEM, and apply affine transform to get updated Z guess
 
+    # Start with full array of X/Y regular coordinates (subset during iterations to improve computational efficiency)
+    x = epc.geometry.x.values
+    y = epc.geometry.y.values
+
+    # Initalize output z array, and array to store points that have converged
+    zfinal = np.ones(len(x), dtype=dem.dtype)
+    ind_converged = np.zeros(len(x), dtype=bool)
+
     # For small rotations, and large DEMs (elevation range smaller than the DEM extent), this converges fast
-    max_niter = 20
-    tolerance = 10 ** (-4)
-    res_x = dem_rst.res[0]
-    res_y = dem_rst.res[1]
-    niter = 0
+    max_niter = 20  # Maximum iteration number
+    niter_check = 5  # Number of iterations between residual checks
+    tolerance = 10 ** (-4)  # Tolerance in X/Y relative to resolution of X/Y
+    res_x = dem_rst.res[0]  # Resolution in X
+    res_y = dem_rst.res[1]  # Resolution in Y
+    niter = 1  # Starting iteration
+
     while niter < max_niter:
 
-        t0 = time()
+
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(
-            x=epc.geometry.x.values, y=epc.geometry.y.values, z=new_z, matrix=matrix, invert=True, centroid=centroid
+            x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid
         )[:2]
-        print(f"Elapsed 1: {time() - t0}")
 
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
         tz = z_interp((ty, tx))
 
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
         x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
-        print(f"Elapsed 2: {time() - t0}")
 
-        # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
-        diff_x = x0 - epc.geometry.x.values
-        diff_y = y0 - epc.geometry.y.values
-        valids = np.logical_and(np.isfinite(diff_x), np.isfinite(diff_y))
+        # Only check residuals after first iteration (to remove NaNs) then every 5 iterations to reduce computing time
+        if niter == 1 or niter == niter_check:
 
-        if verbose:
-            print(
-                f"Iteration {niter + 1}:"
-                f"\n    Mean diff x: {np.nanmean(np.abs(diff_x[valids]))}"
-                f"\n    Mean diff y: {np.nanmean(np.abs(diff_y[valids]))}"
-            )
-        ind_diff_x = np.abs(diff_x[valids]) < (tolerance * res_x)
-        ind_diff_y = np.abs(diff_y[valids]) < (tolerance * res_y)
-        print(f"Elapsed 3: {time() - t0}")
+            # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
+            diff_x = x0 - x
+            diff_y = y0 - y
 
-        if verbose:
-            print(
-                f"    Points not within tolerance: "
-                f"{np.count_nonzero(~ind_diff_x)} for X; "
-                f"{np.count_nonzero(~ind_diff_y)} for Y"
-            )
+            if verbose:
+                print(
+                    f"Residual check at iteration number {niter}:"
+                    f"\n    Mean diff x: {np.nanmean(np.abs(diff_x))}"
+                    f"\n    Mean diff y: {np.nanmean(np.abs(diff_y))}"
+                )
 
-        if all(np.logical_and(ind_diff_x, ind_diff_y)):
-            break
+            # Get index of points below tolerance in both X/Y for this subsample (all points before convergence update)
+            # Nodata values are considered having converged
+            subind_diff_x = np.logical_or(np.abs(diff_x) < (tolerance * res_x), ~np.isfinite(diff_x))
+            subind_diff_y = np.logical_or(np.abs(diff_y) < (tolerance * res_y), ~np.isfinite(diff_y))
+            subind_converged = np.logical_and(subind_diff_x, subind_diff_y)
 
-        # Otherwise update Z guess and iterate again
+            if verbose:
+                print(
+                    f"    Points not within tolerance: "
+                    f"{np.count_nonzero(~subind_diff_x)} for X; "
+                    f"{np.count_nonzero(~subind_diff_y)} for Y"
+                )
+
+            # If all points left are below convergence, update Z one final time and stop here
+            if all(subind_converged):
+                zfinal[~ind_converged] = z0
+                break
+            # Otherwise, save Z for new converged points and keep only not converged in next iterations (for speed)
+            else:
+                zfinal[~ind_converged] = z0
+                x = x[~subind_converged]
+                y = y[~subind_converged]
+                z0 = z0[~subind_converged]
+
+            # Otherwise, for this check, update convergence status for points not having converged yet
+            ind_converged[~ind_converged] = subind_converged
+
+        # If another iteration is required, update Z guess and increment
         new_z = z0
         niter += 1
 
     # 4/ Write the regular-grid point cloud back into a raster
-    epc.z = new_z  # We just replace the Z of the original grid to ensure exact coordinates
+    epc.z = zfinal  # We just replace the Z of the original grid to ensure exact coordinates
     transformed_dem = dem_rst.from_pointcloud_regular(
         epc, transform=transform, shape=dem.shape, data_column_name="z", nodata=-99999
     )
@@ -1006,7 +1026,7 @@ def _apply_matrix_rst(
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
     rotations = _get_rotations_from_matrix(matrix)
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
-        new_dem, transform = _iterate_affine_reproj_small_rotations(
+        new_dem, transform = _iterate_affine_regrid_small_rotations(
             dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling, verbose=verbose
         )
         return new_dem, transform
