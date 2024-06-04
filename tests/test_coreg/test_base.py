@@ -1030,15 +1030,28 @@ class TestAffineManipulation:
         trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
-        z_points = trans_dem_it.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        z_points_it = trans_dem_it.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        z_points_gd = trans_dem_gd.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
 
-        valids = np.isfinite(z_points)
-        diff_valids = z_points[valids] - trans_epc.z.values[valids]
-
+        valids = np.logical_and(np.isfinite(z_points_it), np.isfinite(z_points_gd))
         assert np.count_nonzero(valids) > 0
-        # Because of outliers, noise and slope near 90°, checking against the interpolated points does not work as well
-        # some points will have large elevation differences, but 90% of those should remain relatively small
-        assert np.percentile(np.abs(diff_valids), 90) < 1
+
+        diff_it = z_points_it[valids] - trans_epc.z.values[valids]
+        diff_gd = z_points_gd[valids] - trans_epc.z.values[valids]
+
+        # Because of outliers, noise and slope near 90°, several solutions can exist
+        # Additionally, contrary to the check in the __raster test which uses a constant slope DEM, the slopes vary
+        # here so the interpolation check is less accurate so all values can vary a bit
+        assert np.percentile(np.abs(diff_it), 90) < 1
+        assert np.percentile(np.abs(diff_it), 50) < 0.2
+        assert np.percentile(np.abs(diff_gd), 90) < 1
+        assert np.percentile(np.abs(diff_gd), 50) < 0.2
+
+        # But, between themselves, the two re-gridding methods should yield much closer results
+        # (no errors due to 2D interpolation for checking)
+        diff_it_gd = z_points_gd[valids] - z_points_it[valids]
+        assert np.percentile(np.abs(diff_it_gd), 99) < 1  # 99% of values are within a meter (instead of 90%)
+        assert np.percentile(np.abs(diff_it_gd), 50) < 0.02  # 10 times more precise than above
 
 
 def test_warp_dem() -> None:

@@ -184,7 +184,9 @@ def _df_sampling_from_dem(
     return df
 
 
-def _mask_dataframe_by_dem(df: pd.DataFrame | tuple[NDArrayf, NDArrayf], dem: RasterType) -> pd.DataFrame | tuple[NDArrayf, NDArrayf]:
+def _mask_dataframe_by_dem(
+    df: pd.DataFrame | tuple[NDArrayf, NDArrayf], dem: RasterType
+) -> pd.DataFrame | tuple[NDArrayf, NDArrayf]:
     """
     Mask out the dataframe (has 'E','N' columns), or np.ndarray ([E,N]) by DEM's mask.
 
@@ -829,9 +831,6 @@ def _iterate_affine_regrid_small_rotations(
 
     Faster than regridding point cloud by triangulation of points.
     """
-    from time import time
-
-    t0 = time()
 
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
@@ -868,7 +867,7 @@ def _iterate_affine_regrid_small_rotations(
     x = epc.geometry.x.values
     y = epc.geometry.y.values
 
-    # Initalize output z array, and array to store points that have converged
+    # Initialize output z array, and array to store points that have converged
     zfinal = np.ones(len(x), dtype=dem.dtype)
     ind_converged = np.zeros(len(x), dtype=bool)
 
@@ -882,11 +881,8 @@ def _iterate_affine_regrid_small_rotations(
 
     while niter < max_niter:
 
-
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
-        tx, ty = _apply_matrix_pts_arr(
-            x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid
-        )[:2]
+        tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
 
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
         tz = z_interp((ty, tx))
