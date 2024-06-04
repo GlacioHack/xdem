@@ -514,7 +514,10 @@ class BiasCorr(Coreg):
                     statistic=self._meta["bin_statistic"],
                 )
 
-        dem_corr = elev + corr
+        if isinstance(elev, da.Array):
+            dem_corr = da.add(elev, corr)
+        else:
+            dem_corr = elev + corr
 
         return dem_corr, transform
 
@@ -965,6 +968,11 @@ class Deramp(BiasCorr):
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         # Define the coordinates for applying the correction
-        xx, yy = np.meshgrid(np.arange(0, elev.shape[1]), np.arange(0, elev.shape[0]))
+
+        if type(elev) == da.Array:
+            xx = da.map_blocks(meshgrid, elev, chunks=elev.chunks, dtype=elev.dtype)
+            yy = da.map_blocks(meshgrid, elev, axis="y", chunks=elev.chunks, dtype=elev.dtype)
+        else:
+            xx, yy = np.meshgrid(np.arange(0, elev.shape[1]), np.arange(0, elev.shape[0]))
 
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"xx": xx, "yy": yy}, **kwargs)

@@ -650,6 +650,11 @@ def _preprocess_coreg_fit(
     return ref_elev, tba_elev, inlier_mask, transform, crs
 
 
+def mask_array(arr: NDArrayf, nodata: int | float):
+    """Convert invalid data to nan."""
+    return np.where(np.logical_or(~da.isfinite(arr), arr == nodata), np.nan, arr)
+
+
 def _preprocess_coreg_apply(
     elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
     transform: rio.transform.Affine | None = None,
@@ -657,7 +662,7 @@ def _preprocess_coreg_apply(
 ) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine, rio.crs.CRS]:
     """Pre-processing and checks of apply for any input."""
 
-    if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)):
+    if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, DataArray)):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
 
     # If input is geodataframe
@@ -665,6 +670,20 @@ def _preprocess_coreg_apply(
         elev_out = elev
         new_transform = None
         new_crs = None
+
+    # If input is a Dataarray
+    elif isinstance(elev, DataArray):
+        new_transform, new_crs = _select_transform_crs(
+            transform=transform,
+            crs=crs,
+            transform_reference=elev.rio.transform(),
+            transform_other=None,
+            crs_reference=elev.rio.crs,
+            crs_other=None,
+        )
+
+        # get the masked elev
+        elev_out = da.map_blocks(mask_array, elev.data, nodata=elev.rio.nodata, chunks=elev.chunks, dtype=elev.dtype)
 
     # If input is a raster or array
     else:
@@ -702,6 +721,14 @@ def _postprocess_coreg_apply_pts(
 
     # TODO: Convert CRS back if the CRS did not match the one of the fit?
     return applied_elev
+
+
+def _postprocess_coreg_apply_xarray_xarray(applied_elev: da.Array, out_transform: affine.Affine):
+    """Post-processing and checks of apply for dask inputs."""
+
+    # TODO mimic what is happening in the postprocess_coreg_apply_rst.
+
+    return applied_elev, out_transform
 
 
 def _postprocess_coreg_apply_rst(
@@ -789,6 +816,11 @@ def _postprocess_coreg_apply(
             resample=resample,
             resampling=resampling,
         )
+    elif isinstance(applied_elev, da.Array):
+        applied_elev, out_transform = _postprocess_coreg_apply_xarray_xarray(
+            applied_elev=applied_elev, out_transform=out_transform
+        )
+
     else:
         applied_elev = _postprocess_coreg_apply_pts(applied_elev)
 
@@ -1496,6 +1528,7 @@ class Coreg:
             if self._is_affine:
                 warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
 
+            # TODO adapt this for dask
             for var in bias_vars.keys():
                 bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
 
