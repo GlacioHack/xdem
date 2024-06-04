@@ -972,19 +972,7 @@ def _apply_matrix_rst(
     """
     Apply a 3D affine transformation matrix to a 2.5D DEM.
 
-    Affine transformation of a DEM requires interpolation for re-gridding, because the exact affine transformation
-    applied to the DEM creates a point cloud for which the coordinates do not respect a regular grid anymore
-    (except if the affine transformation only has translations).
-
-    For translations, the transform is updated and a vertical shift added to the array.
-
-    For affine transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
-    point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
-    searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
-    original DEM (see geoutils.Raster.interp_points, or scipy.interpolate.interpn).
-
-    For affine transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
-    re-grid the irregular affine-transformed 3D point cloud using Delauney triangulation interpolation (slower).
+    See details in description of apply_matrix().
 
     :param dem: DEM to transform.
     :param transform: Geotransform of the DEM.
@@ -1084,6 +1072,22 @@ def apply_matrix(
 ) -> tuple[NDArrayf, affine.Affine] | gu.Raster | gpd.GeoDataFrame:
     """
     Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
+
+    For an elevation point cloud, the transformation is exact.
+
+    For a DEM, it requires re-gridding because the affine-transformed point cloud of the DEM does not fall onto a
+    regular grid anymore (except if the affine transformation only has translations). For this, this function uses the
+    three following methods:
+
+    1. For affine transformation with only translations, the transform is updated and vertical shift added to the array,
+
+    2. For affine transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
+    point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
+    searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
+    original DEM (see geoutils.Raster.interp_points, or scipy.interpolate.interpn),
+
+    3. For affine transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
+    re-grid the irregular affine-transformed 3D point cloud using Delauney triangulation interpolation (slower).
 
     :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
         geodataframe (requires z_name).
