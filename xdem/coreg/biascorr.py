@@ -830,7 +830,11 @@ class TerrainBias(BiasCorr):
 
 
 # TODO move this function somewhere sensible
-def meshgrid(_, axis="x", block_info=None):
+def meshgrid(
+    _: NDArrayf | NDArrayb,
+    block_info: dict[Any, Any],
+    axis: Literal["x", "y"] = "x",
+) -> NDArrayf:
     """A bit of a hack to create a meshgrid for a dask array."""
     loc = block_info[0]["array-location"]
     mesh = np.meshgrid(np.arange(*loc[1]), np.arange(*loc[0]))

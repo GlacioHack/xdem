@@ -650,7 +650,7 @@ def _preprocess_coreg_fit(
     return ref_elev, tba_elev, inlier_mask, transform, crs
 
 
-def mask_array(arr: NDArrayf, nodata: int | float):
+def mask_array(arr: NDArrayf, nodata: int | float) -> NDArrayf:
     """Convert invalid data to nan."""
     return np.where(np.logical_or(~da.isfinite(arr), arr == nodata), np.nan, arr)
 
@@ -723,7 +723,9 @@ def _postprocess_coreg_apply_pts(
     return applied_elev
 
 
-def _postprocess_coreg_apply_xarray_xarray(applied_elev: da.Array, out_transform: affine.Affine):
+def _postprocess_coreg_apply_xarray_xarray(
+    applied_elev: da.Array, out_transform: affine.Affine
+) -> tuple[da.Array, affine.Affine]:
     """Post-processing and checks of apply for dask inputs."""
 
     # TODO mimic what is happening in the postprocess_coreg_apply_rst.
@@ -1337,9 +1339,12 @@ class Coreg:
     def _get_subsample_indices_dask(self, data: NDArrayb) -> tuple[NDArrayf, NDArrayf]:
         """Get subsampled indices from a dask array."""
 
-        # subsample value is handled in delyyed_subsample
+        # subsample value is handled in delayed_subsample
         indices = delayed_subsample(
-            darr=data, subsample=self._meta["subsample"], return_indices=True, silence_max_subsample=True
+            darr=data,
+            subsample=self._meta["subsample"],
+            return_indices=True,
+            silence_max_subsample=True,
         )
 
         # Write final subsample to class
@@ -1911,7 +1916,7 @@ class Coreg:
         """Distribute to _apply_rst and _apply_pts based on input and method availability."""
 
         # If input is a raster
-        if isinstance(kwargs["elev"], np.ndarray):
+        if isinstance(kwargs["elev"], (np.ndarray, da.Array)):
 
             # See if a _apply_rst exists
             try:
