@@ -1079,14 +1079,14 @@ def apply_matrix(
     regular grid anymore (except if the affine transformation only has translations). For this, this function uses the
     three following methods:
 
-    1. For affine transformation with only translations, the transform is updated and vertical shift added to the array,
+    1. For transformations with only translations, the transform is updated and vertical shift added to the array,
 
-    2. For affine transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
+    2. For transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
     point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
     searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
     original DEM (see geoutils.Raster.interp_points, or scipy.interpolate.interpn),
 
-    3. For affine transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
+    3. For transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
     re-grid the irregular affine-transformed 3D point cloud using Delauney triangulation interpolation (slower).
 
     :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
