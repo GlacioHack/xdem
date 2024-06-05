@@ -1356,7 +1356,7 @@ class Coreg:
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | da.Array,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | da.Array,
-        inlier_mask: NDArrayb | Mask | None = None | da.Array,
+        inlier_mask: NDArrayb | Mask | da.Array | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType | da.Array] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,

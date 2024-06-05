@@ -37,10 +37,10 @@ def load_examples_xarray() -> tuple[DataArray, DataArray, DataArray]:
     """Load cog example files as xarrays to try delayed / dask coregistration methods with."""
     chunk_size = 256  # the rasters are COGs with blocksizes 256
     reference_raster = rioxarray.open_rasterio(
-        filename=examples.get_path("longyearbyen_ref_dem_cog"), chunks={"x": chunk_size, "y": chunk_size}
+        filename=examples.get_path("longyearbyen_ref_dem"), chunks={"x": chunk_size, "y": chunk_size}
     ).squeeze()
     to_be_aligned_raster = rioxarray.open_rasterio(
-        filename=examples.get_path("longyearbyen_tba_dem_cog"), chunks={"x": chunk_size, "y": chunk_size}
+        filename=examples.get_path("longyearbyen_tba_dem"), chunks={"x": chunk_size, "y": chunk_size}
     ).squeeze()
     glacier_mask = rioxarray.open_rasterio(
         filename=examples.get_path("longyearbyen_glacier_outlines_cog"), chunks={"x": chunk_size, "y": chunk_size}
