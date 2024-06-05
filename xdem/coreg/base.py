@@ -723,7 +723,7 @@ def _postprocess_coreg_apply_pts(
     return applied_elev
 
 
-def _postprocess_coreg_apply_xarray_xarray(
+def _postprocess_coreg_apply_xarray(
     applied_elev: da.Array, out_transform: affine.Affine
 ) -> tuple[da.Array, affine.Affine]:
     """Post-processing and checks of apply for dask inputs."""
@@ -819,7 +819,7 @@ def _postprocess_coreg_apply(
             resampling=resampling,
         )
     elif isinstance(applied_elev, da.Array):
-        applied_elev, out_transform = _postprocess_coreg_apply_xarray_xarray(
+        applied_elev, out_transform = _postprocess_coreg_apply_xarray(
             applied_elev=applied_elev, out_transform=out_transform
         )
 
