@@ -248,15 +248,12 @@ class BiasCorr(Coreg):
             if isinstance(diff, np.ndarray):
                 ydata = diff[subsample_mask].flatten()
                 xdata = np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze()
-                # TODO - there is a bug here still
-                # sigma = (weights[subsample_mask].flatten() if weights is not None else None,)
-                sigma = None
+                sigma = weights[subsample_mask].flatten() if weights is not None else None
             elif isinstance(diff, da.Array):
                 ydata = diff.vindex[subsample_mask].flatten().compute()  # type:ignore [assignment]
                 xdata = np.array([var.vindex[subsample_mask].flatten().compute() for var in bias_vars.values()])
-                # TODO - there is a bug here still
-                # sigma = (weights[subsample_mask].flatten() if weights is not None else None,)
-                sigma = None
+                # TODO - where do the weights come from? Are they also dask arrays?
+                sigma = weights.vindex[subsample_mask].flatten() if weights is not None else None
             else:
                 raise TypeError(f"Incompatible input type for arrays {type(diff)}.")
 
