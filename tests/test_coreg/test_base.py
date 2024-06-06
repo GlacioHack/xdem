@@ -923,7 +923,7 @@ class TestAffineManipulation:
     rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
     matrix_all = matrix_rotations
     matrix_all[0:3, 0:3] = rot_matrix
-    matrix_translations[:3, 3] = [0.5, 1, 1.5]
+    matrix_all[:3, 3] = [0.5, 1, 1.5]
 
     list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations, matrix_all]
 
