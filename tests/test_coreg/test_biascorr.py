@@ -42,12 +42,11 @@ def load_examples_xarray() -> tuple[DataArray, DataArray, DataArray]:
     to_be_aligned_raster = rioxarray.open_rasterio(
         filename=examples.get_path("longyearbyen_tba_dem"), chunks={"x": chunk_size, "y": chunk_size}
     ).squeeze()
-    glacier_mask = rioxarray.open_rasterio(
-        filename=examples.get_path("longyearbyen_glacier_outlines_cog"), chunks={"x": chunk_size, "y": chunk_size}
-    ).squeeze()
 
-    # convert mask to a boolean array
-    inlier_mask = glacier_mask.where(glacier_mask.data == 1, True, False)
+    # Create a raster mask on the fly from the vector data
+    glacier_mask_vector = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
+    inlier_mask = ~glacier_mask_vector.create_mask(raster=gu.Raster(examples.get_path("longyearbyen_ref_dem")))
+    inlier_mask = DataArray(da.from_array(inlier_mask.data, chunks=reference_raster.chunks))
 
     return reference_raster, to_be_aligned_raster, inlier_mask
 
@@ -96,7 +95,12 @@ class TestBiasCorr:
     )
 
     all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
-    all_fit_args_xarr = [fit_args_xarr_xarr]
+
+    # used to test the methods that have already been adapted to dask
+    # once all methods are adapted the fit_args_xarr_xarr can be added to all_fit_args
+    # without having to define them separately
+    all_fit_args_xaray = all_fit_args.copy()
+    all_fit_args_xaray.append(fit_args_xarr_xarr)
 
     def test_biascorr(self) -> None:
         """Test the parent class BiasCorr instantiation."""
@@ -532,60 +536,13 @@ class TestBiasCorr:
         # Check that variable names are defined during instantiation
         assert deramp.meta["bias_var_names"] == ["xx", "yy"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args_xarr)  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args_xaray)  # type: ignore
     @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
-    def test_deramp__synthetic_xarr(self, fit_args, order: int) -> None:
+    def test_deramp__synthetic(self, fit_args, order: int) -> None:
         """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
 
         # These warning will cause pytest to fail, even though there is no issue with the data
         warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
-
-        # Get coordinates
-        xx, yy = np.meshgrid(da.arange(0, self.ref_xarr.shape[1]), np.arange(0, self.ref_xarr.shape[0]))
-
-        # Number of parameters for a 2D order N polynomial called through np.polyval2d
-        nb_params = int((order + 1) * (order + 1))
-
-        # Get a random number of parameters
-        np.random.seed(42)
-        params = np.random.normal(size=nb_params)
-
-        # Create a synthetic bias and add to the DEM
-        synthetic_bias = polynomial_2d((xx, yy), *params)
-        bias_dem = self.ref_xarr - synthetic_bias
-
-        # Fit
-        deramp = biascorr.Deramp(poly_order=order)
-        elev_fit_args = fit_args.copy()
-
-        deramp.fit(
-            reference_elev=elev_fit_args["reference_elev"],
-            to_be_aligned_elev=bias_dem,
-            inlier_mask=elev_fit_args["inlier_mask"],
-            verbose=True,
-            subsample=20000,
-            random_state=42,
-        )
-
-        # Check high-order fit parameters are the same within 10%
-        fit_params = deramp._meta["fit_params"]
-        print(fit_params)
-        assert np.shape(fit_params) == np.shape(params)
-        assert np.allclose(
-            params.reshape(order + 1, order + 1)[-1:, -1:],
-            fit_params.reshape(order + 1, order + 1)[-1:, -1:],
-            rtol=0.1,
-        )
-
-        # Run apply and check that 99% of the variance was corrected
-        # corrected_dem = deramp.apply(bias_dem)
-        # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
-        # assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01
-
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
-    def test_deramp__synthetic(self, fit_args, order: int) -> None:
-        """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
 
         # Get coordinates
         xx, yy = np.meshgrid(np.arange(0, self.ref.shape[1]), np.arange(0, self.ref.shape[0]))
@@ -599,11 +556,16 @@ class TestBiasCorr:
 
         # Create a synthetic bias and add to the DEM
         synthetic_bias = polynomial_2d((xx, yy), *params)
-        bias_dem = self.ref - synthetic_bias
+
+        elev_fit_args = fit_args.copy()
+
+        if isinstance(elev_fit_args["reference_elev"], DataArray):
+            bias_dem = elev_fit_args["reference_elev"] - synthetic_bias
+        else:
+            bias_dem = self.ref - synthetic_bias
 
         # Fit
         deramp = biascorr.Deramp(poly_order=order)
-        elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=30000, random_state=42).ds
         else:
@@ -627,9 +589,14 @@ class TestBiasCorr:
         )
 
         # Run apply and check that 99% of the variance was corrected
-        corrected_dem = deramp.apply(bias_dem)
-        # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
-        assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01
+        if isinstance(bias_dem, DataArray):
+            corrected_dem, _ = deramp.apply(bias_dem)  #
+            corrected_dem = corrected_dem.compute()
+            assert np.nanvar((corrected_dem - elev_fit_args["reference_elev"]) / np.nanstd(synthetic_bias)) < 0.01
+        else:
+            corrected_dem = deramp.apply(bias_dem)
+            # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
+            assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01
 
     def test_terrainbias(self) -> None:
         """Test the subclass TerrainBias."""
