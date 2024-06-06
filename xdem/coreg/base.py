@@ -189,7 +189,9 @@ def _df_sampling_from_dem(
     return df
 
 
-def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.DataFrame | NDArrayf:
+def _mask_dataframe_by_dem(
+    df: pd.DataFrame | tuple[NDArrayf, NDArrayf], dem: RasterType
+) -> pd.DataFrame | tuple[NDArrayf, NDArrayf]:
     """
     Mask out the dataframe (has 'E','N' columns), or np.ndarray ([E,N]) by DEM's mask.
 
@@ -200,12 +202,15 @@ def _mask_dataframe_by_dem(df: pd.DataFrame | NDArrayf, dem: RasterType) -> pd.D
     mask_raster = dem.copy(new_array=final_mask.astype(np.float32))
 
     if isinstance(df, pd.DataFrame):
-        pts = np.array((df["E"].values, df["N"].values)).T
-    elif isinstance(df, np.ndarray):
-        pts = df
+        pts = (df["E"].values, df["N"].values)
+    elif isinstance(df, tuple):
+        pts = df  # type: ignore
 
     ref_inlier = mask_raster.interp_points(pts)
-    new_df = df[ref_inlier.astype(bool)].copy()
+    if isinstance(df, pd.DataFrame):
+        new_df = df[ref_inlier.astype(bool)].copy()
+    else:
+        new_df = (pts[0][ref_inlier.astype(bool)], pts[1][ref_inlier.astype(bool)])
 
     return new_df, ref_inlier.astype(bool)
 
