@@ -907,7 +907,7 @@ projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, an
         y_coords += resolution / 2
 
         pts = (x_coords, y_coords)
-        # This needs to be consistent, so it's cardcoded here
+        # This needs to be consistent, so it's hardcoded here
         area_or_point = "Area"
         # Make a new DEM which will be modified inplace
         aligned_dem = rst_elev.copy()
