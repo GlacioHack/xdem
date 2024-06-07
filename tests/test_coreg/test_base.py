@@ -921,7 +921,7 @@ class TestAffineManipulation:
     e = np.deg2rad(np.array([rotation_x, rotation_y, rotation_z]))
     # This is a 3x3 rotation matrix
     rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
-    matrix_all = matrix_rotations
+    matrix_all = matrix_rotations.copy()
     matrix_all[0:3, 0:3] = rot_matrix
     matrix_all[:3, 3] = [0.5, 1, 1.5]
 
@@ -1004,7 +1004,8 @@ class TestAffineManipulation:
         # The iterative mask should be larger and contain the other (as griddata interpolates up to 1 pixel away)
         assert np.array_equal(np.logical_or(mask_nodata_gd, mask_nodata_it), mask_nodata_it)
 
-        # Verify nodata masks are located within two pixels of each other
+        # Verify nodata masks are located within two pixels of each other (1 pixel can be added by griddata,
+        # and 1 removed by regular-grid interpolation by the iterative method)
         smallest_mask = ~binary_dilation(
             ~mask_nodata_it, iterations=2
         )  # Invert before dilate to avoid spreading at the edges
@@ -1019,6 +1020,7 @@ class TestAffineManipulation:
         dem.crop((dem.bounds.left, dem.bounds.bottom, dem.bounds.left + 2000, dem.bounds.bottom + 2000))
         epc = dem.to_pointcloud(data_column_name="z").ds
 
+        # Only testing complex matrices for speed
         matrix = self.matrix_all
 
         # If a centroid was not given, default to the center of the DEM (at Z=0).
