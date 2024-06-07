@@ -193,11 +193,17 @@ class BiasCorr(Coreg):
         if all(isinstance(dem, (da.Array, Delayed)) for dem in (ref_elev, tba_elev)):
             diff = da.subtract(ref_elev, tba_elev)
 
+            # calculate the valid mask from which to sample from
+            data = [inlier_mask, da.isfinite(diff), *(da.isfinite(var) for var in bias_vars.values())]
+            valid_mask = da.map_blocks(
+                lambda *arrays: np.logical_and.reduce(arrays), *data, chunks=inlier_mask.chunks, dtype="bool"
+            )
+
             # clearing some memory
             del ref_elev, tba_elev
 
             # TODO the output is called mask but it's the indices. Find a nicer way to handle this
-            subsample_mask = self._get_subsample_indices_dask(data=inlier_mask)
+            subsample_mask = self._get_subsample_indices_dask(data=valid_mask)
         else:
             diff = ref_elev - tba_elev
             valid_mask = np.logical_and.reduce(
