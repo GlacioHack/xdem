@@ -1,5 +1,7 @@
 ---
 file_format: mystnb
+mystnb:
+  execution_timeout: 90
 jupytext:
   formats: md:myst
   text_representation:
