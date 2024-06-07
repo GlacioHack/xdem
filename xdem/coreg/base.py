@@ -837,7 +837,9 @@ def _iterate_affine_regrid_small_rotations(
     epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
 
     # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
-    trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
+    tz0 = _apply_matrix_pts_arr(
+        x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc.z.values, matrix=matrix, centroid=centroid
+    )[2]
 
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
@@ -851,13 +853,19 @@ def _iterate_affine_regrid_small_rotations(
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
-    # (Longest step computationally)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
-        nearest = gpd.sjoin_nearest(epc, trans_epc)
 
-    # In case several points are found at exactly the same distance, take the mean of their elevations
-    new_z = nearest.groupby(by=nearest.index)["z_left"].mean().values
+    # OLD METHOD
+    # (Longest step computationally)
+    # with warnings.catch_warnings():
+    #     warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
+    #     nearest = gpd.sjoin_nearest(epc, trans_epc)
+    #
+    # # In case several points are found at exactly the same distance, take the mean of their elevations
+    # new_z = nearest.groupby(by=nearest.index)["z_left"].mean().values
+
+    # NEW METHOD: Use the transformed elevation instead of searching for a nearest neighbour,
+    # is close enough for small rotations! (and only creates a couple more iterations instead of a full search)
+    new_z = tz0
 
     # 3/ We then iterate between two steps until convergence:
     # a/ Use the Z guess to derive invert affine transform X',Y' coordinates for the original DEM,
