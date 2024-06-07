@@ -187,7 +187,7 @@ class BiasCorr(Coreg):
         pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
-        pts = np.array((pts_elev.geometry.x.values, pts_elev.geometry.y.values)).T
+        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
 
         # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
         if bias_vars is not None:
@@ -204,10 +204,10 @@ class BiasCorr(Coreg):
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
         subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_pts, verbose=verbose)
-        pts = pts[subsample_mask]
+        pts = (pts[0][subsample_mask], pts[1][subsample_mask])
 
         # Now all points should be valid, we can pass an inlier mask completely true
-        inlier_pts_alltrue = np.ones(len(pts), dtype=bool)
+        inlier_pts_alltrue = np.ones(len(pts[0]), dtype=bool)
 
         # Below, we derive 1D arrays for the rst_rst function to take over after interpolating to the point coordinates
         # (as rst_rst works for 1D arrays as well as 2D arrays, as long as coordinates match)

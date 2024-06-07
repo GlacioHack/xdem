@@ -595,7 +595,7 @@ class ICP(AffineCoreg):
             for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
                 raster.tags["AREA_OR_POINT"] = "Area"
                 point_elev[key] = raster.interp_points(
-                    point_elev[["E", "N"]].values,
+                    (point_elev["E"].values, point_elev["N"].values),
                     shift_area_or_point=True,
                 )
 
@@ -981,8 +981,8 @@ class NuthKaab(AffineCoreg):
         x_coords -= resolution / 2
         y_coords += resolution / 2
 
-        pts = np.array((x_coords, y_coords)).T
-        # This needs to be consistent, so it's cardcoded here
+        pts = (x_coords, y_coords)
+        # This needs to be consistent, so it's hardcoded here
         area_or_point = "Area"
         # Make a new DEM which will be modified inplace
         aligned_dem = rst_elev.copy()
@@ -1009,7 +1009,7 @@ class NuthKaab(AffineCoreg):
         tba_pts = aligned_dem.interp_points(pts, shift_area_or_point=True)
 
         # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
-        new_pts = pts.copy()
+        new_pts = (pts[0].copy(), pts[1].copy())
 
         elevation_difference = point_elev[z_name].values - tba_pts
         vshift = float(np.nanmedian(elevation_difference))
@@ -1040,7 +1040,7 @@ class NuthKaab(AffineCoreg):
 
             # Assign offset to the coordinates of the pts
             # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
-            new_pts += [east_diff * resolution, north_diff * resolution]
+            new_pts = (new_pts[0] + east_diff * resolution, new_pts[1] + north_diff * resolution)
 
             # Get new values
             tba_pts = aligned_dem.interp_points(new_pts, shift_area_or_point=True)
