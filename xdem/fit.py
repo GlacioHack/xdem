@@ -1,12 +1,14 @@
 """
 Functions to perform normal, weighted and robust fitting.
 """
+
 from __future__ import annotations
 
 import inspect
 import warnings
 from typing import Any, Callable
 
+import dask.array as da
 import numpy as np
 import scipy
 from geoutils.raster import subsample_array
@@ -126,6 +128,16 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
 
     # We reshape the parameter into the N x N shape expected by NumPy
     c = np.array(params).reshape((int(poly_order), int(poly_order)))
+
+    if isinstance(xx[0], da.Array):
+        return da.map_blocks(
+            polyval2d,
+            xx[0],
+            xx[1],
+            c=c,
+            chunks=xx[0].chunks,
+            dtype=np.float32,
+        )
 
     return polyval2d(x=xx[0], y=xx[1], c=c)
 

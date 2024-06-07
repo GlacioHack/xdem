@@ -47,6 +47,8 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
+from geoutils.raster.delayed import delayed_reproject, delayed_subsample
+from rasterio.enums import Resampling
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -60,6 +62,10 @@ try:
 except ImportError:
     _HAS_P3D = False
 
+
+import dask.array as da
+from dask.delayed import Delayed
+from xarray.core.dataarray import DataArray
 
 ###########################################
 # Generic functions for preprocessing
@@ -301,6 +307,139 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
     return mask_array
 
 
+# NOTE : should these functions be moved ?
+def _select_transform_crs(
+    transform: rio.transform.Affine | None,
+    crs: rio.crs.CRS | None,
+    transform_reference: rio.transform.Affine | None,
+    transform_other: rio.transform.Affine | None,
+    crs_reference: rio.crs.CRS | None,
+    crs_other: rio.crs.CRS | None,
+) -> tuple[rio.transform.Affine, rio.crs.CRS]:
+    """Choose the coorrect transform and CRS."""
+    # Choose the correct transform according to order of priority: dem_reference, dem_to_be_aligned, transform
+    new_transform = transform
+    if transform_reference is not None:
+        if new_transform is not None:
+            warnings.warn("transform of the reference DEM overrides the given 'transform'.")
+        new_transform = transform_reference
+    elif transform_other is not None:
+        if new_transform is not None:
+            warnings.warn("transform of the DEM to be aligned overrides the given 'transform'.")
+        new_transform = transform_other
+
+    # Choose the crs with the same priority as the transform
+    new_crs = crs
+    if crs_reference is not None:
+        if new_crs is not None:
+            warnings.warn("crs of the reference DEM overrides the given 'crs'.")
+        new_crs = crs_reference
+    elif crs_other is not None:
+        if new_crs is not None:
+            warnings.warn("crs of the DEM to be aligned overrides the given 'crs'.")
+        new_crs = crs_other
+
+    # Check that we have set the transforms
+    if new_transform is None:
+        raise ValueError("'transform' must be given if both DEMs are Xarrays without a transform.")
+    if new_crs is None:
+        raise ValueError("'crs' must be given if both DEMs are Xarrays without a CRS.")
+    return new_transform, new_crs
+
+
+def _get_valid_data_mask(
+    ref: NDArrayf, tba: NDArrayf, mask: NDArrayb | None, ref_nodata: float | int, tba_nodata: float | int
+) -> NDArrayb:
+    """Get a mask for all valid data and inliers."""
+    # valid data are pixels that are neither nans nor nodata values
+    valid_data_ref = np.where((np.isfinite(ref)) & (ref != ref_nodata), True, False)
+    valid_data_tba = np.where((np.isfinite(tba)) & (tba != tba_nodata), True, False)
+    valid_data = np.logical_and(valid_data_ref, valid_data_tba)
+
+    # combine it with the mask
+    if mask is not None:
+        return np.logical_and(mask, valid_data)
+    return valid_data
+
+
+def _preprocess_coreg_fit_xarray_xarray(
+    reference_dem: DataArray,
+    dem_to_be_aligned: DataArray,
+    inlier_mask: DataArray | None = None,
+    transform: rio.transform.Affine | None = None,
+    crs: rio.crs.CRS | None = None,
+) -> tuple[da.Array, da.Array, da.Array, affine.Affine, rio.crs.CRS]:
+    """Pre-processing and checks of fit() for xarray(dask) inputs. Outputs are the core dask arrays."""
+
+    # validate that both inputs are valid xarrays
+    if not all(isinstance(dem, DataArray) for dem in (reference_dem, dem_to_be_aligned)):
+        raise TypeError("Both DEMs need to be xarrays.")
+    if (inlier_mask is not None) and (not isinstance(inlier_mask, DataArray)):
+        raise TypeError(f"Mask has invalid type: {type(inlier_mask)}. Expected {DataArray}.")
+
+    # TODO make sure the underlying data format is a chunked dask array ?... otherwise throw error
+    # TODO do we need to make sure that the inputs have aligned chunks? - would there be a problem with dask?
+
+    transform, crs = _select_transform_crs(
+        transform=transform,
+        crs=crs,
+        transform_reference=reference_dem.rio.transform(),
+        transform_other=dem_to_be_aligned.rio.transform(),
+        crs_reference=reference_dem.rio.crs,
+        crs_other=dem_to_be_aligned.rio.crs,
+    )
+    # this is needed for _get_valid_mask
+    dem_tba_nodata = dem_to_be_aligned.rio.nodata
+
+    # reproject DEM to be aligned if it is not in the correct grid.
+    # TODO memory management for this step does not seem to be optimal yet
+    dem_to_be_aligned_reprojected = delayed_reproject(
+        darr=dem_to_be_aligned.data,
+        src_transform=dem_to_be_aligned.rio.transform(),
+        src_crs=dem_to_be_aligned.rio.crs,
+        dst_transform=reference_dem.rio.transform(),
+        dst_shape=reference_dem.shape,
+        dst_crs=reference_dem.rio.crs,
+        resampling=Resampling.bilinear,
+        src_nodata=dem_to_be_aligned.rio.nodata,
+        dst_nodata=reference_dem.rio.nodata,
+        dst_chunksizes=None,  # reproject will use the destination chunksizes if set to None.
+    )
+
+    # if a mask is passed, pass it as a positional argument
+    # dask will map over the internal blocks
+    if inlier_mask is not None:
+        inlier_mask_all = da.map_blocks(
+            _get_valid_data_mask,
+            reference_dem.data,
+            dem_to_be_aligned.data,
+            inlier_mask.data,
+            ref_nodata=reference_dem.rio.nodata,
+            tba_nodata=dem_tba_nodata,
+            chunks=inlier_mask.chunks,
+            dtype=inlier_mask.dtype,
+        )
+        del inlier_mask
+    # if no mask is passed, pass a keyword argument mask=None
+    # and da.map_blocks will treat it as a static variable.
+    else:
+        inlier_mask_all = da.map_blocks(
+            _get_valid_data_mask,
+            reference_dem.data,
+            dem_to_be_aligned.data,
+            mask=None,
+            ref_nodata=reference_dem.rio.nodata,
+            tba_nodata=dem_tba_nodata,
+            chunks=reference_dem.chunks,
+            dtype="bool",
+        )
+
+    # TODO handle mask has no inliers -> np.all(~mask)
+
+    # outputs are dask arrays
+    return reference_dem.data, dem_to_be_aligned_reprojected, inlier_mask_all, transform, crs
+
+
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
@@ -442,9 +581,9 @@ def _preprocess_coreg_fit_point_point(
 
 
 def _preprocess_coreg_fit(
-    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | Mask | None = None,
+    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
+    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
+    inlier_mask: NDArrayb | Mask | DataArray | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
 ) -> tuple[
@@ -453,7 +592,8 @@ def _preprocess_coreg_fit(
     """Pre-processing and checks of fit for any input."""
 
     if not all(
-        isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for elev in (reference_elev, to_be_aligned_elev)
+        isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, DataArray))
+        for elev in (reference_elev, to_be_aligned_elev)
     ):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
 
@@ -489,6 +629,18 @@ def _preprocess_coreg_fit(
             ref_elev = point_elev
             tba_elev = raster_elev
 
+    # if both inputs are xarray/ dask arrays
+    elif all(isinstance(elev, DataArray) for elev in (reference_elev, to_be_aligned_elev)):
+
+        # outputs are now dask arrays
+        ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_xarray_xarray(
+            reference_dem=reference_elev,
+            dem_to_be_aligned=to_be_aligned_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+        )
+
     # If both inputs are points, simply reproject to the same CRS
     else:
         ref_elev, tba_elev = _preprocess_coreg_fit_point_point(
@@ -498,6 +650,11 @@ def _preprocess_coreg_fit(
     return ref_elev, tba_elev, inlier_mask, transform, crs
 
 
+def mask_array(arr: NDArrayf, nodata: int | float) -> NDArrayf:
+    """Convert invalid data to nan."""
+    return np.where(np.logical_or(~da.isfinite(arr), arr == nodata), np.nan, arr)
+
+
 def _preprocess_coreg_apply(
     elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
     transform: rio.transform.Affine | None = None,
@@ -505,7 +662,7 @@ def _preprocess_coreg_apply(
 ) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine, rio.crs.CRS]:
     """Pre-processing and checks of apply for any input."""
 
-    if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)):
+    if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, DataArray)):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
 
     # If input is geodataframe
@@ -513,6 +670,20 @@ def _preprocess_coreg_apply(
         elev_out = elev
         new_transform = None
         new_crs = None
+
+    # If input is a Dataarray
+    elif isinstance(elev, DataArray):
+        new_transform, new_crs = _select_transform_crs(
+            transform=transform,
+            crs=crs,
+            transform_reference=elev.rio.transform(),
+            transform_other=None,
+            crs_reference=elev.rio.crs,
+            crs_other=None,
+        )
+
+        # get the masked elev
+        elev_out = da.map_blocks(mask_array, elev.data, nodata=elev.rio.nodata, chunks=elev.chunks, dtype=elev.dtype)
 
     # If input is a raster or array
     else:
@@ -550,6 +721,16 @@ def _postprocess_coreg_apply_pts(
 
     # TODO: Convert CRS back if the CRS did not match the one of the fit?
     return applied_elev
+
+
+def _postprocess_coreg_apply_xarray(
+    applied_elev: da.Array, out_transform: affine.Affine
+) -> tuple[da.Array, affine.Affine]:
+    """Post-processing and checks of apply for dask inputs."""
+
+    # TODO mimic what is happening in the postprocess_coreg_apply_rst.
+
+    return applied_elev, out_transform
 
 
 def _postprocess_coreg_apply_rst(
@@ -637,6 +818,11 @@ def _postprocess_coreg_apply(
             resample=resample,
             resampling=resampling,
         )
+    elif isinstance(applied_elev, da.Array):
+        applied_elev, out_transform = _postprocess_coreg_apply_xarray(
+            applied_elev=applied_elev, out_transform=out_transform
+        )
+
     else:
         applied_elev = _postprocess_coreg_apply_pts(applied_elev)
 
@@ -1150,12 +1336,28 @@ class Coreg:
 
         return subsample_mask
 
+    def _get_subsample_indices_dask(self, data: NDArrayb) -> tuple[NDArrayf, NDArrayf]:
+        """Get subsampled indices from a dask array."""
+
+        # subsample value is handled in delayed_subsample
+        indices = delayed_subsample(
+            darr=data,
+            subsample=self._meta["subsample"],
+            return_indices=True,
+            silence_max_subsample=True,
+        )
+
+        # Write final subsample to class
+        self._meta["subsample_final"] = len(indices[0])
+
+        return indices
+
     def fit(
         self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
+        inlier_mask: NDArrayb | Mask | DataArray | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType | da.Array] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
@@ -1331,6 +1533,7 @@ class Coreg:
             if self._is_affine:
                 warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
 
+            # TODO adapt this for dask
             for var in bias_vars.keys():
                 bias_vars[var] = gu.raster.get_array_and_mask(bias_vars[var])[0]
 
@@ -1641,7 +1844,7 @@ class Coreg:
         """
 
         # Determine if input is raster-raster, raster-point or point-point
-        if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        if all(isinstance(dem, (np.ndarray, da.Array, Delayed)) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "r-r"
         elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "p-p"
@@ -1713,7 +1916,7 @@ class Coreg:
         """Distribute to _apply_rst and _apply_pts based on input and method availability."""
 
         # If input is a raster
-        if isinstance(kwargs["elev"], np.ndarray):
+        if isinstance(kwargs["elev"], (np.ndarray, da.Array)):
 
             # See if a _apply_rst exists
             try:
