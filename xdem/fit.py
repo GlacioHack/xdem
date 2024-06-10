@@ -67,6 +67,33 @@ def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
 ######################################################
 
 
+def fit_chunked(arrays: tuple[da.Array, ...], *params: NDArrayf, fit_func: Callable[..., NDArrayf]) -> da.Array:
+    """Call a fit func with dask arrays to run the fit function on the array chunks.
+
+    :param arrays: Tuple of dask arrays
+    :param params: `params` passed to the fit func.
+    :param fit_func: The fit function to call. Needs to have the function signature f(x , *params)
+
+    :return: Output, Delayed.
+    """
+
+    def fit_chunk(*arrays: da.Array, fit_func: Callable[..., NDArrayf], other_params: NDArrayf) -> NDArrayf:
+        return fit_func(arrays, *other_params).squeeze()
+
+    # if no chunks are passed, map_blocks will use the chunks of the first input array.
+    if not isinstance(arrays, tuple):
+        raise TypeError("Inputs to the fit wrapper chunked must be tuple of arrays.")
+
+    # when calling apply input is a tuple
+    return da.map_blocks(
+        fit_chunk,
+        *arrays,
+        fit_func=fit_func,
+        other_params=params,
+        dtype=np.float32,
+    )
+
+
 def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     """
     Sum of N sinusoids in 1D.
@@ -128,16 +155,6 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
 
     # We reshape the parameter into the N x N shape expected by NumPy
     c = np.array(params).reshape((int(poly_order), int(poly_order)))
-
-    if isinstance(xx[0], da.Array):
-        return da.map_blocks(
-            polyval2d,
-            xx[0],
-            xx[1],
-            c=c,
-            chunks=xx[0].chunks,
-            dtype=np.float32,
-        )
 
     return polyval2d(x=xx[0], y=xx[1], c=c)
 

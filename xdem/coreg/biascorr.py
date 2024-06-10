@@ -18,6 +18,7 @@ import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg
 from xdem.fit import (
+    fit_chunked,
     polynomial_1d,
     polynomial_2d,
     robust_nfreq_sumsin_fit,
@@ -263,6 +264,7 @@ class BiasCorr(Coreg):
             else:
                 raise TypeError(f"Incompatible input type for arrays {type(diff)}.")
 
+            # we dont need to call the fit_chunked here because the data going in is not a chunked dask array.
             results = self._meta["fit_optimizer"](
                 f=self._meta["fit_func"],
                 xdata=xdata,
@@ -493,7 +495,12 @@ class BiasCorr(Coreg):
 
         # Apply function to get correction (including if binning was done before)
         if self._fit_or_bin in ["fit", "bin_and_fit"]:
-            corr = self._meta["fit_func"](tuple(bias_vars.values()), *self._meta["fit_params"])
+            if isinstance(list(bias_vars.values())[0], da.Array):
+                corr = fit_chunked(
+                    tuple(bias_vars.values()), *self._meta["fit_params"], fit_func=self._meta["fit_func"]
+                )
+            else:
+                corr = self._meta["fit_func"](tuple(bias_vars.values()), *self._meta["fit_params"])
 
         # Apply binning to get correction
         else:
@@ -517,10 +524,7 @@ class BiasCorr(Coreg):
                     statistic=self._meta["bin_statistic"],
                 )
 
-        if isinstance(elev, da.Array):
-            dem_corr = da.add(elev, corr)
-        else:
-            dem_corr = elev + corr
+        dem_corr = elev + corr
 
         return dem_corr, transform
 
@@ -975,7 +979,6 @@ class Deramp(BiasCorr):
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
         # Define the coordinates for applying the correction
-
         if type(elev) == da.Array:
             xx = da.map_blocks(meshgrid, elev, chunks=elev.chunks, dtype=elev.dtype)
             yy = da.map_blocks(meshgrid, elev, axis="y", chunks=elev.chunks, dtype=elev.dtype)
