@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, TypeVar, Iterable
+from typing import Any, Callable, TypeVar, Iterable, Literal
 
 import xdem.coreg.base
 
@@ -21,6 +21,8 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 from geoutils.raster import Raster, get_array_and_mask
+from geoutils.raster.interpolate import _interp_points
+from geoutils.raster.georeferencing import _coords
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
@@ -31,10 +33,8 @@ from xdem.coreg.base import (
     _mask_dataframe_by_dem,
     _residuals_df,
     _transform_to_bounds_and_res,
-    deramping,
 )
 from xdem.spatialstats import nmad
-from xdem.fit import polynomial_2d
 
 try:
     import pytransform3d.transformations
@@ -55,20 +55,29 @@ except ImportError:
 ######################################
 
 
-def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> rio.transform.Affine:
+def _reproject_horizontal_shift_samecrs(
+        raster_arr: NDArrayf,
+        src_transform: rio.transform.Affine,
+        dst_transform: rio.transform.Affine = None,
+        return_interpolator: bool = False,
+        resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear") -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
     """
-    Apply horizontal shift to a rasterio Affine transform
-    :param transform: The Affine transform of the raster
-    :param dx: dx shift value
-    :param dy: dy shift value
+    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
 
-    Returns: Updated transform
+    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
+    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
+    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
+
+    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
     """
-    transform_shifted = rio.transform.Affine(
-        transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy
-    )
-    return transform_shifted
 
+    # TODO: Specify area or point metadata
+    coords_dst = _coords(transform=dst_transform, shape=raster_arr.shape)
+
+    interpolator = _interp_points(array=raster_arr, transform=src_transform, points=coords_dst, method=resampling,
+                                  return_interpolator=return_interpolator)
+
+    return interpolator
 
 ######################################
 # Functions for affine coregistrations
@@ -132,6 +141,22 @@ def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArr
 
     return slope_tan, aspect
 
+def nuth_kaab_fit_func(xx: NDArrayf, params: tuple[float, float, float]) -> NDArrayf:
+    """
+    Nuth and Kääb (2011) fitting function.
+
+    Describes the elevation differences divided by the slope tangente (y) as a 1D function of the aspect.
+
+    y(x) = a * cos(b - x) + c
+
+    where y = dh/tan(slope) and x = aspect.
+
+    :param xx: The aspect in radians.
+    :param params: Parameters.
+
+    :returns: Estimated y-values with the same shape as the given x-values
+    """
+    return params[0] * np.cos(params[1] - xx) + params[2]
 
 def get_horizontal_shift(
     elevation_difference: NDArrayf, slope: NDArrayf, aspect: NDArrayf, min_count: int = 20
@@ -403,30 +428,6 @@ class VerticalShift(AffineCoreg):
 
         self._meta["shift_z"] = vshift
 
-    def _apply_rst(
-        self,
-        elev: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the VerticalShift function to a DEM."""
-        return elev + self._meta["shift_z"], transform
-
-    def _apply_pts(
-        self,
-        elev: gpd.GeoDataFrame,
-        z_name: str = "z",
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> gpd.GeoDataFrame:
-
-        """Apply the VerticalShift function to a set of points."""
-        dem_copy = elev.copy()
-        dem_copy[z_name] += self._meta["shift_z"]
-        return dem_copy
-
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
@@ -641,136 +642,6 @@ class ICP(AffineCoreg):
         self._meta["shift_z"] = matrix[2, 3]
 
 
-class Tilt(AffineCoreg):
-    """
-    Tilt alignment.
-
-    Estimates an 2-D plan correction between the difference of two elevation datasets. This is close to a rotation
-    alignment at small angles, but introduces a scaling at large angles.
-
-    The tilt parameters are stored in the `self.meta` key "fit_parameters", with associated polynomial function in
-    the key "fit_func".
-    """
-
-    def __init__(
-        self,
-        bin_before_fit: bool = False,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
-        subsample: int | float = 5e5
-    ) -> None:
-        """
-        Instantiate a tilt correction object.
-
-        :param bin_before_fit: Whether to bin data before fitting the coregistration function.
-        :param fit_optimizer: Optimizer to minimize the coregistration function.
-        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-
-        # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
-        # boolean, no bin apply option, and fit_func is preferefind
-        if not bin_before_fit:
-            meta_fit = {"fit_func": polynomial_2d, "fit_optimizer": fit_optimizer}
-            self._fit_or_bin = "fit"
-            super().__init__(subsample=subsample, meta=meta_fit)
-        else:
-            meta_bin_and_fit = {
-                "fit_func": polynomial_2d,
-                "fit_optimizer": fit_optimizer,
-                "bin_sizes": bin_sizes,
-                "bin_statistic": bin_statistic
-            }
-            self._fit_or_bin = "bin_and_fit"
-            super().__init__(subsample=subsample, meta=meta_bin_and_fit)
-
-        self._meta["poly_order"] = 1
-
-
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        """Fit the tilt function to an elevation dataset."""
-
-        # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
-
-        # Coordinates (we don't need the actual ones, just array coordinates)
-        xx, yy = _get_x_and_y_coords(ref_elev.shape, transform)
-
-        self._bin_or_and_fit_nd(
-            values=ref_elev - tba_elev,
-            inlier_mask=inlier_mask,
-            bias_vars={"xx": xx, "yy": yy},
-            weights=weights,
-            verbose=verbose,
-            p0=p0,
-            **kwargs,
-        )
-
-    def _apply_rst(
-        self,
-        elev: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the deramp function to a DEM."""
-
-        # Define the coordinates for applying the correction
-        xx, yy = _get_x_and_y_coords(elev.shape, transform)
-
-        tilt = self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
-
-        return elev + tilt, transform
-
-    def _apply_pts(
-        self,
-        elev: gpd.GeoDataFrame,
-        z_name: str = "z",
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> gpd.GeoDataFrame:
-        """Apply the deramp function to a set of points."""
-
-        dem_copy = elev.copy()
-
-        xx = dem_copy.geometry.x.values
-        yy = dem_copy.geometry.y.values
-
-        dem_copy[z_name].values += self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
-
-        return dem_copy
-
-    def _to_matrix_func(self) -> NDArrayf:
-        """Return a transform matrix if possible."""
-        if self.meta["poly_order"] > 1:
-            raise ValueError(
-                "Nonlinear deramping degrees cannot be represented as transformation matrices."
-                f" (max 1, given: {self.meta['poly_order']})"
-            )
-        if self.meta["poly_order"] == 1:
-            raise NotImplementedError("Vertical shift, rotation and horizontal scaling has to be implemented.")
-
-        # If degree==0, it's just a bias correction
-        empty_matrix = np.diag(np.ones(4, dtype=float))
-        empty_matrix[2, 3] += self._meta["fit_params"][0]
-
-        return empty_matrix
-
 
 class NuthKaab(AffineCoreg):
     """
@@ -783,15 +654,44 @@ class NuthKaab(AffineCoreg):
     in the "matrix" transform.
     """
 
-    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
+    def __init__(
+        self,
+        max_iterations: int = 10,
+        offset_threshold: float = 0.05,
+        bin_before_fit: bool = False,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+        subsample: int | float = 5e5) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
         :param max_iterations: The maximum allowed iterations before stopping.
         :param offset_threshold: The residual offset threshold after which to stop the iterations (in pixels).
+        :param bin_before_fit: Whether to bin data before fitting the coregistration function. For the Nuth and Kääb
+            (2011) algorithm, this corresponds to aspect bins along dh/tan(slope).
+        :param fit_optimizer: Optimizer to minimize the coregistration function.
+        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
+        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        self._meta: CoregDict
+
+        # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
+        # boolean, no bin apply option, and fit_func is preferefind
+        if not bin_before_fit:
+            meta_fit = {"fit_func": nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
+            self._fit_or_bin = "fit"
+            super().__init__(subsample=subsample, meta=meta_fit)
+        else:
+            meta_bin_and_fit = {
+                "fit_func": nuth_kaab_fit_func,
+                "fit_optimizer": fit_optimizer,
+                "bin_sizes": bin_sizes,
+                "bin_statistic": bin_statistic
+            }
+            self._fit_or_bin = "bin_and_fit"
+            super().__init__(subsample=subsample, meta=meta_bin_and_fit)
+
         self.max_iterations = max_iterations
         self.offset_threshold = offset_threshold
 
@@ -1099,40 +999,6 @@ class NuthKaab(AffineCoreg):
         matrix[2, 3] += self._meta["shift_z"]
 
         return matrix
-
-    def _apply_rst(
-        self,
-        elev: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the Nuth & Kaab shift to a DEM."""
-
-        updated_transform = apply_xy_shift(transform, -self._meta["shift_x"], -self._meta["shift_y"])
-        vshift = self._meta["shift_z"]
-        return elev + vshift, updated_transform
-
-    def _apply_pts(
-        self,
-        elev: gpd.GeoDataFrame,
-        z_name: str = "z",
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> gpd.GeoDataFrame:
-        """Apply the Nuth & Kaab shift to an elevation point cloud."""
-
-        applied_epc = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(
-                x=elev.geometry.x.values + self._meta["shift_x"],
-                y=elev.geometry.y.values + self._meta["shift_y"],
-                crs=elev.crs,
-            ),
-            data={z_name: elev[z_name].values + self._meta["shift_z"]},
-        )
-
-        return applied_epc
 
 
 class GradientDescending(AffineCoreg):
