@@ -724,13 +724,51 @@ def _postprocess_coreg_apply_pts(
 
 
 def _postprocess_coreg_apply_xarray(
-    applied_elev: da.Array, out_transform: affine.Affine
+    elev: da.Array,
+    applied_elev: da.Array,
+    transform: affine.Affine,
+    out_transform: affine.Affine,
+    crs: rio.crs.CRS,
+    resample: bool,
+    resampling: rio.warp.Resampling | None = None,
 ) -> tuple[da.Array, affine.Affine]:
     """Post-processing and checks of apply for dask inputs."""
 
-    # TODO mimic what is happening in the postprocess_coreg_apply_rst.
+    # make sure the datatype is correct
+    if applied_elev.dtype != np.float32:
+        applied_elev = applied_elev.astype(np.float32)
 
-    return applied_elev, out_transform
+    # Reproject the corrected elevation
+    # NOTE is there a way to make this optional? It can save some compute time.
+    reprojected = delayed_reproject(
+        darr=applied_elev,
+        src_transform=out_transform,
+        src_crs=crs,
+        dst_transform=transform,
+        dst_shape=elev.shape,
+        dst_crs=crs,
+        resampling=resampling,
+        src_nodata=np.nan,
+        dst_nodata=elev.rio.nodata,
+        dst_chunksizes=None,
+    )
+
+    # Set nans to nodata value
+    reprojected = da.where(da.isnan(reprojected), elev.rio.nodata, reprojected)
+
+    output_ds = DataArray(
+        da.expand_dims(reprojected, axis=0),
+        coords=elev.coords,  # TODO is this correct?
+        dims=["band", "y", "x"],
+        name="Corrected DEM",
+        # attrs={},  # it's possible to set geotiff metadata via the attrs parameter
+    )
+
+    # Set crs and nodata value
+    output_ds = output_ds.rio.set_crs(elev.rio.crs)
+    output_ds = output_ds.rio.set_nodata(elev.rio.nodata)
+
+    return output_ds, out_transform
 
 
 def _postprocess_coreg_apply_rst(
@@ -820,7 +858,13 @@ def _postprocess_coreg_apply(
         )
     elif isinstance(applied_elev, da.Array):
         applied_elev, out_transform = _postprocess_coreg_apply_xarray(
-            applied_elev=applied_elev, out_transform=out_transform
+            elev=elev,
+            applied_elev=applied_elev,
+            transform=transform,
+            crs=crs,
+            out_transform=out_transform,
+            resample=resample,
+            resampling=resampling,
         )
 
     else:
