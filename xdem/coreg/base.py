@@ -64,7 +64,7 @@ except ImportError:
 
 
 import dask.array as da
-from dask.delayed import Delayed
+
 from xarray.core.dataarray import DataArray
 
 ###########################################
@@ -307,7 +307,6 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
     return mask_array
 
 
-# NOTE : should these functions be moved ?
 def _select_transform_crs(
     transform: rio.transform.Affine | None,
     crs: rio.crs.CRS | None,
@@ -347,19 +346,44 @@ def _select_transform_crs(
     return new_transform, new_crs
 
 
-def _get_valid_data_mask(
-    ref: NDArrayf, tba: NDArrayf, mask: NDArrayb | None, ref_nodata: float | int, tba_nodata: float | int
-) -> NDArrayb:
-    """Get a mask for all valid data and inliers."""
-    # valid data are pixels that are neither nans nor nodata values
-    valid_data_ref = np.where((np.isfinite(ref)) & (ref != ref_nodata), True, False)
-    valid_data_tba = np.where((np.isfinite(tba)) & (tba != tba_nodata), True, False)
-    valid_data = np.logical_and(valid_data_ref, valid_data_tba)
+def get_valid_data(*datasets: NDArrayf, nodatas: tuple[int | float]) -> NDArrayb:
+    """Get the valid pixels across datasets."""
+    return np.logical_and.reduce(
+        list(
+            map(
+                lambda data, nodata: (np.isfinite(data)) & (data != nodata),
+                datasets,
+                nodatas,
+            )
+        ),
+    )
 
-    # combine it with the mask
+
+def valid_data_darr(*datasets: da.Array, mask: da.Array = None, nodatas: tuple[int | float]) -> da.Array:
+    """Get the valid data from a set of dask arrays.
+
+    Valid data is defined as data which is not nan or that rasters nodata.
+
+    :param *datasets: The dask arrays to get valid data for.
+    :param mask: Optional mask to combine with additionally.
+    :param nodatas: The nodatas of the datasets. The order needs to be the same as the datasets passed. # type: ignore
+    """
+    valid_data = da.map_blocks(
+        get_valid_data,
+        *datasets,
+        nodatas=nodatas,
+        dtype="bool",
+    )
+
+    # logical operators operate on a chunked dask array.
     if mask is not None:
-        return np.logical_and(mask, valid_data)
+        return mask & valid_data
     return valid_data
+
+
+def mask_data(data: NDArrayf, nodata: int | float) -> NDArrayf:
+    """Set invalid data in a dask array to nan."""
+    return np.where(~get_valid_data(data, nodatas=(nodata,)), np.nan, data)
 
 
 def _preprocess_coreg_fit_xarray_xarray(
@@ -405,33 +429,12 @@ def _preprocess_coreg_fit_xarray_xarray(
         dst_chunksizes=None,  # reproject will use the destination chunksizes if set to None.
     )
 
-    # if a mask is passed, pass it as a positional argument
-    # dask will map over the internal blocks
-    if inlier_mask is not None:
-        inlier_mask_all = da.map_blocks(
-            _get_valid_data_mask,
-            reference_dem.data,
-            dem_to_be_aligned.data,
-            inlier_mask.data,
-            ref_nodata=reference_dem.rio.nodata,
-            tba_nodata=dem_tba_nodata,
-            chunks=inlier_mask.chunks,
-            dtype=inlier_mask.dtype,
-        )
-        del inlier_mask
-    # if no mask is passed, pass a keyword argument mask=None
-    # and da.map_blocks will treat it as a static variable.
-    else:
-        inlier_mask_all = da.map_blocks(
-            _get_valid_data_mask,
-            reference_dem.data,
-            dem_to_be_aligned.data,
-            mask=None,
-            ref_nodata=reference_dem.rio.nodata,
-            tba_nodata=dem_tba_nodata,
-            chunks=reference_dem.chunks,
-            dtype="bool",
-        )
+    inlier_mask_all = valid_data_darr(
+        reference_dem.data,
+        dem_to_be_aligned.data,
+        mask=inlier_mask.data if inlier_mask is not None else None,
+        nodatas=(reference_dem.rio.nodata, dem_tba_nodata),  # type: ignore [arg-type]
+    )
 
     # TODO handle mask has no inliers -> np.all(~mask)
 
@@ -652,11 +655,6 @@ def _preprocess_coreg_fit(
     return ref_elev, tba_elev, inlier_mask, transform, crs
 
 
-def mask_array(arr: NDArrayf, nodata: int | float) -> NDArrayf:
-    """Convert invalid data to nan."""
-    return np.where(np.logical_or(~da.isfinite(arr), arr == nodata), np.nan, arr)
-
-
 def _preprocess_coreg_apply(
     elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
     transform: rio.transform.Affine | None = None,
@@ -685,7 +683,7 @@ def _preprocess_coreg_apply(
         )
 
         # get the masked elev
-        elev_out = da.map_blocks(mask_array, elev.data, nodata=elev.rio.nodata, chunks=elev.chunks, dtype=elev.dtype)
+        elev_out = da.map_blocks(mask_data, elev.data, nodata=elev.rio.nodata, chunks=elev.chunks, dtype=elev.dtype)
 
     # If input is a raster or array
     else:
@@ -1910,7 +1908,7 @@ class Coreg:
         """
 
         # Determine if input is raster-raster, raster-point or point-point
-        if all(isinstance(dem, (np.ndarray, da.Array, Delayed)) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        if all(isinstance(dem, (np.ndarray, da.Array)) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "r-r"
         elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
             rop = "p-p"
