@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import rasterio as rio
 import scipy
-from dask.delayed import Delayed
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
@@ -149,9 +148,9 @@ class BiasCorr(Coreg):
 
     def _fit_biascorr(  # type: ignore
         self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
+        ref_elev: NDArrayf | da.Array,
+        tba_elev: NDArrayf | da.Array,
+        inlier_mask: NDArrayb | da.Array,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         z_name: str,
@@ -370,9 +369,9 @@ class BiasCorr(Coreg):
 
     def _fit_rst_rst(
         self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
+        ref_elev: NDArrayf | da.Array,
+        tba_elev: NDArrayf | da.Array,
+        inlier_mask: NDArrayb | da.Array,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         z_name: str,
@@ -476,12 +475,12 @@ class BiasCorr(Coreg):
 
     def _apply_rst(  # type: ignore
         self,
-        elev: NDArrayf,
+        elev: NDArrayf | da.Array,
         transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         bias_vars: None | dict[str, NDArrayf] = None,
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
+    ) -> tuple[NDArrayf, rio.transform.Affine] | tuple[da.Array, rio.transform.Affine]:
 
         if bias_vars is None:
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")

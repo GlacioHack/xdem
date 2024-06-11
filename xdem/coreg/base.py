@@ -586,7 +586,11 @@ def _preprocess_coreg_fit(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
 ) -> tuple[
-    NDArrayf | gpd.GeoDataFrame, NDArrayf | gpd.GeoDataFrame, NDArrayb | None, affine.Affine | None, rio.crs.CRS | None
+    NDArrayf | gpd.GeoDataFrame | da.Array,
+    NDArrayf | gpd.GeoDataFrame | da.Array,
+    NDArrayb | da.Array | None,
+    affine.Affine | None,
+    rio.crs.CRS | None,
 ]:
     """Pre-processing and checks of fit for any input."""
 
@@ -654,10 +658,10 @@ def mask_array(arr: NDArrayf, nodata: int | float) -> NDArrayf:
 
 
 def _preprocess_coreg_apply(
-    elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+    elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
-) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine, rio.crs.CRS]:
+) -> tuple[NDArrayf | gpd.GeoDataFrame | da.Array, affine.Affine, rio.crs.CRS]:
     """Pre-processing and checks of apply for any input."""
 
     if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, DataArray)):
@@ -729,7 +733,7 @@ def _postprocess_coreg_apply_xarray(
     crs: rio.crs.CRS,
     resample: bool,
     resampling: rio.warp.Resampling | None = None,
-) -> tuple[da.Array, affine.Affine]:
+) -> tuple[DataArray, affine.Affine]:
     """Post-processing and checks of apply for dask inputs."""
 
     # make sure the datatype is correct
@@ -825,14 +829,14 @@ def _postprocess_coreg_apply_rst(
 
 
 def _postprocess_coreg_apply(
-    elev: NDArrayf | gu.Raster | gpd.GeoDataFrame,
-    applied_elev: NDArrayf | gpd.GeoDataFrame,
+    elev: NDArrayf | gu.Raster | gpd.GeoDataFrame | da.Array,
+    applied_elev: NDArrayf | gpd.GeoDataFrame | da.Array,
     transform: affine.Affine,
     out_transform: affine.Affine,
     crs: rio.crs.CRS,
     resample: bool,
     resampling: rio.warp.Resampling | None = None,
-) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
+) -> tuple[NDArrayf | gpd.GeoDataFrame | DataArray, affine.Affine]:
     """
     Post-processing and checks of apply for any input.
 
@@ -1399,8 +1403,8 @@ class Coreg:
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | DataArray,
         inlier_mask: NDArrayb | Mask | DataArray | None = None,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType | da.Array] | None = None,
-        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType | DataArray] | None = None,
+        weights: NDArrayf | DataArray | None = None,  # TODO is DataArray correct here?
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
@@ -1536,9 +1540,23 @@ class Coreg:
     ) -> RasterType | gpd.GeoDataFrame:
         ...
 
+    @overload
     def apply(
         self,
-        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame,
+        elev: DataArray,
+        bias_vars: dict[str, DataArray] | None = None,
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling = "bilinear",
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        z_name: str = "z",
+        **kwargs: Any,
+    ) -> tuple[DataArray, rio.transform.Affine]:
+        ...
+
+    def apply(
+        self,
+        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame | DataArray,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
@@ -1546,7 +1564,13 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
+    ) -> (
+        RasterType
+        | gpd.GeoDataFrame
+        | tuple[NDArrayf, rio.transform.Affine]
+        | tuple[MArrayf, rio.transform.Affine]
+        | tuple[DataArray, rio.transform.Affine]
+    ):
         """
         Apply the estimated transform to a DEM.
 
@@ -1954,7 +1978,7 @@ class Coreg:
                         f"No point-point method found for coregistration {self.__class__.__name__}."
                     )
 
-    def _apply_func(self, **kwargs: Any) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
+    def _apply_func(self, **kwargs: Any) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine | da.Array]:
         """Distribute to _apply_rst and _apply_pts based on input and method availability."""
 
         # If input is a raster
