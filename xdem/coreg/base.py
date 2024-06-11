@@ -369,7 +369,7 @@ def _preprocess_coreg_fit_xarray_xarray(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
 ) -> tuple[da.Array, da.Array, da.Array, affine.Affine, rio.crs.CRS]:
-    """Pre-processing and checks of fit() for xarray(dask) inputs. Outputs are the core dask arrays."""
+    """Pre-processing and checks of fit() for xarray(dask) inputs. Outputs are dask arrays."""
 
     # validate that both inputs are valid xarrays
     if not all(isinstance(dem, DataArray) for dem in (reference_dem, dem_to_be_aligned)):
@@ -392,7 +392,6 @@ def _preprocess_coreg_fit_xarray_xarray(
     dem_tba_nodata = dem_to_be_aligned.rio.nodata
 
     # reproject DEM to be aligned if it is not in the correct grid.
-    # TODO memory management for this step does not seem to be optimal yet
     dem_to_be_aligned_reprojected = delayed_reproject(
         darr=dem_to_be_aligned.data,
         src_transform=dem_to_be_aligned.rio.transform(),
@@ -629,7 +628,6 @@ def _preprocess_coreg_fit(
             ref_elev = point_elev
             tba_elev = raster_elev
 
-    # if both inputs are xarray/ dask arrays
     elif all(isinstance(elev, DataArray) for elev in (reference_elev, to_be_aligned_elev)):
 
         # outputs are now dask arrays
