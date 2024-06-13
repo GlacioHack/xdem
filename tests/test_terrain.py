@@ -16,6 +16,8 @@ xdem.examples.download_longyearbyen_examples()
 
 PLOT = True
 
+# Disable JIT to get test coverage on numba-decorated functions
+os.environ["NUMBA_DISABLE_JIT"] = "1"
 
 def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> MArrayf:
     """Run GDAL's DEMProcessing and return the read numpy array."""
