@@ -64,7 +64,6 @@ except ImportError:
 
 
 import dask.array as da
-
 from xarray.core.dataarray import DataArray
 
 ###########################################
@@ -437,7 +436,6 @@ def _preprocess_coreg_fit_xarray_xarray(
     )
 
     # TODO handle mask has no inliers -> np.all(~mask)
-
     # outputs are dask arrays
     return reference_dem.data, dem_to_be_aligned_reprojected, inlier_mask_all, transform, crs
 

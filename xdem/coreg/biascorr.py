@@ -241,6 +241,19 @@ class BiasCorr(Coreg):
             else:
                 bin_sizes = self._meta["bin_sizes"]
 
+        if isinstance(diff, np.ndarray):
+            ydata = diff[subsample_mask]
+            xdata = [var[subsample_mask] for var in bias_vars.values()]
+            sigma = weights[subsample_mask] if weights is not None else None
+
+        elif isinstance(diff, da.Array):
+            ydata = diff.vindex[subsample_mask].compute()  # type:ignore [assignment]
+            xdata = [var.vindex[subsample_mask].compute() for var in bias_vars.values()]
+            # TODO - where do the weights come from? Are they also dask arrays?
+            sigma = weights.vindex[subsample_mask].compute() if weights is not None else None
+        else:
+            raise TypeError(f"Incompatible input type for arrays {type(diff)}.")
+
         # Option 1: Run fit and save optimized function parameters
         if self._fit_or_bin == "fit":
 
@@ -251,24 +264,12 @@ class BiasCorr(Coreg):
                     "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
                 )
 
-            if isinstance(diff, np.ndarray):
-                ydata = diff[subsample_mask].flatten()
-                xdata = np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze()
-                sigma = weights[subsample_mask].flatten() if weights is not None else None
-            elif isinstance(diff, da.Array):
-                ydata = diff.vindex[subsample_mask].flatten().compute()  # type:ignore [assignment]
-                xdata = np.array([var.vindex[subsample_mask].flatten().compute() for var in bias_vars.values()])
-                # TODO - where do the weights come from? Are they also dask arrays?
-                sigma = weights.vindex[subsample_mask].flatten() if weights is not None else None
-            else:
-                raise TypeError(f"Incompatible input type for arrays {type(diff)}.")
-
             # we dont need to call the fit_chunked here because the data going in is not a chunked dask array.
             results = self._meta["fit_optimizer"](
                 f=self._meta["fit_func"],
-                xdata=xdata,
-                ydata=ydata,
-                sigma=sigma,
+                ydata=ydata.flatten(),
+                xdata=np.array([data.flatten() for data in xdata]),
+                sigma=sigma.flatten() if sigma is not None else None,
                 absolute_sigma=True,
                 **kwargs,
             )
@@ -283,8 +284,8 @@ class BiasCorr(Coreg):
                 )
 
             df = xdem.spatialstats.nd_binning(
-                values=diff[subsample_mask],
-                list_var=[var[subsample_mask] for var in bias_vars.values()],
+                values=ydata,
+                list_var=xdata,
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=bin_sizes,
                 statistics=(self._meta["bin_statistic"], "count"),
@@ -305,8 +306,8 @@ class BiasCorr(Coreg):
                 )
 
             df = xdem.spatialstats.nd_binning(
-                values=diff[subsample_mask],
-                list_var=[var[subsample_mask] for var in bias_vars.values()],
+                values=ydata,
+                list_var=xdata,
                 list_var_names=list(bias_vars.keys()),
                 list_var_bins=bin_sizes,
                 statistics=(self._meta["bin_statistic"], "count"),
