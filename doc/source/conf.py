@@ -165,7 +165,7 @@ html_theme_options = {
         "notebook_interface": "jupyterlab",
         # For launching Binder in Jupyterlab to open MD files as notebook (downloads them otherwise)
     },
-    "show_toc_level": 2,  # To show more levels on the right sidebar TOC
+    "show_toc_level": 3,  # To show more levels on the right sidebar TOC
     "logo": {
         "image_dark": "_static/xdem_logo_dark.svg",
     },
