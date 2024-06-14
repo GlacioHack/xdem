@@ -45,8 +45,8 @@ def load_examples_xarray() -> tuple[DataArray, DataArray, DataArray]:
 
     # Create a raster mask on the fly from the vector data
     glacier_mask_vector = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
-    inlier_mask = ~glacier_mask_vector.create_mask(raster=gu.Raster(examples.get_path("longyearbyen_ref_dem")))
-    inlier_mask = DataArray(da.from_array(inlier_mask.data, chunks=reference_raster.chunks))
+    inlier_mask = glacier_mask_vector.create_mask(raster=gu.Raster(examples.get_path("longyearbyen_ref_dem")))
+    inlier_mask = DataArray(da.from_array(inlier_mask.data.data, chunks=reference_raster.chunks))
 
     return reference_raster, to_be_aligned_raster, inlier_mask
 
@@ -560,7 +560,19 @@ class TestBiasCorr:
         elev_fit_args = fit_args.copy()
 
         if isinstance(elev_fit_args["reference_elev"], DataArray):
-            bias_dem = elev_fit_args["reference_elev"] - synthetic_bias
+            # Unfortunately subtracting two rioxarrays looses their geospatial properties. So we need to create
+            # a new output rioxarray DataArray
+            bias_dem = DataArray(
+                da.from_array(
+                    elev_fit_args["reference_elev"].data.compute() - synthetic_bias,
+                    chunks=elev_fit_args["reference_elev"].data.chunks,
+                )
+            )
+            # Reset properties. Order matters!!
+            bias_dem = bias_dem.rio.write_transform(elev_fit_args["reference_elev"].rio.transform())
+            bias_dem = bias_dem.rio.set_crs(elev_fit_args["reference_elev"].rio.crs)
+            bias_dem = bias_dem.rio.set_nodata(input_nodata=elev_fit_args["reference_elev"].rio.nodata)
+
         else:
             bias_dem = self.ref - synthetic_bias
 
@@ -590,7 +602,7 @@ class TestBiasCorr:
 
         # Run apply and check that 99% of the variance was corrected
         if isinstance(bias_dem, DataArray):
-            corrected_dem, _ = deramp.apply(bias_dem)  #
+            corrected_dem, _ = deramp.apply(bias_dem)
             corrected_dem = corrected_dem.compute()
             assert np.nanvar((corrected_dem - elev_fit_args["reference_elev"]) / np.nanstd(synthetic_bias)) < 0.01
         else:
