@@ -184,7 +184,7 @@ class TestAffineCoreg:
 
         # shift DEM by shift_px
         shifted_ref = self.ref.copy()
-        shifted_ref.shift(shift_px[0] * res, shift_px[1] * res, inplace=True)
+        shifted_ref.translate(shift_px[0] * res, shift_px[1] * res, inplace=True)
 
         shifted_ref_points = shifted_ref.to_pointcloud(
             subsample=subsample, force_pixel_offset="center", random_state=42
