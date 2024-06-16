@@ -4,9 +4,9 @@ Estimation and modelling of heteroscedasticity
 
 Digital elevation models have a precision that can vary with terrain and instrument-related variables. This variability
 in variance is called `heteroscedasticy <https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity>`_,
-and rarely accounted for in DEM studies (see :ref:`intro`). Quantifying elevation heteroscedasticity is essential to
+and rarely accounted for in DEM studies (see :ref:`accuracy-precision`). Quantifying elevation heteroscedasticity is essential to
 use stable terrain as an error proxy for moving terrain, and standardize data towards a stationary variance, necessary
-to apply spatial statistics (see :ref:`spatialstats`).
+to apply spatial statistics (see :ref:`uncertainty`).
 
 Here, we show an advanced example in which we look for terrain-dependent explanatory variables to explain the
 heteroscedasticity for a DEM difference at Longyearbyen. We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_

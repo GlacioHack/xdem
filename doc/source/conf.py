@@ -25,8 +25,8 @@ import xdem
 # -- Project information -----------------------------------------------------
 
 project = "xDEM"
-copyright = "2021, Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
-author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
+copyright = "2020, GlacioHack"
+author = "xDEM contributors"
 
 # The full version, including alpha/beta/rc tags
 release = xdem.__version__
@@ -166,10 +166,15 @@ html_theme_options = {
         "notebook_interface": "jupyterlab",
         # For launching Binder in Jupyterlab to open MD files as notebook (downloads them otherwise)
     },
-    "show_toc_level": 2,  # To show more levels on the right sidebar TOC
+    "show_toc_level": 3,  # To show more levels on the right sidebar TOC
     "logo": {
         "image_dark": "_static/xdem_logo_dark.svg",
     },
+    "announcement": (
+        "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
+        'to update your code see <a href="https://github.com/GlacioHack/xdem/releases/tag/v0.1.0">here</a>. ⚠️'
+        "<br>Future changes will come with deprecation warnings! 🙂"
+    ),
 }
 
 # For dark mode
@@ -183,3 +188,7 @@ html_context = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["imgs", "_static"]  # Commented out as we have no custom static data
+
+html_css_files = [
+    "css/custom.css",
+]

@@ -44,6 +44,7 @@ from geoutils.raster.raster import _shift_transform
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem.dem import DEM
 from xdem.spatialstats import nmad
 
 try:
@@ -162,7 +163,7 @@ def _df_sampling_from_dem(
     elif subsample > 1:
         npoints = int(subsample)
     else:
-        raise ValueError("`subsample` must be > 0")
+        raise ValueError("Argument `subsample` must be > 0.")
 
     # Avoid edge, and mask-out area in sampling
     width, length = dem.shape

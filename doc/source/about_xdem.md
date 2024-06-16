@@ -2,72 +2,32 @@
 
 # About xDEM
 
+## What is xDEM?
 
-xDEM is a [Python](https://www.python.org/) package for the analysis of DEMs, with name standing for _cross-DEM analysis_[^sn1]
-and echoing its dependency on [xarray](https://docs.xarray.dev/en/stable/). It is designed for all Earth and planetary
-observation science, although our group currently has a strong focus on glaciological applications.
+xDEM is a Python package for the analysis of elevation data, and in particular that of digital elevation models (DEMs),
+with name standing for _cross-DEM analysis_[^sn1] and echoing its dependency on [Xarray](https://docs.xarray.dev/en/stable/).
 
-[^sn1]: The core features of xDEM rely on cross-analysis of surface elevation, for example for DEM alignment or error analysis.
+[^sn1]: Several core features of xDEM, in particular coregistration and uncertainty analysis, rely specifically on cross-analysis of elevation data over static surfaces.
 
+## Why use xDEM?
 
-```{epigraph}
-The core mission of xDEM is to be **easy-of-use**, **modular**, **robust**, **reproducible** and **fully open**.
+xDEM implements a wide range of high-level operations required for analyzing elevation data in a consistent framework
+tested to ensure the accuracy of these operations.
 
-Additionally, xDEM aims to be **efficient**, **scalable** and **state-of-the-art**.
-```
+It has three main focus points:
 
-```{important}
-:class: margin
-xDEM is in early stages of development and its features might evolve rapidly. Note the version you are working on for
-**reproducibility**!
-We are working on making features fully consistent for the first long-term release ``v0.1`` (planned early 2024).
-```
+1. Having an **easy and intuitive interface** based on the principle of least knowledge,
+2. Providing **statistically robust methods** for reliable quantitative analysis,
+3. Allowing **modular user input** to adapt to most applications.
 
-In details, those mean:
+Although modularity can sometimes hamper performance, we also aim to **preserve scalibility** as much as possible[^sn2].
 
-- **Ease-of-use:** all DEM basic operations or methods from published works should only require a few lines of code to be performed;
+[^sn2]: Out-of-memory, parallelizable computations relying on Dask are planned for late 2024!
 
-- **Modularity:** all DEM methods should be fully customizable, to allow both flexibility and inter-comparison;
+We particularly take to heart to verify the accuracy of our methods. For instance, our terrain attributes
+which have their own modular Python-based implementation, are tested to match exactly
+[gdaldem](https://gdal.org/programs/gdaldem.html) (slope, aspect, hillshade, roughness) and
+[RichDEM](https://richdem.readthedocs.io/en/latest/) (curvatures).
 
-- **Robustness:** all DEM methods should be tested within our continuous integration test-suite, to enforce that they always perform as expected;
-
-- **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependent
-  packages and works;
-
-- **Open-source:** all code should be accessible and re-usable to anyone in the community, for transparency and open governance.
-
-```{note}
-:class: margin
-Additional mission points, in particular **scalability**, are partly developed but not a priority until our first long-term release ``v0.1`` is reached. Those will be further developed specifically in a subsequent version ``v0.2``.
-```
-
-And, additionally:
-
-- **Efficiency**: all methods should be optimized at the lower-level, to function with the highest performance offered by Python packages;
-
-- **Scalability**: all methods should support both lazy processing and distributed parallelized processing, to work with high-resolution data on local machines as well as on HPCs;
-
-- **State-of-the-art**: all methods should be at the cutting edge of remote sensing science, to provide users with the most reliable and up-to-date tools.
-
-
-# The people behind xDEM
-
-```{margin}
-<sup>2</sup>More on our GlacioHack founder at [adehecq.github.io](https://adehecq.github.io/)!
-```
-
-xDEM was created during the [GlacioHack](https://github.com/GlacioHack) hackaton event, that was initiated by
-Amaury Dehecq<sup>2</sup> and took place online on November 8, 2020.
-
-```{margin}
-<sup>3</sup>Check-out [glaciology.ch](https://glaciology.ch) on our founding group of VAW glaciology!
-```
-
-The initial core development of xDEM was performed by members of the Glaciology group of the Laboratory of Hydraulics, Hydrology and
-Glaciology (VAW) at ETH Zürich<sup>3</sup>, with contributions by members of the University of Oslo, the University of Washington, and University
-Grenobles Alpes.
-
-We are not software developers but geoscientists, and we try our best to offer tools that can be useful to a larger group,
-documented, reliable and maintained. All development and maintenance is made on a voluntary basis and we welcome
-any new contributors. See some information on how to contribute in the dedicated page of our
-[GitHub repository](https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md).
+More details about the people behind xDEM and the package's objectives can be found on the **{ref}`background` reference
+page**.

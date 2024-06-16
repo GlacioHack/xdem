@@ -361,9 +361,9 @@ def robust_norder_polynomial_fit(
 
     # Raise errors for input string parameters
     if not isinstance(estimator_name, str) or estimator_name not in ["Linear", "Theil-Sen", "RANSAC", "Huber"]:
-        raise ValueError('Attribute estimator must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
+        raise ValueError('Attribute `estimator` must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
     if not isinstance(linear_pkg, str) or linear_pkg not in ["sklearn", "scipy"]:
-        raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
+        raise ValueError('Attribute `linear_pkg` must be one of "scipy" or "sklearn".')
 
     # Extract xdata from iterable
     if len(xdata) == 1:
@@ -404,7 +404,7 @@ def robust_norder_polynomial_fit(
         else:
             # Otherwise, we use sklearn
             if not _has_sklearn:
-                raise ValueError("Optional dependency needed. Install 'scikit-learn'")
+                raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
             # Define the polynomial model to insert in the pipeline
             model = PolynomialFeatures(degree=deg)
