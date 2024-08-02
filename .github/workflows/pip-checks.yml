@@ -38,22 +38,7 @@ jobs:
           activate-environment: xdem-pip
           python-version:
 
-      - name: Get month for resetting cache
-        id: get-date
-        run: echo "cache_date=$(/bin/date -u '+%Y%m')" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Cache conda env
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CONDA }}/envs
-          key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ env.cache_date }}-${{ hashFiles('requirements.txt') }}-${{ env.CACHE_NUMBER }}
-        env:
-          CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
-        id: cache
-
       - name: Install project
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           mamba install pip
           pip install -e .
@@ -65,4 +50,3 @@ jobs:
           # We unset the PROJ_DATA environment variable to make PROJ work on Windows
           unset PROJ_DATA
           python -c "import xdem"
-
