@@ -22,6 +22,7 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pandas as pd
+import pyogrio
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import scipy
@@ -272,7 +273,7 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
         try:
             mask = gu.Vector(mask)
         # If the format is unsupported, try loading as a Raster
-        except ValueError:
+        except pyogrio.errors.DataSourceError:
             try:
                 mask = gu.Raster(mask)
             # If that fails, raise an error
