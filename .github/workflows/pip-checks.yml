@@ -35,7 +35,7 @@ jobs:
           auto-update-conda: true
           use-mamba: true
           channel-priority: strict
-          activate-environment: xdem-dev
+          activate-environment: xdem-pip
           python-version:
 
       - name: Get month for resetting cache
@@ -54,7 +54,9 @@ jobs:
 
       - name: Install project
         if: steps.cache.outputs.cache-hit != 'true'
-        run: pip install -e .
+        run: |
+          mamba install pip
+          pip install -e .
 
       # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
       # development-specific dependencies by differencing the env and dev-env yml files
