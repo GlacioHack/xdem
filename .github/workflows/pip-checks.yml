@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
+      # We initiate the environment empty
       - name: Initiate empty environment
         uses: conda-incubator/setup-miniconda@v3
         with:
@@ -38,15 +38,12 @@ jobs:
           activate-environment: xdem-pip
           python-version:
 
+      # Use pip install
       - name: Install project
         run: |
           mamba install pip
           pip install -e .
 
-      # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
-      # development-specific dependencies by differencing the env and dev-env yml files
+      # Check import works
       - name: Check import works with base environment
-        run: |
-          # We unset the PROJ_DATA environment variable to make PROJ work on Windows
-          unset PROJ_DATA
-          python -c "import xdem"
+        run: python -c "import xdem"
