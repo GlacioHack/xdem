@@ -18,7 +18,6 @@ from typing import (
 )
 
 import affine
-import fiona
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
@@ -272,8 +271,8 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
         # First try to load it as a Vector
         try:
             mask = gu.Vector(mask)
-        # If the format is unsopported, try loading as a Raster
-        except fiona.errors.DriverError:
+        # If the format is unsupported, try loading as a Raster
+        except ValueError:
             try:
                 mask = gu.Raster(mask)
             # If that fails, raise an error
