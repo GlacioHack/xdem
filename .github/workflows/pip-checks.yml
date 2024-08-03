@@ -1,0 +1,49 @@
+# This workflow checks that pip installation works to import the package (tests are in python-tests.yml)
+
+name: pip-install
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+        python-version: ["3.9", "3.10", "3.11"]
+
+    # Run all shells using bash (including Windows)
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # We initiate the environment empty
+      - name: Initiate empty environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-variant: Mambaforge
+          miniforge-version: latest
+          auto-update-conda: true
+          use-mamba: true
+          channel-priority: strict
+          activate-environment: xdem-pip
+          python-version:
+
+      # Use pip install
+      - name: Install project
+        run: |
+          mamba install pip
+          pip install -e .
+
+      # Check import works
+      - name: Check import works with base environment
+        run: python -c "import xdem"
