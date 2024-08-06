@@ -986,8 +986,8 @@ class NuthKaab(AffineCoreg):
             print("   Statistics on coregistered dh:")
             print(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}")
 
-        self._meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east
-        self._meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north
+        self._meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east * resolution
+        self._meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north * resolution
         self._meta["shift_z"] = vshift if ref == "point" else -vshift
 
     def _to_matrix_func(self) -> NDArrayf:
@@ -1149,8 +1149,8 @@ class GradientDescending(AffineCoreg):
         offset_east = res.x[0]
         offset_north = res.x[1]
 
-        self._meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east
-        self._meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north
+        self._meta["shift_x"] = offset_east * resolution if ref == "point" else -offset_east * resolution
+        self._meta["shift_y"] = offset_north * resolution if ref == "point" else -offset_north * resolution
         self._meta["shift_z"] = vshift if ref == "point" else -vshift
 
     def _fit_rst_rst(
