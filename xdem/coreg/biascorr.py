@@ -724,135 +724,135 @@ class Deramp(BiasCorr):
 
 
 
-
-
-class Tilt(AffineCoreg):
-    """
-    Tilt alignment.
-
-    Estimates an 2-D plan correction between the difference of two elevation datasets. This is close to a rotation
-    alignment at small angles, but introduces a scaling at large angles.
-
-    The tilt parameters are stored in the `self.meta` key "fit_parameters", with associated polynomial function in
-    the key "fit_func".
-    """
-
-    def __init__(
-        self,
-        bin_before_fit: bool = False,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 10,
-        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
-        subsample: int | float = 5e5
-    ) -> None:
-        """
-        Instantiate a tilt correction object.
-
-        :param bin_before_fit: Whether to bin data before fitting the coregistration function.
-        :param fit_optimizer: Optimizer to minimize the coregistration function.
-        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-
-        # Define Nuth and Kääb fitting function
-        def nuth_kaab_fit_func(xx: NDArrayf, params: tuple[float, float, float]) -> NDArrayf:
-            """
-            Fit a cosinus function to the terrain aspect (x) to describe the elevation differences divided by the slope
-            tangente (y).
-
-            y(x) = a * cos(b - x) + c
-
-            where y = dh/tan(slope) and x = aspect.
-
-            :param xx: The aspect in radians.
-            :param params: Parameters.
-
-            :returns: Estimated y-values with the same shape as the given x-values
-            """
-            return params[0] * np.cos(params[1] - xx) + params[2]
-
-        # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
-        # boolean, no bin apply option, and fit_func is preferefind
-        if not bin_before_fit:
-            meta_fit = {"fit_func": nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
-            self._fit_or_bin = "fit"
-            super().__init__(subsample=subsample, meta=meta_fit)
-        else:
-            meta_bin_and_fit = {
-                "fit_func": nuth_kaab_fit_func,
-                "fit_optimizer": fit_optimizer,
-                "bin_sizes": bin_sizes,
-                "bin_statistic": bin_statistic
-            }
-            self._fit_or_bin = "bin_and_fit"
-            super().__init__(subsample=subsample, meta=meta_bin_and_fit)
-
-        self._meta["poly_order"] = 1
-
-
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        """Fit the tilt function to an elevation dataset."""
-
-        # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
-
-        # Coordinates (we don't need the actual ones, just array coordinates)
-        xx, yy = _get_x_and_y_coords(ref_elev.shape, transform)
-
-        self._bin_or_and_fit_nd(
-            values=ref_elev - tba_elev,
-            inlier_mask=inlier_mask,
-            bias_vars={"xx": xx, "yy": yy},
-            weights=weights,
-            verbose=verbose,
-            p0=p0,
-            **kwargs,
-        )
-
-    def _apply_rst(
-        self,
-        elev: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the deramp function to a DEM."""
-
-        # Define the coordinates for applying the correction
-        xx, yy = _get_x_and_y_coords(elev.shape, transform)
-
-        tilt = self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
-
-        return elev + tilt, transform
-
-    def _apply_pts(
-        self,
-        elev: gpd.GeoDataFrame,
-        z_name: str = "z",
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> gpd.GeoDataFrame:
-        """Apply the deramp function to a set of points."""
-
-        dem_copy = elev.copy()
-
-        xx = dem_copy.geometry.x.values
-        yy = dem_copy.geometry.y.values
-
-        dem_copy[z_name].values += self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
-
-        return dem_copy
+#
+#
+# class Tilt(AffineCoreg):
+#     """
+#     Tilt alignment.
+#
+#     Estimates an 2-D plan correction between the difference of two elevation datasets. This is close to a rotation
+#     alignment at small angles, but introduces a scaling at large angles.
+#
+#     The tilt parameters are stored in the `self.meta` key "fit_parameters", with associated polynomial function in
+#     the key "fit_func".
+#     """
+#
+#     def __init__(
+#         self,
+#         bin_before_fit: bool = False,
+#         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+#         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
+#         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+#         subsample: int | float = 5e5
+#     ) -> None:
+#         """
+#         Instantiate a tilt correction object.
+#
+#         :param bin_before_fit: Whether to bin data before fitting the coregistration function.
+#         :param fit_optimizer: Optimizer to minimize the coregistration function.
+#         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
+#         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
+#         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+#         """
+#
+#         # Define Nuth and Kääb fitting function
+#         def nuth_kaab_fit_func(xx: NDArrayf, params: tuple[float, float, float]) -> NDArrayf:
+#             """
+#             Fit a cosinus function to the terrain aspect (x) to describe the elevation differences divided by the slope
+#             tangente (y).
+#
+#             y(x) = a * cos(b - x) + c
+#
+#             where y = dh/tan(slope) and x = aspect.
+#
+#             :param xx: The aspect in radians.
+#             :param params: Parameters.
+#
+#             :returns: Estimated y-values with the same shape as the given x-values
+#             """
+#             return params[0] * np.cos(params[1] - xx) + params[2]
+#
+#         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
+#         # boolean, no bin apply option, and fit_func is preferefind
+#         if not bin_before_fit:
+#             meta_fit = {"fit_func": nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
+#             self._fit_or_bin = "fit"
+#             super().__init__(subsample=subsample, meta=meta_fit)
+#         else:
+#             meta_bin_and_fit = {
+#                 "fit_func": nuth_kaab_fit_func,
+#                 "fit_optimizer": fit_optimizer,
+#                 "bin_sizes": bin_sizes,
+#                 "bin_statistic": bin_statistic
+#             }
+#             self._fit_or_bin = "bin_and_fit"
+#             super().__init__(subsample=subsample, meta=meta_bin_and_fit)
+#
+#         self._meta["poly_order"] = 1
+#
+#
+#     def _fit_rst_rst(
+#         self,
+#         ref_elev: NDArrayf,
+#         tba_elev: NDArrayf,
+#         inlier_mask: NDArrayb,
+#         transform: rio.transform.Affine,
+#         crs: rio.crs.CRS,
+#         z_name: str,
+#         weights: NDArrayf | None = None,
+#         bias_vars: dict[str, NDArrayf] | None = None,
+#         verbose: bool = False,
+#         **kwargs: Any,
+#     ) -> None:
+#         """Fit the tilt function to an elevation dataset."""
+#
+#         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
+#         p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
+#
+#         # Coordinates (we don't need the actual ones, just array coordinates)
+#         xx, yy = _get_x_and_y_coords(ref_elev.shape, transform)
+#
+#         self._bin_or_and_fit_nd(
+#             values=ref_elev - tba_elev,
+#             inlier_mask=inlier_mask,
+#             bias_vars={"xx": xx, "yy": yy},
+#             weights=weights,
+#             verbose=verbose,
+#             p0=p0,
+#             **kwargs,
+#         )
+#
+#     def _apply_rst(
+#         self,
+#         elev: NDArrayf,
+#         transform: rio.transform.Affine,
+#         crs: rio.crs.CRS,
+#         bias_vars: dict[str, NDArrayf] | None = None,
+#         **kwargs: Any,
+#     ) -> tuple[NDArrayf, rio.transform.Affine]:
+#         """Apply the deramp function to a DEM."""
+#
+#         # Define the coordinates for applying the correction
+#         xx, yy = _get_x_and_y_coords(elev.shape, transform)
+#
+#         tilt = self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
+#
+#         return elev + tilt, transform
+#
+#     def _apply_pts(
+#         self,
+#         elev: gpd.GeoDataFrame,
+#         z_name: str = "z",
+#         bias_vars: dict[str, NDArrayf] | None = None,
+#         **kwargs: Any,
+#     ) -> gpd.GeoDataFrame:
+#         """Apply the deramp function to a set of points."""
+#
+#         dem_copy = elev.copy()
+#
+#         xx = dem_copy.geometry.x.values
+#         yy = dem_copy.geometry.y.values
+#
+#         dem_copy[z_name].values += self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
+#
+#         return dem_copy

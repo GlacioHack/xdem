@@ -54,13 +54,13 @@ except ImportError:
 # Generic functions for affine methods
 ######################################
 
-
 def _reproject_horizontal_shift_samecrs(
         raster_arr: NDArrayf,
         src_transform: rio.transform.Affine,
         dst_transform: rio.transform.Affine = None,
         return_interpolator: bool = False,
-        resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear") -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+        resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear") \
+        -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
     """
     Reproject a raster only for a horizontal shift (transform update) in the same CRS.
 
@@ -71,13 +71,14 @@ def _reproject_horizontal_shift_samecrs(
     Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
     """
 
-    # TODO: Specify area or point metadata
-    coords_dst = _coords(transform=dst_transform, shape=raster_arr.shape)
+    # We are reprojecting the raster array relative to itself without changing its pixel interpreation, so we can
+    # force any pixel interpretation (area_or_point) without it having any influence on the result
+    coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
 
-    interpolator = _interp_points(array=raster_arr, transform=src_transform, points=coords_dst, method=resampling,
-                                  return_interpolator=return_interpolator)
+    output = _interp_points(array=raster_arr, area_or_point="Area", transform=src_transform,
+                            points=coords_dst, method=resampling, return_interpolator=return_interpolator)
 
-    return interpolator
+    return output
 
 ######################################
 # Functions for affine coregistrations

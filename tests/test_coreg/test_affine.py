@@ -9,10 +9,13 @@ import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+from geoutils.raster.raster import _shift_transform
+from geoutils._typing import NDArrayNum
+from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples
-from xdem.coreg.affine import AffineCoreg, CoregDict
+from xdem.coreg.affine import _reproject_horizontal_shift_samecrs, AffineCoreg, CoregDict
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -24,6 +27,54 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
 
     return reference_raster, to_be_aligned_raster, glacier_mask
 
+def gdal_reproject_horizontal_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
+    """
+    Reproject horizontal shift in same CRS with GDAL for testing purposes.
+
+    :param filepath_example: Path to raster file.
+    :param xoff: X shift in georeferenced unit.
+    :param yoff: Y shift in georeferenced unit.
+
+    :return: Reprojected shift array in the same CRS.
+    """
+
+    from osgeo import gdal, gdalconst
+
+    # Open source raster from file
+    src = gdal.Open(filepath_example, gdalconst.GA_ReadOnly)
+
+    # Create output raster in memory
+    driver = "MEM"
+    method = gdal.GRA_Bilinear
+    drv = gdal.GetDriverByName(driver)
+    filename = ''
+    dest = drv.Create('', src.RasterXSize, src.RasterYSize,
+                      1, gdal.GDT_Float32)
+    proj = src.GetProjection()
+    ndv = src.GetRasterBand(1).GetNoDataValue()
+    dest.SetProjection(proj)
+
+    # Shift the horizontally shifted geotransform
+    gt = src.GetGeoTransform()
+    gtl = list(gt)
+    gtl[0] += xoff
+    gtl[3] += yoff
+    gtl = tuple(gtl)
+    dest.SetGeoTransform(gtl)
+
+    # Copy the raster metadata of the source to dest
+    dest.SetMetadata(src.GetMetadata())
+    dest.GetRasterBand(1).SetNoDataValue(ndv)
+    dest.GetRasterBand(1).Fill(ndv)
+
+    # Reproject with resampling
+    gdal.ReprojectImage(src, dest, proj, proj, method)
+
+    # Extract reprojected array
+    array = dest.GetRasterBand(1).ReadAsArray().astype("float32")
+    array[array == ndv] = np.nan
+
+    return array
 
 class TestAffineCoreg:
 
@@ -43,6 +94,36 @@ class TestAffineCoreg:
     points = gpd.GeoDataFrame(
         geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
     )
+
+    @pytest.mark.parametrize("xoff_yoff", [(ref.res[0], ref.res[1]), (10*ref.res[0], 10*ref.res[1]),
+                                           (-1.2*ref.res[0], -1.2*ref.res[1])])
+    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]):
+        """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
+        works as intended by comparing to gdal."""
+
+        # Reproject with SciPy
+        xoff, yoff = xoff_yoff
+        dst_transform = _shift_transform(transform=self.ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
+        output = _reproject_horizontal_shift_samecrs(raster_arr=self.ref.data, src_transform=self.ref.transform,
+                                                     dst_transform=dst_transform)
+
+        # Reproject with GDAL
+        output2 = gdal_reproject_horizontal_samecrs(filepath_example=self.ref.filename, xoff=xoff, yoff=yoff)
+
+        # Reproject and NaN propagation is exactly the same for shifts that are a multiple of pixel resolution
+        if xoff % self.ref.res[0] == 0 and yoff % self.ref.res[1] == 0:
+            assert np.array_equal(output, output2, equal_nan=True)
+
+        # For sub-pixel shifts, NaN propagation differs slightly (within 1 pixel) but the resampled values are the same
+        else:
+            # All close values
+            valids = np.logical_and(np.isfinite(output), np.isfinite(output2))
+            assert np.allclose(output[valids], output2[valids], rtol=10e-2)
+
+            # NaNs differ by 1 pixel max, i.e. the mask dilated by one includes the other
+            mask_nans = ~np.isfinite(output)
+            mask_dilated_plus_one = binary_dilation(mask_nans, iterations=1).astype(bool)
+            assert np.array_equal(np.logical_or(mask_dilated_plus_one, ~np.isfinite(output2)), mask_dilated_plus_one)
 
     def test_from_classmethods(self) -> None:
 
