@@ -99,7 +99,7 @@ class TestAffineCoreg:
                                            (-1.2*ref.res[0], -1.2*ref.res[1])])
     def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]):
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
-        works as intended by comparing to gdal."""
+        is accurate by comparing to GDAL."""
 
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
@@ -116,9 +116,13 @@ class TestAffineCoreg:
 
         # For sub-pixel shifts, NaN propagation differs slightly (within 1 pixel) but the resampled values are the same
         else:
-            # All close values
+            # Verify all close values
             valids = np.logical_and(np.isfinite(output), np.isfinite(output2))
+            # Max relative tolerance that is reached just for a small % of points
             assert np.allclose(output[valids], output2[valids], rtol=10e-2)
+            # Median precision is much higher
+            # (here absolute, equivalent to around 10e-7 relative as raster values are in the 1000s)
+            assert np.nanmedian(np.abs(output[valids] - output2[valids])) < 0.0001
 
             # NaNs differ by 1 pixel max, i.e. the mask dilated by one includes the other
             mask_nans = ~np.isfinite(output)
