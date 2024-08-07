@@ -321,15 +321,15 @@ def get_quadric_coefficients(
     if len(dem_arr.shape) != 2:
         raise ValueError(
             f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)"
+            "Expected 2D array or 3D array of shape (1, row, col)."
         )
 
     if any(dim < 3 for dim in dem_arr.shape):
-        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
+        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3).")
 
     # Resolution is in other tools accepted as a tuple. Here, it must be just one number, so it's best to sanity check.
     if isinstance(resolution, Sized):
-        raise ValueError("Resolution must be the same for X and Y directions")
+        raise ValueError("Resolution must be the same for X and Y directions.")
 
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
@@ -337,7 +337,7 @@ def get_quadric_coefficients(
         [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
     ):
         if value.lower() not in allowed:
-            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
+            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}.")
 
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
