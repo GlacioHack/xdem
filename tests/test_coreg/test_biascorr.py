@@ -77,7 +77,7 @@ class TestBiasCorr:
 
         # Check that the _is_affine attribute is set correctly
         assert not bcorr._is_affine
-        assert bcorr._fit_or_bin == "fit"
+        assert bcorr.meta["fit_or_bin"] == "fit"
         assert bcorr._needs_vars is True
 
         # Or with default bin arguments
@@ -87,7 +87,7 @@ class TestBiasCorr:
         assert bcorr2.meta["bin_statistic"] == np.nanmedian
         assert bcorr2.meta["bin_apply_method"] == "linear"
 
-        assert bcorr2._fit_or_bin == "bin"
+        assert bcorr2.meta["fit_or_bin"] == "bin"
 
         # Or with default bin_and_fit arguments
         bcorr3 = biascorr.BiasCorr(fit_or_bin="bin_and_fit")
@@ -97,7 +97,7 @@ class TestBiasCorr:
         assert bcorr3.meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
         assert bcorr3.meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
 
-        assert bcorr3._fit_or_bin == "bin_and_fit"
+        assert bcorr3.meta["fit_or_bin"] == "bin_and_fit"
 
         # Or defining bias variable names on instantiation as iterable
         bcorr4 = biascorr.BiasCorr(bias_var_names=("slope", "ncc"))
@@ -403,7 +403,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=45)
 
-        assert dirbias._fit_or_bin == "bin_and_fit"
+        assert dirbias.meta["fit_or_bin"] == "bin_and_fit"
         assert dirbias.meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
         assert dirbias.meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         assert dirbias.meta["angle"] == 45
@@ -489,7 +489,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         deramp = biascorr.Deramp()
 
-        assert deramp._fit_or_bin == "fit"
+        assert deramp.meta["fit_or_bin"] == "fit"
         assert deramp.meta["fit_func"] == polynomial_2d
         assert deramp.meta["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp.meta["poly_order"] == 2
@@ -544,7 +544,7 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         tb = biascorr.TerrainBias()
 
-        assert tb._fit_or_bin == "bin"
+        assert tb.meta["fit_or_bin"] == "bin"
         assert tb.meta["bin_sizes"] == 100
         assert tb.meta["bin_statistic"] == np.nanmedian
         assert tb.meta["terrain_attribute"] == "maximum_curvature"

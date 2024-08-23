@@ -40,7 +40,9 @@ from geoutils.raster import (
     subdivide_array,
     subsample_array,
 )
+from geoutils.raster.georeferencing import _coords, _xy2ij, _bounds, _res
 from geoutils.raster.raster import _shift_transform
+from geoutils.raster.interpolate import _interp_points
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -68,159 +70,9 @@ fit_workflows = {
     "nfreq_sumsin": {"func": sumsin_1d, "optimizer": robust_nfreq_sumsin_fit},
 }
 
-###########################################
+#####################################
 # Generic functions for preprocessing
-###########################################
-
-
-def _transform_to_bounds_and_res(
-    shape: tuple[int, ...], transform: rio.transform.Affine
-) -> tuple[rio.coords.BoundingBox, float]:
-    """Get the bounding box and (horizontal) resolution from a transform and the shape of a DEM."""
-    bounds = rio.coords.BoundingBox(*rio.transform.array_bounds(shape[0], shape[1], transform=transform))
-    resolution = (bounds.right - bounds.left) / shape[1]
-
-    return bounds, resolution
-
-
-def _get_x_and_y_coords(shape: tuple[int, ...], transform: rio.transform.Affine) -> tuple[NDArrayf, NDArrayf]:
-    """Generate center coordinates from a transform and the shape of a DEM."""
-    bounds, resolution = _transform_to_bounds_and_res(shape, transform)
-    x_coords, y_coords = np.meshgrid(
-        np.linspace(bounds.left + resolution / 2, bounds.right - resolution / 2, num=shape[1]),
-        np.linspace(bounds.bottom + resolution / 2, bounds.top - resolution / 2, num=shape[0])[::-1],
-    )
-    return x_coords, y_coords
-
-
-def _apply_xyz_shift_df(df: pd.DataFrame, dx: float, dy: float, dz: float, z_name: str) -> NDArrayf:
-    """
-    Apply shift to dataframe using Transform affine matrix
-
-    :param df: DataFrame with columns 'E','N',z_name (height)
-    :param dz: dz shift value
-    """
-
-    new_df = df.copy()
-    new_df["E"] += dx
-    new_df["N"] += dy
-    new_df[z_name] -= dz
-
-    return new_df
-
-
-def _residuals_df(
-    dem: NDArrayf,
-    df: pd.DataFrame,
-    shift_px: tuple[float, float],
-    dz: float,
-    z_name: str,
-    weight_name: str = None,
-    **kwargs: Any,
-) -> pd.DataFrame:
-    """
-    Calculate the difference between the DEM and points (a dataframe has 'E','N','z') after applying a shift.
-
-    :param dem: DEM
-    :param df: A dataframe has 'E','N' and has been subseted according to DEM bonds and masks.
-    :param shift_px: The coordinates of shift pixels (e_px,n_px).
-    :param dz: The bias.
-    :param z_name: The column that be used to compare with dem_h.
-    :param weight: The column that be used as weights
-    :param area_or_point: Use the GDAL Area or Point sampling method.
-
-    :returns: An array of residuals.
-    """
-
-    # shift ee,nn
-    ee, nn = (i * dem.res[0] for i in shift_px)
-    df_shifted = _apply_xyz_shift_df(df, ee, nn, dz, z_name=z_name)
-
-    # prepare DEM
-    arr_ = dem.data.astype(np.float32)
-
-    # get residual error at the point on DEM.
-    i, j = dem.xy2ij(df_shifted["E"].values, df_shifted["N"].values)
-
-    # ndimage return
-    dem_h = scipy.ndimage.map_coordinates(arr_, [i, j], order=1, mode="nearest", **kwargs)
-    weight_ = df[weight_name] if weight_name else 1
-
-    return (df_shifted[z_name].values - dem_h) * weight_
-
-
-def _df_sampling_from_dem(
-    dem: RasterType, tba_dem: RasterType, subsample: float | int = 10000, order: int = 1, offset: str | None = None
-) -> pd.DataFrame:
-    """
-    Generate a dataframe from a dem by random sampling.
-
-    :param offset: The pixel’s center is returned by default, but a corner can be returned
-    by setting offset to one of ul, ur, ll, lr.
-
-    :returns dataframe: N,E coordinates and z of DEM at sampling points.
-    """
-
-    if offset is None:
-        if dem.tags.get("AREA_OR_POINT", "").lower() == "area":
-            offset = "ul"
-        else:
-            offset = "center"
-
-    # Convert subsample to int
-    valid_mask = np.logical_and(~dem.mask, ~tba_dem.mask)
-    if (subsample <= 1) & (subsample > 0):
-        npoints = int(subsample * np.count_nonzero(valid_mask))
-    elif subsample > 1:
-        npoints = int(subsample)
-    else:
-        raise ValueError("`subsample` must be > 0")
-
-    # Avoid edge, and mask-out area in sampling
-    width, length = dem.shape
-    rng = np.random.default_rng()
-    i, j = rng.integers(10, width - 10, npoints), rng.integers(10, length - 10, npoints)
-    mask = dem.data.mask
-
-    # Get value
-    x, y = dem.ij2xy(i[~mask[i, j]], j[~mask[i, j]])
-    z = scipy.ndimage.map_coordinates(
-        dem.data.astype(np.float32), [i[~mask[i, j]], j[~mask[i, j]]], order=order, mode="nearest"
-    )
-    df = pd.DataFrame({"z": z, "N": y, "E": x})
-
-    # mask out from tba_dem
-    if tba_dem is not None:
-        df, _ = _mask_dataframe_by_dem(df, tba_dem)
-
-    return df
-
-
-def _mask_dataframe_by_dem(
-    df: pd.DataFrame | tuple[NDArrayf, NDArrayf], dem: RasterType
-) -> pd.DataFrame | tuple[NDArrayf, NDArrayf]:
-    """
-    Mask out the dataframe (has 'E','N' columns), or np.ndarray ([E,N]) by DEM's mask.
-
-    Return new dataframe and mask.
-    """
-
-    final_mask = ~dem.data.mask
-    mask_raster = dem.copy(new_array=final_mask.astype(np.float32))
-
-    if isinstance(df, pd.DataFrame):
-        pts = (df["E"].values, df["N"].values)
-    elif isinstance(df, tuple):
-        pts = df  # type: ignore
-
-    ref_inlier = mask_raster.interp_points(pts)
-    if isinstance(df, pd.DataFrame):
-        new_df = df[ref_inlier.astype(bool)].copy()
-    else:
-        new_df = (pts[0][ref_inlier.astype(bool)], pts[1][ref_inlier.astype(bool)])
-
-    return new_df, ref_inlier.astype(bool)
-
+#####################################
 
 def _calculate_ddem_stats(
     ddem: NDArrayf | MArrayf,
@@ -650,6 +502,398 @@ def _postprocess_coreg_apply(
     return applied_elev, out_transform
 
 ###############################################
+# Statistical functions (to be moved in future)
+###############################################
+
+class RandomDict(TypedDict, total=False):
+    """
+    Defining the type of each possible key in the metadata dictionary associated with randomization and subsampling.
+    """
+
+    # Subsample size input by user, and final size available from data
+    subsample: int | float
+    subsample_final: int
+    # Random state (for subsampling, but also possibly for some fitting methods)
+    random_state: int | np.random.Generator | None
+
+def _get_subsample_on_valid_mask(params_random: RandomDict, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
+    """
+    Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
+
+    :param valid_mask: Mask of valid values (inlier and not nodata).
+    """
+
+    # This should never happen
+    if params_random["subsample"] is None:
+        raise ValueError("Subsample should have been defined in metadata before reaching this class method.")
+
+    # If valid mask is empty
+    if np.count_nonzero(valid_mask) == 0:
+        raise ValueError("There is no valid points common to the input and auxiliary data (bias variables, or "
+                         "derivatives required for this method, for example slope, aspect, etc).")
+
+    # If subsample is not equal to one, subsampling should be performed.
+    elif params_random["subsample"] != 1.0:
+
+        # Build a low memory masked array with invalid values masked to pass to subsampling
+        ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
+        # Take a subsample within the valid values
+        indices = gu.raster.subsample_array(
+            ma_valid,
+            subsample=params_random["subsample"],
+            return_indices=True,
+            random_state=params_random["random_state"],
+        )
+
+        # We return a boolean mask of the subsample within valid values
+        subsample_mask = np.zeros(np.shape(valid_mask), dtype=bool)
+        if len(indices) == 2:
+            subsample_mask[indices[0], indices[1]] = True
+        else:
+            subsample_mask[indices[0]] = True
+    else:
+        # If no subsample is taken, use all valid values
+        subsample_mask = valid_mask
+
+    if verbose:
+        print(
+            "Using a subsample of {} among {} valid values.".format(
+                np.count_nonzero(subsample_mask), np.count_nonzero(valid_mask)
+            )
+        )
+
+    return subsample_mask
+
+def _get_subsample_mask_pts_rst(
+        params_random: RandomDict,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        aux_vars: None | dict[str, NDArrayf] = None,
+        verbose: bool = False):
+    """
+    Get subsample mask for raster-raster or point-raster datasets on valid points of all inputs (including
+    potential auxiliary variables).
+
+    Returns a boolean array to use for subsampling (2D for raster-raster, 1D for point-raster to be used on point).
+    """
+
+    # TODO: Return more detailed error message for no valid points (which variable was full of NaNs?)
+
+    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
+        raise TypeError("This pre-processing function is only intended for raster-point or raster-raster methods, "
+                        "not point-point methods.")
+
+    # For two rasters
+    if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
+
+        # Compute mask of valid data
+        if aux_vars is not None:
+            valid_mask = np.logical_and.reduce((
+                inlier_mask, np.isfinite(ref_elev), np.isfinite(tba_elev), *(np.isfinite(var) for var in aux_vars.values()))
+            )
+        else:
+            valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_elev), np.isfinite(tba_elev)))
+
+        # Raise errors if all values are NaN after introducing masks from the variables
+        # (Others are already checked in pre-processing of Coreg.fit())
+
+        # Perform subsampling
+        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask,
+                                                verbose=verbose)
+
+    # For one raster and one point cloud
+    else:
+
+        # Interpolate inlier mask and bias vars at point coordinates
+        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+
+        # Get coordinates
+        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
+
+        # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
+        if aux_vars is not None:
+            valid_mask = np.logical_and.reduce(
+                (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in aux_vars.values()))
+            )
+        else:
+            valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(rst_elev)))
+
+        # Convert inlier mask to points to be able to determine subsample later
+        # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
+        # Interpolates boolean mask as integers
+        # TODO: Pass area_or_point all the way to here
+        valid_mask = np.floor(
+            _interp_points(array=valid_mask, transform=transform, points=pts, area_or_point=None)).astype(bool)
+
+        # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
+        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
+
+    # TODO: Move check to Coreg.fit()?
+
+    return sub_mask
+
+def _subsample_on_mask(ref_elev, tba_elev, aux_vars, sub_mask, transform, z_name):
+    """
+    Perform subsampling on mask for raster-raster or point-raster datasets on valid points of all inputs (including
+    potential auxiliary variables).
+
+    Returns 1D arrays of subsampled inputs: reference elevation, to-be-aligned elevation and auxiliary variables
+    (in dictionary).
+    """
+
+    # For two rasters
+    if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
+
+        # Subsample all datasets with the mask
+        sub_ref = ref_elev[sub_mask]
+        sub_tba = tba_elev[sub_mask]
+        if aux_vars is not None:
+            sub_bias_vars = {}
+            for var in aux_vars.keys():
+                sub_bias_vars[var] = aux_vars[var][sub_mask]
+        else:
+            sub_bias_vars = None
+
+    # For one raster and one point cloud
+    else:
+
+        # Identify which dataset is point or raster
+        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+
+        # Subsample point coordinates
+        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
+        pts = (pts[0][sub_mask], pts[1][sub_mask])
+
+        # Interpolate raster array to the subsample point coordinates
+        # Convert ref or tba depending on which is the point dataset
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            sub_tba = _interp_points(array=tba_elev, transform=transform, points=pts, area_or_point=None)
+            sub_ref = ref_elev[z_name].values[sub_mask]
+        else:
+            sub_ref = _interp_points(array=ref_elev, transform=transform, points=pts, area_or_point=None)
+            sub_tba = tba_elev[z_name].values[sub_mask]
+
+        # Interpolate arrays of bias variables to the subsample point coordinates
+        if aux_vars is not None:
+            sub_bias_vars = {}
+            for var in aux_vars.keys():
+                sub_bias_vars[var] = _interp_points(array=aux_vars[var], transform=transform, points=pts,
+                                                    area_or_point=None)
+        else:
+            sub_bias_vars = None
+
+    return sub_ref, sub_tba, sub_bias_vars
+
+
+def _preprocess_pts_rst_subsample(
+        params_random: RandomDict,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        z_name: str,
+        aux_vars: None | dict[str, NDArrayf] = None,
+        verbose: bool = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
+    """
+    Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
+    (and interpolated in the case of point-raster input).
+
+    Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary variables
+    at subsampled points.
+    """
+
+    # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
+    sub_mask = _get_subsample_mask_pts_rst(params_random=params_random, ref_elev=ref_elev, tba_elev=tba_elev,
+                                           inlier_mask=inlier_mask, transform=transform, aux_vars=aux_vars,
+                                           verbose=verbose)
+
+    # Perform subsampling on mask for all inputs
+    sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(ref_elev=ref_elev, tba_elev=tba_elev, aux_vars=aux_vars,
+                                                         sub_mask=sub_mask, transform=transform, z_name=z_name)
+
+    # Return 1D arrays of subsampled points at the same location
+    return sub_ref, sub_tba, sub_bias_vars
+
+
+class FitOrBinDict(TypedDict, total=False):
+    """
+    Defining the type of each possible key in the metadata dictionary of "fit_or_bin" arguments.
+    """
+
+    # Whether to fit, bin or bin then fit
+    fit_or_bin: Literal["fit"] | Literal["bin"] | Literal["bin_and_fit"]
+    # Fit parameters: function to fit and optimizer
+    fit_func: Callable[..., NDArrayf]
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
+    # Bin parameters: bin sizes, statistic and apply method
+    bin_sizes: int | dict[str, int | Iterable[float]]
+    bin_statistic: Callable[[NDArrayf], np.floating[Any]]
+    bin_apply_method: Literal["linear"] | Literal["per_bin"]
+    # Name of variables, and number of dimensions
+    bias_var_names: list[str]
+    nd: int | None
+
+def _bin_or_and_fit_nd(  # type: ignore
+    params_fit_or_bin: FitOrBinDict,
+    values: NDArrayf,
+    bias_vars: None | dict[str, NDArrayf] = None,
+    weights: None | NDArrayf = None,
+    verbose: bool = False,
+    **kwargs,
+) -> tuple[pd.DataFrame | None, NDArrayf | None]:
+    """
+    Generic binning and/or fitting method to model values along N variables for a coregistration/correction,
+    used for all affine and bias-correction subclasses. Expects either 2D arrays for rasters, or 1D arrays for
+    points.
+
+    :param params_fit_or_bin: Dictionary of parameters for fitting and/or binning (bias variable names,
+    optimizer, bin sizes, etc), see FitOrBinDict for details.
+    :param values: Valid values to bin or fit.
+    :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
+    :param weights: Array of weights for the coregistration.
+    :param verbose: Print progress messages.
+    """
+
+    if params_fit_or_bin["fit_or_bin"] is None:
+        raise ValueError("This function should not be called for methods not supporting fit_or_bin logic.")
+
+    # This is called by subclasses, so the bias_var should always be defined
+    if bias_vars is None:
+        raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
+
+    # Check number of variables
+    nd = params_fit_or_bin["nd"]
+    if nd is not None and len(bias_vars) != nd:
+        raise ValueError(
+            "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
+            "got {}.".format(nd, len(bias_vars))
+        )
+
+    # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
+    if params_fit_or_bin["bias_var_names"] is not None:
+        if not sorted(bias_vars.keys()) == sorted(params_fit_or_bin["bias_var_names"]):
+            raise ValueError(
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
+                "instantiation: {}.".format(params_fit_or_bin["bias_var_names"])
+            )
+
+    # Get number of variables
+    nd = len(bias_vars)
+
+    # Remove random state for keyword argument if its value is not in the optimizer function
+    if params_fit_or_bin["fit_or_bin"] in ["fit", "bin_and_fit"]:
+        fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_optimizer"]).args
+        if "random_state" not in fit_func_args and "random_state" in kwargs:
+            kwargs.pop("random_state")
+
+    # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
+    if params_fit_or_bin["fit_or_bin"] in ["bin", "bin_and_fit"]:
+        if isinstance(params_fit_or_bin["bin_sizes"], dict):
+            var_order = list(bias_vars.keys())
+            # Declare type to write integer or tuple to the variable
+            bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
+                np.array(params_fit_or_bin["bin_sizes"][var]) for var in var_order
+            )
+        # Otherwise, write integer directly
+        else:
+            bin_sizes = params_fit_or_bin["bin_sizes"]
+
+    # Option 1: Run fit and save optimized function parameters
+    if params_fit_or_bin["fit_or_bin"] == "fit":
+
+        # Print if verbose
+        if verbose:
+            print(
+                "Estimating alignment along variables {} by fitting "
+                "with function {}.".format(", ".join(list(bias_vars.keys())), params_fit_or_bin["fit_func"].__name__)
+            )
+
+        results = params_fit_or_bin["fit_optimizer"](
+            f=params_fit_or_bin["fit_func"],
+            xdata=np.array([var.flatten() for var in bias_vars.values()]).squeeze(),
+            ydata=values.flatten(),
+            sigma=weights.flatten() if weights is not None else None,
+            absolute_sigma=True,
+            **kwargs,
+        )
+        df = None
+
+    # Option 2: Run binning and save dataframe of result
+    elif params_fit_or_bin["fit_or_bin"] == "bin":
+
+        if verbose:
+            print(
+                "Estimating alignment along variables {} by binning "
+                "with statistic {}.".format(", ".join(list(bias_vars.keys())), params_fit_or_bin["bin_statistic"].__name__)
+            )
+
+        df = nd_binning(
+            values=values,
+            list_var=[var for var in bias_vars.values()],
+            list_var_names=list(bias_vars.keys()),
+            list_var_bins=bin_sizes,
+            statistics=(params_fit_or_bin["bin_statistic"], "count"),
+        )
+        results = None
+
+    # Option 3: Run binning, then fitting, and save both results
+    else:
+
+        # Print if verbose
+        if verbose:
+            print(
+                "Estimating alignment along variables {} by binning with statistic {} and then fitting "
+                "with function {}.".format(
+                    ", ".join(list(bias_vars.keys())),
+                    params_fit_or_bin["bin_statistic"].__name__,
+                    params_fit_or_bin["fit_func"].__name__,
+                )
+            )
+
+        df = nd_binning(
+            values=values,
+            list_var=[var for var in bias_vars.values()],
+            list_var_names=list(bias_vars.keys()),
+            list_var_bins=bin_sizes,
+            statistics=(params_fit_or_bin["bin_statistic"], "count"),
+        )
+
+        # Now, we need to pass this new data to the fitting function and optimizer
+        # We use only the N-D binning estimates (maximum dimension, equal to length of variable list)
+        df_nd = df[df.nd == len(bias_vars)]
+
+        # We get the middle of bin values for variable, and statistic for the diff
+        new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
+        new_diff = df_nd[params_fit_or_bin["bin_statistic"].__name__].values
+        # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
+        #  sigma values would have to be binned above also
+
+        # Valid values for the binning output
+        ind_valid = np.logical_and.reduce((np.isfinite(new_diff), *(np.isfinite(var) for var in new_vars)))
+
+        if np.all(~ind_valid):
+            raise ValueError("Only NaN values after binning, did you pass the right bin edges?")
+
+        results = params_fit_or_bin["fit_optimizer"](
+            f=params_fit_or_bin["fit_func"],
+            xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
+            ydata=new_diff[ind_valid].flatten(),
+            sigma=weights[ind_valid].flatten() if weights is not None else None,
+            absolute_sigma=True,
+            **kwargs,
+        )
+
+    if verbose:
+        print(f"{nd}D bias estimated.")
+
+    return df, results
+
+###############################################
 # Affine matrix manipulation and transformation
 ###############################################
 
@@ -931,7 +1175,7 @@ def _apply_matrix_rst(
     if np.array_equal(shift_z_only_matrix, matrix) and force_regrid_method is None:
         return dem + matrix[2, 3], transform
 
-    # 2/ Check if the matrix contains only translations, in that case only shift by the DEM only by translation
+    # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
     if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
         new_transform = _shift_transform(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
         return dem + matrix[2, 3], new_transform
@@ -1101,7 +1345,7 @@ class CoregDict(TypedDict, total=False):
     # 2/ BiasCorr classes generic metadata
 
     # Inputs
-    fit_or_bin: Literal["fit"] | Literal["bin"]
+    fit_or_bin: Literal["fit", "bin", "bin_and_fit"]
     fit_func: Callable[..., NDArrayf]
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
     bin_sizes: int | dict[str, int | Iterable[float]]
@@ -1125,6 +1369,10 @@ class CoregDict(TypedDict, total=False):
     step_meta: list[Any]
     pipeline: list[Any]
 
+    # 4/ Iteration parameters
+    max_iterations: int
+    offset_threshold: float
+
 
 CoregType = TypeVar("CoregType", bound="Coreg")
 
@@ -1143,7 +1391,6 @@ class Coreg:
     _is_affine: bool | None = None
     _needs_vars: bool = False
     _meta: CoregDict
-    _fit_or_bin: Literal["fit", "bin", "bin_and_fit"] | None = None
 
     def __init__(self, meta: CoregDict | None = None) -> None:
         """Instantiate a generic processing step method."""
@@ -1190,44 +1437,54 @@ class Coreg:
         :param valid_mask: Mask of valid values (inlier and not nodata).
         """
 
-        # This should never happen
-        if self._meta["subsample"] is None:
-            raise ValueError("Subsample should have been defined in metadata before reaching this class method.")
+        # Get random parameters
+        params_random = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
 
-        # If subsample is not equal to one, subsampling should be performed.
-        elif self._meta["subsample"] != 1.0:
+        # Derive subsampling mask
+        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
 
-            # Build a low memory masked array with invalid values masked to pass to subsampling
-            ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
-            # Take a subsample within the valid values
-            indices = gu.raster.subsample_array(
-                ma_valid,
-                subsample=self._meta["subsample"],
-                return_indices=True,
-                random_state=self._meta["random_state"],
-            )
+        # Write final subsample to class
+        self._meta["subsample_final"] = np.count_nonzero(sub_mask)
 
-            # We return a boolean mask of the subsample within valid values
-            subsample_mask = np.zeros(np.shape(valid_mask), dtype=bool)
-            if len(indices) == 2:
-                subsample_mask[indices[0], indices[1]] = True
-            else:
-                subsample_mask[indices[0]] = True
-        else:
-            # If no subsample is taken, use all valid values
-            subsample_mask = valid_mask
+        return sub_mask
 
-        if verbose:
-            print(
-                "Using a subsample of {} among {} valid values.".format(
-                    np.count_nonzero(valid_mask), np.count_nonzero(subsample_mask)
-                )
+    def _preprocess_rst_pts_subsample(
+            self,
+            ref_elev: NDArrayf | gpd.GeoDataFrame,
+            tba_elev: NDArrayf | gpd.GeoDataFrame,
+            inlier_mask: NDArrayb | Mask | None = None,
+            aux_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+            weights: NDArrayf | None = None,
+            transform: rio.transform.Affine | None = None,
+            crs: rio.crs.CRS | None = None,
+            z_name: str = "z",
+            verbose: bool = False):
+        """
+        Pre-process all inputs (reference elevation, to-be-aligned elevation and bias variables) by subsampling, and
+        interpolating in the case of point-raster datasets, at the same points.
+        """
+
+        # Get random parameters
+        params_random = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
+
+        # Subsample raster-raster or raster-point inputs
+        sub_ref, sub_tba, sub_bias_vars = \
+            _preprocess_pts_rst_subsample(
+                params_random=params_random,
+                ref_elev=ref_elev,
+                tba_elev=tba_elev,
+                inlier_mask=inlier_mask,
+                aux_vars=aux_vars,
+                transform=transform,
+                crs=crs,
+                z_name=z_name,
+                verbose=verbose
             )
 
         # Write final subsample to class
-        self._meta["subsample_final"] = np.count_nonzero(subsample_mask)
+        self._meta["subsample_final"] = len(sub_ref)
 
-        return subsample_mask
+        return sub_ref, sub_tba, sub_bias_vars
 
     def fit(
         self: CoregType,
@@ -1804,13 +2061,6 @@ class Coreg:
 
                 if self.is_affine:  # This only works for affine, however.
 
-                    # In this case, resampling is necessary
-                    if not kwargs["resample"]:
-                        raise NotImplementedError(
-                            f"Option `resample=False` not implemented for coreg method {self.__class__}"
-                        )
-                    kwargs.pop("resample")  # Need to removed before passing to apply_matrix
-
                     # Apply the matrix around the centroid (if defined, otherwise just from the center).
                     transform = kwargs.pop("transform")
                     applied_elev, out_transform = _apply_matrix_rst(
@@ -1849,7 +2099,6 @@ class Coreg:
     def _bin_or_and_fit_nd(  # type: ignore
         self,
         values: NDArrayf,
-        inlier_mask: NDArrayb,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         verbose: bool = False,
@@ -1863,155 +2112,19 @@ class Coreg:
         Should only be called through subclassing.
         """
 
-        if self._fit_or_bin is None:
-            raise ValueError("This function should not be called for methods not supporting fit_or_bin logic.")
-
-        # This is called by subclasses, so the bias_var should always be defined
-        if bias_vars is None:
-            raise ValueError("At least one `bias_var` should be passed to the fitting function, got None.")
-
-        # Check number of variables
-        nd = self._meta["nd"]
-        if nd is not None and len(bias_vars) != nd:
-            raise ValueError(
-                "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
-                "got {}.".format(nd, len(bias_vars))
-            )
-
-        # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
-        if self._meta["bias_var_names"] is not None:
-            if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
-                raise ValueError(
-                    "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                    "instantiation: {}.".format(self._meta["bias_var_names"])
-                )
-        # Otherwise, store bias variable names from the dictionary
-        else:
+        # Store bias variable names from the dictionary if undefined
+        if self._meta["bias_var_names"] is None:
             self._meta["bias_var_names"] = list(bias_vars.keys())
 
-        # Compute difference and mask of valid data
-        # TODO: Move the check up to Coreg.fit()?
-
-        valid_mask = np.logical_and.reduce(
-            (inlier_mask, np.isfinite(values), *(np.isfinite(var) for var in bias_vars.values()))
-        )
-
-        # Raise errors if all values are NaN after introducing masks from the variables
-        # (Others are already checked in Coreg.fit())
-        if np.all(~valid_mask):
-            raise ValueError("Some 'bias_vars' have only NaNs in the inlier mask.")
-
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask, verbose=verbose)
-
-        # Get number of variables
-        nd = len(bias_vars)
-
-        # Remove random state for keyword argument if its value is not in the optimizer function
-        if self._fit_or_bin in ["fit", "bin_and_fit"]:
-            fit_func_args = inspect.getfullargspec(self._meta["fit_optimizer"]).args
-            if "random_state" not in fit_func_args and "random_state" in kwargs:
-                kwargs.pop("random_state")
-
-        # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
-        if self._fit_or_bin in ["bin", "bin_and_fit"]:
-            if isinstance(self._meta["bin_sizes"], dict):
-                var_order = list(bias_vars.keys())
-                # Declare type to write integer or tuple to the variable
-                bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
-                    np.array(self._meta["bin_sizes"][var]) for var in var_order
-                )
-            # Otherwise, write integer directly
-            else:
-                bin_sizes = self._meta["bin_sizes"]
-
-        # Option 1: Run fit and save optimized function parameters
-        if self._fit_or_bin == "fit":
-
-            # Print if verbose
-            if verbose:
-                print(
-                    "Estimating alignment along variables {} by fitting "
-                    "with function {}.".format(", ".join(list(bias_vars.keys())), self._meta["fit_func"].__name__)
-                )
-
-            results = self._meta["fit_optimizer"](
-                f=self._meta["fit_func"],
-                xdata=np.array([var[subsample_mask].flatten() for var in bias_vars.values()]).squeeze(),
-                ydata=values[subsample_mask].flatten(),
-                sigma=weights[subsample_mask].flatten() if weights is not None else None,
-                absolute_sigma=True,
-                **kwargs,
-            )
-
-        # Option 2: Run binning and save dataframe of result
-        elif self._fit_or_bin == "bin":
-
-            if verbose:
-                print(
-                    "Estimating alignment along variables {} by binning "
-                    "with statistic {}.".format(", ".join(list(bias_vars.keys())), self._meta["bin_statistic"].__name__)
-                )
-
-            df = nd_binning(
-                values=values[subsample_mask],
-                list_var=[var[subsample_mask] for var in bias_vars.values()],
-                list_var_names=list(bias_vars.keys()),
-                list_var_bins=bin_sizes,
-                statistics=(self._meta["bin_statistic"], "count"),
-            )
-
-        # Option 3: Run binning, then fitting, and save both results
-        else:
-
-            # Print if verbose
-            if verbose:
-                print(
-                    "Estimating alignment along variables {} by binning with statistic {} and then fitting "
-                    "with function {}.".format(
-                        ", ".join(list(bias_vars.keys())),
-                        self._meta["bin_statistic"].__name__,
-                        self._meta["fit_func"].__name__,
-                    )
-                )
-
-            df = nd_binning(
-                values=values[subsample_mask],
-                list_var=[var[subsample_mask] for var in bias_vars.values()],
-                list_var_names=list(bias_vars.keys()),
-                list_var_bins=bin_sizes,
-                statistics=(self._meta["bin_statistic"], "count"),
-            )
-
-            # Now, we need to pass this new data to the fitting function and optimizer
-            # We use only the N-D binning estimates (maximum dimension, equal to length of variable list)
-            df_nd = df[df.nd == len(bias_vars)]
-
-            # We get the middle of bin values for variable, and statistic for the diff
-            new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
-            new_diff = df_nd[self._meta["bin_statistic"].__name__].values
-            # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
-            #  sigma values would have to be binned above also
-
-            # Valid values for the binning output
-            ind_valid = np.logical_and.reduce((np.isfinite(new_diff), *(np.isfinite(var) for var in new_vars)))
-
-            if np.all(~ind_valid):
-                raise ValueError("Only NaN values after binning, did you pass the right bin edges?")
-
-            results = self._meta["fit_optimizer"](
-                f=self._meta["fit_func"],
-                xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
-                ydata=new_diff[ind_valid].flatten(),
-                sigma=weights[ind_valid].flatten() if weights is not None else None,
-                absolute_sigma=True,
-                **kwargs,
-            )
-
-        if verbose:
-            print(f"{nd}D bias estimated.")
+        # Run the fit or bin, passing the dictionary of parameters
+        params_fit_or_bin = {k: self._meta.get(k) for k in ["bias_var_names", "nd", "fit_optimizer", "fit_func",
+                                                            "bin_statistic", "bin_sizes", "fit_or_bin"]}
+        df, results = _bin_or_and_fit_nd(params_fit_or_bin=params_fit_or_bin,
+                                         values=values, bias_vars=bias_vars,
+                                         weights=weights, verbose=verbose, **kwargs)
 
         # Save results if fitting was performed
-        if self._fit_or_bin in ["fit", "bin_and_fit"]:
+        if self._meta["fit_or_bin"] in ["fit", "bin_and_fit"]:
 
             # Write the results to metadata in different ways depending on optimizer returns
             if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
@@ -2034,7 +2147,7 @@ class Coreg:
             self._meta["fit_params"] = params
 
         # Save results of binning if it was perfrmed
-        elif self._fit_or_bin in ["bin", "bin_and_fit"]:
+        elif self._meta["fit_or_bin"] in ["bin", "bin_and_fit"]:
             self._meta["bin_dataframe"] = df
 
     def _fit_rst_rst(
@@ -2766,15 +2879,16 @@ class BlockwiseCoreg(Coreg):
 
         points = self.to_points()
 
-        bounds, resolution = _transform_to_bounds_and_res(elev.shape, transform)
+        bounds = _bounds(transform=transform, shape=elev.shape)
+        resolution = _res(transform)
 
         representative_height = np.nanmean(elev)
         edges_source_arr = np.array(
             [
-                [bounds.left + resolution / 2, bounds.top - resolution / 2, representative_height],
-                [bounds.right - resolution / 2, bounds.top - resolution / 2, representative_height],
-                [bounds.left + resolution / 2, bounds.bottom + resolution / 2, representative_height],
-                [bounds.right - resolution / 2, bounds.bottom + resolution / 2, representative_height],
+                [bounds.left + resolution[0] / 2, bounds.top - resolution[1] / 2, representative_height],
+                [bounds.right - resolution[0] / 2, bounds.top - resolution[1] / 2, representative_height],
+                [bounds.left + resolution[0] / 2, bounds.bottom + resolution[1] / 2, representative_height],
+                [bounds.right - resolution[0] / 2, bounds.bottom + resolution[1] / 2, representative_height],
             ]
         )
         edges_source = gpd.GeoDataFrame(
@@ -2838,6 +2952,7 @@ def warp_dem(
     dilate_mask: bool = True,
 ) -> NDArrayf:
     """
+    (22/08/24: Method currently used only for blockwise coregistration)
     Warp a DEM using a set of source-destination 2D or 3D coordinates.
 
     :param dem: The DEM to warp. Allowed shapes are (1, row, col) or (row, col)
@@ -2869,7 +2984,7 @@ def warp_dem(
 
     dem_arr, dem_mask = get_array_and_mask(dem)
 
-    bounds, resolution = _transform_to_bounds_and_res(dem_arr.shape, transform)
+    bounds = _bounds(transform=transform, shape=dem_arr.shape)
 
     no_horizontal = np.sum(np.linalg.norm(destination_coords[:, :2] - source_coords[:, :2], axis=1)) < 1e-6
     no_vertical = source_coords.shape[1] > 2 and np.sum(np.abs(destination_coords[:, 2] - source_coords[:, 2])) < 1e-6

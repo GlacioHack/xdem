@@ -188,10 +188,6 @@ class TestCoregClass:
             # Check that the x/y/z differences do not exceed 30cm
             assert np.count_nonzero(matrix_diff > 0.5) == 0
 
-        elif coreg_name == "Tilt":
-            # Check that the estimated biases are similar
-            assert coreg_sub.meta["fit_params"] == pytest.approx(coreg_full.meta["fit_params"], rel=1e-1)
-
     def test_subsample__pipeline(self) -> None:
         """Test that the subsample argument works as intended for pipelines"""
 
@@ -315,9 +311,8 @@ class TestCoregClass:
         "inputs",
         [
             [xdem.coreg.VerticalShift(), True, "strict"],
-            [xdem.coreg.Tilt(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
-            [xdem.coreg.NuthKaab() + xdem.coreg.Tilt(), True, "approx"],
+            [xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(), True, "approx"],
             [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
             [xdem.coreg.ICP(), False, ""],
         ],

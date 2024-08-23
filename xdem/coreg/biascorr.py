@@ -132,15 +132,47 @@ class BiasCorr(Coreg):
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
         # Add subsample attribute
+        self._meta["fit_or_bin"] = fit_or_bin
         self._meta["subsample"] = subsample
 
         # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
         self._meta["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
 
         # Update attributes
-        self._fit_or_bin = fit_or_bin
         self._is_affine = False
         self._needs_vars = True
+
+    def _fit_rst_rst_and_rst_pts(  # type: ignore
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        z_name: str,
+        bias_vars: None | dict[str, NDArrayf] = None,
+        weights: None | NDArrayf = None,
+        verbose: bool = False,
+        **kwargs,
+    ) -> None:
+        """Function for fitting raster-raster and raster-point for bias correction methods."""
+
+        # Pre-process raster-point input
+        sub_ref, sub_tba, sub_bias_vars = self._preprocess_rst_pts_subsample(
+            ref_elev=ref_elev, tba_elev=tba_elev, inlier_mask=inlier_mask, transform=transform, crs=crs, z_name=z_name,
+            aux_vars=bias_vars, verbose=verbose)
+
+        # Derive difference to get dh
+        diff = sub_ref - sub_tba
+
+        # Send to bin and fit
+        self._bin_or_and_fit_nd(
+            values=diff,
+            bias_vars=sub_bias_vars,
+            weights=weights,
+            verbose=verbose,
+            **kwargs,
+        )
 
     def _fit_rst_rst(
         self,
@@ -155,93 +187,47 @@ class BiasCorr(Coreg):
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
-        """Should only be called through subclassing"""
+        """Called by other classes"""
 
-        diff = ref_elev - tba_elev
-
-        self._bin_or_and_fit_nd(
-            values=diff,
+        self._fit_rst_rst_and_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
             verbose=verbose,
-            **kwargs,
+            **kwargs
         )
 
-    def _fit_rst_pts(  # type: ignore
+    def _fit_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
-        crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
         z_name: str,
-        bias_vars: None | dict[str, NDArrayf] = None,
-        weights: None | NDArrayf = None,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
-        """Should only be called through subclassing."""
+        """Called by other classes"""
 
-        # Get point reference to also convert inlier and bias vars
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-
-        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
-
-        # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
-        if bias_vars is not None:
-            valid_mask = np.logical_and.reduce(
-                (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in bias_vars.values()))
-            )
-        else:
-            valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(rst_elev)))
-
-        # Convert inlier mask to points to be able to determine subsample later
-        inlier_rst = gu.Raster.from_array(data=valid_mask, transform=transform, crs=crs)
-        # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
-        valid_pts = np.floor(inlier_rst.interp_points(pts)).astype(bool)  # Interpolates boolean mask as integers
-
-        # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_pts, verbose=verbose)
-        pts = (pts[0][subsample_mask], pts[1][subsample_mask])
-
-        # Now all points should be valid, we can pass an inlier mask completely true
-        inlier_pts_alltrue = np.ones(len(pts[0]), dtype=bool)
-
-        # Below, we derive 1D arrays for the rst_rst function to take over after interpolating to the point coordinates
-        # (as rst_rst works for 1D arrays as well as 2D arrays, as long as coordinates match)
-
-        # Convert ref or tba depending on which is the point dataset
-        if isinstance(ref_elev, gpd.GeoDataFrame):
-            tba_rst = gu.Raster.from_array(data=tba_elev, transform=transform, crs=crs, nodata=-9999)
-            tba_elev_pts = tba_rst.interp_points(pts)
-            ref_elev_pts = ref_elev[z_name].values[subsample_mask]
-        else:
-            ref_rst = gu.Raster.from_array(data=ref_elev, transform=transform, crs=crs, nodata=-9999)
-            ref_elev_pts = ref_rst.interp_points(pts)
-            tba_elev_pts = tba_elev[z_name].values[subsample_mask]
-
-        # Convert bias variables
-        if bias_vars is not None:
-            bias_vars_pts = {}
-            for var in bias_vars.keys():
-                bias_vars_pts[var] = gu.Raster.from_array(
-                    bias_vars[var], transform=transform, crs=crs, nodata=-9999
-                ).interp_points(pts)
-        else:
-            bias_vars_pts = None
-
-        # Send to raster-raster fit but using 1D arrays instead of 2D arrays (flattened anyway during analysis)
-        diff = ref_elev_pts - tba_elev_pts
-
-        self._bin_or_and_fit_nd(
-            values=diff,
-            inlier_mask=inlier_pts_alltrue,
-            bias_vars=bias_vars_pts,
+        self._fit_rst_rst_and_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
             weights=weights,
+            bias_vars=bias_vars,
             verbose=verbose,
-            **kwargs,
+            **kwargs
         )
 
     def _apply_rst(  # type: ignore
@@ -264,7 +250,7 @@ class BiasCorr(Coreg):
             )
 
         # Apply function to get correction (including if binning was done before)
-        if self._fit_or_bin in ["fit", "bin_and_fit"]:
+        if self.meta["fit_or_bin"] in ["fit", "bin_and_fit"]:
             corr = self._meta["fit_func"](tuple(bias_vars.values()), *self._meta["fit_params"])
 
         # Apply binning to get correction
@@ -360,10 +346,14 @@ class DirectionalBias(BiasCorr):
             average_res = (transform[0] + abs(transform[4])) / 2
             kwargs.update({"hop_length": average_res})
 
-        self._bin_or_and_fit_nd(
-            values=ref_elev - tba_elev,
+        super()._fit_rst_rst_and_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"angle": x},
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -400,7 +390,7 @@ class DirectionalBias(BiasCorr):
             average_res = (transform[0] + abs(transform[4])) / 2
             kwargs.update({"hop_length": average_res})
 
-        super()._fit_rst_pts(
+        super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -517,10 +507,14 @@ class TerrainBias(BiasCorr):
                 )
 
         # Run the parent function
-        self._bin_or_and_fit_nd(
-            values=ref_elev - tba_elev,
+        super()._fit_rst_rst_and_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={self._meta["terrain_attribute"]: attr},
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
@@ -560,7 +554,7 @@ class TerrainBias(BiasCorr):
                 )
 
         # Run the parent function
-        super()._fit_rst_pts(
+        super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -660,10 +654,14 @@ class Deramp(BiasCorr):
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
 
-        self._bin_or_and_fit_nd(
-            values=ref_elev - tba_elev,
+        super()._fit_rst_rst_and_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
             weights=weights,
             verbose=verbose,
             p0=p0,
@@ -693,7 +691,7 @@ class Deramp(BiasCorr):
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, rast_elev.shape[1]), np.arange(0, rast_elev.shape[0]))
 
-        super()._fit_rst_pts(
+        super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -720,139 +718,3 @@ class Deramp(BiasCorr):
         xx, yy = np.meshgrid(np.arange(0, elev.shape[1]), np.arange(0, elev.shape[0]))
 
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"xx": xx, "yy": yy}, **kwargs)
-
-
-
-
-#
-#
-# class Tilt(AffineCoreg):
-#     """
-#     Tilt alignment.
-#
-#     Estimates an 2-D plan correction between the difference of two elevation datasets. This is close to a rotation
-#     alignment at small angles, but introduces a scaling at large angles.
-#
-#     The tilt parameters are stored in the `self.meta` key "fit_parameters", with associated polynomial function in
-#     the key "fit_func".
-#     """
-#
-#     def __init__(
-#         self,
-#         bin_before_fit: bool = False,
-#         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-#         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
-#         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
-#         subsample: int | float = 5e5
-#     ) -> None:
-#         """
-#         Instantiate a tilt correction object.
-#
-#         :param bin_before_fit: Whether to bin data before fitting the coregistration function.
-#         :param fit_optimizer: Optimizer to minimize the coregistration function.
-#         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-#         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-#         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-#         """
-#
-#         # Define Nuth and Kääb fitting function
-#         def nuth_kaab_fit_func(xx: NDArrayf, params: tuple[float, float, float]) -> NDArrayf:
-#             """
-#             Fit a cosinus function to the terrain aspect (x) to describe the elevation differences divided by the slope
-#             tangente (y).
-#
-#             y(x) = a * cos(b - x) + c
-#
-#             where y = dh/tan(slope) and x = aspect.
-#
-#             :param xx: The aspect in radians.
-#             :param params: Parameters.
-#
-#             :returns: Estimated y-values with the same shape as the given x-values
-#             """
-#             return params[0] * np.cos(params[1] - xx) + params[2]
-#
-#         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
-#         # boolean, no bin apply option, and fit_func is preferefind
-#         if not bin_before_fit:
-#             meta_fit = {"fit_func": nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
-#             self._fit_or_bin = "fit"
-#             super().__init__(subsample=subsample, meta=meta_fit)
-#         else:
-#             meta_bin_and_fit = {
-#                 "fit_func": nuth_kaab_fit_func,
-#                 "fit_optimizer": fit_optimizer,
-#                 "bin_sizes": bin_sizes,
-#                 "bin_statistic": bin_statistic
-#             }
-#             self._fit_or_bin = "bin_and_fit"
-#             super().__init__(subsample=subsample, meta=meta_bin_and_fit)
-#
-#         self._meta["poly_order"] = 1
-#
-#
-#     def _fit_rst_rst(
-#         self,
-#         ref_elev: NDArrayf,
-#         tba_elev: NDArrayf,
-#         inlier_mask: NDArrayb,
-#         transform: rio.transform.Affine,
-#         crs: rio.crs.CRS,
-#         z_name: str,
-#         weights: NDArrayf | None = None,
-#         bias_vars: dict[str, NDArrayf] | None = None,
-#         verbose: bool = False,
-#         **kwargs: Any,
-#     ) -> None:
-#         """Fit the tilt function to an elevation dataset."""
-#
-#         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-#         p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
-#
-#         # Coordinates (we don't need the actual ones, just array coordinates)
-#         xx, yy = _get_x_and_y_coords(ref_elev.shape, transform)
-#
-#         self._bin_or_and_fit_nd(
-#             values=ref_elev - tba_elev,
-#             inlier_mask=inlier_mask,
-#             bias_vars={"xx": xx, "yy": yy},
-#             weights=weights,
-#             verbose=verbose,
-#             p0=p0,
-#             **kwargs,
-#         )
-#
-#     def _apply_rst(
-#         self,
-#         elev: NDArrayf,
-#         transform: rio.transform.Affine,
-#         crs: rio.crs.CRS,
-#         bias_vars: dict[str, NDArrayf] | None = None,
-#         **kwargs: Any,
-#     ) -> tuple[NDArrayf, rio.transform.Affine]:
-#         """Apply the deramp function to a DEM."""
-#
-#         # Define the coordinates for applying the correction
-#         xx, yy = _get_x_and_y_coords(elev.shape, transform)
-#
-#         tilt = self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
-#
-#         return elev + tilt, transform
-#
-#     def _apply_pts(
-#         self,
-#         elev: gpd.GeoDataFrame,
-#         z_name: str = "z",
-#         bias_vars: dict[str, NDArrayf] | None = None,
-#         **kwargs: Any,
-#     ) -> gpd.GeoDataFrame:
-#         """Apply the deramp function to a set of points."""
-#
-#         dem_copy = elev.copy()
-#
-#         xx = dem_copy.geometry.x.values
-#         yy = dem_copy.geometry.y.values
-#
-#         dem_copy[z_name].values += self._meta["fit_func"](xx, yy, *self._meta["fit_params"])
-#
-#         return dem_copy

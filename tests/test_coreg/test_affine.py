@@ -87,7 +87,7 @@ class TestAffineCoreg:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=False,
+        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -358,28 +358,6 @@ class TestAffineCoreg:
         )
         # Check that the z shift is close to the original vertical shift.
         assert all(abs((transformed_points["z"].values - self.points["z"].values) + vshift) < 0.1)
-
-    def test_tilt(self) -> None:
-
-        # Try a 1st degree deramping.
-        tilt = coreg.Tilt()
-
-        # Fit the data
-        tilt.fit(**self.fit_params, random_state=42)
-
-        # Apply the deramping to a DEM
-        tilted_dem = tilt.apply(self.tba)
-
-        # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref - tilted_dem)[self.inlier_mask]
-        # Get the periglacial offset before deramping
-        pre_offset = (self.ref - self.tba)[self.inlier_mask]
-
-        # Check that the error improved
-        assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
-
-        # Check that the mean periglacial offset is low
-        assert np.abs(np.mean(periglacial_offset)) < 0.02
 
     def test_icp_opencv(self) -> None:
 
