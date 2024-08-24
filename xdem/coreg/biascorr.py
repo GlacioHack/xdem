@@ -159,8 +159,15 @@ class BiasCorr(Coreg):
 
         # Pre-process raster-point input
         sub_ref, sub_tba, sub_bias_vars = self._preprocess_rst_pts_subsample(
-            ref_elev=ref_elev, tba_elev=tba_elev, inlier_mask=inlier_mask, transform=transform, crs=crs, z_name=z_name,
-            aux_vars=bias_vars, verbose=verbose)
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            z_name=z_name,
+            aux_vars=bias_vars,
+            verbose=verbose,
+        )
 
         # Derive difference to get dh
         diff = sub_ref - sub_tba
@@ -199,7 +206,7 @@ class BiasCorr(Coreg):
             weights=weights,
             bias_vars=bias_vars,
             verbose=verbose,
-            **kwargs
+            **kwargs,
         )
 
     def _fit_rst_pts(
@@ -227,7 +234,7 @@ class BiasCorr(Coreg):
             weights=weights,
             bias_vars=bias_vars,
             verbose=verbose,
-            **kwargs
+            **kwargs,
         )
 
     def _apply_rst(  # type: ignore

@@ -8,14 +8,18 @@ import numpy as np
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
+from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
 from geoutils.raster.raster import _shift_transform
-from geoutils._typing import NDArrayNum
 from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples
-from xdem.coreg.affine import _reproject_horizontal_shift_samecrs, AffineCoreg, CoregDict
+from xdem.coreg.affine import (
+    AffineCoreg,
+    CoregDict,
+    _reproject_horizontal_shift_samecrs,
+)
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -26,6 +30,7 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     return reference_raster, to_be_aligned_raster, glacier_mask
+
 
 def gdal_reproject_horizontal_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
     """
@@ -47,9 +52,7 @@ def gdal_reproject_horizontal_samecrs(filepath_example: str, xoff: float, yoff: 
     driver = "MEM"
     method = gdal.GRA_Bilinear
     drv = gdal.GetDriverByName(driver)
-    filename = ''
-    dest = drv.Create('', src.RasterXSize, src.RasterYSize,
-                      1, gdal.GDT_Float32)
+    dest = drv.Create("", src.RasterXSize, src.RasterYSize, 1, gdal.GDT_Float32)
     proj = src.GetProjection()
     ndv = src.GetRasterBand(1).GetNoDataValue()
     dest.SetProjection(proj)
@@ -76,6 +79,7 @@ def gdal_reproject_horizontal_samecrs(filepath_example: str, xoff: float, yoff: 
 
     return array
 
+
 class TestAffineCoreg:
 
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
@@ -95,17 +99,22 @@ class TestAffineCoreg:
         geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
     )
 
-    @pytest.mark.parametrize("xoff_yoff", [(ref.res[0], ref.res[1]), (10*ref.res[0], 10*ref.res[1]),
-                                           (-1.2*ref.res[0], -1.2*ref.res[1])])
+    @pytest.mark.parametrize(
+        "xoff_yoff",
+        [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
+    )
     def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]):
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
         is accurate by comparing to GDAL."""
 
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
-        dst_transform = _shift_transform(transform=self.ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
-        output = _reproject_horizontal_shift_samecrs(raster_arr=self.ref.data, src_transform=self.ref.transform,
-                                                     dst_transform=dst_transform)
+        dst_transform = _shift_transform(
+            transform=self.ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced"
+        )
+        output = _reproject_horizontal_shift_samecrs(
+            raster_arr=self.ref.data, src_transform=self.ref.transform, dst_transform=dst_transform
+        )
 
         # Reproject with GDAL
         output2 = gdal_reproject_horizontal_samecrs(filepath_example=self.ref.filename, xoff=xoff, yoff=yoff)
@@ -252,7 +261,6 @@ class TestAffineCoreg:
             random_state=42,
         )
 
-        res = self.ref.res[0]
         shifts = (gds.meta["shift_x"], gds.meta["shift_y"], gds.meta["shift_z"])
         assert shifts == pytest.approx((-10.625, -2.65625, 1.940031), abs=10e-5)
 

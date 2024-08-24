@@ -20,7 +20,6 @@ from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples, misc, spatialstats
-from xdem.spatialstats import nmad
 from xdem._typing import NDArrayf
 from xdem.coreg.base import Coreg, apply_matrix
 
