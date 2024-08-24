@@ -2061,6 +2061,17 @@ class Coreg:
 
                 if self.is_affine:  # This only works for affine, however.
 
+                    # TODO: Move this to_matrix() elsewhere, to always have the matrix available in the meta?
+                    self._meta["matrix"] = self.to_matrix()
+
+                    # Not resampling is only possible for translation methods, fail with warning if passed by user
+                    if not self.is_translation:
+                        if not kwargs["resample"]:
+                            raise NotImplementedError(
+                                f"Option `resample=False` not supported by {self.__class__},"
+                                f" only available for translation coregistrations such as NuthKaab."
+                            )
+
                     # Apply the matrix around the centroid (if defined, otherwise just from the center).
                     transform = kwargs.pop("transform")
                     applied_elev, out_transform = _apply_matrix_rst(
@@ -2875,7 +2886,7 @@ class BlockwiseCoreg(Coreg):
 
         # Other option than resample=True is not implemented for this case
         if "resample" in kwargs and kwargs["resample"] is not True:
-            raise NotImplementedError("Option `resample=False` not implemented for coreg method BlockwiseCoreg.")
+            raise NotImplementedError("Option `resample=False` not supported for coreg method BlockwiseCoreg.")
 
         points = self.to_points()
 

@@ -20,6 +20,7 @@ from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples, misc, spatialstats
+from xdem.spatialstats import nmad
 from xdem._typing import NDArrayf
 from xdem.coreg.base import Coreg, apply_matrix
 
@@ -324,6 +325,9 @@ class TestCoregClass:
         For horizontal shifts (NuthKaab etc), georef should differ, but DEMs should be the same after resampling.
         For others, the method is not implemented.
         """
+        # Ignore curve_fit potential warnings
+        warnings.filterwarnings("ignore", "Covariance of the parameters could not be estimated*")
+
         # Get test inputs
         coreg_method, is_implemented, comp = inputs
         ref_dem, tba_dem, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
@@ -334,7 +338,7 @@ class TestCoregClass:
 
         # If not implemented, should raise an error
         if not is_implemented:
-            with pytest.raises(NotImplementedError, match="Option `resample=False` not implemented for coreg method *"):
+            with pytest.raises(NotImplementedError, match="Option `resample=False` not supported*"):
                 coreg_method.apply(tba_dem, resample=False)
             return
         else:

@@ -230,8 +230,7 @@ class TestAffineCoreg:
 
         # Check the output .metadata is always the same
         shifts = (nuth_kaab.meta["shift_x"], nuth_kaab.meta["shift_y"], nuth_kaab.meta["shift_z"])
-        res = self.ref.res[0]
-        assert shifts == pytest.approx((-0.463 * res, -0.1339999 * res, -1.9922009))
+        assert shifts == pytest.approx((-9.200801, -2.785496, -1.9818556))
 
     def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
         """
@@ -255,7 +254,7 @@ class TestAffineCoreg:
 
         res = self.ref.res[0]
         shifts = (gds.meta["shift_x"], gds.meta["shift_y"], gds.meta["shift_z"])
-        assert shifts == pytest.approx((0.03525 * res, -0.59775 * res, -2.39144), abs=10e-5)
+        assert shifts == pytest.approx((-10.625, -2.65625, 1.940031), abs=10e-5)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
@@ -271,19 +270,13 @@ class TestAffineCoreg:
         shifted_ref = self.ref.copy()
         shifted_ref.translate(shift_px[0] * res, shift_px[1] * res, inplace=True)
 
-        shifted_ref_points = shifted_ref.to_pointcloud(
-            subsample=subsample, force_pixel_offset="center", random_state=42
-        ).ds
-        shifted_ref_points["E"] = shifted_ref_points.geometry.x
-        shifted_ref_points["N"] = shifted_ref_points.geometry.y
+        shifted_ref_points = shifted_ref.to_pointcloud(subsample=subsample, random_state=42).ds
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)
 
         kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"subsample": subsample}
 
         coreg_obj = coreg_class(**kwargs)
 
-        best_east_diff = 1e5
-        best_north_diff = 1e5
         if points_or_raster == "raster":
             coreg_obj.fit(shifted_ref, self.ref, verbose=verbose, random_state=42)
         elif points_or_raster == "points":
@@ -301,18 +294,12 @@ class TestAffineCoreg:
         # minimum between two grid points. This is clearly warned for in the documentation.
         precision = 1e-2 if coreg_class.__name__ != "ICP" else 1
 
-        if coreg_obj.meta["shift_x"] == pytest.approx(-shift_px[0] * res, rel=precision) and coreg_obj.meta[
-            "shift_y"
-        ] == pytest.approx(-shift_px[0] * res, rel=precision):
-            return
-        best_east_diff = coreg_obj.meta["shift_x"] - shift_px[0]
-        best_north_diff = coreg_obj.meta["shift_y"] - shift_px[1]
-
-        raise AssertionError(f"Diffs are too big. east: {best_east_diff:.2f} px, north: {best_north_diff:.2f} px")
+        assert coreg_obj.meta["shift_x"] == pytest.approx(-shift_px[0] * res, rel=precision)
+        assert coreg_obj.meta["shift_y"] == pytest.approx(-shift_px[0] * res, rel=precision)
 
     def test_nuth_kaab(self) -> None:
 
-        nuth_kaab = coreg.NuthKaab(max_iterations=10)
+        nuth_kaab = coreg.NuthKaab(max_iterations=50)
 
         # Synthesize a shifted and vertically offset DEM
         pixel_shift = 2
@@ -353,7 +340,7 @@ class TestAffineCoreg:
 
         # Check that the x shift is close to the pixel_shift * image resolution
         assert all(
-            abs((transformed_points.geometry.x.values - self.points.geometry.x.values) - pixel_shift * self.ref.res[0])
+            abs((transformed_points.geometry.x.values - self.points.geometry.x.values) + pixel_shift * self.ref.res[0])
             < 0.1
         )
         # Check that the z shift is close to the original vertical shift.
