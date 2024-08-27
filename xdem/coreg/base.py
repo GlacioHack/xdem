@@ -755,27 +755,68 @@ class FitOrBinDict(TypedDict, total=False):
     """
 
     # Whether to fit, bin or bin then fit
-    fit_or_bin: Literal["fit"] | Literal["bin"] | Literal["bin_and_fit"]
+    fit_or_bin: Literal["fit", "bin", "bin_and_fit"]
+
     # Fit parameters: function to fit and optimizer
     fit_func: Callable[..., NDArrayf]
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
     # Bin parameters: bin sizes, statistic and apply method
     bin_sizes: int | dict[str, int | Iterable[float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
-    bin_apply_method: Literal["linear"] | Literal["per_bin"]
+    bin_apply_method: Literal["linear", "per_bin"]
     # Name of variables, and number of dimensions
     bias_var_names: list[str]
     nd: int | None
 
 
-def _bin_or_and_fit_nd(  # type: ignore
+@overload
+def _bin_or_and_fit_nd(
+    fit_or_bin: Literal["fit"],
     params_fit_or_bin: FitOrBinDict,
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
     verbose: bool = False,
-    **kwargs,
-) -> tuple[pd.DataFrame | None, NDArrayf | None]:
+    **kwargs: Any,
+) -> tuple[None, tuple[NDArrayf, Any]]:
+    ...
+
+
+@overload
+def _bin_or_and_fit_nd(
+    fit_or_bin: Literal["bin"],
+    params_fit_or_bin: FitOrBinDict,
+    values: NDArrayf,
+    bias_vars: None | dict[str, NDArrayf] = None,
+    weights: None | NDArrayf = None,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> tuple[pd.DataFrame, None]:
+    ...
+
+
+@overload
+def _bin_or_and_fit_nd(
+    fit_or_bin: Literal["bin_and_fit"],
+    params_fit_or_bin: FitOrBinDict,
+    values: NDArrayf,
+    bias_vars: None | dict[str, NDArrayf] = None,
+    weights: None | NDArrayf = None,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]:
+    ...
+
+
+def _bin_or_and_fit_nd(
+    fit_or_bin: Literal["fit", "bin", "bin_and_fit"],
+    params_fit_or_bin: FitOrBinDict,
+    values: NDArrayf,
+    bias_vars: None | dict[str, NDArrayf] = None,
+    weights: None | NDArrayf = None,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> tuple[pd.DataFrame | None, tuple[NDArrayf, Any] | None]:
     """
     Generic binning and/or fitting method to model values along N variables for a coregistration/correction,
     used for all affine and bias-correction subclasses. Expects either 2D arrays for rasters, or 1D arrays for
@@ -789,7 +830,7 @@ def _bin_or_and_fit_nd(  # type: ignore
     :param verbose: Print progress messages.
     """
 
-    if params_fit_or_bin["fit_or_bin"] is None:
+    if fit_or_bin is None:
         raise ValueError("This function should not be called for methods not supporting fit_or_bin logic.")
 
     # This is called by subclasses, so the bias_var should always be defined
@@ -816,13 +857,13 @@ def _bin_or_and_fit_nd(  # type: ignore
     nd = len(bias_vars)
 
     # Remove random state for keyword argument if its value is not in the optimizer function
-    if params_fit_or_bin["fit_or_bin"] in ["fit", "bin_and_fit"]:
+    if fit_or_bin in ["fit", "bin_and_fit"]:
         fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_optimizer"]).args
         if "random_state" not in fit_func_args and "random_state" in kwargs:
             kwargs.pop("random_state")
 
     # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
-    if params_fit_or_bin["fit_or_bin"] in ["bin", "bin_and_fit"]:
+    if fit_or_bin in ["bin", "bin_and_fit"]:
         if isinstance(params_fit_or_bin["bin_sizes"], dict):
             var_order = list(bias_vars.keys())
             # Declare type to write integer or tuple to the variable
@@ -834,7 +875,7 @@ def _bin_or_and_fit_nd(  # type: ignore
             bin_sizes = params_fit_or_bin["bin_sizes"]
 
     # Option 1: Run fit and save optimized function parameters
-    if params_fit_or_bin["fit_or_bin"] == "fit":
+    if fit_or_bin == "fit":
 
         # Print if verbose
         if verbose:
@@ -854,7 +895,7 @@ def _bin_or_and_fit_nd(  # type: ignore
         df = None
 
     # Option 2: Run binning and save dataframe of result
-    elif params_fit_or_bin["fit_or_bin"] == "bin":
+    elif fit_or_bin == "bin":
 
         if verbose:
             print(
@@ -1406,6 +1447,14 @@ class CoregDict(TypedDict, total=False):
     max_iterations: int
     offset_threshold: float
 
+    # (Temporary) Parameters of gradient descending
+    # TODO: Remove in favor of kwargs like for curve_fit?
+    x0: tuple[float, float]
+    bounds: tuple[float, float]
+    deltainit: int
+    deltatol: float
+    feps: float
+
 
 CoregType = TypeVar("CoregType", bound="Coreg")
 
@@ -1471,7 +1520,7 @@ class Coreg:
         """
 
         # Get random parameters
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
+        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
 
         # Derive subsampling mask
         sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
@@ -1499,7 +1548,7 @@ class Coreg:
         """
 
         # Get random parameters
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
+        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
 
         # Subsample raster-raster or raster-point inputs
         sub_ref, sub_tba, sub_bias_vars = _preprocess_pts_rst_subsample(
@@ -2163,9 +2212,10 @@ class Coreg:
         # Run the fit or bin, passing the dictionary of parameters
         params_fit_or_bin: FitOrBinDict = {
             k: self._meta.get(k)
-            for k in ["bias_var_names", "nd", "fit_optimizer", "fit_func", "bin_statistic", "bin_sizes", "fit_or_bin"]
-        }
+            for k in ["bias_var_names", "nd", "fit_optimizer", "fit_func", "bin_statistic", "bin_sizes"]
+        }  # type: ignore
         df, results = _bin_or_and_fit_nd(
+            fit_or_bin=self._meta["fit_or_bin"],
             params_fit_or_bin=params_fit_or_bin,
             values=values,
             bias_vars=bias_vars,
@@ -2175,7 +2225,7 @@ class Coreg:
         )
 
         # Save results if fitting was performed
-        if self._meta["fit_or_bin"] in ["fit", "bin_and_fit"]:
+        if self._meta["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
 
             # Write the results to metadata in different ways depending on optimizer returns
             if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
@@ -2197,8 +2247,8 @@ class Coreg:
 
             self._meta["fit_params"] = params
 
-        # Save results of binning if it was perfrmed
-        elif self._meta["fit_or_bin"] in ["bin", "bin_and_fit"]:
+        # Save results of binning if it was performed
+        elif self._meta["fit_or_bin"] in ["bin", "bin_and_fit"] and df is not None:
             self._meta["bin_dataframe"] = df
 
     def _fit_rst_rst(

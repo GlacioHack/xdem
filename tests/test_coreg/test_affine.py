@@ -62,8 +62,7 @@ def gdal_reproject_horizontal_samecrs(filepath_example: str, xoff: float, yoff: 
     gtl = list(gt)
     gtl[0] += xoff
     gtl[3] += yoff
-    gtl = tuple(gtl)
-    dest.SetGeoTransform(gtl)
+    dest.SetGeoTransform(tuple(gtl))
 
     # Copy the raster metadata of the source to dest
     dest.SetMetadata(src.GetMetadata())
@@ -102,8 +101,8 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "xoff_yoff",
         [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
-    )
-    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]):
+    )  # type: ignore
+    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]) -> None:
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
         is accurate by comparing to GDAL."""
 

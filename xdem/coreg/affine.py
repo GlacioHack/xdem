@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypedDict, TypeVar
+from typing import Any, Callable, Iterable, Literal, TypedDict, TypeVar, overload
 
 import xdem.coreg.base
 
@@ -51,6 +51,30 @@ except ImportError:
 ######################################
 # Generic functions for affine methods
 ######################################
+
+
+@overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[False] = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf:
+    ...
+
+
+@overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[True],
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+    ...
 
 
 def _reproject_horizontal_shift_samecrs(
@@ -129,7 +153,7 @@ def _check_inputs_bin_before_fit(
 
 
 def _iterate_method(
-    method: Callable[[Any], Any],
+    method: Callable[..., Any],
     iterating_input: Any,
     constant_inputs: tuple[Any, ...],
     tolerance: float,
@@ -366,7 +390,15 @@ def _nuth_kaab_bin_fit(
     params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func
 
     # Run bin and fit, returning dataframe of binning and parameters of fitting
-    _, results = _bin_or_and_fit_nd(params_fit_or_bin=params_fit_or_bin, values=y, bias_vars={"aspect": aspect}, p0=p0)
+    _, results = _bin_or_and_fit_nd(
+        fit_or_bin=params_fit_or_bin["fit_or_bin"],
+        params_fit_or_bin=params_fit_or_bin,
+        values=y,
+        bias_vars={"aspect": aspect},
+        p0=p0,
+    )
+    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+    assert results is not None
     easting_offset = results[0][0] * np.sin(results[0][1])
     northing_offset = results[0][0] * np.cos(results[0][1])
     vertical_offset = results[0][2]
@@ -456,7 +488,7 @@ def _nuth_kaab_iteration_step(
     dh_step = dh_interpolator(coords_offsets[0], coords_offsets[1])
     # Tests show that using the median vertical offset significantly speeds up the algorithm compared to
     # using the vertical offset output of the fit function below
-    vshift = np.nanmedian(dh_step)[0]
+    vshift = np.nanmedian(dh_step)
     dh_step -= vshift
 
     # Interpolating with an offset creates new invalid values, so the subsample is reduced
@@ -481,7 +513,7 @@ def _nuth_kaab_iteration_step(
     new_coords_offsets = (
         coords_offsets[0] + easting_offset * res[0],
         coords_offsets[1] + northing_offset * res[1],
-        vshift,
+        float(vshift),
     )
 
     # Compute statistic on offset to know if it reached tolerance
@@ -550,6 +582,7 @@ def nuth_kaab(
     # Resolution
     res = _res(transform)
     # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
+    assert sub_aux_vars is not None  # Mypy: dictionary cannot be None here
     constant_inputs = (dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
     final_offsets = _iterate_method(
         method=_nuth_kaab_iteration_step,
@@ -597,7 +630,7 @@ def _gradient_descending_fit_func(
     dh += vshift
 
     # Return NMAD of residuals
-    return nmad(dh)
+    return float(nmad(dh))
 
 
 def _gradient_descending_fit(
@@ -630,7 +663,7 @@ def _gradient_descending_fit(
     # Get final offsets
     offset_east = res.x[0]
     offset_north = res.x[1]
-    offset_vertical = -np.nanmedian(dh_interpolator(offset_east, offset_north))
+    offset_vertical = float(-np.nanmedian(dh_interpolator(offset_east, offset_north)))
 
     return offset_east, offset_north, offset_vertical
 
@@ -720,7 +753,7 @@ def vertical_shift(
     dh = sub_ref - sub_tba
 
     # Get vertical shift on subsa weights if those were provided.
-    vshift = vshift_reduc_func(dh) if weights is None else vshift_reduc_func(dh, weights)  # type: ignore
+    vshift = float(vshift_reduc_func(dh) if weights is None else vshift_reduc_func(dh, weights))  # type: ignore
 
     # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
     # TODO: once we have the weights implemented
@@ -914,7 +947,7 @@ class VerticalShift(AffineCoreg):
         """Estimate the vertical shift using the vshift_func."""
 
         # Get parameters stored in class
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
+        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
 
         vshift = vertical_shift(
             ref_elev=ref_elev,
@@ -1188,7 +1221,7 @@ class NuthKaab(AffineCoreg):
         # boolean, no bin apply option, and fit_func is preferefind
         if not bin_before_fit:
             meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
-            super().__init__(subsample=subsample, meta=meta_fit)
+            super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
         else:
             meta_bin_and_fit = {
                 "fit_or_bin": "bin_and_fit",
@@ -1197,7 +1230,7 @@ class NuthKaab(AffineCoreg):
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
             }
-            super().__init__(subsample=subsample, meta=meta_bin_and_fit)
+            super().__init__(subsample=subsample, meta=meta_bin_and_fit)  # type: ignore
 
         self._meta["max_iterations"] = max_iterations
         self._meta["offset_threshold"] = offset_threshold
@@ -1251,11 +1284,11 @@ class NuthKaab(AffineCoreg):
         # Get parameters stored in class
         # TODO: Add those parameter extraction as short class methods? Otherwise list will have to be updated
         #  everywhere at every change
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
+        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
         params_fit_or_bin: FitOrBinDict = {
             k: self._meta.get(k)
             for k in ["bias_var_names", "nd", "fit_optimizer", "fit_func", "bin_statistic", "bin_sizes", "fit_or_bin"]
-        }
+        }  # type: ignore
 
         # Call method
         easting_offset, northing_offset, vertical_offset = nuth_kaab(
@@ -1384,11 +1417,11 @@ class GradientDescending(AffineCoreg):
         """
 
         # Get parameters stored in class
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}
+        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
         # TODO: Replace params noisyopt by kwargs? (=classic optimizer parameters)
         params_noisyopt: NoisyOptDict = {
             k: self._meta.get(k) for k in ["bounds", "x0", "deltainit", "deltatol", "feps"]
-        }
+        }  # type: ignore
 
         # Call method
         easting_offset, northing_offset, vertical_offset = gradient_descending(
