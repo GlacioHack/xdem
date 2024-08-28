@@ -95,7 +95,7 @@ def _reproject_horizontal_shift_samecrs(
     """
 
     # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
-    # force any pixel interpretation (area_or_point) without it having any influence on the result
+    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
     if not return_interpolator:
         coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
     # If we just want the interpolator, we don't need to coordinates of destination points
@@ -206,6 +206,7 @@ def _subsample_on_mask_with_dhinterpolator(
     aux_vars: None | dict[str, NDArrayf],
     sub_mask: NDArrayb,
     transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
 ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
     """
@@ -221,7 +222,7 @@ def _subsample_on_mask_with_dhinterpolator(
 
         # Derive coordinates and interpolator
         # TODO: Pass area or point everywhere
-        coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=None, grid=True)
+        coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=area_or_point, grid=True)
         tba_elev_interpolator = _reproject_horizontal_shift_samecrs(
             tba_elev, src_transform=transform, return_interpolator=True
         )
@@ -260,7 +261,11 @@ def _subsample_on_mask_with_dhinterpolator(
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
         rst_elev_interpolator = _interp_points(
-            array=rst_elev, transform=transform, area_or_point=None, points=sub_coords, return_interpolator=True
+            array=rst_elev,
+            transform=transform,
+            area_or_point=area_or_point,
+            points=sub_coords,
+            return_interpolator=True,
         )
 
         def dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
@@ -281,7 +286,7 @@ def _subsample_on_mask_with_dhinterpolator(
             sub_bias_vars = {}
             for var in aux_vars.keys():
                 sub_bias_vars[var] = _interp_points(
-                    array=aux_vars[var], transform=transform, points=sub_coords, area_or_point=None
+                    array=aux_vars[var], transform=transform, points=sub_coords, area_or_point=area_or_point
                 )
         else:
             sub_bias_vars = None
@@ -295,6 +300,7 @@ def _preprocess_pts_rst_subsample_with_dhinterpolator(
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
     verbose: bool = False,
@@ -316,13 +322,20 @@ def _preprocess_pts_rst_subsample_with_dhinterpolator(
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
         transform=transform,
+        area_or_point=area_or_point,
         aux_vars=aux_vars,
         verbose=verbose,
     )
 
     # Return interpolator of elevation differences and subsampled auxiliary variables
     dh_interpolator, sub_bias_vars = _subsample_on_mask_with_dhinterpolator(
-        ref_elev=ref_elev, tba_elev=tba_elev, aux_vars=aux_vars, sub_mask=sub_mask, transform=transform, z_name=z_name
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        aux_vars=aux_vars,
+        sub_mask=sub_mask,
+        transform=transform,
+        area_or_point=area_or_point,
+        z_name=z_name,
     )
 
     # Return 1D arrays of subsampled points at the same location
@@ -529,6 +542,7 @@ def nuth_kaab(
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,
     crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
     tolerance: float,
     max_iterations: int,
     params_fit_or_bin: FitOrBinDict,
@@ -571,6 +585,7 @@ def nuth_kaab(
         inlier_mask=inlier_mask,
         aux_vars=aux_vars,
         transform=transform,
+        area_or_point=area_or_point,
         verbose=verbose,
         z_name=z_name,
     )
@@ -673,6 +688,7 @@ def gradient_descending(
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
     params_random: RandomDict,
     params_noisyopt: NoisyOptDict,
     z_name: str,
@@ -699,6 +715,7 @@ def gradient_descending(
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
         transform=transform,
+        area_or_point=area_or_point,
         verbose=verbose,
         z_name=z_name,
     )
@@ -724,6 +741,7 @@ def vertical_shift(
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,
     crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
     params_random: RandomDict,
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]],
     z_name: str,
@@ -746,6 +764,7 @@ def vertical_shift(
         inlier_mask=inlier_mask,
         transform=transform,
         crs=crs,
+        area_or_point=area_or_point,
         z_name=z_name,
         verbose=verbose,
     )
@@ -910,6 +929,7 @@ class VerticalShift(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -925,6 +945,7 @@ class VerticalShift(AffineCoreg):
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
             verbose=verbose,
@@ -938,6 +959,7 @@ class VerticalShift(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -955,6 +977,7 @@ class VerticalShift(AffineCoreg):
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             params_random=params_random,
             vshift_reduc_func=self._meta["vshift_reduc_func"],
             z_name=z_name,
@@ -1023,6 +1046,7 @@ class ICP(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -1065,6 +1089,7 @@ class ICP(AffineCoreg):
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             verbose=verbose,
             z_name="z",
         )
@@ -1076,6 +1101,7 @@ class ICP(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -1242,6 +1268,7 @@ class NuthKaab(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -1257,6 +1284,7 @@ class NuthKaab(AffineCoreg):
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
@@ -1271,6 +1299,7 @@ class NuthKaab(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -1297,6 +1326,7 @@ class NuthKaab(AffineCoreg):
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
             verbose=verbose,
@@ -1374,6 +1404,7 @@ class GradientDescending(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -1388,6 +1419,7 @@ class GradientDescending(AffineCoreg):
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
@@ -1402,19 +1434,13 @@ class GradientDescending(AffineCoreg):
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         verbose: bool = False,
         **kwargs: Any,
     ) -> None:
-        """Estimate the x/y/z offset between two DEMs.
-        :param point_elev: the dataframe used as ref
-        :param rst_elev: the dem to be aligned
-        :param z_name: the column name of dataframe used for elevation differencing
-        :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
-        :param random_state: The random state of the subsampling.
-        """
 
         # Get parameters stored in class
         params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
@@ -1429,6 +1455,7 @@ class GradientDescending(AffineCoreg):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             transform=transform,
+            area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
             verbose=verbose,

@@ -22,7 +22,6 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pandas as pd
-import pyogrio
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import scipy
@@ -41,7 +40,7 @@ from geoutils.raster import (
 )
 from geoutils.raster.georeferencing import _bounds, _res
 from geoutils.raster.interpolate import _interp_points
-from geoutils.raster.raster import _shift_transform
+from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -118,54 +117,14 @@ def _calculate_ddem_stats(
     return stats
 
 
-def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
-    """
-    Convert a given mask into an array.
-
-    :param reference_raster: The raster to use for rasterizing the mask if the mask is a vector.
-    :param mask: A valid Vector, Raster or a respective filepath to a mask.
-
-    :raises: ValueError: If the mask path is invalid.
-    :raises: TypeError: If the wrong mask type was given.
-
-    :returns: The mask as a squeezed array.
-    """
-    # Try to load the mask file if it's a filepath
-    if isinstance(mask, str):
-        # First try to load it as a Vector
-        try:
-            mask = gu.Vector(mask)
-        # If the format is unsupported, try loading as a Raster
-        except pyogrio.errors.DataSourceError:
-            try:
-                mask = gu.Raster(mask)
-            # If that fails, raise an error
-            except rio.errors.RasterioIOError:
-                raise ValueError(f"Mask path not in a supported Raster or Vector format: {mask}")
-
-    # At this point, the mask variable is either a Raster or a Vector
-    # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
-    if isinstance(mask, gu.Vector):
-        mask_array = mask.create_mask(reference_raster, as_array=True)
-    elif isinstance(mask, gu.Raster):
-        # The true value is the maximum value in the raster, unless the maximum value is 0 or False
-        true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
-        mask_array = (mask.data == true_value).squeeze()
-    else:
-        raise TypeError(
-            f"Mask has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
-        )
-
-    return mask_array
-
-
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
     inlier_mask: NDArrayb | Mask | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
-) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, rio.crs.CRS]:
+    area_or_point: Literal["Area", "Point"] | None = None,
+) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit() for two raster input."""
 
     # Validate that both inputs are valid array-like (or Raster) types.
@@ -178,6 +137,16 @@ def _preprocess_coreg_fit_raster_raster(
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
         dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+
+    # If both inputs are raster, cast their pixel interpretation and override any individual interpretation
+    indiv_check = True
+    new_aop = None
+    if isinstance(reference_dem, gu.Raster) and isinstance(dem_to_be_aligned, gu.Raster):
+        # Casts pixel interpretation, raises a warning if they differ (can be silenced with global config)
+        new_aop = _cast_pixel_interpretation(reference_dem.area_or_point, dem_to_be_aligned.area_or_point)
+        if area_or_point is not None:
+            warnings.warn("Pixel interpretation cast from the two input rasters overrides the given 'area_or_point'.")
+        indiv_check = False
 
     # If any input is a Raster, use its transform if 'transform is None'.
     # If 'transform' was given and any input is a Raster, trigger a warning.
@@ -198,11 +167,21 @@ def _preprocess_coreg_fit_raster_raster(
             elif crs is not None and new_crs is None:
                 new_crs = dem.crs
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
-    # Override transform and CRS
+            # Same for pixel interpretation, only if both inputs aren't rasters (which requires casting, see above)
+            if indiv_check:
+                if area_or_point is None:
+                    new_aop = dem.area_or_point
+                elif crs is not None and new_aop is None:
+                    new_aop = dem.area_or_point
+                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'area_or_point'")
+
+    # Override transform, CRS and pixel interpretation
     if new_transform is not None:
         transform = new_transform
     if new_crs is not None:
         crs = new_crs
+    if new_aop is not None:
+        area_or_point = new_aop
 
     if transform is None:
         raise ValueError("'transform' must be given if both DEMs are array-like.")
@@ -240,7 +219,7 @@ def _preprocess_coreg_fit_raster_raster(
     if np.all(invalid_mask):
         raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
 
-    return ref_dem, tba_dem, inlier_mask, transform, crs
+    return ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point
 
 
 def _preprocess_coreg_fit_raster_point(
@@ -249,18 +228,22 @@ def _preprocess_coreg_fit_raster_point(
     inlier_mask: NDArrayb | Mask | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
-) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS]:
+    area_or_point: Literal["Area", "Point"] | None = None,
+) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
 
     # TODO: Convert to point cloud once class is done
+    # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
     if isinstance(raster_elev, gu.Raster):
         rst_elev = raster_elev.data
         crs = raster_elev.crs
         transform = raster_elev.transform
+        area_or_point = raster_elev.area_or_point
     else:
         rst_elev = raster_elev
         crs = crs
         transform = transform
+        area_or_point = area_or_point
 
     if transform is None:
         raise ValueError("'transform' must be given if both DEMs are array-like.")
@@ -285,7 +268,7 @@ def _preprocess_coreg_fit_raster_point(
     # Convert geodataframe to vector
     point_elev = point_elev.to_crs(crs=crs)
 
-    return rst_elev, point_elev, inlier_mask, transform, crs
+    return rst_elev, point_elev, inlier_mask, transform, crs, area_or_point
 
 
 def _preprocess_coreg_fit_point_point(
@@ -305,8 +288,14 @@ def _preprocess_coreg_fit(
     inlier_mask: NDArrayb | Mask | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
+    area_or_point: Literal["Area", "Point"] | None = None,
 ) -> tuple[
-    NDArrayf | gpd.GeoDataFrame, NDArrayf | gpd.GeoDataFrame, NDArrayb | None, affine.Affine | None, rio.crs.CRS | None
+    NDArrayf | gpd.GeoDataFrame,
+    NDArrayf | gpd.GeoDataFrame,
+    NDArrayb | None,
+    affine.Affine | None,
+    rio.crs.CRS | None,
+    Literal["Area", "Point"] | None,
 ]:
     """Pre-processing and checks of fit for any input."""
 
@@ -317,12 +306,13 @@ def _preprocess_coreg_fit(
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):
-        ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_raster_raster(
+        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_raster(
             reference_dem=reference_elev,
             dem_to_be_aligned=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
         )
 
     # If one input is raster, and the other is point, we reproject the point data to the same CRS and extract arrays
@@ -336,8 +326,13 @@ def _preprocess_coreg_fit(
             point_elev = reference_elev
             ref = "point"
 
-        raster_elev, point_elev, inlier_mask, transform, crs = _preprocess_coreg_fit_raster_point(
-            raster_elev=raster_elev, point_elev=point_elev, inlier_mask=inlier_mask, transform=transform, crs=crs
+        raster_elev, point_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_point(
+            raster_elev=raster_elev,
+            point_elev=point_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
         )
 
         if ref == "raster":
@@ -353,7 +348,7 @@ def _preprocess_coreg_fit(
             reference_elev=reference_elev, to_be_aligned_elev=to_be_aligned_elev
         )
 
-    return ref_elev, tba_elev, inlier_mask, transform, crs
+    return ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point
 
 
 def _preprocess_coreg_apply(
@@ -575,6 +570,7 @@ def _get_subsample_mask_pts_rst(
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+    area_or_point: Literal["Area", "Point"] | None,
     aux_vars: None | dict[str, NDArrayf] = None,
     verbose: bool = False,
 ) -> NDArrayb:
@@ -638,7 +634,7 @@ def _get_subsample_mask_pts_rst(
         # Interpolates boolean mask as integers
         # TODO: Pass area_or_point all the way to here
         valid_mask = np.floor(
-            _interp_points(array=valid_mask, transform=transform, points=pts, area_or_point=None)
+            _interp_points(array=valid_mask, transform=transform, points=pts, area_or_point=area_or_point)
         ).astype(bool)
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
@@ -655,6 +651,7 @@ def _subsample_on_mask(
     aux_vars: None | dict[str, NDArrayf],
     sub_mask: NDArrayb,
     transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
 ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
     """
@@ -691,10 +688,10 @@ def _subsample_on_mask(
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
         if isinstance(ref_elev, gpd.GeoDataFrame):
-            sub_tba = _interp_points(array=tba_elev, transform=transform, points=pts, area_or_point=None)
+            sub_tba = _interp_points(array=tba_elev, transform=transform, points=pts, area_or_point=area_or_point)
             sub_ref = ref_elev[z_name].values[sub_mask]
         else:
-            sub_ref = _interp_points(array=ref_elev, transform=transform, points=pts, area_or_point=None)
+            sub_ref = _interp_points(array=ref_elev, transform=transform, points=pts, area_or_point=area_or_point)
             sub_tba = tba_elev[z_name].values[sub_mask]
 
         # Interpolate arrays of bias variables to the subsample point coordinates
@@ -702,7 +699,7 @@ def _subsample_on_mask(
             sub_bias_vars = {}
             for var in aux_vars.keys():
                 sub_bias_vars[var] = _interp_points(
-                    array=aux_vars[var], transform=transform, points=pts, area_or_point=None
+                    array=aux_vars[var], transform=transform, points=pts, area_or_point=area_or_point
                 )
         else:
             sub_bias_vars = None
@@ -717,6 +714,7 @@ def _preprocess_pts_rst_subsample(
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
     crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
+    area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
     verbose: bool = False,
@@ -736,13 +734,20 @@ def _preprocess_pts_rst_subsample(
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
         transform=transform,
+        area_or_point=area_or_point,
         aux_vars=aux_vars,
         verbose=verbose,
     )
 
     # Perform subsampling on mask for all inputs
     sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(
-        ref_elev=ref_elev, tba_elev=tba_elev, aux_vars=aux_vars, sub_mask=sub_mask, transform=transform, z_name=z_name
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        aux_vars=aux_vars,
+        sub_mask=sub_mask,
+        transform=transform,
+        area_or_point=area_or_point,
+        z_name=z_name,
     )
 
     # Return 1D arrays of subsampled points at the same location
@@ -1539,6 +1544,7 @@ class Coreg:
         weights: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         verbose: bool = False,
     ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
@@ -1559,6 +1565,7 @@ class Coreg:
             aux_vars=aux_vars,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             z_name=z_name,
             verbose=verbose,
         )
@@ -1578,6 +1585,7 @@ class Coreg:
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
@@ -1594,6 +1602,7 @@ class Coreg:
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param transform: Transform of the reference elevation, only if provided as 2D array.
         :param crs: CRS of the reference elevation, only if provided as 2D array.
+        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
         :param verbose: Print progress messages.
         :param random_state: Random state or seed number to use for calculations (to fix random sampling).
@@ -1626,12 +1635,13 @@ class Coreg:
             self._meta["random_state"] = random_state
 
         # Pre-process the inputs, by reprojecting and converting to arrays
-        ref_elev, tba_elev, inlier_mask, transform, crs = _preprocess_coreg_fit(
+        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
         )
 
         main_args = {
@@ -1640,6 +1650,7 @@ class Coreg:
             "inlier_mask": inlier_mask,
             "transform": transform,
             "crs": crs,
+            "area_or_point": area_or_point,
             "z_name": z_name,
             "weights": weights,
             "verbose": verbose,
@@ -1785,6 +1796,7 @@ class Coreg:
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
@@ -1806,6 +1818,7 @@ class Coreg:
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
@@ -1827,6 +1840,7 @@ class Coreg:
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
@@ -1847,6 +1861,7 @@ class Coreg:
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
@@ -1865,6 +1880,7 @@ class Coreg:
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param transform: Transform of the reference elevation, only if provided as 2D array.
         :param crs: CRS of the reference elevation, only if provided as 2D array.
+        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
             only the transform might be updated and no resampling is done.
@@ -1889,6 +1905,7 @@ class Coreg:
             subsample=subsample,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
             z_name=z_name,
             verbose=verbose,
             random_state=random_state,
@@ -1915,6 +1932,7 @@ class Coreg:
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         subsample: float | int = 1.0,
         random_state: int | np.random.Generator | None = None,
     ) -> NDArrayf:
@@ -1926,6 +1944,7 @@ class Coreg:
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
+        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
         :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
@@ -1936,12 +1955,13 @@ class Coreg:
         aligned_elev = self.apply(to_be_aligned_elev, transform=transform, crs=crs)[0]
 
         # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, align_elev, inlier_mask, transform, crs = _preprocess_coreg_fit(
+        ref_dem, align_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
         )
 
         # Calculate the DEM difference
@@ -1964,6 +1984,7 @@ class Coreg:
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
     ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
         ...
 
@@ -1976,6 +1997,7 @@ class Coreg:
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int:
         ...
 
@@ -1987,6 +2009,7 @@ class Coreg:
         inlier_mask: NDArrayb | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
     ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
         """
         Calculate the error of a coregistration approach.
@@ -2006,6 +2029,7 @@ class Coreg:
         :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
         :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
         :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
+        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
 
         :returns: The error measure of choice for the residuals.
         """
@@ -2018,6 +2042,7 @@ class Coreg:
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
         )
 
         def rms(res: NDArrayf) -> np.floating[Any]:
@@ -2258,6 +2283,7 @@ class Coreg:
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -2274,6 +2300,7 @@ class Coreg:
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
@@ -2402,6 +2429,7 @@ class CoregPipeline(Coreg):
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
@@ -2426,12 +2454,13 @@ class CoregPipeline(Coreg):
             warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
         )
 
         tba_dem_mod = tba_dem.copy()
@@ -2671,6 +2700,7 @@ class BlockwiseCoreg(Coreg):
         subsample: float | int | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
@@ -2700,12 +2730,13 @@ class BlockwiseCoreg(Coreg):
             )
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs = _preprocess_coreg_fit(
+        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
+            area_or_point=area_or_point,
         )
 
         groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
@@ -2750,6 +2781,7 @@ class BlockwiseCoreg(Coreg):
                     bias_vars=bias_vars,
                     weights=weights,
                     crs=crs,
+                    area_or_point=area_or_point,
                     z_name=z_name,
                     subsample=subsample,
                     random_state=random_state,
