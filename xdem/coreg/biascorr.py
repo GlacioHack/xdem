@@ -264,8 +264,9 @@ class BiasCorr(Coreg):
 
         # Apply function to get correction (including if binning was done before)
         if self.meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"]:
-            corr = self._meta["inputs"]["fitorbin"]["fit_func"](tuple(bias_vars.values()),
-                                                                *self._meta["outputs"]["fitorbin"]["fit_params"])
+            corr = self._meta["inputs"]["fitorbin"]["fit_func"](
+                tuple(bias_vars.values()), *self._meta["outputs"]["fitorbin"]["fit_params"]
+            )
 
         # Apply binning to get correction
         else:
@@ -604,7 +605,9 @@ class TerrainBias(BiasCorr):
                 attr = elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=elev, attribute=self._meta["inputs"]["specific"]["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                    dem=elev,
+                    attribute=self._meta["inputs"]["specific"]["terrain_attribute"],
+                    resolution=(transform[0], abs(transform[4])),
                 )
             bias_vars = {self._meta["inputs"]["specific"]["terrain_attribute"]: attr}
 

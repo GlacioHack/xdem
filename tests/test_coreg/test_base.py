@@ -159,7 +159,10 @@ class TestCoregClass:
         # Check that default value is set properly
         coreg_full = coreg_class()
         argspec = inspect.getfullargspec(coreg_class)
-        assert coreg_full.meta["inputs"]["random"]["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+        assert (
+            coreg_full.meta["inputs"]["random"]["subsample"]
+            == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+        )
 
         # But can be overridden during fit
         coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
@@ -184,7 +187,10 @@ class TestCoregClass:
         coreg_name = coreg_class.__name__
         if coreg_name == "VerticalShift":
             # Check that the estimated vertical shifts are similar
-            assert abs(coreg_sub.meta["outputs"]["affine"]["shift_z"] - coreg_full.meta["outputs"]["affine"]["shift_z"]) < 0.1
+            assert (
+                abs(coreg_sub.meta["outputs"]["affine"]["shift_z"] - coreg_full.meta["outputs"]["affine"]["shift_z"])
+                < 0.1
+            )
 
         elif coreg_name == "NuthKaab":
             # Calculate the difference in the full vs. subsampled matrices
@@ -716,8 +722,10 @@ class TestCoregPipeline:
         for part in pipeline.pipeline:
             assert np.abs(part.meta["outputs"]["affine"]["shift_x"]) > 0
 
-        assert pipeline.pipeline[0].meta["outputs"]["affine"]["shift_x"] != \
-               pipeline.pipeline[1].meta["outputs"]["affine"]["shift_x"]
+        assert (
+            pipeline.pipeline[0].meta["outputs"]["affine"]["shift_x"]
+            != pipeline.pipeline[1].meta["outputs"]["affine"]["shift_x"]
+        )
 
     def test_coreg_add(self) -> None:
 

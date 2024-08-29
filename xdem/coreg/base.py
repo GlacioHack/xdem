@@ -12,6 +12,7 @@ from typing import (
     Generator,
     Iterable,
     Literal,
+    Mapping,
     TypedDict,
     TypeVar,
     overload,
@@ -499,6 +500,7 @@ def _postprocess_coreg_apply(
 ###############################################
 # Statistical functions (to be moved in future)
 ###############################################
+
 
 def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
     """
@@ -1360,17 +1362,22 @@ class NotImplementedCoregApply(NotImplementedError):
     Error subclass for not implemented coregistration fit methods; mainly to differentiate with NotImplementedError
     """
 
+
 class InRandomDict(TypedDict, total=False):
     """Keys and types of inputs associated with randomization and subsampling."""
+
     # Subsample size input by user
     subsample: int | float
     # Random state (for subsampling, but also possibly for some fitting methods)
     random_state: int | np.random.Generator | None
 
+
 class OutRandomDict(TypedDict, total=False):
     """Keys and types of outputs associated with randomization and subsampling."""
+
     # Final subsample size available from valid data
     subsample_final: int
+
 
 class InFitOrBinDict(TypedDict, total=False):
     """Keys and types of inputs associated with binning and/or fitting."""
@@ -1389,6 +1396,7 @@ class InFitOrBinDict(TypedDict, total=False):
     bias_var_names: list[str]
     nd: int | None
 
+
 class OutFitOrBinDict(TypedDict, total=False):
     """Keys and types of outputs associated with binning and/or fitting."""
 
@@ -1398,6 +1406,7 @@ class OutFitOrBinDict(TypedDict, total=False):
     # Binning dataframe
     bin_dataframe: pd.DataFrame
 
+
 class InIterativeDict(TypedDict, total=False):
     """Keys and types of inputs associated with iterative methods."""
 
@@ -1406,6 +1415,7 @@ class InIterativeDict(TypedDict, total=False):
     # Tolerance at which to stop algorithm (unit specified in method)
     tolerance: float
 
+
 class OutIterativeDict(TypedDict, total=False):
     """Keys and types of outputs associated with iterative methods."""
 
@@ -1413,6 +1423,7 @@ class OutIterativeDict(TypedDict, total=False):
     last_iteration: int
     # Tolerances of each iteration until threshold
     all_tolerances: list[float]
+
 
 class InSpecificDict(TypedDict, total=False):
     """Keys and types of inputs associated with specific methods."""
@@ -1424,6 +1435,16 @@ class InSpecificDict(TypedDict, total=False):
     # (Using Deramp) Polynomial order selected for deramping
     poly_order: int
 
+    # (Using GradientDescending)
+    # (Temporary) Parameters of gradient descending
+    # TODO: Remove in favor of kwargs like for curve_fit?
+    x0: tuple[float, float]
+    bounds: tuple[float, float]
+    deltainit: int
+    deltatol: float
+    feps: float
+
+
 class OutSpecificDict(TypedDict, total=False):
     """Keys and types of outputs associated with specific methods."""
 
@@ -1432,11 +1453,13 @@ class OutSpecificDict(TypedDict, total=False):
     # (Using multi-frequency sum of sinusoids fit) Best performing number of frequencies
     best_nb_sin_freq: int
 
+
 class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+
 
 class OutAffineDict(TypedDict, total=False):
     """Keys and types of outputs associated with affine methods."""
@@ -1446,9 +1469,10 @@ class OutAffineDict(TypedDict, total=False):
     matrix: NDArrayf
 
     # For translation methods
-    shift_z: np.floating[Any] | float | np.integer[Any] | int
     shift_x: float
     shift_y: float
+    shift_z: float
+
 
 class InputCoregDict(TypedDict, total=False):
 
@@ -1458,12 +1482,14 @@ class InputCoregDict(TypedDict, total=False):
     specific: InSpecificDict
     affine: InAffineDict
 
+
 class OutputCoregDict(TypedDict, total=False):
     random: OutRandomDict
     fitorbin: OutFitOrBinDict
     iterative: OutIterativeDict
     specific: OutSpecificDict
     affine: OutAffineDict
+
 
 class CoregDict(TypedDict, total=False):
     """
@@ -1507,30 +1533,33 @@ class Coreg:
 
         # Automatically sort input keys into their appropriate nested level using only the TypedDicts defined
         # above which make up the CoregDict altogether
-        dict_meta = {"inputs": {}, "outputs": {}}
+        dict_meta = CoregDict(inputs={}, outputs={})
         if meta is not None:
             # First, we get the levels ("random", "fitorbin", etc)
             list_input_levels = list(InputCoregDict.__annotations__.keys())
             # Then the list of keys per level
-            keys_per_level = [list(globals()[InputCoregDict.__annotations__[l].__forward_arg__].__annotations__.keys())
-                              for l in list_input_levels]
+            keys_per_level = [
+                list(globals()[InputCoregDict.__annotations__[lv].__forward_arg__].__annotations__.keys())
+                for lv in list_input_levels
+            ]
 
             # Join all keys for input check
             all_keys = [k for lv in keys_per_level for k in lv]
             for k in meta.keys():
                 if k not in all_keys:
-                    raise ValueError(f"Coregistration metadata key {k} is not supported. "
-                                     f"Should be one of {', '.join(all_keys)}")
+                    raise ValueError(
+                        f"Coregistration metadata key {k} is not supported. " f"Should be one of {', '.join(all_keys)}"
+                    )
 
             # Add keys to inputs
             for k, v in meta.items():
                 for i, lv in enumerate(list_input_levels):
                     # If level does not exist, create it
                     if lv not in dict_meta["inputs"]:
-                        dict_meta["inputs"].update({lv: {}})
+                        dict_meta["inputs"].update({lv: {}})  # type: ignore
                     # If key exist, write and continue
                     if k in keys_per_level[i]:
-                        dict_meta["inputs"][lv][k] = v
+                        dict_meta["inputs"][lv][k] = v  # type: ignore
                         continue
 
         self._meta: CoregDict = dict_meta
@@ -1600,56 +1629,61 @@ class Coreg:
 
         # Map each key name to a descriptor string
         dict_key_to_str = {
-           "subsample": "Subsample size requested",
-           "random_state": "Random generator for subsampling and (if applic.) optimizer",
-           "subsample_final": "Subsample size drawn from valid values",
-           "fit_or_bin": "Fit, bin or bin+fit",
-           "fit_func": "Function to fit",
-           "fit_optimizer": "Optimizer for fitting",
-           "bin_statistic": "Binning statistic",
-           "bin_sizes": "Bin sizes or edges",
-           "bin_apply_method": "Bin apply method",
-           "bias_var_names": "Names of bias variables",
-           "nd": "Number of dimensions of binning and fitting",
-           "fit_params": "Optimized function parameters",
-           "fit_perr": "Error on optimized function parameters",
-           "bin_dataframe": "Binning output dataframe",
-           "max_iterations": "Maximum number of iterations",
-           "tolerance": "Tolerance to reach (pixel size)",
-           "last_iteration": "Iteration at which algorithm stopped",
-           "all_tolerances": "Tolerances at each iteration",
-           "terrain_attribute": "Terrain attribute used for TerrainBias",
-           "angle": "Angle used for DirectionalBias",
-           "poly_order": "Polynomial order used for Deramp",
-           "best_poly_order": "Best polynomial order kept for fit",
-           "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
-           "vshift_reduc_func": "Reduction function used to remove vertical shift",
-           "centroid": "Centroid found for affine rotation",
-           "shift_x": "Eastward shift estimated (georeferenced unit)",
-           "shift_y": "Northward shift estimated (georeferenced unit)",
-           "shift_z": "Vertical shift estimated (elevation unit)",
-           "matrix": "Affine transformation matrix estimated"
+            "subsample": "Subsample size requested",
+            "random_state": "Random generator for subsampling and (if applic.) optimizer",
+            "subsample_final": "Subsample size drawn from valid values",
+            "fit_or_bin": "Fit, bin or bin+fit",
+            "fit_func": "Function to fit",
+            "fit_optimizer": "Optimizer for fitting",
+            "bin_statistic": "Binning statistic",
+            "bin_sizes": "Bin sizes or edges",
+            "bin_apply_method": "Bin apply method",
+            "bias_var_names": "Names of bias variables",
+            "nd": "Number of dimensions of binning and fitting",
+            "fit_params": "Optimized function parameters",
+            "fit_perr": "Error on optimized function parameters",
+            "bin_dataframe": "Binning output dataframe",
+            "max_iterations": "Maximum number of iterations",
+            "tolerance": "Tolerance to reach (pixel size)",
+            "last_iteration": "Iteration at which algorithm stopped",
+            "all_tolerances": "Tolerances at each iteration",
+            "terrain_attribute": "Terrain attribute used for TerrainBias",
+            "angle": "Angle used for DirectionalBias",
+            "poly_order": "Polynomial order used for Deramp",
+            "best_poly_order": "Best polynomial order kept for fit",
+            "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
+            "vshift_reduc_func": "Reduction function used to remove vertical shift",
+            "centroid": "Centroid found for affine rotation",
+            "shift_x": "Eastward shift estimated (georeferenced unit)",
+            "shift_y": "Northward shift estimated (georeferenced unit)",
+            "shift_z": "Vertical shift estimated (elevation unit)",
+            "matrix": "Affine transformation matrix estimated",
         }
 
         # Define max tabulation: longest name + 2 spaces
         tab = np.max([len(v) for v in dict_key_to_str.values()]) + 2
 
         # Get list of existing deepest level keys in this coreg metadata
-        def recursive_items(dictionary) -> Iterable:
+        def recursive_items(dictionary: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
             for key, value in dictionary.items():
                 if type(value) is dict:
                     yield from recursive_items(value)
                 else:
                     yield (key, value)
+
         existing_deep_keys = [k for k, v in recursive_items(self._meta)]
 
         # Formatting function for key values, rounding up digits for numbers and returning function names
         def format_coregdict_values(val: Any) -> str:
-            # Round to a certain number of digits relative to magnitude
-            round_to_n = lambda x, n: round(x, -int(np.floor(np.log10(x))) + (n - 1))
+
+            # Function to round to a certain number of digits relative to magnitude, for floating numbers
+            def round_to_n(x: float | np.floating[Any], n: int) -> float | np.floating[Any]:
+                return round(x, -int(np.floor(np.log10(x))) + (n - 1))  # type: ignore
+
+            # Different formatting depending on key value type
             if isinstance(val, (float, np.floating)):
                 return str(round_to_n(val, 3))
-            elif isinstance(val, Callable):
+            elif callable(val):
                 return val.__name__
             else:
                 return str(val)
@@ -1660,44 +1694,52 @@ class Coreg:
             "fitorbin": "Fitting and binning",
             "affine": "Affine",
             "iterative": "Iterative",
-            "specific": "Specific"}
+            "specific": "Specific",
+        }
 
         header_str = [
             "Generic coregistration information \n",
             f"  Method:       {self.__class__.__name__} \n",
             f"  Is affine?    {self.is_affine} \n",
-            f"  Fit called?   {self._fit_called} \n"
+            f"  Fit called?   {self._fit_called} \n",
         ]
 
         # Add lines for inputs
         inputs_str = [
             "Inputs\n",
-            ]
+        ]
         for lk, lv in sublevels.items():
             if lk in self._meta["inputs"].keys():
-                existing_level_keys = [(k, v) for k, v in self._meta["inputs"][lk].items() if k in existing_deep_keys]
-                if len(existing_level_keys)>0:
+                existing_level_keys = [
+                    (k, v) for k, v in self._meta["inputs"][lk].items() if k in existing_deep_keys  # type: ignore
+                ]
+                if len(existing_level_keys) > 0:
                     inputs_str += [f"  {lv}\n"]
-                    inputs_str += [f"    {dict_key_to_str[k]}:".ljust(tab)+f"{format_coregdict_values(v)}\n" for k, v in existing_level_keys]
+                    inputs_str += [
+                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                        for k, v in existing_level_keys
+                    ]
 
         # And for outputs
-        outputs_str = [
-            "Outputs\n"
-        ]
+        outputs_str = ["Outputs\n"]
         # If dict not empty
         if self._meta["outputs"]:
             for lk, lv in sublevels.items():
                 if lk in self._meta["outputs"].keys():
-                    existing_level_keys = [(k, v) for k, v in self._meta["outputs"][lk].items() if k in existing_deep_keys]
+                    existing_level_keys = [
+                        (k, v) for k, v in self._meta["outputs"][lk].items() if k in existing_deep_keys  # type: ignore
+                    ]
                     if len(existing_level_keys) > 0:
                         outputs_str += [f"  {lv}\n"]
-                        outputs_str += [f"    {dict_key_to_str[k]}:".ljust(tab)+f"{format_coregdict_values(v)}\n" for k, v in existing_level_keys]
+                        outputs_str += [
+                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                            for k, v in existing_level_keys
+                        ]
         elif not self._fit_called:
             outputs_str += ["  None yet (fit not called)"]
         # Not sure this case can happen, but just in case
         else:
             outputs_str += ["  None"]
-
 
         # Combine into final string
         final_str = header_str + inputs_str + outputs_str
@@ -2472,7 +2514,6 @@ class Coreg:
                 params = results[0]
 
             self._meta["outputs"]["fitorbin"].update({"fit_params": params})
-
 
         # Save results of binning if it was performed
         elif self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["bin", "bin_and_fit"] and df is not None:

@@ -28,6 +28,8 @@ from xdem.coreg.base import (
     CoregDict,
     InFitOrBinDict,
     InRandomDict,
+    InSpecificDict,
+    OutAffineDict,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
     _preprocess_pts_rst_subsample,
@@ -652,7 +654,7 @@ def _gradient_descending_fit_func(
 def _gradient_descending_fit(
     dh_interpolator: Callable[[float, float], NDArrayf],
     res: tuple[float, float],
-    params_noisyopt: NoisyOptDict,
+    params_noisyopt: InSpecificDict,
     verbose: bool = False,
 ) -> tuple[float, float, float]:
     # Define cost function
@@ -691,7 +693,7 @@ def gradient_descending(
     transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
     params_random: InRandomDict,
-    params_noisyopt: NoisyOptDict,
+    params_noisyopt: InSpecificDict,
     z_name: str,
     weights: NDArrayf | None = None,
     verbose: bool = False,
@@ -807,7 +809,7 @@ class AffineCoreg(Coreg):
         self,
         subsample: float | int = 1.0,
         matrix: NDArrayf | None = None,
-        meta: CoregDict | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
@@ -841,24 +843,24 @@ class AffineCoreg(Coreg):
         return meta_centroid[0], meta_centroid[1], meta_centroid[2]
 
     def _preprocess_rst_pts_subsample_interpolator(
-            self,
-            ref_elev: NDArrayf | gpd.GeoDataFrame,
-            tba_elev: NDArrayf | gpd.GeoDataFrame,
-            inlier_mask: NDArrayb,
-            aux_vars: dict[str, NDArrayf] | None = None,
-            weights: NDArrayf | None = None,
-            transform: rio.transform.Affine | None = None,
-            crs: rio.crs.CRS | None = None,
-            area_or_point: Literal["Area", "Point"] | None = None,
-            z_name: str = "z",
-            verbose: bool = False,
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        aux_vars: dict[str, NDArrayf] | None = None,
+        weights: NDArrayf | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
+        z_name: str = "z",
+        verbose: bool = False,
     ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
         """
         Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
         (and interpolated in the case of point-raster input).
 
-        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary variables
-        at subsampled points.
+        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary
+        variables at subsampled points.
         """
 
         # Get random parameters
@@ -1175,7 +1177,7 @@ class ICP(AffineCoreg):
 
         # Generate the x and y coordinates for the TBA DEM
         x_coords, y_coords = _coords(transform, rst_elev.shape, area_or_point=None)
-        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
+        centroid = (float(np.mean([bounds.left, bounds.right])), float(np.mean([bounds.bottom, bounds.top])), 0.0)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= centroid[0]
         y_coords -= centroid[1]
@@ -1250,12 +1252,16 @@ class ICP(AffineCoreg):
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
         # Save outputs
-        output_affine = {"centroid": centroid,
-                         "matrix": matrix,
-                         "shift_x": matrix[0, 3],
-                         "shift_y": matrix[1, 3],
-                         "shift_z": matrix[2, 3]}
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            centroid=centroid,
+            matrix=matrix,
+            shift_x=matrix[0, 3],
+            shift_y=matrix[1, 3],
+            shift_z=matrix[2, 3],
+        )
         self._meta["outputs"]["affine"] = output_affine
+
 
 class NuthKaab(AffineCoreg):
     """
@@ -1382,7 +1388,8 @@ class NuthKaab(AffineCoreg):
         )
 
         # Write output to class
-        output_affine = {"shift_x": easting_offset, "shift_y": northing_offset, "shift_z": vertical_offset}
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
 
     def _to_matrix_func(self) -> NDArrayf:
@@ -1431,15 +1438,8 @@ class GradientDescending(AffineCoreg):
         or when the function value differs by less than the tolerance 'feps' along all directions.
 
         """
-        self._meta: CoregDict
-
-        super().__init__(subsample=subsample)
-
-        self._meta["bounds"] = bounds
-        self._meta["x0"] = x0
-        self._meta["deltainit"] = deltainit
-        self._meta["deltatol"] = deltatol
-        self._meta["feps"] = feps
+        meta = {"bounds": bounds, "x0": x0, "deltainit": deltainit, "deltatol": deltatol, "feps": feps}
+        super().__init__(subsample=subsample, meta=meta)
 
     def _fit_rst_rst(
         self,
@@ -1489,9 +1489,7 @@ class GradientDescending(AffineCoreg):
         # Get parameters stored in class
         params_random = self._meta["inputs"]["random"]
         # TODO: Replace params noisyopt by kwargs? (=classic optimizer parameters)
-        params_noisyopt: NoisyOptDict = {
-            k: self._meta.get(k) for k in ["bounds", "x0", "deltainit", "deltatol", "feps"]
-        }  # type: ignore
+        params_noisyopt = self._meta["inputs"]["specific"]
 
         # Call method
         easting_offset, northing_offset, vertical_offset = gradient_descending(
@@ -1508,7 +1506,8 @@ class GradientDescending(AffineCoreg):
         )
 
         # Write output to class
-        output_affine = {"shift_x": easting_offset, "shift_y": northing_offset, "shift_z": vertical_offset}
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
 
     def _to_matrix_func(self) -> NDArrayf:

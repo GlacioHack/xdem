@@ -72,7 +72,10 @@ class TestBiasCorr:
 
         # Check default "fit" .metadata was set properly
         assert bcorr.meta["inputs"]["fitorbin"]["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
-        assert bcorr.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        assert (
+            bcorr.meta["inputs"]["fitorbin"]["fit_optimizer"]
+            == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        )
         assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] is None
 
         # Check that the _is_affine attribute is set correctly
@@ -95,7 +98,10 @@ class TestBiasCorr:
         assert bcorr3.meta["inputs"]["fitorbin"]["bin_sizes"] == 10
         assert bcorr3.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
         assert bcorr3.meta["inputs"]["fitorbin"]["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
-        assert bcorr3.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        assert (
+            bcorr3.meta["inputs"]["fitorbin"]["fit_optimizer"]
+            == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        )
 
         assert bcorr3.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin_and_fit"
 
@@ -405,7 +411,9 @@ class TestBiasCorr:
 
         assert dirbias.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin_and_fit"
         assert dirbias.meta["inputs"]["fitorbin"]["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
-        assert dirbias.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
+        assert (
+            dirbias.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
+        )
         assert dirbias.meta["inputs"]["specific"]["angle"] == 45
         assert dirbias._needs_vars is False
 
@@ -441,7 +449,10 @@ class TestBiasCorr:
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
             dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, subsample=10000, random_state=42)
             xdem.spatialstats.plot_1d_binning(
-                df=dirbias.meta["outputs"]["fitorbin"]["bin_dataframe"], var_name="angle", statistic_name="nanmedian", min_count=0
+                df=dirbias.meta["outputs"]["fitorbin"]["bin_dataframe"],
+                var_name="angle",
+                statistic_name="nanmedian",
+                min_count=0,
             )
             plt.show()
 

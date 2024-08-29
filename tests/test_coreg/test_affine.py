@@ -237,8 +237,11 @@ class TestAffineCoreg:
         nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output .metadata is always the same
-        shifts = (nuth_kaab.meta["outputs"]["affine"]["shift_x"], nuth_kaab.meta["outputs"]["affine"]["shift_y"],
-                  nuth_kaab.meta["outputs"]["affine"]["shift_z"])
+        shifts = (
+            nuth_kaab.meta["outputs"]["affine"]["shift_x"],
+            nuth_kaab.meta["outputs"]["affine"]["shift_y"],
+            nuth_kaab.meta["outputs"]["affine"]["shift_z"],
+        )
         assert shifts == pytest.approx((-9.200801, -2.785496, -1.9818556))
 
     def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
@@ -261,8 +264,11 @@ class TestAffineCoreg:
             random_state=42,
         )
 
-        shifts = (gds.meta["outputs"]["affine"]["shift_x"], gds.meta["outputs"]["affine"]["shift_y"],
-                  gds.meta["outputs"]["affine"]["shift_z"])
+        shifts = (
+            gds.meta["outputs"]["affine"]["shift_x"],
+            gds.meta["outputs"]["affine"]["shift_y"],
+            gds.meta["outputs"]["affine"]["shift_z"],
+        )
         assert shifts == pytest.approx((-10.625, -2.65625, 1.940031), abs=10e-5)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
