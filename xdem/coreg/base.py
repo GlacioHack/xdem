@@ -500,20 +500,7 @@ def _postprocess_coreg_apply(
 # Statistical functions (to be moved in future)
 ###############################################
 
-
-class RandomDict(TypedDict, total=False):
-    """
-    Defining the type of each possible key in the metadata dictionary associated with randomization and subsampling.
-    """
-
-    # Subsample size input by user, and final size available from data
-    subsample: int | float
-    subsample_final: int
-    # Random state (for subsampling, but also possibly for some fitting methods)
-    random_state: int | np.random.Generator | None
-
-
-def _get_subsample_on_valid_mask(params_random: RandomDict, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
+def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
     """
     Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
 
@@ -565,7 +552,7 @@ def _get_subsample_on_valid_mask(params_random: RandomDict, valid_mask: NDArrayb
 
 
 def _get_subsample_mask_pts_rst(
-    params_random: RandomDict,
+    params_random: InRandomDict,
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
@@ -708,7 +695,7 @@ def _subsample_on_mask(
 
 
 def _preprocess_pts_rst_subsample(
-    params_random: RandomDict,
+    params_random: InRandomDict,
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
@@ -754,30 +741,10 @@ def _preprocess_pts_rst_subsample(
     return sub_ref, sub_tba, sub_bias_vars
 
 
-class FitOrBinDict(TypedDict, total=False):
-    """
-    Defining the type of each possible key in the metadata dictionary of "fit_or_bin" arguments.
-    """
-
-    # Whether to fit, bin or bin then fit
-    fit_or_bin: Literal["fit", "bin", "bin_and_fit"]
-
-    # Fit parameters: function to fit and optimizer
-    fit_func: Callable[..., NDArrayf]
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
-    # Bin parameters: bin sizes, statistic and apply method
-    bin_sizes: int | dict[str, int | Iterable[float]]
-    bin_statistic: Callable[[NDArrayf], np.floating[Any]]
-    bin_apply_method: Literal["linear", "per_bin"]
-    # Name of variables, and number of dimensions
-    bias_var_names: list[str]
-    nd: int | None
-
-
 @overload
 def _bin_or_and_fit_nd(
     fit_or_bin: Literal["fit"],
-    params_fit_or_bin: FitOrBinDict,
+    params_fit_or_bin: InFitOrBinDict,
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
@@ -790,7 +757,7 @@ def _bin_or_and_fit_nd(
 @overload
 def _bin_or_and_fit_nd(
     fit_or_bin: Literal["bin"],
-    params_fit_or_bin: FitOrBinDict,
+    params_fit_or_bin: InFitOrBinDict,
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
@@ -803,7 +770,7 @@ def _bin_or_and_fit_nd(
 @overload
 def _bin_or_and_fit_nd(
     fit_or_bin: Literal["bin_and_fit"],
-    params_fit_or_bin: FitOrBinDict,
+    params_fit_or_bin: InFitOrBinDict,
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
@@ -815,7 +782,7 @@ def _bin_or_and_fit_nd(
 
 def _bin_or_and_fit_nd(
     fit_or_bin: Literal["fit", "bin", "bin_and_fit"],
-    params_fit_or_bin: FitOrBinDict,
+    params_fit_or_bin: InFitOrBinDict,
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
@@ -1393,23 +1360,88 @@ class NotImplementedCoregApply(NotImplementedError):
     Error subclass for not implemented coregistration fit methods; mainly to differentiate with NotImplementedError
     """
 
-
-class CoregDict(TypedDict, total=False):
-    """
-    Defining the type of each possible key in the metadata dictionary of Process classes.
-    The parameter total=False means that the key are not required. In the recent PEP 655 (
-    https://peps.python.org/pep-0655/) there is an easy way to specific Required or NotRequired for each key, if we
-    want to change this in the future.
-    """
-
-    # Common to all coreg objects
+class InRandomDict(TypedDict, total=False):
+    """Keys and types of inputs associated with randomization and subsampling."""
+    # Subsample size input by user
     subsample: int | float
-    subsample_final: int
+    # Random state (for subsampling, but also possibly for some fitting methods)
     random_state: int | np.random.Generator | None
 
-    # 1/ Affine metadata
+class OutRandomDict(TypedDict, total=False):
+    """Keys and types of outputs associated with randomization and subsampling."""
+    # Final subsample size available from valid data
+    subsample_final: int
 
-    # Common to all affine transforms
+class InFitOrBinDict(TypedDict, total=False):
+    """Keys and types of inputs associated with binning and/or fitting."""
+
+    # Whether to fit, bin or bin then fit
+    fit_or_bin: Literal["fit", "bin", "bin_and_fit"]
+
+    # Fit parameters: function to fit and optimizer
+    fit_func: Callable[..., NDArrayf]
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
+    # Bin parameters: bin sizes, statistic and apply method
+    bin_sizes: int | dict[str, int | Iterable[float]]
+    bin_statistic: Callable[[NDArrayf], np.floating[Any]]
+    bin_apply_method: Literal["linear", "per_bin"]
+    # Name of variables, and number of dimensions
+    bias_var_names: list[str]
+    nd: int | None
+
+class OutFitOrBinDict(TypedDict, total=False):
+    """Keys and types of outputs associated with binning and/or fitting."""
+
+    # Optimized parameters for fitted function, and its error
+    fit_params: NDArrayf
+    fit_perr: NDArrayf
+    # Binning dataframe
+    bin_dataframe: pd.DataFrame
+
+class InIterativeDict(TypedDict, total=False):
+    """Keys and types of inputs associated with iterative methods."""
+
+    # Maximum number of iterations
+    max_iterations: int
+    # Tolerance at which to stop algorithm (unit specified in method)
+    tolerance: float
+
+class OutIterativeDict(TypedDict, total=False):
+    """Keys and types of outputs associated with iterative methods."""
+
+    # Iteration at which the algorithm stopped
+    last_iteration: int
+    # Tolerances of each iteration until threshold
+    all_tolerances: list[float]
+
+class InSpecificDict(TypedDict, total=False):
+    """Keys and types of inputs associated with specific methods."""
+
+    # (Using TerrainBias) Selected terrain attribute
+    terrain_attribute: str
+    # (Using DirectionalBias) Angle for directional correction
+    angle: float
+    # (Using Deramp) Polynomial order selected for deramping
+    poly_order: int
+
+class OutSpecificDict(TypedDict, total=False):
+    """Keys and types of outputs associated with specific methods."""
+
+    # (Using multi-order polynomial fit) Best performing polynomial order
+    best_poly_order: int
+    # (Using multi-frequency sum of sinusoids fit) Best performing number of frequencies
+    best_nb_sin_freq: int
+
+class InAffineDict(TypedDict, total=False):
+    """Keys and types of inputs associated with affine methods."""
+
+    # Vertical shift reduction function for methods focusing on translation coregistration
+    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+
+class OutAffineDict(TypedDict, total=False):
+    """Keys and types of outputs associated with affine methods."""
+
+    # Output common to all affine transforms
     centroid: tuple[float, float, float]
     matrix: NDArrayf
 
@@ -1418,47 +1450,37 @@ class CoregDict(TypedDict, total=False):
     shift_x: float
     shift_y: float
 
-    # Methods-specific
-    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+class InputCoregDict(TypedDict, total=False):
 
-    # 2/ BiasCorr classes generic metadata
+    random: InRandomDict
+    fitorbin: InFitOrBinDict
+    iterative: InIterativeDict
+    specific: InSpecificDict
+    affine: InAffineDict
 
-    # Inputs
-    fit_or_bin: Literal["fit", "bin", "bin_and_fit"]
-    fit_func: Callable[..., NDArrayf]
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
-    bin_sizes: int | dict[str, int | Iterable[float]]
-    bin_statistic: Callable[[NDArrayf], np.floating[Any]]
-    bin_apply_method: Literal["linear"] | Literal["per_bin"]
-    bias_var_names: list[str]
-    nd: int | None
+class OutputCoregDict(TypedDict, total=False):
+    random: OutRandomDict
+    fitorbin: OutFitOrBinDict
+    iterative: OutIterativeDict
+    specific: OutSpecificDict
+    affine: OutAffineDict
 
-    # Outputs
-    fit_params: NDArrayf
-    fit_perr: NDArrayf
-    bin_dataframe: pd.DataFrame
+class CoregDict(TypedDict, total=False):
+    """
+    Defining the type of each possible key in the metadata dictionary of Coreg classes.
+    The parameter total=False means that the key are not required. In the recent PEP 655 (
+    https://peps.python.org/pep-0655/) there is an easy way to specific Required or NotRequired for each key, if we
+    want to change this in the future.
+    """
 
-    # Specific inputs or outputs
-    terrain_attribute: str
-    angle: float
-    poly_order: int
-    nb_sin_freq: int
+    # For a classic coregistration
+    inputs: InputCoregDict
+    outputs: OutputCoregDict
 
-    # 3/ CoregPipeline metadata
+    # For pipelines and blocks
+    # TODO: Move out to separate TypedDict?
     step_meta: list[Any]
     pipeline: list[Any]
-
-    # 4/ Iteration parameters
-    max_iterations: int
-    offset_threshold: float
-
-    # (Temporary) Parameters of gradient descending
-    # TODO: Remove in favor of kwargs like for curve_fit?
-    x0: tuple[float, float]
-    bounds: tuple[float, float]
-    deltainit: int
-    deltatol: float
-    feps: float
 
 
 CoregType = TypeVar("CoregType", bound="Coreg")
@@ -1476,18 +1498,49 @@ class Coreg:
 
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
+    _is_translation: bool | None = None
     _needs_vars: bool = False
     _meta: CoregDict
 
-    def __init__(self, meta: CoregDict | None = None) -> None:
+    def __init__(self, meta: dict[str, Any] | None = None) -> None:
         """Instantiate a generic processing step method."""
-        self._meta: CoregDict = meta or {}  # All __init__ functions should instantiate an empty dict.
+
+        # Automatically sort input keys into their appropriate nested level using only the TypedDicts defined
+        # above which make up the CoregDict altogether
+        dict_meta = {"inputs": {}, "outputs": {}}
+        if meta is not None:
+            # First, we get the levels ("random", "fitorbin", etc)
+            list_input_levels = list(InputCoregDict.__annotations__.keys())
+            # Then the list of keys per level
+            keys_per_level = [list(globals()[InputCoregDict.__annotations__[l].__forward_arg__].__annotations__.keys())
+                              for l in list_input_levels]
+
+            # Join all keys for input check
+            all_keys = [k for lv in keys_per_level for k in lv]
+            for k in meta.keys():
+                if k not in all_keys:
+                    raise ValueError(f"Coregistration metadata key {k} is not supported. "
+                                     f"Should be one of {', '.join(all_keys)}")
+
+            # Add keys to inputs
+            for k, v in meta.items():
+                for i, lv in enumerate(list_input_levels):
+                    # If level does not exist, create it
+                    if lv not in dict_meta["inputs"]:
+                        dict_meta["inputs"].update({lv: {}})
+                    # If key exist, write and continue
+                    if k in keys_per_level[i]:
+                        dict_meta["inputs"][lv][k] = v
+                        continue
+
+        self._meta: CoregDict = dict_meta
 
     def copy(self: CoregType) -> CoregType:
         """Return an identical copy of the class."""
         new_coreg = self.__new__(type(self))
 
-        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items()}
+        # Need a deepcopy for dictionaries, or it would just point towards the copied coreg
+        new_coreg.__dict__ = {key: copy.deepcopy(value) for key, value in self.__dict__.items()}
 
         return new_coreg
 
@@ -1512,10 +1565,149 @@ class Coreg:
         return self._is_affine
 
     @property
+    def is_translation(self) -> bool | None:
+
+        # If matrix exists in keys, or can be derived from to_matrix(), we conclude
+        if "matrix" in self._meta["outputs"]["affine"].keys():
+            matrix = self._meta["outputs"]["affine"]["matrix"]
+        else:
+            try:
+                matrix = self.to_matrix()
+            # Otherwise we can't yet and return None
+            except (AttributeError, ValueError, NotImplementedError):
+                self._is_translation = None
+                return None
+
+        # If the 3x3 rotation sub-matrix is the identity matrix, we have a translation
+        return np.allclose(matrix[:3, :3], np.diag(np.ones(3)), rtol=10e-3)
+
+    @property
     def meta(self) -> CoregDict:
         """Metadata dictionary of the coregistration."""
 
         return self._meta
+
+    @overload
+    def info(self, verbose: Literal[True] = ...) -> None:
+        ...
+
+    @overload
+    def info(self, verbose: Literal[False]) -> str:
+        ...
+
+    def info(self, verbose: bool = True) -> None | str:
+        """Summarize information about this coregistration."""
+
+        # Map each key name to a descriptor string
+        dict_key_to_str = {
+           "subsample": "Subsample size requested",
+           "random_state": "Random generator for subsampling and (if applic.) optimizer",
+           "subsample_final": "Subsample size drawn from valid values",
+           "fit_or_bin": "Fit, bin or bin+fit",
+           "fit_func": "Function to fit",
+           "fit_optimizer": "Optimizer for fitting",
+           "bin_statistic": "Binning statistic",
+           "bin_sizes": "Bin sizes or edges",
+           "bin_apply_method": "Bin apply method",
+           "bias_var_names": "Names of bias variables",
+           "nd": "Number of dimensions of binning and fitting",
+           "fit_params": "Optimized function parameters",
+           "fit_perr": "Error on optimized function parameters",
+           "bin_dataframe": "Binning output dataframe",
+           "max_iterations": "Maximum number of iterations",
+           "tolerance": "Tolerance to reach (pixel size)",
+           "last_iteration": "Iteration at which algorithm stopped",
+           "all_tolerances": "Tolerances at each iteration",
+           "terrain_attribute": "Terrain attribute used for TerrainBias",
+           "angle": "Angle used for DirectionalBias",
+           "poly_order": "Polynomial order used for Deramp",
+           "best_poly_order": "Best polynomial order kept for fit",
+           "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
+           "vshift_reduc_func": "Reduction function used to remove vertical shift",
+           "centroid": "Centroid found for affine rotation",
+           "shift_x": "Eastward shift estimated (georeferenced unit)",
+           "shift_y": "Northward shift estimated (georeferenced unit)",
+           "shift_z": "Vertical shift estimated (elevation unit)",
+           "matrix": "Affine transformation matrix estimated"
+        }
+
+        # Define max tabulation: longest name + 2 spaces
+        tab = np.max([len(v) for v in dict_key_to_str.values()]) + 2
+
+        # Get list of existing deepest level keys in this coreg metadata
+        def recursive_items(dictionary) -> Iterable:
+            for key, value in dictionary.items():
+                if type(value) is dict:
+                    yield from recursive_items(value)
+                else:
+                    yield (key, value)
+        existing_deep_keys = [k for k, v in recursive_items(self._meta)]
+
+        # Formatting function for key values, rounding up digits for numbers and returning function names
+        def format_coregdict_values(val: Any) -> str:
+            # Round to a certain number of digits relative to magnitude
+            round_to_n = lambda x, n: round(x, -int(np.floor(np.log10(x))) + (n - 1))
+            if isinstance(val, (float, np.floating)):
+                return str(round_to_n(val, 3))
+            elif isinstance(val, Callable):
+                return val.__name__
+            else:
+                return str(val)
+
+        # Sublevels of metadata to show
+        sublevels = {
+            "random": "Randomization",
+            "fitorbin": "Fitting and binning",
+            "affine": "Affine",
+            "iterative": "Iterative",
+            "specific": "Specific"}
+
+        header_str = [
+            "Generic coregistration information \n",
+            f"  Method:       {self.__class__.__name__} \n",
+            f"  Is affine?    {self.is_affine} \n",
+            f"  Fit called?   {self._fit_called} \n"
+        ]
+
+        # Add lines for inputs
+        inputs_str = [
+            "Inputs\n",
+            ]
+        for lk, lv in sublevels.items():
+            if lk in self._meta["inputs"].keys():
+                existing_level_keys = [(k, v) for k, v in self._meta["inputs"][lk].items() if k in existing_deep_keys]
+                if len(existing_level_keys)>0:
+                    inputs_str += [f"  {lv}\n"]
+                    inputs_str += [f"    {dict_key_to_str[k]}:".ljust(tab)+f"{format_coregdict_values(v)}\n" for k, v in existing_level_keys]
+
+        # And for outputs
+        outputs_str = [
+            "Outputs\n"
+        ]
+        # If dict not empty
+        if self._meta["outputs"]:
+            for lk, lv in sublevels.items():
+                if lk in self._meta["outputs"].keys():
+                    existing_level_keys = [(k, v) for k, v in self._meta["outputs"][lk].items() if k in existing_deep_keys]
+                    if len(existing_level_keys) > 0:
+                        outputs_str += [f"  {lv}\n"]
+                        outputs_str += [f"    {dict_key_to_str[k]}:".ljust(tab)+f"{format_coregdict_values(v)}\n" for k, v in existing_level_keys]
+        elif not self._fit_called:
+            outputs_str += ["  None yet (fit not called)"]
+        # Not sure this case can happen, but just in case
+        else:
+            outputs_str += ["  None"]
+
+
+        # Combine into final string
+        final_str = header_str + inputs_str + outputs_str
+
+        # Return as string or print (default)
+        if verbose:
+            print("".join(final_str))
+            return None
+        else:
+            return "".join(final_str)
 
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
         """
@@ -1525,13 +1717,13 @@ class Coreg:
         """
 
         # Get random parameters
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
+        params_random = self._meta["inputs"]["random"]
 
         # Derive subsampling mask
         sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
 
         # Write final subsample to class
-        self._meta["subsample_final"] = np.count_nonzero(sub_mask)
+        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
 
         return sub_mask
 
@@ -1540,7 +1732,7 @@ class Coreg:
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        aux_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
+        aux_vars: dict[str, NDArrayf] | None = None,
         weights: NDArrayf | None = None,
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
@@ -1549,29 +1741,41 @@ class Coreg:
         verbose: bool = False,
     ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
         """
-        Pre-process all inputs (reference elevation, to-be-aligned elevation and bias variables) by subsampling, and
-        interpolating in the case of point-raster datasets, at the same points.
+        Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
+        (and interpolated in the case of point-raster input).
+
+        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary
+        variables at subsampled points.
         """
 
         # Get random parameters
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
+        params_random: InRandomDict = self._meta["inputs"]["random"]
 
-        # Subsample raster-raster or raster-point inputs
-        sub_ref, sub_tba, sub_bias_vars = _preprocess_pts_rst_subsample(
+        # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
+        sub_mask = _get_subsample_mask_pts_rst(
             params_random=params_random,
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            aux_vars=aux_vars,
             transform=transform,
-            crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
+            aux_vars=aux_vars,
             verbose=verbose,
         )
 
+        # Perform subsampling on mask for all inputs
+        sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            aux_vars=aux_vars,
+            sub_mask=sub_mask,
+            transform=transform,
+            area_or_point=area_or_point,
+            z_name=z_name,
+        )
+
         # Write final subsample to class
-        self._meta["subsample_final"] = len(sub_ref)
+        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
 
         return sub_ref, sub_tba, sub_bias_vars
 
@@ -1616,7 +1820,7 @@ class Coreg:
 
             # Check if subsample argument was also defined at instantiation (not default value), and raise warning
             argspec = inspect.getfullargspec(self.__class__)
-            sub_meta = self._meta["subsample"]
+            sub_meta = self._meta["inputs"]["random"]["subsample"]
             if argspec.defaults is None or "subsample" not in argspec.args:
                 raise ValueError("The subsample argument and default need to be defined in this Coreg class.")
             sub_is_default = argspec.defaults[argspec.args.index("subsample") - 1] == sub_meta  # type: ignore
@@ -1628,11 +1832,11 @@ class Coreg:
                 )
 
             # In any case, override!
-            self._meta["subsample"] = subsample
+            self._meta["inputs"]["random"]["subsample"] = subsample
 
         # Save random_state if a subsample is used
-        if self._meta["subsample"] != 1:
-            self._meta["random_state"] = random_state
+        if self._meta["inputs"]["random"]["subsample"] != 1:
+            self._meta["inputs"]["random"]["random_state"] = random_state
 
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
@@ -1747,7 +1951,7 @@ class Coreg:
 
         :returns: The transformed DEM.
         """
-        if not self._fit_called and self._meta.get("matrix") is None:
+        if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
         elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
@@ -2168,9 +2372,6 @@ class Coreg:
 
                 if self.is_affine:  # This only works for affine, however.
 
-                    # TODO: Move this to_matrix() elsewhere, to always have the matrix available in the meta?
-                    self._meta["matrix"] = self.to_matrix()
-
                     # Not resampling is only possible for translation methods, fail with warning if passed by user
                     if not self.is_translation:
                         if not kwargs["resample"]:
@@ -2185,7 +2386,7 @@ class Coreg:
                         dem=kwargs.pop("elev"),
                         transform=transform,
                         matrix=self.to_matrix(),
-                        centroid=self._meta.get("centroid"),
+                        centroid=self._meta["outputs"]["affine"].get("centroid"),
                     )
                 else:
                     raise ValueError("Cannot transform, Coreg method is non-affine and has no implemented _apply_rst.")
@@ -2205,7 +2406,7 @@ class Coreg:
                     applied_elev = _apply_matrix_pts(
                         epc=kwargs["elev"],
                         matrix=self.to_matrix(),
-                        centroid=self._meta.get("centroid"),
+                        centroid=self._meta["outputs"]["affine"].get("centroid"),
                         z_name=kwargs.pop("z_name"),
                     )
 
@@ -2231,16 +2432,13 @@ class Coreg:
         """
 
         # Store bias variable names from the dictionary if undefined
-        if self._meta["bias_var_names"] is None:
-            self._meta["bias_var_names"] = list(bias_vars.keys())
+        if self._meta["inputs"]["fitorbin"]["bias_var_names"] is None:
+            self._meta["inputs"]["fitorbin"]["bias_var_names"] = list(bias_vars.keys())
 
         # Run the fit or bin, passing the dictionary of parameters
-        params_fit_or_bin: FitOrBinDict = {
-            k: self._meta.get(k)
-            for k in ["bias_var_names", "nd", "fit_optimizer", "fit_func", "bin_statistic", "bin_sizes"]
-        }  # type: ignore
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
         df, results = _bin_or_and_fit_nd(
-            fit_or_bin=self._meta["fit_or_bin"],
+            fit_or_bin=self._meta["inputs"]["fitorbin"]["fit_or_bin"],
             params_fit_or_bin=params_fit_or_bin,
             values=values,
             bias_vars=bias_vars,
@@ -2249,32 +2447,36 @@ class Coreg:
             **kwargs,
         )
 
+        # Initialize output dictionary
+        self.meta["outputs"]["fitorbin"] = {}
+
         # Save results if fitting was performed
-        if self._meta["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
+        if self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
 
             # Write the results to metadata in different ways depending on optimizer returns
-            if self._meta["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
+            if self._meta["inputs"]["fitorbin"]["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
                 order_or_freq = results[1]
-                if self._meta["fit_optimizer"] == robust_norder_polynomial_fit:
-                    self._meta["poly_order"] = order_or_freq
+                if self._meta["inputs"]["fitorbin"]["fit_optimizer"] == robust_norder_polynomial_fit:
+                    self._meta["outputs"]["specific"] = {"best_poly_order": order_or_freq}
                 else:
-                    self._meta["nb_sin_freq"] = order_or_freq
+                    self._meta["outputs"]["specific"] = {"best_nb_sin_freq": order_or_freq}
 
-            elif self._meta["fit_optimizer"] == scipy.optimize.curve_fit:
+            elif self._meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit:
                 params = results[0]
                 # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
                 perr = np.sqrt(np.diag(results[1]))
-                self._meta["fit_perr"] = perr
+                self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
 
             else:
                 params = results[0]
 
-            self._meta["fit_params"] = params
+            self._meta["outputs"]["fitorbin"].update({"fit_params": params})
+
 
         # Save results of binning if it was performed
-        elif self._meta["fit_or_bin"] in ["bin", "bin_and_fit"] and df is not None:
-            self._meta["bin_dataframe"] = df
+        elif self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["bin", "bin_and_fit"] and df is not None:
+            self._meta["outputs"]["fitorbin"].update({"bin_dataframe": df})
 
     def _fit_rst_rst(
         self,
@@ -2372,7 +2574,7 @@ class CoregPipeline(Coreg):
         """Return an identical copy of the class."""
         new_coreg = self.__new__(type(self))
 
-        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items() if key != "pipeline"}
+        new_coreg.__dict__ = {key: copy.deepcopy(value) for key, value in self.__dict__.items() if key != "pipeline"}
         new_coreg.pipeline = [step.copy() for step in self.pipeline]
 
         return new_coreg
@@ -2387,7 +2589,7 @@ class CoregPipeline(Coreg):
         coreg = self.pipeline[step]
 
         # Check that all variable names of this were passed
-        var_names = coreg._meta["bias_var_names"]
+        var_names = coreg._meta["inputs"]["fitorbin"]["bias_var_names"]
 
         # Raise error if bias_vars is None
         if bias_vars is None:
@@ -2439,7 +2641,7 @@ class CoregPipeline(Coreg):
         # Check if subsample arguments are different from their default value for any of the coreg steps:
         # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
         argspec = [inspect.getfullargspec(c.__class__) for c in self.pipeline]
-        sub_meta = [c.meta["subsample"] for c in self.pipeline]
+        sub_meta = [c.meta["inputs"]["random"]["subsample"] for c in self.pipeline]
         sub_is_default = [
             argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
             for i in range(len(argspec))
@@ -2562,7 +2764,7 @@ class CoregPipeline(Coreg):
     ) -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
 
         # First step and preprocessing
-        if not self._fit_called and self._meta.get("matrix") is None:
+        if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
         elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
@@ -2717,7 +2919,7 @@ class BlockwiseCoreg(Coreg):
         else:
             steps = list(self.procstep.pipeline)
         argspec = [inspect.getfullargspec(s.__class__) for s in steps]
-        sub_meta = [s._meta["subsample"] for s in steps]
+        sub_meta = [s._meta["inputs"]["random"]["subsample"] for s in steps]
         sub_is_default = [
             argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
             for i in range(len(argspec))

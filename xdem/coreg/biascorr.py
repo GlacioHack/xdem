@@ -132,11 +132,11 @@ class BiasCorr(Coreg):
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
         # Add subsample attribute
-        self._meta["fit_or_bin"] = fit_or_bin
-        self._meta["subsample"] = subsample
+        self._meta["inputs"]["fitorbin"]["fit_or_bin"] = fit_or_bin
+        self._meta["inputs"]["random"]["subsample"] = subsample
 
         # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
-        self._meta["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
+        self._meta["inputs"]["fitorbin"]["nd"] = sum(1 for _ in bias_var_names) if bias_var_names is not None else None
 
         # Update attributes
         self._is_affine = False
@@ -256,24 +256,25 @@ class BiasCorr(Coreg):
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
 
         # Check the bias_vars passed match the ones stored for this bias correction class
-        if not sorted(bias_vars.keys()) == sorted(self._meta["bias_var_names"]):
+        if not sorted(bias_vars.keys()) == sorted(self._meta["inputs"]["fitorbin"]["bias_var_names"]):
             raise ValueError(
                 "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                "instantiation or fitting: {}.".format(self._meta["bias_var_names"])
+                "instantiation or fitting: {}.".format(self._meta["inputs"]["fitorbin"]["bias_var_names"])
             )
 
         # Apply function to get correction (including if binning was done before)
-        if self.meta["fit_or_bin"] in ["fit", "bin_and_fit"]:
-            corr = self._meta["fit_func"](tuple(bias_vars.values()), *self._meta["fit_params"])
+        if self.meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"]:
+            corr = self._meta["inputs"]["fitorbin"]["fit_func"](tuple(bias_vars.values()),
+                                                                *self._meta["outputs"]["fitorbin"]["fit_params"])
 
         # Apply binning to get correction
         else:
-            if self._meta["bin_apply_method"] == "linear":
+            if self._meta["inputs"]["fitorbin"]["bin_apply_method"] == "linear":
                 # N-D interpolation of binning
                 bin_interpolator = xdem.spatialstats.interp_nd_binning(
-                    df=self._meta["bin_dataframe"],
+                    df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
                     list_var_names=list(bias_vars.keys()),
-                    statistic=self._meta["bin_statistic"],
+                    statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
                 )
                 corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
                 first_var = list(bias_vars.keys())[0]
@@ -282,10 +283,10 @@ class BiasCorr(Coreg):
             else:
                 # Get N-D binning statistic for each pixel of the new list of variables
                 corr = xdem.spatialstats.get_perbin_nd_binning(
-                    df=self._meta["bin_dataframe"],
+                    df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
                     list_var=list(bias_vars.values()),
                     list_var_names=list(bias_vars.keys()),
-                    statistic=self._meta["bin_statistic"],
+                    statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
                 )
 
         dem_corr = elev + corr
@@ -328,7 +329,7 @@ class DirectionalBias(BiasCorr):
         super().__init__(
             fit_or_bin, fit_func, fit_optimizer, bin_sizes, bin_statistic, bin_apply_method, ["angle"], subsample
         )
-        self._meta["angle"] = angle
+        self._meta["inputs"]["specific"]["angle"] = angle
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -351,7 +352,7 @@ class DirectionalBias(BiasCorr):
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
-            along_track_angle=self._meta["angle"],
+            along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
 
         # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
@@ -397,7 +398,7 @@ class DirectionalBias(BiasCorr):
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=rast_elev, crs=crs, transform=transform, nodata=-9999),
-            along_track_angle=self._meta["angle"],
+            along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
 
         # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
@@ -432,7 +433,7 @@ class DirectionalBias(BiasCorr):
         # Define the coordinates for applying the correction
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=elev, crs=crs, transform=transform, nodata=-9999),
-            along_track_angle=self._meta["angle"],
+            along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
 
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars={"angle": x}, **kwargs)
@@ -490,7 +491,7 @@ class TerrainBias(BiasCorr):
             subsample,
         )
         # This is the same as bias_var_names, but let's leave the duplicate for clarity
-        self._meta["terrain_attribute"] = terrain_attribute
+        self._meta["inputs"]["specific"]["terrain_attribute"] = terrain_attribute
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -509,18 +510,18 @@ class TerrainBias(BiasCorr):
     ) -> None:
 
         # If already passed by user, pass along
-        if bias_vars is not None and self._meta["terrain_attribute"] in bias_vars:
-            attr = bias_vars[self._meta["terrain_attribute"]]
+        if bias_vars is not None and self._meta["inputs"]["specific"]["terrain_attribute"] in bias_vars:
+            attr = bias_vars[self._meta["inputs"]["specific"]["terrain_attribute"]]
 
         # If only declared during instantiation
         else:
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self._meta["inputs"]["specific"]["terrain_attribute"] == "elevation":
                 attr = ref_elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
                     dem=ref_elev,
-                    attribute=self._meta["terrain_attribute"],
+                    attribute=self._meta["inputs"]["specific"]["terrain_attribute"],
                     resolution=(transform[0], abs(transform[4])),
                 )
 
@@ -529,7 +530,7 @@ class TerrainBias(BiasCorr):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            bias_vars={self._meta["terrain_attribute"]: attr},
+            bias_vars={self._meta["inputs"]["specific"]["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
@@ -555,8 +556,8 @@ class TerrainBias(BiasCorr):
     ) -> None:
 
         # If already passed by user, pass along
-        if bias_vars is not None and self._meta["terrain_attribute"] in bias_vars:
-            attr = bias_vars[self._meta["terrain_attribute"]]
+        if bias_vars is not None and self._meta["inputs"]["specific"]["terrain_attribute"] in bias_vars:
+            attr = bias_vars[self._meta["inputs"]["specific"]["terrain_attribute"]]
 
         # If only declared during instantiation
         else:
@@ -564,12 +565,12 @@ class TerrainBias(BiasCorr):
             rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self._meta["inputs"]["specific"]["terrain_attribute"] == "elevation":
                 attr = rast_elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
                     dem=rast_elev,
-                    attribute=self._meta["terrain_attribute"],
+                    attribute=self._meta["inputs"]["specific"]["terrain_attribute"],
                     resolution=(transform[0], abs(transform[4])),
                 )
 
@@ -578,7 +579,7 @@ class TerrainBias(BiasCorr):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            bias_vars={self._meta["terrain_attribute"]: attr},
+            bias_vars={self._meta["inputs"]["specific"]["terrain_attribute"]: attr},
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
@@ -599,13 +600,13 @@ class TerrainBias(BiasCorr):
 
         if bias_vars is None:
             # Derive terrain attribute
-            if self._meta["terrain_attribute"] == "elevation":
+            if self._meta["inputs"]["specific"]["terrain_attribute"] == "elevation":
                 attr = elev
             else:
                 attr = xdem.terrain.get_terrain_attribute(
-                    dem=elev, attribute=self._meta["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
+                    dem=elev, attribute=self._meta["inputs"]["specific"]["terrain_attribute"], resolution=(transform[0], abs(transform[4]))
                 )
-            bias_vars = {self._meta["terrain_attribute"]: attr}
+            bias_vars = {self._meta["inputs"]["specific"]["terrain_attribute"]: attr}
 
         return super()._apply_rst(elev=elev, transform=transform, crs=crs, bias_vars=bias_vars, **kwargs)
 
@@ -652,7 +653,7 @@ class Deramp(BiasCorr):
             ["xx", "yy"],
             subsample,
         )
-        self._meta["poly_order"] = poly_order
+        self._meta["inputs"]["specific"]["poly_order"] = poly_order
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -671,7 +672,7 @@ class Deramp(BiasCorr):
     ) -> None:
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
+        p0 = np.ones(shape=((self._meta["inputs"]["specific"]["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, ref_elev.shape[1]), np.arange(0, ref_elev.shape[0]))
@@ -710,7 +711,7 @@ class Deramp(BiasCorr):
         rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # The number of parameters in the first guess defines the polynomial order when calling np.polyval2d
-        p0 = np.ones(shape=((self._meta["poly_order"] + 1) ** 2))
+        p0 = np.ones(shape=((self._meta["inputs"]["specific"]["poly_order"] + 1) ** 2))
 
         # Coordinates (we don't need the actual ones, just array coordinates)
         xx, yy = np.meshgrid(np.arange(0, rast_elev.shape[1]), np.arange(0, rast_elev.shape[0]))

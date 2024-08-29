@@ -26,8 +26,8 @@ from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
-    FitOrBinDict,
-    RandomDict,
+    InFitOrBinDict,
+    InRandomDict,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
     _preprocess_pts_rst_subsample,
@@ -200,7 +200,7 @@ def _iterate_method(
     return new_inputs
 
 
-def _subsample_on_mask_with_dhinterpolator(
+def _subsample_on_mask_interpolator(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     aux_vars: None | dict[str, NDArrayf],
@@ -221,7 +221,6 @@ def _subsample_on_mask_with_dhinterpolator(
     if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
 
         # Derive coordinates and interpolator
-        # TODO: Pass area or point everywhere
         coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=area_or_point, grid=True)
         tba_elev_interpolator = _reproject_horizontal_shift_samecrs(
             tba_elev, src_transform=transform, return_interpolator=True
@@ -230,7 +229,7 @@ def _subsample_on_mask_with_dhinterpolator(
         # Subsample coordinates
         sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
 
-        def dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
+        def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
             """Elevation difference interpolator for shifted coordinates of the subsample."""
 
             # TODO: Align array axes in _reproject_horizontal... ?
@@ -268,7 +267,7 @@ def _subsample_on_mask_with_dhinterpolator(
             return_interpolator=True,
         )
 
-        def dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
+        def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
             """Elevation difference interpolator for shifted coordinates of the subsample."""
 
             diff_rst_pts = pts_elev[z_name][sub_mask].values - rst_elev_interpolator(
@@ -291,11 +290,11 @@ def _subsample_on_mask_with_dhinterpolator(
         else:
             sub_bias_vars = None
 
-    return dh_interpolator, sub_bias_vars
+    return sub_dh_interpolator, sub_bias_vars
 
 
-def _preprocess_pts_rst_subsample_with_dhinterpolator(
-    params_random: RandomDict,
+def _preprocess_pts_rst_subsample_interpolator(
+    params_random: InRandomDict,
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
@@ -328,7 +327,7 @@ def _preprocess_pts_rst_subsample_with_dhinterpolator(
     )
 
     # Return interpolator of elevation differences and subsampled auxiliary variables
-    dh_interpolator, sub_bias_vars = _subsample_on_mask_with_dhinterpolator(
+    sub_dh_interpolator, sub_bias_vars = _subsample_on_mask_interpolator(
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         aux_vars=aux_vars,
@@ -339,7 +338,7 @@ def _preprocess_pts_rst_subsample_with_dhinterpolator(
     )
 
     # Return 1D arrays of subsampled points at the same location
-    return dh_interpolator, sub_bias_vars
+    return sub_dh_interpolator, sub_bias_vars
 
 
 ################################
@@ -373,7 +372,7 @@ def _nuth_kaab_bin_fit(
     dh: NDArrayf,
     slope_tan: NDArrayf,
     aspect: NDArrayf,
-    params_fit_or_bin: FitOrBinDict,
+    params_fit_or_bin: InFitOrBinDict,
 ) -> tuple[float, float, float]:
     """
     Optimize the Nuth and Kääb (2011) function based on observed values of elevation differences, slope tangent and
@@ -399,8 +398,10 @@ def _nuth_kaab_bin_fit(
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
         raise ValueError("Nuth and Kääb method only supports 'fit' or 'bin_and_fit'.")
 
-    # Define fit_function
+    # Define fit and bin parameters
     params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func
+    params_fit_or_bin["nd"] = 1
+    params_fit_or_bin["bias_var_names"] = ["aspect"]
 
     # Run bin and fit, returning dataframe of binning and parameters of fitting
     _, results = _bin_or_and_fit_nd(
@@ -488,7 +489,7 @@ def _nuth_kaab_iteration_step(
     slope_tan: NDArrayf,
     aspect: NDArrayf,
     res: tuple[int, int],
-    params_fit_bin: FitOrBinDict,
+    params_fit_bin: InFitOrBinDict,
     verbose: bool = False,
 ) -> tuple[tuple[float, float, float], float]:
     """
@@ -511,7 +512,7 @@ def _nuth_kaab_iteration_step(
         raise ValueError(
             "The subsample contains no more valid values. This can happen is the horizontal shift to "
             "correct is very large, or if the algorithm diverged. To ensure all possible points can "
-            "be used, use subsample=1."
+            "be used at any iteration step, use subsample=1."
         )
     dh_step = dh_step[mask_valid]
     slope_tan = slope_tan[mask_valid]
@@ -545,8 +546,8 @@ def nuth_kaab(
     area_or_point: Literal["Area", "Point"] | None,
     tolerance: float,
     max_iterations: int,
-    params_fit_or_bin: FitOrBinDict,
-    params_random: RandomDict,
+    params_fit_or_bin: InFitOrBinDict,
+    params_random: InRandomDict,
     z_name: str,
     weights: NDArrayf | None = None,
     verbose: bool = False,
@@ -578,7 +579,7 @@ def nuth_kaab(
 
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     aux_vars = {"slope_tan": slope_tan, "aspect": aspect}  # Wrap auxiliary data in dictionary to use generic function
-    dh_interpolator, sub_aux_vars = _preprocess_pts_rst_subsample_with_dhinterpolator(
+    sub_dh_interpolator, sub_aux_vars = _preprocess_pts_rst_subsample_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -598,7 +599,7 @@ def nuth_kaab(
     res = _res(transform)
     # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
     assert sub_aux_vars is not None  # Mypy: dictionary cannot be None here
-    constant_inputs = (dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
+    constant_inputs = (sub_dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
     final_offsets = _iterate_method(
         method=_nuth_kaab_iteration_step,
         iterating_input=initial_offset,
@@ -689,7 +690,7 @@ def gradient_descending(
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
-    params_random: RandomDict,
+    params_random: InRandomDict,
     params_noisyopt: NoisyOptDict,
     z_name: str,
     weights: NDArrayf | None = None,
@@ -709,7 +710,7 @@ def gradient_descending(
         print("Running gradient descending coregistration (Zhihao, in prep.)")
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    dh_interpolator, _ = _preprocess_pts_rst_subsample_with_dhinterpolator(
+    dh_interpolator, _ = _preprocess_pts_rst_subsample_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -742,7 +743,7 @@ def vertical_shift(
     transform: rio.transform.Affine,
     crs: rio.crs.CRS,
     area_or_point: Literal["Area", "Point"] | None,
-    params_random: RandomDict,
+    params_random: InRandomDict,
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]],
     z_name: str,
     weights: NDArrayf | None = None,
@@ -800,6 +801,7 @@ class AffineCoreg(Coreg):
 
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
+    _is_translation: bool | None = None
 
     def __init__(
         self,
@@ -809,27 +811,20 @@ class AffineCoreg(Coreg):
     ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
-        super().__init__(meta=meta)
-
+        if meta is None:
+            meta = {}
         # Define subsample size
-        self._meta["subsample"] = subsample
+        meta.update({"subsample": subsample})
+        super().__init__(meta=meta)
 
         if matrix is not None:
             with warnings.catch_warnings():
                 # This error is fixed in the upcoming 1.8
                 warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
-            self._meta["matrix"] = valid_matrix
+            self._meta["outputs"]["affine"] = {"matrix": valid_matrix}
 
         self._is_affine = True
-
-    @property
-    def is_translation(self) -> bool | None:
-
-        if "matrix" in self._meta.keys():
-            # If the 3x3 rotation sub-matrix is the identity matrix, we have a translation
-            return np.allclose(self._meta["matrix"][:3, :3], np.diag(np.ones(3)), rtol=10e-3)
-        return None
 
     def to_matrix(self) -> NDArrayf:
         """Convert the transform to a 4x4 transformation matrix."""
@@ -837,13 +832,66 @@ class AffineCoreg(Coreg):
 
     def centroid(self) -> tuple[float, float, float] | None:
         """Get the centroid of the coregistration, if defined."""
-        meta_centroid = self._meta.get("centroid")
+        meta_centroid = self._meta["outputs"]["affine"].get("centroid")
 
         if meta_centroid is None:
             return None
 
         # Unpack the centroid in case it is in an unexpected format (an array, list or something else).
         return meta_centroid[0], meta_centroid[1], meta_centroid[2]
+
+    def _preprocess_rst_pts_subsample_interpolator(
+            self,
+            ref_elev: NDArrayf | gpd.GeoDataFrame,
+            tba_elev: NDArrayf | gpd.GeoDataFrame,
+            inlier_mask: NDArrayb,
+            aux_vars: dict[str, NDArrayf] | None = None,
+            weights: NDArrayf | None = None,
+            transform: rio.transform.Affine | None = None,
+            crs: rio.crs.CRS | None = None,
+            area_or_point: Literal["Area", "Point"] | None = None,
+            z_name: str = "z",
+            verbose: bool = False,
+    ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
+        """
+        Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
+        (and interpolated in the case of point-raster input).
+
+        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary variables
+        at subsampled points.
+        """
+
+        # Get random parameters
+        params_random = self._meta["inputs"]["random"]
+
+        # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
+        sub_mask = _get_subsample_mask_pts_rst(
+            params_random=params_random,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            area_or_point=area_or_point,
+            aux_vars=aux_vars,
+            verbose=verbose,
+        )
+
+        # Return interpolator of elevation differences and subsampled auxiliary variables
+        sub_dh_interpolator, sub_bias_vars = _subsample_on_mask_interpolator(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            aux_vars=aux_vars,
+            sub_mask=sub_mask,
+            transform=transform,
+            area_or_point=area_or_point,
+            z_name=z_name,
+        )
+
+        # Write final subsample to class
+        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
+
+        # Return 1D arrays of subsampled points at the same location
+        return sub_dh_interpolator, sub_bias_vars
 
     @classmethod
     def from_matrix(cls, matrix: NDArrayf) -> AffineCoreg:
@@ -888,7 +936,7 @@ class AffineCoreg(Coreg):
         # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
 
         # Try to see if a matrix exists.
-        meta_matrix = self._meta.get("matrix")
+        meta_matrix = self._meta["outputs"]["affine"].get("matrix")
         if meta_matrix is not None:
             assert meta_matrix.shape == (4, 4), f"Invalid _meta matrix shape. Expected: (4, 4), got {meta_matrix.shape}"
             return meta_matrix
@@ -969,7 +1017,7 @@ class VerticalShift(AffineCoreg):
         """Estimate the vertical shift using the vshift_func."""
 
         # Get parameters stored in class
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
+        params_random = self._meta["inputs"]["random"]
 
         vshift = vertical_shift(
             ref_elev=ref_elev,
@@ -979,20 +1027,20 @@ class VerticalShift(AffineCoreg):
             crs=crs,
             area_or_point=area_or_point,
             params_random=params_random,
-            vshift_reduc_func=self._meta["vshift_reduc_func"],
+            vshift_reduc_func=self._meta["inputs"]["affine"]["vshift_reduc_func"],
             z_name=z_name,
             weights=weights,
             verbose=verbose,
             **kwargs,
         )
 
-        self._meta["shift_z"] = vshift
+        self._meta["outputs"]["affine"] = {"shift_z": vshift}
 
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["shift_z"]
+        empty_matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return empty_matrix
 
@@ -1202,12 +1250,12 @@ class ICP(AffineCoreg):
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
         # Save outputs
-        self._meta["centroid"] = centroid
-        self._meta["matrix"] = matrix
-        self._meta["shift_x"] = matrix[0, 3]
-        self._meta["shift_y"] = matrix[1, 3]
-        self._meta["shift_z"] = matrix[2, 3]
-
+        output_affine = {"centroid": centroid,
+                         "matrix": matrix,
+                         "shift_x": matrix[0, 3],
+                         "shift_y": matrix[1, 3],
+                         "shift_z": matrix[2, 3]}
+        self._meta["outputs"]["affine"] = output_affine
 
 class NuthKaab(AffineCoreg):
     """
@@ -1243,10 +1291,14 @@ class NuthKaab(AffineCoreg):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
 
+        # Define iterative parameters
+        meta_input_iterative = {"max_iterations": max_iterations, "tolerance": offset_threshold}
+
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is preferefind
         if not bin_before_fit:
             meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
+            meta_fit.update(meta_input_iterative)
             super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
         else:
             meta_bin_and_fit = {
@@ -1256,10 +1308,8 @@ class NuthKaab(AffineCoreg):
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
             }
+            meta_bin_and_fit.update(meta_input_iterative)
             super().__init__(subsample=subsample, meta=meta_bin_and_fit)  # type: ignore
-
-        self._meta["max_iterations"] = max_iterations
-        self._meta["offset_threshold"] = offset_threshold
 
     def _fit_rst_rst(
         self,
@@ -1311,13 +1361,8 @@ class NuthKaab(AffineCoreg):
         """
 
         # Get parameters stored in class
-        # TODO: Add those parameter extraction as short class methods? Otherwise list will have to be updated
-        #  everywhere at every change
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
-        params_fit_or_bin: FitOrBinDict = {
-            k: self._meta.get(k)
-            for k in ["bias_var_names", "nd", "fit_optimizer", "fit_func", "bin_statistic", "bin_sizes", "fit_or_bin"]
-        }  # type: ignore
+        params_random = self._meta["inputs"]["random"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
 
         # Call method
         easting_offset, northing_offset, vertical_offset = nuth_kaab(
@@ -1332,23 +1377,22 @@ class NuthKaab(AffineCoreg):
             verbose=verbose,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
-            max_iterations=self._meta["max_iterations"],
-            tolerance=self._meta["offset_threshold"],
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
         )
 
         # Write output to class
-        self._meta["shift_x"] = easting_offset
-        self._meta["shift_y"] = northing_offset
-        self._meta["shift_z"] = vertical_offset
+        output_affine = {"shift_x": easting_offset, "shift_y": northing_offset, "shift_z": vertical_offset}
+        self._meta["outputs"]["affine"] = output_affine
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
 
         # We add a translation, on the last column
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] -= self._meta["shift_x"]
-        matrix[1, 3] -= self._meta["shift_y"]
-        matrix[2, 3] += self._meta["shift_z"]
+        matrix[0, 3] -= self._meta["outputs"]["affine"]["shift_x"]
+        matrix[1, 3] -= self._meta["outputs"]["affine"]["shift_y"]
+        matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return matrix
 
@@ -1443,7 +1487,7 @@ class GradientDescending(AffineCoreg):
     ) -> None:
 
         # Get parameters stored in class
-        params_random: RandomDict = {k: self._meta.get(k) for k in ["subsample", "random_state"]}  # type: ignore
+        params_random = self._meta["inputs"]["random"]
         # TODO: Replace params noisyopt by kwargs? (=classic optimizer parameters)
         params_noisyopt: NoisyOptDict = {
             k: self._meta.get(k) for k in ["bounds", "x0", "deltainit", "deltatol", "feps"]
@@ -1464,16 +1508,15 @@ class GradientDescending(AffineCoreg):
         )
 
         # Write output to class
-        self._meta["shift_x"] = easting_offset
-        self._meta["shift_y"] = northing_offset
-        self._meta["shift_z"] = vertical_offset
+        output_affine = {"shift_x": easting_offset, "shift_y": northing_offset, "shift_z": vertical_offset}
+        self._meta["outputs"]["affine"] = output_affine
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += self._meta["shift_x"]
-        matrix[1, 3] += self._meta["shift_y"]
-        matrix[2, 3] += self._meta["shift_z"]
+        matrix[0, 3] += self._meta["outputs"]["affine"]["shift_x"]
+        matrix[1, 3] += self._meta["outputs"]["affine"]["shift_y"]
+        matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return matrix

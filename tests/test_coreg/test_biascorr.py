@@ -71,41 +71,41 @@ class TestBiasCorr:
         bcorr = biascorr.BiasCorr()
 
         # Check default "fit" .metadata was set properly
-        assert bcorr.meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
-        assert bcorr.meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
-        assert bcorr.meta["bias_var_names"] is None
+        assert bcorr.meta["inputs"]["fitorbin"]["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
+        assert bcorr.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] is None
 
         # Check that the _is_affine attribute is set correctly
         assert not bcorr._is_affine
-        assert bcorr.meta["fit_or_bin"] == "fit"
+        assert bcorr.meta["inputs"]["fitorbin"]["fit_or_bin"] == "fit"
         assert bcorr._needs_vars is True
 
         # Or with default bin arguments
         bcorr2 = biascorr.BiasCorr(fit_or_bin="bin")
 
-        assert bcorr2.meta["bin_sizes"] == 10
-        assert bcorr2.meta["bin_statistic"] == np.nanmedian
-        assert bcorr2.meta["bin_apply_method"] == "linear"
+        assert bcorr2.meta["inputs"]["fitorbin"]["bin_sizes"] == 10
+        assert bcorr2.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
+        assert bcorr2.meta["inputs"]["fitorbin"]["bin_apply_method"] == "linear"
 
-        assert bcorr2.meta["fit_or_bin"] == "bin"
+        assert bcorr2.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin"
 
         # Or with default bin_and_fit arguments
         bcorr3 = biascorr.BiasCorr(fit_or_bin="bin_and_fit")
 
-        assert bcorr3.meta["bin_sizes"] == 10
-        assert bcorr3.meta["bin_statistic"] == np.nanmedian
-        assert bcorr3.meta["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
-        assert bcorr3.meta["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
+        assert bcorr3.meta["inputs"]["fitorbin"]["bin_sizes"] == 10
+        assert bcorr3.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
+        assert bcorr3.meta["inputs"]["fitorbin"]["fit_func"] == biascorr.fit_workflows["norder_polynomial"]["func"]
+        assert bcorr3.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["norder_polynomial"]["optimizer"]
 
-        assert bcorr3.meta["fit_or_bin"] == "bin_and_fit"
+        assert bcorr3.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin_and_fit"
 
         # Or defining bias variable names on instantiation as iterable
         bcorr4 = biascorr.BiasCorr(bias_var_names=("slope", "ncc"))
-        assert bcorr4.meta["bias_var_names"] == ["slope", "ncc"]
+        assert bcorr4.meta["inputs"]["fitorbin"]["bias_var_names"] == ["slope", "ncc"]
 
         # Same using an array
         bcorr5 = biascorr.BiasCorr(bias_var_names=np.array(["slope", "ncc"]))
-        assert bcorr5.meta["bias_var_names"] == ["slope", "ncc"]
+        assert bcorr5.meta["inputs"]["fitorbin"]["bias_var_names"] == ["slope", "ncc"]
 
     def test_biascorr__errors(self) -> None:
         """Test the errors that should be raised by BiasCorr."""
@@ -227,7 +227,7 @@ class TestBiasCorr:
         bcorr.fit(**elev_fit_args, subsample=100, random_state=42)
 
         # Check that variable names are defined during fit
-        assert bcorr.meta["bias_var_names"] == ["elevation"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation"]
 
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
@@ -258,7 +258,7 @@ class TestBiasCorr:
         bcorr.fit(**elev_fit_args, subsample=100, p0=[0, 0, 0, 0], random_state=42)
 
         # Check that variable names are defined during fit
-        assert bcorr.meta["bias_var_names"] == ["elevation", "slope"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
@@ -281,7 +281,7 @@ class TestBiasCorr:
         bcorr.fit(**elev_fit_args, subsample=1000, random_state=42)
 
         # Check that variable names are defined during fit
-        assert bcorr.meta["bias_var_names"] == ["elevation"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation"]
 
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
@@ -304,7 +304,7 @@ class TestBiasCorr:
         bcorr.fit(**elev_fit_args, subsample=10000, random_state=42)
 
         # Check that variable names are defined during fit
-        assert bcorr.meta["bias_var_names"] == ["elevation", "slope"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
@@ -353,7 +353,7 @@ class TestBiasCorr:
         bcorr.fit(**elev_fit_args, subsample=1000, random_state=42)
 
         # Check that variable names are defined during fit
-        assert bcorr.meta["bias_var_names"] == ["elevation"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation"]
 
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
@@ -392,7 +392,7 @@ class TestBiasCorr:
         bcorr.fit(**elev_fit_args, subsample=100, p0=[0, 0, 0, 0], random_state=42)
 
         # Check that variable names are defined during fit
-        assert bcorr.meta["bias_var_names"] == ["elevation", "slope"]
+        assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation", "slope"]
 
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
@@ -403,14 +403,14 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=45)
 
-        assert dirbias.meta["fit_or_bin"] == "bin_and_fit"
-        assert dirbias.meta["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
-        assert dirbias.meta["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
-        assert dirbias.meta["angle"] == 45
+        assert dirbias.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin_and_fit"
+        assert dirbias.meta["inputs"]["fitorbin"]["fit_func"] == biascorr.fit_workflows["nfreq_sumsin"]["func"]
+        assert dirbias.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
+        assert dirbias.meta["inputs"]["specific"]["angle"] == 45
         assert dirbias._needs_vars is False
 
         # Check that variable names are defined during instantiation
-        assert dirbias.meta["bias_var_names"] == ["angle"]
+        assert dirbias.meta["inputs"]["fitorbin"]["bias_var_names"] == ["angle"]
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("angle", [20, 90])  # type: ignore
@@ -441,7 +441,7 @@ class TestBiasCorr:
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
             dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, subsample=10000, random_state=42)
             xdem.spatialstats.plot_1d_binning(
-                df=dirbias.meta["bin_dataframe"], var_name="angle", statistic_name="nanmedian", min_count=0
+                df=dirbias.meta["outputs"]["fitorbin"]["bin_dataframe"], var_name="angle", statistic_name="nanmedian", min_count=0
             )
             plt.show()
 
@@ -474,7 +474,7 @@ class TestBiasCorr:
         )
 
         # Check all fit parameters are the same within 10%
-        fit_params = dirbias.meta["fit_params"]
+        fit_params = dirbias.meta["outputs"]["fitorbin"]["fit_params"]
         assert np.shape(fit_params) == np.shape(params)
         assert np.allclose(params, fit_params, rtol=0.1)
 
@@ -489,14 +489,14 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         deramp = biascorr.Deramp()
 
-        assert deramp.meta["fit_or_bin"] == "fit"
-        assert deramp.meta["fit_func"] == polynomial_2d
-        assert deramp.meta["fit_optimizer"] == scipy.optimize.curve_fit
-        assert deramp.meta["poly_order"] == 2
+        assert deramp.meta["inputs"]["fitorbin"]["fit_or_bin"] == "fit"
+        assert deramp.meta["inputs"]["fitorbin"]["fit_func"] == polynomial_2d
+        assert deramp.meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit
+        assert deramp.meta["inputs"]["specific"]["poly_order"] == 2
         assert deramp._needs_vars is False
 
         # Check that variable names are defined during instantiation
-        assert deramp.meta["bias_var_names"] == ["xx", "yy"]
+        assert deramp.meta["inputs"]["fitorbin"]["bias_var_names"] == ["xx", "yy"]
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
@@ -527,7 +527,7 @@ class TestBiasCorr:
         deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=20000, random_state=42)
 
         # Check high-order fit parameters are the same within 10%
-        fit_params = deramp.meta["fit_params"]
+        fit_params = deramp.meta["outputs"]["fitorbin"]["fit_params"]
         assert np.shape(fit_params) == np.shape(params)
         assert np.allclose(
             params.reshape(order + 1, order + 1)[-1:, -1:], fit_params.reshape(order + 1, order + 1)[-1:, -1:], rtol=0.1
@@ -544,13 +544,13 @@ class TestBiasCorr:
         # Try default "fit" parameters instantiation
         tb = biascorr.TerrainBias()
 
-        assert tb.meta["fit_or_bin"] == "bin"
-        assert tb.meta["bin_sizes"] == 100
-        assert tb.meta["bin_statistic"] == np.nanmedian
-        assert tb.meta["terrain_attribute"] == "maximum_curvature"
+        assert tb.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin"
+        assert tb.meta["inputs"]["fitorbin"]["bin_sizes"] == 100
+        assert tb.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
+        assert tb.meta["inputs"]["specific"]["terrain_attribute"] == "maximum_curvature"
         assert tb._needs_vars is False
 
-        assert tb.meta["bias_var_names"] == ["maximum_curvature"]
+        assert tb.meta["inputs"]["fitorbin"]["bias_var_names"] == ["maximum_curvature"]
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     def test_terrainbias__synthetic(self, fit_args) -> None:
@@ -591,7 +591,7 @@ class TestBiasCorr:
         )
 
         # Check high-order parameters are the same within 10%
-        bin_df = tb.meta["bin_dataframe"]
+        bin_df = tb.meta["outputs"]["fitorbin"]["bin_dataframe"]
         assert [interval.left for interval in bin_df["maximum_curvature"].values] == pytest.approx(list(bin_edges[:-1]))
         assert [interval.right for interval in bin_df["maximum_curvature"].values] == pytest.approx(list(bin_edges[1:]))
         # assert np.allclose(bin_df["nanmedian"], bias_per_bin, rtol=0.1)

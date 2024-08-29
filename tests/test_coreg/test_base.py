@@ -36,6 +36,8 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
 
 def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     """Short test function to check equality of coreg dictionary values."""
+
+    # Different equality check based on input: number, callable, array, dataframe
     if type(input1) != type(input2):
         return False
     elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
@@ -44,6 +46,9 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
         return np.array_equal(input1, input2, equal_nan=True)
     elif isinstance(input1, pd.DataFrame):
         return input1.equals(input2)
+    # If input is a dictionary, we recursively call this function to check equality of all its sub-keys
+    elif isinstance(input1, dict):
+        return all(assert_coreg_meta_equal(input1[k], input2[k]) for k in input1.keys())
     else:
         raise TypeError(f"Input type {type(input1)} not supported for this test function.")
 
@@ -83,10 +88,9 @@ class TestCoregClass:
         corr_copy = corr.copy()
 
         # Assign some attributes and .metadata after copying, respecting the CoregDict type class
-        corr._meta["shift_z"] = 30
+        corr._meta["outputs"]["affine"] = {"shift_z": 30}
         # Make sure these don't appear in the copy
         assert corr_copy.meta != corr.meta
-        assert not hasattr(corr_copy, "shift_z")
 
     def test_error_method(self) -> None:
         """Test different error measures."""
@@ -104,7 +108,7 @@ class TestCoregClass:
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == 0
 
         # Remove the vertical shift fit and see what happens.
-        vshiftcorr.meta["shift_z"] = 0
+        vshiftcorr.meta["outputs"]["affine"]["shift_z"] = 0
         # Now it should be equal to dem1 - dem2
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == -2
 
@@ -155,17 +159,17 @@ class TestCoregClass:
         # Check that default value is set properly
         coreg_full = coreg_class()
         argspec = inspect.getfullargspec(coreg_class)
-        assert coreg_full.meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+        assert coreg_full.meta["inputs"]["random"]["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
 
         # But can be overridden during fit
         coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
-        assert coreg_full.meta["subsample"] == 10000
+        assert coreg_full.meta["inputs"]["random"]["subsample"] == 10000
         # Check that the random state is properly set when subsampling explicitly or implicitly
-        assert coreg_full.meta["random_state"] == 42
+        assert coreg_full.meta["inputs"]["random"]["random_state"] == 42
 
         # Test subsampled vertical shift correction
         coreg_sub = coreg_class(subsample=0.1)
-        assert coreg_sub.meta["subsample"] == 0.1
+        assert coreg_sub.meta["inputs"]["random"]["subsample"] == 0.1
 
         # Fit the vertical shift using 10% of the unmasked data using a fraction
         coreg_sub.fit(**self.fit_params, random_state=42)
@@ -173,14 +177,14 @@ class TestCoregClass:
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
         coreg_sub = coreg_class(subsample=self.tba.data.size // 10)
-        assert coreg_sub.meta["subsample"] == self.tba.data.size // 10
+        assert coreg_sub.meta["inputs"]["random"]["subsample"] == self.tba.data.size // 10
         coreg_sub.fit(**self.fit_params, random_state=42)
 
         # Add a few performance checks
         coreg_name = coreg_class.__name__
         if coreg_name == "VerticalShift":
             # Check that the estimated vertical shifts are similar
-            assert abs(coreg_sub.meta["shift_z"] - coreg_full.meta["shift_z"]) < 0.1
+            assert abs(coreg_sub.meta["outputs"]["affine"]["shift_z"] - coreg_full.meta["outputs"]["affine"]["shift_z"]) < 0.1
 
         elif coreg_name == "NuthKaab":
             # Calculate the difference in the full vs. subsampled matrices
@@ -195,14 +199,14 @@ class TestCoregClass:
         pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=5000)
 
         # Check the arguments are properly defined
-        assert pipe.pipeline[0].meta["subsample"] == 200
-        assert pipe.pipeline[1].meta["subsample"] == 5000
+        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 200
+        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 5000
 
         # Check definition during fit
         pipe = coreg.VerticalShift() + coreg.Deramp()
         pipe.fit(**self.fit_params, subsample=1000)
-        assert pipe.pipeline[0].meta["subsample"] == 1000
-        assert pipe.pipeline[1].meta["subsample"] == 1000
+        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 1000
+        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 1000
 
     def test_subsample__errors(self) -> None:
         """Check proper errors are raised when using the subsample argument"""
@@ -277,7 +281,7 @@ class TestCoregClass:
         )
 
         # Validate that they ended up giving the same result.
-        assert vshiftcorr_r.meta["shift_z"] == vshiftcorr_a.meta["shift_z"]
+        assert vshiftcorr_r.meta["outputs"]["affine"]["shift_z"] == vshiftcorr_a.meta["outputs"]["affine"]["shift_z"]
 
         # De-shift dem2
         dem2_r = vshiftcorr_r.apply(dem2)
@@ -578,15 +582,15 @@ class TestCoregPipeline:
 
         # Create a pipeline, add some .metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["shift_z"] = 1
+        pipeline.pipeline[0]._meta["outputs"]["affine"] = {"shift_z": 1}
 
         pipeline_copy = pipeline.copy()
 
         # Add some more .metadata after copying (this should not be transferred)
-        pipeline_copy.pipeline[0]._meta["shift_y"] = 0.5 * 30
+        pipeline_copy.pipeline[0]._meta["outputs"]["affine"].update({"shift_y": 0.5 * 30})
 
         assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
-        assert pipeline_copy.pipeline[0]._meta["shift_z"]
+        assert pipeline_copy.pipeline[0]._meta["outputs"]["affine"]["shift_z"]
 
     def test_pipeline(self) -> None:
 
@@ -601,8 +605,8 @@ class TestCoregPipeline:
         # Make a new pipeline with two vertical shift correction approaches.
         pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
         # Set both "estimated" vertical shifts to be 1
-        pipeline2.pipeline[0].meta["shift_z"] = 1
-        pipeline2.pipeline[1].meta["shift_z"] = 1
+        pipeline2.pipeline[0].meta["outputs"]["affine"]["shift_z"] = 1
+        pipeline2.pipeline[1].meta["outputs"]["affine"]["shift_z"] = 1
 
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
@@ -643,8 +647,8 @@ class TestCoregPipeline:
 
         # Create a pipeline from one affine and one biascorr methods
         pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])
-        print(pipeline.pipeline[0].meta["subsample"])
-        print(pipeline.pipeline[1].meta["subsample"])
+        print(pipeline.pipeline[0].meta["inputs"]["random"]["subsample"])
+        print(pipeline.pipeline[1].meta["inputs"]["random"]["subsample"])
         bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
         pipeline.fit(**self.fit_params, bias_vars=bias_vars, subsample=5000, random_state=42)
 
@@ -710,9 +714,10 @@ class TestCoregPipeline:
         pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)
 
         for part in pipeline.pipeline:
-            assert np.abs(part.meta["shift_x"]) > 0
+            assert np.abs(part.meta["outputs"]["affine"]["shift_x"]) > 0
 
-        assert pipeline.pipeline[0].meta["shift_x"] != pipeline.pipeline[1].meta["shift_x"]
+        assert pipeline.pipeline[0].meta["outputs"]["affine"]["shift_x"] != \
+               pipeline.pipeline[1].meta["outputs"]["affine"]["shift_x"]
 
     def test_coreg_add(self) -> None:
 
@@ -724,7 +729,7 @@ class TestCoregPipeline:
 
         # Set the vertical shift attribute
         for vshift_corr in (vshift1, vshift2):
-            vshift_corr.meta["shift_z"] = vshift
+            vshift_corr.meta["outputs"]["affine"]["shift_z"] = vshift
 
         # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
         vshift3 = vshift1 + vshift2
@@ -752,8 +757,8 @@ class TestCoregPipeline:
         aligned_dem, _ = many_vshifts.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of EXACTLY zero
-        assert many_vshifts.pipeline[1].meta["shift_z"] == pytest.approx(0, abs=10e-5)
-        assert many_vshifts.pipeline[2].meta["shift_z"] == pytest.approx(0, abs=10e-5)
+        assert many_vshifts.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
+        assert many_vshifts.pipeline[2].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
 
         # Many horizontal + vertical shifts
         many_nks = coreg.NuthKaab() + coreg.NuthKaab() + coreg.NuthKaab()
@@ -761,12 +766,12 @@ class TestCoregPipeline:
         aligned_dem, _ = many_nks.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of NEARLY zero
-        assert many_nks.pipeline[1].meta["shift_z"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[1].meta["shift_x"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[1].meta["shift_y"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2].meta["shift_z"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2].meta["shift_x"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2].meta["shift_y"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_x"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_x"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=0.02)
 
         # Test 2: Reflectivity
         # Those two pipelines should give almost the same result
