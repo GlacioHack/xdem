@@ -32,8 +32,12 @@ def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     if crop:
         # Crop to smaller extents for test speed
         res = reference_dem.res
-        crop_geom = (reference_dem.bounds.left, reference_dem.bounds.bottom,
-                     reference_dem.bounds.left + res[0] * 300, reference_dem.bounds.bottom + res[1] * 300)
+        crop_geom = (
+            reference_dem.bounds.left,
+            reference_dem.bounds.bottom,
+            reference_dem.bounds.left + res[0] * 300,
+            reference_dem.bounds.bottom + res[1] * 300,
+        )
         reference_dem = reference_dem.crop(crop_geom)
         to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
 
@@ -118,9 +122,7 @@ class TestAffineCoreg:
 
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
-        dst_transform = _shift_transform(
-            transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced"
-        )
+        dst_transform = _shift_transform(transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
         output = _reproject_horizontal_shift_samecrs(
             raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform
         )

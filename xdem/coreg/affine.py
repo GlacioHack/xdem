@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypedDict, TypeVar, overload
+from typing import Any, Callable, Iterable, Literal, TypeVar, overload
 
 import xdem.coreg.base
 
@@ -17,7 +17,6 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 import scipy.optimize
-from geoutils.raster import Raster
 from geoutils.raster.georeferencing import _bounds, _coords, _res
 from geoutils.raster.interpolate import _interp_points
 from tqdm import trange
@@ -621,6 +620,7 @@ def nuth_kaab(
 # 2/ Gradient descending
 ########################
 
+
 def _gradient_descending_fit_func(
     coords_offsets: tuple[float, float],
     dh_interpolator: Callable[[float, float], NDArrayf],
@@ -701,7 +701,7 @@ def gradient_descending(
         print("Running gradient descending coregistration (Zhihao, in prep.)")
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    dh_interpolator, _ , subsample_final = _preprocess_pts_rst_subsample_interpolator(
+    dh_interpolator, _, subsample_final = _preprocess_pts_rst_subsample_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -1074,8 +1074,12 @@ class ICP(AffineCoreg):
         if not _has_cv2:
             raise ValueError("Optional dependency needed. Install 'opencv'")
 
-        meta = {"max_iterations": max_iterations, "tolerance": tolerance, "rejection_scale": rejection_scale,
-                "num_levels": num_levels}
+        meta = {
+            "max_iterations": max_iterations,
+            "tolerance": tolerance,
+            "rejection_scale": rejection_scale,
+            "num_levels": num_levels,
+        }
         super().__init__(subsample=subsample, meta=meta)
 
     def _fit_rst_rst(
@@ -1198,9 +1202,12 @@ class ICP(AffineCoreg):
 
         if any(col not in point_elev for col in ["nx", "ny", "nz"]):
             for key, arr in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
-                point_elev[key] = _interp_points(arr, transform=transform, area_or_point=area_or_point,
-                                                 points=(point_elev["E"].values, point_elev["N"].values))
-
+                point_elev[key] = _interp_points(
+                    arr,
+                    transform=transform,
+                    area_or_point=area_or_point,
+                    points=(point_elev["E"].values, point_elev["N"].values),
+                )
 
         point_elev["E"] -= centroid[0]
         point_elev["N"] -= centroid[1]
@@ -1289,8 +1296,9 @@ class NuthKaab(AffineCoreg):
         """
 
         # Input checks
-        _check_inputs_bin_before_fit(bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes,
-                                     bin_statistic=bin_statistic)
+        _check_inputs_bin_before_fit(
+            bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
+        )
 
         # Define iterative parameters
         meta_input_iterative = {"max_iterations": max_iterations, "tolerance": offset_threshold}

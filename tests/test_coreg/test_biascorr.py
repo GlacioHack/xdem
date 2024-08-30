@@ -27,8 +27,12 @@ def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
 
     # Crop to smaller extents for test speed
     res = reference_dem.res
-    crop_geom = (reference_dem.bounds.left, reference_dem.bounds.bottom,
-                 reference_dem.bounds.left + res[0] * 300, reference_dem.bounds.bottom + res[1] * 300)
+    crop_geom = (
+        reference_dem.bounds.left,
+        reference_dem.bounds.bottom,
+        reference_dem.bounds.left + res[0] * 300,
+        reference_dem.bounds.bottom + res[1] * 300,
+    )
     reference_dem = reference_dem.crop(crop_geom)
     to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
 
