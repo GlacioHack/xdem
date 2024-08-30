@@ -305,7 +305,7 @@ def _preprocess_pts_rst_subsample_interpolator(
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
     verbose: bool = False,
-) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
+) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf], int]:
     """
     Mirrors coreg.base._preprocess_pts_rst_subsample, but returning an interpolator for efficiency in iterative methods.
 
@@ -339,8 +339,11 @@ def _preprocess_pts_rst_subsample_interpolator(
         z_name=z_name,
     )
 
+    # Derive subsample size to pass back to class
+    subsample_final = np.count_nonzero(sub_mask)
+
     # Return 1D arrays of subsampled points at the same location
-    return sub_dh_interpolator, sub_bias_vars
+    return sub_dh_interpolator, sub_bias_vars, subsample_final
 
 
 ################################
@@ -554,7 +557,7 @@ def nuth_kaab(
     weights: NDArrayf | None = None,
     verbose: bool = False,
     **kwargs: Any,
-) -> tuple[float, float, float]:
+) -> tuple[tuple[float, float, float], int]:
     """
     Nuth and Kääb (2011) iterative coregistration.
 
@@ -581,7 +584,7 @@ def nuth_kaab(
 
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     aux_vars = {"slope_tan": slope_tan, "aspect": aspect}  # Wrap auxiliary data in dictionary to use generic function
-    sub_dh_interpolator, sub_aux_vars = _preprocess_pts_rst_subsample_interpolator(
+    sub_dh_interpolator, sub_aux_vars, subsample_final = _preprocess_pts_rst_subsample_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -611,26 +614,12 @@ def nuth_kaab(
         verbose=verbose,
     )
 
-    return final_offsets
+    return final_offsets, subsample_final
 
 
 ########################
 # 2/ Gradient descending
 ########################
-
-
-class NoisyOptDict(TypedDict, total=False):
-    """
-    Defining the type of each possible key in the metadata dictionary associated with randomization and subsampling.
-    """
-
-    # Parameters to be passed to the noisy optimization
-    x0: tuple[float, ...]
-    bounds: tuple[float, float]
-    deltainit: int
-    deltatol: float
-    feps: float
-
 
 def _gradient_descending_fit_func(
     coords_offsets: tuple[float, float],
@@ -697,7 +686,7 @@ def gradient_descending(
     z_name: str,
     weights: NDArrayf | None = None,
     verbose: bool = False,
-) -> tuple[float, float, float]:
+) -> tuple[tuple[float, float, float], int]:
     """
     Gradient descending coregistration method (Zhihao, in prep.), for any point-raster or raster-raster input,
     including subsampling and interpolation to the same points.
@@ -712,7 +701,7 @@ def gradient_descending(
         print("Running gradient descending coregistration (Zhihao, in prep.)")
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    dh_interpolator, _ = _preprocess_pts_rst_subsample_interpolator(
+    dh_interpolator, _ , subsample_final = _preprocess_pts_rst_subsample_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -730,7 +719,7 @@ def gradient_descending(
         dh_interpolator=dh_interpolator, res=res, params_noisyopt=params_noisyopt, verbose=verbose
     )
 
-    return final_offsets
+    return final_offsets, subsample_final
 
 
 ###################
@@ -751,7 +740,7 @@ def vertical_shift(
     weights: NDArrayf | None = None,
     verbose: bool = False,
     **kwargs: Any,
-) -> float:
+) -> tuple[float, int]:
     """
     Vertical shift coregistration, for any point-raster or raster-raster input, including subsampling.
     """
@@ -783,7 +772,10 @@ def vertical_shift(
     if verbose:
         print("Vertical shift estimated")
 
-    return vshift
+    # Get final subsample size
+    subsample_final = len(sub_ref)
+
+    return vshift, subsample_final
 
 
 ##################################
@@ -1021,7 +1013,7 @@ class VerticalShift(AffineCoreg):
         # Get parameters stored in class
         params_random = self._meta["inputs"]["random"]
 
-        vshift = vertical_shift(
+        vshift, subsample_final = vertical_shift(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -1036,6 +1028,7 @@ class VerticalShift(AffineCoreg):
             **kwargs,
         )
 
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
         self._meta["outputs"]["affine"] = {"shift_z": vshift}
 
     def _to_matrix_func(self) -> NDArrayf:
@@ -1081,13 +1074,9 @@ class ICP(AffineCoreg):
         if not _has_cv2:
             raise ValueError("Optional dependency needed. Install 'opencv'")
 
-        # TODO: Move these to _meta?
-        self.max_iterations = max_iterations
-        self.tolerance = tolerance
-        self.rejection_scale = rejection_scale
-        self.num_levels = num_levels
-
-        super().__init__(subsample=subsample)
+        meta = {"max_iterations": max_iterations, "tolerance": tolerance, "rejection_scale": rejection_scale,
+                "num_levels": num_levels}
+        super().__init__(subsample=subsample, meta=meta)
 
     def _fit_rst_rst(
         self,
@@ -1111,7 +1100,7 @@ class ICP(AffineCoreg):
         resolution = _res(transform)
 
         # Generate the x and y coordinates for the reference_dem
-        x_coords, y_coords = _coords(transform, ref_elev.shape, area_or_point=None)
+        x_coords, y_coords = _coords(transform, ref_elev.shape, area_or_point=area_or_point)
         gradient_x, gradient_y = np.gradient(ref_elev)
 
         normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
@@ -1176,7 +1165,7 @@ class ICP(AffineCoreg):
         resolution = _res(transform)
 
         # Generate the x and y coordinates for the TBA DEM
-        x_coords, y_coords = _coords(transform, rst_elev.shape, area_or_point=None)
+        x_coords, y_coords = _coords(transform, rst_elev.shape, area_or_point=area_or_point)
         centroid = (float(np.mean([bounds.left, bounds.right])), float(np.mean([bounds.bottom, bounds.top])), 0.0)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= centroid[0]
@@ -1185,10 +1174,9 @@ class ICP(AffineCoreg):
         gradient_x, gradient_y = np.gradient(rst_elev)
 
         # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
-        dem_kwargs = {"transform": transform, "crs": rio.CRS.from_epsg(32633), "nodata": -9999.0}
-        normal_east = Raster.from_array(np.sin(np.arctan(gradient_y / resolution[1])) * -1, **dem_kwargs)
-        normal_north = Raster.from_array(np.sin(np.arctan(gradient_x / resolution[0])), **dem_kwargs)
-        normal_up = Raster.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
+        normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
+        normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
+        normal_up = 1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0)
 
         valid_mask = ~np.isnan(rst_elev) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
 
@@ -1198,9 +1186,9 @@ class ICP(AffineCoreg):
                 x_coords[valid_mask],
                 y_coords[valid_mask],
                 rst_elev[valid_mask],
-                normal_east.data[valid_mask],
-                normal_north.data[valid_mask],
-                normal_up.data[valid_mask],
+                normal_east[valid_mask],
+                normal_north[valid_mask],
+                normal_up[valid_mask],
             ]
         ).squeeze()
 
@@ -1209,12 +1197,10 @@ class ICP(AffineCoreg):
         point_elev["N"] = point_elev.geometry.y.values
 
         if any(col not in point_elev for col in ["nx", "ny", "nz"]):
-            for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
-                raster.tags["AREA_OR_POINT"] = "Area"
-                point_elev[key] = raster.interp_points(
-                    (point_elev["E"].values, point_elev["N"].values),
-                    shift_area_or_point=True,
-                )
+            for key, arr in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
+                point_elev[key] = _interp_points(arr, transform=transform, area_or_point=area_or_point,
+                                                 points=(point_elev["E"].values, point_elev["N"].values))
+
 
         point_elev["E"] -= centroid[0]
         point_elev["N"] -= centroid[1]
@@ -1226,7 +1212,12 @@ class ICP(AffineCoreg):
             points[key][:, 0] -= resolution[0] / 2
             points[key][:, 1] -= resolution[1] / 2
 
-        icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
+        # Extract parameters and pass them to method
+        max_it = self._meta["inputs"]["iterative"]["max_iterations"]
+        tol = self._meta["inputs"]["iterative"]["tolerance"]
+        rej = self._meta["inputs"]["specific"]["rejection_scale"]
+        num_lv = self._meta["inputs"]["specific"]["num_levels"]
+        icp = cv2.ppf_match_3d_ICP(max_it, tol, rej, num_lv)
         if verbose:
             print("Running ICP...")
         try:
@@ -1296,6 +1287,10 @@ class NuthKaab(AffineCoreg):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
+
+        # Input checks
+        _check_inputs_bin_before_fit(bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes,
+                                     bin_statistic=bin_statistic)
 
         # Define iterative parameters
         meta_input_iterative = {"max_iterations": max_iterations, "tolerance": offset_threshold}
@@ -1371,7 +1366,7 @@ class NuthKaab(AffineCoreg):
         params_fit_or_bin = self._meta["inputs"]["fitorbin"]
 
         # Call method
-        easting_offset, northing_offset, vertical_offset = nuth_kaab(
+        (easting_offset, northing_offset, vertical_offset), subsample_final = nuth_kaab(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -1391,6 +1386,7 @@ class NuthKaab(AffineCoreg):
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
         output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
@@ -1492,7 +1488,7 @@ class GradientDescending(AffineCoreg):
         params_noisyopt = self._meta["inputs"]["specific"]
 
         # Call method
-        easting_offset, northing_offset, vertical_offset = gradient_descending(
+        (easting_offset, northing_offset, vertical_offset), subsample_final = gradient_descending(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -1509,6 +1505,7 @@ class GradientDescending(AffineCoreg):
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
         output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

@@ -1444,6 +1444,10 @@ class InSpecificDict(TypedDict, total=False):
     deltatol: float
     feps: float
 
+    # (Using ICP)
+    rejection_scale: float
+    num_levels: int
+
 
 class OutSpecificDict(TypedDict, total=False):
     """Keys and types of outputs associated with specific methods."""
@@ -2738,11 +2742,13 @@ class CoregPipeline(Coreg):
             # Perform the step fit
             coreg.fit(**main_args_fit)
 
-            # Step apply: one return for a geodataframe, two returns for array/transform
-            if isinstance(tba_dem_mod, gpd.GeoDataFrame):
-                tba_dem_mod = coreg.apply(**main_args_apply)
-            else:
-                tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
+            # Step apply: one output for a geodataframe, two outputs for array/transform
+            # We only run this step if it's not the last, otherwise it is unused!
+            if i != (len(self.pipeline) - 1):
+                if isinstance(tba_dem_mod, gpd.GeoDataFrame):
+                    tba_dem_mod = coreg.apply(**main_args_apply)
+                else:
+                    tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
 
         # Flag that the fitting function has been called.
         self._fit_called = True

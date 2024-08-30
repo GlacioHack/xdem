@@ -21,11 +21,18 @@ PLOT = False
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_raster = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_raster = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
+    reference_dem = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_dem = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    return reference_raster, to_be_aligned_raster, glacier_mask
+    # Crop to smaller extents for test speed
+    res = reference_dem.res
+    crop_geom = (reference_dem.bounds.left, reference_dem.bounds.bottom,
+                 reference_dem.bounds.left + res[0] * 300, reference_dem.bounds.bottom + res[1] * 300)
+    reference_dem = reference_dem.crop(crop_geom)
+    to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
+
+    return reference_dem, to_be_aligned_dem, glacier_mask
 
 
 class TestBiasCorr:
@@ -43,7 +50,6 @@ class TestBiasCorr:
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
-
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     # Raster-Point

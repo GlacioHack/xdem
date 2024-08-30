@@ -31,6 +31,13 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
+    # Crop to smaller extents for test speed
+    res = reference_dem.res
+    crop_geom = (reference_dem.bounds.left, reference_dem.bounds.bottom,
+                 reference_dem.bounds.left + res[0] * 300, reference_dem.bounds.bottom + res[1] * 300)
+    reference_dem = reference_dem.crop(crop_geom)
+    to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
+
     return reference_dem, to_be_aligned_dem, glacier_mask
 
 

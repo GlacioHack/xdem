@@ -22,17 +22,25 @@ from xdem.coreg.affine import (
 )
 
 
-def load_examples() -> tuple[RasterType, RasterType, Vector]:
+def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    return reference_raster, to_be_aligned_raster, glacier_mask
+    if crop:
+        # Crop to smaller extents for test speed
+        res = reference_dem.res
+        crop_geom = (reference_dem.bounds.left, reference_dem.bounds.bottom,
+                     reference_dem.bounds.left + res[0] * 300, reference_dem.bounds.bottom + res[1] * 300)
+        reference_dem = reference_dem.crop(crop_geom)
+        to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
+
+    return reference_dem, to_be_aligned_dem, glacier_mask
 
 
-def gdal_reproject_horizontal_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
+def gdal_reproject_horizontal_shift_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
     """
     Reproject horizontal shift in same CRS with GDAL for testing purposes.
 
@@ -106,20 +114,22 @@ class TestAffineCoreg:
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
         is accurate by comparing to GDAL."""
 
+        ref = load_examples(crop=False)[0]
+
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
         dst_transform = _shift_transform(
-            transform=self.ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced"
+            transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced"
         )
         output = _reproject_horizontal_shift_samecrs(
-            raster_arr=self.ref.data, src_transform=self.ref.transform, dst_transform=dst_transform
+            raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform
         )
 
         # Reproject with GDAL
-        output2 = gdal_reproject_horizontal_samecrs(filepath_example=self.ref.filename, xoff=xoff, yoff=yoff)
+        output2 = gdal_reproject_horizontal_shift_samecrs(filepath_example=ref.filename, xoff=xoff, yoff=yoff)
 
         # Reproject and NaN propagation is exactly the same for shifts that are a multiple of pixel resolution
-        if xoff % self.ref.res[0] == 0 and yoff % self.ref.res[1] == 0:
+        if xoff % ref.res[0] == 0 and yoff % ref.res[1] == 0:
             assert np.array_equal(output, output2, equal_nan=True)
 
         # For sub-pixel shifts, NaN propagation differs slightly (within 1 pixel) but the resampled values are the same
