@@ -622,8 +622,8 @@ class TestCoregPipeline:
         # Make a new pipeline with two vertical shift correction approaches.
         pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
         # Set both "estimated" vertical shifts to be 1
-        pipeline2.pipeline[0].meta["outputs"]["affine"]["shift_z"] = 1
-        pipeline2.pipeline[1].meta["outputs"]["affine"]["shift_z"] = 1
+        pipeline2.pipeline[0].meta["outputs"]["affine"] = {"shift_z": 1}
+        pipeline2.pipeline[1].meta["outputs"]["affine"] = {"shift_z": 1}
 
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
@@ -748,7 +748,7 @@ class TestCoregPipeline:
 
         # Set the vertical shift attribute
         for vshift_corr in (vshift1, vshift2):
-            vshift_corr.meta["outputs"]["affine"]["shift_z"] = vshift
+            vshift_corr.meta["outputs"]["affine"] = {"shift_z": vshift}
 
         # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
         vshift3 = vshift1 + vshift2

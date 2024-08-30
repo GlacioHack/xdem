@@ -345,6 +345,8 @@ class TestBiasCorr:
         warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
         # Apply the transform can create data exactly equal to the nodata
         warnings.filterwarnings("ignore", category=UserWarning, message="Unmasked values equal to the nodata value*")
+        # Ignore SciKit-Learn warnings
+        warnings.filterwarnings("ignore", message="Maximum number of iterations*")
 
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(

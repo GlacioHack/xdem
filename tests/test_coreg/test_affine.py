@@ -244,9 +244,13 @@ class TestAffineCoreg:
         test_examples.py, but helps identify from where differences arise.
         """
 
+        # Use full DEMs here (to compare to original values from older package versions)
+        ref, tba = load_examples(crop=False)[0:2]
+        inlier_mask = ~self.outlines.create_mask(ref)
+
         # Run co-registration
         nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
+        nuth_kaab.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output .metadata is always the same
         shifts = (
@@ -256,21 +260,22 @@ class TestAffineCoreg:
         )
         assert shifts == pytest.approx((-9.200801, -2.785496, -1.9818556))
 
-    def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
+    def test_gradientdescending(self, subsample: int = 10000, verbose: bool = False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
 
         It also implicitly tests the z_name kwarg and whether a geometry column can be provided instead of E/N cols.
         """
-        if inlier_mask:
-            inlier_mask = self.inlier_mask
+        # Use full DEMs here (to compare to original values from older package versions)
+        ref, tba = load_examples(crop=False)[0:2]
+        inlier_mask = ~self.outlines.create_mask(ref)
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit(
-            self.ref.to_pointcloud(data_column_name="z").ds,
-            self.tba,
+            ref.to_pointcloud(data_column_name="z").ds,
+            tba,
             inlier_mask=inlier_mask,
             verbose=verbose,
             random_state=42,
