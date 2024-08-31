@@ -7,7 +7,6 @@ from xdem.coreg.affine import (  # noqa
     AffineCoreg,
     GradientDescending,
     NuthKaab,
-    Tilt,
     VerticalShift,
 )
 from xdem.coreg.base import (  # noqa
