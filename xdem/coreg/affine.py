@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypeVar, Literal
 
 import xdem.coreg.base
 
@@ -20,6 +20,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
+import scipy.spatial
 from geoutils.raster import Raster, get_array_and_mask
 from tqdm import trange
 
@@ -32,6 +33,7 @@ from xdem.coreg.base import (
     _residuals_df,
     _transform_to_bounds_and_res,
     deramping,
+    _apply_matrix_pts_arr
 )
 from xdem.spatialstats import nmad
 
@@ -48,6 +50,90 @@ try:
     _has_noisyopt = True
 except ImportError:
     _has_noisyopt = False
+
+
+#########################
+# Iterative closest point
+#########################
+
+def _rigid_matrix(t1: float, t2: float, t3: float, alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
+    """
+    Build rigid matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees).
+    """
+    matrix = np.zeros((4, 4))
+    e = np.deg2rad(np.array([alpha1, alpha2, alpha3]))
+    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+    matrix[0:3, 0:3] = rot_matrix
+    matrix[:3, 3] = [t1, t2, t3]
+
+    return matrix
+
+def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf], t1: float, t2: float, t3: float, alpha1: float,
+                  alpha2: float, alpha3: float, method=Literal["point-to-point", "point-to-plane"]) -> NDArrayf:
+    """
+    The ICP function to optimize is a rigid transformation with 6 parameters (3 translations and 3 rotations)
+    between nearest neighbour points (that are fixed for the optimization, and update at each iterative step).
+
+    To more easily support any curve_fit options, we return the residuals and will have them match zero.
+    """
+
+    # Get inputs
+    ref, tba, norm = inputs
+
+    # Build an affine matrix for 3D translation and rotation
+    matrix = _rigid_matrix(t1, t2, t3, alpha1, alpha2, alpha3)
+
+    # Apply affine transformation
+    trans_tba = _apply_matrix_pts_arr(tba, matrix=matrix)
+
+    # Define residuals depending on type of ICP method
+    if method == "point-to-point":
+        diffs = trans_tba - ref
+    elif method == "point-to-plane":
+        diffs = (trans_tba - ref) * norm
+
+    # Sum residuals for any dimension
+    res = np.sum(diffs, axis=1)
+
+    return res
+
+
+def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf) -> NDArrayf:
+
+    inputs = (ref, normals, tba)
+
+    # Call generic fit function, aiming for the residuals to be zero
+    y = np.zeros(len(ref))
+    optimized_params = _bin_and_fit(_icp_fit_func(), inputs, y=y))
+
+    # Build matrix out of optimized parameters
+    matrix = _rigid_matrix(*params)
+
+    return matrix
+
+def _icp_step(matrix, ref_epc, tba_epc, normals, centroid, distance_upper_bound):
+
+    # Apply transform matrix from previous steps
+    trans_tba_epc = _apply_matrix_pts_arr(tba_epc, matrix, centroid=centroid)
+
+    # Create nearest neighbour tree from reference elevations, and query for transformed point cloud
+    ref_epc_nearest_tree = scipy.spatial.cKDTree(ref_epc)
+    _, ind = ref_epc_nearest_tree.query(trans_tba_epc, k=1, distance_upper_bound=distance_upper_bound)
+
+    # Index points to get nearest
+    ind_ref = ind[ind < ref_epc.shape[0]]
+    step_ref = ref_epc[ind_ref]
+    step_normals = normals[ind_ref]
+    ind_tba = ind < ref_epc.shape[0]
+    step_trans_tba = trans_tba_epc[ind_tba]
+
+    # Fit step to get new step transform
+    step_matrix = _icp_fit(step_ref, step_normals, step_trans_tba)
+
+    # Increment transformation matrix by step
+    new_matrix = step_matrix @ matrix
+
+    return new_matrix
 
 ######################################
 # Generic functions for affine methods
