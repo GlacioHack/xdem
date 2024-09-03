@@ -56,7 +56,8 @@ except ImportError:
 # Iterative closest point
 #########################
 
-def _rigid_matrix(t1: float, t2: float, t3: float, alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
+def _matrix_from_translations_rotations(t1: float, t2: float, t3: float,
+                                        alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
     """
     Build rigid matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees).
     """
@@ -68,7 +69,7 @@ def _rigid_matrix(t1: float, t2: float, t3: float, alpha1: float, alpha2: float,
 
     return matrix
 
-def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf], t1: float, t2: float, t3: float, alpha1: float,
+def _icp_fit_func(inputs: NDArrayf, t1: float, t2: float, t3: float, alpha1: float,
                   alpha2: float, alpha3: float, method=Literal["point-to-point", "point-to-plane"]) -> NDArrayf:
     """
     The ICP function to optimize is a rigid transformation with 6 parameters (3 translations and 3 rotations)
@@ -78,41 +79,56 @@ def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf], t1: float, t2: fl
     """
 
     # Get inputs
-    ref, tba, norm = inputs
+    ref, tba, norm = inputs[:, :, 0], inputs[:, :, 1], inputs[:, :, 2]
 
-    # Build an affine matrix for 3D translation and rotation
-    matrix = _rigid_matrix(t1, t2, t3, alpha1, alpha2, alpha3)
+    # Build an affine matrix for 3D translations and rotations
+    matrix = _matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3)
 
     # Apply affine transformation
     trans_tba = _apply_matrix_pts_arr(tba, matrix=matrix)
 
     # Define residuals depending on type of ICP method
+    # Point-to-point is simply the difference, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
     if method == "point-to-point":
         diffs = trans_tba - ref
+    # Point-to-plane used the normals, from Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C
+    # A priori, this method is faster based on Rusinkiewicz and Levoy (2001), https://doi.org/10.1109/IM.2001.924423
     elif method == "point-to-plane":
         diffs = (trans_tba - ref) * norm
 
     # Sum residuals for any dimension
-    res = np.sum(diffs, axis=1)
+    res = np.sum(diffs**2, axis=1)
 
     return res
 
 
-def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf, params_fitorbin: InFitOrBinDict) -> NDArrayf:
+def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf, params_fit_or_bin: InFitOrBinDict) -> NDArrayf:
 
-    inputs = (ref, normals, tba)
+    # Group inputs into a single array
+    inputs = np.dstack(ref, normals, tba)
+
+    # For this type of method, the procedure can only be fit
+    if params_fit_or_bin["fit_or_bin"] not in ["fit"]:
+        raise ValueError("ICP method only supports 'fit'.")
+
+    params_fit_or_bin["fit_func"] = _icp_fit_func
 
     # Call generic fit function, aiming for the residuals to be zero
     y = np.zeros(len(ref))
-    _bin_and_fit(_icp_fit_func(), inputs, y=y))
-    optimized_params = _bin_or_and_fit_nd()
-
+    _, results = _bin_or_and_fit_nd(
+        fit_or_bin=params_fit_or_bin["fit_or_bin"],
+        params_fit_or_bin=params_fit_or_bin,
+        values=y,
+        bias_vars={"inputs": inputs},
+    )
+    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+    assert results is not None
     # Build matrix out of optimized parameters
-    matrix = _rigid_matrix(*params)
+    matrix = _matrix_from_translations_rotations(*results[0])
 
     return matrix
 
-def _icp_step(matrix, ref_epc, tba_epc, normals, centroid, distance_upper_bound):
+def _icp_iteration_step(matrix, ref_epc, tba_epc, normals, centroid, distance_upper_bound):
 
     # Apply transform matrix from previous steps
     trans_tba_epc = _apply_matrix_pts_arr(tba_epc, matrix, centroid=centroid)
@@ -135,6 +151,36 @@ def _icp_step(matrix, ref_epc, tba_epc, normals, centroid, distance_upper_bound)
     new_matrix = step_matrix @ matrix
 
     return new_matrix
+
+def icp(ref_epc,
+        tba_epc,
+        max_iterations: int,
+        tolerance: float,
+        method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
+        verbose: bool = False):
+    """Main function for ICP method."""
+
+    # Pre-processing for point-point??
+
+    # Derive normals if method is point-to-plane
+    if method == "point-to-plane":
+        normals = _icp_norms()
+    else:
+        normals = None
+
+    # Iterate through method until tolerance or max number of iterations is reached
+    init_matrix = np.zeros(6)
+    constant_inputs = (ref_epc, tba_epc, normals)
+    final_offsets = _iterate_method(
+        method=_icp_iteration_step,
+        iterating_input=init_matrix,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+        verbose=verbose,
+    )
+
+    return final_offsets, subsample_final
 
 ######################################
 # Generic functions for affine methods
