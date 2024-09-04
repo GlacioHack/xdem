@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import inspect
 import re
+import typing
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Mapping, Iterable
 
 import geopandas as gpd
 import geoutils as gu
@@ -21,7 +22,7 @@ from scipy.ndimage import binary_dilation
 import xdem
 from xdem import coreg, examples, misc, spatialstats
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, apply_matrix
+from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -90,10 +91,41 @@ class TestCoregClass:
         assert c._is_affine is None
         assert c._needs_vars is False
 
-    def test_coreg_inputs_outputs(self) -> None:
-        """Test coreg dictionaries for inputs and outputs"""
+    def test_info(self) -> None:
+        """
+        Test all coreg keys required for info() exists, by mapping all sub-keys in CoregDict.
+        """
 
-        # The list stored in the base module should have all available keys
+        # This recursive function will find all sub-keys that are not TypedDict within a TypedDict
+        def recursive_typeddict_items(typed_dict: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
+            for key, value in typed_dict.__annotations__.items():
+                try:
+                    sub_typed_dict = getattr(coreg.base, value.__forward_arg__)
+                    if type(sub_typed_dict) is type(typed_dict):
+                        yield from recursive_typeddict_items(sub_typed_dict)
+                except AttributeError:
+                    yield key
+
+        # All subkeys
+        list_coregdict_keys = list(recursive_typeddict_items(coreg.base.CoregDict))
+
+        # Assert all keys exist in the mapping key to str dictionary used for info
+        list_info_keys = list(dict_key_to_str.keys())
+
+        # TODO: Remove GradientDescending + ICP keys here once generic optimizer is used
+        # Temporary exceptions: pipeline/blockwise + gradientdescending/icp
+        list_exceptions = ["step_meta", "pipeline", "x0", "bounds", "deltainit", "deltatol", "feps", "rejection_scale",
+                           "num_levels"]
+
+        # Compare the two lists
+        list_missing_keys = [k for k in list_coregdict_keys if (k not in list_info_keys and k not in list_exceptions)]
+        if len(list_missing_keys) > 0:
+            raise AssertionError(f"Missing keys in coreg.base.dict_key_to_str "
+                                 f"for Coreg.info(): {', '.join(list_missing_keys)}")
+
+        # Check that info() contains the mapped string for an example
+        c = coreg.Coreg(meta={"subsample": 10000})
+        assert dict_key_to_str["subsample"] in c.info(verbose=False)
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
