@@ -562,7 +562,7 @@ def robust_nfreq_sumsin_fit(
 
         # Write results for this number of frequency
         costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, xdata, ydata)
-        amp_freq_phase[nb_freq - 1, 0: 3 * nb_freq] = myresults_x
+        amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults_x
 
     # Replace NaN cost by infinity
     costs[np.isnan(costs)] = np.inf
