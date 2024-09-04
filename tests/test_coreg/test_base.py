@@ -90,6 +90,12 @@ class TestCoregClass:
         assert c._is_affine is None
         assert c._needs_vars is False
 
+    def test_coreg_inputs_outputs(self) -> None:
+        """Test coreg dictionaries for inputs and outputs"""
+
+        # The list stored in the base module should have all available keys
+
+
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
