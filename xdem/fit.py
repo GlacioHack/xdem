@@ -535,7 +535,7 @@ def robust_nfreq_sumsin_fit(
         # Insert in a scipy bounds object
         scipy_bounds = scipy.optimize.Bounds(lb, ub)
         # First guess for the mean parameters
-        p0 = ((lb + ub) / 2).squeeze()
+        p0 = (np.abs((lb + ub) / 2)).squeeze()
 
         if verbose:
             print("Bounds")
@@ -562,7 +562,7 @@ def robust_nfreq_sumsin_fit(
 
         # Write results for this number of frequency
         costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, xdata, ydata)
-        amp_freq_phase[nb_freq - 1, 0 : 3 * nb_freq] = myresults_x
+        amp_freq_phase[nb_freq - 1, 0: 3 * nb_freq] = myresults_x
 
     # Replace NaN cost by infinity
     costs[np.isnan(costs)] = np.inf
