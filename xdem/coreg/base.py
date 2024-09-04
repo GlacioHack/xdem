@@ -1539,9 +1539,10 @@ class Coreg:
         # above which make up the CoregDict altogether
         dict_meta = CoregDict(inputs={}, outputs={})
         if meta is not None:
-            # First, we get the levels ("random", "fitorbin", etc)
+            # First, we get the typed dictionary keys ("random", "fitorbin", etc),
+            # this is a typing class so requires to get its keys in __annotations__
             list_input_levels = list(InputCoregDict.__annotations__.keys())
-            # Then the list of keys per level
+            # Then the list of keys per level, getting the nested class value for each key (via __forward_arg__)
             keys_per_level = [
                 list(globals()[InputCoregDict.__annotations__[lv].__forward_arg__].__annotations__.keys())
                 for lv in list_input_levels

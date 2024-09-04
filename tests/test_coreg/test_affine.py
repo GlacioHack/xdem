@@ -331,7 +331,7 @@ class TestAffineCoreg:
 
     def test_nuth_kaab(self) -> None:
 
-        nuth_kaab = coreg.NuthKaab(max_iterations=50)
+        nuth_kaab = coreg.NuthKaab(max_iterations=10)
 
         # Synthesize a shifted and vertically offset DEM
         pixel_shift = 2
