@@ -63,7 +63,6 @@ except ImportError:
     _HAS_P3D = False
 
 
-
 # Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
