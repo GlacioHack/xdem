@@ -1296,7 +1296,7 @@ class NuthKaab(AffineCoreg):
     def __init__(
         self,
         max_iterations: int = 10,
-        offset_threshold: float = 0.05,
+        offset_threshold: float = 0.02,
         bin_before_fit: bool = True,
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
