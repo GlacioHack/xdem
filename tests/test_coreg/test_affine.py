@@ -8,21 +8,87 @@ import numpy as np
 import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
+from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
+from geoutils.raster.raster import _shift_transform
+from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples
-from xdem.coreg.affine import AffineCoreg, CoregDict
+from xdem.coreg.affine import (
+    AffineCoreg,
+    CoregDict,
+    _reproject_horizontal_shift_samecrs,
+)
 
 
-def load_examples() -> tuple[RasterType, RasterType, Vector]:
+def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
+    reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    return reference_raster, to_be_aligned_raster, glacier_mask
+    if crop:
+        # Crop to smaller extents for test speed
+        res = reference_dem.res
+        crop_geom = (
+            reference_dem.bounds.left,
+            reference_dem.bounds.bottom,
+            reference_dem.bounds.left + res[0] * 300,
+            reference_dem.bounds.bottom + res[1] * 300,
+        )
+        reference_dem = reference_dem.crop(crop_geom)
+        to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
+
+    return reference_dem, to_be_aligned_dem, glacier_mask
+
+
+def gdal_reproject_horizontal_shift_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
+    """
+    Reproject horizontal shift in same CRS with GDAL for testing purposes.
+
+    :param filepath_example: Path to raster file.
+    :param xoff: X shift in georeferenced unit.
+    :param yoff: Y shift in georeferenced unit.
+
+    :return: Reprojected shift array in the same CRS.
+    """
+
+    from osgeo import gdal, gdalconst
+
+    # Open source raster from file
+    src = gdal.Open(filepath_example, gdalconst.GA_ReadOnly)
+
+    # Create output raster in memory
+    driver = "MEM"
+    method = gdal.GRA_Bilinear
+    drv = gdal.GetDriverByName(driver)
+    dest = drv.Create("", src.RasterXSize, src.RasterYSize, 1, gdal.GDT_Float32)
+    proj = src.GetProjection()
+    ndv = src.GetRasterBand(1).GetNoDataValue()
+    dest.SetProjection(proj)
+
+    # Shift the horizontally shifted geotransform
+    gt = src.GetGeoTransform()
+    gtl = list(gt)
+    gtl[0] += xoff
+    gtl[3] += yoff
+    dest.SetGeoTransform(tuple(gtl))
+
+    # Copy the raster metadata of the source to dest
+    dest.SetMetadata(src.GetMetadata())
+    dest.GetRasterBand(1).SetNoDataValue(ndv)
+    dest.GetRasterBand(1).Fill(ndv)
+
+    # Reproject with resampling
+    gdal.ReprojectImage(src, dest, proj, proj, method)
+
+    # Extract reprojected array
+    array = dest.GetRasterBand(1).ReadAsArray().astype("float32")
+    array[array == ndv] = np.nan
+
+    return array
 
 
 class TestAffineCoreg:
@@ -36,13 +102,52 @@ class TestAffineCoreg:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=False,
+        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
     points = gpd.GeoDataFrame(
         geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
     )
+
+    @pytest.mark.parametrize(
+        "xoff_yoff",
+        [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
+    )  # type: ignore
+    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]) -> None:
+        """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
+        is accurate by comparing to GDAL."""
+
+        ref = load_examples(crop=False)[0]
+
+        # Reproject with SciPy
+        xoff, yoff = xoff_yoff
+        dst_transform = _shift_transform(transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
+        output = _reproject_horizontal_shift_samecrs(
+            raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform
+        )
+
+        # Reproject with GDAL
+        output2 = gdal_reproject_horizontal_shift_samecrs(filepath_example=ref.filename, xoff=xoff, yoff=yoff)
+
+        # Reproject and NaN propagation is exactly the same for shifts that are a multiple of pixel resolution
+        if xoff % ref.res[0] == 0 and yoff % ref.res[1] == 0:
+            assert np.array_equal(output, output2, equal_nan=True)
+
+        # For sub-pixel shifts, NaN propagation differs slightly (within 1 pixel) but the resampled values are the same
+        else:
+            # Verify all close values
+            valids = np.logical_and(np.isfinite(output), np.isfinite(output2))
+            # Max relative tolerance that is reached just for a small % of points
+            assert np.allclose(output[valids], output2[valids], rtol=10e-2)
+            # Median precision is much higher
+            # (here absolute, equivalent to around 10e-7 relative as raster values are in the 1000s)
+            assert np.nanmedian(np.abs(output[valids] - output2[valids])) < 0.0001
+
+            # NaNs differ by 1 pixel max, i.e. the mask dilated by one includes the other
+            mask_nans = ~np.isfinite(output)
+            mask_dilated_plus_one = binary_dilation(mask_nans, iterations=1).astype(bool)
+            assert np.array_equal(np.logical_or(mask_dilated_plus_one, ~np.isfinite(output2)), mask_dilated_plus_one)
 
     def test_from_classmethods(self) -> None:
 
@@ -77,18 +182,18 @@ class TestAffineCoreg:
         res = self.ref.res[0]
 
         # Check that a vertical shift was found.
-        assert vshiftcorr.meta.get("shift_z") is not None
-        assert vshiftcorr.meta["shift_z"] != 0.0
+        assert vshiftcorr.meta["outputs"]["affine"].get("shift_z") is not None
+        assert vshiftcorr.meta["outputs"]["affine"]["shift_z"] != 0.0
 
         # Copy the vertical shift to see if it changes in the test (it shouldn't)
-        vshift = copy.copy(vshiftcorr.meta["shift_z"])
+        vshift = copy.copy(vshiftcorr.meta["outputs"]["affine"]["shift_z"])
 
         # Check that the to_matrix function works as it should
         matrix = vshiftcorr.to_matrix()
         assert matrix[2, 3] == vshift, matrix
 
         # Check that the first z coordinate is now the vertical shift
-        assert all(vshiftcorr.apply(self.points)["z"].values == vshiftcorr.meta["shift_z"])
+        assert all(vshiftcorr.apply(self.points)["z"].values == vshiftcorr.meta["outputs"]["affine"]["shift_z"])
 
         # Apply the model to correct the DEM
         tba_unshifted, _ = vshiftcorr.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
@@ -107,12 +212,12 @@ class TestAffineCoreg:
         )
         # Test the vertical shift
         newmeta: CoregDict = vshiftcorr2.meta
-        new_vshift = newmeta["shift_z"]
+        new_vshift = newmeta["outputs"]["affine"]["shift_z"]
         assert np.abs(new_vshift) * res < 0.01
 
         # Check that the original model's vertical shift has not changed
         # (that the _.meta dicts are two different objects)
-        assert vshiftcorr.meta["shift_z"] == vshift
+        assert vshiftcorr.meta["outputs"]["affine"]["shift_z"] == vshift
 
     def test_all_nans(self) -> None:
         """Check that the coregistration approaches fail gracefully when given only nans."""
@@ -139,38 +244,49 @@ class TestAffineCoreg:
         test_examples.py, but helps identify from where differences arise.
         """
 
+        # Use full DEMs here (to compare to original values from older package versions)
+        ref, tba = load_examples(crop=False)[0:2]
+        inlier_mask = ~self.outlines.create_mask(ref)
+
         # Run co-registration
-        nuth_kaab = xdem.coreg.NuthKaab()
-        nuth_kaab.fit(self.ref, self.tba, inlier_mask=self.inlier_mask, verbose=verbose, random_state=42)
+        nuth_kaab = xdem.coreg.NuthKaab(offset_threshold=0.005)
+        nuth_kaab.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output .metadata is always the same
-        shifts = (nuth_kaab.meta["shift_x"], nuth_kaab.meta["shift_y"], nuth_kaab.meta["shift_z"])
-        res = self.ref.res[0]
-        assert shifts == pytest.approx((-0.463 * res, -0.1339999 * res, -1.9922009))
+        shifts = (
+            nuth_kaab.meta["outputs"]["affine"]["shift_x"],
+            nuth_kaab.meta["outputs"]["affine"]["shift_y"],
+            nuth_kaab.meta["outputs"]["affine"]["shift_z"],
+        )
+        assert shifts == pytest.approx((-9.198341, -2.786257, -1.981793))
 
-    def test_gradientdescending(self, subsample: int = 10000, inlier_mask: bool = True, verbose: bool = False) -> None:
+    def test_gradientdescending(self, subsample: int = 10000, verbose: bool = False) -> None:
         """
         Test the co-registration outputs performed on the example are always the same. This overlaps with the test in
         test_examples.py, but helps identify from where differences arise.
 
         It also implicitly tests the z_name kwarg and whether a geometry column can be provided instead of E/N cols.
         """
-        if inlier_mask:
-            inlier_mask = self.inlier_mask
+        # Use full DEMs here (to compare to original values from older package versions)
+        ref, tba = load_examples(crop=False)[0:2]
+        inlier_mask = ~self.outlines.create_mask(ref)
 
         # Run co-registration
         gds = xdem.coreg.GradientDescending(subsample=subsample)
         gds.fit(
-            self.ref.to_pointcloud(data_column_name="z").ds,
-            self.tba,
+            ref.to_pointcloud(data_column_name="z").ds,
+            tba,
             inlier_mask=inlier_mask,
             verbose=verbose,
             random_state=42,
         )
 
-        res = self.ref.res[0]
-        shifts = (gds.meta["shift_x"], gds.meta["shift_y"], gds.meta["shift_z"])
-        assert shifts == pytest.approx((0.03525 * res, -0.59775 * res, -2.39144), abs=10e-5)
+        shifts = (
+            gds.meta["outputs"]["affine"]["shift_x"],
+            gds.meta["outputs"]["affine"]["shift_y"],
+            gds.meta["outputs"]["affine"]["shift_z"],
+        )
+        assert shifts == pytest.approx((-10.625, -2.65625, 1.940031), abs=10e-5)
 
     @pytest.mark.parametrize("shift_px", [(1, 1), (2, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_class", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
@@ -186,19 +302,13 @@ class TestAffineCoreg:
         shifted_ref = self.ref.copy()
         shifted_ref.translate(shift_px[0] * res, shift_px[1] * res, inplace=True)
 
-        shifted_ref_points = shifted_ref.to_pointcloud(
-            subsample=subsample, force_pixel_offset="center", random_state=42
-        ).ds
-        shifted_ref_points["E"] = shifted_ref_points.geometry.x
-        shifted_ref_points["N"] = shifted_ref_points.geometry.y
+        shifted_ref_points = shifted_ref.to_pointcloud(subsample=subsample, random_state=42).ds
         shifted_ref_points.rename(columns={"b1": "z"}, inplace=True)
 
         kwargs = {} if coreg_class.__name__ != "GradientDescending" else {"subsample": subsample}
 
         coreg_obj = coreg_class(**kwargs)
 
-        best_east_diff = 1e5
-        best_north_diff = 1e5
         if points_or_raster == "raster":
             coreg_obj.fit(shifted_ref, self.ref, verbose=verbose, random_state=42)
         elif points_or_raster == "points":
@@ -209,21 +319,15 @@ class TestAffineCoreg:
             # The ICP fit only creates a matrix and doesn't normally show the alignment in pixels
             # Since the test is formed to validate pixel shifts, these calls extract the approximate pixel shift
             # from the matrix (it's not perfect since rotation/scale can change it).
-            coreg_obj.meta["shift_x"] = -matrix[0][3]
-            coreg_obj.meta["shift_y"] = -matrix[1][3]
+            coreg_obj.meta["outputs"]["affine"]["shift_x"] = -matrix[0][3]
+            coreg_obj.meta["outputs"]["affine"]["shift_y"] = -matrix[1][3]
 
         # ICP can never be expected to be much better than 1px on structured data, as its implementation often finds a
         # minimum between two grid points. This is clearly warned for in the documentation.
         precision = 1e-2 if coreg_class.__name__ != "ICP" else 1
 
-        if coreg_obj.meta["shift_x"] == pytest.approx(-shift_px[0] * res, rel=precision) and coreg_obj.meta[
-            "shift_y"
-        ] == pytest.approx(-shift_px[0] * res, rel=precision):
-            return
-        best_east_diff = coreg_obj.meta["shift_x"] - shift_px[0]
-        best_north_diff = coreg_obj.meta["shift_y"] - shift_px[1]
-
-        raise AssertionError(f"Diffs are too big. east: {best_east_diff:.2f} px, north: {best_north_diff:.2f} px")
+        assert coreg_obj.meta["outputs"]["affine"]["shift_x"] == pytest.approx(-shift_px[0] * res, rel=precision)
+        assert coreg_obj.meta["outputs"]["affine"]["shift_y"] == pytest.approx(-shift_px[0] * res, rel=precision)
 
     def test_nuth_kaab(self) -> None:
 
@@ -248,9 +352,9 @@ class TestAffineCoreg:
 
         # Make sure that the estimated offsets are similar to what was synthesized.
         res = self.ref.res[0]
-        assert nuth_kaab.meta["shift_x"] == pytest.approx(pixel_shift * res, abs=0.03)
-        assert nuth_kaab.meta["shift_y"] == pytest.approx(0, abs=0.03)
-        assert nuth_kaab.meta["shift_z"] == pytest.approx(-vshift, 0.03)
+        assert nuth_kaab.meta["outputs"]["affine"]["shift_x"] == pytest.approx(pixel_shift * res, abs=0.03)
+        assert nuth_kaab.meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=0.03)
+        assert nuth_kaab.meta["outputs"]["affine"]["shift_z"] == pytest.approx(-vshift, 0.03)
 
         # Apply the estimated shift to "revert the DEM" to its original state.
         unshifted_dem, _ = nuth_kaab.apply(shifted_dem, transform=self.ref.transform, crs=self.ref.crs)
@@ -268,33 +372,11 @@ class TestAffineCoreg:
 
         # Check that the x shift is close to the pixel_shift * image resolution
         assert all(
-            abs((transformed_points.geometry.x.values - self.points.geometry.x.values) - pixel_shift * self.ref.res[0])
+            abs((transformed_points.geometry.x.values - self.points.geometry.x.values) + pixel_shift * self.ref.res[0])
             < 0.1
         )
         # Check that the z shift is close to the original vertical shift.
         assert all(abs((transformed_points["z"].values - self.points["z"].values) + vshift) < 0.1)
-
-    def test_tilt(self) -> None:
-
-        # Try a 1st degree deramping.
-        tilt = coreg.Tilt()
-
-        # Fit the data
-        tilt.fit(**self.fit_params, random_state=42)
-
-        # Apply the deramping to a DEM
-        tilted_dem = tilt.apply(self.tba)
-
-        # Get the periglacial offset after deramping
-        periglacial_offset = (self.ref - tilted_dem)[self.inlier_mask]
-        # Get the periglacial offset before deramping
-        pre_offset = (self.ref - self.tba)[self.inlier_mask]
-
-        # Check that the error improved
-        assert np.abs(np.mean(periglacial_offset)) < np.abs(np.mean(pre_offset))
-
-        # Check that the mean periglacial offset is low
-        assert np.abs(np.mean(periglacial_offset)) < 0.02
 
     def test_icp_opencv(self) -> None:
 

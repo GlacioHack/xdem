@@ -144,35 +144,6 @@ aligned_dem = nuth_kaab.apply(tba_dem)
         :add-heading:
 ```
 
-## Tilt
-
-{class}`xdem.coreg.Tilt`
-
-- **Performs:** A 2D plane tilt correction.
-- **Supports weights** (soon)
-- **Recommended for:** Data with no horizontal offset and low to moderate rotational differences.
-
-Tilt correction works by estimating and correcting for an 1-order polynomial over the entire dDEM between a reference and the DEM to be aligned.
-This may be useful for correcting small rotations in the dataset, or nonlinear errors that for example often occur in structure-from-motion derived optical DEMs (e.g. Rosnell and Honkavaara [2012](https://doi.org/10.3390/s120100453); Javernick et al. [2014](https://doi.org/10.1016/j.geomorph.2014.01.006); Girod et al. [2017](https://doi.org/10.5194/tc-11-827-2017)).
-
-### Limitations
-
-Tilt correction does not account for horizontal (X/Y) shifts, and should most often be used in conjunction with other methods.
-It is not perfectly equivalent to a rotational correction: values are simply corrected in the vertical direction, and therefore includes a horizontal scaling factor, if it would be expressed as a transformation matrix.
-For large rotational corrections, [ICP] is recommended.
-
-### Example
-
-```{code-cell} ipython3
-# Instantiate a tilt object.
-tilt = coreg.Tilt()
-# Fit the data to a suitable polynomial solution.
-tilt.fit(ref_dem, tba_dem, inlier_mask=inlier_mask)
-
-# Apply the transformation to the data (or any other data)
-deramped_dem = tilt.apply(tba_dem)
-```
-
 ## Vertical shift
 
 {class}`xdem.coreg.VerticalShift`
@@ -278,7 +249,7 @@ The approach does not account for rotations in the dataset, however, so a combin
 For small rotations, a 1st degree deramp could be used:
 
 ```{code-cell} ipython3
-coreg.NuthKaab() + coreg.Tilt()
+coreg.NuthKaab() + coreg.Deramp(poly_order=1)
 ```
 
 For larger rotations, ICP is the only reliable approach (but does not outperform in sub-pixel accuracy):
