@@ -498,11 +498,7 @@ def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> ND
     where y = dh/tan(slope) and x = aspect.
 
     :param xx: The aspect in radians.
-<<<<<<< HEAD
-    :param params: Parameters.
-=======
     :param params: Parameters a, b and c of above function.
->>>>>>> upstream/main
 
     :returns: Estimated y-values with the same shape as the given x-values
     """
@@ -567,11 +563,8 @@ def _nuth_kaab_aux_vars(
 ) -> tuple[NDArrayf, NDArrayf]:
     """
     Deriving slope tangent and aspect auxiliary variables expected by the Nuth and Kääb (2011) algorithm.
-<<<<<<< HEAD
-=======
 
     :return: Slope tangent and aspect (radians).
->>>>>>> upstream/main
     """
 
     def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
@@ -642,8 +635,6 @@ def _nuth_kaab_iteration_step(
     Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
 
     Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
-<<<<<<< HEAD
-=======
 
     :param coords_offsets: Coordinate offsets at this iteration (easting, northing, vertical) in georeferenced unit.
     :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
@@ -652,7 +643,6 @@ def _nuth_kaab_iteration_step(
     :param aspect: Array of aspect.
     :param res: Resolution of DEM.
     :param verbose: Whether to print statements.
->>>>>>> upstream/main
     """
 
     # Calculate the elevation difference with offsets
