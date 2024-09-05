@@ -412,7 +412,7 @@ def _subsample_on_mask_interpolator(
             if ref == "point":
                 return diff_rst_pts
             else:
-                return diff_rst_pts
+                return -diff_rst_pts
 
         # Interpolate arrays of bias variables to the subsample point coordinates
         if aux_vars is not None:
@@ -498,7 +498,11 @@ def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> ND
     where y = dh/tan(slope) and x = aspect.
 
     :param xx: The aspect in radians.
+<<<<<<< HEAD
     :param params: Parameters.
+=======
+    :param params: Parameters a, b and c of above function.
+>>>>>>> upstream/main
 
     :returns: Estimated y-values with the same shape as the given x-values
     """
@@ -563,6 +567,11 @@ def _nuth_kaab_aux_vars(
 ) -> tuple[NDArrayf, NDArrayf]:
     """
     Deriving slope tangent and aspect auxiliary variables expected by the Nuth and Kääb (2011) algorithm.
+<<<<<<< HEAD
+=======
+
+    :return: Slope tangent and aspect (radians).
+>>>>>>> upstream/main
     """
 
     def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
@@ -633,6 +642,17 @@ def _nuth_kaab_iteration_step(
     Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
 
     Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
+<<<<<<< HEAD
+=======
+
+    :param coords_offsets: Coordinate offsets at this iteration (easting, northing, vertical) in georeferenced unit.
+    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
+        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
+    :param slope_tan: Array of slope tangent.
+    :param aspect: Array of aspect.
+    :param res: Resolution of DEM.
+    :param verbose: Whether to print statements.
+>>>>>>> upstream/main
     """
 
     # Calculate the elevation difference with offsets
@@ -701,7 +721,7 @@ def nuth_kaab(
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
     if not crs.is_projected:
         raise NotImplementedError(
-            f"NuthKaab coregistration only works with in a projected CRS, current CRS is {crs}. Reproject "
+            f"NuthKaab coregistration only works with a projected CRS, current CRS is {crs}. Reproject "
             f"your DEMs with DEM.reproject() in a local projected CRS such as UTM, that you can find "
             f"using DEM.get_metric_crs()."
         )
@@ -761,13 +781,14 @@ def _gradient_descending_fit_func(
     """
     Fitting function of gradient descending method, returns the NMAD of elevation residuals.
 
+    :param coords_offsets: Coordinate offsets at this iteration (easting, northing) in georeferenced unit.
+    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
+        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
     :returns: NMAD of residuals.
     """
 
     # Calculate the elevation difference
     dh = dh_interpolator(coords_offsets[0], coords_offsets[1])
-    vshift = -np.nanmedian(dh)
-    dh += vshift
 
     # Return NMAD of residuals
     return float(nmad(dh))
@@ -779,6 +800,17 @@ def _gradient_descending_fit(
     params_noisyopt: InSpecificDict,
     verbose: bool = False,
 ) -> tuple[float, float, float]:
+    """
+    Optimize the statistical dispersion of the elevation differences residuals.
+
+    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
+        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
+    :param res: Resolution of DEM.
+    :param params_noisyopt: Parameters for noisyopt minimization.
+    :param verbose: Whether to print statements.
+
+    :return: Optimized offsets (easing, northing, vertical) in georeferenced unit.
+    """
     # Define cost function
     def func_cost(offset: tuple[float, float]) -> float:
         return _gradient_descending_fit_func(offset, dh_interpolator=dh_interpolator)
@@ -825,7 +857,6 @@ def gradient_descending(
     including subsampling and interpolation to the same points.
 
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
-
     """
     if not _has_noisyopt:
         raise ValueError("Optional dependency needed. Install 'noisyopt'")
@@ -1408,10 +1439,10 @@ class NuthKaab(AffineCoreg):
     def __init__(
         self,
         max_iterations: int = 10,
-        offset_threshold: float = 0.05,
+        offset_threshold: float = 0.001,
         bin_before_fit: bool = True,
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 80,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
     ) -> None:
@@ -1437,7 +1468,7 @@ class NuthKaab(AffineCoreg):
         meta_input_iterative = {"max_iterations": max_iterations, "tolerance": offset_threshold}
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
-        # boolean, no bin apply option, and fit_func is preferefind
+        # boolean, no bin apply option, and fit_func is predefined
         if not bin_before_fit:
             meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
             meta_fit.update(meta_input_iterative)

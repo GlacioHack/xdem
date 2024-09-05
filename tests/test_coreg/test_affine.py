@@ -249,7 +249,7 @@ class TestAffineCoreg:
         inlier_mask = ~self.outlines.create_mask(ref)
 
         # Run co-registration
-        nuth_kaab = xdem.coreg.NuthKaab()
+        nuth_kaab = xdem.coreg.NuthKaab(offset_threshold=0.005)
         nuth_kaab.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output .metadata is always the same
@@ -258,7 +258,7 @@ class TestAffineCoreg:
             nuth_kaab.meta["outputs"]["affine"]["shift_y"],
             nuth_kaab.meta["outputs"]["affine"]["shift_z"],
         )
-        assert shifts == pytest.approx((-9.200801, -2.785496, -1.9818556))
+        assert shifts == pytest.approx((-9.198341, -2.786257, -1.981793))
 
     def test_gradientdescending(self, subsample: int = 10000, verbose: bool = False) -> None:
         """

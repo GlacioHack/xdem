@@ -63,11 +63,45 @@ except ImportError:
     _HAS_P3D = False
 
 
+
+# Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
     "nfreq_sumsin": {"func": sumsin_1d, "optimizer": robust_nfreq_sumsin_fit},
 }
 
+# Map each key name to a descriptor string
+dict_key_to_str = {
+    "subsample": "Subsample size requested",
+    "random_state": "Random generator for subsampling and (if applic.) optimizer",
+    "subsample_final": "Subsample size drawn from valid values",
+    "fit_or_bin": "Fit, bin or bin+fit",
+    "fit_func": "Function to fit",
+    "fit_optimizer": "Optimizer for fitting",
+    "bin_statistic": "Binning statistic",
+    "bin_sizes": "Bin sizes or edges",
+    "bin_apply_method": "Bin apply method",
+    "bias_var_names": "Names of bias variables",
+    "nd": "Number of dimensions of binning and fitting",
+    "fit_params": "Optimized function parameters",
+    "fit_perr": "Error on optimized function parameters",
+    "bin_dataframe": "Binning output dataframe",
+    "max_iterations": "Maximum number of iterations",
+    "tolerance": "Tolerance to reach (pixel size)",
+    "last_iteration": "Iteration at which algorithm stopped",
+    "all_tolerances": "Tolerances at each iteration",
+    "terrain_attribute": "Terrain attribute used for TerrainBias",
+    "angle": "Angle used for DirectionalBias",
+    "poly_order": "Polynomial order used for Deramp",
+    "best_poly_order": "Best polynomial order kept for fit",
+    "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
+    "vshift_reduc_func": "Reduction function used to remove vertical shift",
+    "centroid": "Centroid found for affine rotation",
+    "shift_x": "Eastward shift estimated (georeferenced unit)",
+    "shift_y": "Northward shift estimated (georeferenced unit)",
+    "shift_z": "Vertical shift estimated (elevation unit)",
+    "matrix": "Affine transformation matrix estimated",
+}
 #####################################
 # Generic functions for preprocessing
 #####################################
@@ -1539,9 +1573,10 @@ class Coreg:
         # above which make up the CoregDict altogether
         dict_meta = CoregDict(inputs={}, outputs={})
         if meta is not None:
-            # First, we get the levels ("random", "fitorbin", etc)
+            # First, we get the typed dictionary keys ("random", "fitorbin", etc),
+            # this is a typing class so requires to get its keys in __annotations__
             list_input_levels = list(InputCoregDict.__annotations__.keys())
-            # Then the list of keys per level
+            # Then the list of keys per level, getting the nested class value for each key (via __forward_arg__)
             keys_per_level = [
                 list(globals()[InputCoregDict.__annotations__[lv].__forward_arg__].__annotations__.keys())
                 for lv in list_input_levels
@@ -1630,39 +1665,6 @@ class Coreg:
 
     def info(self, verbose: bool = True) -> None | str:
         """Summarize information about this coregistration."""
-
-        # Map each key name to a descriptor string
-        dict_key_to_str = {
-            "subsample": "Subsample size requested",
-            "random_state": "Random generator for subsampling and (if applic.) optimizer",
-            "subsample_final": "Subsample size drawn from valid values",
-            "fit_or_bin": "Fit, bin or bin+fit",
-            "fit_func": "Function to fit",
-            "fit_optimizer": "Optimizer for fitting",
-            "bin_statistic": "Binning statistic",
-            "bin_sizes": "Bin sizes or edges",
-            "bin_apply_method": "Bin apply method",
-            "bias_var_names": "Names of bias variables",
-            "nd": "Number of dimensions of binning and fitting",
-            "fit_params": "Optimized function parameters",
-            "fit_perr": "Error on optimized function parameters",
-            "bin_dataframe": "Binning output dataframe",
-            "max_iterations": "Maximum number of iterations",
-            "tolerance": "Tolerance to reach (pixel size)",
-            "last_iteration": "Iteration at which algorithm stopped",
-            "all_tolerances": "Tolerances at each iteration",
-            "terrain_attribute": "Terrain attribute used for TerrainBias",
-            "angle": "Angle used for DirectionalBias",
-            "poly_order": "Polynomial order used for Deramp",
-            "best_poly_order": "Best polynomial order kept for fit",
-            "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
-            "vshift_reduc_func": "Reduction function used to remove vertical shift",
-            "centroid": "Centroid found for affine rotation",
-            "shift_x": "Eastward shift estimated (georeferenced unit)",
-            "shift_y": "Northward shift estimated (georeferenced unit)",
-            "shift_z": "Vertical shift estimated (elevation unit)",
-            "matrix": "Affine transformation matrix estimated",
-        }
 
         # Define max tabulation: longest name + 2 spaces
         tab = np.max([len(v) for v in dict_key_to_str.values()]) + 2
