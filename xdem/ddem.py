@@ -6,6 +6,8 @@ from typing import Any
 
 import geoutils as gu
 import numpy as np
+import pyogrio
+import rasterio as rio
 import shapely
 from geoutils.raster import Raster, RasterType, get_array_and_mask
 from rasterio.crs import CRS
@@ -13,6 +15,47 @@ from rasterio.warp import Affine
 
 import xdem
 from xdem._typing import MArrayf, NDArrayf
+
+
+def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
+    """
+    Convert a given mask into an array.
+
+    :param reference_raster: The raster to use for rasterizing the mask if the mask is a vector.
+    :param mask: A valid Vector, Raster or a respective filepath to a mask.
+
+    :raises: ValueError: If the mask path is invalid.
+    :raises: TypeError: If the wrong mask type was given.
+
+    :returns: The mask as a squeezed array.
+    """
+    # Try to load the mask file if it's a filepath
+    if isinstance(mask, str):
+        # First try to load it as a Vector
+        try:
+            mask = gu.Vector(mask)
+        # If the format is unsupported, try loading as a Raster
+        except pyogrio.errors.DataSourceError:
+            try:
+                mask = gu.Raster(mask)
+            # If that fails, raise an error
+            except rio.errors.RasterioIOError:
+                raise ValueError(f"Mask path not in a supported Raster or Vector format: {mask}")
+
+    # At this point, the mask variable is either a Raster or a Vector
+    # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
+    if isinstance(mask, gu.Vector):
+        mask_array = mask.create_mask(reference_raster, as_array=True)
+    elif isinstance(mask, gu.Raster):
+        # The true value is the maximum value in the raster, unless the maximum value is 0 or False
+        true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
+        mask_array = (mask.data == true_value).squeeze()
+    else:
+        raise TypeError(
+            f"Mask has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
+        )
+
+    return mask_array
 
 
 class dDEM(Raster):  # type: ignore
@@ -194,7 +237,7 @@ class dDEM(Raster):  # type: ignore
             assert reference_elevation is not None
             assert mask is not None
 
-            mask_array = xdem.coreg.base._mask_as_array(self, mask).reshape(self.data.shape)
+            mask_array = _mask_as_array(self, mask).reshape(self.data.shape)
 
             self.filled_data = xdem.volume.hypsometric_interpolation(
                 self.data, reference_elevation.data, mask=mask_array
