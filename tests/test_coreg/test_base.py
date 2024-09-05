@@ -92,7 +92,9 @@ class TestCoregClass:
 
     def test_info(self) -> None:
         """
-        Test all coreg keys required for info() exists, by mapping all sub-keys in CoregDict.
+        Test all coreg keys required for info() exist by mapping all sub-keys in CoregDict and comparing to
+        coreg.base.dict_key_to_str.
+        Check the info() string return contains the right text for a given key.
         """
 
         # This recursive function will find all sub-keys that are not TypedDict within a TypedDict

@@ -77,7 +77,7 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     xx = np.array(xx).squeeze()
 
     # Convert parameters to array
-    p = np.array(params)
+    p = np.array(params).copy()
 
     # Indexes of amplitude, frequencies and phases
     aix = np.arange(0, len(p), 3)
