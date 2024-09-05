@@ -77,7 +77,7 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
     xx = np.array(xx).squeeze()
 
     # Convert parameters to array
-    p = np.array(params)
+    p = np.array(params).copy()
 
     # Indexes of amplitude, frequencies and phases
     aix = np.arange(0, len(p), 3)
@@ -535,7 +535,7 @@ def robust_nfreq_sumsin_fit(
         # Insert in a scipy bounds object
         scipy_bounds = scipy.optimize.Bounds(lb, ub)
         # First guess for the mean parameters
-        p0 = ((lb + ub) / 2).squeeze()
+        p0 = (np.abs((lb + ub) / 2)).squeeze()
 
         if verbose:
             print("Bounds")

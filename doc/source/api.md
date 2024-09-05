@@ -264,7 +264,6 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.VerticalShift
     xdem.coreg.NuthKaab
     xdem.coreg.ICP
-    xdem.coreg.Tilt
 ```
 
 #### Manipulating affine transforms

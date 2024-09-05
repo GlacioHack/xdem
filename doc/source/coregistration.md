@@ -180,7 +180,6 @@ nuth_kaab.fit(ref_dem, tba_dem_shift)
 aligned_dem = nuth_kaab.apply(tba_dem_shift)
 ```
 
-
 ```{code-cell} ipython3
 :tags: [hide-input]
 :mystnb:
@@ -192,60 +191,6 @@ f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before NK")
 (tba_dem_shift - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
 ax[1].set_title("After NK")
-(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
-_ = ax[1].set_yticklabels([])
-```
-
-### Tilt
-
-{class}`xdem.coreg.Tilt`
-
-- **Performs:** A 2D plane tilt correction.
-- **Supports weights:** Planned.
-- **Pros:** Corrects small rotations fairly accurately, and runs very fast.
-- **Cons:** Not perfectly equivalent to a rotational correction, to use only with small rotations. For large rotational corrections, {ref}`icp` is recommended.
-
-Tilt coregistration works by estimating and correcting for a 2D first-order polynomial (plane) over the entire elevation differences.
-
-```{code-cell} ipython3
-:tags: [hide-cell]
-:mystnb:
-:  code_prompt_show: "Show the code for adding a tilt"
-:  code_prompt_hide: "Hide the code for adding a tilt"
-
-# Apply a rotation of 0.2 degrees
-rotation = np.deg2rad(0.2)
-matrix = np.array(
-    [
-        [1, 0, 0, 0],
-        [0, np.cos(rotation), -np.sin(rotation), 0],
-        [0, np.sin(rotation), np.cos(rotation), 0],
-        [0, 0, 0, 1],
-    ]
-)
-# We create misaligned elevation data
-tba_dem_tilt = xdem.coreg.apply_matrix(ref_dem, matrix)
-```
-
-```{code-cell} ipython3
-# Define a coregistration based on a tilt correction
-tilt = xdem.coreg.Tilt()
-# Fit to data and apply
-tilt.fit(ref_dem, tba_dem_tilt)
-aligned_dem = tilt.apply(tba_dem_tilt)
-```
-
-```{code-cell} ipython3
-:tags: [hide-input]
-:mystnb:
-:  code_prompt_show: "Show plotting code"
-:  code_prompt_hide: "Hide plotting code"
-
-# Plot before and after
-f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before de-tilt")
-(tba_dem_tilt - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After de-tilt")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```
@@ -408,7 +353,7 @@ The approach does not account for rotations in the dataset, however, so a combin
 For small rotations, a 1st degree deramp can be used in combination:
 
 ```{code-cell} ipython3
-pipeline = xdem.coreg.Tilt() + xdem.coreg.NuthKaab()
+pipeline = xdem.coreg.NuthKaab() + xdem.coreg.Deramp(poly_order=1)
 ```
 
 For larger rotations, ICP can be used instead:
