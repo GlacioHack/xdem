@@ -32,11 +32,13 @@ from xdem.coreg.base import (
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
     _preprocess_pts_rst_subsample,
+    _reproject_horizontal_shift_samecrs,
 )
 from xdem.spatialstats import nmad
 
 try:
     import pytransform3d.transformations
+    import pytransform3d.rotations
 
     _HAS_P3D = True
 except ImportError:
@@ -52,68 +54,6 @@ except ImportError:
 ######################################
 # Generic functions for affine methods
 ######################################
-
-
-@overload
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    *,
-    return_interpolator: Literal[False] = False,
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> NDArrayf:
-    ...
-
-
-@overload
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    *,
-    return_interpolator: Literal[True],
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
-    ...
-
-
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    return_interpolator: bool = False,
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
-    """
-    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
-
-    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
-    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
-    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
-
-    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
-    """
-
-    # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
-    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
-    if not return_interpolator:
-        coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
-    # If we just want the interpolator, we don't need to coordinates of destination points
-    else:
-        coords_dst = None
-
-    output = _interp_points(
-        array=raster_arr,
-        area_or_point="Area",
-        transform=src_transform,
-        points=coords_dst,
-        method=resampling,
-        return_interpolator=return_interpolator,
-    )
-
-    return output
-
 
 def _check_inputs_bin_before_fit(
     bin_before_fit: bool,
@@ -845,6 +785,34 @@ class AffineCoreg(Coreg):
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
 
+    def to_translations(self) -> tuple[float, float, float]:
+        """
+        Convert the affine transformation matrix to only its X/Y/Z translations.
+
+        :return: Easting, northing and vertical translations (in georeferenced unit).
+        """
+
+        matrix = self.to_matrix()
+        shift_x = matrix[0, 3]
+        shift_y = matrix[1, 3]
+        shift_z = matrix[2, 3]
+
+        return shift_x, shift_y, shift_z
+
+    def to_rotations(self) -> tuple[float, float, float]:
+        """
+        Convert the affine transformation to its X/Y/Z euler rotations, extrinsic convention.
+
+        :return: Extrinsinc Euler rotations along easting, northing and vertical directions (degrees).
+        """
+
+        matrix = self.to_matrix()
+        rots = pytransform3d.rotations.euler_from_matrix(matrix, i=0, j=1, k=2,
+                                                                        extrinsic=True,
+                                                                        strict_check=True)
+        rots = np.rad2deg(np.array(rots))
+        return rots[0], rots[1], rots[2]
+
     def centroid(self) -> tuple[float, float, float] | None:
         """Get the centroid of the coregistration, if defined."""
         meta_centroid = self._meta["outputs"]["affine"].get("centroid")
@@ -928,7 +896,7 @@ class AffineCoreg(Coreg):
         return cls(matrix=valid_matrix)
 
     @classmethod
-    def from_translation(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> AffineCoreg:
+    def from_translations(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> AffineCoreg:
         """
         Instantiate a generic Coreg class from a X/Y/Z translation.
 
@@ -940,10 +908,36 @@ class AffineCoreg(Coreg):
 
         :returns: An instantiated generic Coreg class.
         """
+        # Initialize a diagonal matrix
         matrix = np.diag(np.ones(4, dtype=float))
+        # Add the three translations (which are in the last column)
         matrix[0, 3] = x_off
         matrix[1, 3] = y_off
         matrix[2, 3] = z_off
+
+        return cls.from_matrix(matrix)
+
+    @classmethod
+    def from_rotations(cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0) -> AffineCoreg:
+        """
+        Instantiate a generic Coreg class from a X/Y/Z rotation.
+
+        :param x_rot: The rotation (degrees) to apply around the X (west-east) direction.
+        :param y_rot: The rotation (degrees) to apply around the Y (south-north) direction.
+        :param z_rot: The rotation (degrees) to apply around the Z (vertical) direction.
+
+        :raises ValueError: If the given rotation contained invalid values.
+
+        :returns: An instantiated generic Coreg class.
+        """
+
+        # Initialize a diagonal matrix
+        matrix = np.diag(np.ones(4, dtype=float))
+        # Convert rotations to radians
+        e = np.deg2rad(np.array([x_rot, y_rot, z_rot]))
+        # Derive 3x3 rotation matrix, and insert in 4x4 affine matrix
+        rot_matrix = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
+        matrix[0:3, 0:3] = rot_matrix
 
         return cls.from_matrix(matrix)
 

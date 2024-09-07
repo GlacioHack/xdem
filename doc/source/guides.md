@@ -12,4 +12,5 @@ static_surfaces
 accuracy_precision
 robust_estimators
 spatial_stats
+reporting_metrics
 ```

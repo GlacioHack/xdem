@@ -64,6 +64,7 @@ myst_enable_extensions = ["colon_fence", "dollarmath"]
 nb_kernel_rgx_aliases = {".*xdem.*": "python3"}
 nb_execution_raise_on_error = True  # To fail documentation build on notebook execution error
 nb_execution_show_tb = True  # To show full traceback on notebook execution error
+nb_output_stderr = "warn"  # To warn if an error is raised in a notebook cell (if intended, override to "show" in cell)
 
 # autosummary_generate = True
 
@@ -173,7 +174,6 @@ html_theme_options = {
     "announcement": (
         "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
         'to update your code see <a href="https://github.com/GlacioHack/xdem/releases/tag/v0.1.0">here</a>. ⚠️'
-        "<br>Future changes will come with deprecation warnings! 🙂"
     ),
 }
 

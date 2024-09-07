@@ -231,17 +231,19 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
+    xdem.coreg.Coreg.fit_and_apply
     xdem.coreg.Coreg.fit
     xdem.coreg.Coreg.apply
 ```
 
-#### Other functionalities
+#### Extracting metadata
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg.residuals
+    xdem.coreg.Coreg.info
+    xdem.coreg.Coreg.meta
 ```
 
 ### Affine coregistration
@@ -274,6 +276,11 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 
     xdem.coreg.AffineCoreg.from_matrix
     xdem.coreg.AffineCoreg.to_matrix
+    xdem.coreg.AffineCoreg.from_translations
+    xdem.coreg.AffineCoreg.to_translations
+    xdem.coreg.AffineCoreg.from_rotations
+    xdem.coreg.AffineCoreg.to_rotations
+
     xdem.coreg.apply_matrix
     xdem.coreg.invert_matrix
 ```

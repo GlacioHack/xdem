@@ -93,7 +93,7 @@ If computational performance is key, xDEM can rely on [RichDEM](https://richdem.
      - [Riley et al. (1999)](http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf) or [Wilson et al. (2007)](http://dx.doi.org/10.1080/01490410701295962)
    * - {ref}`roughness`
      - Meters
-     - [Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081)
+     - [Dartnell (2000)](https://environment.sfsu.edu/node/11292)
    * - {ref}`rugosity`
      - Unitless
      - [Jenness (2004)](<https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>)
@@ -342,7 +342,7 @@ tri.plot(cmap="Purples", cbar_title="Terrain ruggedness index (m)")
 {func}`xdem.DEM.roughness`
 
 The roughness is a metric of terrain ruggedness, based on the maximum difference in elevation in the surroundings,
-described in [Dartnell (2000)](http://dx.doi.org/10.14358/PERS.70.9.1081). Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
+described in [Dartnell (2000)](https://environment.sfsu.edu/node/11292). Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
 
 $$
 r_{\textrm{D}} = \textrm{max}_{ij} (h{ij}) -  \textrm{min}_{ij} (h{ij}) .

@@ -39,7 +39,7 @@ from geoutils.raster import (
     raster,
     subdivide_array,
 )
-from geoutils.raster.georeferencing import _bounds, _res
+from geoutils.raster.georeferencing import _bounds, _res, _coords
 from geoutils.raster.interpolate import _interp_points
 from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
 from tqdm import tqdm
@@ -1217,7 +1217,7 @@ def _apply_matrix_rst(
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    verbose: bool = True,
+    verbose: bool = False,
     force_regrid_method: Literal["iterative", "griddata"] | None = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
@@ -1282,6 +1282,65 @@ def _apply_matrix_rst(
 
     return new_dem, transform
 
+@overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[False] = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf:
+    ...
+
+
+@overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[True],
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+    ...
+
+
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    return_interpolator: bool = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+    """
+    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
+
+    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
+    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
+    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
+
+    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
+    """
+
+    # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
+    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
+    if not return_interpolator:
+        coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
+    # If we just want the interpolator, we don't need to coordinates of destination points
+    else:
+        coords_dst = None
+
+    output = _interp_points(
+        array=raster_arr,
+        area_or_point="Area",
+        transform=src_transform,
+        points=coords_dst,
+        method=resampling,
+        return_interpolator=return_interpolator,
+    )
+
+    return output
 
 @overload
 def apply_matrix(
@@ -1289,6 +1348,7 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1303,6 +1363,7 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1316,6 +1377,7 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1346,6 +1408,8 @@ def apply_matrix(
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
+    :param resample: (For translations) If set to True, will resample output on the translated grid to match the input
+        transform. Otherwise, only the transform will be updated and no resampling is done.
     :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
         information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
     :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
@@ -1355,15 +1419,18 @@ def apply_matrix(
     :return: Affine transformed elevation point cloud or DEM.
     """
 
+    # Apply matrix to elevation point cloud
     if isinstance(elev, gpd.GeoDataFrame):
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
+    # Or apply matrix to raster (often requires re-gridding)
     else:
+
+        # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
             transform = elev.transform
             dem = elev.data.filled(np.nan)
         else:
             dem = elev
-
         applied_dem, out_transform = _apply_matrix_rst(
             dem=dem,
             transform=transform,
@@ -1373,6 +1440,14 @@ def apply_matrix(
             resampling=resampling,
             **kwargs,
         )
+
+        # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+        if resample:
+            applied_dem = _reproject_horizontal_shift_samecrs(applied_dem, src_transform=out_transform,
+                                                              dst_transform=transform, resampling=resampling)
+            out_transform = transform
+
+        # We return a raster if input was a raster
         if isinstance(elev, gu.Raster):
             applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
             return applied_dem

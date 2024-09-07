@@ -30,7 +30,7 @@ While uncertainty analysis technically refers to both systematic and random erro
 are corrected using {ref}`coregistration` and {ref}`biascorr`, so we here refer to **uncertainty analysis for quantifying and
 propagating random errors**.
 
-In detail, xDEM provide tools to:
+In detail, xDEM provides tools to:
 
 1. Estimate and model elevation **heteroscedasticity, i.e. variable random errors** (e.g., such as with terrain slope or stereo-correlation),
 2. Estimate and model the **spatial correlation of random errors** (e.g., from native spatial resolution or instrument noise),
@@ -47,7 +47,7 @@ Additionally, we recommend reading the **{ref}`static-surfaces` guide page** on 
 
 ## Quick use
 
-The estimation of the spatial structure of random errors of elevation data (heteroscedas) is conveniently
+The estimation of the spatial structure of random errors of elevation data is conveniently
 wrapped in a single method {func}`~xdem.DEM.estimate_uncertainty`, for which the steps are detailed below.
 
 ```{code-cell} ipython3
@@ -106,8 +106,8 @@ potential multiple ranges of spatial correlation (instead of a single one). In a
 considers potential heteroscedasticity or variable errors (instead of homoscedasticity, or constant errors), also common in elevation data.
 
 Because accounting for possible multiple correlation ranges also works if you have a single correlation range in your data, 
-and accounting for potential heteroscedasticity also works on homoscedastic data, **there is nothing to lose by using 
-a more advanced framework!**
+and accounting for potential heteroscedasticity also works on homoscedastic data, **there is little to lose by using 
+a more advanced framework! (most often, only a bit of additional computation time)**
 
 ```{list-table}
    :widths: 1 1 1 1 1

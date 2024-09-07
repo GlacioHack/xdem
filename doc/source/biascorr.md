@@ -76,8 +76,7 @@ Once defined, they can be applied the same two ways as for coregistration (using
 # Coregister with bias correction by calling the DEM method
 corrected_dem = tba_dem.coregister_3d(ref_dem, biascorr)
 # (Equivalent) Or by calling the fit and apply steps
-biascorr.fit(ref_dem, tba_dem)
-corrected_dem = biascorr.apply(tba_dem)
+corrected_dem = biascorr.fit_and_apply(ref_dem, tba_dem)
 ```
 
 Additionally, **bias corrections can be customized to use any number of variables to correct simultaneously**,
@@ -188,8 +187,7 @@ tbc_dem_ramp = ref_dem + synthetic_bias
 # Instantiate a 2nd order 2D deramping
 deramp = xdem.coreg.Deramp(poly_order=2)
 # Fit and apply
-deramp.fit(ref_dem, tbc_dem_ramp)
-corrected_dem = deramp.apply(tbc_dem_ramp)
+corrected_dem = deramp.fit_and_apply(ref_dem, tbc_dem_ramp)
 ```
 
 ```{code-cell} ipython3
@@ -243,8 +241,7 @@ tbc_dem_sumsin = ref_dem + synthetic_bias
 # Define a directional bias correction at a certain angle (degrees), defaults to "bin_and_fit" for a sum of sinusoids
 dirbias = xdem.coreg.DirectionalBias(angle=20)
 # Fit and apply
-dirbias.fit(ref_dem, tbc_dem_sumsin, random_state=42)
-corrected_dem = dirbias.apply(tbc_dem_sumsin)
+corrected_dem = dirbias.fit_and_apply(ref_dem, tbc_dem_sumsin, random_state=42)
 ```
 
 ```{code-cell} ipython3
@@ -290,8 +287,7 @@ tbc_dem_strip = ref_dem + synthetic_bias
 # Define a directional bias correction at a certain angle (degrees), for a binning of 1000 bins
 dirbias = xdem.coreg.DirectionalBias(angle=60, fit_or_bin="bin", bin_sizes=1000)
 # Fit and apply
-dirbias.fit(ref_dem, tbc_dem_strip)
-corrected_dem = dirbias.apply(tbc_dem_strip)
+corrected_dem = dirbias.fit_and_apply(ref_dem, tbc_dem_strip)
 ```
 
 ```{code-cell} ipython3
@@ -346,10 +342,9 @@ tbc_dem_curv = ref_dem + synthetic_bias
 terbias = xdem.coreg.TerrainBias(terrain_attribute="maximum_curvature",
                                  bin_sizes={"maximum_curvature": np.linspace(-5, 5, 1000)},
                                  bin_apply_method="per_bin")
-# Fit and apply to the data
-terbias.fit(ref_dem, tbc_dem_curv)
+
 # We have to pass the original curvature here
-corrected_dem = terbias.apply(tbc_dem_curv, bias_vars={"maximum_curvature": maxc})
+corrected_dem = terbias.fit_and_apply(ref_dem, tbc_dem_curv, bias_vars={"maximum_curvature": maxc})
 ```
 
 ```{code-cell} ipython3
@@ -408,9 +403,13 @@ biascorr = xdem.coreg.BiasCorr(bias_var_names=["aspect", "slope", "elevation"], 
 # Derive curvature and slope
 aspect, slope = ref_dem.get_terrain_attribute(["aspect", "slope"])
 
-# Pass the variables to the fit function, matching the names declared above, and same for apply
-biascorr.fit(ref_dem, tba_dem_nk, inlier_mask=inlier_mask, bias_vars={"aspect": aspect, "slope": slope, "elevation": ref_dem})
-corrected_dem = biascorr.apply(tba_dem_nk, bias_vars={"aspect": aspect, "slope": slope, "elevation": ref_dem})
+# Pass the variables to the fit_and_apply function matching the names declared above
+corrected_dem = biascorr.fit_and_apply(
+    ref_dem, 
+    tba_dem_nk, 
+    inlier_mask=inlier_mask, 
+    bias_vars={"aspect": aspect, "slope": slope, "elevation": ref_dem}
+)
 ```
 
 ```{warning}

@@ -19,9 +19,10 @@ kernelspec:
 xDEM implements a wide range of **coregistration algorithms and pipelines for 3-dimensional alignment** from the
 peer-reviewed literature often tailored specifically to elevation data, aiming at correcting systematic elevation errors.
 
-Two categories of alignment are generally differentiated: **3D affine transformations** described below, and other
-alignments that possibly rely on external variables described in {ref}`biascorr`.
+Two categories of alignment are generally differentiated: 3D [affine transformations](https://en.wikipedia.org/wiki/Affine_transformation) 
+described below, and other alignments that possibly rely on external variables, described in {ref}`biascorr`.
 
+Affine transformations can include vertical and horizontal translations, rotations and reflections, and scalings.
 
 :::{admonition} More reading
 :class: tip
@@ -73,30 +74,21 @@ tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 ```
 
-Alternatively, the coregistration can be applied by sequentially calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
-which allows a broader variety of arguments at each step, and re-using the same transformation to several objects (e.g., horizontal shift of both a stereo DEM and its ortho-image).
+Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially 
+calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
+which allows a broader variety of arguments at each step, and re-using the same transformation to several objects 
+(e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ```{code-cell} ipython3
-# (Equivalent) Or, use fit and apply in two calls
-my_coreg_pipeline.fit(ref_dem, tba_dem)
-aligned_dem = my_coreg_pipeline.apply(tba_dem)
+# (Equivalent) Or use fit and apply
+aligned_dem = my_coreg_pipeline.fit_and_apply(ref_dem, tba_dem)
 ```
+
+Information about the coregistration inputs and outputs is summarized in {func}`~xdem.coreg.Coreg.info`.
 
 ```{tip}
 Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to isolate static surfaces to utilize during coregistration (for instance removing vegetation, snow, glaciers). This mask can be easily derived using {func}`~geoutils.Vector.create_mask`.
 ```
-
-## What is coregistration?
-
-Coregistration is the process of finding a transformation to align data in a certain number of dimensions. In the case
-of elevation data, in three dimensions.
-
-Transformations that can be described by a 3-dimensional [affine](https://en.wikipedia.org/wiki/Affine_transformation)
-function are included in coregistration methods, which include:
-
-- vertical and horizontal translations,
-- rotations, reflections,
-- scalings.
 
 ## Using a coregistration  
 
@@ -104,16 +96,18 @@ function are included in coregistration methods, which include:
 ### The {class}`~xdem.coreg.Coreg` object
 
 Each coregistration method implemented in xDEM inherits their interface from the {class}`~xdem.coreg.Coreg` class<sup>1</sup>, and has the following methods:
-- {func}`~xdem.coreg.Coreg.fit` for estimating the transform.
-- {func}`~xdem.coreg.Coreg.apply` for applying the transform to a DEM.
-- {func}`~xdem.coreg.AffineCoreg.to_matrix` to convert the transform to a 4x4 transformation matrix, if possible.
+- {func}`~xdem.coreg.Coreg.fit_and_apply` for estimating the transformation and applying it in one step,
+- {func}`~xdem.coreg.Coreg.info` for plotting the metadata, including inputs and outputs of the coregistration.
+
+The two above methods cover most uses. More specific methods are also available:
+- {func}`~xdem.coreg.Coreg.fit` for estimating the transformation without applying it,
+- {func}`~xdem.coreg.Coreg.apply` for applying an estimated transformation,
+- {func}`~xdem.coreg.AffineCoreg.to_matrix` to convert the transform to a 4x4 transformation matrix, if possible,
 - {func}`~xdem.coreg.AffineCoreg.from_matrix` to create a coregistration from a 4x4 transformation matrix.
 
 ```{margin}
 <sup>1</sup>In a style inspired by [scikit-learn's pipelines](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html#sklearn-linear-model-linearregression).
 ```
-
-{func}`~xdem.coreg.Coreg.fit` is called to estimate the transform, and then this transform can be used or exported using the subsequent methods.
 
 **Inheritance diagram of implemented coregistrations:**
 
@@ -126,7 +120,66 @@ See {ref}`biascorr` for more information on non-rigid transformations ("bias cor
 
 ### Accessing coregistration metadata
 
+The metadata surrounding a coregistration method, which can be displayed by {func}`~xdem.coreg.Coreg.info`, is stored in 
+the {attr}`~xdem.coreg.Coreg.meta` nested dictionary.
+This metadata is divided into **inputs** and **outputs**. Input metadata corresponds to what arguments are 
+used when initializing a {class}`~xdem.coreg.Coreg` object, while output metadata are created during the call to 
+{func}`~xdem.coreg.Coreg.fit`. Together, they allow to apply the transformation during the
+{func}`~xdem.coreg.Coreg.apply` step of the coregistration.
 
+```{code-cell} ipython3
+# Example of metadata info after fitting
+my_coreg_pipeline.info()
+```
+
+For both **inputs** and **outputs**, four consistent categories of metadata are defined.
+
+**Note:** Some metadata, such as the parameters `fit_or_bin` and `fit_func` described below, are pre-defined for affine coregistration methods and cannot be modified. They only take user-specified value for {ref}`biascorr`.
+
+**1. Randomization metadata (common to all)**: 
+
+- An input `subsample` to define the subsample size of valid data to use in all methods (recommended for performance), 
+- An input `random_state` to define the random seed for reproducibility of the subsampling (and potentially other random aspects such as optimizers), 
+- An output `subsample_final` that stores the final subsample size used, which can be smaller than requested depending on the amount of valid data intersecting the two elevation datasets. 
+
+**2. Fitting and binning metadata (common to nearly all methods)**: 
+
+- An input `fit_or_bin` to either fit a parametric model by passing **"fit"**, perform an empirical binning by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (only "fit" or "bin_and_fit" possible for affine methods)**,
+- An input `fit_func` to pass any parametric function to fit to the bias **(pre-defined for affine methods)**,
+- An input `fit_optimizer` to pass any optimizer function to perform the fit minimization,
+- An input `bin_sizes` to pass the size or edges of the bins for each variable,
+- An input `bin_statistic` to pass the statistic to compute in each bin,
+- An input `bin_apply_method` to pass the method to apply the binning for correction,
+- An output `fit_params` that stores the optimized parameters for `fit_func`,
+- An output `fit_perr` that stores the error of optimized parameters (only for default `fit_optimizer`),
+- An output `bin_dataframe` that stores the dataframe of binned statistics.
+
+**3. Iteration metadata (common to all iterative methods)**: 
+
+- An input `max_iterations` to define the maximum number of iterations at which to stop the method,
+- An input `tolerance` to define the tolerance at which to stop iterations (tolerance unit defined in method description),
+- An output `last_iteration` that stores the last iteration of the method,
+- An output `all_tolerances` that stores the tolerances computed at each iteration.
+
+**4. Affine metadata (common to all affine methods)**:
+
+- An output `matrix` that stores the estimated affine matrix,
+- An output `centroid` that stores the centroid coordinates with which to apply the affine transformation,
+- Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.
+
+```{tip}
+In xDEM, you can extract the translations and rotations of an affine matrix using {class}`xdem.coreg.AffineCoreg.to_translations` and 
+{class}`xdem.coreg.AffineCoreg.to_rotations`.
+
+To further manipulate affine matrices, see the [documentation of pytransform3d](https://dfki-ric.github.io/pytransform3d/rotations.html).
+```
+
+**5. Specific metadata (only for certain methods)**:
+
+These metadata are only inputs specific to a given method, outlined in the method description.
+
+For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and 
+for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
 
 ## Coregistration methods
 
@@ -176,8 +229,7 @@ tba_dem_shift = xdem.coreg.apply_matrix(ref_dem, matrix)
 # Define a coregistration based on the Nuth and Kääb (2011) method
 nuth_kaab = xdem.coreg.NuthKaab()
 # Fit to data and apply
-nuth_kaab.fit(ref_dem, tba_dem_shift)
-aligned_dem = nuth_kaab.apply(tba_dem_shift)
+aligned_dem = nuth_kaab.fit_and_apply(ref_dem, tba_dem_shift)
 ```
 
 ```{code-cell} ipython3
@@ -221,8 +273,7 @@ tba_dem_vshift = ref_dem + 10
 # Define a coregistration object based on a vertical shift correction
 vshift = xdem.coreg.VerticalShift(vshift_reduc_func=np.median)
 # Fit and apply
-vshift.fit(ref_dem, tba_dem_vshift)
-aligned_dem = vshift.apply(tba_dem_vshift)
+aligned_dem = vshift.fit_and_apply(ref_dem, tba_dem_vshift)
 ```
 
 ```{code-cell} ipython3
@@ -264,9 +315,9 @@ ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/
 
 # Apply a rotation of 0.2 degrees and X/Y/Z shifts to elevation in meters
 rotation = np.deg2rad(0.2)
-x_shift = 20
-y_shift = 20
-z_shift = 5
+x_shift = 100
+y_shift = 200
+z_shift = 50
 # Affine matrix for 3D transformation
 matrix = np.array(
     [
@@ -276,16 +327,16 @@ matrix = np.array(
         [0, 0, 0, 1],
     ]
 )
+centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem) + 100]
 # We create misaligned elevation data
-tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix)
+tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix, centroid=centroid)
 ```
 
 ```{code-cell} ipython3
 # Define a coregistration based on ICP
 icp = xdem.coreg.ICP()
 # Fit to data and apply
-icp.fit(ref_dem, tba_dem_shifted_rotated)
-aligned_dem = icp.apply(tba_dem_shifted_rotated)
+aligned_dem = icp.fit_and_apply(ref_dem, tba_dem_shifted_rotated)
 ```
 
 ```{code-cell} ipython3
@@ -327,8 +378,7 @@ The results of a pipeline can be used in other programs by exporting the combine
 
 ```{code-cell} ipython3
 # Fit to data and apply the pipeline of ICP + Nuth and Kääb
-pipeline.fit(ref_dem, tba_dem_shifted_rotated)
-aligned_dem = pipeline.apply(tba_dem_shifted_rotated)
+aligned_dem = pipeline.fit_and_apply(ref_dem, tba_dem_shifted_rotated)
 ```
 
 ```{code-cell} ipython3
@@ -372,4 +422,35 @@ pipeline = xdem.coreg.VerticalShift() + xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object
 
+Sometimes, we want to split a coregistration across different spatial subsets of an elevation dataset, running that 
+method independently in each subset. A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
+```{code-cell} ipython3
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=16)
+```
+
+The subdivision corresponds to an equal-length block division across the extent of the elevation dataset. It needs 
+to be a number of the form 2{sup}`n` (such as 4 or 256).
+
+It is run the same way as other coregistrations:
+
+```{code-cell} ipython3
+# Run 16 block coregistrations
+blockwise.fit(ref_dem, tba_dem_shifted_rotated)
+aligned_dem = blockwise.apply(tba_dem_shifted_rotated)
+```
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before block\nNK + Deramp")
+(tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After block\nNK + Deramp")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+```

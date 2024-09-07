@@ -89,6 +89,9 @@ import geoutils as gu
 fn_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
 vect_gla = gu.Vector(fn_glacier_outlines)
 
+# Crop outlines to those intersecting the DEM
+vect_gla = vect_gla.crop(dem)
+
 # Plot the DEM and the vector file
 dem.plot(cmap="terrain", cbar_title="Elevation (m)")
 vect_gla.plot(dem)  # We pass the DEM as reference for the plot CRS/extent

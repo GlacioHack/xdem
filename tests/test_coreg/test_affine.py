@@ -161,13 +161,13 @@ class TestAffineCoreg:
 
         # Check that the from_translation function works as expected.
         x_offset = 5
-        coreg_obj2 = AffineCoreg.from_translation(x_off=x_offset)
+        coreg_obj2 = AffineCoreg.from_translations(x_off=x_offset)
         transformed_points2 = coreg_obj2.apply(self.points)
         assert np.array_equal(self.points.geometry.x.values + x_offset, transformed_points2.geometry.x.values)
 
         # Try to make a Coreg object from a nan translation (should fail).
         try:
-            AffineCoreg.from_translation(np.nan)
+            AffineCoreg.from_translations(np.nan)
         except ValueError as exception:
             if "non-finite values" not in str(exception):
                 raise exception
