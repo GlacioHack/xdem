@@ -195,7 +195,7 @@ plt.tight_layout()
 plt.show()
 ```
 
-*Caption: The elevation dependent elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*
+*Caption: Hypsometric elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*
 
 ## Regional hypsometric interpolation
 
@@ -269,4 +269,4 @@ plt.ylabel("Elevation (m a.s.l.)")
 plt.tight_layout()
 plt.show()
 ```
-*Caption: The regional elevation dependent elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*
+*Caption: Regional hypsometric elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*

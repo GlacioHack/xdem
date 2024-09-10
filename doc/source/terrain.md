@@ -133,17 +133,24 @@ where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ corresp
 and take values of either the center ($0$), west or south ($-$), or east or north ($+$):
 
 ```{list-table}    
-   :widths: 1mm 1mm 1mm
+   :widths: 1mm 1mm 1mm 1mm
    :header-rows: 1
    :stub-columns: 1
 
-   * - $h_{-+}$
+   * -  
+     - West
+     - Center
+     - East
+   * - North
+     - $h_{-+}$
      - $h_{0+}$
      - $h_{++}$
-   * - $h_{-0}$
+   * - Center
+     - $h_{-0}$
      - $h_{00}$
      - $h_{+0}$
-   * - $h_{--}$
+   * - South
+     - $h_{--}$
      - $h_{0-}$
      - $h_{+-}$
 ```

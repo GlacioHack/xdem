@@ -28,7 +28,7 @@ scientific fields: spatial statistics and uncertainty quantification**.
 
 While uncertainty analysis technically refers to both systematic and random errors, systematic errors of elevation data
 are corrected using {ref}`coregistration` and {ref}`biascorr`, so we here refer to **uncertainty analysis for quantifying and
-propagating random errors**.
+propagating random errors (including structured errors)**.
 
 In detail, xDEM provides tools to:
 

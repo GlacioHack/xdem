@@ -258,7 +258,7 @@ class TestAffineCoreg:
             nuth_kaab.meta["outputs"]["affine"]["shift_y"],
             nuth_kaab.meta["outputs"]["affine"]["shift_z"],
         )
-        assert shifts == pytest.approx((-9.198341, -2.786257, -1.981793))
+        assert shifts == pytest.approx((9.198341, 2.786257, -1.981793))
 
     def test_gradientdescending(self, subsample: int = 10000, verbose: bool = False) -> None:
         """

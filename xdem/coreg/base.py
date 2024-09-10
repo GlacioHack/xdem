@@ -2521,9 +2521,9 @@ class Coreg:
             try:
                 applied_elev = self._apply_pts(**kwargs)
 
-            # If it doesn't exist, use opencv's perspectiveTransform
+            # If it doesn't exist, use apply_matrix()
             except NotImplementedCoregApply:
-                if self.is_affine:  # This only works on it's rigid, however.
+                if self.is_affine:
 
                     applied_elev = _apply_matrix_pts(
                         epc=kwargs["elev"],
@@ -2695,7 +2695,7 @@ class CoregPipeline(Coreg):
         """Return an identical copy of the class."""
         new_coreg = self.__new__(type(self))
 
-        new_coreg.__dict__ = {key: copy.deepcopy(value) for key, value in self.__dict__.items() if key != "pipeline"}
+        new_coreg.__dict__ = {key: copy.copy(value) for key, value in self.__dict__.items() if key != "pipeline"}
         new_coreg.pipeline = [step.copy() for step in self.pipeline]
 
         return new_coreg

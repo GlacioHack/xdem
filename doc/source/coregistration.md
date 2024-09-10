@@ -1,7 +1,7 @@
 ---
 file_format: mystnb
 mystnb:
-  execution_timeout: 90
+  execution_timeout: 150
 jupytext:
   formats: md:myst
   text_representation:
@@ -222,14 +222,14 @@ matrix = np.array(
     ]
 )
 # We create misaligned elevation data
-tba_dem_shift = xdem.coreg.apply_matrix(ref_dem, matrix)
+tba_dem_shifted = xdem.coreg.apply_matrix(ref_dem, matrix)
 ```
 
 ```{code-cell} ipython3
 # Define a coregistration based on the Nuth and Kääb (2011) method
 nuth_kaab = xdem.coreg.NuthKaab()
 # Fit to data and apply
-aligned_dem = nuth_kaab.fit_and_apply(ref_dem, tba_dem_shift)
+aligned_dem = nuth_kaab.fit_and_apply(ref_dem, tba_dem_shifted)
 ```
 
 ```{code-cell} ipython3
@@ -241,7 +241,7 @@ aligned_dem = nuth_kaab.fit_and_apply(ref_dem, tba_dem_shift)
 # Plot before and after
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before NK")
-(tba_dem_shift - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+(tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
 ax[1].set_title("After NK")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
@@ -266,14 +266,14 @@ The vertical shift coregistration is simply a shift based on an estimate of the 
 :  code_prompt_hide: "Hide the code for adding a vertical shift"
 
 # Apply a vertical shift of 10 meters
-tba_dem_vshift = ref_dem + 10
+tba_dem_vshifted = ref_dem + 10
 ```
 
 ```{code-cell} ipython3
 # Define a coregistration object based on a vertical shift correction
 vshift = xdem.coreg.VerticalShift(vshift_reduc_func=np.median)
 # Fit and apply
-aligned_dem = vshift.fit_and_apply(ref_dem, tba_dem_vshift)
+aligned_dem = vshift.fit_and_apply(ref_dem, tba_dem_vshifted)
 ```
 
 ```{code-cell} ipython3
@@ -285,7 +285,7 @@ aligned_dem = vshift.fit_and_apply(ref_dem, tba_dem_vshift)
 # Plot before and after
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before vertical\nshift")
-(tba_dem_vshift - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+(tba_dem_vshifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
 ax[1].set_title("After vertical\nshift")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
@@ -418,7 +418,7 @@ Additionally, ICP tends to fail with large initial vertical differences, so a pr
 pipeline = xdem.coreg.VerticalShift() + xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 ```
 
-## Dividing a coregistration between blocks
+## Dividing coregistration in blocks
 
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object
 
@@ -436,8 +436,7 @@ It is run the same way as other coregistrations:
 
 ```{code-cell} ipython3
 # Run 16 block coregistrations
-blockwise.fit(ref_dem, tba_dem_shifted_rotated)
-aligned_dem = blockwise.apply(tba_dem_shifted_rotated)
+aligned_dem = blockwise.fit_and_apply(ref_dem, tba_dem_shifted)
 ```
 
 ```{code-cell} ipython3
@@ -448,9 +447,9 @@ aligned_dem = blockwise.apply(tba_dem_shifted_rotated)
 
 # Plot before and after
 f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before block\nNK + Deramp")
-(tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After block\nNK + Deramp")
+ax[0].set_title("Before block NK")
+(tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After block NK")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```

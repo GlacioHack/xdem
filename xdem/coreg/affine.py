@@ -1407,7 +1407,7 @@ class NuthKaab(AffineCoreg):
 
         # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
-        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
+        output_affine = OutAffineDict(shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
@@ -1416,8 +1416,8 @@ class NuthKaab(AffineCoreg):
 
         # We add a translation, on the last column
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] -= self._meta["outputs"]["affine"]["shift_x"]
-        matrix[1, 3] -= self._meta["outputs"]["affine"]["shift_y"]
+        matrix[0, 3] += self._meta["outputs"]["affine"]["shift_x"]
+        matrix[1, 3] += self._meta["outputs"]["affine"]["shift_y"]
         matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return matrix
@@ -1526,7 +1526,7 @@ class GradientDescending(AffineCoreg):
 
         # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
-        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
+        output_affine = OutAffineDict(shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 

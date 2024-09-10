@@ -130,6 +130,8 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
 
     DEM.polygonize
     DEM.proximity
+    DEM.to_pointcloud
+    DEM.interp_points
 ```
 
 ### Terrain attributes
