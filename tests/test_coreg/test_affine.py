@@ -7,8 +7,6 @@ import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio as rio
-
-import geoutils
 from geoutils import Raster, Vector
 from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
@@ -237,7 +235,9 @@ class TestAffineCoreg:
 
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            init_dh = ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values)) - ref_shifted["z"]
+            init_dh = (
+                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values)) - ref_shifted["z"]
+            )
             dh = ref.interp_points((coreg_dem.geometry.x.values, coreg_dem.geometry.y.values)) - coreg_dem["z"]
         else:
             init_dh = ref - ref_shifted.reproject(ref)

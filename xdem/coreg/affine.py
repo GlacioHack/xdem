@@ -275,11 +275,14 @@ def _subsample_on_mask_interpolator(
             if ref == "point":
                 return pts_elev[z_name][sub_mask].values - rst_elev_interpolator(
                     (sub_coords[1] + shift_y, sub_coords[0] + shift_x)
-                    )
+                )
             # Also invert the shift direction on the raster interpolator, so that the shift is the same relative to
             # the reference (returns the right shift relative to the reference no matter if it is point or raster)
             else:
-                return rst_elev_interpolator((sub_coords[1] - shift_y, sub_coords[0] - shift_x)) - pts_elev[z_name][sub_mask].values
+                return (
+                    rst_elev_interpolator((sub_coords[1] - shift_y, sub_coords[0] - shift_x))
+                    - pts_elev[z_name][sub_mask].values
+                )
 
         # Interpolate arrays of bias variables to the subsample point coordinates
         if aux_vars is not None:
