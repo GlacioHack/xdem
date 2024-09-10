@@ -7,6 +7,8 @@ import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio as rio
+
+import geoutils
 from geoutils import Raster, Vector
 from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
@@ -96,14 +98,34 @@ class TestAffineCoreg:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
-    fit_params = dict(
-        reference_elev=ref.data,
-        to_be_aligned_elev=tba.data,
-        inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
+    # Check all point-raster possibilities supported
+    # Use the reference DEM for both, it will be artificially misaligned during tests
+    # Raster-Raster
+    fit_args_rst_rst = dict(
+        reference_elev=ref,
+        to_be_aligned_elev=ref,
         verbose=True,
     )
+
+    # Convert DEMs to points with a bit of subsampling for speed-up
+    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+
+    # Raster-Point
+    fit_args_rst_pts = dict(
+        reference_elev=ref,
+        to_be_aligned_elev=ref_pts,
+        verbose=True,
+    )
+
+    # Point-Raster
+    fit_args_pts_rst = dict(
+        reference_elev=ref_pts,
+        to_be_aligned_elev=ref,
+        verbose=True,
+    )
+
+    all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
+
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
     points = gpd.GeoDataFrame(
@@ -171,6 +193,66 @@ class TestAffineCoreg:
         except ValueError as exception:
             if "non-finite values" not in str(exception):
                 raise exception
+
+    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
+    def test_shift_coreg__synthetic(self, fit_args, shifts, coreg_method) -> None:
+        """
+        Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
+        ICP and GradientDescending.
+
+        We test all combinaison of inputs: raster-raster, point-raster and raster-point.
+
+        We verify that the shifts found by the coregistration are within 1% of the synthetic shifts with opposite sign
+        of the ones introduced, and that applying the coregistration to the shifted elevations corrects more than
+        99% of the variance from the initial elevation differences.
+        """
+
+        # Try default "fit" parameters instantiation
+        horizontal_coreg = coreg_method()
+        elev_fit_args = fit_args.copy()
+
+        # Create synthetic translation from the reference DEM
+        ref = self.ref
+        ref_shifted = ref.translate(shifts[0], shifts[1]) + shifts[2]
+        # Convert to point cloud if input was point cloud
+        if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
+            ref_shifted = ref_shifted.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+        elev_fit_args["to_be_aligned_elev"] = ref_shifted
+
+        # Run coregistration
+        horizontal_coreg.fit(
+            **elev_fit_args,
+            subsample=40000,
+            random_state=42,
+        )
+
+        # Check all fit parameters are the opposite of those used above, within a relative 1%
+        fit_shifts = [-horizontal_coreg.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
+        assert np.allclose(shifts, fit_shifts, rtol=10e-2)
+
+        # Run apply and check that 99% of the variance was corrected
+        coreg_dem = horizontal_coreg.apply(elev_fit_args["to_be_aligned_elev"])
+
+        # For a point cloud output, need to interpolate with the other DEM to get dh
+        if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
+            init_dh = ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values)) - ref_shifted["z"]
+            dh = ref.interp_points((coreg_dem.geometry.x.values, coreg_dem.geometry.y.values)) - coreg_dem["z"]
+        else:
+            init_dh = ref - ref_shifted.reproject(ref)
+            dh = ref - coreg_dem.reproject(ref)
+
+        # Plots for debugging
+        # if isinstance(dh, geoutils.Raster):
+        #     import matplotlib.pyplot as plt
+        #     init_dh.plot()
+        #     plt.show()
+        #     dh.plot()
+        #     plt.show()
+
+        # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
+        assert np.nanvar(dh / np.nanstd(init_dh)) < 0.01
 
     def test_vertical_shift(self) -> None:
 
