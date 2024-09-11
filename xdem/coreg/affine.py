@@ -271,15 +271,18 @@ def _subsample_on_mask_interpolator(
         def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
             """Elevation difference interpolator for shifted coordinates of the subsample."""
 
-            diff_rst_pts = pts_elev[z_name][sub_mask].values - rst_elev_interpolator(
-                (sub_coords[1] + shift_y, sub_coords[0] + shift_x)
-            )
-
             # Always return ref minus tba
             if ref == "point":
-                return diff_rst_pts
+                return pts_elev[z_name][sub_mask].values - rst_elev_interpolator(
+                    (sub_coords[1] + shift_y, sub_coords[0] + shift_x)
+                )
+            # Also invert the shift direction on the raster interpolator, so that the shift is the same relative to
+            # the reference (returns the right shift relative to the reference no matter if it is point or raster)
             else:
-                return -diff_rst_pts
+                return (
+                    rst_elev_interpolator((sub_coords[1] - shift_y, sub_coords[0] - shift_x))
+                    - pts_elev[z_name][sub_mask].values
+                )
 
         # Interpolate arrays of bias variables to the subsample point coordinates
         if aux_vars is not None:
@@ -689,10 +692,10 @@ def _gradient_descending_fit(
         errorcontrol=False,
     )
 
-    # Get final offsets
-    offset_east = res.x[0]
-    offset_north = res.x[1]
-    offset_vertical = float(-np.nanmedian(dh_interpolator(offset_east, offset_north)))
+    # Get final offsets with the right sign direction
+    offset_east = -res.x[0]
+    offset_north = -res.x[1]
+    offset_vertical = float(np.nanmedian(dh_interpolator(-offset_east, -offset_north)))
 
     return offset_east, offset_north, offset_vertical
 
@@ -1413,7 +1416,7 @@ class NuthKaab(AffineCoreg):
 
         # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
-        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
+        output_affine = OutAffineDict(shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
@@ -1422,8 +1425,8 @@ class NuthKaab(AffineCoreg):
 
         # We add a translation, on the last column
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] -= self._meta["outputs"]["affine"]["shift_x"]
-        matrix[1, 3] -= self._meta["outputs"]["affine"]["shift_y"]
+        matrix[0, 3] += self._meta["outputs"]["affine"]["shift_x"]
+        matrix[1, 3] += self._meta["outputs"]["affine"]["shift_y"]
         matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return matrix
@@ -1443,7 +1446,7 @@ class GradientDescending(AffineCoreg):
     def __init__(
         self,
         x0: tuple[float, float] = (0, 0),
-        bounds: tuple[float, float] = (-3, 3),
+        bounds: tuple[float, float] = (-10, 10),
         deltainit: int = 2,
         deltatol: float = 0.004,
         feps: float = 0.0001,
