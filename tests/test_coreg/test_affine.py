@@ -277,7 +277,6 @@ class TestAffineCoreg:
         tol = 0.01 if coreg_method != coreg.ICP else 0.05
         assert np.nanvar(dh / np.nanstd(init_dh)) < tol
 
-
     @pytest.mark.parametrize(
         "coreg_method__shift",
         [
@@ -388,9 +387,7 @@ class TestAffineCoreg:
         assert vshift == pytest.approx(expected_vshift)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize(
-        "shifts_rotations", [(20, 5, 0, 0.02, 0.05, 0.1), (-50, 100, 0, 10, 5, 4)]
-    )  # type: ignore
+    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 0, 0.02, 0.05, 0.1), (-50, 100, 0, 10, 5, 4)])  # type: ignore
     @pytest.mark.parametrize("coreg_method", [coreg.ICP])  # type: ignore
     def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:
         """
