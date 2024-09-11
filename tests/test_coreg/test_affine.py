@@ -2,23 +2,19 @@
 from __future__ import annotations
 
 import geopandas as gpd
+import geoutils
 import numpy as np
 import pytest
+import pytransform3d
 import rasterio as rio
-
-import geoutils
 from geoutils import Raster, Vector
 from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
 from geoutils.raster.raster import _shift_transform
 from scipy.ndimage import binary_dilation
-import pytransform3d
 
 from xdem import coreg, examples
-from xdem.coreg.affine import (
-    AffineCoreg,
-    _reproject_horizontal_shift_samecrs,
-)
+from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs
 
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
@@ -267,6 +263,7 @@ class TestAffineCoreg:
         PLOT = False
         if PLOT and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
+
             init_dh.plot()
             plt.show()
             dh.plot()
@@ -275,14 +272,17 @@ class TestAffineCoreg:
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
         assert np.nanvar(dh / np.nanstd(init_dh)) < 0.01
 
-    @pytest.mark.parametrize("coreg_method__shift",
-                             [(coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-                              (coreg.GradientDescending, (10.0, 2.5, -1.964539)),
-                              (coreg.ICP, (8.73833, 1.584255, -1.943957))]
-                             )  # type: ignore
-    def test_coreg_translations__example(self,
-                                         coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]],
-                                         verbose: bool = False) -> None:
+    @pytest.mark.parametrize(
+        "coreg_method__shift",
+        [
+            (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
+            (coreg.GradientDescending, (10.0, 2.5, -1.964539)),
+            (coreg.ICP, (8.73833, 1.584255, -1.943957)),
+        ],
+    )  # type: ignore
+    def test_coreg_translations__example(
+        self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]], verbose: bool = False
+    ) -> None:
         """
         Test that the translation co-registration outputs are always exactly the same on the real example data.
         """
@@ -299,11 +299,11 @@ class TestAffineCoreg:
         c.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output translations match the exact values
-        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
+        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
         assert shifts == pytest.approx(expected_shifts)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("vshift", [0.2, 10., 1000.])  # type: ignore
+    @pytest.mark.parametrize("vshift", [0.2, 10.0, 1000.0])  # type: ignore
     def test_coreg_vertical_translation__synthetic(self, fit_args, vshift) -> None:
         """
         Test the vertical shift coregistration with synthetic shifted data. These tests include VerticalShift.
@@ -336,7 +336,7 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                    ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values)) - ref_vshifted["z"]
+                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values)) - ref_vshifted["z"]
             )
             dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values)) - coreg_elev["z"]
         else:
@@ -347,6 +347,7 @@ class TestAffineCoreg:
         PLOT = False
         if PLOT and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
+
             init_dh.plot()
             plt.show()
             dh.plot()
@@ -357,11 +358,10 @@ class TestAffineCoreg:
         assert np.nanmedian(dh) == pytest.approx(0, abs=10e-6)
         assert np.nanvar(dh) == pytest.approx(0, abs=10e-6)
 
-    @pytest.mark.parametrize("coreg_method__vshift",
-                             [(coreg.VerticalShift, -2.305015)])  # type: ignore
-    def test_coreg_vertical_translation__example(self,
-                                         coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]],
-                                         verbose: bool = False) -> None:
+    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])  # type: ignore
+    def test_coreg_vertical_translation__example(
+        self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]], verbose: bool = False
+    ) -> None:
         """
         Test that the vertical translation co-registration output is always exactly the same on the real example data.
         """
@@ -382,7 +382,9 @@ class TestAffineCoreg:
         assert vshift == pytest.approx(expected_vshift)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 2, 0.02, 0.05, 0.01), (-50, 100, 20, 10, 5, 4)])  # type: ignore
+    @pytest.mark.parametrize(
+        "shifts_rotations", [(20, 5, 2, 0.02, 0.05, 0.01), (-50, 100, 20, 10, 5, 4)]
+    )  # type: ignore
     @pytest.mark.parametrize("coreg_method", [coreg.ICP])  # type: ignore
     def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:
         """
@@ -422,7 +424,9 @@ class TestAffineCoreg:
 
         # Convert to point cloud if input was point cloud
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            ref_shifted_rotated = ref_shifted_rotated.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+            ref_shifted_rotated = ref_shifted_rotated.to_pointcloud(
+                data_column_name="z", subsample=50000, random_state=42
+            ).ds
         elev_fit_args["to_be_aligned_elev"] = ref_shifted_rotated
 
         # Run coregistration
@@ -433,7 +437,9 @@ class TestAffineCoreg:
         fit_matrix = horizontal_coreg.meta["outputs"]["affine"]["matrix"]
         invert_fit_matrix = coreg.invert_matrix(fit_matrix)
         invert_fit_shifts = invert_fit_matrix[:3, 3]
-        invert_fit_rotations = pytransform3d.rotations.euler_from_matrix(invert_fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True)
+        invert_fit_rotations = pytransform3d.rotations.euler_from_matrix(
+            invert_fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True
+        )
         invert_fit_rotations = np.rad2deg(invert_fit_rotations)
         assert np.allclose(shifts, invert_fit_shifts, rtol=1)
         assert np.allclose(rotations, invert_fit_rotations, rtol=10e-1)
@@ -441,7 +447,8 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                    ref.interp_points((ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values)) - ref_shifted_rotated["z"]
+                ref.interp_points((ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values))
+                - ref_shifted_rotated["z"]
             )
             dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values)) - coreg_elev["z"]
         else:
@@ -452,6 +459,7 @@ class TestAffineCoreg:
         PLOT = False
         if PLOT and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
+
             init_dh.plot()
             plt.show()
             dh.plot()
@@ -460,12 +468,15 @@ class TestAffineCoreg:
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
         assert np.nanvar(dh / np.nanstd(init_dh)) < 0.01
 
-
-    @pytest.mark.parametrize("coreg_method__shifts_rotations",
-                             [(coreg.ICP, (8.738332, 1.584255, -1.943957, 0.0069004, -0.00703, -0.0119733))])  # type: ignore
-    def test_coreg_rigid__example(self,
-                                 coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]],
-                                 verbose: bool = False) -> None:
+    @pytest.mark.parametrize(
+        "coreg_method__shifts_rotations",
+        [(coreg.ICP, (8.738332, 1.584255, -1.943957, 0.0069004, -0.00703, -0.0119733))],
+    )  # type: ignore
+    def test_coreg_rigid__example(
+        self,
+        coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]],
+        verbose: bool = False,
+    ) -> None:
         """
         Test that the rigid co-registration outputs is always exactly the same on the real example data.
         """
@@ -489,5 +500,3 @@ class TestAffineCoreg:
         fit_shifts_rotations = tuple(np.concatenate((fit_shifts, fit_rotations)))
 
         assert fit_shifts_rotations == pytest.approx(expected_shifts_rots, abs=10e-6)
-
-
