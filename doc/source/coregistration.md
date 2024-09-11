@@ -90,7 +90,27 @@ Information about the coregistration inputs and outputs is summarized in {func}`
 Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to isolate static surfaces to utilize during coregistration (for instance removing vegetation, snow, glaciers). This mask can be easily derived using {func}`~geoutils.Vector.create_mask`.
 ```
 
-## Using a coregistration  
+## Summary of supported methods
+
+```{list-table}
+   :widths: 1 1 1
+   :header-rows: 1
+   :stub-columns: 1
+
+   * - Affine method
+     - Description
+     - Reference
+   * - {ref}`nuthkaab`
+     - Horizontal and vertical translations
+     - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
+   * - {ref}`icp`
+     - Translation and rotations
+     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) 
+   * - {ref}`vshift`
+     - Vertical translation
+```
+
+## Using a coregistration
 
 (coreg_object)=
 ### The {class}`~xdem.coreg.Coreg` object
@@ -189,7 +209,7 @@ Below we **create misaligned elevation data to examplify the different methods**
 See coregistration on real data in the **{ref}`examples-basic` and {ref}`examples-advanced` gallery examples**!
 ```
 
-(coregistration-nuthkaab)=
+(nuthkaab)=
 ### Nuth and Kääb (2011)
 
 {class}`xdem.coreg.NuthKaab`
@@ -247,6 +267,7 @@ ax[1].set_title("After NK")
 _ = ax[1].set_yticklabels([])
 ```
 
+(vshift)=
 ### Vertical shift
 
 {class}`xdem.coreg.VerticalShift`
@@ -292,7 +313,6 @@ _ = ax[1].set_yticklabels([])
 ```
 
 (icp)=
-
 ### Iterative closest point
 
 {class}`xdem.coreg.ICP`
