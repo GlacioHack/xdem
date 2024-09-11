@@ -467,8 +467,12 @@ def _postprocess_coreg_apply_rst(
 
     # Resample the array on the original grid
     if resample:
+
+        # TODO: Use this function for a translation only, for consistency with the rest of Coreg?
+        #  (would require checking transform difference is only a translation)
         # applied_elev = _reproject_horizontal_shift_samecrs(raster_arr=applied_elev, src_transform=out_transform,
         #                                                    dst_transform=transform)
+
         # Reproject the DEM from its out_transform onto the transform
         applied_rst = gu.Raster.from_array(applied_elev, out_transform, crs=crs, nodata=nodata)
         if not isinstance(elev, gu.Raster):
