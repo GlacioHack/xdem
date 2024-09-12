@@ -108,6 +108,7 @@ Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to iso
      - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) 
    * - {ref}`vshift`
      - Vertical translation
+     - 
 ```
 
 ## Using a coregistration
