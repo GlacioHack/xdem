@@ -30,6 +30,23 @@ xDEM aims at making the analysis of digital elevation models **easy**, **modular
 
 ::::
 
+```{important}
+:class: margin
+xDEM ``v0.1`` is released, with nearly all features planned 4 years ago 🎉! We are now adding an **Xarray accessor**, and re-structuring the "Uncertainty" features for 2025. Note the version you are
+working on for reproducibility!
+```
+
+xDEM is **tailored to perform quantitative analysis that implicitly understands the intricacies of elevation data**, 
+both from a **georeferencing viewpoint** (vertical referencing, nodata values, projection, pixel interpretation) and 
+a **statistical viewpoint** (outlier robustness, uncertainty awareness).
+
+It exposes **an intuitive object-based API to foster accessibility**, and strives **to be computationally scalable** through Dask.
+
+Additionally, it is built on top of core geospatial packages (Rasterio, GeoPandas, PyProj) and numerical packages (NumPy, Xarray, SciPy) to provide 
+**consistent higher-level functionalities at the interface of DEMs and elevation point cloud objects** (notably through its 
+sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/)).
+
+
 ----------------
 
 # Where to start?
@@ -71,11 +88,6 @@ Dive into the full documentation.
 
 ----------------
 
-:::{important}
-xDEM is in early stages of development and its features might evolve rapidly. Note the version you are
-working on for reproducibility!
-We are working on making features fully consistent for the first long-term release `v0.1` (planned early 2024).
-:::
 
 ```{toctree}
 :caption: Getting started

@@ -323,7 +323,7 @@ _ = ax[1].set_yticklabels([])
 - **Pros:** Efficient at estimating rotation and shifts simultaneously.
 - **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
 
-Iterative Closest Point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955). It aims at iteratively minimizing the closest distance by apply sequential rigid transformations. If DEMs are used as inputs, they are converted to point clouds.
+Iterative Closest Point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955). It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. If DEMs are used as inputs, they are converted to point clouds.
 As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the tolerance does not improve.
 
 ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html) (an optional dependency), which includes outlier removal arguments. This may improve results significantly on outlier-prone data, but care should still be taken, as the risk of landing in [local minima](https://en.wikipedia.org/wiki/Maxima_and_minima) increases.
@@ -334,21 +334,18 @@ ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/
 :  code_prompt_show: "Show the code for adding a shift and rotation"
 :  code_prompt_hide: "Hide the code for adding a shift and rotation"
 
-# Apply a rotation of 0.2 degrees and X/Y/Z shifts to elevation in meters
-rotation = np.deg2rad(0.2)
-x_shift = 100
-y_shift = 200
-z_shift = 50
+# Apply a rotation of 0.2 degrees in X, 0.1 in Y and 0 in Z
+e = np.deg2rad([0.2, 0.1, 0])
+# Add X/Y/Z shifts in meters
+shifts = np.array([10, 20, 5])
 # Affine matrix for 3D transformation
-matrix = np.array(
-    [
-        [1, 0, 0, x_shift],
-        [0, np.cos(rotation), -np.sin(rotation), y_shift],
-        [0, np.sin(rotation), np.cos(rotation), z_shift],
-        [0, 0, 0, 1],
-    ]
-)
-centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem) + 100]
+import pytransform3d
+matrix_rot = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
+matrix = np.diag(np.ones(4, dtype=float))
+matrix[:3, :3] = matrix_rot
+matrix[:3, 3] = shifts
+
+centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem)]
 # We create misaligned elevation data
 tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix, centroid=centroid)
 ```
