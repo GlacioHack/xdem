@@ -1,6 +1,8 @@
 """Functions to test the affine coregistrations."""
 from __future__ import annotations
 
+import warnings
+
 import geopandas as gpd
 import geoutils
 import numpy as np
@@ -213,11 +215,11 @@ class TestAffineCoreg:
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.DhMinimize, coreg.ICP])  # type: ignore
     def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:
         """
         Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
-        ICP and GradientDescending.
+        ICP and DhMinimize.
 
         We test all combinaison of inputs: raster-raster, point-raster and raster-point.
 
@@ -226,6 +228,8 @@ class TestAffineCoreg:
         99% of the variance from the initial elevation differences (hence, that the direction of coregistration has
         to be the right one; and that there is no other errors introduced in the process).
         """
+
+        warnings.filterwarnings("ignore", message="Covariance of the parameters*")
 
         # Initiate coregistration
         horizontal_coreg = coreg_method()
@@ -281,7 +285,7 @@ class TestAffineCoreg:
         "coreg_method__shift",
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.GradientDescending, (10.0, 2.5, -1.964539)),
+            (coreg.DhMinimize, (10.0, 2.5, -1.964539)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
     )  # type: ignore
