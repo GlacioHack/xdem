@@ -27,7 +27,6 @@ from xdem.coreg.base import (
     CoregDict,
     InFitOrBinDict,
     InRandomDict,
-    InSpecificDict,
     OutAffineDict,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
@@ -651,6 +650,7 @@ def _dh_minimize_fit_func(
     dh = dh_interpolator(coords_offsets[0], coords_offsets[1]).flatten()
 
     return dh
+
 
 def _dh_minimize_fit(
     dh_interpolator: Callable[[float, float], NDArrayf],
@@ -1518,7 +1518,7 @@ class DhMinimize(AffineCoreg):
             verbose=verbose,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
-            **kwargs
+            **kwargs,
         )
 
         # Write output to class

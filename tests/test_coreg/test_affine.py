@@ -13,11 +13,12 @@ from geoutils import Raster, Vector
 from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
 from geoutils.raster.raster import _shift_transform
+from noisyopt import minimizeCompass
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
 from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs
-from noisyopt import minimizeCompass
+
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
