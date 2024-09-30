@@ -77,6 +77,8 @@ dict_key_to_str = {
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
     "fit_optimizer": "Optimizer for fitting",
+    "fit_minimizer": "Minimizer of method",
+    "fit_loss_func": "Loss function of method",
     "bin_statistic": "Binning statistic",
     "bin_sizes": "Bin sizes or edges",
     "bin_apply_method": "Bin apply method",

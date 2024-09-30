@@ -42,6 +42,13 @@ try:
 except ImportError:
     _HAS_P3D = False
 
+try:
+    from noisyopt import minimizeCompass
+
+    _HAS_NOISYOPT = True
+except ImportError:
+    _HAS_NOISYOPT = False
+
 ######################################
 # Generic functions for affine methods
 ######################################
@@ -649,6 +656,7 @@ def _dh_minimize_fit(
     dh_interpolator: Callable[[float, float], NDArrayf],
     params_fit_or_bin: InFitOrBinDict,
     verbose: bool = False,
+    **kwargs: Any,
 ) -> tuple[float, float, float]:
     """
     Optimize the statistical dispersion of the elevation differences residuals.
@@ -663,17 +671,25 @@ def _dh_minimize_fit(
     # Define partial function
     loss_func = params_fit_or_bin["fit_loss_func"]
 
-    def fit_func(coords_offsets: tuple[float, float]) -> NDArrayf:
+    def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
         return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
 
-    # Add to parameters
-    params_fit_or_bin.update({"fit_func": fit_func, "nd": 1, "bias_var_names": ["placeholder"]})
+    # Default parameters for scipy.minimize
+    if params_fit_or_bin["fit_minimizer"] == scipy.optimize.minimize:
+        if "method" not in kwargs.keys():
+            kwargs.update({"method": "Nelder-Mead"})
+            kwargs.update({"options": {"xatol": 10e-6, "maxiter": 500}})
 
-    # Pass zero for Y to match during fit
-    zero_residuals = np.atleast_1d(0.)
+    elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
+        kwargs.update({"errorcontrol": False})
+        if "deltatol" not in kwargs.keys():
+            kwargs.update({"deltatol": 0.004})
+        if "feps" not in kwargs.keys():
+            kwargs.update({"feps": 10e-5})
 
+    # Initial offset near zero
     init_offsets = (0, 0)
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, method="Nelder-Mead", bounds=[(-200, 200), (-200, 200)], tol=0.00001)
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
 
     # Get final offsets with the right sign direction
     offset_east = -results.x[0]
@@ -694,6 +710,7 @@ def dh_minimize(
     z_name: str,
     weights: NDArrayf | None = None,
     verbose: bool = False,
+    **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int]:
     """
     Elevation difference minimization coregistration method, for any point-raster or raster-raster input,
@@ -1501,6 +1518,7 @@ class DhMinimize(AffineCoreg):
             verbose=verbose,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
+            **kwargs
         )
 
         # Write output to class

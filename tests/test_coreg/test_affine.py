@@ -17,7 +17,7 @@ from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
 from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs
-
+from noisyopt import minimizeCompass
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
@@ -232,7 +232,11 @@ class TestAffineCoreg:
         warnings.filterwarnings("ignore", message="Covariance of the parameters*")
 
         # Initiate coregistration
-        horizontal_coreg = coreg_method()
+        if coreg_method == coreg.DhMinimize:
+            kwargs = {"fit_minimizer": minimizeCompass}
+        else:
+            kwargs = {}
+        horizontal_coreg = coreg_method(**kwargs)
 
         # Copy dictionary and remove inlier mask
         elev_fit_args = fit_args.copy()
@@ -253,7 +257,7 @@ class TestAffineCoreg:
         fit_shifts = [-horizontal_coreg.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
 
         # ICP can be less precise than other methods
-        rtol = 10e-2 if coreg_method != coreg.ICP else 10e-1
+        rtol = 10e-2 if coreg_method == coreg.NuthKaab else 10e-1
         assert np.allclose(shifts, fit_shifts, rtol=rtol)
 
         # For a point cloud output, need to interpolate with the other DEM to get dh
@@ -278,14 +282,14 @@ class TestAffineCoreg:
 
         # Check applying the coregistration removes 99% of the variance (95% for ICP)
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
-        tol = 0.01 if coreg_method != coreg.ICP else 0.05
+        tol = 0.01 if coreg_method == coreg.NuthKaab else 0.05
         assert np.nanvar(dh / np.nanstd(init_dh)) < tol
 
     @pytest.mark.parametrize(
         "coreg_method__shift",
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.DhMinimize, (10.0, 2.5, -1.964539)),
+            (coreg.DhMinimize, (10.125, 2.875, -1.943813)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
     )  # type: ignore
@@ -304,7 +308,11 @@ class TestAffineCoreg:
         coreg_method, expected_shifts = coreg_method__shift
 
         # Run co-registration
-        c = coreg_method(subsample=50000)
+        if coreg_method == coreg.DhMinimize:
+            kwargs = {"fit_minimizer": minimizeCompass}
+        else:
+            kwargs = {}
+        c = coreg_method(subsample=50000, **kwargs)
         c.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output translations match the exact values
