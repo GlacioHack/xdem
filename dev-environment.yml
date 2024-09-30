@@ -43,6 +43,8 @@ dependencies:
   - numpydoc
 
   - pip:
+    # Optional dependency
+    - noisyopt
     - -e ./
 
     # "Headless" needed for opencv to install without requiring system dependencies
