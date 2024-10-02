@@ -28,6 +28,7 @@ dependencies:
   - pyyaml
   - flake8
   - pylint
+  - gdal
 
   # Doc dependencies
   - sphinx
