@@ -141,17 +141,14 @@ $$
 $$
 
 
-Empirical variograms are variograms estimated directly by [binned](https://en.wikipedia.org/wiki/Data_binning) analysis
-of variance of the data. Historically, empirical variograms were estimated for point data by calculating all possible
-pairwise differences in the samples. This amounts to $N^2$ pairwise calculations for $N$ samples, which is
-not well-suited to grid data that contains many millions of points and would be impossible to comupute. Thus, in order
-to estimate a variogram for large grid data, subsampling is necessary.
-Random subsampling of the grid samples used is a solution, but often unsatisfactory as it creates a clustering
-of pairwise samples that unevenly represents lag classes (most pairwise differences are found at mid distances, but too
-few at short distances and long distances).
+Variograms are estimated empirically by [data binning](https://en.wikipedia.org/wiki/Data_binning) depending on
+the pairwise distance among data points, then modelled by functional forms called variogram models (e.g., spherical, 
+gaussian).
+
+As pairwise combinations grow exponentially, variograms are estimated using a random subsample on dense grid or point 
+data. Additionally, as elevation data usually contains patterns of noise at various range
 
 For more details on variography, **we refer to [the documentation of SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/userguide/userguide.html).**
-
 
 ## Error propagation
 

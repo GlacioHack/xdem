@@ -309,49 +309,67 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.TerrainBias
 ```
 
-## Terrain attributes
+## Uncertainty analysis
 
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
+```{important}
+Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics 
+(e.g., fitting a sum of variogram models, pairwise subsampling for grid data). This will allow to simplify several
+function inputs and outputs, by relying on a single {func}`~skgstat.Variogram` object.
 
-    xdem.terrain
+This will trigger API changes in future package versions. 
 ```
 
-## Volume integration methods
+### Core routines for heteroscedasticity, spatial correlations, error propagation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.volume
+    xdem.spatialstats.infer_heteroscedasticity_from_stable
+    xdem.spatialstats.infer_spatial_correlation_from_stable
+    xdem.spatialstats.spatial_error_propagation
 ```
 
-## Fitting methods
+### Sub-routines for heteroscedasticity
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.fit
+    xdem.spatialstats.nd_binning
+    xdem.spatialstats.interp_nd_binning
+    xdem.spatialstats.two_step_standardization
 ```
 
-## Filtering methods
+### Sub-routines for spatial correlations
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.filters
+    xdem.spatialstats.sample_empirical_variogram
+    xdem.spatialstats.fit_sum_model_variogram
+    xdem.spatialstats.correlation_from_variogram
 ```
 
-## Spatial statistics methods
+### Sub-routines for error propagation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats
+    xdem.spatialstats.number_effective_samples
+```
+
+### Plotting for uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.spatialstats.plot_variogram
+    xdem.spatialstats.plot_1d_binning
+    xdem.spatialstats.plot_2d_binning
 ```
 
 ## Stand-alone functions (moved)

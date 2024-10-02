@@ -38,14 +38,14 @@ working on for reproducibility!
 
 xDEM is **tailored to perform quantitative analysis that implicitly understands the intricacies of elevation data**, 
 both from a **georeferencing viewpoint** (vertical referencing, nodata values, projection, pixel interpretation) and 
-a **statistical viewpoint** (outlier robustness, uncertainty awareness).
+a **statistical viewpoint** (outlier robustness, specificities of 3D alignment and error structure).
 
-It exposes **an intuitive object-based API to foster accessibility**, and strives **to be computationally scalable** through Dask.
+It exposes **an intuitive object-based API to foster accessibility**, and strives **to be computationally scalable** 
+through Dask.
 
-Additionally, it is built on top of core geospatial packages (Rasterio, GeoPandas, PyProj) and numerical packages (NumPy, Xarray, SciPy) to provide 
-**consistent higher-level functionalities at the interface of DEMs and elevation point cloud objects** (notably through its 
-sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/)).
-
+Additionally, through its sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/), it is built on top 
+of core geospatial packages (Rasterio, GeoPandas, PyProj) and numerical packages (NumPy, Xarray, SciPy) to provide 
+**consistent higher-level functionalities at the interface of DEMs and elevation point cloud objects**.
 
 ----------------
 
