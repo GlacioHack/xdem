@@ -13,7 +13,6 @@ from geoutils import Raster, Vector
 from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
 from geoutils.raster.raster import _shift_transform
-from noisyopt import minimizeCompass
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
@@ -232,12 +231,7 @@ class TestAffineCoreg:
 
         warnings.filterwarnings("ignore", message="Covariance of the parameters*")
 
-        # Initiate coregistration
-        if coreg_method == coreg.DhMinimize:
-            kwargs = {"fit_minimizer": minimizeCompass}
-        else:
-            kwargs = {}
-        horizontal_coreg = coreg_method(**kwargs)
+        horizontal_coreg = coreg_method()
 
         # Copy dictionary and remove inlier mask
         elev_fit_args = fit_args.copy()
@@ -290,7 +284,7 @@ class TestAffineCoreg:
         "coreg_method__shift",
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.DhMinimize, (10.125, 2.875, -1.943813)),
+            (coreg.DhMinimize, (10.0850892, 2.898166, -1.943001)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
     )  # type: ignore
@@ -308,12 +302,7 @@ class TestAffineCoreg:
         # Get the coregistration method and expected shifts from the inputs
         coreg_method, expected_shifts = coreg_method__shift
 
-        # Run co-registration
-        if coreg_method == coreg.DhMinimize:
-            kwargs = {"fit_minimizer": minimizeCompass}
-        else:
-            kwargs = {}
-        c = coreg_method(subsample=50000, **kwargs)
+        c = coreg_method(subsample=50000)
         c.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 
         # Check the output translations match the exact values

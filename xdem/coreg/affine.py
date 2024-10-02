@@ -674,11 +674,16 @@ def _dh_minimize_fit(
     def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
         return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
 
-    # Default parameters for scipy.minimize
+    # Initial offset near zero
+    init_offsets = (0, 0)
+
+    # Default parameters depending on optimizer used
     if params_fit_or_bin["fit_minimizer"] == scipy.optimize.minimize:
         if "method" not in kwargs.keys():
             kwargs.update({"method": "Nelder-Mead"})
             kwargs.update({"options": {"xatol": 10e-6, "maxiter": 500}})
+            # This method has trouble when initialized with 0,0, so defaulting to 1,1 (tip from Simon Gascoin)
+            init_offsets = (1, 1)
 
     elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
         kwargs.update({"errorcontrol": False})
@@ -687,8 +692,6 @@ def _dh_minimize_fit(
         if "feps" not in kwargs.keys():
             kwargs.update({"feps": 10e-5})
 
-    # Initial offset near zero
-    init_offsets = (0, 0)
     results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
 
     # Get final offsets with the right sign direction
