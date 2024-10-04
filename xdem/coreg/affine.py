@@ -682,7 +682,8 @@ def _dh_minimize_fit(
         if "method" not in kwargs.keys():
             kwargs.update({"method": "Nelder-Mead"})
             kwargs.update({"options": {"xatol": 10e-6, "maxiter": 500}})
-            # This method has trouble when initialized with 0,0, so defaulting to 1,1 (tip from Simon Gascoin)
+            # This method has trouble when initialized with 0,0, so defaulting to 1,1
+            # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
 
     elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
