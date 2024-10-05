@@ -23,6 +23,7 @@ dependencies:
   - richdem
 
   # Test dependencies
+  - gdal  # To test against GDAL
   - pytest
   - pytest-xdist
   - pyyaml
