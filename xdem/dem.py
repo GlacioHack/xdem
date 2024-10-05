@@ -516,8 +516,9 @@ class DEM(SatelliteImage):  # type: ignore
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
         variogram_estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
         list_vars: tuple[RasterType | str, ...] = ("slope", "maximum_curvature"),
-        list_vario_models: str | tuple[str, ...] = ("spherical",),
+        list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
         z_name: str = "z",
+        random_state: int | np.random.Generator | None = None,
     ) -> tuple[RasterType, Variogram]:
         """
         Estimate uncertainty of DEM.
@@ -601,6 +602,6 @@ class DEM(SatelliteImage):  # type: ignore
         # Otherwise keep all ranges
         corr_sig = infer_spatial_correlation_from_stable(
             dvalues=dh, list_models=list(list_vario_models), stable_mask=stable_terrain, errors=sig_dh,
-            estimator=variogram_estimator)[2]
+            estimator=variogram_estimator, random_state=random_state)[2]
 
         return sig_dh, corr_sig

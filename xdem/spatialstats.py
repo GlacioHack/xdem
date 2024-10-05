@@ -1859,7 +1859,7 @@ def infer_spatial_correlation_from_stable(
     coords: NDArrayf = None,
     subsample: int = 1000,
     subsample_method: str = "cdist_equidistant",
-    n_variograms: int = 1,
+    n_variograms: int = 10,
     n_jobs: int = 1,
     verbose: bool = False,
     bounds: list[tuple[float, float]] = None,
