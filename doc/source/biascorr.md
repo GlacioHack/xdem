@@ -260,7 +260,7 @@ _ = ax[1].set_yticklabels([])
 ```
 
 For strip-like errors, performing an empirical correction using only a binning with `fit_or_bin="bin"` allows more
-flexibility, but requires a larger amount of static surfacesd:
+flexibility, but requires a larger amount of static surfaces:
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -413,7 +413,7 @@ corrected_dem = biascorr.fit_and_apply(
 ```
 
 ```{warning}
-Using any custom variables, and especially in many dimensions, **it becomes easy to over-correct and introduce new errors**.
+Using any custom variables, and especially in many dimensions, **can lead to over-correction and introduce new errors**.
 For instance, elevation-dependent corrections (as shown below) typically introduce new errors (due to more high curvatures
 at high elevation such as peaks, and low curvatures at low elevation with flat terrain).
 

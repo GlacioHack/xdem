@@ -72,7 +72,7 @@ fit_workflows = {
 # Map each key name to a descriptor string
 dict_key_to_str = {
     "subsample": "Subsample size requested",
-    "random_state": "Random generator for subsampling and (if applic.) optimizer",
+    "random_state": "Random generator",
     "subsample_final": "Subsample size drawn from valid values",
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
@@ -100,6 +100,8 @@ dict_key_to_str = {
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
+    "rejection_scale": "Rejection scale",
+    "num_levels": "Number of levels"
 }
 
 #####################################
@@ -1760,19 +1762,39 @@ class Coreg:
         existing_deep_keys = [k for k, v in recursive_items(self._meta)]
 
         # Formatting function for key values, rounding up digits for numbers and returning function names
-        def format_coregdict_values(val: Any) -> str:
+        def format_coregdict_values(val: Any, tab: int) -> str:
+            """
+            Format coregdict values for printing.
 
-            # Function to round to a certain number of digits relative to magnitude, for floating numbers
-            def round_to_n(x: float | np.floating[Any], n: int) -> float | np.floating[Any]:
-                return round(x, -int(np.floor(np.log10(x))) + (n - 1))  # type: ignore
+            :param val: Input value.
+            :param tab: Tabulation (if value is printed on multiple lines).
 
-            # Different formatting depending on key value type
+            :return: String representing input value.
+            """
+
+            # Function to get decimal to round to a certain number of digits relative to magnitude, for floating numbers
+            def dec_round_to_n(x: float | np.floating[Any], n: int) -> int:
+                return -int(np.floor(np.log10(np.abs(x)))) + (n - 1)
+
+            # Different formatting to string depending on key value type
             if isinstance(val, (float, np.floating)):
-                return str(round_to_n(val, 3))
+                if np.isfinite(val):
+                    str_val = str(round(val, dec_round_to_n(val, 3)))
+                else:
+                    str_val = str(val)
+            elif isinstance(val, np.ndarray):
+                min_val = np.min(val)
+                str_val = str(np.round(val, decimals=dec_round_to_n(min_val, 3)))
             elif callable(val):
-                return val.__name__
+                str_val = val.__name__
             else:
-                return str(val)
+                str_val = str(val)
+
+            # Add tabulation if string has a return to line
+            if "\n" in str_val:
+                str_val = "\n".ljust(tab).join(str_val.split("\n"))
+
+            return str_val
 
         # Sublevels of metadata to show
         sublevels = {
@@ -1802,7 +1824,7 @@ class Coreg:
                 if len(existing_level_keys) > 0:
                     inputs_str += [f"  {lv}\n"]
                     inputs_str += [
-                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
                         for k, v in existing_level_keys
                     ]
 
@@ -1818,7 +1840,7 @@ class Coreg:
                     if len(existing_level_keys) > 0:
                         outputs_str += [f"  {lv}\n"]
                         outputs_str += [
-                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
                             for k, v in existing_level_keys
                         ]
         elif not self._fit_called:
@@ -2696,6 +2718,33 @@ class CoregPipeline(Coreg):
 
     def __repr__(self) -> str:
         return f"Pipeline: {self.pipeline}"
+
+    @overload
+    def info(self, verbose: Literal[True] = ...) -> None:
+        ...
+
+    @overload
+    def info(self, verbose: Literal[False]) -> str:
+        ...
+
+    def info(self, verbose: bool = True) -> None | str:
+        """Summarize information about this coregistration."""
+
+        # Get the pipeline information for each step as a string
+        final_str = []
+        for i, step in enumerate(self.pipeline):
+
+            final_str.append(f"Pipeline step {i}:\n"
+                             f"################\n")
+            step_str = step.info(verbose=False)
+            final_str.append(step_str)
+
+        # Return as string or print (default)
+        if verbose:
+            print("".join(final_str))
+            return None
+        else:
+            return "".join(final_str)
 
     def copy(self: CoregType) -> CoregType:
         """Return an identical copy of the class."""
