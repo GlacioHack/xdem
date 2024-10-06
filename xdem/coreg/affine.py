@@ -1520,7 +1520,7 @@ class DhMinimize(AffineCoreg):
 
         # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
-        output_affine = OutAffineDict(shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset)
+        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 

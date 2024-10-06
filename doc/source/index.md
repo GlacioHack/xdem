@@ -43,7 +43,7 @@ a **statistical viewpoint** (outlier robustness, specificities of 3D alignment a
 It exposes **an intuitive object-based API to foster accessibility**, and strives **to be computationally scalable**
 through Dask.
 
-Additionally, through its sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/), it is built on top
+Additionally, through its sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/), xDEM is built on top
 of core geospatial packages (Rasterio, GeoPandas, PyProj) and numerical packages (NumPy, Xarray, SciPy) to provide
 **consistent higher-level functionalities at the interface of DEMs and elevation point cloud objects**.
 

@@ -215,7 +215,7 @@ _ = ax[1].set_yticklabels([])
 - **Cons:** Long optimization for a sum of sinusoids.
 
 The default optimizer for directional biases fits a sum of sinusoids using 1 to 3 different frequencies and
-keeps the best performing fit, which is useful for periodic along-track errors common to DEMs:
+keeps the best performing fit, which is useful for periodic along-track errors common to DEMs.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -260,7 +260,7 @@ _ = ax[1].set_yticklabels([])
 ```
 
 For strip-like errors, performing an empirical correction using only a binning with `fit_or_bin="bin"` allows more
-flexibility, but requires a larger amount of static surfaces:
+flexibility, but requires a larger amount of static surfaces.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]

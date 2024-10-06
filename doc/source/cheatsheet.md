@@ -106,6 +106,11 @@ Example of sharp landforms appearing with a horizontal shift due to geolocation 
 horizontally by 1/10th of a pixel, for a pixel resolution of 20 m.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate horizontal shift errors"
+:  code_prompt_hide: "Hide code to simulate horizontal shift errors"
+
 # Simulate a translation of 1/10th of a pixel
 x_shift = 0.1
 y_shift = 0.1
@@ -123,6 +128,11 @@ Example of smooth large offset field created by a wrong vertical CRS. We here sh
 geoid added on top of the ellipsoid.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate vertical referencing errors"
+:  code_prompt_hide: "Hide code to simulate vertical referencing errors"
+
 # Set current vertical CRS with a geoid
 dem.set_vcrs("EGM96")
 # Remove the geoid
@@ -139,6 +149,11 @@ dh.plot(cmap='RdYlBu', cbar_title="Elevation differences of\nvertical transform 
 Example of ramp created by a rotation due to camera errors. We here show just a slight rotation of 0.02 degrees.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate rotation errors"
+:  code_prompt_hide: "Hide code to simulate rotation errors"
+
 # Apply a rotation of 0.02 degrees
 rotation = np.deg2rad(0.02)
 # Affine matrix for 3D transformation
@@ -167,6 +182,11 @@ dh.plot(cmap='RdYlBu', cbar_title="Elevation differences of\nrotation (m)")
 Example of undulations resembling jitter errors. We here artificially create a sinusoidal signal at a certain angle.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate undulation errors"
+:  code_prompt_hide: "Hide code to simulate undulation errors"
+
 # Get rotated coordinates along an angle
 angle = -20
 xx = gu.raster.get_xy_rotated(dem, along_track_angle=angle)[0]
@@ -191,6 +211,11 @@ native resolution, then upsample it again to 20 m, to show the errors affect are
 peaks and cavities.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate resolution errors"
+:  code_prompt_hide: "Hide code to simulate resolution errors"
+
 # Downsample DEM (bilinear)
 dem_100m = dem.reproject(res=100)
 
@@ -206,6 +231,11 @@ An example of oscillating point errors created by wrong point-raster comparison 
 which are especially large around steep slopes.
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate point-raster comparison errors"
+:  code_prompt_hide: "Hide code to simulate point-raster comparison errors"
+
 # Simulate swath coordinates of an elevation point cloud
 x = np.linspace(dem.bounds.left, dem.bounds.right, 100)
 y = np.linspace(dem.bounds.top - 5000, dem.bounds.bottom + 5000, 100)

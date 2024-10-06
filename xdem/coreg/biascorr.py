@@ -306,7 +306,7 @@ class DirectionalBias(BiasCorr):
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin_and_fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 1000,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
         subsample: float | int = 1.0,
@@ -460,7 +460,7 @@ class TerrainBias(BiasCorr):
         | Literal["norder_polynomial"]
         | Literal["nfreq_sumsin"] = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
-        bin_sizes: int | dict[str, int | Iterable[float]] = 1000,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
         subsample: float | int = 1.0,
