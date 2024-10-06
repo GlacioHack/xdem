@@ -1,6 +1,8 @@
 """Functions to test the affine coregistrations."""
 from __future__ import annotations
 
+import warnings
+
 import geopandas as gpd
 import geoutils
 import numpy as np
@@ -213,11 +215,11 @@ class TestAffineCoreg:
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.GradientDescending, coreg.ICP])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.DhMinimize, coreg.ICP])  # type: ignore
     def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:
         """
         Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
-        ICP and GradientDescending.
+        ICP and DhMinimize.
 
         We test all combinaison of inputs: raster-raster, point-raster and raster-point.
 
@@ -227,7 +229,8 @@ class TestAffineCoreg:
         to be the right one; and that there is no other errors introduced in the process).
         """
 
-        # Initiate coregistration
+        warnings.filterwarnings("ignore", message="Covariance of the parameters*")
+
         horizontal_coreg = coreg_method()
 
         # Copy dictionary and remove inlier mask
@@ -249,7 +252,7 @@ class TestAffineCoreg:
         fit_shifts = [-horizontal_coreg.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
 
         # ICP can be less precise than other methods
-        rtol = 10e-2 if coreg_method != coreg.ICP else 10e-1
+        rtol = 10e-2 if coreg_method == coreg.NuthKaab else 10e-1
         assert np.allclose(shifts, fit_shifts, rtol=rtol)
 
         # For a point cloud output, need to interpolate with the other DEM to get dh
@@ -274,14 +277,14 @@ class TestAffineCoreg:
 
         # Check applying the coregistration removes 99% of the variance (95% for ICP)
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
-        tol = 0.01 if coreg_method != coreg.ICP else 0.05
+        tol = 0.01 if coreg_method == coreg.NuthKaab else 0.05
         assert np.nanvar(dh / np.nanstd(init_dh)) < tol
 
     @pytest.mark.parametrize(
         "coreg_method__shift",
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.GradientDescending, (10.0, 2.5, -1.964539)),
+            (coreg.DhMinimize, (10.0850892, 2.898166, -1.943001)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
     )  # type: ignore
@@ -299,7 +302,6 @@ class TestAffineCoreg:
         # Get the coregistration method and expected shifts from the inputs
         coreg_method, expected_shifts = coreg_method__shift
 
-        # Run co-registration
         c = coreg_method(subsample=50000)
         c.fit(ref, tba, inlier_mask=inlier_mask, verbose=verbose, random_state=42)
 

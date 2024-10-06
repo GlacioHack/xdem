@@ -27,7 +27,6 @@ from xdem.coreg.base import (
     CoregDict,
     InFitOrBinDict,
     InRandomDict,
-    InSpecificDict,
     OutAffineDict,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
@@ -45,9 +44,9 @@ except ImportError:
 try:
     from noisyopt import minimizeCompass
 
-    _has_noisyopt = True
+    _HAS_NOISYOPT = True
 except ImportError:
-    _has_noisyopt = False
+    _HAS_NOISYOPT = False
 
 ######################################
 # Generic functions for affine methods
@@ -629,17 +628,17 @@ def nuth_kaab(
     return final_offsets, subsample_final
 
 
-########################
-# 2/ Gradient descending
-########################
+####################
+# 2/ Dh minimization
+####################
 
 
-def _gradient_descending_fit_func(
+def _dh_minimize_fit_func(
     coords_offsets: tuple[float, float],
     dh_interpolator: Callable[[float, float], NDArrayf],
-) -> float:
+) -> NDArrayf:
     """
-    Fitting function of gradient descending method, returns the NMAD of elevation residuals.
+    Fitting function of dh minimization method, returns the NMAD of elevation differences.
 
     :param coords_offsets: Coordinate offsets at this iteration (easting, northing) in georeferenced unit.
     :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
@@ -648,81 +647,84 @@ def _gradient_descending_fit_func(
     """
 
     # Calculate the elevation difference
-    dh = dh_interpolator(coords_offsets[0], coords_offsets[1])
+    dh = dh_interpolator(coords_offsets[0], coords_offsets[1]).flatten()
 
-    # Return NMAD of residuals
-    return float(nmad(dh))
+    return dh
 
 
-def _gradient_descending_fit(
+def _dh_minimize_fit(
     dh_interpolator: Callable[[float, float], NDArrayf],
-    res: tuple[float, float],
-    params_noisyopt: InSpecificDict,
+    params_fit_or_bin: InFitOrBinDict,
     verbose: bool = False,
+    **kwargs: Any,
 ) -> tuple[float, float, float]:
     """
     Optimize the statistical dispersion of the elevation differences residuals.
 
     :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
         horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
-    :param res: Resolution of DEM.
-    :param params_noisyopt: Parameters for noisyopt minimization.
+    :param params_fit_or_bin: Parameters for fitting or binning.
     :param verbose: Whether to print statements.
 
     :return: Optimized offsets (easing, northing, vertical) in georeferenced unit.
     """
-    # Define cost function
-    def func_cost(offset: tuple[float, float]) -> float:
-        return _gradient_descending_fit_func(offset, dh_interpolator=dh_interpolator)
+    # Define partial function
+    loss_func = params_fit_or_bin["fit_loss_func"]
 
-    # Mean resolution
-    mean_res = (res[0] + res[1]) / 2
-    # Run pattern search minimization
-    res = minimizeCompass(
-        func_cost,
-        x0=tuple(x * mean_res for x in params_noisyopt["x0"]),
-        deltainit=params_noisyopt["deltainit"] * mean_res,
-        deltatol=params_noisyopt["deltatol"] * mean_res,
-        feps=params_noisyopt["feps"] * mean_res,
-        bounds=(
-            tuple(b * mean_res for b in params_noisyopt["bounds"]),
-            tuple(b * mean_res for b in params_noisyopt["bounds"]),
-        ),
-        disp=verbose,
-        errorcontrol=False,
-    )
+    def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
+        return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
+
+    # Initial offset near zero
+    init_offsets = (0, 0)
+
+    # Default parameters depending on optimizer used
+    if params_fit_or_bin["fit_minimizer"] == scipy.optimize.minimize:
+        if "method" not in kwargs.keys():
+            kwargs.update({"method": "Nelder-Mead"})
+            kwargs.update({"options": {"xatol": 10e-6, "maxiter": 500}})
+            # This method has trouble when initialized with 0,0, so defaulting to 1,1
+            # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
+            init_offsets = (1, 1)
+
+    elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
+        kwargs.update({"errorcontrol": False})
+        if "deltatol" not in kwargs.keys():
+            kwargs.update({"deltatol": 0.004})
+        if "feps" not in kwargs.keys():
+            kwargs.update({"feps": 10e-5})
+
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
 
     # Get final offsets with the right sign direction
-    offset_east = -res.x[0]
-    offset_north = -res.x[1]
+    offset_east = -results.x[0]
+    offset_north = -results.x[1]
     offset_vertical = float(np.nanmedian(dh_interpolator(-offset_east, -offset_north)))
 
     return offset_east, offset_north, offset_vertical
 
 
-def gradient_descending(
+def dh_minimize(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
     params_random: InRandomDict,
-    params_noisyopt: InSpecificDict,
+    params_fit_or_bin: InFitOrBinDict,
     z_name: str,
     weights: NDArrayf | None = None,
     verbose: bool = False,
+    **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int]:
     """
-    Gradient descending coregistration method (Zhihao, in prep.), for any point-raster or raster-raster input,
+    Elevation difference minimization coregistration method, for any point-raster or raster-raster input,
     including subsampling and interpolation to the same points.
 
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
-    if not _has_noisyopt:
-        raise ValueError("Optional dependency needed. Install 'noisyopt'")
 
     if verbose:
-        print("Running gradient descending coregistration (Zhihao, in prep.)")
+        print("Running dh minimization coregistration.")
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     dh_interpolator, _, subsample_final = _preprocess_pts_rst_subsample_interpolator(
@@ -737,10 +739,9 @@ def gradient_descending(
     )
 
     # Perform fit
-    res = _res(transform)
-    # TODO: To match original implementation, need to first add back weight support for point data
-    final_offsets = _gradient_descending_fit(
-        dh_interpolator=dh_interpolator, res=res, params_noisyopt=params_noisyopt, verbose=verbose
+    # TODO: To match original implementation, need to add back weight support for point data
+    final_offsets = _dh_minimize_fit(
+        dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin, verbose=verbose
     )
 
     return final_offsets, subsample_final
@@ -1432,9 +1433,9 @@ class NuthKaab(AffineCoreg):
         return matrix
 
 
-class GradientDescending(AffineCoreg):
+class DhMinimize(AffineCoreg):
     """
-    Gradient descending coregistration.
+    Elevation difference minimization coregistration.
 
     Estimates vertical and horizontal translations.
 
@@ -1445,29 +1446,20 @@ class GradientDescending(AffineCoreg):
 
     def __init__(
         self,
-        x0: tuple[float, float] = (0, 0),
-        bounds: tuple[float, float] = (-10, 10),
-        deltainit: int = 2,
-        deltatol: float = 0.004,
-        feps: float = 0.0001,
-        subsample: int | float = 6000,
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.minimize,
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        subsample: int | float = 5e5,
     ) -> None:
         """
-        Instantiate gradient descending coregistration object.
+        Instantiate dh minimization object.
 
-        :param x0: The initial point of gradient descending iteration.
-        :param bounds: The boundary of the maximum shift.
-        :param deltainit: Initial pattern size.
-        :param deltatol: Target pattern size, or the precision you want achieve.
-        :param feps: Parameters for algorithm. Smallest difference in function value to resolve.
+        :param fit_minimizer: Minimizer for the coregistration function.
+        :param fit_loss_func: Loss function for the minimization of residuals.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-
-        The algorithm terminates when the iteration is locally optimal at the target pattern size 'deltatol',
-        or when the function value differs by less than the tolerance 'feps' along all directions.
-
         """
-        meta = {"bounds": bounds, "x0": x0, "deltainit": deltainit, "deltatol": deltatol, "feps": feps}
-        super().__init__(subsample=subsample, meta=meta)
+
+        meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
+        super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
 
     def _fit_rst_rst(
         self,
@@ -1516,11 +1508,10 @@ class GradientDescending(AffineCoreg):
 
         # Get parameters stored in class
         params_random = self._meta["inputs"]["random"]
-        # TODO: Replace params noisyopt by kwargs? (=classic optimizer parameters)
-        params_noisyopt = self._meta["inputs"]["specific"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
 
         # Call method
-        (easting_offset, northing_offset, vertical_offset), subsample_final = gradient_descending(
+        (easting_offset, northing_offset, vertical_offset), subsample_final = dh_minimize(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
@@ -1530,7 +1521,8 @@ class GradientDescending(AffineCoreg):
             weights=weights,
             verbose=verbose,
             params_random=params_random,
-            params_noisyopt=params_noisyopt,
+            params_fit_or_bin=params_fit_or_bin,
+            **kwargs,
         )
 
         # Write output to class
