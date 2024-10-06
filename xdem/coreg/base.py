@@ -39,7 +39,7 @@ from geoutils.raster import (
     raster,
     subdivide_array,
 )
-from geoutils.raster.georeferencing import _bounds, _res, _coords
+from geoutils.raster.georeferencing import _bounds, _coords, _res
 from geoutils.raster.interpolate import _interp_points
 from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
 from tqdm import tqdm
@@ -103,12 +103,13 @@ dict_key_to_str = {
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
     "rejection_scale": "Rejection scale",
-    "num_levels": "Number of levels"
+    "num_levels": "Number of levels",
 }
 
 #####################################
 # Generic functions for preprocessing
 ###########################################
+
 
 def _calculate_ddem_stats(
     ddem: NDArrayf | MArrayf,
@@ -1292,6 +1293,7 @@ def _apply_matrix_rst(
 
     return new_dem, transform
 
+
 @overload
 def _reproject_horizontal_shift_samecrs(
     raster_arr: NDArrayf,
@@ -1351,6 +1353,7 @@ def _reproject_horizontal_shift_samecrs(
     )
 
     return output
+
 
 @overload
 def apply_matrix(
@@ -1453,8 +1456,9 @@ def apply_matrix(
 
         # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
         if resample:
-            applied_dem = _reproject_horizontal_shift_samecrs(applied_dem, src_transform=out_transform,
-                                                              dst_transform=transform, resampling=resampling)
+            applied_dem = _reproject_horizontal_shift_samecrs(
+                applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
+            )
             out_transform = transform
 
         # We return a raster if input was a raster
@@ -2733,8 +2737,7 @@ class CoregPipeline(Coreg):
         final_str = []
         for i, step in enumerate(self.pipeline):
 
-            final_str.append(f"Pipeline step {i}:\n"
-                             f"################\n")
+            final_str.append(f"Pipeline step {i}:\n" f"################\n")
             step_str = step.info(verbose=False)
             final_str.append(step_str)
 

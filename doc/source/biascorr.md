@@ -405,9 +405,9 @@ aspect, slope = ref_dem.get_terrain_attribute(["aspect", "slope"])
 
 # Pass the variables to the fit_and_apply function matching the names declared above
 corrected_dem = biascorr.fit_and_apply(
-    ref_dem, 
-    tba_dem_nk, 
-    inlier_mask=inlier_mask, 
+    ref_dem,
+    tba_dem_nk,
+    inlier_mask=inlier_mask,
     bias_vars={"aspect": aspect, "slope": slope, "elevation": ref_dem}
 )
 ```

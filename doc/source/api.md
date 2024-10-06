@@ -312,11 +312,11 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 ## Uncertainty analysis
 
 ```{important}
-Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics 
+Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics
 (e.g., fitting a sum of variogram models, pairwise subsampling for grid data). This will allow to simplify several
 function inputs and outputs, by relying on a single {func}`~skgstat.Variogram` object.
 
-This will trigger API changes in future package versions. 
+This will trigger API changes in future package versions.
 ```
 
 ### Core routines for heteroscedasticity, spatial correlations, error propagation

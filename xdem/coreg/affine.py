@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypeVar, overload
+from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import xdem.coreg.base
 
@@ -36,8 +36,8 @@ from xdem.coreg.base import (
 from xdem.spatialstats import nmad
 
 try:
-    import pytransform3d.transformations
     import pytransform3d.rotations
+    import pytransform3d.transformations
 
     _HAS_P3D = True
 except ImportError:
@@ -53,6 +53,7 @@ except ImportError:
 ######################################
 # Generic functions for affine methods
 ######################################
+
 
 def _check_inputs_bin_before_fit(
     bin_before_fit: bool,
@@ -811,9 +812,7 @@ class AffineCoreg(Coreg):
         """
 
         matrix = self.to_matrix()
-        rots = pytransform3d.rotations.euler_from_matrix(matrix, i=0, j=1, k=2,
-                                                                        extrinsic=True,
-                                                                        strict_check=True)
+        rots = pytransform3d.rotations.euler_from_matrix(matrix, i=0, j=1, k=2, extrinsic=True, strict_check=True)
         rots = np.rad2deg(np.array(rots))
         return rots[0], rots[1], rots[2]
 

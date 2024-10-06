@@ -16,15 +16,15 @@ kernelspec:
 
 # Cheatsheet: How to correct... ?
 
-In elevation data analysis, the problem generally starts with identifying what correction method to apply when 
+In elevation data analysis, the problem generally starts with identifying what correction method to apply when
 observing a specific pattern of error in your own data.
 
-Below, we summarize a cheatsheet that links what method is likely to correct a pattern of error you can visually 
+Below, we summarize a cheatsheet that links what method is likely to correct a pattern of error you can visually
 identify on **a map of elevation differences with another elevation dataset (looking at static surfaces)**!
 
 ## Cheatsheet
 
-The patterns of errors categories listed in this spreadsheet **are linked to visual examples further below** that 
+The patterns of errors categories listed in this spreadsheet **are linked to visual examples further below** that
 you use to compare to your own elevation differences.
 
 ```{list-table}
@@ -37,7 +37,7 @@ you use to compare to your own elevation differences.
      - Cause and correction
      - Notes
    * - {ref}`sharp-landforms`
-     - Positive and negative errors that are larger near high slopes and symmetric with opposite slope orientation, making landforms appear visually. 
+     - Positive and negative errors that are larger near high slopes and symmetric with opposite slope orientation, making landforms appear visually.
      - Likely horizontal shift due to geopositioning errors, use a {ref}`coregistration` such as {class}`~xdem.coreg.NuthKaab`.
      - Even a tiny horizontal misalignment can be visually identified! To not confuse with {ref}`peak-cavity`.
    * - {ref}`smooth-large-field`
@@ -74,8 +74,8 @@ pyplot.rcParams['savefig.dpi'] = 600
 pyplot.rcParams['font.size'] = 9  # Default 10 is a bit too big for coregistration plots
 ```
 
-It is often crucial to relate the location of your errors on static surfaces to the terrain distribution 
-(in particular, its slope and curvature), which can usually be infered visually from a hillshade.
+It is often crucial to relate the location of your errors on static surfaces to the terrain distribution
+(in particular, its slope and curvature), which can usually be inferred visually from a hillshade.
 
 
 ```{code-cell} ipython3
@@ -102,7 +102,7 @@ hs.plot(cmap="Greys_r", cbar_title="Hillshade")
 (sharp-landforms)=
 ### Sharp landforms
 
-Example of sharp landforms appearing with a horizontal shift due to geolocation errors. We here translate the DEM 
+Example of sharp landforms appearing with a horizontal shift due to geolocation errors. We here translate the DEM
 horizontally by 1/10th of a pixel, for a pixel resolution of 20 m.
 
 ```{code-cell} ipython3
@@ -119,8 +119,8 @@ dh.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differences of\nho
 (smooth-large-field)=
 ### Smooth-field offset
 
-Example of smooth large offset field created by a wrong vertical CRS. We here show the difference due to the EGM96 
-geoid added on top of the ellipsoid. 
+Example of smooth large offset field created by a wrong vertical CRS. We here show the difference due to the EGM96
+geoid added on top of the ellipsoid.
 
 ```{code-cell} ipython3
 # Set current vertical CRS with a geoid
@@ -186,8 +186,8 @@ synthetic_bias.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differ
 (peak-cavity)=
 ### Peak cuts and cavity fills
 
-Example of peak cutting and cavity filling errors. We here downsampled our DEM from 20 m to 100 m to simulate a lower 
-native resolution, then upsample it again to 20 m, to show the errors affect areas near high curvatures such as 
+Example of peak cutting and cavity filling errors. We here downsampled our DEM from 20 m to 100 m to simulate a lower
+native resolution, then upsample it again to 20 m, to show the errors affect areas near high curvatures such as
 peaks and cavities.
 
 ```{code-cell} ipython3
@@ -202,7 +202,7 @@ dh.plot(cmap='RdYlBu', vmin=-40, vmax=40, cbar_title="Elevation differences of\n
 (point-oscillation)=
 ### Point oscillating
 
-An example of oscillating point errors created by wrong point-raster comparison by rasterization of the points, 
+An example of oscillating point errors created by wrong point-raster comparison by rasterization of the points,
 which are especially large around steep slopes.
 
 ```{code-cell} ipython3
@@ -211,7 +211,7 @@ x = np.linspace(dem.bounds.left, dem.bounds.right, 100)
 y = np.linspace(dem.bounds.top - 5000, dem.bounds.bottom + 5000, 100)
 
 # Interpolate DEM at these coordinates to build the point cloud
-# (to approximate the real elevation at these coordinates, 
+# (to approximate the real elevation at these coordinates,
 # which has negligible impact compared to rasterization)
 z = dem.interp_points((x,y))
 epc = gu.Vector(gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=x, y=y, crs=dem.crs), data={"z": z}))

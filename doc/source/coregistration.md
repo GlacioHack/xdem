@@ -19,7 +19,7 @@ kernelspec:
 xDEM implements a wide range of **coregistration algorithms and pipelines for 3-dimensional alignment** from the
 peer-reviewed literature often tailored specifically to elevation data, aiming at correcting systematic elevation errors.
 
-Two categories of alignment are generally differentiated: 3D [affine transformations](https://en.wikipedia.org/wiki/Affine_transformation) 
+Two categories of alignment are generally differentiated: 3D [affine transformations](https://en.wikipedia.org/wiki/Affine_transformation)
 described below, and other alignments that possibly rely on external variables, described in {ref}`biascorr`.
 
 Affine transformations can include vertical and horizontal translations, rotations and reflections, and scalings.
@@ -74,9 +74,9 @@ tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 ```
 
-Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially 
+Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially
 calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
-which allows a broader variety of arguments at each step, and re-using the same transformation to several objects 
+which allows a broader variety of arguments at each step, and re-using the same transformation to several objects
 (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ```{code-cell} ipython3
@@ -105,10 +105,10 @@ Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to iso
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
    * - {ref}`icp`
      - Translation and rotations
-     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) 
+     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955)
    * - {ref}`vshift`
      - Vertical translation
-     - 
+     -
 ```
 
 ## Using a coregistration
@@ -141,10 +141,10 @@ See {ref}`biascorr` for more information on non-rigid transformations ("bias cor
 
 ### Accessing coregistration metadata
 
-The metadata surrounding a coregistration method, which can be displayed by {func}`~xdem.coreg.Coreg.info`, is stored in 
+The metadata surrounding a coregistration method, which can be displayed by {func}`~xdem.coreg.Coreg.info`, is stored in
 the {attr}`~xdem.coreg.Coreg.meta` nested dictionary.
-This metadata is divided into **inputs** and **outputs**. Input metadata corresponds to what arguments are 
-used when initializing a {class}`~xdem.coreg.Coreg` object, while output metadata are created during the call to 
+This metadata is divided into **inputs** and **outputs**. Input metadata corresponds to what arguments are
+used when initializing a {class}`~xdem.coreg.Coreg` object, while output metadata are created during the call to
 {func}`~xdem.coreg.Coreg.fit`. Together, they allow to apply the transformation during the
 {func}`~xdem.coreg.Coreg.apply` step of the coregistration.
 
@@ -157,13 +157,13 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 **Note:** Some metadata, such as the parameters `fit_or_bin` and `fit_func` described below, are pre-defined for affine coregistration methods and cannot be modified. They only take user-specified value for {ref}`biascorr`.
 
-**1. Randomization metadata (common to all)**: 
+**1. Randomization metadata (common to all)**:
 
-- An input `subsample` to define the subsample size of valid data to use in all methods (recommended for performance), 
-- An input `random_state` to define the random seed for reproducibility of the subsampling (and potentially other random aspects such as optimizers), 
-- An output `subsample_final` that stores the final subsample size used, which can be smaller than requested depending on the amount of valid data intersecting the two elevation datasets. 
+- An input `subsample` to define the subsample size of valid data to use in all methods (recommended for performance),
+- An input `random_state` to define the random seed for reproducibility of the subsampling (and potentially other random aspects such as optimizers),
+- An output `subsample_final` that stores the final subsample size used, which can be smaller than requested depending on the amount of valid data intersecting the two elevation datasets.
 
-**2. Fitting and binning metadata (common to nearly all methods)**: 
+**2. Fitting and binning metadata (common to nearly all methods)**:
 
 - An input `fit_or_bin` to either fit a parametric model by passing **"fit"**, perform an empirical binning by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (only "fit" or "bin_and_fit" possible for affine methods)**,
 - An input `fit_func` to pass any parametric function to fit to the bias **(pre-defined for affine methods)**,
@@ -175,7 +175,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 - An output `fit_perr` that stores the error of optimized parameters (only for default `fit_optimizer`),
 - An output `bin_dataframe` that stores the dataframe of binned statistics.
 
-**3. Iteration metadata (common to all iterative methods)**: 
+**3. Iteration metadata (common to all iterative methods)**:
 
 - An input `max_iterations` to define the maximum number of iterations at which to stop the method,
 - An input `tolerance` to define the tolerance at which to stop iterations (tolerance unit defined in method description),
@@ -189,7 +189,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 - Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.
 
 ```{tip}
-In xDEM, you can extract the translations and rotations of an affine matrix using {class}`xdem.coreg.AffineCoreg.to_translations` and 
+In xDEM, you can extract the translations and rotations of an affine matrix using {class}`xdem.coreg.AffineCoreg.to_translations` and
 {class}`xdem.coreg.AffineCoreg.to_rotations`.
 
 To further manipulate affine matrices, see the [documentation of pytransform3d](https://dfki-ric.github.io/pytransform3d/rotations.html).
@@ -199,7 +199,7 @@ To further manipulate affine matrices, see the [documentation of pytransform3d](
 
 These metadata are only inputs specific to a given method, outlined in the method description.
 
-For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and 
+For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and
 for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
 
 ## Coregistration methods
@@ -376,7 +376,7 @@ _ = ax[1].set_yticklabels([])
 
 ### The {class}`~xdem.coreg.CoregPipeline` object
 
-Often, more than one coregistration approach is necessary to obtain the best results, and several need to be combined 
+Often, more than one coregistration approach is necessary to obtain the best results, and several need to be combined
 sequentially. A {class}`~xdem.coreg.CoregPipeline` can be constructed for this:
 
 ```{code-cell} ipython3

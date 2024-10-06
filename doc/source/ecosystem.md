@@ -2,11 +2,11 @@
 
 # Ecosystem
 
-xDEM is but a single tool among a large landscape of open tools for geospatial elevation analysis! Below is a list of 
+xDEM is but a single tool among a large landscape of open tools for geospatial elevation analysis! Below is a list of
 other **tools that you might find useful to combine with xDEM**, in particular for retrieving elevation data or to perform complementary analysis.
 
 ```{seealso}
-Tools listed below only relate to elevation data. To analyze georeferenced rasters, vectors and point cloud data, 
+Tools listed below only relate to elevation data. To analyze georeferenced rasters, vectors and point cloud data,
 check out **xDEM's sister-package [GeoUtils](https://geoutils.readthedocs.io/)**.
 ```
 ## Python
@@ -24,10 +24,10 @@ Complementary Python tools to **analyze elevation data** are for instance:
 
 ## Julia
 
-If you are working in Julia, the [Geomorphometry](https://github.com/Deltares/Geomorphometry.jl) package provides a 
+If you are working in Julia, the [Geomorphometry](https://github.com/Deltares/Geomorphometry.jl) package provides a
 wide range of terrain analysis for elevation data.
 
 ## Other community resources
 
-Whether to retrieve data among their wide range of open datasets, or to dive into their other resources, be sure to check out the 
+Whether to retrieve data among their wide range of open datasets, or to dive into their other resources, be sure to check out the
 amazing [OpenTopography](https://opentopography.org/) and [OpenAltimetry](https://openaltimetry.earthdatacloud.nasa.gov/data/) efforts!

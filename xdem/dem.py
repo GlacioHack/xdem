@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Literal, overload, Callable
+from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
 import numpy as np
@@ -21,7 +21,7 @@ from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
-    nmad
+    nmad,
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
@@ -554,9 +554,11 @@ class DEM(SatelliteImage):  # type: ignore
         """
 
         # Summarize approach steps
-        approach_dict = {"H2022": {"heterosc": True, "multi_range": True},
-                         "R2009": {"heterosc": False, "multi_range": True},
-                         "Basic": {"heterosc": False, "multi_range": False}}
+        approach_dict = {
+            "H2022": {"heterosc": True, "multi_range": True},
+            "R2009": {"heterosc": False, "multi_range": True},
+            "Basic": {"heterosc": False, "multi_range": False},
+        }
 
         # Elevation change with the other DEM or elevation point cloud
         if isinstance(other_elev, DEM):
@@ -585,9 +587,9 @@ class DEM(SatelliteImage):  # type: ignore
                     list_var_rast.append(var)
 
             # Estimate variable error from these variables
-            sig_dh = infer_heteroscedasticity_from_stable(dvalues=dh, list_var=list_var_rast,
-                                                          spread_statistic=spread_estimator,
-                                                          stable_mask=stable_terrain)[0]
+            sig_dh = infer_heteroscedasticity_from_stable(
+                dvalues=dh, list_var=list_var_rast, spread_statistic=spread_estimator, stable_mask=stable_terrain
+            )[0]
         # Otherwise, return a constant error raster
         else:
             sig_dh = self.copy(new_array=spread_estimator(dh[stable_terrain]) * np.ones(self.shape))
@@ -595,13 +597,21 @@ class DEM(SatelliteImage):  # type: ignore
         # If the approach does not allow multiple ranges of spatial correlation
         if not approach_dict[approach]["multi_range"]:
             if not isinstance(list_vario_models, str) and len(list_vario_models) > 1:
-                warnings.warn("Several variogram models passed but this approach uses a single range,"
-                              "keeping only the first model.", category=UserWarning)
+                warnings.warn(
+                    "Several variogram models passed but this approach uses a single range,"
+                    "keeping only the first model.",
+                    category=UserWarning,
+                )
                 list_vario_models = list_vario_models[0]
 
         # Otherwise keep all ranges
         corr_sig = infer_spatial_correlation_from_stable(
-            dvalues=dh, list_models=list(list_vario_models), stable_mask=stable_terrain, errors=sig_dh,
-            estimator=variogram_estimator, random_state=random_state)[2]
+            dvalues=dh,
+            list_models=list(list_vario_models),
+            stable_mask=stable_terrain,
+            errors=sig_dh,
+            estimator=variogram_estimator,
+            random_state=random_state,
+        )[2]
 
         return sig_dh, corr_sig

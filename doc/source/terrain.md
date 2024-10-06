@@ -131,15 +131,15 @@ p_{\textrm{ZevTho}} = \frac{h_{+0} - h_{-0}}{2 \Delta x},\\
 q_{\textrm{ZevTho}} = \frac{h_{0+} - h_{0-}}{2 \Delta y},
 $$
 
-where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ correspond to east-west and north-south directions respectively, 
+where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ correspond to east-west and north-south directions respectively,
 and take values of either the center ($0$), west or south ($-$), or east or north ($+$):
 
-```{list-table}    
+```{list-table}
    :widths: 1mm 1mm 1mm 1mm
    :header-rows: 1
    :stub-columns: 1
 
-   * -  
+   * -
      - West
      - Center
      - East
@@ -252,7 +252,7 @@ curvature.plot(cmap="RdGy_r", cbar_title="Curvature (100 / m)", vmin=-1, vmax=1,
 
 {func}`xdem.DEM.planform_curvature`
 
-The planform curvature is the curvature perpendicular to the direction of slope, reported in 100 m{sup}`-1`, also based 
+The planform curvature is the curvature perpendicular to the direction of slope, reported in 100 m{sup}`-1`, also based
 on [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
 
 $$
@@ -283,7 +283,7 @@ planform_curvature.plot(cmap="RdGy_r", cbar_title="Planform curvature (100 / m)"
 
 {func}`xdem.DEM.profile_curvature`
 
-The profile curvature is the curvature parallel to the direction of slope, reported in 100 m{sup}`-1`, also based on 
+The profile curvature is the curvature parallel to the direction of slope, reported in 100 m{sup}`-1`, also based on
 [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
 
 $$
