@@ -77,6 +77,8 @@ dict_key_to_str = {
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
     "fit_optimizer": "Optimizer for fitting",
+    "fit_minimizer": "Minimizer of method",
+    "fit_loss_func": "Loss function of method",
     "bin_statistic": "Binning statistic",
     "bin_sizes": "Bin sizes or edges",
     "bin_apply_method": "Bin apply method",
@@ -1504,6 +1506,12 @@ class InFitOrBinDict(TypedDict, total=False):
     # Fit parameters: function to fit and optimizer
     fit_func: Callable[..., NDArrayf]
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
+
+    # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
+    # For a minimization problem
+    fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
+    fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
+
     # Bin parameters: bin sizes, statistic and apply method
     bin_sizes: int | dict[str, int | Iterable[float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
@@ -1550,15 +1558,6 @@ class InSpecificDict(TypedDict, total=False):
     angle: float
     # (Using Deramp) Polynomial order selected for deramping
     poly_order: int
-
-    # (Using GradientDescending)
-    # (Temporary) Parameters of gradient descending
-    # TODO: Remove in favor of kwargs like for curve_fit?
-    x0: tuple[float, float]
-    bounds: tuple[float, float]
-    deltainit: int
-    deltatol: float
-    feps: float
 
     # (Using ICP)
     rejection_scale: float

@@ -5,7 +5,7 @@ DEM coregistration classes and functions, including affine methods, bias correct
 from xdem.coreg.affine import (  # noqa
     ICP,
     AffineCoreg,
-    GradientDescending,
+    DhMinimize,
     NuthKaab,
     VerticalShift,
 )

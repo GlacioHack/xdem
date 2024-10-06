@@ -113,16 +113,11 @@ class TestCoregClass:
         # Assert all keys exist in the mapping key to str dictionary used for info
         list_info_keys = list(dict_key_to_str.keys())
 
-        # TODO: Remove GradientDescending + ICP keys here once generic optimizer is used
+        # TODO: Remove ICP keys here once generic optimizer is used
         # Temporary exceptions: pipeline/blockwise + gradientdescending/icp
         list_exceptions = [
             "step_meta",
             "pipeline",
-            "x0",
-            "bounds",
-            "deltainit",
-            "deltatol",
-            "feps",
             "rejection_scale",
             "num_levels",
         ]
@@ -771,7 +766,7 @@ class TestCoregPipeline:
 
     def test_pipeline_pts(self) -> None:
 
-        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
+        pipeline = coreg.NuthKaab() + coreg.DhMinimize()
         ref_points = self.ref.to_pointcloud(subsample=5000, random_state=42).ds
         ref_points["E"] = ref_points.geometry.x
         ref_points["N"] = ref_points.geometry.y
