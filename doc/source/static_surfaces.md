@@ -5,9 +5,9 @@
 ## The great benefactor of quantitative elevation analysis
 
 Elevation data benefits from an uncommon asset, which is that **large proportions of planetary surface elevations
-usually remain virtually unchanged through time**. Those static surfaces, sometimes also referred to as "stable terrain",
+usually remain virtually unchanged through time** (at least, within decadal time scales). Those static surfaces, sometimes also referred to as "stable terrain",
 generally refer to bare-rock, grasslands, and are often isolated by excluding dynamic surfaces such as glaciers,
-snow and forests. If small proportions of static surfaces are not masked, they are generally filtered out
+snow, forests and cities. If small proportions of static surfaces are not masked, they are generally filtered out
 by robust estimators (see {ref}`robust-estimators`).
 
 ## Use for coregistration and further uncertainty analysis

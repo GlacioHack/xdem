@@ -22,7 +22,7 @@ perform additional quantitative analysis, which calls for defining the concepts 
 
 ### What are accuracy and precision?
 
-[Accuracy and precision](https://en.wikipedia.org/wiki/Accuracy_and_precision) describe random and systematic errors, respectively.
+[Accuracy and precision](https://en.wikipedia.org/wiki/Accuracy_and_precision) describe systematic and random errors, respectively.
 A more accurate measurement is on average closer to the true value (less systematic error), while a more precise measurement has
 less spread in measurement error (less random error), as shown in the simple schematic below.
 
@@ -38,7 +38,7 @@ Source: [antarcticglaciers.org](http://www.antarcticglaciers.org/glacial-geology
 
 ### Translating these concepts for elevation data
 
-However, elevation data rarely consists of a single independent measurement but of a **series of measurement** (image grid,
+However, elevation data rarely consists of a single independent measurement but of a **series of measurements** (image grid,
 ground track) **related to a spatial support** (horizontal georeferencing, independent of height), which complexifies
 the notion of accuracy and precision.
 
@@ -69,7 +69,7 @@ Source: [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922).
 Accuracy is generally considered from two focus points:
 
 - **Absolute elevation accuracy** describes systematic errors to the true positioning, usually important when analysis focuses on the exact location of topographic features at a specific epoch.
-- **Relative elevation accuracy** describes systematic errors with reference to other elevation data that does not necessarily matches the true positioning, important for analyses interested in topographic change over time.
+- **Relative elevation accuracy** describes systematic errors with reference to other elevation data that does not necessarily match the true positioning, important for analyses interested in topographic change over time.
 
 ## How to get the best accuracy and precision of your elevation data?
 

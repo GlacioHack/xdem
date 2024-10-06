@@ -5,7 +5,12 @@
 xDEM is but a single tool among a large landscape of open tools for geospatial elevation analysis! Below is a list of 
 other **tools that you might find useful to combine with xDEM**, in particular for retrieving elevation data or to perform complementary analysis.
 
+```{seealso}
+Tools listed below only relate to elevation data. To analyze georeferenced rasters, vectors and point cloud data, 
+check out **xDEM's sister-package [GeoUtils](https://geoutils.readthedocs.io/)**.
+```
 ## Python
+
 
 Great Python tools for **pre-processing and retrieving elevation data**:
 - [SlideRule](https://slideruleearth.io/) to pre-process and retrieve high-resolution elevation data in the cloud, including in particular [ICESat-2](https://icesat-2.gsfc.nasa.gov/) and [GEDI](https://gedi.umd.edu/),
@@ -14,6 +19,7 @@ Great Python tools for **pre-processing and retrieving elevation data**:
 
 Complementary Python tools to **analyze elevation data** are for instance:
 - [PDAL](https://pdal.io/en/latest/) for working with dense elevation point clouds,
+- [demcompare](https://demcompare.readthedocs.io/en/stable/) to compare two DEMs together,
 - [RichDEM](https://richdem.readthedocs.io/en/latest/) for in-depth terrain analysis, with a large range of method including many relevant to hydrology.
 
 ## Julia

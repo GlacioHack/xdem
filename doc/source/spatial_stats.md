@@ -145,39 +145,51 @@ Variograms are estimated empirically by [data binning](https://en.wikipedia.org/
 the pairwise distance among data points, then modelled by functional forms called variogram models (e.g., spherical, 
 gaussian).
 
-As pairwise combinations grow exponentially, variograms are estimated using a random subsample on dense grid or point 
-data. Additionally, as elevation data usually contains patterns of noise at various range
+As pairwise combinations grow exponentially with data points, variograms are estimated using a random subsample of the 
+elevation data (whether gridded or point). Additionally, as elevation data usually contains patterns of correlation 
+at both short-range (close to pixel size) and long-range (close to DEM extent), the default pairwise sampling can be 
+tuned to perform well at all desired ranges.
+
+```{note}
+In xDEM, variograms use by default a subsample size of 1000 data points (leading to 500,000 pairwise differences estimated), 
+for computational efficiency. 
+xDEM also uses by default a random sampling method that selects a uniform amount of data points by pairwise log-distance, 
+in order to capture potential correlations at all ranges.
+```
 
 For more details on variography, **we refer to [the documentation of SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/userguide/userguide.html).**
 
 ## Error propagation
 
+Once the heteroscedasticity $\sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...})$ and spatial 
+correlation of errors $\gamma_{dh}(d)$ are both estimated, those can be used to propagate errors to derivatives 
+of the elevation data.
 
+**For simple derivatives such as spatial derivatives** (e.g., mean or sum in an area), exact 
+[theoretical propagation](https://en.wikipedia.org/wiki/Propagation_of_uncertainty) relying on the above components
+can be employed.
 
-
-
-
-
-## De-standardization
-
-To later de-standardize estimations of the dispersion of a given subsample of elevation differences,
-possibly after further analysis of {ref}`spatialstats-corr` and {ref}`spatialstats-errorpropag`,
-one simply needs to apply the opposite operation.
-
-For a single pixel $\textrm{P}$, the dispersion is directly the elevation measurement error evaluated for the
-explanatory variable of this pixel as, per construction, $\sigma_{z_{dh}} = 1$:
+For instance, to propagate errors to the mean of elevation differences in an area $A$ containing $N$ data points:
 
 $$
-\sigma_{dh}(\textrm{P}) = 1 \cdot \sigma_{dh}(\textrm{var}_{1}(\textrm{P}), \textrm{var}_{2}(\textrm{P}), \textrm{...})
+\sigma_{\overline{dh}} = \frac{1}{N^2} \sum_{i=1}^{N} \sum_{j=1}^{N} (1 - \gamma_{z_{dh}}(d_{ij})) \sigma_{dh_{i}} \sigma_{dh_{j}}
 $$
 
-For a mean of pixels $\overline{dh}\vert_{\mathbb{S}}$ in the subsample $\mathbb{S}$, the standard error of the mean
-of the standardized data $\overline{\sigma_{z_{dh}}}\vert_{\mathbb{S}}$ can be de-standardized by multiplying by the
-average measurement error of the pixels in the subsample, evaluated through the explanatory variables of each pixel:
 
-$$
-\sigma_{\overline{dh}}\vert_{\mathbb{S}} = \sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}} \cdot \overline{\sigma_{dh}(\textrm{var}_{1}, \textrm{var}_{2}, \textrm{...})}\vert_{\mathbb{S}}
-$$
+where $d_{ij}$ is the distance between data point $i$ and $j$.
 
-Estimating the standard error of the mean of the standardized data $\sigma_{\overline{z_{dh}}}\vert_{\mathbb{S}}$
-requires an analysis of spatial correlation and a spatial integration of this correlation, described in the next sections.
+```{note}
+xDEM implement several methods to approximate the above equation which scales exponentially with data points, to preserve 
+computational efficiency.
+```
+
+**For more complex derivatives such as terrain attributes**, the heteroscedasticity and spatial correlation of errors 
+can be used to constrain simulation methods that numerically generate realizations of the structure of errors.
+
+For instance, to propagate errors to terrain slope, one can derive many realizations of random fields based on the error structure estimated 
+for the DEM. Then, for each realization, add the random field to the DEM, and derive its slope. Finally, 
+the error in slope can be estimated from the spread of all slope realizations.
+
+```{seealso}
+For random field generation, see for example [GSTools](https://geostat-framework.readthedocs.io/projects/gstools/en/stable/).
+```
