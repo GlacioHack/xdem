@@ -12,7 +12,7 @@ import scipy
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg, fit_workflows
-from xdem.fit import polynomial_2d
+from xdem.fit import polynomial_2d, sumsin_1d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 
@@ -355,12 +355,6 @@ class DirectionalBias(BiasCorr):
             raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
             along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
-
-        # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
-        if "hop_length" not in kwargs:
-            # The hop length will condition jump in function values, need to be larger than average resolution
-            average_res = (transform[0] + abs(transform[4])) / 2
-            kwargs.update({"hop_length": average_res})
 
         super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,

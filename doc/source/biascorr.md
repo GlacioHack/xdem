@@ -143,7 +143,7 @@ Several good practices help performing a successful bias correction:
 - **Avoid using "fit" with a subsample size larger than 1,000,000:** Otherwise the optimizer will be extremely slow and might fail with a memory error; consider using "bin_and_fit" instead to reduce the data size before the optimization which still allows to utilize all the data,
 - **Avoid using "fit" or "bin_and_fit" for more than 2 dimensions (input variables):** Fitting a parametric form in more than 2 dimensions is quite delicate, consider using "bin" or sequential 1D corrections instead,
 - **Use at least 1000 bins for all dimensions, being mindful about dimension number:** Using a small bin size is generally too rough, but a large bin size will grow exponentially with the number of bias variables,
-- **Use customized bin edges for data with large extreme values:** Passing simply a bin size will set the min/max of the data as the full binning range, which can be impractical (e.g., most curvatures lies between -2/2 but can take values of 10000+).
+- **Use customized bin edges for data with large extreme values:** Passing simply a bin size will set the min/max of the data as the full binning range, which can be impractical (e.g., most curvatures lie between -2/2 but can take values of 10000+).
 
 ## Bias-correction methods
 

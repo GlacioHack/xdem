@@ -498,9 +498,10 @@ def robust_nfreq_sumsin_fit(
         return _cost_sumofsin(x, y, cost_func, *p)
 
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
-    if hop_length is None:
-        x_res = np.mean(np.diff(np.sort(xdata)))
-        hop_length = x_res
+    x_res = np.mean(np.diff(np.sort(xdata)))
+
+    # The hop length will condition jump in function values, needs of magnitude slightly lower than the signal
+    hop_length = (np.percentile(ydata, 90) - np.percentile(ydata, 10))
 
     # Loop on all frequencies
     costs = np.empty(max_nb_frequency)
@@ -522,7 +523,7 @@ def robust_nfreq_sumsin_fit(
             ub_phase = 2 * np.pi
             # For the wavelength: from the resolution and coordinate extent
             # (we don't want the lower bound to be zero, to avoid divisions by zero)
-            lb_wavelength = hop_length / 5
+            lb_wavelength = x_res / 5
             ub_wavelength = xdata.max() - xdata.min()
 
             b = []
@@ -543,12 +544,12 @@ def robust_nfreq_sumsin_fit(
             print(ub)
 
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(xdata, ydata), method="L-BFGS-B", bounds=scipy_bounds)
+        minimizer_kwargs = dict(args=(xdata, ydata), bounds=scipy_bounds)
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             p0,
             disp=verbose,
-            T=hop_length * 50,
+            T=hop_length,
             minimizer_kwargs=minimizer_kwargs,
             seed=random_state,
             **kwargs,
