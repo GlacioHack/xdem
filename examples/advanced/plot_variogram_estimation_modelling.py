@@ -194,7 +194,7 @@ plt.show()
 #
 # **But, in this case, the error is still too small. Why?**
 # The small size of the sampling area against the very large range of the noise implies that we might not verify the
-# assumption of second-order stationarity (see :ref:`spatialstats`). Longer range correlations might be omitted by
+# assumption of second-order stationarity (see :ref:`uncertainty`). Longer range correlations might be omitted by
 # our analysis, due to the limits of the variogram sampling. In other words, a small part of the variance could be
 # fully correlated over a large part of the grid: a vertical bias.
 #

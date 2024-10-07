@@ -542,7 +542,7 @@ def two_step_standardization(
     return zscores, error_fun
 
 
-def estimate_model_heteroscedasticity(
+def _estimate_model_heteroscedasticity(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
     list_var_names: list[str],
@@ -829,7 +829,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_stable_arr = list_all_arr[1:]
 
     # Estimate and model the heteroscedasticity using only stable terrain
-    df, fun = estimate_model_heteroscedasticity(
+    df, fun = _estimate_model_heteroscedasticity(
         dvalues=dvalues_stable_arr,
         list_var=list_var_stable_arr,
         list_var_names=list_var_names,
@@ -1775,7 +1775,7 @@ def fit_sum_model_variogram(
     return variogram_sum_fit, df_params
 
 
-def estimate_model_spatial_correlation(
+def _estimate_model_spatial_correlation(
     dvalues: NDArrayf | RasterType,
     list_models: list[str | Callable[[NDArrayf, float, float], NDArrayf]],
     estimator: str = "dowd",
@@ -1922,7 +1922,7 @@ def infer_spatial_correlation_from_stable(
         dvalues_stable_arr /= errors_arr
 
     # Estimate and model spatial correlations
-    empirical_variogram, params_variogram_model, spatial_correlation_func = estimate_model_spatial_correlation(
+    empirical_variogram, params_variogram_model, spatial_correlation_func = _estimate_model_spatial_correlation(
         dvalues=dvalues_stable_arr,
         list_models=list_models,
         estimator=estimator,

@@ -20,7 +20,7 @@ documentation.
 
 ```{important}
 A {class}`~xdem.DEM` inherits all raster methods and attributes from the {class}`~geoutils.Raster` object of GeoUtils.
-Below, we only repeat the core attributes and methods of GeoUtils, see
+Below, we only repeat some core attributes and methods of GeoUtils, see
 [the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 
@@ -79,6 +79,23 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
     DEM.vcrs
 ```
 
+### Other attributes
+
+#### Inherited from {class}`~geoutils.Raster`
+
+See the full list in [the Raster API of GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster).
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.res
+    DEM.bounds
+    DEM.width
+    DEM.height
+    DEM.shape
+```
+
 ### Georeferencing
 
 #### Inherited from {class}`~geoutils.Raster`
@@ -113,19 +130,8 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
 
     DEM.polygonize
     DEM.proximity
-```
-
-### Coregistration
-
-```{tip}
-To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
-```
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    DEM.coregister_3d
+    DEM.to_pointcloud
+    DEM.interp_points
 ```
 
 ### Terrain attributes
@@ -146,6 +152,37 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     DEM.roughness
     DEM.rugosity
     DEM.fractal_roughness
+```
+
+Or to get multiple related terrain attributes at once (for performance):
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.get_terrain_attribute
+```
+
+### Coregistration and bias corrections
+
+```{tip}
+To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.coregister_3d
+```
+
+### Uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.estimate_uncertainty
 ```
 
 ## dDEM
@@ -175,8 +212,8 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 **Overview of co-registration class structure**:
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
-        :top-classes: xdem.Coreg
+.. inheritance-diagram:: xdem.coreg.base.Coreg xdem.coreg.affine xdem.coreg.biascorr
+        :top-classes: xdem.coreg.Coreg
 ```
 
 ### Coregistration, pipeline and blockwise
@@ -196,23 +233,24 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
+    xdem.coreg.Coreg.fit_and_apply
     xdem.coreg.Coreg.fit
     xdem.coreg.Coreg.apply
 ```
 
-#### Other functionalities
+#### Extracting metadata
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg.residuals
+    xdem.coreg.Coreg.info
+    xdem.coreg.Coreg.meta
 ```
 
-### Affine coregistration methods
+### Affine coregistration
 
-
-**Generic parent class:**
+#### Parent object (to define custom methods)
 
 ```{eval-rst}
 .. autosummary::
@@ -221,7 +259,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.AffineCoreg
 ```
 
-**Convenience classes for specific coregistrations:**
+#### Coregistration methods
 
 ```{eval-rst}
 .. autosummary::
@@ -232,9 +270,26 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.ICP
 ```
 
-### Bias-correction (including non-affine coregistration) methods
+#### Manipulating affine transforms
 
-**Generic parent class:**
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.coreg.AffineCoreg.from_matrix
+    xdem.coreg.AffineCoreg.to_matrix
+    xdem.coreg.AffineCoreg.from_translations
+    xdem.coreg.AffineCoreg.to_translations
+    xdem.coreg.AffineCoreg.from_rotations
+    xdem.coreg.AffineCoreg.to_rotations
+
+    xdem.coreg.apply_matrix
+    xdem.coreg.invert_matrix
+```
+
+### Bias-correction
+
+#### Parent object (to define custom methods)
 
 ```{eval-rst}
 .. autosummary::
@@ -243,7 +298,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.BiasCorr
 ```
 
-**Convenience classes for specific corrections:**
+#### Bias-correction methods
 
 ```{eval-rst}
 .. autosummary::
@@ -254,47 +309,74 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     xdem.coreg.TerrainBias
 ```
 
-## Terrain attributes
+## Uncertainty analysis
 
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
+```{important}
+Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics
+(e.g., fitting a sum of variogram models, pairwise subsampling for grid data). This will allow to simplify several
+function inputs and outputs, by relying on a single {func}`~skgstat.Variogram` object.
 
-    xdem.terrain
+This will trigger API changes in future package versions.
 ```
 
-## Volume integration methods
+### Core routines for heteroscedasticity, spatial correlations, error propagation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.volume
+    xdem.spatialstats.infer_heteroscedasticity_from_stable
+    xdem.spatialstats.infer_spatial_correlation_from_stable
+    xdem.spatialstats.spatial_error_propagation
 ```
 
-## Fitting methods
+### Sub-routines for heteroscedasticity
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.fit
+    xdem.spatialstats.nd_binning
+    xdem.spatialstats.interp_nd_binning
+    xdem.spatialstats.two_step_standardization
 ```
 
-## Filtering methods
+### Sub-routines for spatial correlations
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.filters
+    xdem.spatialstats.sample_empirical_variogram
+    xdem.spatialstats.fit_sum_model_variogram
+    xdem.spatialstats.correlation_from_variogram
 ```
 
-## Spatial statistics methods
+### Sub-routines for error propagation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats
+    xdem.spatialstats.number_effective_samples
+```
+
+### Plotting for uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.spatialstats.plot_variogram
+    xdem.spatialstats.plot_1d_binning
+    xdem.spatialstats.plot_2d_binning
+```
+
+## Stand-alone functions (moved)
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    xdem.spatialstats.nmad
 ```
