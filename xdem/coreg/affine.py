@@ -17,6 +17,7 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 import scipy.optimize
+import scipy.spatial
 from geoutils.raster.georeferencing import _bounds, _coords, _res
 from geoutils.raster.interpolate import _interp_points
 from tqdm import trange
@@ -25,6 +26,7 @@ from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
+    _apply_matrix_pts_arr,
     InFitOrBinDict,
     InRandomDict,
     OutAffineDict,
@@ -47,6 +49,137 @@ try:
     _HAS_NOISYOPT = True
 except ImportError:
     _HAS_NOISYOPT = False
+
+
+#########################
+# Iterative closest point
+#########################
+
+def _matrix_from_translations_rotations(t1: float, t2: float, t3: float,
+                                        alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
+    """
+    Build rigid matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees).
+    """
+    matrix = np.zeros((4, 4))
+    e = np.deg2rad(np.array([alpha1, alpha2, alpha3]))
+    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+    matrix[0:3, 0:3] = rot_matrix
+    matrix[:3, 3] = [t1, t2, t3]
+
+    return matrix
+
+def _icp_fit_func(inputs: NDArrayf, t1: float, t2: float, t3: float, alpha1: float,
+                  alpha2: float, alpha3: float, method=Literal["point-to-point", "point-to-plane"]) -> NDArrayf:
+    """
+    The ICP function to optimize is a rigid transformation with 6 parameters (3 translations and 3 rotations)
+    between nearest neighbour points (that are fixed for the optimization, and update at each iterative step).
+
+    To more easily support any curve_fit options, we return the residuals and will have them match zero.
+    """
+
+    # Get inputs
+    ref, tba, norm = inputs[:, :, 0], inputs[:, :, 1], inputs[:, :, 2]
+
+    # Build an affine matrix for 3D translations and rotations
+    matrix = _matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3)
+
+    # Apply affine transformation
+    trans_tba = _apply_matrix_pts_arr(tba, matrix=matrix)
+
+    # Define residuals depending on type of ICP method
+    # Point-to-point is simply the difference, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
+    if method == "point-to-point":
+        diffs = trans_tba - ref
+    # Point-to-plane used the normals, from Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C
+    # A priori, this method is faster based on Rusinkiewicz and Levoy (2001), https://doi.org/10.1109/IM.2001.924423
+    elif method == "point-to-plane":
+        diffs = (trans_tba - ref) * norm
+
+    # Sum residuals for any dimension
+    res = np.sum(diffs**2, axis=1)
+
+    return res
+
+
+def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf, params_fit_or_bin: InFitOrBinDict) -> NDArrayf:
+
+    # Group inputs into a single array
+    inputs = np.dstack(ref, normals, tba)
+
+    # For this type of method, the procedure can only be fit
+    if params_fit_or_bin["fit_or_bin"] not in ["fit"]:
+        raise ValueError("ICP method only supports 'fit'.")
+
+    params_fit_or_bin["fit_func"] = _icp_fit_func
+
+    # Call generic fit function, aiming for the residuals to be zero
+    y = np.zeros(len(ref))
+    _, results = _bin_or_and_fit_nd(
+        fit_or_bin=params_fit_or_bin["fit_or_bin"],
+        params_fit_or_bin=params_fit_or_bin,
+        values=y,
+        bias_vars={"inputs": inputs},
+    )
+    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+    assert results is not None
+    # Build matrix out of optimized parameters
+    matrix = _matrix_from_translations_rotations(*results[0])
+
+    return matrix
+
+def _icp_iteration_step(matrix, ref_epc, tba_epc, normals, centroid, distance_upper_bound):
+
+    # Apply transform matrix from previous steps
+    trans_tba_epc = _apply_matrix_pts_arr(tba_epc, matrix, centroid=centroid)
+
+    # Create nearest neighbour tree from reference elevations, and query for transformed point cloud
+    ref_epc_nearest_tree = scipy.spatial.cKDTree(ref_epc)
+    _, ind = ref_epc_nearest_tree.query(trans_tba_epc, k=1, distance_upper_bound=distance_upper_bound)
+
+    # Index points to get nearest
+    ind_ref = ind[ind < ref_epc.shape[0]]
+    step_ref = ref_epc[ind_ref]
+    step_normals = normals[ind_ref]
+    ind_tba = ind < ref_epc.shape[0]
+    step_trans_tba = trans_tba_epc[ind_tba]
+
+    # Fit step to get new step transform
+    step_matrix = _icp_fit(step_ref, step_normals, step_trans_tba)
+
+    # Increment transformation matrix by step
+    new_matrix = step_matrix @ matrix
+
+    return new_matrix
+
+def icp(ref_epc,
+        tba_epc,
+        max_iterations: int,
+        tolerance: float,
+        method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
+        verbose: bool = False):
+    """Main function for ICP method."""
+
+    # Pre-processing for point-point??
+
+    # Derive normals if method is point-to-plane
+    if method == "point-to-plane":
+        normals = _icp_norms()
+    else:
+        normals = None
+
+    # Iterate through method until tolerance or max number of iterations is reached
+    init_matrix = np.zeros(6)
+    constant_inputs = (ref_epc, tba_epc, normals)
+    final_offsets = _iterate_method(
+        method=_icp_iteration_step,
+        iterating_input=init_matrix,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+        verbose=verbose,
+    )
+
+    return final_offsets, subsample_final
 
 ######################################
 # Generic functions for affine methods

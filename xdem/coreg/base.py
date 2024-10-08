@@ -63,6 +63,7 @@ except ImportError:
     _HAS_P3D = False
 
 
+
 # Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
@@ -103,7 +104,6 @@ dict_key_to_str = {
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
 }
-
 #####################################
 # Generic functions for preprocessing
 #####################################
