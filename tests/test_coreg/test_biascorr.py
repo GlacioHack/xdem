@@ -48,8 +48,7 @@ class TestBiasCorr:
     fit_args_rst_rst = dict(
         reference_elev=ref,
         to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask,
-        verbose=True,
+        inlier_mask=inlier_mask
     )
 
     # Convert DEMs to points with a bit of subsampling for speed-up
@@ -60,16 +59,14 @@ class TestBiasCorr:
     fit_args_rst_pts = dict(
         reference_elev=ref,
         to_be_aligned_elev=tba_pts,
-        inlier_mask=inlier_mask,
-        verbose=True,
+        inlier_mask=inlier_mask
     )
 
     # Point-Raster
     fit_args_pts_rst = dict(
         reference_elev=ref_pts,
         to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask,
-        verbose=True,
+        inlier_mask=inlier_mask
     )
 
     all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
