@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
@@ -140,7 +142,6 @@ def dem_coregistration(
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
     plot: bool = False,
     out_fig: str = None,
-    verbose: bool = False,
 ) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
@@ -168,7 +169,6 @@ to mask inside (resp. outside) of the polygons. Defaults to masking inside polyg
 be excluded.
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
-    :param verbose: Set to True to print details on screen during coregistration.
 
     :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
@@ -197,8 +197,7 @@ coregistration and 4) the inlier_mask used.
         raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
 
     # Load both DEMs
-    if verbose:
-        print("Loading and reprojecting input data")
+    logging.info("Loading and reprojecting input data")
 
     if isinstance(ref_dem_path, str):
         if grid == "ref":
@@ -219,8 +218,7 @@ coregistration and 4) the inlier_mask used.
     src_dem = DEM(src_dem.astype(np.float32))
 
     # Create raster mask
-    if verbose:
-        print("Creating mask of inlier pixels")
+    logging.info("Creating mask of inlier pixels")
 
     inlier_mask = create_inlier_mask(
         src_dem,
@@ -242,7 +240,7 @@ coregistration and 4) the inlier_mask used.
     med_orig, nmad_orig = np.median(inlier_data), nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
+    coreg_method.fit(ref_dem, src_dem, inlier_mask)
     dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only

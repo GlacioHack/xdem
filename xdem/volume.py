@@ -1,6 +1,7 @@
 """Volume change calculation tools (aimed for glaciers)."""
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import Any, Callable
 
@@ -445,7 +446,7 @@ for areas filling the min_coverage criterion.
 
     # List of indexes to loop on
     geometry_index = np.unique(mask[mask != 0])
-    print(f"Found {len(geometry_index):d} geometries")
+    logging.info("Found %d geometries", len(geometry_index))
 
     # Get fraction of valid pixels for each geometry
     coverage = np.zeros(len(geometry_index))
@@ -457,7 +458,7 @@ for areas filling the min_coverage criterion.
 
     # Filter geometries with too little coverage
     valid_geometry_index = geometry_index[coverage >= min_coverage]
-    print(f"Found {len(valid_geometry_index):d} geometries with sufficient coverage")
+    logging.info("Found %d geometries with sufficient coverage", len(valid_geometry_index))
 
     idealized_ddem = nodata * np.ones_like(dem)
 
@@ -552,7 +553,6 @@ def get_regional_hypsometric_signal(
     ref_dem: NDArrayf | MArrayf | RasterType,
     glacier_index_map: NDArrayf | RasterType,
     n_bins: int = 20,
-    verbose: bool = False,
     min_coverage: float = 0.05,
 ) -> pd.DataFrame:
     """
@@ -561,7 +561,6 @@ def get_regional_hypsometric_signal(
     :param ddem: The dDEM to analyse.
     :param ref_dem: A void-free reference DEM.
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
-    :param verbose: Show progress bar.
     n_bins = 20  # TODO: This should be an argument.
     :param n_bins: The number of elevation bins to subdivide each glacier in.
 
@@ -585,7 +584,11 @@ def get_regional_hypsometric_signal(
     # Start a counter of glaciers that are actually processed.
     count = 0
     # Loop over each unique glacier.
-    for i in tqdm(np.unique(glacier_index_map), desc="Finding regional signal", disable=(not verbose)):
+    for i in tqdm(
+        np.unique(glacier_index_map),
+        desc="Finding regional signal",
+        disable=logging.getLogger().getEffectiveLevel() > logging.INFO,
+    ):
         # If i ==0, it's assumed to be periglacial.
         if i == 0:
             continue
@@ -651,7 +654,6 @@ def norm_regional_hypsometric_interpolation(
     glacier_index_map: NDArrayf | RasterType,
     min_coverage: float = 0.1,
     regional_signal: pd.DataFrame | None = None,
-    verbose: bool = False,
     min_elevation_range: float = 0.33,
     idealized_ddem: bool = False,
 ) -> NDArrayf:
@@ -665,7 +667,6 @@ def norm_regional_hypsometric_interpolation(
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
-    :param verbose: Show progress bars.
     :param min_elevation_range: The minimum allowed min/max bin range to scale a signal from.\
             Default: 1/3 of the elevation range needs to be present.
     :param idealized_ddem: Replace observed glacier values with the hypsometric signal. Good for error assessments.
@@ -685,7 +686,7 @@ def norm_regional_hypsometric_interpolation(
     # If the regional signal was not given as an argument, find it from the dDEM.
     if regional_signal is None:
         regional_signal = get_regional_hypsometric_signal(
-            ddem=ddem_arr, ref_dem=ref_arr, glacier_index_map=glacier_index_map, verbose=verbose
+            ddem=ddem_arr, ref_dem=ref_arr, glacier_index_map=glacier_index_map
         )
 
     # The unique indices are the unique glaciers.
@@ -694,7 +695,9 @@ def norm_regional_hypsometric_interpolation(
     # Make a copy of the dDEM which will be filled iteratively.
     ddem_filled = ddem_arr.copy()
     # Loop over all glaciers and fill the dDEM accordingly.
-    for i in tqdm(unique_indices, desc="Interpolating dDEM", disable=(not verbose)):
+    for i in tqdm(
+        unique_indices, desc="Interpolating dDEM", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
+    ):
         if i == 0:  # i==0 is assumed to mean stable ground.
             continue
         # Create a mask representing a particular glacier.
