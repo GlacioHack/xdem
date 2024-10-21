@@ -10,9 +10,7 @@ and tested for consistency against [gdaldem](https://gdal.org/programs/gdaldem.h
 ## Quick use
 
 Terrain attribute methods can either be called directly from a {class}`~xdem.DEM` (e.g., {func}`xdem.DEM.slope`) or
-through the {class}`~xdem.terrain` module which allows array input. If computational performance
-is key, xDEM can rely on [RichDEM](https://richdem.readthedocs.io/) by specifying `use_richdem=True` for speed-up
-of its supported attributes (slope, aspect, curvature).
+through the {class}`~xdem.terrain` module which allows array input.
 
 ## Slope
 
