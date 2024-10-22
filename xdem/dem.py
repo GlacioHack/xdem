@@ -532,8 +532,32 @@ class DEM(SatelliteImage):  # type: ignore
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """
 
+<<<<<<< Updated upstream
         # Elevation change
         dh = other_dem.reproject(self, silent=True) - self
+=======
+        # Summarize approach steps
+        approach_dict = {
+            "H2022": {"heterosc": True, "multi_range": True},
+            "R2009": {"heterosc": False, "multi_range": True},
+            "Basic": {"heterosc": False, "multi_range": False},
+        }
+
+        # Stable terrain depending on input
+        if stable_terrain is None:
+            stable_terrain = np.ones(self.shape, dtype="uint8")
+
+        # Elevation change with the other DEM or elevation point cloud
+        if isinstance(other_elev, DEM):
+            dh = other_elev.reproject(self, silent=True) - self
+        elif isinstance(other_elev, gpd.GeoDataFrame):
+            other_elev = other_elev.to_crs(self.crs)
+            points = (other_elev.geometry.x.values, other_elev.geometry.y.values)
+            dh = other_elev[z_name].values - self.interp_points(points)
+            stable_terrain = stable_terrain.interp_points(points, method="nearest")
+        else:
+            raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
+>>>>>>> Stashed changes
 
         # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
         # See Equation 7 and 8 of Hugonnet et al. (2022)
