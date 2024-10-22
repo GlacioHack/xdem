@@ -584,7 +584,11 @@ def get_regional_hypsometric_signal(
     # Start a counter of glaciers that are actually processed.
     count = 0
     # Loop over each unique glacier.
-    for i in tqdm(np.unique(glacier_index_map), desc="Finding regional signal", disable=logging.getLogger().getEffectiveLevel() > logging.INFO):
+    for i in tqdm(
+        np.unique(glacier_index_map),
+        desc="Finding regional signal",
+        disable=logging.getLogger().getEffectiveLevel() > logging.INFO,
+    ):
         # If i ==0, it's assumed to be periglacial.
         if i == 0:
             continue
@@ -691,7 +695,9 @@ def norm_regional_hypsometric_interpolation(
     # Make a copy of the dDEM which will be filled iteratively.
     ddem_filled = ddem_arr.copy()
     # Loop over all glaciers and fill the dDEM accordingly.
-    for i in tqdm(unique_indices, desc="Interpolating dDEM", disable=logging.getLogger().getEffectiveLevel() > logging.INFO):
+    for i in tqdm(
+        unique_indices, desc="Interpolating dDEM", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
+    ):
         if i == 0:  # i==0 is assumed to mean stable ground.
             continue
         # Create a mask representing a particular glacier.

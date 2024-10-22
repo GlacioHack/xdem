@@ -524,7 +524,8 @@ class TestVariogram:
         # Check that all type of coordinate inputs work
         # Only the array and the ground sampling distance
         xdem.spatialstats.sample_empirical_variogram(
-            values=self.diff.data, gsd=self.diff.res[0], subsample=10, random_state=42)
+            values=self.diff.data, gsd=self.diff.res[0], subsample=10, random_state=42
+        )
 
         # Test multiple runs
         df2 = xdem.spatialstats.sample_empirical_variogram(

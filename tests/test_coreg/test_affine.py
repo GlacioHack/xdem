@@ -96,29 +96,17 @@ class TestAffineCoreg:
     # Check all point-raster possibilities supported
     # Use the reference DEM for both, it will be artificially misaligned during tests
     # Raster-Raster
-    fit_args_rst_rst = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask
-    )
+    fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
     tba_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     # Raster-Point
-    fit_args_rst_pts = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba_pts,
-        inlier_mask=inlier_mask
-    )
+    fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
 
     # Point-Raster
-    fit_args_pts_rst = dict(
-        reference_elev=ref_pts,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask
-    )
+    fit_args_pts_rst = dict(reference_elev=ref_pts, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
 
@@ -364,7 +352,8 @@ class TestAffineCoreg:
 
     @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])  # type: ignore
     def test_coreg_vertical_translation__example(
-        self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]]) -> None:
+        self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]]
+    ) -> None:
         """
         Test that the vertical translation co-registration output is always exactly the same on the real example data.
         """
@@ -475,8 +464,7 @@ class TestAffineCoreg:
         [(coreg.ICP, (8.738332, 1.584255, -1.943957, 0.0069004, -0.00703, -0.0119733))],
     )  # type: ignore
     def test_coreg_rigid__example(
-        self,
-        coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
+        self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
         """
         Test that the rigid co-registration outputs is always exactly the same on the real example data.

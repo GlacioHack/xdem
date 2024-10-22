@@ -69,11 +69,7 @@ class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
-    fit_params = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask
-    )
+    fit_params = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
     points = gpd.GeoDataFrame(
@@ -627,7 +623,7 @@ class TestCoregPipeline:
         to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
-        crs=ref.crs
+        crs=ref.crs,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -857,7 +853,7 @@ class TestBlockwiseCoreg:
         to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
-        crs=ref.crs
+        crs=ref.crs,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T

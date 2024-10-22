@@ -586,8 +586,9 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # If no subsample is taken, use all valid values
         subsample_mask = valid_mask
 
-    logging.debug("Using a subsample of %d among %d valid values.",
-                 np.count_nonzero(subsample_mask), np.count_nonzero(valid_mask))
+    logging.debug(
+        "Using a subsample of %d among %d valid values.", np.count_nonzero(subsample_mask), np.count_nonzero(valid_mask)
+    )
 
     return subsample_mask
 
@@ -599,7 +600,7 @@ def _get_subsample_mask_pts_rst(
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
     area_or_point: Literal["Area", "Point"] | None,
-    aux_vars: None | dict[str, NDArrayf] = None
+    aux_vars: None | dict[str, NDArrayf] = None,
 ) -> NDArrayb:
     """
     Get subsample mask for raster-raster or point-raster datasets on valid points of all inputs (including
@@ -743,7 +744,7 @@ def _preprocess_pts_rst_subsample(
     crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
-    aux_vars: None | dict[str, NDArrayf] = None
+    aux_vars: None | dict[str, NDArrayf] = None,
 ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
     """
     Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
@@ -761,7 +762,7 @@ def _preprocess_pts_rst_subsample(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
-        aux_vars=aux_vars
+        aux_vars=aux_vars,
     )
 
     # Perform subsampling on mask for all inputs
@@ -881,8 +882,11 @@ def _bin_or_and_fit_nd(
 
     # Option 1: Run fit and save optimized function parameters
     if fit_or_bin == "fit":
-        logging.debug("Estimating alignment along variables %s by fitting with function %s.",
-                      ", ".join(list(bias_vars.keys())), params_fit_or_bin["fit_func"].__name__)
+        logging.debug(
+            "Estimating alignment along variables %s by fitting with function %s.",
+            ", ".join(list(bias_vars.keys())),
+            params_fit_or_bin["fit_func"].__name__,
+        )
 
         results = params_fit_or_bin["fit_optimizer"](
             f=params_fit_or_bin["fit_func"],
@@ -896,8 +900,11 @@ def _bin_or_and_fit_nd(
 
     # Option 2: Run binning and save dataframe of result
     elif fit_or_bin == "bin":
-        logging.debug("Estimating alignment along variables %s by binning with statistic %s.",
-                      ", ".join(list(bias_vars.keys())), params_fit_or_bin["bin_statistic"].__name__)
+        logging.debug(
+            "Estimating alignment along variables %s by binning with statistic %s.",
+            ", ".join(list(bias_vars.keys())),
+            params_fit_or_bin["bin_statistic"].__name__,
+        )
 
         df = nd_binning(
             values=values,
@@ -914,7 +921,8 @@ def _bin_or_and_fit_nd(
             "Estimating alignment along variables %s by binning with statistic %s and then fitting with function %s.",
             ", ".join(list(bias_vars.keys())),
             params_fit_or_bin["bin_statistic"].__name__,
-            params_fit_or_bin["fit_func"].__name__)
+            params_fit_or_bin["fit_func"].__name__,
+        )
 
         df = nd_binning(
             values=values,
@@ -1044,7 +1052,7 @@ def _iterate_affine_regrid_small_rotations(
     transform: rio.transform.Affine,
     matrix: NDArrayf,
     centroid: tuple[float, float, float] | None = None,
-    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear"
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Iterative process to find the best reprojection of affine transformation for small rotations.
@@ -1126,10 +1134,12 @@ def _iterate_affine_regrid_small_rotations(
             diff_x = x0 - x
             diff_y = y0 - y
 
-            logging.debug("Residual check at iteration number %d:"
-                          "\n    Mean diff x: %f"
-                          "\n    Mean diff y: %f",
-                          niter, np.nanmean(np.abs(diff_x)), np.nanmean(np.abs(diff_y)))
+            logging.debug(
+                "Residual check at iteration number %d:" "\n    Mean diff x: %f" "\n    Mean diff y: %f",
+                niter,
+                np.nanmean(np.abs(diff_x)),
+                np.nanmean(np.abs(diff_y)),
+            )
 
             # Get index of points below tolerance in both X/Y for this subsample (all points before convergence update)
             # Nodata values are considered having converged
@@ -1137,8 +1147,11 @@ def _iterate_affine_regrid_small_rotations(
             subind_diff_y = np.logical_or(np.abs(diff_y) < (tolerance * res_y), ~np.isfinite(diff_y))
             subind_converged = np.logical_and(subind_diff_x, subind_diff_y)
 
-            logging.debug("    Points not within tolerance: %d for X; %d for Y",
-                          np.count_nonzero(~subind_diff_x), np.count_nonzero(~subind_diff_y))
+            logging.debug(
+                "    Points not within tolerance: %d for X; %d for Y",
+                np.count_nonzero(~subind_diff_x),
+                np.count_nonzero(~subind_diff_y),
+            )
 
             # If all points left are below convergence, update Z one final time and stop here
             if all(subind_converged):
@@ -1734,7 +1747,10 @@ class Coreg:
         params_random = self._meta["inputs"]["random"]
 
         # Derive subsampling mask
-        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask,)
+        sub_mask = _get_subsample_on_valid_mask(
+            params_random=params_random,
+            valid_mask=valid_mask,
+        )
 
         # Write final subsample to class
         self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
@@ -1751,7 +1767,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z"
+        z_name: str = "z",
     ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
         """
         Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
@@ -1772,7 +1788,7 @@ class Coreg:
             inlier_mask=inlier_mask,
             transform=transform,
             area_or_point=area_or_point,
-            aux_vars=aux_vars
+            aux_vars=aux_vars,
         )
 
         # Perform subsampling on mask for all inputs
@@ -2940,7 +2956,9 @@ class BlockwiseCoreg(Coreg):
 
         indices = np.unique(groups)
 
-        progress_bar = tqdm(total=indices.size, desc="Processing chunks", disable=logging.getLogger().getEffectiveLevel() > logging.INFO)
+        progress_bar = tqdm(
+            total=indices.size, desc="Processing chunks", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
+        )
 
         def process(i: int) -> dict[str, Any] | BaseException | None:
             """
@@ -2981,7 +2999,7 @@ class BlockwiseCoreg(Coreg):
                     area_or_point=area_or_point,
                     z_name=z_name,
                     subsample=subsample,
-                    random_state=random_state
+                    random_state=random_state,
                 )
                 nmad, median = procstep.error(
                     reference_elev=ref_subset,

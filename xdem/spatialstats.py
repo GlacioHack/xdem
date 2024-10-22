@@ -1152,7 +1152,11 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs: Any) -> tuple[int, i
         "comparison between %d samples (points) of the central disk and again %d samples times %d independent "
         "rings centered on the same center point. This results in approximately %d pairwise comparisons (duplicate "
         "pairwise points randomly selected will be removed).",
-        runs, subsample_per_disk_per_run, subsample_per_disk_per_run, nb_rings, total_pairwise_comparison
+        runs,
+        subsample_per_disk_per_run,
+        subsample_per_disk_per_run,
+        nb_rings,
+        total_pairwise_comparison,
     )
 
     return runs, subsample_per_disk_per_run, ratio_subsample

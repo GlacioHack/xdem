@@ -11,7 +11,7 @@ kernelspec:
   name: xdem
 ---
 # Logging configuration
- To configure logging for xDEM, you can utilize Python's built-in `logging` module. Begin by setting up the logging 
+ TO configure logging for xDEM, you can utilize Python's built-in `logging` module. Begin by setting up the logging
  configuration at the start. This involves specifying the logging level, format, and handlers. For example :
  ```python
 import logging

@@ -158,7 +158,7 @@ def _iterate_method(
     iterating_input: Any,
     constant_inputs: tuple[Any, ...],
     tolerance: float,
-    max_iterations: int
+    max_iterations: int,
 ) -> Any:
     """
     Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches a tolerance or maximum number of iterations.
@@ -301,7 +301,7 @@ def _preprocess_pts_rst_subsample_interpolator(
     transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
-    aux_vars: None | dict[str, NDArrayf] = None
+    aux_vars: None | dict[str, NDArrayf] = None,
 ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf], int]:
     """
     Mirrors coreg.base._preprocess_pts_rst_subsample, but returning an interpolator for efficiency in iterative methods.
@@ -321,7 +321,7 @@ def _preprocess_pts_rst_subsample_interpolator(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
-        aux_vars=aux_vars
+        aux_vars=aux_vars,
     )
 
     # Return interpolator of elevation differences and subsampled auxiliary variables
@@ -492,7 +492,7 @@ def _nuth_kaab_iteration_step(
     slope_tan: NDArrayf,
     aspect: NDArrayf,
     res: tuple[int, int],
-    params_fit_bin: InFitOrBinDict
+    params_fit_bin: InFitOrBinDict,
 ) -> tuple[tuple[float, float, float], float]:
     """
     Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
@@ -610,7 +610,7 @@ def nuth_kaab(
         iterating_input=initial_offset,
         constant_inputs=constant_inputs,
         tolerance=tolerance,
-        max_iterations=max_iterations
+        max_iterations=max_iterations,
     )
 
     return final_offsets, subsample_final
@@ -723,9 +723,7 @@ def dh_minimize(
 
     # Perform fit
     # TODO: To match original implementation, need to add back weight support for point data
-    final_offsets = _dh_minimize_fit(
-        dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin
-    )
+    final_offsets = _dh_minimize_fit(dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin)
 
     return final_offsets, subsample_final
 
@@ -763,7 +761,7 @@ def vertical_shift(
         transform=transform,
         crs=crs,
         area_or_point=area_or_point,
-        z_name=z_name
+        z_name=z_name,
     )
     # Get elevation difference
     dh = sub_ref - sub_tba
@@ -869,7 +867,7 @@ class AffineCoreg(Coreg):
             inlier_mask=inlier_mask,
             transform=transform,
             area_or_point=area_or_point,
-            aux_vars=aux_vars
+            aux_vars=aux_vars,
         )
 
         # Return interpolator of elevation differences and subsampled auxiliary variables

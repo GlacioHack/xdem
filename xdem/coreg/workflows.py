@@ -141,7 +141,7 @@ def dem_coregistration(
     nmad_factor: Number = 5,
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
     plot: bool = False,
-    out_fig: str = None
+    out_fig: str = None,
 ) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
