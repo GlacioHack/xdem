@@ -68,6 +68,7 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
     DEM.crs
     DEM.transform
     DEM.nodata
+    DEM.area_or_point
 ```
 
 #### Specific to {class}`~xdem.DEM`
@@ -104,6 +105,8 @@ See the full list in [the Raster API of GeoUtils](https://geoutils.readthedocs.i
 .. autosummary::
     :toctree: gen_modules/
 
+    DEM.set_nodata
+    DEM.set_area_or_point
     DEM.reproject
     DEM.crop
 ```

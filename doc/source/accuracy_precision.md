@@ -11,7 +11,7 @@ airborne, spaceborne) and relying on specific post-processing techniques (e.g., 
 
 While some complexities are specific to certain instruments and methods, all elevation data generally possesses:
 
-- a [ground sampling distance](https://en.wikipedia.org/wiki/Ground_sample_distance), or pixel size, **that does not necessarily represent the underlying spatial resolution of the observations**,
+- a [ground sampling distance](https://en.wikipedia.org/wiki/Ground_sample_distance), or footprint, **that does not necessarily represent the underlying spatial resolution of the observations**,
 - a [georeferencing](https://en.wikipedia.org/wiki/Georeferencing) **that can be subject to shifts, tilts or other deformations** due to inherent instrument errors, noise, or associated processing schemes,
 - a large number of [outliers](https://en.wikipedia.org/wiki/Outlier) **that remain difficult to filter** as they can originate from various sources (e.g., blunders, clouds).
 

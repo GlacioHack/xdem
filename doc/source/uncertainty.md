@@ -51,7 +51,8 @@ Additionally, we recommend reading the **{ref}`static-surfaces` guide page** on 
 ## Quick use
 
 The estimation of the spatial structure of random errors of elevation data is conveniently
-wrapped in a single method {func}`~xdem.DEM.estimate_uncertainty`, for which the steps are detailed below.
+wrapped in a single method {func}`~xdem.DEM.estimate_uncertainty`, which estimates, models and returns **a map of
+variable error** matching the DEM, and **a function describing the spatial correlation of these errors**.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -86,6 +87,9 @@ sig_dem.plot(cmap="Purples", cbar_title=r"Error in elevation (1$\sigma$, m)")
 # The spatial correlation function represents how much errors are correlated at a certain distance
 print("Random elevation errors at a distance of 1 km are correlated at {:.2f} %.".format(rho_sig(1000) * 100))
 ```
+
+Three methods can be considered for this estimation, which are described right below.
+Additionally, the subfunctions used to perform the uncertainty analysis are detailed in **the {ref}`error-struc` section** below.
 
 ## Summary of available methods
 
@@ -190,6 +194,7 @@ To clarify these conversions of error proxy, see the **{ref}`static-surfaces` gu
 For more statistical background on the methods below, see the **{ref}`spatial-stats` guide page**.
 :::
 
+(error-struc)=
 ## Spatial structure of error
 
 Below we detail the steps used to estimate the two components of uncertainty: heteroscedasticity and spatial

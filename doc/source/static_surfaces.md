@@ -18,7 +18,6 @@ proxy**. By assuming no changes happened on these surfaces, and that they have t
 surfaces, it becomes possible to perform coregistration, bias correction and further uncertainty analysis!
 
 Below, we summarize the basic principles of how using static surfaces allows to perform coregistration and uncertainty analysis, and the related limitations.
-For a more detailed theoretical explanation, we refer to [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922).
 
 ### For coregistration and bias correction (systematic errors)
 
