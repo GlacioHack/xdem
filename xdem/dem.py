@@ -251,8 +251,7 @@ class DEM(SatelliteImage):  # type: ignore
         if self.vcrs is not None:
             ccrs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=self.vcrs)
             return ccrs
-        else:
-            return None
+        return None
 
     @overload
     def to_vcrs(
@@ -362,17 +361,16 @@ class DEM(SatelliteImage):  # type: ignore
             self.set_vcrs(new_vcrs=vcrs)
             return None
         # Otherwise, return new DEM
-        else:
-            return DEM.from_array(
-                data=new_data,
-                transform=self.transform,
-                crs=self.crs,
-                nodata=self.nodata,
-                area_or_point=self.area_or_point,
-                tags=self.tags,
-                vcrs=vcrs,
-                cast_nodata=False,
-            )
+        return DEM.from_array(
+            data=new_data,
+            transform=self.transform,
+            crs=self.crs,
+            nodata=self.nodata,
+            area_or_point=self.area_or_point,
+            tags=self.tags,
+            vcrs=vcrs,
+            cast_nodata=False,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
