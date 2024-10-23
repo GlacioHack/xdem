@@ -1,4 +1,5 @@
 """Functions to test the documentation."""
+import logging
 import os
 import platform
 import shutil
@@ -34,7 +35,7 @@ class TestDocs:
                         exec(infile.read().replace("plt.show()", "plt.close()"))
                     except Exception as exception:
                         if isinstance(exception, DeprecationWarning):
-                            print(exception)
+                            logging.warning(exception)
                         else:
                             raise RuntimeError(f"Failed on {filename}") from exception
 

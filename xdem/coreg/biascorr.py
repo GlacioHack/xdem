@@ -1,6 +1,7 @@
 """Bias corrections (i.e., non-affine coregistration) classes."""
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import geopandas as gpd
@@ -153,7 +154,6 @@ class BiasCorr(Coreg):
         z_name: str,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
         """Function for fitting raster-raster and raster-point for bias correction methods."""
@@ -168,7 +168,6 @@ class BiasCorr(Coreg):
             area_or_point=area_or_point,
             z_name=z_name,
             aux_vars=bias_vars,
-            verbose=verbose,
         )
 
         # Derive difference to get dh
@@ -179,7 +178,6 @@ class BiasCorr(Coreg):
             values=diff,
             bias_vars=sub_bias_vars,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -194,7 +192,6 @@ class BiasCorr(Coreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Called by other classes"""
@@ -209,7 +206,6 @@ class BiasCorr(Coreg):
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -224,7 +220,6 @@ class BiasCorr(Coreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Called by other classes"""
@@ -239,7 +234,6 @@ class BiasCorr(Coreg):
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -344,12 +338,10 @@ class DirectionalBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
-        if verbose:
-            print("Estimating rotated coordinates.")
+        logging.info("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
@@ -372,7 +364,6 @@ class DirectionalBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -387,15 +378,13 @@ class DirectionalBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
         # Figure out which data is raster format to get gridded attributes
         rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
-        if verbose:
-            print("Estimating rotated coordinates.")
+        logging.info("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=rast_elev, crs=crs, transform=transform, nodata=-9999),
@@ -418,7 +407,6 @@ class DirectionalBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -506,7 +494,6 @@ class TerrainBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -537,7 +524,6 @@ class TerrainBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -552,7 +538,6 @@ class TerrainBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -586,7 +571,6 @@ class TerrainBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -670,7 +654,6 @@ class Deramp(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -690,7 +673,6 @@ class Deramp(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             p0=p0,
             **kwargs,
         )
@@ -706,7 +688,6 @@ class Deramp(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -729,7 +710,6 @@ class Deramp(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             p0=p0,
             **kwargs,
         )
