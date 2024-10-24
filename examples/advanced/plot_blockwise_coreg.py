@@ -70,9 +70,7 @@ plt.show()
 # Coregistration is performed with the ``.fit()`` method.
 # This runs in multiple threads by default, so more CPU cores are preferable here.
 
-blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
-
-aligned_dem = blockwise.apply(dem_to_be_aligned)
+aligned_dem = blockwise.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.

@@ -13,12 +13,19 @@ There are a number of types of elevation data:
 1. **Digital elevation models (DEMs)** are a type of raster, i.e. defined on a regular grid with each grid cell representing an elevation. Additionally, DEMs are rasters than are almost always chosen to be single-band, and floating-type to accurately represent elevation in meters,
 2. **Elevation point clouds** are simple point clouds with XYZ coordinates, often with a list of attributes attached to each point,
 3. **Contour or breaklines** are 2D or 3D vector lines representing elevation. **They are usually not used for analysis**, instead for visualisation,
-4. **Elevation triangle irregular networks (TINs)** are a triangle mesh representing the continuous elevation surface. **They are usually not used for analysis**, instead in-memory for visualization or for conversion from an elevation point cloud to a DEM. 
+4. **Elevation triangle irregular networks (TINs)** are a triangle mesh representing the continuous elevation surface. **They are usually not used for analysis**, instead in-memory for visualization or for conversion from an elevation point cloud to a DEM.
+
+```{note}
+xDEM supports the two elevation data types primarily used for quantitative analysis: the {class}`~xdem.DEM` and the elevation point cloud (currently as a {class}`~geopandas.GeoDataFrame` for some operations, more soon!).
+
+See the **{ref}`elevation-objects` features pages** for more details.
+```
 
 ```{eval-rst}
 .. plot:: code/intricacies_datatypes.py
     :width: 90%
 ```
+
 
 Additionally, there are a critical differences for elevation point clouds depending on point density: 
 - **Sparse elevation point clouds** (e.g., altimetry) are generally be stored as small vector-type datasets (e.g., SHP). Due to their sparsity, for subsequent analysis, they are rarely gridded into a DEM, and instead compared with DEMs at the point cloud coordinates by interpolation of the DEM,
@@ -33,7 +40,7 @@ See for instance {class}`xdem.DEM.interp_points`.
 
 Elevation data is unique among georeferenced data, in the sense that it **adds a third vertical dimension that also requires georeferencing**.
 
-For this purpose, elevation data is related a vertical [coordinate reference system (CRS)](https://en.wikipedia.org/wiki/Spatial_reference_system). A vertical CRS is a **1D, often gravity-related, coordinate reference system of surface elevation** (or height), used to expand a 2D horizontal CRS to a 3D CRS.
+For this purpose, elevation data is related to a vertical [coordinate reference system (CRS)](https://en.wikipedia.org/wiki/Spatial_reference_system). A vertical CRS is a **1D, often gravity-related, coordinate reference system of surface elevation** (or height), used to expand a 2D horizontal CRS to a 3D CRS.
 
 There are two types of models of surface elevation:
 - **Ellipsoids** model the surface of the Earth as a three-dimensional shape created from a two-dimensional ellipse, which are already used by 2D CRS,
@@ -72,6 +79,8 @@ This default behaviour can be modified at the package-level by using [GeoUtilsâ€
 
 See {class}`xdem.DEM.set_area_or_point` to re-set the pixel interpretation of your DEM.
 ```
+
+----------------
 
 :::{admonition} References and more reading
 :class: tip

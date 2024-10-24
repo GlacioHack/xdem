@@ -48,7 +48,7 @@ such as **affine biases** (systematic georeferencing shifts), in addition to **s
 
 For random errors, a variability in error magnitude or **heteroscedasticity** is common in elevation data (e.g.,
 large errors on steep slopes). Finally, spatially structured yet random patterns of errors (e.g., along-track undulations)
-also exist and force us to consider the **spatial correlation of errors**.
+also exist and force us to consider the **spatial correlation of random errors (sometimes called structured errors)**.
 
 Translating the accuracy and precision concepts to elevation data, we can thus define:
 
@@ -58,7 +58,7 @@ Translating the accuracy and precision concepts to elevation data, we can thus d
 
 These categories are depicted in the figure below.
 
-:::{figure} https://github.com/rhugonnet/dem_error_study/blob/main/figures/fig_2.png?raw=true
+:::{figure} imgs/accuracy_precision_dem.png
 :width: 100%
 
 Source: [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922).
@@ -71,9 +71,9 @@ Accuracy is generally considered from two focus points:
 - **Absolute elevation accuracy** describes systematic errors to the true positioning, usually important when analysis focuses on the exact location of topographic features at a specific epoch.
 - **Relative elevation accuracy** describes systematic errors with reference to other elevation data that does not necessarily match the true positioning, important for analyses interested in topographic change over time.
 
-## How to get the best accuracy and precision of your elevation data?
+## How to get the best out of your elevation data?
 
-### Quantifying and improving absolute and relative elevation accuracy
+### Quantifying and improving accuracy
 
 Misalignments due to poor absolute or relative accuracy are common in elevation datasets, and are usually assessed and
 corrected by performing **three-dimensional elevation coregistration and bias corrections to an independent source
@@ -86,30 +86,31 @@ quality-controlled DEMs themselves aligned on altimetric data such as the
 
 To use coregistration and bias correction pipelines in xDEM, see the **feature pages on {ref}`coregistration` and {ref}`biascorr`**.
 
-```{eval-rst}
-.. minigallery:: xdem.coreg.Coreg
-    :add-heading: Examples that use coregistration and bias corrections
-```
-
-### Quantifying and improving assessing elevation precision
+### Quantifying and improving precision
 
 While assessing accuracy is fairly straightforward as it consists of computing the mean differences (biases) between
 two or multiple datasets, assessing precision of elevation data can be much more complex. The spread in measurement
-errors cannot be quantified by a single difference and require statistical inference.
+errors cannot be quantified by a difference at single data point, and require statistical inference.
 
 Assessing precision usually means applying **spatial statistics combined to uncertainty quantification**,
 to account for the spatial variability and the spatial correlation in errors. For this it is usually necessary, as
-for coregistration, to **rely on an independent source of elevation data on static surfaces similarly**. More background
-on this topic is available on the **{ref}`spatial-stats` guide page**.
+for coregistration, to **rely on an independent source of elevation data on static surfaces similarly**. 
 
 To use spatial statistics for quantifying precision in xDEM, see **the feature page on {ref}`uncertainty`**.
 
 Additionally, improving the precision of elevation data is sometimes possible by correcting random structured
-errors using, as for accuracy, **bias correction methods but here applied to pseudo-periodic errors**.
+errors, such as pseudo-periodic errors (undulations). For this, one can **also use {ref}`biascorr`**.
 
-% Functions that are used in several examples create duplicate examples instead of being merged into the list.
-% Circumventing manually by selecting functions used only once in each example for now.
-```{eval-rst}
-.. minigallery:: xdem.spatialstats.infer_heteroscedasticity_from_stable xdem.spatialstats.get_variogram_model_func xdem.spatialstats.sample_empirical_variogram
-    :add-heading: Examples that use spatial statistics functions
-```
+----------------
+
+:::{admonition} References and more reading
+:class: tip
+
+More background on structured random errors is available on the **{ref}`spatial-stats` guide page**.
+
+**References:** 
+
+- [ISO 5725-1 (1994)](https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en), Accuracy (trueness and precision) of measurement methods and results — Part 1: General principles and definitions,
+- [Mittaz et al. (2019)](http://dx.doi.org/10.1088/1681-7575/ab1705), Applying principles of metrology to historical Earth observations from satellites,
+- [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922), Uncertainty analysis of digital elevation models by spatial inference from stable terrain.
+:::

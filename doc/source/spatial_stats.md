@@ -190,6 +190,17 @@ For instance, to propagate errors to terrain slope, one can derive many realizat
 for the DEM. Then, for each realization, add the random field to the DEM, and derive its slope. Finally,
 the error in slope can be estimated from the spread of all slope realizations.
 
-```{seealso}
+----------------
+
+:::{admonition} References and more reading
+:class: tip
+
 For random field generation, see for example [GSTools](https://geostat-framework.readthedocs.io/projects/gstools/en/stable/).
-```
+
+**References:** 
+
+- [Heuvelink et al. (1989)](https://doi.org/10.1080/02693798908941518), Propagation of errors in spatial modelling with GIS, 
+- [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950), Spatially integrated geodetic glacier mass balance and its uncertainty based on geostatistical analysis: Application to the western Svartisen ice cap, Norway, 
+- [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922), Uncertainty analysis of digital elevation models by spatial inference from stable terrain.
+
+:::

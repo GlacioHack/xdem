@@ -1,3 +1,4 @@
+"""Plot example of elevation data types for guide page."""
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,7 +9,7 @@ ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 ref_dem = ref_dem.crop((ref_dem.bounds.left, ref_dem.bounds.bottom, ref_dem.bounds.left+1000, ref_dem.bounds.bottom+1000))
 
 # Get point cloud with 100 points
-ref_epc = ref_dem.to_pointcloud(subsample=100)
+ref_epc = ref_dem.to_pointcloud(subsample=100, random_state=42)
 
 f, ax = plt.subplots(2, 2, squeeze=False, sharex=True, sharey=True)
 # Plot 1: DEM
@@ -43,6 +44,8 @@ plt.colorbar(mappable=cont, ax=ax[1, 0], label="Elevation (m)", pad=0.02)
 ax[1, 0].set_xticklabels([])
 ax[1, 0].set_yticklabels([])
 ax[1, 0].set_aspect("equal")
+
+plt.title("Types of elevation data")
 
 plt.tight_layout()
 plt.show()

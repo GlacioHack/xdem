@@ -107,6 +107,7 @@ See the full list in [the Raster API of GeoUtils](https://geoutils.readthedocs.i
 
     DEM.set_nodata
     DEM.set_area_or_point
+    DEM.info
     DEM.reproject
     DEM.crop
 ```
@@ -186,26 +187,6 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     :toctree: gen_modules/
 
     DEM.estimate_uncertainty
-```
-
-## dDEM
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    dDEM
-```
-
-## DEMCollection
-
-## dDEM
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    DEMCollection
 ```
 
 (api-geo-handle)=
@@ -382,4 +363,29 @@ This will trigger API changes in future package versions.
     :toctree: gen_modules/
 
     xdem.spatialstats.nmad
+```
+
+
+## Development classes (removal or re-factoring)
+
+```{caution}
+The {class}`xdem.dDEM` and {class}`xdem.DEMCollection` classes will be removed or re-factored in the near future.
+```
+
+### dDEM
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    dDEM
+```
+
+### DEMCollection
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEMCollection
 ```

@@ -64,6 +64,13 @@ you use to compare to your own elevation differences.
 
 ## Visual patterns of errors
 
+```{important}
+The patterns of errors below are **created synthetically to examplify the effect of a single source of error**. 
+In your own elevation differences, those will be mixed together and with random errors inherent to the data.
+
+For examples on real data, see the **{ref}`examples-basic` and {ref}`examples-advanced` gallery examples**!
+```
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
 

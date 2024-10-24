@@ -17,6 +17,7 @@ import sys
 sys.path.append(os.path.abspath("../.."))
 sys.path.append(os.path.abspath("../../xdem/"))
 sys.path.append(os.path.abspath(".."))
+sys.path.insert(0, os.path.dirname(__file__))
 
 from sphinx_gallery.sorting import ExplicitOrder
 
@@ -70,8 +71,8 @@ nb_output_stderr = "warn"  # To warn if an error is raised in a notebook cell (i
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
-    "geoutils": ("https://geoutils.readthedocs.io/en/latest", None),
-    "rasterio": ("https://rasterio.readthedocs.io/en/latest", None),
+    "geoutils": ("https://geoutils.readthedocs.io/en/stable", None),
+    "rasterio": ("https://rasterio.readthedocs.io/en/stable", None),
     "numpy": ("https://numpy.org/doc/stable", None),
     "matplotlib": ("https://matplotlib.org/stable", None),
     "pyproj": ("https://pyproj4.github.io/pyproj/stable", None),
@@ -98,6 +99,8 @@ sphinx_gallery_conf = {
     #                                    os.path.join(os.path.dirname(__file__), "../", "../", "examples", "advanced")])
     "remove_config_comments": True,
     # To remove comments such as sphinx-gallery-thumbnail-number (only works in code, not in text)
+    "reset_modules": ("matplotlib", "sphinxext.reset_mpl",),
+    # To reset matplotlib for each gallery (and run custom function that fixes the default DPI)
 }
 
 extlinks = {
@@ -106,7 +109,7 @@ extlinks = {
 }
 
 # For matplotlib figures generate with sphinx plot: (suffix, dpi)
-plot_formats = [(".png", 400)]
+plot_formats = [(".png", 600)]
 
 # To avoid long path names in inheritance diagrams
 inheritance_alias = {

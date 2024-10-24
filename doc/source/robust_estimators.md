@@ -34,6 +34,11 @@ used as a robust measure of central tendency.
 
 The {func}`numpy.median` is used by default in the alignment routines of **{ref}`coregistration` and {ref}`biascorr`**.
 
+```{eval-rst}
+.. plot:: code/robust_mean_std.py
+    :width: 90%
+```
+
 (robuststats-nmad)=
 
 ### Dispersion
@@ -43,9 +48,7 @@ and is core to the analysis of sample precision (see {ref}`accuracy-precision`).
 However, very much like the mean, the standard deviation is a measure sensitive to outliers.
 
 The median equivalent of a standard deviation is the normalized median absolute deviation (NMAD), which corresponds to the [median absolute deviation](https://en.wikipedia.org/wiki/Median_absolute_deviation) scaled by a factor of ~1.4826 to match the dispersion of a
-normal distribution. It has been shown to provide more robust measures of dispersion with outliers when working
-with DEMs (e.g., [Höhle and Höhle (2009)](https://doi.org/10.1016/j.isprsjprs.2009.02.003)).
-It is defined as:
+normal distribution. It is a more robust measure of dispersion with outliers, defined as:
 
 $$
 \textrm{NMAD}(x) = 1.4826 \cdot \textrm{median}_{i} \left ( \mid x_{i} - \textrm{median}(x) \mid \right )
@@ -70,7 +73,7 @@ The {func}`xdem.spatialstats.nmad` is used by default in **{ref}`coregistration`
 [Variogram](https://en.wikipedia.org/wiki/Variogram) analysis exploits statistical measures equivalent to the covariance,
 and is therefore also subject to outliers.
 Based on [SciKit-GStat](https://mmaelicke.github.io/scikit-gstat/index.html), xDEM allows to specify robust variogram
-estimators such as Dowd's variogram based on medians ([Dowd (1984)](https://en.wikipedia.org/wiki/Variogram)) defined as:
+estimators such as Dowd's variogram based on medians defined as:
 
 $$
 2\gamma (h) = 2.198 \cdot \textrm{median}_{i} \left ( Z_{x_{i}} - Z_{x_{i+h}} \right )
@@ -85,6 +88,11 @@ Dowd's estimator has a good synergy with the {ref}`NMAD<robuststats-nmad>` for e
 Other estimators can be chosen from [SciKit-GStat's list of estimators](https://scikit-gstat.readthedocs.io/en/latest/reference/estimator.html).
 
 Dowd's variogram is used by default to estimate spatial auto-correlation of elevation measurement errors in **{ref}`uncertainty`**.
+
+```{eval-rst}
+.. plot:: code/robust_vario.py
+    :width: 90%
+```
 
 (robuststats-regression)=
 
@@ -104,3 +112,13 @@ The {ref}`coregistration` and {ref}`biascorr` methods encapsulate some of those 
 - The Random sample consensus estimator [RANSAC](https://en.wikipedia.org/wiki/Random_sample_consensus),
 - The [Theil-Sen](https://en.wikipedia.org/wiki/Theil%E2%80%93Sen_estimator) estimator,
 - The [Huber loss](https://en.wikipedia.org/wiki/Huber_loss) estimator.
+
+----------------
+
+:::{admonition} References and more reading
+:class: tip
+
+**References:** 
+- [Dowd (1984)](https://doi.org/10.1007/978-94-009-3699-7_6), The Variogram and Kriging: Robust and Resistant Estimators, 
+- [Höhle and Höhle (2009)](https://doi.org/10.1016/j.isprsjprs.2009.02.003), Accuracy assessment of digital elevation models by means of robust statistical methods.
+:::
