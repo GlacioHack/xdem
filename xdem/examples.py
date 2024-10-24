@@ -63,7 +63,7 @@ def download_longyearbyen_examples(overwrite: bool = False) -> None:
         with open(tar_path, "wb") as outfile:
             outfile.write(response.read())
     else:
-        raise ValueError(f"Longyearbyen data fetch gave non-200 response: {response.status_code}")
+        raise ValueError(f"Longyearbyen data fetch gave non-200 response: {response.status_code}.")
 
     # Extract the tarball
     with tarfile.open(tar_path) as tar:

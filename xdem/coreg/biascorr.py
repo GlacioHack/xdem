@@ -356,12 +356,6 @@ class DirectionalBias(BiasCorr):
             along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
 
-        # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
-        if "hop_length" not in kwargs:
-            # The hop length will condition jump in function values, need to be larger than average resolution
-            average_res = (transform[0] + abs(transform[4])) / 2
-            kwargs.update({"hop_length": average_res})
-
         super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,
             tba_elev=tba_elev,

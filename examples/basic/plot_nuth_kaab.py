@@ -32,13 +32,11 @@ diff_before.plot(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation cha
 
 # %%
 # Horizontal and vertical shifts can be estimated using :class:`xdem.coreg.NuthKaab`.
-# First, the shifts are estimated, and then they can be applied to the data:
+# The shifts are estimated then applied to the to-be-aligned elevation data:
 
 nuth_kaab = xdem.coreg.NuthKaab()
 
-nuth_kaab.fit(reference_dem, dem_to_be_aligned, inlier_mask)
-
-aligned_dem = nuth_kaab.apply(dem_to_be_aligned)
+aligned_dem = nuth_kaab.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_mask)
 
 # %%
 # Then, the new difference can be plotted to validate that it improved.

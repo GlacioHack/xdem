@@ -19,7 +19,7 @@ import xdem
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 
-def plot_attribute(attribute, cmap, label=None, vlim=None):
+def plot_attribute(attribute, cmap, label=None, vlim=None, interpolation=None):
 
     add_cbar = True if label is not None else False
 
@@ -34,7 +34,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     else:
         vlims = {}
 
-    attribute.plot(ax=ax, cmap=cmap, add_cbar=add_cbar, cbar_title=label, **vlims)
+    attribute.plot(ax=ax, cmap=cmap, add_cbar=add_cbar, cbar_title=label, interpolation=interpolation, **vlims)
 
     plt.xticks([])
     plt.yticks([])
@@ -78,7 +78,7 @@ plot_attribute(hillshade, "Greys_r")
 
 curvature = xdem.terrain.curvature(dem)
 
-plot_attribute(curvature, "RdGy_r", "Curvature (100 / m)", vlim=1)
+plot_attribute(curvature, "RdGy_r", "Curvature (100 / m)", vlim=1, interpolation="antialiased")
 
 # %%
 # Planform curvature
@@ -86,14 +86,14 @@ plot_attribute(curvature, "RdGy_r", "Curvature (100 / m)", vlim=1)
 
 planform_curvature = xdem.terrain.planform_curvature(dem)
 
-plot_attribute(planform_curvature, "RdGy_r", "Planform curvature (100 / m)", vlim=1)
+plot_attribute(planform_curvature, "RdGy_r", "Planform curvature (100 / m)", vlim=1, interpolation="antialiased")
 
 # %%
 # Profile curvature
 # -----------------
 profile_curvature = xdem.terrain.profile_curvature(dem)
 
-plot_attribute(profile_curvature, "RdGy_r", "Profile curvature (100 / m)", vlim=1)
+plot_attribute(profile_curvature, "RdGy_r", "Profile curvature (100 / m)", vlim=1, interpolation="antialiased")
 
 # %%
 # Topographic Position Index

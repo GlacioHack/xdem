@@ -442,7 +442,7 @@ class TestBinning:
             dvalues=self.diff, list_var=[self.slope, self.maximum_curv], unstable_mask=self.outlines
         )
 
-        df_binning_2, err_fun_2 = xdem.spatialstats.estimate_model_heteroscedasticity(
+        df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity(
             dvalues=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             list_var_names=["var1", "var2"],
@@ -869,7 +869,7 @@ class TestVariogram:
         zscores = diff_on_stable / errors
 
         # Run wrapper estimate and model function
-        emp_vgm_1, params_model_vgm_1, _ = xdem.spatialstats.estimate_model_spatial_correlation(
+        emp_vgm_1, params_model_vgm_1, _ = xdem.spatialstats._estimate_model_spatial_correlation(
             dvalues=zscores, list_models=["Gau", "Sph"], subsample=10, random_state=42
         )
 
