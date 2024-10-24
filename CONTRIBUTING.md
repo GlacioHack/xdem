@@ -50,6 +50,8 @@ pytest
 
 Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) used to run all tests.
 
+RichDEM should only be used for testing purposes within the xDEM project. The functionality of xDEM must not depend on RichDEM.
+
 ### Documentation
 
 If your changes need to be reflected in the documentation, update the related pages located in `doc/source/`. The documentation is written in MyST markdown syntax, similar to GitHub's default Markdown (see [MyST-NB](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html) for details).
