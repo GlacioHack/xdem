@@ -12,7 +12,7 @@ import scipy
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg, fit_workflows
-from xdem.fit import polynomial_2d, sumsin_1d
+from xdem.fit import polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 

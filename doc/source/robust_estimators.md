@@ -118,7 +118,7 @@ The {ref}`coregistration` and {ref}`biascorr` methods encapsulate some of those 
 :::{admonition} References and more reading
 :class: tip
 
-**References:** 
-- [Dowd (1984)](https://doi.org/10.1007/978-94-009-3699-7_6), The Variogram and Kriging: Robust and Resistant Estimators, 
+**References:**
+- [Dowd (1984)](https://doi.org/10.1007/978-94-009-3699-7_6), The Variogram and Kriging: Robust and Resistant Estimators,
 - [Höhle and Höhle (2009)](https://doi.org/10.1016/j.isprsjprs.2009.02.003), Accuracy assessment of digital elevation models by means of robust statistical methods.
 :::

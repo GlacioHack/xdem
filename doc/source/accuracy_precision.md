@@ -94,7 +94,7 @@ errors cannot be quantified by a difference at single data point, and require st
 
 Assessing precision usually means applying **spatial statistics combined to uncertainty quantification**,
 to account for the spatial variability and the spatial correlation in errors. For this it is usually necessary, as
-for coregistration, to **rely on an independent source of elevation data on static surfaces similarly**. 
+for coregistration, to **rely on an independent source of elevation data on static surfaces similarly**.
 
 To use spatial statistics for quantifying precision in xDEM, see **the feature page on {ref}`uncertainty`**.
 
@@ -108,7 +108,7 @@ errors, such as pseudo-periodic errors (undulations). For this, one can **also u
 
 More background on structured random errors is available on the **{ref}`spatial-stats` guide page**.
 
-**References:** 
+**References:**
 
 - [ISO 5725-1 (1994)](https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en), Accuracy (trueness and precision) of measurement methods and results — Part 1: General principles and definitions,
 - [Mittaz et al. (2019)](http://dx.doi.org/10.1088/1681-7575/ab1705), Applying principles of metrology to historical Earth observations from satellites,

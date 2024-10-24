@@ -501,7 +501,10 @@ def robust_nfreq_sumsin_fit(
     x_res = np.mean(np.diff(np.sort(xdata)))
 
     # The hop length will condition jump in function values, needs of magnitude slightly lower than the signal
-    hop_length = (np.percentile(ydata, 90) - np.percentile(ydata, 10))
+    if hop_length is None:
+        hop = float(np.percentile(ydata, 90) - np.percentile(ydata, 10))
+    else:
+        hop = hop_length
 
     # Loop on all frequencies
     costs = np.empty(max_nb_frequency)
@@ -549,7 +552,7 @@ def robust_nfreq_sumsin_fit(
             wrapper_cost_sumofsin,
             p0,
             disp=verbose,
-            T=hop_length,
+            T=hop,
             minimizer_kwargs=minimizer_kwargs,
             seed=random_state,
             **kwargs,

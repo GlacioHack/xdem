@@ -99,7 +99,10 @@ sphinx_gallery_conf = {
     #                                    os.path.join(os.path.dirname(__file__), "../", "../", "examples", "advanced")])
     "remove_config_comments": True,
     # To remove comments such as sphinx-gallery-thumbnail-number (only works in code, not in text)
-    "reset_modules": ("matplotlib", "sphinxext.reset_mpl",),
+    "reset_modules": (
+        "matplotlib",
+        "sphinxext.reset_mpl",
+    ),
     # To reset matplotlib for each gallery (and run custom function that fixes the default DPI)
 }
 

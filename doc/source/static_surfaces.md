@@ -7,9 +7,9 @@ Below, a short guide explaining the use of static surfaces as an error proxy for
 ## The great benefactor of elevation analysis
 
 Elevation data benefits from an uncommon asset, which is that **large proportions of planetary surface elevations
-usually remain virtually unchanged through time** (at least, within decadal time scales). Those static surfaces, 
-sometimes also referred to as "stable terrain", generally refer to bare-rock, grasslands, and are often isolated by 
-excluding dynamic surfaces such as glaciers, snow, forests and cities. If small proportions of static surfaces are 
+usually remain virtually unchanged through time** (at least, within decadal time scales). Those static surfaces,
+sometimes also referred to as "stable terrain", generally refer to bare-rock, grasslands, and are often isolated by
+excluding dynamic surfaces such as glaciers, snow, forests and cities. If small proportions of static surfaces are
 not masked, they are generally filtered out by robust estimators (see {ref}`robust-estimators`).
 
 :::{figure} imgs/stable_terrain_diagram.png
@@ -20,16 +20,16 @@ Source: [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922).
 
 ## Use for coregistration and further uncertainty analysis
 
-Elevation data can rarely be compared to simultaneous acquisitions to assess its sources of error. This is 
-where **static surfaces come to the rescue, and can act as an error proxy**. By assuming no changes happened on these 
-surfaces, and that they have the same error structure as other surfaces, it becomes possible to perform 
+Elevation data can rarely be compared to simultaneous acquisitions to assess its sources of error. This is
+where **static surfaces come to the rescue, and can act as an error proxy**. By assuming no changes happened on these
+surfaces, and that they have the same error structure as other surfaces, it becomes possible to perform
 coregistration, bias-correction and further uncertainty analysis!
 
 Below, we summarize the basic principles of how using static surfaces allows to perform coregistration and uncertainty analysis, and the related limitations.
 
 ### For coregistration and bias-correction (systematic errors)
 
-**Static surfaces $S$ are key to a coregistration or bias correction transformation $C$** for which it is assumed that, 
+**Static surfaces $S$ are key to a coregistration or bias correction transformation $C$** for which it is assumed that,
 for two sets of elevation data $h_{1}$ and $h_{2}$, we have:
 
 $$
@@ -92,12 +92,10 @@ where $\rho(d)$ is the spatial correlation, and $d$ is the spatial lag (distance
 :::{admonition} References and more reading
 :class: tip
 
-Static surfaces can be used as a **proxy for assessing systematic and random errors**, which directly relates to 
+Static surfaces can be used as a **proxy for assessing systematic and random errors**, which directly relates to
 what is commonly referred to as accuracy and precision of elevation data, detailed in the **next guide page on {ref}`accuracy-precision`**.
 
 See the **{ref}`spatial-stats` guide page** for more details on spatial statistics applied to uncertainty quantification.
 
 **References:** [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922), Uncertainty analysis of digital elevation models by spatial inference from stable terrain.
 :::
-
-

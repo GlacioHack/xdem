@@ -1,7 +1,7 @@
 (elevation-intricacies)=
 # Georeferencing intricacies
 
-Georeferenced elevation data comes in different types and relies on different attributes than typical georeferenced 
+Georeferenced elevation data comes in different types and relies on different attributes than typical georeferenced
 data, which **can make quantitative analysis more delicate**.
 
 Below, we summarize these aspects to help grasp a general understanding of the intricacies of elevation data.
@@ -27,7 +27,7 @@ See the **{ref}`elevation-objects` features pages** for more details.
 ```
 
 
-Additionally, there are a critical differences for elevation point clouds depending on point density: 
+Additionally, there are a critical differences for elevation point clouds depending on point density:
 - **Sparse elevation point clouds** (e.g., altimetry) are generally be stored as small vector-type datasets (e.g., SHP). Due to their sparsity, for subsequent analysis, they are rarely gridded into a DEM, and instead compared with DEMs at the point cloud coordinates by interpolation of the DEM,
 - **Dense elevation point clouds** (e.g., lidar) are large datasets generally stored in specific formats (LAS). Due to their high density, they are often gridded into DEMs by triangular interpolation of the point cloud.
 
@@ -51,7 +51,7 @@ which are directly associated with two types of 3D CRSs:
 - **Geoid heights** CRSs, that are a compound of a 2D CRS and a vertical CRS (2D + 1D), where the vertical CRS of the geoid is added relative to the ellipsoid.
 
 
-Problematically, until the early 2020s, **most elevation data was distributed without a 3D CRS in its metadata**. The vertical reference was generally provided separately, in a user guide or website of the data provider. 
+Problematically, until the early 2020s, **most elevation data was distributed without a 3D CRS in its metadata**. The vertical reference was generally provided separately, in a user guide or website of the data provider.
 Therefore, it is important to either define your vertical CRSs manually before any analysis, or double-check that all your datasets are on the same vertical reference.
 
 ```{note}
@@ -60,7 +60,7 @@ For this reason, xDEM includes {ref}`tools to easily set a vertical CRS<vref-set
 
 ## The interpretation of pixel value for DEMs
 
-Among the elevation data types listed above, DEMs are the only gridded dataset. While gridded datasets have become 
+Among the elevation data types listed above, DEMs are the only gridded dataset. While gridded datasets have become
 ubiquitous for quantitative anaysis, they also suffer from a problem of pixel interpretation.
 
 Pixel interpretation describes how a grid cell value should be interpreted, and has two definitions:
@@ -72,7 +72,7 @@ Pixel interpretation describes how a grid cell value should be interpreted, and 
 **In different software packages, gridded data are interpreted differently**, resulting in (undesirable) half-pixel shifts during analysis. Additionally, different storage formats have different standards for grid coordinate interpretation, also sometimes resulting in a half-pixel shift (e.g., GeoTIFF versus netCDF).
 
 ```{note}
-To perform consistent pixel interpretation of DEMs, xDEM relies on [the raster pixel interpretation of GeoUtils, which mirrors GDAL's GCP behaviour](https://geoutils.readthedocs.io/en/stable/georeferencing.html#pixel-interpretation-only-for-rasters). 
+To perform consistent pixel interpretation of DEMs, xDEM relies on [the raster pixel interpretation of GeoUtils, which mirrors GDAL's GCP behaviour](https://geoutils.readthedocs.io/en/stable/georeferencing.html#pixel-interpretation-only-for-rasters).
 
 This means that, by default, pixel interpretation induces a half-pixel shift during DEM–point interfacing for a “Point” interpretation, but only raises a warning for DEM–DEM operations if interpretations differ.
 This default behaviour can be modified at the package-level by using [GeoUtils’ configuration](https://geoutils.readthedocs.io/en/stable/config.html).

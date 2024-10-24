@@ -42,7 +42,7 @@ rotation_matrix = np.array(
         [0, 0, 0, 1],
     ]
 )
-centroid = [dem.bounds.left + dem.width/2, dem.bounds.bottom + dem.height/2, np.nanmean(dem)]
+centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2, np.nanmean(dem)]
 # This will apply the matrix along the center of the DEM
 rotated_dem = xdem.coreg.apply_matrix(dem, matrix=rotation_matrix, centroid=centroid)
 
