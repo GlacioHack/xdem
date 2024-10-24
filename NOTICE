@@ -1,0 +1,79 @@
+Copyright (c) 2024 xdem developers.
+
+This file is part of xdem (see https://github.com/GlacioHack/xdem).
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+xdem software is distributed under the Apache Software License (ASL) v2.0, see
+LICENSE file or http://www.apache.org/licenses/LICENSE-2.0 for details.
+
+Python: programming language that lets you work quickly and integrate systems more effectively.
+Copyright (c) 2001-2023 Python Software Foundation. All Rights reserved.
+Website: http://python.org/
+License: Python Software License.
+
+NumPy: The fundamental package for scientific computing with Python.
+Copyright (c) 2005-2023, NumPy Developers.
+Website: https://numpy.org/
+License: BSD 3-Clause.
+
+Matplotlib: Comprehensive library for creating static, animated, and interactive visualizations in Python.
+Copyright (C) 2001-2023 Matplotlib Development Team.
+Website: https://matplotlib.org/
+License: Matplotlib only uses BSD compatible code, and its license is based on the PSF license.
+
+SciPy: Open-source software for mathematics, science, and engineering.
+Copyright (c) 2001-2002 Enthought, Inc. All rights reserved.
+Copyright (c) 2003-2023 SciPy Developers. All rights reserved.
+Website: https://www.scipy.org/scipylib/
+License: BSD 3-Clause.
+
+Geoutils: Libraries and command-line utilities for geospatial data processing/analysis in Python.
+Copyright (c) 2020 Amaury Dehecq, Andrew Tedstone.
+Website: https://github.com/GeoUtils/geoutils
+License: MIT License.
+
+Rasterio: Access to geospatial raster data
+Copyright (c) 2016, MapBox All rights reserved.
+Website: https://github.com/mapbox/rasterio
+License: BSD 3-Clause.
+
+Geopandas: Python tools for geographic data.
+Copyright (c) 2013-2023 GeoPandas Development Team.
+Website: https://geopandas.org/
+License: BSD 3-Clause
+
+Numba: A Just-in-Time Compiler for Python that accelerates numerical functions.
+Copyright (c) 2012-2023 Anaconda, Inc.
+Website: https://numba.pydata.org/
+License: BSD 2-Clause.
+
+pyproj: Python interface to PROJ (cartographic projections and transformations library).
+Copyright (c) 1995-2023 Howard Butler, Kurt Schwehr, and the pyproj contributors.
+Website: https://pyproj4.github.io/pyproj/stable/
+License: MIT License.
+
+tqdm: A fast, extensible progress bar for Python an CLI applications.
+Copyright (c) 2016-2023 tqdm contributors.
+Website: https://github.com/tqdm/tqdm
+License: MIT License.
+
+scikit-image: Image processing in Python.
+Copyright (c) 2011-2023 scikit-image developers.
+Website: https://scikit-image.org/
+License: BSD 3-Clause.
+
+scikit-gstat: A geostatistics toolbox for Python.
+Copyright (c) 2018-2023 scikit-gstat developers.
+Website: https://github.com/mmaelicke/scikit-gstat
+Licence: MIT License.
