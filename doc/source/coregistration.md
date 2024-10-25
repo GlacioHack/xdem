@@ -50,6 +50,9 @@ import xdem
 
 # Create a coregistration pipeline
 my_coreg_pipeline = xdem.coreg.ICP() + xdem.coreg.NuthKaab()
+
+# Or use a single method
+my_coreg_pipeline = xdem.coreg.NuthKaab()
 ```
 
 Then, coregistering a pair of elevation data can be done by calling {func}`xdem.DEM.coregister_3d` from the DEM that should be aligned.

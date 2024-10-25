@@ -8,7 +8,7 @@ Here is an example of how to generate these products.
 For more information, see the :ref:`terrain-attributes` chapter and the
 :ref:`sphx_glr_advanced_examples_plot_slope_methods.py` example.
 """
-# sphinx_gallery_thumbnail_number = 12
+# sphinx_gallery_thumbnail_number = 1
 import matplotlib.pyplot as plt
 
 import xdem
@@ -17,118 +17,6 @@ import xdem
 # **Example data**
 
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-
-
-def plot_attribute(attribute, cmap, label=None, vlim=None, interpolation=None):
-
-    add_cbar = True if label is not None else False
-
-    fig = plt.figure(figsize=(8, 5))
-    ax = fig.add_subplot(111)
-
-    if vlim is not None:
-        if isinstance(vlim, (int, float)):
-            vlims = {"vmin": -vlim, "vmax": vlim}
-        elif len(vlim) == 2:
-            vlims = {"vmin": vlim[0], "vmax": vlim[1]}
-    else:
-        vlims = {}
-
-    attribute.plot(ax=ax, cmap=cmap, add_cbar=add_cbar, cbar_title=label, interpolation=interpolation, **vlims)
-
-    plt.xticks([])
-    plt.yticks([])
-    plt.tight_layout()
-
-    plt.show()
-
-
-# %%
-# Slope
-# -----
-
-slope = xdem.terrain.slope(dem)
-
-plot_attribute(slope, "Reds", "Slope (°)")
-
-# %%
-# Note that all functions also work with numpy array as inputs, if resolution is specified
-
-slope = xdem.terrain.slope(dem.data, resolution=dem.res)
-
-# %%
-# Aspect
-# ------
-
-aspect = xdem.terrain.aspect(dem)
-
-plot_attribute(aspect, "twilight", "Aspect (°)")
-
-# %%
-# Hillshade
-# ---------
-
-hillshade = xdem.terrain.hillshade(dem, azimuth=315.0, altitude=45.0)
-
-plot_attribute(hillshade, "Greys_r")
-
-# %%
-# Curvature
-# ---------
-
-curvature = xdem.terrain.curvature(dem)
-
-plot_attribute(curvature, "RdGy_r", "Curvature (100 / m)", vlim=1, interpolation="antialiased")
-
-# %%
-# Planform curvature
-# ------------------
-
-planform_curvature = xdem.terrain.planform_curvature(dem)
-
-plot_attribute(planform_curvature, "RdGy_r", "Planform curvature (100 / m)", vlim=1, interpolation="antialiased")
-
-# %%
-# Profile curvature
-# -----------------
-profile_curvature = xdem.terrain.profile_curvature(dem)
-
-plot_attribute(profile_curvature, "RdGy_r", "Profile curvature (100 / m)", vlim=1, interpolation="antialiased")
-
-# %%
-# Topographic Position Index
-# --------------------------
-tpi = xdem.terrain.topographic_position_index(dem)
-
-plot_attribute(tpi, "Spectral", "Topographic Position Index", vlim=5)
-
-# %%
-# Terrain Ruggedness Index
-# ------------------------
-tri = xdem.terrain.terrain_ruggedness_index(dem)
-
-plot_attribute(tri, "Purples", "Terrain Ruggedness Index")
-
-# %%
-# Roughness
-# ---------
-roughness = xdem.terrain.roughness(dem)
-
-plot_attribute(roughness, "Oranges", "Roughness")
-
-# %%
-# Rugosity
-# --------
-rugosity = xdem.terrain.rugosity(dem)
-
-plot_attribute(rugosity, "YlOrRd", "Rugosity")
-
-# %%
-# Fractal roughness
-# -----------------
-fractal_roughness = xdem.terrain.fractal_roughness(dem)
-
-plot_attribute(fractal_roughness, "Reds", "Fractal roughness")
 
 # %%
 # Generating multiple attributes at once

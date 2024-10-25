@@ -299,7 +299,7 @@ An empirical variogram can be estimated with {func}`~xdem.spatialstats.sample_em
 
 ```{code-cell} ipython3
 # Sample empirical variogram
-df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh, subsample=1000, n_variograms=10, random_state=42)
+df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh, subsample=500, n_variograms=5, random_state=42)
 ```
 
 **Step 3: Modelling of the variogram**

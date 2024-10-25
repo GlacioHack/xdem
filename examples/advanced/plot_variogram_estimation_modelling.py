@@ -79,7 +79,7 @@ dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 # Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 
 df = xdem.spatialstats.sample_empirical_variogram(
-    values=dh, subsample=1000, n_variograms=10, estimator="dowd", random_state=42
+    values=dh, subsample=500, n_variograms=5, estimator="dowd", random_state=42
 )
 
 # %%
@@ -164,7 +164,7 @@ for area in areas:
 # patches method to run over long processing times, increasing from areas of 5 pixels to areas of 10000 pixels exponentially.
 
 areas_emp = [4000 * 2 ** (i) for i in range(10)]
-df_patches = xdem.spatialstats.patches_method(dh, gsd=dh.res[0], areas=areas_emp)
+df_patches = xdem.spatialstats.patches_method(dh, gsd=dh.res[0], areas=areas_emp, n_patches=200)
 
 
 fig, ax = plt.subplots()
