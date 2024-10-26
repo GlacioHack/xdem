@@ -24,24 +24,23 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
 [the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 
-### Opening or saving a DEM
+### Opening or saving
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
     DEM
-    DEM.info
     DEM.save
 ```
 
-### Plotting a DEM
+### Plotting or summarize info
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    DEM
+    DEM.info
     DEM.plot
 ```
 
@@ -206,9 +205,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg
-    xdem.coreg.CoregPipeline
-    xdem.coreg.BlockwiseCoreg
+    coreg.Coreg
+    coreg.CoregPipeline
+    coreg.BlockwiseCoreg
 ```
 
 #### Fitting and applying transforms
@@ -217,9 +216,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg.fit_and_apply
-    xdem.coreg.Coreg.fit
-    xdem.coreg.Coreg.apply
+    coreg.Coreg.fit_and_apply
+    coreg.Coreg.fit
+    coreg.Coreg.apply
 ```
 
 #### Extracting metadata
@@ -228,8 +227,8 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg.info
-    xdem.coreg.Coreg.meta
+    coreg.Coreg.info
+    coreg.Coreg.meta
 ```
 
 ### Affine coregistration
@@ -240,7 +239,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.AffineCoreg
+    coreg.AffineCoreg
 ```
 
 #### Coregistration methods
@@ -249,9 +248,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.VerticalShift
-    xdem.coreg.NuthKaab
-    xdem.coreg.ICP
+    coreg.VerticalShift
+    coreg.NuthKaab
+    coreg.ICP
 ```
 
 #### Manipulating affine transforms
@@ -260,15 +259,15 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.AffineCoreg.from_matrix
-    xdem.coreg.AffineCoreg.to_matrix
-    xdem.coreg.AffineCoreg.from_translations
-    xdem.coreg.AffineCoreg.to_translations
-    xdem.coreg.AffineCoreg.from_rotations
-    xdem.coreg.AffineCoreg.to_rotations
+    coreg.AffineCoreg.from_matrix
+    coreg.AffineCoreg.to_matrix
+    coreg.AffineCoreg.from_translations
+    coreg.AffineCoreg.to_translations
+    coreg.AffineCoreg.from_rotations
+    coreg.AffineCoreg.to_rotations
 
-    xdem.coreg.apply_matrix
-    xdem.coreg.invert_matrix
+    coreg.apply_matrix
+    coreg.invert_matrix
 ```
 
 ### Bias-correction
@@ -279,7 +278,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.BiasCorr
+    coreg.BiasCorr
 ```
 
 #### Bias-correction methods
@@ -288,9 +287,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Deramp
-    xdem.coreg.DirectionalBias
-    xdem.coreg.TerrainBias
+    coreg.Deramp
+    coreg.DirectionalBias
+    coreg.TerrainBias
 ```
 
 ## Uncertainty analysis
@@ -309,9 +308,9 @@ This will trigger API changes in future package versions.
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats.infer_heteroscedasticity_from_stable
-    xdem.spatialstats.infer_spatial_correlation_from_stable
-    xdem.spatialstats.spatial_error_propagation
+    spatialstats.infer_heteroscedasticity_from_stable
+    spatialstats.infer_spatial_correlation_from_stable
+    spatialstats.spatial_error_propagation
 ```
 
 ### Sub-routines for heteroscedasticity
@@ -320,9 +319,9 @@ This will trigger API changes in future package versions.
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats.nd_binning
-    xdem.spatialstats.interp_nd_binning
-    xdem.spatialstats.two_step_standardization
+    spatialstats.nd_binning
+    spatialstats.interp_nd_binning
+    spatialstats.two_step_standardization
 ```
 
 ### Sub-routines for spatial correlations
@@ -331,9 +330,9 @@ This will trigger API changes in future package versions.
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats.sample_empirical_variogram
-    xdem.spatialstats.fit_sum_model_variogram
-    xdem.spatialstats.correlation_from_variogram
+    spatialstats.sample_empirical_variogram
+    spatialstats.fit_sum_model_variogram
+    spatialstats.correlation_from_variogram
 ```
 
 ### Sub-routines for error propagation
@@ -342,7 +341,16 @@ This will trigger API changes in future package versions.
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats.number_effective_samples
+    spatialstats.number_effective_samples
+```
+
+### Empirical validation
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    spatialstats.patches_method
 ```
 
 ### Plotting for uncertainty analysis
@@ -351,9 +359,9 @@ This will trigger API changes in future package versions.
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats.plot_variogram
-    xdem.spatialstats.plot_1d_binning
-    xdem.spatialstats.plot_2d_binning
+    spatialstats.plot_variogram
+    spatialstats.plot_1d_binning
+    spatialstats.plot_2d_binning
 ```
 
 ## Stand-alone functions (moved)
@@ -362,7 +370,7 @@ This will trigger API changes in future package versions.
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats.nmad
+    spatialstats.nmad
 ```
 
 

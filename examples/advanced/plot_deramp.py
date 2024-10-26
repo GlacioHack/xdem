@@ -2,9 +2,10 @@
 Bias-correction with deramping
 ==============================
 
-In xDEM, this approach is implemented through the :class:`xdem.biascorr.Deramp` class.
+Deramping can help correct rotational or doming errors in elevation data.
+In xDEM, this approach is implemented through the :class:`xdem.coreg.Deramp` class.
 
-For more information about the approach, see :ref:`deramp`.
+See also the **:ref:`deramp` section in feature pages**.
 """
 import geoutils as gu
 import numpy as np
@@ -12,7 +13,7 @@ import numpy as np
 import xdem
 
 # %%
-# **Example files**
+# We open example files.
 reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
@@ -21,8 +22,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = ~glacier_outlines.create_mask(reference_dem)
 
 # %%
-# The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to avoid.
-# These can be visualized by plotting a change map:
+# We visualize the patterns of error from the elevation differences.
 
 diff_before = reference_dem - dem_to_be_aligned
 diff_before.plot(cmap="coolwarm_r", vmin=-10, vmax=10, cbar_title="Elevation change (m)")

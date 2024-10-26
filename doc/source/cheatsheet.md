@@ -46,18 +46,18 @@ you use to compare to your own elevation differences.
      - Vertical references often only exists in a user guide, they are not coded in the raster CRS and need to be set manually.
    * - {ref}`ramp-or-dome`
      - Ramping errors, often near the edge of the data extent, sometimes with a center dome.
-     - Likely ramp/rotations due to camera errors, use either a {ref}`coregistration` such as {class}`~xdem.coreg.ICP` or a {ref}`bias-correction` such as {class}`~xdem.coreg.Deramp`.
+     - Likely ramp/rotations due to camera errors, use either a {ref}`coregistration` such as {class}`~xdem.coreg.ICP` or a {ref}`biascorr` such as {class}`~xdem.coreg.Deramp`.
      - Can sometimes be more rigorously fixed ahead of DEM generation with bundle adjustment.
    * - {ref}`undulations`
      - Positive and negative errors undulating patterns at one or several frequencies well larger than pixel size.
-     - Likely jitter-type errors, use a {ref}`bias-correction` such as {class}`~xdem.coreg.DirectionalBias`.
+     - Likely jitter-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.DirectionalBias`.
      - Can sometimes be more rigorously fixed ahead of DEM generation with jitter correction.
    * - {ref}`peak-cavity`
      - Positive and negative errors, with one sign located exclusively near peaks and the other exclusively near cavities.
-     - Likely resolution-type errors, use a {ref}`bias-correction` such as {class}`~xdem.coreg.TerrainBias`.
+     - Likely resolution-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.TerrainBias`.
      - Can be over-corrected, sometimes better to simply ignore during analysis. Or avoid by downsampling all elevation data to the lowest resolution, rather than upsampling to the highest.
-   * - {ref}`point-oscillation`
-     - Point data errors that oscillate between negative and positive.
+   * - {ref}`point-alternating`
+     - Point data errors that alternate between negative and positive, higher on steeper slopes.
      - Likely wrong point-raster comparison, use [point interpolation or reduction on the raster instead](https://geoutils.readthedocs.io/en/stable/raster_vector_point.html#rasterpoint-operations) such as {func}`~xdem.DEM.interp_points`.
      - Rasterizing point data introduces spatially correlated random errors, instead it is recommended to interpolate raster data at the point coordinates.
 ```
@@ -141,9 +141,9 @@ geoid added on top of the ellipsoid.
 :  code_prompt_hide: "Hide code to simulate vertical referencing errors"
 
 # Set current vertical CRS with a geoid
-dem.set_vcrs("EGM96")
+dem.set_vcrs("Ellipsoid")
 # Remove the geoid
-trans_dem = dem.to_vcrs("Ellipsoid")
+trans_dem = dem.to_vcrs("EGM96")
 
 # Plot the elevation differences of the vertical transformation
 dh = dem - trans_dem
@@ -231,10 +231,10 @@ dh = dem - dem_100m.reproject(dem)
 dh.plot(cmap='RdYlBu', vmin=-40, vmax=40, cbar_title="Elevation differences of\nresolution change (m)")
 ```
 
-(point-oscillation)=
-### Point oscillating
+(point-alternating)=
+### Point alternating
 
-An example of oscillating point errors created by wrong point-raster comparison by rasterization of the points,
+An example of alternating point errors created by wrong point-raster comparison by rasterization of the points,
 which are especially large around steep slopes.
 
 ```{code-cell} ipython3

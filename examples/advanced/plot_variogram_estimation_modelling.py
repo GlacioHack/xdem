@@ -3,20 +3,22 @@ Estimation and modelling of spatial variograms
 ==============================================
 
 Digital elevation models have errors that are often `correlated in space <https://en.wikipedia.org/wiki/Spatial_analysis#Spatial_auto-correlation>`_.
-While many DEM studies used solely short-range `variogram <https://en.wikipedia.org/wiki/Variogram>`_ to
-estimate the correlation of elevation measurement errors (e.g., `Howat et al. (2008) <https://doi.org/10.1029/2008GL034496>`_
-, `Wang and Kääb (2015) <https://doi.org/10.3390/rs70810117>`_), recent studies show that variograms of multiple ranges
+While many DEM studies used solely short-range `variograms <https://en.wikipedia.org/wiki/Variogram>`_ to
+estimate the correlation of elevation measurement errors, recent studies show that variograms of multiple ranges
 provide larger, more reliable estimates of spatial correlation for DEMs.
 
 Here, we show an example in which we estimate the spatial correlation for a DEM difference at Longyearbyen, and its
-impact on the standard error with averaging area. We first estimate an empirical variogram with
-:func:`xdem.spatialstats.sample_empirical_variogram` based on routines of `scikit-gstat
-<https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then fit the empirical variogram with a sum of variogram
-models using :func:`xdem.spatialstats.fit_sum_model_variogram`. Finally, we perform spatial propagation for a range of
-averaging area using :func:`xdem.spatialstats.number_effective_samples`, and empirically validate the improved
-robustness of our results using :func:`xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
+impact on the standard error of the mean of elevation differences in an area. We detail the steps used
+by :func:`~xdem.spatialstats.infer_spatial_correlation_from_stable` exemplified in
+# :ref:`sphx_glr_basic_examples_plot_infer_spatial_correlation.py`.
 
-**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
+We first estimate an empirical variogram with :func:`~xdem.spatialstats.sample_empirical_variogram` based on routines of `SciKit-GStat
+<https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then fit the empirical variogram with a sum of variogram
+models using :func:`~xdem.spatialstats.fit_sum_model_variogram`. Finally, we perform spatial propagation for a range of
+averaging area using :func:`~xdem.spatialstats.number_effective_samples`, and empirically validate the improved
+robustness of our results using :func:`~xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
+
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
 """
 import geoutils as gu
 
@@ -73,17 +75,17 @@ dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 # The empirical variogram describes the variance between the elevation differences of pairs of pixels depending on their
 # distance. This distance between pairs of pixels if referred to as spatial lag.
 #
-# To perform this procedure effectively, we use improved methods that provide efficient pairwise sampling methods for
-# large grid data in `scikit-gstat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
-# conveniently by :func:`xdem.spatialstats.sample_empirical_variogram`:
-# Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
+# To perform this procedure effectively, we use methods that provide efficient pairwise sampling methods for
+# large grid data in `SciKit-GStat <https://mmaelicke.github.io/scikit-gstat/index.html>`_, which are encapsulated
+# conveniently by :func:`~xdem.spatialstats.sample_empirical_variogram`. # Dowd's variogram is used for
+# robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 
 df = xdem.spatialstats.sample_empirical_variogram(
     values=dh, subsample=500, n_variograms=5, estimator="dowd", random_state=42
 )
 
 # %%
-# *Note: in this example, we add a* ``random_state`` *argument to yield a reproducible random sampling of pixels within
+# *Note: In this example, we add a*``random_state`` argument to yield a reproducible random sampling of pixels within
 # the grid.*
 
 # %%

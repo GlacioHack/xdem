@@ -86,7 +86,7 @@ Then, a model (parametric or not) can be fit to infer the variability of random 
 ## Standardization
 
 In order to verify the assumptions of spatial statistics and be able to use stable terrain as a reliable proxy in
-further analysis (see {ref}`spatialstats`), [standardization](https://en.wikipedia.org/wiki/Standard_score)
+further analysis (see **{ref}`static-surfaces` guide page**), [standardization](https://en.wikipedia.org/wiki/Standard_score)
 of the elevation differences by their mean $\mu$ and spread $\sigma$ are required to reach a stationary variance.
 
 ```{eval-rst}

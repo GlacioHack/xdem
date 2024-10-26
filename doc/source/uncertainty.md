@@ -219,11 +219,12 @@ random elevation errors) through {func}`~xdem.spatialstats.infer_heteroscedastic
 
 The variability in errors is empirically estimated by [data binning](https://en.wikipedia.org/wiki/Data_binning)
 in N-dimensions of the elevation differences on stable terrain, using the function {func}`~xdem.spatialstats.nd_binning`.
-Plotting of 1- and 2D binnings can be facilitated by the functions {func}`~xdem.spatialstats.plot_1d_binning` and
+Plotting of 1- and 2D binnings can be facilitated by the functions {func}`~xdem.spatialstats.plot_1d_binning` and 
 {func}`~xdem.spatialstats.plot_2d_binning`.
 
 The most common explanatory variables for elevation heteroscedasticity are the terrain slope and curvature (used as
-default, see {ref}`terrain-attributes`), and other quality metrics passed by the user such as the correlation (for [stereo]() DEMs)
+default, see {ref}`terrain-attributes`), and other quality metrics passed by the user such as the correlation 
+(for [stereo](https://en.wikipedia.org/wiki/Photogrammetry#Stereophotogrammetry) DEMs) 
 or the interferometric coherence (for [InSAR](https://en.wikipedia.org/wiki/Interferometric_synthetic-aperture_radar) DEMs).
 
 ```{code-cell} ipython3

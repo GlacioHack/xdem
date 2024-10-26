@@ -135,7 +135,7 @@ where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ corresp
 and take values of either the center ($0$), west or south ($-$), or east or north ($+$):
 
 ```{list-table}
-   :widths: 1mm 1mm 1mm 1mm
+   :widths: 1 1 1 1
    :header-rows: 1
    :stub-columns: 1
 

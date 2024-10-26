@@ -94,7 +94,7 @@ vect_gla = vect_gla.crop(dem)
 
 # Plot the DEM and the vector file
 dem.plot(cmap="terrain", cbar_title="Elevation (m)")
-vect_gla.plot(dem, ec="k")  # We pass the DEM as reference for the plot CRS/extent
+vect_gla.plot(dem, ec="k", fc="none")  # We pass the DEM as reference for the plot CRS/extent
 ```
 
 ## Vertical referencing
@@ -168,7 +168,7 @@ stable terrain as a proxy.
 
 ```{code-cell} ipython3
 # Estimate elevation uncertainty assuming both DEMs have similar precision
-sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same")
+sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same", random_state=42)
 
 # The error map variability is estimated from slope and curvature by default
 sig_dem.plot(cmap="Purples", cbar_title=r"Random error in elevation (1$\sigma$, m)")

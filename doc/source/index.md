@@ -96,6 +96,7 @@ Dive into the full documentation.
 about_xdem
 how_to_install
 quick_start
+citation
 ```
 
 ```{toctree}
@@ -133,6 +134,7 @@ advanced_examples/index.rst
 :maxdepth: 2
 
 api
+publis
 background
 ```
 

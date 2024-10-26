@@ -5,8 +5,13 @@ Terrain attributes
 Terrain attributes generated from a DEM have a multitude of uses for analytic and visual purposes.
 Here is an example of how to generate these products.
 
-For more information, see the :ref:`terrain-attributes` chapter and the
-:ref:`sphx_glr_advanced_examples_plot_slope_methods.py` example.
+For more information, see the **:ref:`terrain-attributes` feature page**.
+
+**References:**
+- Slope, aspect, hillshade: `Horn (1981) <https://ieeexplore.ieee.org/document/1456186>`_,
+- Curvature: `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_,
+- Terrain Ruggedness Index: `Riley et al. (1999) <http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf>`_,
+- Rugosity: `Jenness (2004) <https://doi.org/10.2193/0091-7648(2004)032%5B0829:CLSAFD%5D2.0.CO;2>`_.
 """
 # sphinx_gallery_thumbnail_number = 1
 import matplotlib.pyplot as plt
@@ -14,13 +19,12 @@ import matplotlib.pyplot as plt
 import xdem
 
 # %%
-# **Example data**
+# We load the example data.
 
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 # %%
-# Generating multiple attributes at once
-# --------------------------------------
+# We generate multiple terrain attribute at once (more efficient computationally as some depend on each other).
 
 attributes = xdem.terrain.get_terrain_attribute(
     dem.data,

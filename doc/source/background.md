@@ -2,7 +2,7 @@
 
 # Background
 
-Below, some more information on xDEM's mission and the people behind the package .
+Below, some more information on xDEM's mission and the people behind the package.
 
 ## Mission
 

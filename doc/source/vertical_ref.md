@@ -133,7 +133,7 @@ os.remove("mydem_with3dcrs.tif")
 2. **From the {attr}`~xdem.DEM.product` name of the DEM**, if parsed from the filename by {class}`geoutils.SatelliteImage`.
 
 
-```{see-also}
+```{seealso}
 The {class}`~geoutils.SatelliteImage` parent class that parses the product metadata is described in [a dedicated section of GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/satimg_class.html).
 ```
 

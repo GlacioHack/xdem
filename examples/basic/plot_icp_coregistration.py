@@ -2,13 +2,13 @@
 Iterative closest point coregistration
 ======================================
 
-Iterative Closest Point (ICP) is a registration methods accounting for both rotation and translation.
+Iterative closest point (ICP) is a registration method accounting for both rotations and translations.
 
-It is used primarily to correct rotations, as it performs worse than :ref:`coregistration-nuthkaab` for sub-pixel shifts.
+It is used primarily to correct rotations, as it generally performs worse than :ref:`nuthkaab` for sub-pixel shifts.
 Fortunately, xDEM provides the best of two worlds by allowing a combination of the two methods in a pipeline,
 demonstrated below!
 
-**Reference**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
+**References**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
 """
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
@@ -50,7 +50,7 @@ rotated_dem = xdem.coreg.apply_matrix(dem, matrix=rotation_matrix, centroid=cent
 # We can plot the difference between the original and rotated DEM.
 # It is now artificially tilting from east down to the west.
 diff_before = dem - rotated_dem
-diff_before.plot(cmap="coolwarm_r", vmin=-20, vmax=20)
+diff_before.plot(cmap="RdYlBu", vmin=-20, vmax=20, cbar_title="Elevation differences (m)")
 plt.show()
 
 # %%
@@ -80,7 +80,7 @@ for i, (approach, name) in enumerate(approaches):
 
     ax = plt.subplot(3, 1, i + 1)
     plt.title(name)
-    diff.plot(cmap="coolwarm_r", vmin=-20, vmax=20, ax=ax)
+    diff.plot(cmap="RdYlBu", vmin=-20, vmax=20, ax=ax, cbar_title="Elevation differences (m)")
 
 plt.tight_layout()
 plt.show()

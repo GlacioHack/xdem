@@ -7,7 +7,7 @@ rely on a non-stationary spatial statistics framework to estimate and model this
 using terrain slope and maximum curvature as explanatory variables, with stable terrain as an error proxy for moving
 terrain.
 
-**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7
+**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7
 or 8 can be used to convert elevation change errors into elevation errors.
 """
 import geoutils as gu
@@ -16,7 +16,7 @@ import geoutils as gu
 import xdem
 
 # %%
-# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration-nuthkaab` as shown in
+# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`nuthkaab` as shown in
 # the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example. We also load the reference DEM to derive terrain
 # attributes and the glacier outlines here corresponding to moving terrain.
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))

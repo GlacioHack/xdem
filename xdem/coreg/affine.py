@@ -962,8 +962,8 @@ class VerticalShift(AffineCoreg):
     Estimates the mean vertical offset between two elevation datasets based on a reductor function (median, mean, or
     any custom reductor function).
 
-    The estimated vertical shift is stored in the `self.meta` key "shift_z" (in unit of the elevation dataset inputs,
-    typically meters).
+    The estimated vertical shift is stored in the `self.meta["outputs"]["affine"]` key "shift_z" (in unit of the
+    elevation dataset inputs, typically meters).
     """
 
     def __init__(
@@ -1063,9 +1063,10 @@ class ICP(AffineCoreg):
 
     Estimates a rigid transform (rotation + translation) between two elevation datasets.
 
-    The transform is stored in the `self.meta` key "matrix", with rotation centered on the coordinates in the key
-    "centroid". The translation parameters are also stored individually in the keys "shift_x", "shift_y" and "shift_z"
-    (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift).
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
 
     Requires 'opencv'. See opencv doc for more info:
     https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
@@ -1284,9 +1285,9 @@ class NuthKaab(AffineCoreg):
 
     Estimate horizontal and vertical translations by iterative slope/aspect alignment.
 
-    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
-    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
-    in the "matrix" transform.
+    The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
+    "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
+    vertical shift), as well as in the "matrix" transform.
     """
 
     def __init__(
@@ -1431,9 +1432,9 @@ class DhMinimize(AffineCoreg):
 
     Estimates vertical and horizontal translations.
 
-    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
-    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
-    in the "matrix" transform.
+    The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
+    "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
+    vertical shift), as well as in the "matrix" transform.
     """
 
     def __init__(

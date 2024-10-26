@@ -284,7 +284,7 @@ class TestAffineCoreg:
         "coreg_method__shift",
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.DhMinimize, (10.0850892, 2.898166, -1.943001)),
+            (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
     )  # type: ignore

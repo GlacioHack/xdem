@@ -9,13 +9,15 @@ use stable terrain as an error proxy for moving terrain, and standardize data to
 to apply spatial statistics (see :ref:`uncertainty`).
 
 Here, we show an advanced example in which we look for terrain-dependent explanatory variables to explain the
-heteroscedasticity for a DEM difference at Longyearbyen. We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_
-and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
-:func:`xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
-:func:`xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
+heteroscedasticity for a DEM difference at Longyearbyen. We detail the steps used by
+:func:`~xdem.spatialstats.infer_heteroscedasticity_from_stable` exemplified in :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`.
 
-**References**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Equation 1, Extended Data Fig.
-3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7 or 8 can
+We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_ and robust statistics in N-dimension with
+:func:`~xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
+:func:`~xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
+:func:`~xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
+
+**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7 or 8 can
 be used to convert elevation change errors into elevation errors.
 """
 import geoutils as gu
@@ -27,8 +29,7 @@ import numpy as np
 import xdem
 
 # %%
-# Here, we detail the steps used by ``xdem.spatialstats.infer_heteroscedasticity_from_stable`` exemplified in
-# :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`. First, we load example files and create a glacier mask.
+# We load example files and create a glacier mask.
 
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
