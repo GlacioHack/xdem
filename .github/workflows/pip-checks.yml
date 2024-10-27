@@ -36,7 +36,7 @@ jobs:
           use-mamba: true
           channel-priority: strict
           activate-environment: xdem-pip
-          python-version:
+          python-version: ${{ matrix.python-version }}
 
       # Use pip install
       - name: Install project
