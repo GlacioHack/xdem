@@ -356,7 +356,17 @@ mean_sig = np.nanmean(sig_dh[mask_brom])
 
 We estimate the number of effective samples in the area $N_{eff}$ due to the spatial correlations.
 
+```{note}
+:class: margin
+
+**We notice a warning below:** The resolution for rasterizing the outline was automatically chosen based on the short correlation range.
+```
+
 ```{code-cell} ipython3
+---
+mystnb:
+  output_stderr: show
+---
 # Calculate the area-averaged uncertainty with these models
 neff = xdem.spatialstats.number_effective_samples(area=outline_brom, params_variogram_model=params_variogram_model)
 ```

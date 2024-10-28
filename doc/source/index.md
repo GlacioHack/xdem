@@ -133,6 +133,7 @@ advanced_examples/index.rst
 :caption: Reference
 :maxdepth: 2
 
+logging
 api
 publis
 background

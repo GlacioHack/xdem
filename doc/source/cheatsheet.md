@@ -140,9 +140,9 @@ geoid added on top of the ellipsoid.
 :  code_prompt_show: "Show code to simulate vertical referencing errors"
 :  code_prompt_hide: "Hide code to simulate vertical referencing errors"
 
-# Set current vertical CRS with a geoid
-dem.set_vcrs("Ellipsoid")
-# Remove the geoid
+# Set current vertical CRS as ellipsoid
+dem = xdem.DEM(filename_dem, vcrs="Ellipsoid")
+# Transform vertical reference to geoid
 trans_dem = dem.to_vcrs("EGM96")
 
 # Plot the elevation differences of the vertical transformation
