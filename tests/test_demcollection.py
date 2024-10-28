@@ -74,7 +74,7 @@ class TestDEMCollection:
                 if "NaNs found in dDEM" not in str(exception):
                     raise exception
 
-        # print(cumulative_dh)
+        # logging.info(cumulative_dh)
 
         # raise NotImplementedError
 

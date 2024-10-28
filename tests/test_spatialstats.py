@@ -524,7 +524,7 @@ class TestVariogram:
         # Check that all type of coordinate inputs work
         # Only the array and the ground sampling distance
         xdem.spatialstats.sample_empirical_variogram(
-            values=self.diff.data, gsd=self.diff.res[0], subsample=10, random_state=42, verbose=True
+            values=self.diff.data, gsd=self.diff.res[0], subsample=10, random_state=42
         )
 
         # Test multiple runs
@@ -583,7 +583,7 @@ class TestVariogram:
         # Shape
         shape = values.shape
 
-        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape, "verbose": False}
+        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape}
         runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(
             **keyword_arguments
         )
@@ -720,7 +720,7 @@ class TestVariogram:
         pdist_pairwise_combinations = subsample**2 / 2
 
         # Run the function
-        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape, "verbose": False}
+        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape}
         runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(
             **keyword_arguments
         )
@@ -745,7 +745,7 @@ class TestVariogram:
     def test_errors_subsample_parameter(self) -> None:
         """Tests that an error is raised when the subsample argument is too little"""
 
-        keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10), "verbose": False}
+        keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10)}
 
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
             xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
