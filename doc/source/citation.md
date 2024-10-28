@@ -10,7 +10,7 @@ To cite the package, use the Zenodo DOI: [![Zenodo](https://zenodo.org/badge/doi
 
 ## Method overview
 
-For citation and other purposes, here's an overview of all methods implemented in the package and their reference, if it exists. 
+For citation and other purposes, here's an overview of all methods implemented in the package and their reference, if it exists.
 More details are available on each feature page!
 
 ### Terrain attributes
@@ -112,7 +112,3 @@ More details are available on each feature page!
    * - H2022 (heteroscedasticity, multiple correlation ranges, spatial propagation approximation)
      - [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922)
 ```
-
-
-
-

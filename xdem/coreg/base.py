@@ -1715,7 +1715,15 @@ class Coreg:
 
         return self._meta
 
-    def info(self) -> None | str:
+    @overload
+    def info(self, as_str: Literal[False] = ...) -> None:
+        ...
+
+    @overload
+    def info(self, as_str: Literal[True]) -> str:
+        ...
+
+    def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
 
         # Define max tabulation: longest name + 2 spaces
@@ -1823,10 +1831,11 @@ class Coreg:
         final_str = header_str + inputs_str + outputs_str
 
         # Return as string or print (default)
-        logging.info("".join(final_str))
-        if logging.getLogger().getEffectiveLevel() > logging.INFO:
+        if as_str:
             return "".join(final_str)
-        return None
+        else:
+            logging.info("".join(final_str))
+            return None
 
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb) -> NDArrayb:
         """
@@ -2676,14 +2685,14 @@ class CoregPipeline(Coreg):
         return f"Pipeline: {self.pipeline}"
 
     @overload
-    def info(self, verbose: Literal[True] = ...) -> None:
+    def info(self, as_str: Literal[False] = ...) -> None:
         ...
 
     @overload
-    def info(self, verbose: Literal[False]) -> str:
+    def info(self, as_str: Literal[True]) -> str:
         ...
 
-    def info(self, verbose: bool = True) -> None | str:
+    def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
 
         # Get the pipeline information for each step as a string
@@ -2691,15 +2700,15 @@ class CoregPipeline(Coreg):
         for i, step in enumerate(self.pipeline):
 
             final_str.append(f"Pipeline step {i}:\n" f"################\n")
-            step_str = step.info(verbose=False)
+            step_str = step.info(as_str=True)
             final_str.append(step_str)
 
         # Return as string or print (default)
-        if verbose:
-            print("".join(final_str))
-            return None
-        else:
+        if as_str:
             return "".join(final_str)
+        else:
+            logging.info("".join(final_str))
+            return None
 
     def copy(self: CoregType) -> CoregType:
         """Return an identical copy of the class."""
