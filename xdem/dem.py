@@ -379,69 +379,44 @@ class DEM(SatelliteImage):  # type: ignore
             )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(
-        self,
-        method: str = "Horn",
-        degrees: bool = True,
-        use_richdem: bool = False,
-    ) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees, use_richdem=use_richdem)
+    def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
+        return terrain.slope(self, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
         method: str = "Horn",
         degrees: bool = True,
-        use_richdem: bool = False,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees, use_richdem=use_richdem)
+        return terrain.aspect(self, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
-        self,
-        method: str = "Horn",
-        azimuth: float = 315.0,
-        altitude: float = 45.0,
-        z_factor: float = 1.0,
-        use_richdem: bool = False,
+        self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
     ) -> RasterType:
 
-        return terrain.hillshade(
-            self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor, use_richdem=use_richdem
-        )
+        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def curvature(self) -> RasterType:
 
-        return terrain.curvature(self, use_richdem=use_richdem)
+        return terrain.curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def planform_curvature(self) -> RasterType:
 
-        return terrain.planform_curvature(self, use_richdem=use_richdem)
+        return terrain.planform_curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def profile_curvature(self) -> RasterType:
 
-        return terrain.profile_curvature(self, use_richdem=use_richdem)
+        return terrain.profile_curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def maximum_curvature(self) -> RasterType:
 
-        return terrain.maximum_curvature(self, use_richdem=use_richdem)
+        return terrain.maximum_curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(self, window_size: int = 3) -> RasterType:
