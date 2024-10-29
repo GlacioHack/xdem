@@ -17,13 +17,11 @@ We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_ and robust s
 :func:`~xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
 :func:`~xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
 
-**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7 or 8 can
-be used to convert elevation change errors into elevation errors.
+**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 8
-import matplotlib.pyplot as plt
 import numpy as np
 
 import xdem

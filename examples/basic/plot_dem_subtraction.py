@@ -51,7 +51,7 @@ ddem.info(stats=True)
 # Load the outlines
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 glacier_outlines = glacier_outlines.crop(ddem, clip=True)
-ddem.plot(cmap="coolwarm_r", vmin=-20, vmax=20, cbar_title="Elevation change (m)")
+ddem.plot(cmap="RdYlBu", vmin=-20, vmax=20, cbar_title="Elevation differences (m)")
 glacier_outlines.plot(ref_crs=ddem, fc="none", ec="k")
 
 # %%

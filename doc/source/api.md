@@ -250,6 +250,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 
     coreg.VerticalShift
     coreg.NuthKaab
+    coreg.DhMinimize
     coreg.ICP
 ```
 

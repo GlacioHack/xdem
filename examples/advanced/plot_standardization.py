@@ -11,7 +11,7 @@ Here, we show an example of standardization of the data based on terrain-depende
 (see :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`) and combine it with an analysis of spatial correlation
 (see :ref:`sphx_glr_basic_examples_plot_infer_spatial_correlation.py`) .
 
-**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Equation 12.
+**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 import geoutils as gu
 
@@ -105,7 +105,6 @@ scale_fac_std = nmad(z_dh.data)
 z_dh = z_dh / scale_fac_std
 print(f"NMAD after scale-correction: {nmad(z_dh.data):.1f}")
 
-plt.figure(figsize=(8, 5))
 plt_extent = [
     ref_dem.bounds.left,
     ref_dem.bounds.right,
@@ -163,7 +162,6 @@ svendsen_mask = svendsen_shp.create_mask(dh)
 medals_shp = gu.Vector(glacier_outlines.ds[glacier_outlines.ds["NAME"] == "Medalsbreen"])
 medals_mask = medals_shp.create_mask(dh)
 
-plt.figure(figsize=(8, 5))
 ax = plt.gca()
 plt_extent = [
     ref_dem.bounds.left,
@@ -225,13 +223,9 @@ svendsen_dh = np.nanmean(dh.data[svendsen_mask.data])
 medals_dh = np.nanmean(dh.data[medals_mask.data])
 
 # Plot the result
-plt.figure(figsize=(8, 5))
-ax = plt.gca()
-plt.imshow(dh.data, cmap="RdYlBu", vmin=-50, vmax=50, extent=plt_extent)
-cbar = plt.colorbar(ax=ax)
-cbar.set_label("Elevation differences (m)")
-svendsen_shp.ds.plot(ax=ax, fc="none", ec="tab:olive", lw=2)
-medals_shp.ds.plot(ax=ax, fc="none", ec="tab:gray", lw=2)
+dh.plot(cmap="RdYlBu", vmin=-50, vmax=50, cbar_title="Elevation differences (m)")
+svendsen_shp.plot(fc="none", ec="tab:olive", lw=2)
+medals_shp.plot(fc="none", ec="tab:gray", lw=2)
 plt.plot([], [], color="tab:olive", label="Svendsenbreen glacier")
 plt.plot([], [], color="tab:gray", label="Medalsbreen glacier")
 ax.text(

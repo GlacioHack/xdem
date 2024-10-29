@@ -211,6 +211,7 @@ ax[0].set_title("Before NK")
 ax[1].set_title("After NK")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
+plt.tight_layout()
 ```
 
 (dh-minimize)=
@@ -247,6 +248,7 @@ ax[0].set_title("Before dh\nminimize")
 ax[1].set_title("After dh\nminimize")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
+plt.tight_layout()
 ```
 
 (vshift)=
@@ -292,6 +294,7 @@ ax[0].set_title("Before vertical\nshift")
 ax[1].set_title("After vertical\nshift")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
+plt.tight_layout()
 ```
 
 (icp)=
@@ -351,6 +354,7 @@ ax[0].set_title("Before ICP")
 ax[1].set_title("After ICP")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
+plt.tight_layout()
 ```
 
 ## Building coregistration pipelines
@@ -393,6 +397,7 @@ ax[0].set_title("Before ICP + NK")
 ax[1].set_title("After ICP + NK")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
+plt.tight_layout()
 ```
 
 ### Recommended pipelines

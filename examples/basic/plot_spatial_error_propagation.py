@@ -7,7 +7,7 @@ requires computing the pairwise correlations between all points of an area of in
 other operation), which is computationally intensive. Here, we rely on published formulations to perform
 computationally-efficient spatial propagation for the mean of elevation (or elevation differences) in an area.
 
-**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, Equation 8 and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure S16, Equations 12, 17–19.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 import geoutils as gu
 import matplotlib.pyplot as plt

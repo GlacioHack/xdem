@@ -7,8 +7,7 @@ rely on a non-stationary spatial statistics framework to estimate and model this
 using terrain slope and maximum curvature as explanatory variables, with stable terrain as an error proxy for moving
 terrain.
 
-**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7
-or 8 can be used to convert elevation change errors into elevation errors.
+**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 import geoutils as gu
 

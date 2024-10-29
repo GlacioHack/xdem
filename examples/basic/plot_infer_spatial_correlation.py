@@ -6,7 +6,7 @@ Digital elevation models have errors that are spatially correlated due to instru
 rely on a non-stationary spatial statistics framework to estimate and model spatial correlations in elevation error.
 We use a sum of variogram forms to model this correlation, with stable terrain as an error proxy for moving terrain.
 
-**Reference:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 import geoutils as gu
 

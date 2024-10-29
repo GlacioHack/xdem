@@ -1834,7 +1834,7 @@ class Coreg:
         if as_str:
             return "".join(final_str)
         else:
-            logging.info("".join(final_str))
+            print("".join(final_str))
             return None
 
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb) -> NDArrayb:
@@ -2707,7 +2707,7 @@ class CoregPipeline(Coreg):
         if as_str:
             return "".join(final_str)
         else:
-            logging.info("".join(final_str))
+            print("".join(final_str))
             return None
 
     def copy(self: CoregType) -> CoregType:

@@ -18,7 +18,7 @@ models using :func:`~xdem.spatialstats.fit_sum_model_variogram`. Finally, we per
 averaging area using :func:`~xdem.spatialstats.number_effective_samples`, and empirically validate the improved
 robustness of our results using :func:`~xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
 
-**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 import geoutils as gu
 
@@ -51,7 +51,6 @@ print(f"NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.")
 # elevation differences. The per-pixel precision is about :math:`\pm` 2.5 meters.
 # **Does this mean that every pixel has an independent measurement error of** :math:`\pm` **2.5 meters?**
 # Let's plot the elevation differences to visually check the quality of the data.
-plt.figure(figsize=(8, 5))
 dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation differences (m)")
 
 # %%
@@ -67,7 +66,6 @@ dh.set_mask(np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data))
 
 # %%
 # We plot the elevation differences after filtering to check that we successively removed glacier signals.
-plt.figure(figsize=(8, 5))
 dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation differences (m)")
 
 # %%

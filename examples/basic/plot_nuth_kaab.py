@@ -6,7 +6,7 @@ The Nuth and Kääb coregistration corrects horizontal and vertical shifts, and 
 sub-pixel alignment in areas with varying slope.
 In xDEM, this approach is implemented through the :class:`xdem.coreg.NuthKaab` class.
 
-See also the **:ref:`nuthkaab` section in feature pages**.
+See also the :ref:`nuthkaab` section in feature pages.
 
 **Reference:** `Nuth and Kääb (2011) <https:https://doi.org/10.5194/tc-5-271-2011>`_.
 """

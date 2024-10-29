@@ -141,7 +141,7 @@ geoid added on top of the ellipsoid.
 :  code_prompt_hide: "Hide code to simulate vertical referencing errors"
 
 # Set current vertical CRS as ellipsoid
-dem = xdem.DEM(filename_dem, vcrs="Ellipsoid")
+dem.set_vcrs("Ellipsoid")
 # Transform vertical reference to geoid
 trans_dem = dem.to_vcrs("EGM96")
 
