@@ -2961,10 +2961,10 @@ class BlockwiseCoreg(Coreg):
                 * If it fails: The associated exception.
                 * If the block is empty: None
             """
-            inlier_mask = groups == i
+            group_mask = groups == i
 
             # Find the corresponding slice of the inlier_mask to subset the data
-            rows, cols = np.where(inlier_mask)
+            rows, cols = np.where(group_mask)
             arrayslice = np.s_[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1]
 
             # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
