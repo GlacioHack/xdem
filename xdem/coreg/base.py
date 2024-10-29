@@ -2944,9 +2944,11 @@ class BlockwiseCoreg(Coreg):
             area_or_point=area_or_point,
         )
 
-        # Define inlier mask if None
+        # Define inlier mask if None, before indexing subdivided array in process function below
         if inlier_mask is None:
             mask = np.ones(tba_dem.shape, dtype=bool)
+        else:
+            mask = inlier_mask
 
         groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
 
