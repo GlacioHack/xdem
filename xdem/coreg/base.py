@@ -3079,6 +3079,12 @@ class BlockwiseCoreg(Coreg):
             area_or_point=area_or_point,
         )
 
+        # Define inlier mask if None, before indexing subdivided array in process function below
+        if inlier_mask is None:
+            mask = np.ones(tba_dem.shape, dtype=bool)
+        else:
+            mask = inlier_mask
+
         groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
 
         indices = np.unique(groups)
@@ -3096,10 +3102,10 @@ class BlockwiseCoreg(Coreg):
                 * If it fails: The associated exception.
                 * If the block is empty: None
             """
-            inlier_mask = groups == i
+            group_mask = groups == i
 
             # Find the corresponding slice of the inlier_mask to subset the data
-            rows, cols = np.where(inlier_mask)
+            rows, cols = np.where(group_mask)
             arrayslice = np.s_[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1]
 
             # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
@@ -3108,7 +3114,7 @@ class BlockwiseCoreg(Coreg):
 
             if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
                 return None
-            mask_subset = inlier_mask[arrayslice].copy()
+            mask_subset = mask[arrayslice].copy()
             west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
             transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)  # type: ignore
             procstep = self.procstep.copy()
