@@ -2944,6 +2944,10 @@ class BlockwiseCoreg(Coreg):
             area_or_point=area_or_point,
         )
 
+        # Define inlier mask if None
+        if inlier_mask is None:
+            mask = np.ones(tba_dem.shape, dtype=bool)
+
         groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
 
         indices = np.unique(groups)
@@ -2973,7 +2977,7 @@ class BlockwiseCoreg(Coreg):
 
             if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
                 return None
-            mask_subset = inlier_mask[arrayslice].copy()
+            mask_subset = mask[arrayslice].copy()
             west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
             transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)  # type: ignore
             procstep = self.procstep.copy()
