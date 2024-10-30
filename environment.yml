@@ -19,6 +19,7 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - argcomplete
 
    # To run CI against latest GeoUtils
 #  - pip:
