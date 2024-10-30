@@ -18,6 +18,7 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - argcomplete
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip

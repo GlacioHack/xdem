@@ -17,3 +17,4 @@ affine
 pandas
 pyogrio
 shapely
+argcomplete
