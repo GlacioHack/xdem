@@ -40,3 +40,10 @@ except ImportError:  # pragma: no cover
         "virtualenv) and then install it in-place by running: "
         "pip install -e ."
     )
+
+
+def run(reference_dem: str, dem_to_be_aligned: str, verbose: str) -> None:
+    """
+    Function to compare DEMs
+    """
+    print("hello world")
