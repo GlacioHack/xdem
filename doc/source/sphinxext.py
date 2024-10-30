@@ -9,4 +9,5 @@ def reset_mpl(gallery_conf, fname):
 
     # Reset logging to default
     import logging
+
     logging.basicConfig(force=True)

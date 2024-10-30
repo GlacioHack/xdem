@@ -12,6 +12,7 @@ See also :ref:`config`.
 """
 
 import logging
+
 import xdem
 
 # %%
@@ -28,7 +29,7 @@ logging.basicConfig(
         logging.FileHandler("../xdem_example.log"),  # Save logs to a file
         logging.StreamHandler(),  # Also print logs to the console
     ],
-    force=True  # To re-set from previous logging
+    force=True,  # To re-set from previous logging
 )
 
 # %%
@@ -45,5 +46,3 @@ aligned_dem = coreg.fit_and_apply(reference_dem, dem_to_be_aligned)
 # With a more severe verbosity level, there is no output.
 logging.basicConfig(level=logging.ERROR, force=True)
 aligned_dem = coreg.fit_and_apply(reference_dem, dem_to_be_aligned)
-
-

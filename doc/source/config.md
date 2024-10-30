@@ -12,24 +12,24 @@ kernelspec:
 ---
 # Configuration
 
-xDEM allows to configure the **verbosity level** and the **default behaviour of certain operations on elevation data** (such as 
+xDEM allows to configure the **verbosity level** and the **default behaviour of certain operations on elevation data** (such as
 resampling method for reprojection, or pixel interpretation) directly at the package level.
 
 (verbosity)=
 ## Verbosity level
 
-To configure the verbosity level (or logging) for xDEM, you can utilize Python's built-in `logging` module. This module 
+To configure the verbosity level (or logging) for xDEM, you can utilize Python's built-in `logging` module. This module
 has five levels of verbosity that are, in ascending order of severity: `DEBUG`, `INFO`, `WARNING`, `ERROR` and `CRITICAL`.
 It also allows you to specify the destination of the output (console, file).
 
 ```{important}
-**The default verbosity level is `WARNING`, implying that `INFO` and `DEBUG` do not get printed**. Use the basic configuration 
+**The default verbosity level is `WARNING`, implying that `INFO` and `DEBUG` do not get printed**. Use the basic configuration
 as below to setup an `INFO` level.
 ```
 
 To specify the verbosity level, set up a logging configuration at the start of your script:
 
-```{code-cell} ipython3 
+```{code-cell} ipython3
 import logging
 
 # Basic configuration to simply print info
@@ -38,7 +38,7 @@ logging.basicConfig(level=logging.INFO)
 
 Optionally, you can specify the logging date, format, and handlers (destinations).
 
-```{code-cell} ipython3 
+```{code-cell} ipython3
 
 # More advanced configuration
 logging.basicConfig(
@@ -60,6 +60,6 @@ log levels in the output. You can change the logging level as needed.
 To change the configuration at the package level regarding operations for rasters, vectors and points, see
 [GeoUtils' configuration](https://geoutils.readthedocs.io/en/stable/config.html).
 
-For instance, this allows to define a preferred resampling algorithm used when interpolating and reprojecting 
-(e.g., bilinear, cubic), or the default behaviour linked to pixel interpretation during point–raster comparison. 
+For instance, this allows to define a preferred resampling algorithm used when interpolating and reprojecting
+(e.g., bilinear, cubic), or the default behaviour linked to pixel interpretation during point–raster comparison.
 These changes will then apply to all your operations in xDEM, such as coregistration.
