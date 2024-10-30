@@ -112,6 +112,21 @@ import os
 os.remove("dh_error.tif")
 ```
 
+## Command Line Interface (CLI)
+
+The xDEM package can be executed from the command line using the `xdem` command.
+
+### Usage
+
+```bash
+xdem path_ref path_sec [options]
+```
+
+### Options
+
+- `--loglevel`: Set the logging level (default: INFO).
+- `-v`, `--version`: Show the version of the xDEM package.
+
 (quick-gallery)=
 ## More examples
 
