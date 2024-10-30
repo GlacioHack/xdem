@@ -34,11 +34,11 @@ dem_1990 = dem_1990.reproject(dem_2009)
 
 # %%
 # Oops!
-# GeoUtils just warned us that ``dem_1990`` did not need reprojection. We can hide this output with ``.reproject(..., silent=True)``.
+# GeoUtils just warned us that ``dem_1990`` did not need reprojection. We can hide this output with ``silent``.
 # By default, :func:`~xdem.DEM.reproject` uses "bilinear" resampling (assuming resampling is needed).
 # Other options are detailed at `geoutils.Raster.reproject() <https://geoutils.readthedocs.io/en/latest/api.html#geoutils.raster.Raster.reproject>`_ and `rasterio.enums.Resampling <https://rasterio.readthedocs.io/en/latest/api/rasterio.enums.html#rasterio.enums.Resampling>`_.
 #
-# We now compute the difference by simply substracting, passing `stats=True` to :func:`geoutils.Raster.info` to print statistics.
+# We now compute the difference by simply substracting, passing ``stats=True`` to :func:`xdem.DEM.info` to print statistics.
 
 ddem = dem_2009 - dem_1990
 

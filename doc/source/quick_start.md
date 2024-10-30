@@ -56,6 +56,11 @@ fn_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
 print(f"DEM 1: {fn_dem_ref}, \nDEM 2: {fn_dem_tba}, \nOutlines: {fn_glacier_outlines}")
 ```
 
+```{tip}
+:class: margin
+Set up your {ref}`verbosity` to manage outputs to the console (or a file) during execution!
+```
+
 ```{code-cell} ipython3
 # Open files by instantiating DEM and Vector
 # (DEMs are loaded lazily = only metadata but not array unless required)

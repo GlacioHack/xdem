@@ -99,11 +99,10 @@ xdem.spatialstats.plot_1d_binning(df, "planc", "nmad", "Planform curvature (100 
 # %%
 # The relation with the plan curvature remains ambiguous.
 # We should better define our bins to avoid sampling bins with too many or too few samples. For this, we can partition
-# the data in quantiles in :func:`xdem.spatialstats.nd_binning`.
-# *Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. As
-# with many dimensions the ND bin size increases exponentially, we avoid binning all variables at the same
-# time and instead bin one at a time.*
-# We define 1000 quantile bins of size 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
+# the data in quantiles in :func:`xdem.spatialstats.nd_binning`. We define 1000 quantile bins of size
+# 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
+#
+# .. note:: We need a higher number of bins to work with quantiles and still resolve the edges of the distribution.
 
 df = xdem.spatialstats.nd_binning(
     values=dh_arr,

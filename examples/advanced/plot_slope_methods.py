@@ -108,4 +108,4 @@ plot_attribute(
 # differences for areas with nearly flat slopes, owing to the high sensitivity of orientation estimation
 # for flat terrain.
 
-# Note: the default aspect for a 0° slope is 180°, as in GDAL.
+# .. note:: The default aspect for a 0° slope is 180°, as in GDAL.

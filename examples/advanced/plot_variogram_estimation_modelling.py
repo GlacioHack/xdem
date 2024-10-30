@@ -83,8 +83,7 @@ df = xdem.spatialstats.sample_empirical_variogram(
 )
 
 # %%
-# *Note: In this example, we add a*``random_state`` argument to yield a reproducible random sampling of pixels within
-# the grid.*
+# .. note:: In this example, we add a ``random_state`` argument to yield a reproducible random sampling of pixels within the grid.
 
 # %%
 # We plot the empirical variogram:
@@ -185,8 +184,7 @@ plt.legend()
 plt.show()
 
 # %%
-# *Note: in this example, we add a* ``random_state`` *argument to the patches method to yield a reproducible random
-# sampling, and set* ``n_patches`` *to reduce computing time.*
+# .. note:: In this example, we set ``n_patches`` to a moderate number to reduce computing time.
 
 # %%
 # Using a single-range variogram highly underestimates the measurement error integrated over an area, by over a factor

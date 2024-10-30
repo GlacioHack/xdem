@@ -89,8 +89,8 @@ plt.show()
 # %%
 # The results show what we expected:
 #
-# * ``ICP`` alone handled the rotational offset, but left a horizontal offset as it is not sub-pixel accurate (in this case, the resolution is 20x20m).
-# * ``NuthKaab`` barely helped at all, since the offset is purely rotational.
-# * ``ICP + NuthKaab`` first handled the rotation, then fit the reference with sub-pixel accuracy.
+# - **ICP** alone handled the rotational offset, but left a horizontal offset as it is not sub-pixel accurate (in this case, the resolution is 20x20m).
+# - **Nuth and Kääb** barely helped at all, since the offset is purely rotational.
+# - **ICP + Nuth and Kääb** first handled the rotation, then fit the reference with sub-pixel accuracy.
 #
 # The last result is an almost identical raster that was offset but then corrected back to its original position!
