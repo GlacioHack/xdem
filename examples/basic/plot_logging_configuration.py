@@ -3,12 +3,15 @@ Configuring verbosity level
 ===========================
 
 This example demonstrates how to configure verbosity level, or logging, using a coregistration method.
-Logging can be customized to various levels, from ``DEBUG`` for detailed diagnostic output, to ``INFO`` for general
-updates, ``WARNING`` for potential issues, and ``ERROR`` or ``CRITICAL`` for serious problems.
+Logging can be customized to various severity levels, from ``DEBUG`` for detailed diagnostic output, to ``INFO`` for
+general updates, ``WARNING`` for potential issues, and ``ERROR`` or ``CRITICAL`` for serious problems.
+
+Setting the verbosity to a certain severity level prints all outputs from that level and those above. For instance,
+level ``INFO`` also prints warnings, error and critical messages.
 
 See also :ref:`config`.
 
-.. important:: The verbosity level defaults to ``WARNING`` and higher, so no ``INFO`` is printed.
+.. important:: The verbosity level defaults to ``WARNING``, so no ``INFO`` or ``DEBUG`` is printed.
 """
 
 import logging

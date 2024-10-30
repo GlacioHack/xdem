@@ -19,8 +19,9 @@ resampling method for reprojection, or pixel interpretation) directly at the pac
 ## Verbosity level
 
 To configure the verbosity level (or logging) for xDEM, you can utilize Python's built-in `logging` module. This module
-has five levels of verbosity that are, in ascending order of severity: `DEBUG`, `INFO`, `WARNING`, `ERROR` and `CRITICAL`.
-It also allows you to specify the destination of the output (console, file).
+has five levels of verbosity that are, in ascending order of severity: `DEBUG`, `INFO`, `WARNING`, `ERROR` and `CRITICAL`. 
+Setting a level prints output from that level and all other of higher severity. Logging also allows you to specify other aspects,
+such as the destination of the output (console, file).
 
 ```{important}
 **The default verbosity level is `WARNING`, implying that `INFO` and `DEBUG` do not get printed**. Use the basic configuration
