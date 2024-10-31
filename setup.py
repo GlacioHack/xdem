@@ -2,7 +2,6 @@
 
 from setuptools import find_packages, setup
 
-
 setup(
     name="xdem",
     use_scm_version=True,  # Enable versioning with setuptools_scm
