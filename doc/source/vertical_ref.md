@@ -253,8 +253,7 @@ To transform a {class}`~xdem.DEM` to a different vertical CRS, {func}`~xdem.DEM.
 
 ```{note}
 If your transformation requires a grid that is not available locally, it will be **downloaded automatically**.
-xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`,
-considering the area-of-interest as the DEM extent {attr}`~xdem.DEM.bounds`.
+xDEM uses only the best available (i.e. best accuracy) transformation returned by {class}`pyproj.transformer.TransformerGroup`.
 ```
 
 ```{code-cell} ipython3

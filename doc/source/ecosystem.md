@@ -11,10 +11,9 @@ check out **xDEM's sister-package [GeoUtils](https://geoutils.readthedocs.io/)**
 ```
 ## Python
 
-
 Great Python tools for **pre-processing and retrieving elevation data**:
 - [SlideRule](https://slideruleearth.io/) to pre-process and retrieve high-resolution elevation data in the cloud, including in particular [ICESat-2](https://icesat-2.gsfc.nasa.gov/) and [GEDI](https://gedi.umd.edu/),
-- [pdemtools](https://pdemtools.readthedocs.io/en/latest/) to pre-process and retrieve [ArcticDEM](https://www.pgc.umn.edu/data/arcticdem/) and [REMA](https://www.pgc.umn.edu/data/rema/) high-resolution DEMs available in polar regions,
+- [pDEMtools](https://pdemtools.readthedocs.io/en/latest/) to pre-process and retrieve [ArcticDEM](https://www.pgc.umn.edu/data/arcticdem/) and [REMA](https://www.pgc.umn.edu/data/rema/) high-resolution DEMs available in polar regions,
 - [icepyx](https://icepyx.readthedocs.io/en/latest/) to retrieve ICESat-2 data.
 
 Complementary Python tools to **analyze elevation data** are for instance:
