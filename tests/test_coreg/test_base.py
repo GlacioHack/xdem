@@ -126,7 +126,7 @@ class TestCoregClass:
 
         # Check that info() contains the mapped string for an example
         c = coreg.Coreg(meta={"subsample": 10000})
-        assert dict_key_to_str["subsample"] in c.info()
+        assert dict_key_to_str["subsample"] in c.info(as_str=True)
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
