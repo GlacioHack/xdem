@@ -119,13 +119,24 @@ The xDEM package can be executed from the command line using the `xdem` command.
 ### Usage
 
 ```bash
-xdem path_ref path_sec [options]
+xdem [options] [command] path_ref path_tba
 ```
 
 ### Options
 
 - `--loglevel`: Set the logging level (default: INFO).
 - `-v`, `--version`: Show the version of the xDEM package.
+
+### Commands
+
+- `coregister`: Perform a coregistration between `path_ref` and `path_tba`.
+
+### Example
+```bash
+xdem coregister examples/data/Longyearbyen/data/DEM_2009_ref.tif examples/data/Longyearbyen/data/DEM_1990.tif
+```
+This will perform a coregistration between the reference DEM (`DEM_2009_ref.tif`) and the DEM to be aligned
+(`DEM_1990.tif`), then save the aligned DEM and inlier mask as `aligned_dem.tif` and `inlier_mask.npy`, respectively.
 
 (quick-gallery)=
 ## More examples
