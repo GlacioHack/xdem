@@ -770,7 +770,7 @@ class AffineCoreg(Coreg):
 
     def to_translations(self) -> tuple[float, float, float]:
         """
-        Convert the affine transformation matrix to only its X/Y/Z translations.
+        Extract X/Y/Z translations from the affine transformation matrix.
 
         :return: Easting, northing and vertical translations (in georeferenced unit).
         """
@@ -784,7 +784,9 @@ class AffineCoreg(Coreg):
 
     def to_rotations(self) -> tuple[float, float, float]:
         """
-        Convert the affine transformation to its X/Y/Z euler rotations, extrinsic convention.
+        Extract X/Y/Z euler rotations (extrinsic convention) from the affine transformation matrix.
+
+        Warning: This function only works for a rigid transformation (rotation and translation).
 
         :return: Extrinsinc Euler rotations along easting, northing and vertical directions (degrees).
         """

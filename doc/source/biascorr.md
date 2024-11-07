@@ -212,55 +212,10 @@ _ = ax[1].set_yticklabels([])
 - **Performs:** Correct biases along a direction.
 - **Supports weights:** Yes.
 - **Pros:** Correcting undulations or jitter, common in both stereo and radar DEMs, or strips common in scanned imagery.
-- **Cons:** Long optimization for a sum of sinusoids.
-
-The default optimizer for directional biases fits a sum of sinusoids using 1 to 3 different frequencies and
-keeps the best performing fit, which is useful for periodic along-track errors common to DEMs.
-
-```{code-cell} ipython3
-:tags: [hide-cell]
-:mystnb:
-:  code_prompt_show: "Show the code for adding a sum of sinusoids bias"
-:  code_prompt_hide: "Hide the code for adding a sum of sinusoids bias"
-
-# Get rotated coordinates along an angle
-angle = 20
-xx = gu.raster.get_xy_rotated(ref_dem, along_track_angle=angle)[0]
-
-# One sinusoid: amplitude, phases and frequencies
-params = np.array([(15, 10000, np.pi)]).flatten()
-
-# Create a sinusoidal bias and add to the DEM
-from xdem.fit import sumsin_1d
-synthetic_bias = sumsin_1d(xx.flatten(), *params).reshape(np.shape(ref_dem.data))
-tbc_dem_sumsin = ref_dem + synthetic_bias
-```
-
-
-```{code-cell} ipython3
-# Define a directional bias correction at a certain angle (degrees), defaults to "bin_and_fit" for a sum of sinusoids
-dirbias = xdem.coreg.DirectionalBias(angle=20)
-# Fit and apply
-corrected_dem = dirbias.fit_and_apply(ref_dem, tbc_dem_sumsin, random_state=42)
-```
-
-```{code-cell} ipython3
-:tags: [hide-input]
-:mystnb:
-:  code_prompt_show: "Show plotting code"
-:  code_prompt_hide: "Hide plotting code"
-
-# Plot before and after
-f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before directional\nde-biasing")
-(tbc_dem_sumsin - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After directional\nde-biasing")
-(corrected_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
-_ = ax[1].set_yticklabels([])
-```
+- **Cons:** Long optimization when fitting a sum of sinusoids.
 
 For strip-like errors, performing an empirical correction using only a binning with `fit_or_bin="bin"` allows more
-flexibility, but requires a larger amount of static surfaces.
+flexibility than a parametric form, but requires a large amount of static surfaces.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]

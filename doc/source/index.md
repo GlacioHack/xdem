@@ -135,6 +135,7 @@ advanced_examples/index.rst
 
 api
 config
+release_notes
 publis
 background
 ```
