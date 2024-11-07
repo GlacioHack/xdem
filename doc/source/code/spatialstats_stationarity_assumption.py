@@ -23,7 +23,7 @@ fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(8, 4))
 
 # Stationary mean and variance
 ax1.plot(x, y_rand1, color="tab:blue", linewidth=0.5)
-ax1.hlines(0, xmin=0, xmax=1, color="black", label="Mean", linestyle="dashed")
+ax1.hlines(0, xmin=0, xmax=1, color="black", label="Mean")
 ax1.hlines(
     [-2 * sig, 2 * sig],
     xmin=0,
@@ -45,7 +45,7 @@ ax1.plot(0, 1, "^k", transform=ax1.transAxes, clip_on=False)
 
 # Non-stationary mean and stationary variance
 ax2.plot(x, y_rand2 + y_mean, color="tab:olive", linewidth=0.5)
-ax2.plot(x, y_mean, color="black", label="Mean", linestyle="dashed")
+ax2.plot(x, y_mean, color="black", label="Mean")
 ax2.plot(x, y_mean + 2 * sig, color="tab:gray", label="Dispersion (2$\\sigma$)", linestyle="dashed")
 ax2.plot(x, y_mean - 2 * sig, color="tab:gray", linestyle="dashed")
 ax2.set_xlim((0, 1))
@@ -61,7 +61,7 @@ ax2.plot(0, 1, "^k", transform=ax2.transAxes, clip_on=False)
 
 # Stationary mean and non-stationary variance
 ax3.plot(x, y_rand3 * fac_y_std, color="tab:orange", linewidth=0.5)
-ax3.hlines(0, xmin=0, xmax=1, color="black", label="Mean", linestyle="dashed")
+ax3.hlines(0, xmin=0, xmax=1, color="black", label="Mean")
 ax3.plot(x, 2 * sig * fac_y_std, color="tab:gray", linestyle="dashed")
 ax3.plot(x, -2 * sig * fac_y_std, color="tab:gray", linestyle="dashed")
 ax3.set_xlim((0, 1))

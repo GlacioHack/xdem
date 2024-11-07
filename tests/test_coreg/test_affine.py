@@ -167,13 +167,13 @@ class TestAffineCoreg:
 
         # Check that the from_translation function works as expected.
         x_offset = 5
-        coreg_obj2 = AffineCoreg.from_translation(x_off=x_offset)
+        coreg_obj2 = AffineCoreg.from_translations(x_off=x_offset)
         transformed_points2 = coreg_obj2.apply(self.points)
         assert np.array_equal(self.points.geometry.x.values + x_offset, transformed_points2.geometry.x.values)
 
         # Try to make a Coreg object from a nan translation (should fail).
         try:
-            AffineCoreg.from_translation(np.nan)
+            AffineCoreg.from_translations(np.nan)
         except ValueError as exception:
             if "non-finite values" not in str(exception):
                 raise exception
@@ -269,7 +269,7 @@ class TestAffineCoreg:
         "coreg_method__shift",
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.DhMinimize, (10.0850892, 2.898166, -1.943001)),
+            (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
     )  # type: ignore
@@ -481,7 +481,7 @@ class TestAffineCoreg:
         c = coreg_method(subsample=50000)
         c.fit(ref, tba, inlier_mask=inlier_mask, random_state=42)
 
-        # Check the output translations match the exact values
+        # Check the output translations and rotations match the exact values
         fit_matrix = c.meta["outputs"]["affine"]["matrix"]
         fit_shifts = fit_matrix[:3, 3]
         fit_rotations = pytransform3d.rotations.euler_from_matrix(fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True)

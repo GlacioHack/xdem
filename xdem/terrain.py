@@ -286,15 +286,15 @@ def get_quadric_coefficients(
     if len(dem_arr.shape) != 2:
         raise ValueError(
             f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)"
+            "Expected 2D array or 3D array of shape (1, row, col)."
         )
 
     if any(dim < 3 for dim in dem_arr.shape):
-        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
+        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3).")
 
     # Resolution is in other tools accepted as a tuple. Here, it must be just one number, so it's best to sanity check.
     if isinstance(resolution, Sized):
-        raise ValueError("Resolution must be the same for X and Y directions")
+        raise ValueError("Resolution must be the same for X and Y directions.")
 
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
@@ -302,7 +302,7 @@ def get_quadric_coefficients(
         [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
     ):
         if value.lower() not in allowed:
-            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
+            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}.")
 
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
@@ -505,7 +505,7 @@ def get_windowed_indexes(
         http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson
         et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
-    - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    - Roughness from Dartnell (2000), thesis referenced in Wilson et al. (2007) above.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     Nearly all are also referenced in Wilson et al. (2007).
@@ -687,7 +687,7 @@ def get_terrain_attribute(
     - Terrain Ruggedness Index (topography) from Riley et al. (1999),
         http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
-    - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    - Roughness from Dartnell (2000), thesis referenced in Wilson et al. (2007) above.
     - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
@@ -1443,7 +1443,7 @@ def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDA
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
     unit of the DEM (typically meters).
 
-    Based on: Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    Based on: Dartnell (2000), https://environment.sfsu.edu/node/11292.
 
     :param dem: The DEM to calculate the roughness from.
     :param window_size: The size of the window for deriving the metric.

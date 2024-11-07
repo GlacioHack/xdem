@@ -24,6 +24,8 @@ class BiasCorr(Coreg):
 
     Variables for bias-correction can include the elevation coordinates (deramping, directional biases), terrain
     attributes (terrain corrections), or any other user-input variable (quality metrics, land cover).
+
+    The binning and/or fitting correction parameters are stored in the `self.meta["outputs"]["fitorbin"]`.
     """
 
     def __init__(
@@ -42,7 +44,7 @@ class BiasCorr(Coreg):
         """
         Instantiate an N-dimensional bias correction using binning, fitting or both sequentially.
 
-        All "fit_" arguments apply to "fit" and "bin_and_fit", and "bin_" arguments to "bin" and "bin_and_fit".
+        All fit arguments apply to "fit" and "bin_and_fit", and bin arguments to "bin" and "bin_and_fit".
 
         :param fit_or_bin: Whether to fit or bin, or both. Use "fit" to correct by optimizing a function or
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
@@ -292,6 +294,8 @@ class BiasCorr(Coreg):
 class DirectionalBias(BiasCorr):
     """
     Bias correction for directional biases, for example along- or across-track of satellite angle.
+
+    The binning and/or fitting correction parameters are stored in the `self.meta["outputs"]["fitorbin"]`.
     """
 
     def __init__(
@@ -347,12 +351,6 @@ class DirectionalBias(BiasCorr):
             raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
             along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
-
-        # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
-        if "hop_length" not in kwargs:
-            # The hop length will condition jump in function values, need to be larger than average resolution
-            average_res = (transform[0] + abs(transform[4])) / 2
-            kwargs.update({"hop_length": average_res})
 
         super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,
@@ -434,6 +432,8 @@ class TerrainBias(BiasCorr):
 
     With elevation: often useful for nadir image DEM correction, where the focal length is slightly miscalculated.
     With curvature: often useful for a difference of DEMs with different effective resolution.
+
+    The binning and/or fitting correction parameters are stored in the `self.meta["outputs"]["fitorbin"]`.
 
     DISCLAIMER: An elevation correction may introduce error when correcting non-photogrammetric biases, as generally
     elevation biases are interlinked with curvature biases.
@@ -601,7 +601,10 @@ class TerrainBias(BiasCorr):
 class Deramp(BiasCorr):
     """
     Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations
-    (dome-like errors).
+    (dome-like errors) or tilts (rotational errors).
+
+    The correction parameters are stored in the `self.meta["outputs"]["fitorbin"]` key "fit_params", that can be passed
+    to the associated function in key "fit_func".
     """
 
     def __init__(

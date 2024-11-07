@@ -119,7 +119,7 @@ class TestDEMCollection:
         assert dems.ddems[0].filled_data is None
 
         # Interpolate the nans
-        dems.ddems[0].interpolate(method="linear")
+        dems.ddems[0].interpolate(method="idw")
 
         # Make sure that the filled_data is available again
         assert dems.ddems[0].filled_data is not None

@@ -40,7 +40,7 @@ from geoutils.raster import (
     raster,
     subdivide_array,
 )
-from geoutils.raster.georeferencing import _bounds, _res
+from geoutils.raster.georeferencing import _bounds, _coords, _res
 from geoutils.raster.interpolate import _interp_points
 from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
 from tqdm import tqdm
@@ -73,7 +73,7 @@ fit_workflows = {
 # Map each key name to a descriptor string
 dict_key_to_str = {
     "subsample": "Subsample size requested",
-    "random_state": "Random generator for subsampling and (if applic.) optimizer",
+    "random_state": "Random generator",
     "subsample_final": "Subsample size drawn from valid values",
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
@@ -92,22 +92,24 @@ dict_key_to_str = {
     "tolerance": "Tolerance to reach (pixel size)",
     "last_iteration": "Iteration at which algorithm stopped",
     "all_tolerances": "Tolerances at each iteration",
-    "terrain_attribute": "Terrain attribute used for TerrainBias",
-    "angle": "Angle used for DirectionalBias",
-    "poly_order": "Polynomial order used for Deramp",
-    "best_poly_order": "Best polynomial order kept for fit",
-    "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
+    "terrain_attribute": "Terrain attribute used for correction",
+    "angle": "Angle of directional correction",
+    "poly_order": "Polynomial order",
+    "best_poly_order": "Best polynomial order",
+    "best_nb_sin_freq": "Best number of sinusoid frequencies",
     "vshift_reduc_func": "Reduction function used to remove vertical shift",
     "centroid": "Centroid found for affine rotation",
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
+    "rejection_scale": "Rejection scale",
+    "num_levels": "Number of levels",
 }
 
 #####################################
 # Generic functions for preprocessing
-#####################################
+###########################################
 
 
 def _calculate_ddem_stats(
@@ -1268,11 +1270,73 @@ def _apply_matrix_rst(
 
 
 @overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[False] = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf:
+    ...
+
+
+@overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[True],
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+    ...
+
+
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    return_interpolator: bool = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+    """
+    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
+
+    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
+    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
+    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
+
+    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
+    """
+
+    # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
+    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
+    if not return_interpolator:
+        coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
+    # If we just want the interpolator, we don't need to coordinates of destination points
+    else:
+        coords_dst = None
+
+    output = _interp_points(
+        array=raster_arr,
+        area_or_point="Area",
+        transform=src_transform,
+        points=coords_dst,
+        method=resampling,
+        return_interpolator=return_interpolator,
+    )
+
+    return output
+
+
+@overload
 def apply_matrix(
     elev: NDArrayf,
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1287,6 +1351,7 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1300,6 +1365,7 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1330,6 +1396,8 @@ def apply_matrix(
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
+    :param resample: (For translations) If set to True, will resample output on the translated grid to match the input
+        transform. Otherwise, only the transform will be updated and no resampling is done.
     :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
         information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
     :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
@@ -1339,15 +1407,18 @@ def apply_matrix(
     :return: Affine transformed elevation point cloud or DEM.
     """
 
+    # Apply matrix to elevation point cloud
     if isinstance(elev, gpd.GeoDataFrame):
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
+    # Or apply matrix to raster (often requires re-gridding)
     else:
+
+        # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
             transform = elev.transform
             dem = elev.data.filled(np.nan)
         else:
             dem = elev
-
         applied_dem, out_transform = _apply_matrix_rst(
             dem=dem,
             transform=transform,
@@ -1357,6 +1428,15 @@ def apply_matrix(
             resampling=resampling,
             **kwargs,
         )
+
+        # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+        if resample:
+            applied_dem = _reproject_horizontal_shift_samecrs(
+                applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
+            )
+            out_transform = transform
+
+        # We return a raster if input was a raster
         if isinstance(elev, gu.Raster):
             applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
             return applied_dem
@@ -1635,7 +1715,15 @@ class Coreg:
 
         return self._meta
 
-    def info(self) -> None | str:
+    @overload
+    def info(self, as_str: Literal[False] = ...) -> None:
+        ...
+
+    @overload
+    def info(self, as_str: Literal[True]) -> str:
+        ...
+
+    def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
 
         # Define max tabulation: longest name + 2 spaces
@@ -1652,19 +1740,39 @@ class Coreg:
         existing_deep_keys = [k for k, v in recursive_items(self._meta)]
 
         # Formatting function for key values, rounding up digits for numbers and returning function names
-        def format_coregdict_values(val: Any) -> str:
+        def format_coregdict_values(val: Any, tab: int) -> str:
+            """
+            Format coregdict values for printing.
 
-            # Function to round to a certain number of digits relative to magnitude, for floating numbers
-            def round_to_n(x: float | np.floating[Any], n: int) -> float | np.floating[Any]:
-                return round(x, -int(np.floor(np.log10(x))) + (n - 1))  # type: ignore
+            :param val: Input value.
+            :param tab: Tabulation (if value is printed on multiple lines).
 
-            # Different formatting depending on key value type
+            :return: String representing input value.
+            """
+
+            # Function to get decimal to round to a certain number of digits relative to magnitude, for floating numbers
+            def dec_round_to_n(x: float | np.floating[Any], n: int) -> int:
+                return -int(np.floor(np.log10(np.abs(x)))) + (n - 1)
+
+            # Different formatting to string depending on key value type
             if isinstance(val, (float, np.floating)):
-                return str(round_to_n(val, 3))
+                if np.isfinite(val):
+                    str_val = str(round(val, dec_round_to_n(val, 3)))
+                else:
+                    str_val = str(val)
+            elif isinstance(val, np.ndarray):
+                min_val = np.min(val)
+                str_val = str(np.round(val, decimals=dec_round_to_n(min_val, 3)))
             elif callable(val):
-                return val.__name__
+                str_val = val.__name__
             else:
-                return str(val)
+                str_val = str(val)
+
+            # Add tabulation if string has a return to line
+            if "\n" in str_val:
+                str_val = "\n".ljust(tab).join(str_val.split("\n"))
+
+            return str_val
 
         # Sublevels of metadata to show
         sublevels = {
@@ -1694,7 +1802,7 @@ class Coreg:
                 if len(existing_level_keys) > 0:
                     inputs_str += [f"  {lv}\n"]
                     inputs_str += [
-                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
                         for k, v in existing_level_keys
                     ]
 
@@ -1710,7 +1818,7 @@ class Coreg:
                     if len(existing_level_keys) > 0:
                         outputs_str += [f"  {lv}\n"]
                         outputs_str += [
-                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
                             for k, v in existing_level_keys
                         ]
         elif not self._fit_called:
@@ -1723,10 +1831,11 @@ class Coreg:
         final_str = header_str + inputs_str + outputs_str
 
         # Return as string or print (default)
-        logging.info("".join(final_str))
-        if logging.getLogger().getEffectiveLevel() > logging.INFO:
+        if as_str:
             return "".join(final_str)
-        return None
+        else:
+            print("".join(final_str))
+            return None
 
     def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb) -> NDArrayb:
         """
@@ -2410,9 +2519,9 @@ class Coreg:
             try:
                 applied_elev = self._apply_pts(**kwargs)
 
-            # If it doesn't exist, use opencv's perspectiveTransform
+            # If it doesn't exist, use apply_matrix()
             except NotImplementedCoregApply:
-                if self.is_affine:  # This only works on it's rigid, however.
+                if self.is_affine:
 
                     applied_elev = _apply_matrix_pts(
                         epc=kwargs["elev"],
@@ -2574,6 +2683,32 @@ class CoregPipeline(Coreg):
 
     def __repr__(self) -> str:
         return f"Pipeline: {self.pipeline}"
+
+    @overload
+    def info(self, as_str: Literal[False] = ...) -> None:
+        ...
+
+    @overload
+    def info(self, as_str: Literal[True]) -> str:
+        ...
+
+    def info(self, as_str: bool = False) -> None | str:
+        """Summarize information about this coregistration."""
+
+        # Get the pipeline information for each step as a string
+        final_str = []
+        for i, step in enumerate(self.pipeline):
+
+            final_str.append(f"Pipeline step {i}:\n" f"################\n")
+            step_str = step.info(as_str=True)
+            final_str.append(step_str)
+
+        # Return as string or print (default)
+        if as_str:
+            return "".join(final_str)
+        else:
+            print("".join(final_str))
+            return None
 
     def copy(self: CoregType) -> CoregType:
         """Return an identical copy of the class."""

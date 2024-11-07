@@ -78,7 +78,7 @@ def hypsometric_binning(
     elif kind == "custom":
         zbins = bins  # type: ignore
     else:
-        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom']")
+        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom'].")
 
     # Generate bins and get bin indices from the mean DEM
     indices = np.digitize(ref_dem, bins=zbins)
@@ -249,7 +249,9 @@ def calculate_hypsometry_area(
     assert not np.any(np.isnan(ref_dem)), "The given reference DEM has NaNs. No NaNs are allowed to calculate area!"
 
     if timeframe not in ["reference", "nonreference", "mean"]:
-        raise ValueError(f"Argument 'timeframe={timeframe}' is invalid. Choices: ['reference', 'nonreference', 'mean']")
+        raise ValueError(
+            f"Argument 'timeframe={timeframe}' is invalid. Choices: ['reference', 'nonreference', 'mean']."
+        )
 
     if isinstance(ddem_bins, pd.DataFrame):
         ddem_bins = ddem_bins["value"]
@@ -284,7 +286,7 @@ def calculate_hypsometry_area(
     return output
 
 
-def linear_interpolation(
+def idw_interpolation(
     array: NDArrayf | MArrayf,
     max_search_distance: int = 10,
     extrapolate: bool = False,
@@ -302,7 +304,7 @@ to interpolate from. The default is 10.
     :returns: A filled array with no NaNs
     """
     if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
+        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     # Create a mask for where nans exist
     nan_mask = get_mask_from_array(array)
@@ -530,7 +532,7 @@ for areas filling the min_coverage criterion.
     ddem_difference[idealized_ddem == nodata] = np.nan
 
     # Spatially interpolate the difference between these two products.
-    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
+    interpolated_ddem_diff = idw_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
     interpolated_ddem_diff[np.isnan(interpolated_ddem_diff)] = 0
 
     # Correct the idealized dDEM with the difference to the original dDEM.

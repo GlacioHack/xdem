@@ -85,8 +85,6 @@ extent = [
 
 scott_extent = [518600, 523800, 8666600, 8672300]
 
-plt.figure(figsize=(8, 5))
-
 for i in range(2):
     plt.subplot(1, 2, i + 1)
 
@@ -98,8 +96,9 @@ for i in range(2):
         # The 2009 - 2060 DEM is inverted since the reference year is 2009
         ddem_2060 = -demcollection.ddems[2].data.squeeze()
 
-    plt.imshow(ddem_2060, cmap="coolwarm_r", vmin=-50, vmax=50, extent=extent)
+    plt.imshow(ddem_2060, cmap="RdYlBu", vmin=-50, vmax=50, extent=extent)
     plt.xlim(scott_extent[:2])
     plt.ylim(scott_extent[2:])
 
 plt.show()
+plt.tight_layout()

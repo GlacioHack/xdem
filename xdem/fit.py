@@ -357,9 +357,9 @@ def robust_norder_polynomial_fit(
 
     # Raise errors for input string parameters
     if not isinstance(estimator_name, str) or estimator_name not in ["Linear", "Theil-Sen", "RANSAC", "Huber"]:
-        raise ValueError('Attribute estimator must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
+        raise ValueError('Attribute `estimator` must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
     if not isinstance(linear_pkg, str) or linear_pkg not in ["sklearn", "scipy"]:
-        raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
+        raise ValueError('Attribute `linear_pkg` must be one of "scipy" or "sklearn".')
 
     # Extract xdata from iterable
     if len(xdata) == 1:
@@ -400,7 +400,7 @@ def robust_norder_polynomial_fit(
         else:
             # Otherwise, we use sklearn
             if not _has_sklearn:
-                raise ValueError("Optional dependency needed. Install 'scikit-learn'")
+                raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
             # Define the polynomial model to insert in the pipeline
             model = PolynomialFeatures(degree=deg)
@@ -492,9 +492,13 @@ def robust_nfreq_sumsin_fit(
         return _cost_sumofsin(x, y, cost_func, *p)
 
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
+    x_res = np.mean(np.diff(np.sort(xdata)))
+
+    # The hop length will condition jump in function values, needs of magnitude slightly lower than the signal
     if hop_length is None:
-        x_res = np.mean(np.diff(np.sort(xdata)))
-        hop_length = x_res
+        hop = float(np.percentile(ydata, 90) - np.percentile(ydata, 10))
+    else:
+        hop = hop_length
 
     # Loop on all frequencies
     costs = np.empty(max_nb_frequency)
@@ -515,7 +519,7 @@ def robust_nfreq_sumsin_fit(
             ub_phase = 2 * np.pi
             # For the wavelength: from the resolution and coordinate extent
             # (we don't want the lower bound to be zero, to avoid divisions by zero)
-            lb_wavelength = hop_length / 5
+            lb_wavelength = x_res / 5
             ub_wavelength = xdata.max() - xdata.min()
 
             b = []
@@ -535,12 +539,12 @@ def robust_nfreq_sumsin_fit(
         logging.debug(ub)
 
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(xdata, ydata), method="L-BFGS-B", bounds=scipy_bounds)
+        minimizer_kwargs = dict(args=(xdata, ydata), bounds=scipy_bounds)
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             p0,
             disp=logging.getLogger().getEffectiveLevel() < logging.WARNING,
-            T=hop_length * 50,
+            T=hop,
             minimizer_kwargs=minimizer_kwargs,
             seed=random_state,
             **kwargs,
