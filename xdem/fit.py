@@ -4,6 +4,7 @@ Functions to perform normal, weighted and robust fitting.
 from __future__ import annotations
 
 import inspect
+import logging
 import warnings
 from typing import Any, Callable
 
@@ -135,7 +136,7 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
 #######################################################################
 
 
-def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose: bool = False) -> int:
+def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0) -> int:
     """
     Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
     not necessarily mean the best predictive fit because high-degree polynomials tend to overfit, and sum of sinusoids
@@ -143,7 +144,6 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
 
     :param cost: cost function residuals to the polynomial
     :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept
-    :param verbose: if text should be printed
 
     :return: degree: degree for the best-fit polynomial
     """
@@ -159,12 +159,11 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0, verbose
     # Choose the good-performance cost with lowest degree
     ind = next((i for i, j in enumerate(below_margin) if j))
 
-    if verbose:
-        print("Order " + str(ind_min + 1) + " has the minimum cost value of " + str(min_cost))
-        print(
-            "Order " + str(ind + 1) + " is selected as its cost is within a " + str(margin_improvement) + "% margin of"
-            " the minimum cost"
-        )
+    logging.debug("Order " + str(ind_min + 1) + " has the minimum cost value of " + str(min_cost))
+    logging.debug(
+        "Order " + str(ind + 1) + " is selected as its cost is within a " + str(margin_improvement) + "% margin of"
+        " the minimum cost"
+    )
 
     return ind
 
@@ -185,7 +184,6 @@ def _wrapper_scipy_leastsquares(
     :param p0: Initial guess.
     :param x: X vector.
     :param y: Y vector.
-    :param verbose: Whether to print out statements.
     :return:
     """
 
@@ -328,7 +326,6 @@ def robust_norder_polynomial_fit(
     margin_improvement: float = 20.0,
     subsample: float | int = 1,
     linear_pkg: str = "scipy",
-    verbose: bool = False,
     random_state: int | np.random.Generator | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, int]:
@@ -349,7 +346,6 @@ def robust_norder_polynomial_fit(
         If > 1 will be considered the number of pixels to extract.
     :param linear_pkg: package to use for Linear estimator, one of 'scipy' and 'sklearn'.
     :param random_state: Random seed.
-    :param verbose: Whether to print text.
 
     :returns coefs, degree: Polynomial coefficients and degree for the best-fit polynomial
     """
@@ -361,9 +357,9 @@ def robust_norder_polynomial_fit(
 
     # Raise errors for input string parameters
     if not isinstance(estimator_name, str) or estimator_name not in ["Linear", "Theil-Sen", "RANSAC", "Huber"]:
-        raise ValueError('Attribute estimator must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
+        raise ValueError('Attribute `estimator` must be one of "Linear", "Theil-Sen", "RANSAC" or "Huber".')
     if not isinstance(linear_pkg, str) or linear_pkg not in ["sklearn", "scipy"]:
-        raise ValueError('Attribute linear_pkg must be one of "scipy" or "sklearn".')
+        raise ValueError('Attribute `linear_pkg` must be one of "scipy" or "sklearn".')
 
     # Extract xdata from iterable
     if len(xdata) == 1:
@@ -404,7 +400,7 @@ def robust_norder_polynomial_fit(
         else:
             # Otherwise, we use sklearn
             if not _has_sklearn:
-                raise ValueError("Optional dependency needed. Install 'scikit-learn'")
+                raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
             # Define the polynomial model to insert in the pipeline
             model = PolynomialFeatures(degree=deg)
@@ -418,7 +414,7 @@ def robust_norder_polynomial_fit(
         list_coeffs[deg - 1, 0 : coef.size] = coef
 
     # Choose the best polynomial with a margin of improvement on the cost
-    final_index = _choice_best_order(cost=list_costs, margin_improvement=margin_improvement, verbose=verbose)
+    final_index = _choice_best_order(cost=list_costs, margin_improvement=margin_improvement)
 
     # The degree of the best polynomial corresponds to the index plus one
     return np.trim_zeros(list_coeffs[final_index], "b"), final_index + 1
@@ -447,7 +443,6 @@ def robust_nfreq_sumsin_fit(
     subsample: float | int = 1,
     hop_length: float | None = None,
     random_state: int | np.random.Generator | None = None,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[NDArrayf, int]:
     """
@@ -468,7 +463,6 @@ def robust_nfreq_sumsin_fit(
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
         If > 1 will be considered the number of pixels to extract.
     :param random_state: Random seed.
-    :param verbose: If text should be printed.
     :param kwargs: Keyword arguments to pass to scipy.optimize.basinhopping
 
     :returns coefs, degree: sinusoid coefficients (amplitude, frequency, phase) x N, Number N of summed sinusoids
@@ -498,9 +492,13 @@ def robust_nfreq_sumsin_fit(
         return _cost_sumofsin(x, y, cost_func, *p)
 
     # If no significant resolution is provided, assume that it is the mean difference between sampled X values
+    x_res = np.mean(np.diff(np.sort(xdata)))
+
+    # The hop length will condition jump in function values, needs of magnitude slightly lower than the signal
     if hop_length is None:
-        x_res = np.mean(np.diff(np.sort(xdata)))
-        hop_length = x_res
+        hop = float(np.percentile(ydata, 90) - np.percentile(ydata, 10))
+    else:
+        hop = hop_length
 
     # Loop on all frequencies
     costs = np.empty(max_nb_frequency)
@@ -508,8 +506,7 @@ def robust_nfreq_sumsin_fit(
 
     for nb_freq in np.arange(1, max_nb_frequency + 1):
 
-        if verbose:
-            print(f"Fitting with {nb_freq} frequency")
+        logging.info("Fitting with %d frequency", nb_freq)
 
         b = bounds_amp_wave_phase
         # If bounds are not provided, define as the largest possible bounds
@@ -522,7 +519,7 @@ def robust_nfreq_sumsin_fit(
             ub_phase = 2 * np.pi
             # For the wavelength: from the resolution and coordinate extent
             # (we don't want the lower bound to be zero, to avoid divisions by zero)
-            lb_wavelength = hop_length / 5
+            lb_wavelength = x_res / 5
             ub_wavelength = xdata.max() - xdata.min()
 
             b = []
@@ -537,18 +534,17 @@ def robust_nfreq_sumsin_fit(
         # First guess for the mean parameters
         p0 = (np.abs((lb + ub) / 2)).squeeze()
 
-        if verbose:
-            print("Bounds")
-            print(lb)
-            print(ub)
+        logging.debug("Bounds")
+        logging.debug(lb)
+        logging.debug(ub)
 
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(xdata, ydata), method="L-BFGS-B", bounds=scipy_bounds)
+        minimizer_kwargs = dict(args=(xdata, ydata), bounds=scipy_bounds)
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             p0,
-            disp=verbose,
-            T=hop_length * 50,
+            disp=logging.getLogger().getEffectiveLevel() < logging.WARNING,
+            T=hop,
             minimizer_kwargs=minimizer_kwargs,
             seed=random_state,
             **kwargs,
@@ -556,9 +552,8 @@ def robust_nfreq_sumsin_fit(
         myresults = myresults.lowest_optimization_result
         myresults_x = np.array([np.round(myres, 5) for myres in myresults.x])
 
-        if verbose:
-            print("Final result")
-            print(myresults_x)
+        logging.info("Final result")
+        logging.info(myresults_x)
 
         # Write results for this number of frequency
         costs[nb_freq - 1] = wrapper_cost_sumofsin(myresults_x, xdata, ydata)
@@ -567,17 +562,15 @@ def robust_nfreq_sumsin_fit(
     # Replace NaN cost by infinity
     costs[np.isnan(costs)] = np.inf
 
-    if verbose:
-        print("Costs")
-        print(costs)
+    logging.info("Costs")
+    logging.info(costs)
 
     final_index = _choice_best_order(cost=costs)
 
     final_coefs = amp_freq_phase[final_index][~np.isnan(amp_freq_phase[final_index])]
 
-    if verbose:
-        print("Selecting best performing number of frequencies:")
-        print(final_coefs)
+    logging.info("Selecting best performing number of frequencies:")
+    logging.info(final_coefs)
 
     # If an amplitude coefficient is almost zero, remove the coefs of that frequency and lower the degree
     final_degree = final_index + 1

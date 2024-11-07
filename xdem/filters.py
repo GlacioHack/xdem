@@ -29,7 +29,7 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     # Check that array dimension is 2 or 3
     if np.ndim(array) not in [2, 3]:
-        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array")
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array.")
 
     # In case array does not contain NaNs, use scipy's gaussian filter directly
     if np.count_nonzero(np.isnan(array)) == 0:
@@ -71,7 +71,7 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
     :returns: the filtered array (same shape as input)
     """
     if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
+        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     # Check that array dimension is 2, or can be squeezed to 2D
     orig_shape = array.shape
@@ -81,9 +81,9 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
         if orig_shape[0] == 1:
             array = array.squeeze()
         else:
-            raise NotImplementedError("Case of array of dimension 3 not implemented")
+            raise NotImplementedError("Case of array of dimension 3 not implemented.")
     else:
-        raise ValueError(f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array")
+        raise ValueError(f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array.")
 
     # In case array does not contain NaNs, use OpenCV's gaussian filter directly
     # With kernel size (0, 0), i.e. set to default, and borderType=BORDER_REFLECT, the output is equivalent to scipy

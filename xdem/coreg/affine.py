@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypeVar, overload
+from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import xdem.coreg.base
 
@@ -31,10 +32,12 @@ from xdem.coreg.base import (
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
     _preprocess_pts_rst_subsample,
+    _reproject_horizontal_shift_samecrs,
 )
 from xdem.spatialstats import nmad
 
 try:
+    import pytransform3d.rotations
     import pytransform3d.transformations
 
     _HAS_P3D = True
@@ -51,67 +54,6 @@ except ImportError:
 ######################################
 # Generic functions for affine methods
 ######################################
-
-
-@overload
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    *,
-    return_interpolator: Literal[False] = False,
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> NDArrayf:
-    ...
-
-
-@overload
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    *,
-    return_interpolator: Literal[True],
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
-    ...
-
-
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    return_interpolator: bool = False,
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
-    """
-    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
-
-    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
-    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
-    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
-
-    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
-    """
-
-    # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
-    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
-    if not return_interpolator:
-        coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
-    # If we just want the interpolator, we don't need to coordinates of destination points
-    else:
-        coords_dst = None
-
-    output = _interp_points(
-        array=raster_arr,
-        area_or_point="Area",
-        transform=src_transform,
-        points=coords_dst,
-        method=resampling,
-        return_interpolator=return_interpolator,
-    )
-
-    return output
 
 
 def _check_inputs_bin_before_fit(
@@ -158,7 +100,6 @@ def _iterate_method(
     constant_inputs: tuple[Any, ...],
     tolerance: float,
     max_iterations: int,
-    verbose: bool = False,
 ) -> Any:
     """
     Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches a tolerance or maximum number of iterations.
@@ -170,7 +111,6 @@ def _iterate_method(
     :param constant_inputs: Constant inputs to method, should be all positional arguments after first.
     :param tolerance: Tolerance to reach for the method statistic (i.e. maximum value for the statistic).
     :param max_iterations: Maximum number of iterations for the method.
-    :param verbose: Whether to print progress.
 
     :return: Final output of iterated method.
     """
@@ -179,8 +119,8 @@ def _iterate_method(
     new_inputs = iterating_input
 
     # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-    # If verbose is True, will use progressbar and print additional statements
-    pbar = trange(max_iterations, disable=not verbose, desc="   Progress")
+    # If logging level <= INFO, will use progressbar and print additional statements
+    pbar = trange(max_iterations, disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress")
     for i in pbar:
 
         # Apply method and get new statistic to compare to tolerance, new inputs for next iterations, and
@@ -189,11 +129,11 @@ def _iterate_method(
 
         # Print final results
         # TODO: Allow to pass a string to _iterate_method on how to print/describe exactly the iterating input
-        if verbose:
+        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
             pbar.write(f"      Iteration #{i + 1:d} - Offset: {new_inputs}; Magnitude: {new_statistic}")
 
         if i > 1 and new_statistic < tolerance:
-            if verbose:
+            if logging.getLogger().getEffectiveLevel() <= logging.INFO:
                 pbar.write(f"   Last offset was below the residual offset threshold of {tolerance} -> stopping")
             break
 
@@ -305,7 +245,6 @@ def _preprocess_pts_rst_subsample_interpolator(
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
-    verbose: bool = False,
 ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf], int]:
     """
     Mirrors coreg.base._preprocess_pts_rst_subsample, but returning an interpolator for efficiency in iterative methods.
@@ -326,7 +265,6 @@ def _preprocess_pts_rst_subsample_interpolator(
         transform=transform,
         area_or_point=area_or_point,
         aux_vars=aux_vars,
-        verbose=verbose,
     )
 
     # Return interpolator of elevation differences and subsampled auxiliary variables
@@ -498,7 +436,6 @@ def _nuth_kaab_iteration_step(
     aspect: NDArrayf,
     res: tuple[int, int],
     params_fit_bin: InFitOrBinDict,
-    verbose: bool = False,
 ) -> tuple[tuple[float, float, float], float]:
     """
     Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
@@ -511,7 +448,6 @@ def _nuth_kaab_iteration_step(
     :param slope_tan: Array of slope tangent.
     :param aspect: Array of aspect.
     :param res: Resolution of DEM.
-    :param verbose: Whether to print statements.
     """
 
     # Calculate the elevation difference with offsets
@@ -566,7 +502,6 @@ def nuth_kaab(
     params_random: InRandomDict,
     z_name: str,
     weights: NDArrayf | None = None,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int]:
     """
@@ -574,8 +509,7 @@ def nuth_kaab(
 
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
-    if verbose:
-        print("Running Nuth and Kääb (2011) coregistration")
+    logging.info("Running Nuth and Kääb (2011) coregistration")
 
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
     if not crs.is_projected:
@@ -603,12 +537,10 @@ def nuth_kaab(
         aux_vars=aux_vars,
         transform=transform,
         area_or_point=area_or_point,
-        verbose=verbose,
         z_name=z_name,
     )
 
-    if verbose:
-        print("   Iteratively estimating horizontal shift:")
+    logging.info("Iteratively estimating horizontal shift:")
     # Initialise east, north and vertical offset variables (these will be incremented up and down)
     initial_offset = (0.0, 0.0, 0.0)
     # Resolution
@@ -622,7 +554,6 @@ def nuth_kaab(
         constant_inputs=constant_inputs,
         tolerance=tolerance,
         max_iterations=max_iterations,
-        verbose=verbose,
     )
 
     return final_offsets, subsample_final
@@ -655,7 +586,6 @@ def _dh_minimize_fit_func(
 def _dh_minimize_fit(
     dh_interpolator: Callable[[float, float], NDArrayf],
     params_fit_or_bin: InFitOrBinDict,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[float, float, float]:
     """
@@ -664,7 +594,6 @@ def _dh_minimize_fit(
     :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
         horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
     :param params_fit_or_bin: Parameters for fitting or binning.
-    :param verbose: Whether to print statements.
 
     :return: Optimized offsets (easing, northing, vertical) in georeferenced unit.
     """
@@ -681,7 +610,6 @@ def _dh_minimize_fit(
     if params_fit_or_bin["fit_minimizer"] == scipy.optimize.minimize:
         if "method" not in kwargs.keys():
             kwargs.update({"method": "Nelder-Mead"})
-            kwargs.update({"options": {"xatol": 10e-6, "maxiter": 500}})
             # This method has trouble when initialized with 0,0, so defaulting to 1,1
             # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
@@ -713,7 +641,6 @@ def dh_minimize(
     params_fit_or_bin: InFitOrBinDict,
     z_name: str,
     weights: NDArrayf | None = None,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int]:
     """
@@ -723,8 +650,7 @@ def dh_minimize(
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
 
-    if verbose:
-        print("Running dh minimization coregistration.")
+    logging.info("Running dh minimization coregistration.")
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     dh_interpolator, _, subsample_final = _preprocess_pts_rst_subsample_interpolator(
@@ -734,15 +660,12 @@ def dh_minimize(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
-        verbose=verbose,
         z_name=z_name,
     )
 
     # Perform fit
     # TODO: To match original implementation, need to add back weight support for point data
-    final_offsets = _dh_minimize_fit(
-        dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin, verbose=verbose
-    )
+    final_offsets = _dh_minimize_fit(dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin)
 
     return final_offsets, subsample_final
 
@@ -763,15 +686,13 @@ def vertical_shift(
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]],
     z_name: str,
     weights: NDArrayf | None = None,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[float, int]:
     """
     Vertical shift coregistration, for any point-raster or raster-raster input, including subsampling.
     """
 
-    if verbose:
-        print("Running vertical shift coregistration")
+    logging.info("Running vertical shift coregistration")
 
     # Pre-process point-raster inputs to the same subsampled points
     sub_ref, sub_tba, _ = _preprocess_pts_rst_subsample(
@@ -783,7 +704,6 @@ def vertical_shift(
         crs=crs,
         area_or_point=area_or_point,
         z_name=z_name,
-        verbose=verbose,
     )
     # Get elevation difference
     dh = sub_ref - sub_tba
@@ -794,8 +714,7 @@ def vertical_shift(
     # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
     # TODO: once we have the weights implemented
 
-    if verbose:
-        print("Vertical shift estimated")
+    logging.info("Vertical shift estimated")
 
     # Get final subsample size
     subsample_final = len(sub_ref)
@@ -849,6 +768,34 @@ class AffineCoreg(Coreg):
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
 
+    def to_translations(self) -> tuple[float, float, float]:
+        """
+        Extract X/Y/Z translations from the affine transformation matrix.
+
+        :return: Easting, northing and vertical translations (in georeferenced unit).
+        """
+
+        matrix = self.to_matrix()
+        shift_x = matrix[0, 3]
+        shift_y = matrix[1, 3]
+        shift_z = matrix[2, 3]
+
+        return shift_x, shift_y, shift_z
+
+    def to_rotations(self) -> tuple[float, float, float]:
+        """
+        Extract X/Y/Z euler rotations (extrinsic convention) from the affine transformation matrix.
+
+        Warning: This function only works for a rigid transformation (rotation and translation).
+
+        :return: Extrinsinc Euler rotations along easting, northing and vertical directions (degrees).
+        """
+
+        matrix = self.to_matrix()
+        rots = pytransform3d.rotations.euler_from_matrix(matrix, i=0, j=1, k=2, extrinsic=True, strict_check=True)
+        rots = np.rad2deg(np.array(rots))
+        return rots[0], rots[1], rots[2]
+
     def centroid(self) -> tuple[float, float, float] | None:
         """Get the centroid of the coregistration, if defined."""
         meta_centroid = self._meta["outputs"]["affine"].get("centroid")
@@ -870,7 +817,6 @@ class AffineCoreg(Coreg):
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
-        verbose: bool = False,
     ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
         """
         Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
@@ -892,7 +838,6 @@ class AffineCoreg(Coreg):
             transform=transform,
             area_or_point=area_or_point,
             aux_vars=aux_vars,
-            verbose=verbose,
         )
 
         # Return interpolator of elevation differences and subsampled auxiliary variables
@@ -932,7 +877,7 @@ class AffineCoreg(Coreg):
         return cls(matrix=valid_matrix)
 
     @classmethod
-    def from_translation(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> AffineCoreg:
+    def from_translations(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> AffineCoreg:
         """
         Instantiate a generic Coreg class from a X/Y/Z translation.
 
@@ -944,10 +889,36 @@ class AffineCoreg(Coreg):
 
         :returns: An instantiated generic Coreg class.
         """
+        # Initialize a diagonal matrix
         matrix = np.diag(np.ones(4, dtype=float))
+        # Add the three translations (which are in the last column)
         matrix[0, 3] = x_off
         matrix[1, 3] = y_off
         matrix[2, 3] = z_off
+
+        return cls.from_matrix(matrix)
+
+    @classmethod
+    def from_rotations(cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0) -> AffineCoreg:
+        """
+        Instantiate a generic Coreg class from a X/Y/Z rotation.
+
+        :param x_rot: The rotation (degrees) to apply around the X (west-east) direction.
+        :param y_rot: The rotation (degrees) to apply around the Y (south-north) direction.
+        :param z_rot: The rotation (degrees) to apply around the Z (vertical) direction.
+
+        :raises ValueError: If the given rotation contained invalid values.
+
+        :returns: An instantiated generic Coreg class.
+        """
+
+        # Initialize a diagonal matrix
+        matrix = np.diag(np.ones(4, dtype=float))
+        # Convert rotations to radians
+        e = np.deg2rad(np.array([x_rot, y_rot, z_rot]))
+        # Derive 3x3 rotation matrix, and insert in 4x4 affine matrix
+        rot_matrix = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
+        matrix[0:3, 0:3] = rot_matrix
 
         return cls.from_matrix(matrix)
 
@@ -970,8 +941,8 @@ class VerticalShift(AffineCoreg):
     Estimates the mean vertical offset between two elevation datasets based on a reductor function (median, mean, or
     any custom reductor function).
 
-    The estimated vertical shift is stored in the `self.meta` key "shift_z" (in unit of the elevation dataset inputs,
-    typically meters).
+    The estimated vertical shift is stored in the `self.meta["outputs"]["affine"]` key "shift_z" (in unit of the
+    elevation dataset inputs, typically meters).
     """
 
     def __init__(
@@ -1000,7 +971,6 @@ class VerticalShift(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Estimate the vertical shift using the vshift_func."""
@@ -1015,7 +985,6 @@ class VerticalShift(AffineCoreg):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -1030,7 +999,6 @@ class VerticalShift(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Estimate the vertical shift using the vshift_func."""
@@ -1049,7 +1017,6 @@ class VerticalShift(AffineCoreg):
             vshift_reduc_func=self._meta["inputs"]["affine"]["vshift_reduc_func"],
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -1071,9 +1038,10 @@ class ICP(AffineCoreg):
 
     Estimates a rigid transform (rotation + translation) between two elevation datasets.
 
-    The transform is stored in the `self.meta` key "matrix", with rotation centered on the coordinates in the key
-    "centroid". The translation parameters are also stored individually in the keys "shift_x", "shift_y" and "shift_z"
-    (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift).
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
 
     Requires 'opencv'. See opencv doc for more info:
     https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
@@ -1118,7 +1086,6 @@ class ICP(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Estimate the rigid transform from tba_dem to ref_dem."""
@@ -1158,7 +1125,6 @@ class ICP(AffineCoreg):
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
-            verbose=verbose,
             z_name="z",
         )
 
@@ -1173,7 +1139,6 @@ class ICP(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
 
@@ -1250,8 +1215,7 @@ class ICP(AffineCoreg):
         rej = self._meta["inputs"]["specific"]["rejection_scale"]
         num_lv = self._meta["inputs"]["specific"]["num_levels"]
         icp = cv2.ppf_match_3d_ICP(max_it, tol, rej, num_lv)
-        if verbose:
-            print("Running ICP...")
+        logging.info("Running ICP...")
         try:
             # Use points as reference
             _, residual, matrix = icp.registerModelToScene(points["raster"], points["point"])
@@ -1269,8 +1233,7 @@ class ICP(AffineCoreg):
         if ref == "raster":
             matrix = xdem.coreg.base.invert_matrix(matrix)
 
-        if verbose:
-            print("ICP finished")
+        logging.info("ICP finished")
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
@@ -1292,9 +1255,9 @@ class NuthKaab(AffineCoreg):
 
     Estimate horizontal and vertical translations by iterative slope/aspect alignment.
 
-    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
-    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
-    in the "matrix" transform.
+    The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
+    "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
+    vertical shift), as well as in the "matrix" transform.
     """
 
     def __init__(
@@ -1356,7 +1319,6 @@ class NuthKaab(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Estimate the x/y/z offset between two DEMs."""
@@ -1372,7 +1334,6 @@ class NuthKaab(AffineCoreg):
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -1387,7 +1348,6 @@ class NuthKaab(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -1408,7 +1368,6 @@ class NuthKaab(AffineCoreg):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
@@ -1439,9 +1398,9 @@ class DhMinimize(AffineCoreg):
 
     Estimates vertical and horizontal translations.
 
-    The translation parameters are stored in the `self.meta` keys "shift_x", "shift_y" and "shift_z" (in georeferenced
-    units for horizontal shifts, and unit of the elevation dataset inputs for the vertical shift), as well as
-    in the "matrix" transform.
+    The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
+    "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
+    vertical shift), as well as in the "matrix" transform.
     """
 
     def __init__(
@@ -1472,7 +1431,6 @@ class DhMinimize(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
 
@@ -1487,7 +1445,6 @@ class DhMinimize(AffineCoreg):
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -1502,7 +1459,6 @@ class DhMinimize(AffineCoreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
 
@@ -1519,7 +1475,6 @@ class DhMinimize(AffineCoreg):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
             **kwargs,

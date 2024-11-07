@@ -51,7 +51,7 @@ def generate_random_field(
     rng = np.random.default_rng(random_state)
 
     if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
+        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     field = cv2.resize(
         cv2.GaussianBlur(
@@ -195,7 +195,7 @@ def diff_environment_yml(
     """
 
     if not _has_yaml:
-        raise ValueError("Test dependency needed. Install 'pyyaml'")
+        raise ValueError("Test dependency needed. Install 'pyyaml'.")
 
     if not input_dict:
         # Load the yml as dictionaries

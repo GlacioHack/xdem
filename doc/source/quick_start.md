@@ -33,6 +33,16 @@ Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop t
 align the DEMs using coregistration, estimate the elevation change, estimate elevation change error using stable
 terrain, and finally plot and save the result!
 
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 600
+pyplot.rcParams['savefig.dpi'] = 600
+```
+
 ```{code-cell} ipython3
 import xdem
 import geoutils as gu
@@ -44,6 +54,11 @@ fn_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
 
 # Print filenames
 print(f"DEM 1: {fn_dem_ref}, \nDEM 2: {fn_dem_tba}, \nOutlines: {fn_glacier_outlines}")
+```
+
+```{tip}
+:class: margin
+Set up your {ref}`verbosity` to manage outputs to the console (or a file) during execution!
 ```
 
 ```{code-cell} ipython3
@@ -101,7 +116,7 @@ os.remove("dh_error.tif")
 ## More examples
 
 To dive into more illustrated code, explore our gallery of examples that is composed of:
-- An {ref}`examples-basic` section on simpler routines (terrain attributes, pre-defined coregistration and uncertainty pipelines),
+- A {ref}`examples-basic` section on simpler routines (terrain attributes, pre-defined coregistration and uncertainty pipelines),
 - An {ref}`examples-advanced` section using advanced pipelines (for in-depth coregistration and uncertainty analysis).
 
 See also the concatenated list of examples below.

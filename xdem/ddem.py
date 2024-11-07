@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import Any, Literal
 
 import geoutils as gu
 import numpy as np
@@ -163,7 +163,7 @@ class dDEM(Raster):  # type: ignore
 
     def interpolate(
         self,
-        method: str = "linear",
+        method: Literal["idw", "local_hypsometric", "regional_hypsometric"] = "idw",
         reference_elevation: NDArrayf | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] | xdem.DEM = None,
         mask: NDArrayf | xdem.DEM | gu.Vector = None,
     ) -> NDArrayf | None:
@@ -188,8 +188,8 @@ class dDEM(Raster):  # type: ignore
                 f" different from 'self' ({self.data.shape})"
             )
 
-        if method == "linear":
-            self.filled_data = xdem.volume.linear_interpolation(self.data)
+        if method == "idw":
+            self.filled_data = xdem.volume.idw_interpolation(self.data)
         elif method == "local_hypsometric":
             assert reference_elevation is not None
             assert mask is not None
@@ -231,7 +231,7 @@ class dDEM(Raster):  # type: ignore
             diff = abs(np.nanmean(interpolated_ddem - self.data))
             assert diff < 0.01, (diff, self.data.mean())
 
-            self.filled_data = xdem.volume.linear_interpolation(interpolated_ddem)
+            self.filled_data = xdem.volume.idw_interpolation(interpolated_ddem)
 
         elif method == "regional_hypsometric":
             assert reference_elevation is not None
