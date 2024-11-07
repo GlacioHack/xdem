@@ -63,4 +63,3 @@ And finally:
   packages and works;
 
 - **Open-source:** all code should be accessible and re-usable to anyone in the community, for transparency and open governance.
-
