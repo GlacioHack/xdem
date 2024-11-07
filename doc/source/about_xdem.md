@@ -22,12 +22,55 @@ It has three main focus points:
 
 Although modularity can sometimes hamper performance, we also aim to **preserve scalibility** as much as possible[^sn2].
 
-[^sn2]: Out-of-memory, parallelizable computations relying on Dask are planned for late 2024!
+[^sn2]: Out-of-memory, parallelizable computations relying on Dask are planned for 2025!
 
 We particularly take to heart to verify the accuracy of our methods. For instance, our terrain attributes
 which have their own modular Python-based implementation, are tested to match exactly
 [gdaldem](https://gdal.org/programs/gdaldem.html) (slope, aspect, hillshade, roughness) and
 [RichDEM](https://richdem.readthedocs.io/en/latest/) (curvatures).
+
+## Who uses xDEM?
+
+xDEM was created by a group of glaciologists with expertise in elevation data analysis for change detection.
+
+Nowadays, it is developed and used by scientists across various fields of Earth observation science, and in projects of
+space agencies such as CNES and NASA.
+
+```{note}
+:class: tip
+:class: margin
+
+xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demcompare)** to combine the best of both tools into one!
+```
+
+::::{grid}
+:reverse:
+:gutter: 1 1
+:margin: 1 1
+
+:::{grid-item}
+:columns: 5
+:child-align: center
+
+```{image} ./_static/nasa_logo.svg
+    :width: 200px
+```
+
+:::
+
+
+:::{grid-item}
+:columns: 5
+:child-align: center
+
+```{image} ./_static/cnes_logo.svg
+    :width: 200px
+```
+
+:::
+
+
+::::
 
 More details about the people behind xDEM and the package's objectives can be found on the **{ref}`background` reference
 page**.

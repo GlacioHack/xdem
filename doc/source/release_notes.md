@@ -4,7 +4,7 @@ Below, the release notes for all minor versions and our roadmap to a first major
 
 ## 0.1.0
 
-xDEM 0.1.0 is the **first minor release** since the creation of the project in 2020. It is the result of years of work
+xDEM version 0.1 is the **first minor release** since the creation of the project in 2020. It is the result of years of work
 to consolidate and re-structure features into a mature and stable API to minimize future breaking changes.
 
 **All the core features drafted at the start of the project are now supported**, and there is a **clear roadmap
@@ -44,6 +44,7 @@ We have added warnings throughout the documentation and API related to planned d
 Changes related to **gap-filling** and **uncertainty analysis** will have deprecation warnings, while the function
 remain available during a few more releases.
 
+(migrate-early)=
 ### Migrate from early versions
 
 The following changes **might be required to solve breaking changes**, depending on your early-development version:
