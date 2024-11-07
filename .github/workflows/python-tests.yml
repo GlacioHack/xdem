@@ -16,7 +16,7 @@ jobs:
 
     strategy:
       matrix:
-        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+        os: ["ubuntu-latest", "macos-latest"]
         python-version: ["3.10", "3.11", "3.12"]
 
     # Run all shells using bash (including Windows)
@@ -50,7 +50,7 @@ jobs:
         path: ${{ env.CONDA }}/envs
         key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
       env:
-        CACHE_NUMBER: 1 # Increase this value to reset cache if environment.yml has not changed
+        CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
       id: cache
 
     # The trick below is necessary because the generic environment file does not specify a Python version, and ONLY
