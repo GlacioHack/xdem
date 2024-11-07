@@ -178,7 +178,7 @@ print("Elevation errors at a distance of 1 km are correlated at {:.2f} %.".forma
 ```
 
 ```{note}
-We use `random_state` to ensure a fixed randomized output. It is **only necessary if you need your results to be exactly reproductible**. 
- 
+We use `random_state` to ensure a fixed randomized output. It is **only necessary if you need your results to be exactly reproductible**.
+
 For more details on quantifying random and structured errors, see the {ref}`uncertainty` page.
 ```

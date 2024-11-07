@@ -28,7 +28,7 @@ wide range of terrain analysis for elevation data.
 
 ## R
 
-If you are working in R, the [MultiscaleDTM](https://ailich.github.io/MultiscaleDTM/) package provides modular tools 
+If you are working in R, the [MultiscaleDTM](https://ailich.github.io/MultiscaleDTM/) package provides modular tools
 for terrain analysis at multiple scales!
 
 ## Other community resources

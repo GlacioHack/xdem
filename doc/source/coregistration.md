@@ -167,7 +167,7 @@ See coregistration on real data in the **{ref}`examples-basic` and {ref}`example
 
 The [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) coregistration approach estimates a horizontal
 translation iteratively by solving a cosine equation between the terrain slope, aspect and the elevation differences.
-The iteration stops if it reaches the maximum number of iteration limit, or if the iterative shift amplitude falls 
+The iteration stops if it reaches the maximum number of iteration limit, or if the iterative shift amplitude falls
 below a specified tolerance.
 
 ```{code-cell} ipython3
