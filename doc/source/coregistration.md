@@ -167,7 +167,8 @@ See coregistration on real data in the **{ref}`examples-basic` and {ref}`example
 
 The [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011) coregistration approach estimates a horizontal
 translation iteratively by solving a cosine equation between the terrain slope, aspect and the elevation differences.
-The iteration stops if it reaches the maximum number of iteration limit or if the tolerance does not improve.
+The iteration stops if it reaches the maximum number of iteration limit, or if the iterative shift amplitude falls 
+below a specified tolerance.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -308,7 +309,7 @@ plt.tight_layout()
 - **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
 
 Iterative Closest Point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955). It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. If DEMs are used as inputs, they are converted to point clouds.
-As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the tolerance does not improve.
+As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
 
 ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html) (an optional dependency), which includes outlier removal arguments. This may improve results significantly on outlier-prone data, but care should still be taken, as the risk of landing in [local minima](https://en.wikipedia.org/wiki/Maxima_and_minima) increases.
 

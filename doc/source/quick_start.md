@@ -116,7 +116,7 @@ os.remove("dh_error.tif")
 ## More examples
 
 To dive into more illustrated code, explore our gallery of examples that is composed of:
-- An {ref}`examples-basic` section on simpler routines (terrain attributes, pre-defined coregistration and uncertainty pipelines),
+- A {ref}`examples-basic` section on simpler routines (terrain attributes, pre-defined coregistration and uncertainty pipelines),
 - An {ref}`examples-advanced` section using advanced pipelines (for in-depth coregistration and uncertainty analysis).
 
 See also the concatenated list of examples below.

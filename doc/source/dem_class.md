@@ -94,7 +94,7 @@ vect_gla = vect_gla.crop(dem)
 
 # Plot the DEM and the vector file
 dem.plot(cmap="terrain", cbar_title="Elevation (m)")
-vect_gla.plot(dem, ec="k", fc="none")  # We pass the DEM as reference for the plot CRS/extent
+vect_gla.plot(dem, ec="k", fc="none")  # We pass the DEM as reference for the plot CRS
 ```
 
 ## Vertical referencing
@@ -175,4 +175,10 @@ sig_dem.plot(cmap="Purples", cbar_title=r"Random error in elevation (1$\sigma$, 
 
 # The spatial correlation function represents how much errors are correlated at a certain distance
 print("Elevation errors at a distance of 1 km are correlated at {:.2f} %.".format(rho_sig(1000) * 100))
+```
+
+```{note}
+We use `random_state` to ensure a fixed randomized output. It is **only necessary if you need your results to be exactly reproductible**. 
+ 
+For more details on quantifying random and structured errors, see the {ref}`uncertainty` page.
 ```

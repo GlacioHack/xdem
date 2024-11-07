@@ -109,7 +109,7 @@ The tables below summarize the characteristics of these methods.
 Frequently, in spatial statistics, a single correlation range is considered ("basic" method below).
 However, elevation data often contains errors with correlation ranges spanning different orders of magnitude.
 For this, [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950) and
-[Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922) considers
+[Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922) consider
 potential multiple ranges of spatial correlation (instead of a single one). In addition, [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922)
 considers potential heteroscedasticity or variable errors (instead of homoscedasticity, or constant errors), also common in elevation data.
 
@@ -373,7 +373,7 @@ neff = xdem.spatialstats.number_effective_samples(area=outline_brom, params_vari
 
 **Step 3: Derive final error**
 
-And can now compute our final random error for the mean elevation change in this area of interest:
+And we can now compute our final random error for the mean elevation change in this area of interest:
 
 ```{code-cell} ipython3
 # Compute the standard error

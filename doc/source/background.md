@@ -58,7 +58,7 @@ Amaury Dehecq<sup>2</sup> and took place online on November 8, 2020.
 
 The initial core development of xDEM was performed by members of the Glaciology group of the Laboratory of Hydraulics, Hydrology and
 Glaciology (VAW) at ETH Zürich<sup>3</sup>, with contributions by members of the University of Oslo, the University of Washington, and University
-Grenobles Alpes.
+Grenoble Alpes.
 
 We are not software developers but geoscientists, and we try our best to offer tools that can be useful to a larger group,
 documented, reliable and maintained. All development and maintenance is made on a voluntary basis and we welcome

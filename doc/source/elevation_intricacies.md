@@ -28,7 +28,7 @@ See the **{ref}`elevation-objects` features pages** for more details.
 
 
 Additionally, there are a critical differences for elevation point clouds depending on point density:
-- **Sparse elevation point clouds** (e.g., altimetry) are generally be stored as small vector-type datasets (e.g., SHP). Due to their sparsity, for subsequent analysis, they are rarely gridded into a DEM, and instead compared with DEMs at the point cloud coordinates by interpolation of the DEM,
+- **Sparse elevation point clouds** (e.g., altimetry) are generally stored as small vector-type datasets (e.g., SHP). Due to their sparsity, for subsequent analysis, they are rarely gridded into a DEM, and instead compared with DEMs at the point cloud coordinates by interpolation of the DEM,
 - **Dense elevation point clouds** (e.g., lidar) are large datasets generally stored in specific formats (LAS). Due to their high density, they are often gridded into DEMs by triangular interpolation of the point cloud.
 
 ```{note}

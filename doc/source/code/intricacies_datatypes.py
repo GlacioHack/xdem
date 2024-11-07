@@ -52,7 +52,7 @@ ax[1, 0].set_xticklabels([])
 ax[1, 0].set_yticklabels([])
 ax[1, 0].set_aspect("equal")
 
-plt.title("Types of elevation data")
+plt.suptitle("Types of elevation data")
 
 plt.tight_layout()
 plt.show()

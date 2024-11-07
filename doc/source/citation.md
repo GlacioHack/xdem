@@ -94,7 +94,7 @@ More details are available on each feature page!
    * - Bilinear
      - N/A
    * - Local and regional hypsometric
-     - [McNabb et al. (2019)](https://tc.copernicus.org/articles/13/895/2019/)
+     - [Arendt et al. (2002)](https://doi.org/10.1126/science.1072497), [McNabb et al. (2019)](https://tc.copernicus.org/articles/13/895/2019/)
 ```
 
 

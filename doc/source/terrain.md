@@ -56,8 +56,12 @@ slope = dem.slope()
 slope = xdem.terrain.slope(dem.data, resolution=dem.res)
 ```
 
-If computational performance is key, xDEM can rely on [RichDEM](https://richdem.readthedocs.io/) by specifying
-`use_richdem=True` for speed-up of specific supported attributes (slope, aspect, curvature).
+:::{admonition} Coming soon
+:class: note
+
+We are working on further optimizing the computational performance of certain terrain attributes using convolution.
+:::
+
 
 ## Summary of supported methods
 
@@ -102,6 +106,10 @@ If computational performance is key, xDEM can rely on [RichDEM](https://richdem.
    * - {ref}`fractrough`
      - Fractal dimension number (1 to 3)
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
+```
+
+```{note}
+Only grids with **equal pixel size in X and Y** are currently supported. Transform into such a grid with {func}`xdem.DEM.reproject`.
 ```
 
 (slope)=

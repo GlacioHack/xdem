@@ -286,7 +286,7 @@ def calculate_hypsometry_area(
     return output
 
 
-def linear_interpolation(
+def idw_interpolation(
     array: NDArrayf | MArrayf,
     max_search_distance: int = 10,
     extrapolate: bool = False,
@@ -532,7 +532,7 @@ for areas filling the min_coverage criterion.
     ddem_difference[idealized_ddem == nodata] = np.nan
 
     # Spatially interpolate the difference between these two products.
-    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
+    interpolated_ddem_diff = idw_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
     interpolated_ddem_diff[np.isnan(interpolated_ddem_diff)] = 0
 
     # Correct the idealized dDEM with the difference to the original dDEM.

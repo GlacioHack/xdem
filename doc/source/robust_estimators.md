@@ -5,7 +5,7 @@
 Elevation data often contain outliers that can be traced back to instrument acquisition or processing artefacts, and which hamper further analysis.
 
 In order to mitigate their effect, the analysis of elevation data can integrate [robust statistics](https://en.wikipedia.org/wiki/Robust_statistics) at different levels:
-- **Robust estimators for the central tendency (e.g., mean) and dispersion (e.g., standard deviation)**, to evaluate DEM quality and converge during {ref}`coregistration`,
+- **Robust estimators for the central tendency and statistical dispersion** used during {ref}`coregistration`, {ref}`biascorr` and {ref}`uncertainty`,
 - **Robust estimators for estimating spatial autocorrelation** applied to error propagation in {ref}`uncertainty`,
 - **Robust optimizers for the fitting of parametric models** during {ref}`coregistration` and {ref}`biascorr`.
 

@@ -311,8 +311,8 @@ _ = ax[1].set_yticklabels([])
 
 - **Performs:** Correct biases along a terrain attribute.
 - **Supports weights:** Yes.
-- **Pros:** Useful to correct for instance curvature bias due to different native resolution between elevation data.
-- **Cons:** For curvature biases, only works for elevation data with relatively close natire resolution.
+- **Pros:** Useful to correct for instance curvature-related bias due to different native resolution between elevation data.
+- **Cons:** For curvature-related biases, only works for elevation data with relatively close native resolution.
 
 The default optimizer for terrain biases optimizes a 1D polynomial with an order from 1 to 6,
 and keeps the best performing fit.

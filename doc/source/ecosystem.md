@@ -26,6 +26,11 @@ Complementary Python tools to **analyze elevation data** are for instance:
 If you are working in Julia, the [Geomorphometry](https://github.com/Deltares/Geomorphometry.jl) package provides a
 wide range of terrain analysis for elevation data.
 
+## R
+
+If you are working in R, the [MultiscaleDTM](https://ailich.github.io/MultiscaleDTM/) package provides modular tools 
+for terrain analysis at multiple scales!
+
 ## Other community resources
 
 Whether to retrieve data among their wide range of open datasets, or to dive into their other resources, be sure to check out the

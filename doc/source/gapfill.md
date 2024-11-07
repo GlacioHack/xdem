@@ -16,13 +16,13 @@ kernelspec:
 xDEM contains routines to gap-fill elevation data or elevation differences depending on the type of terrain.
 
 ```{important}
-Some of the approaches below are application-specific (e.g., glaciers) and might be moved to a separate package
+Most of the approaches below are application-specific (e.g., glaciers) and might be moved to a separate package
 in future releases.
 ```
 
 So far, xDEM has three types of gap-filling methods:
 
-- Linear spatial interpolation,
+- Inverse-distance weighting interpolation,
 - Local hypsometric interpolation (only relevant for elevation differences and glacier applications),
 - Regional hypsometric interpolation (also for glaciers).
 
@@ -79,18 +79,18 @@ We create a difference of DEMs object {class}`xdem.ddem.dDEM` to experiment on:
 ddem = xdem.dDEM(raster=dem_2009 - dem_1990, start_time=dem_1990.datetime, end_time=dem_2009.datetime)
 
 # The example DEMs are void-free, so let's make some random voids.
-# Introduce 50000 nans randomly throughout the dDEM.
+# Introduce a fifth of nans randomly throughout the dDEM.
 mask = np.zeros_like(ddem.data, dtype=bool)
 mask.ravel()[(np.random.choice(ddem.data.size, int(ddem.data.size/5), replace=False))] = True
 ddem.set_mask(mask)
 ```
 
-## Linear spatial interpolation
+## Inverse-distance weighting interpolation
 
-Linear spatial interpolation (also often called bilinear interpolation) of dDEMs is arguably the simplest approach: voids are filled by an average of the surrounding pixels values, weighted by their distance to the void pixel.
+Inverse-distance weighting (IDW) interpolation of elevation differences is arguably the simplest approach: voids are filled by a weighted-mean of the surrounding pixels values, with weight inversely proportional to their distance to the void pixel.
 
 ```{code-cell} ipython3
-ddem_linear = ddem.interpolate(method="linear")
+ddem_idw = ddem.interpolate(method="idw")
 ```
 
 ```{code-cell} ipython3
@@ -99,21 +99,21 @@ ddem_linear = ddem.interpolate(method="linear")
 :  code_prompt_show: "Show plotting code"
 :  code_prompt_hide: "Hide plotting code"
 
-ddem_linear = ddem.copy(new_array=ddem_linear)
+ddem_idw = ddem.copy(new_array=ddem_idw)
 
 # Plot before and after
 f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before linear\ngap-filling")
-ddem.plot(cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[0])
-ax[1].set_title("After linear\ngap-filling")
-ddem_linear.plot(cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[1], cbar_title="Elevation differences (m)")
+ax[0].set_title("Before IDW\ngap-filling")
+ddem.plot(cmap='RdYlBu', vmin=-20, vmax=20, ax=ax[0])
+ax[1].set_title("After IDW\ngap-filling")
+ddem_idw.plot(cmap='RdYlBu', vmin=-20, vmax=20, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```
 
 ## Local hypsometric interpolation
 
 This approach assumes that there is a relationship between the elevation and the elevation change in the dDEM, which is often the case for glaciers.
-Elevation change gradients in late 1900s and 2000s on glaciers often have the signature of large melt in the lower parts, while the upper parts might be less negative, or even positive.
+Elevation change gradients in late 1900s and 2000s on glaciers often have the signature of large thinning in the lower parts, while the upper parts might be less negative, or even positive.
 This relationship is strongly correlated for a specific glacier, and weakly correlated on regional scales.
 With the local (glacier specific) hypsometric approach, elevation change gradients are estimated for each glacier separately.
 This is simply a linear or polynomial model estimated with the dDEM and a reference DEM.
@@ -134,9 +134,9 @@ ddem_localhyps = ddem.copy(new_array=ddem_localhyps)
 # Plot before and after
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before local\nhypsometric\ngap-filling")
-ddem.plot(cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[0])
+ddem.plot(cmap='RdYlBu', vmin=-20, vmax=20, ax=ax[0])
 ax[1].set_title("After local\nhypsometric\ngap-filling")
-ddem_localhyps.plot(cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[1], cbar_title="Elevation differences (m)")
+ddem_localhyps.plot(cmap='RdYlBu', vmin=-20, vmax=20, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```
 
@@ -201,10 +201,9 @@ plt.show()
 
 Similarly to local hypsometric interpolation, the elevation change is assumed to be largely elevation-dependent.
 With the regional approach (often also called "global"), elevation change gradients are estimated for all glaciers in an entire region, instead of estimating one by one.
-This is advantageous in respect to areas where voids are frequent, as not even a single dDEM value has to exist on a glacier in order to reconstruct it.
-Of course, the accuracy of such an averaging is much lower than if the local hypsometric approach is used (assuming it is possible).
 
 ```{code-cell} ipython3
+ddem.set_mask(mask)
 ddem_reghyps = ddem.interpolate(method="regional_hypsometric", reference_elevation=dem_2009, mask=glaciers_1990)
 ```
 
@@ -220,7 +219,7 @@ ddem_reghyps = ddem.copy(new_array=ddem_reghyps)
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before regional\nhypsometric\ngap-filling")
 ddem.plot(cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[0])
-ax[1].set_title("After regional\hypsometric\ngap-filling")
+ax[1].set_title("After regional\nhypsometric\ngap-filling")
 ddem_reghyps.plot(cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```
