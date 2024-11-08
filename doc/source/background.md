@@ -40,7 +40,7 @@ any new contributors! See how to contribute on [the dedicated page of our reposi
 
 Members of the lead development team acknowledge funding from:
 - SNSF (Swiss National Science Foundation), grant no. 184634, a MeteoSwiss [GCOS](https://gcos.wmo.int/en/home) project,
-- NASA award , a [Surface Topography and Vegetation](https://science.nasa.gov/earth-science/decadal-surveys/decadal-stv/) project on the fusion of elevation data,
+- NASA award 80NSSC22K1094, a [Surface Topography and Vegetation](https://science.nasa.gov/earth-science/decadal-surveys/decadal-stv/) project on the fusion of elevation data,
 - NASA award 80NSSC20K0995, an [ICESat-2](https://icesat-2.gsfc.nasa.gov/) project on the processing of elevation data in the cloud,
 - CNES (French Space Agency): ?.
 
