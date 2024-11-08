@@ -2,7 +2,7 @@
 
 # Background
 
-Below, some more information on the people behind the package, and its mission.
+Below, some more information on the people behind the package, its funding sources, and its mission.
 
 ## The people behind xDEM
 
@@ -26,7 +26,7 @@ Grenoble Alpes.
 ### Current team
 
 ```{margin}
-<sup>3</sup>More on CNES's 3D missions on the [C03D constellation page](https://cnes.fr/en/projects/co3d).
+<sup>3</sup>More on CNES's 3D missions on the [CO3D constellation page](https://cnes.fr/en/projects/co3d).
 ```
 
 The current lead development team includes **researchers in Earth observation and engineers from
@@ -36,12 +36,12 @@ for operational use for 3D satellite missions<sup>3</sup>.
 Volunteers contributors span various backgrounds, in industry or research. We welcome
 any new contributors! See how to contribute on [the dedicated page of our repository](https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md).
 
-### Funding acknowledgments
+## Funding acknowledgments
 
 Members of the lead development team acknowledge funding from:
-- SNSF (Swiss National Science Foundation), grant no. 184634, project by MeteoSwiss in the framework of the Global Climate Observing System Switzerland,
-- NASA, grant no. xxx, Surface Topography and Vegetation project on the fusion of elevation data,
-- NASA, grant no. xxx, ICESat-2 project on the efficient processing of elevation data in the cloud,
+- SNSF (Swiss National Science Foundation), grant no. 184634, a MeteoSwiss [GCOS](https://gcos.wmo.int/en/home) project,
+- NASA, grant no. xxx, a [Surface Topography and Vegetation](https://science.nasa.gov/earth-science/decadal-surveys/decadal-stv/) project on the fusion of elevation data,
+- NASA, grant no. xxx, an [ICESat-2](https://icesat-2.gsfc.nasa.gov/) project on the processing of elevation data in the cloud,
 - CNES (French Space Agency): ?.
 
 
