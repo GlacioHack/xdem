@@ -9,7 +9,7 @@ Below, some more information on the people behind the package, and its mission.
 ### Creation
 
 ```{margin}
-<sup>1</sup>More on our GlacioHack founder at [adehecq.github.io](https://adehecq.github.io/)!
+<sup>1</sup>More on our GlacioHack founder at [adehecq.github.io](https://adehecq.github.io/).
 ```
 
 xDEM was created during the **[GlacioHack](https://github.com/GlacioHack) hackathon**, that was initiated by
@@ -25,9 +25,13 @@ Grenoble Alpes.
 
 ### Current team
 
+```{margin}
+<sup>3</sup>More on CNES's 3D missions on the [C03D constellation page](https://cnes.fr/en/projects/co3d).
+```
+
 The current lead development team includes **researchers in Earth observation and engineers from
 [CNES](https://cnes.fr/en)** (French Space Agency). We specialize in elevation data, for analysis in Earth science or 
-for operational use for 3D satellite missions.
+for operational use for 3D satellite missions<sup>3</sup>.
 
 Volunteers contributors span various backgrounds, in industry or research. We welcome
 any new contributors! See how to contribute on [the dedicated page of our repository](https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md).
@@ -35,10 +39,49 @@ any new contributors! See how to contribute on [the dedicated page of our reposi
 ### Funding acknowledgments
 
 Members of the lead development team acknowledge funding from:
-- SNF (Swiss National Science Foundation), grant no. 184634, project by MeteoSwiss in the framework of the Global Climate Observing System Switzerland,
+- SNSF (Swiss National Science Foundation), grant no. 184634, project by MeteoSwiss in the framework of the Global Climate Observing System Switzerland,
 - NASA, grant no. xxx, Surface Topography and Vegetation project on the fusion of elevation data,
 - NASA, grant no. xxx, ICESat-2 project on the efficient processing of elevation data in the cloud,
 - CNES (French Space Agency): ?.
+
+
+::::{grid}
+:reverse:
+:gutter: 1 1 1
+:margin: 1 1 1
+
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/nasa_logo.svg
+    :width: 200px
+```
+
+:::
+
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/snsf_logo.svg
+    :width: 200px
+```
+
+:::
+
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/cnes_logo.svg
+    :width: 200px
+```
+
+:::
+
+
+::::
 
 ## Mission
 

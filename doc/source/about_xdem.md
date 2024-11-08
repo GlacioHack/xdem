@@ -31,10 +31,11 @@ which have their own modular Python-based implementation, are tested to match ex
 
 ## Who uses xDEM?
 
-xDEM was created by a group of glaciologists with expertise in elevation data analysis for change detection.
+xDEM was created by a group of researchers with expertise in elevation data analysis for change detection **applied to glaciology**.
 
-Nowadays, it is developed and used by scientists across various fields of Earth observation science, and in projects of
-space agencies such as CNES and NASA.
+Nowadays, its development is **jointly led by researchers in elevation data analysis** (including funding from NASA and SNSF) **and 
+engineers from CNES** (French Space Agency). 
+It is used by scientists or industrials across various fields of Earth observation.
 
 ```{note}
 :class: tip
@@ -45,11 +46,11 @@ xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demco
 
 ::::{grid}
 :reverse:
-:gutter: 1 1
-:margin: 1 1
+:gutter: 1 1 1
+:margin: 1 1 1
 
 :::{grid-item}
-:columns: 5
+:columns: 4
 :child-align: center
 
 ```{image} ./_static/nasa_logo.svg
@@ -58,9 +59,18 @@ xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demco
 
 :::
 
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/snsf_logo.svg
+    :width: 200px
+```
+
+:::
 
 :::{grid-item}
-:columns: 5
+:columns: 4
 :child-align: center
 
 ```{image} ./_static/cnes_logo.svg
@@ -72,5 +82,5 @@ xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demco
 
 ::::
 
-More details about the people behind xDEM and the package's objectives can be found on the **{ref}`background` reference
+More details about the people behind xDEM, funding sources, and the package's objectives can be found on the **{ref}`background` reference
 page**.
