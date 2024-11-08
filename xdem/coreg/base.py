@@ -1331,7 +1331,7 @@ def _reproject_horizontal_shift_samecrs(
 
     # Reshape output
     if coords_dst is not None:
-        output.reshape(raster_arr)
+        output = output.reshape(np.shape(raster_arr))
 
     return output
 
