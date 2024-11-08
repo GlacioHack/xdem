@@ -64,12 +64,12 @@ Members of the lead development team acknowledge funding from:
 :child-align: center
 
 ```{image} ./_static/snsf_logo.svg
-    :width: 200px
+    :width: 220px
     :class: only-light
 ```
 
 ```{image} ./_static/snsf_logo_dark.svg
-    :width: 200px
+    :width: 220px
     :class: only-dark
 ```
 
