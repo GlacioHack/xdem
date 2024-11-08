@@ -1314,6 +1314,8 @@ def _reproject_horizontal_shift_samecrs(
     # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
     if not return_interpolator:
         coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
+        # Flatten the arrays (only 1D supported in rowcol/xy after Rasterio 1.4)
+        coords_dst = (coords_dst[0].ravel(), coords_dst[1].ravel())
     # If we just want the interpolator, we don't need to coordinates of destination points
     else:
         coords_dst = None
@@ -1326,6 +1328,10 @@ def _reproject_horizontal_shift_samecrs(
         method=resampling,
         return_interpolator=return_interpolator,
     )
+
+    # Reshape output
+    if coords_dst is not None:
+        output = output.reshape(np.shape(raster_arr))
 
     return output
 
