@@ -47,8 +47,6 @@ Members of the lead development team acknowledge funding from:
 
 ::::{grid}
 :reverse:
-:gutter: 1 1 1
-:margin: 1 1 1
 
 :::{grid-item}
 :columns: 4
@@ -56,6 +54,7 @@ Members of the lead development team acknowledge funding from:
 
 ```{image} ./_static/nasa_logo.svg
     :width: 200px
+    :class: dark-light
 ```
 
 :::
@@ -66,6 +65,12 @@ Members of the lead development team acknowledge funding from:
 
 ```{image} ./_static/snsf_logo.svg
     :width: 200px
+    :class: only-light
+```
+
+```{image} ./_static/snsf_logo_dark.svg
+    :width: 200px
+    :class: only-dark
 ```
 
 :::
@@ -76,6 +81,12 @@ Members of the lead development team acknowledge funding from:
 
 ```{image} ./_static/cnes_logo.svg
     :width: 200px
+    :class: only-light
+```
+
+```{image} ./_static/cnes_logo_dark.svg
+    :width: 200px
+    :class: only-dark
 ```
 
 :::
