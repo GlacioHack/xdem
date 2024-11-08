@@ -30,7 +30,7 @@ Grenoble Alpes.
 ```
 
 The current lead development team includes **researchers in Earth observation and engineers from
-[CNES](https://cnes.fr/en)** (French Space Agency). We specialize in elevation data, for analysis in Earth science or 
+[CNES](https://cnes.fr/en)** (French Space Agency). We specialize in elevation data, for analysis in Earth science or
 for operational use for 3D satellite missions<sup>3</sup>.
 
 Volunteers contributors span various backgrounds, in industry or research. We welcome
