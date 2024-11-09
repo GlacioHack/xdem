@@ -112,5 +112,6 @@ More background on structured random errors is available on the **{ref}`spatial-
 
 - [ISO 5725-1 (1994)](https://www.iso.org/obp/ui/#iso:std:iso:5725:-1:ed-1:v1:en), Accuracy (trueness and precision) of measurement methods and results — Part 1: General principles and definitions,
 - [Mittaz et al. (2019)](http://dx.doi.org/10.1088/1681-7575/ab1705), Applying principles of metrology to historical Earth observations from satellites,
-- [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922), Uncertainty analysis of digital elevation models by spatial inference from stable terrain.
+- [Hugonnet et al. (2022)](https://doi.org/10.1109/jstars.2022.3188922), Uncertainty analysis of digital elevation models by spatial inference from stable terrain,
+- [ASPRS (2024)](https://publicdocuments.asprs.org/PositionalAccuracyStd-Ed2-V2), ASPRS Positional Accuracy Standards for Digital Geospatial Data, Version 2.
 :::
