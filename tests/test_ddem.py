@@ -44,7 +44,7 @@ class TestdDEM:
 
         assert ddem2.filled_data is None
 
-        ddem2.interpolate(method="linear")
+        ddem2.interpolate(method="idw")
 
         assert ddem2.fill_method is not None
 

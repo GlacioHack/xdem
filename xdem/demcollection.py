@@ -36,7 +36,9 @@ class DEMCollection:
         if timestamps is None:
             timestamp_attributes = [dem.datetime for dem in dems]
             if any(stamp is None for stamp in timestamp_attributes):
-                raise ValueError("'timestamps' not provided and the given DEMs do not all have datetime attributes")
+                raise ValueError(
+                    "Argument `timestamps` not provided and the given DEMs do not all have datetime " "attributes"
+                )
 
             timestamps = timestamp_attributes
 
@@ -183,7 +185,7 @@ class DEMCollection:
         :returns: A dataframe of dH values and respective areas with an Interval[Timestamp] index.
         """
         if len(self.ddems) == 0:
-            raise ValueError("dDEMs have not yet been calculated")
+            raise ValueError("dDEMs have not yet been calculated.")
 
         dh_values = pd.DataFrame(columns=["dh", "area"], dtype=float)
         for _, ddem in enumerate(self.ddems):
@@ -249,7 +251,7 @@ class DEMCollection:
             # Get the dV series (where all indices are: "year to reference_year")
             d_series = self.get_dv_series(mask=mask, outlines_filter=outlines_filter, nans_ok=nans_ok)
         else:
-            raise ValueError("Invalid argument: '{dh=}'. Choices: ['dh', 'dv']")
+            raise ValueError("Invalid argument: '{dh=}'. Choices: ['dh', 'dv'].")
 
         # Simplify the index to just "year" (implicitly still the same as above)
         cumulative_dh = pd.Series(dtype=d_series.dtype)

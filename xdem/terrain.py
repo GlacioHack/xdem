@@ -11,13 +11,6 @@ from geoutils.raster import Raster, RasterType
 
 from xdem._typing import MArrayf, NDArrayf
 
-try:
-    import richdem as rd
-
-    _has_rd = True
-except ImportError:
-    _has_rd = False
-
 available_attributes = [
     "slope",
     "aspect",
@@ -32,34 +25,6 @@ available_attributes = [
     "rugosity",
     "fractal_roughness",
 ]
-
-
-def _raster_to_rda(rst: RasterType) -> rd.rdarray:
-    """
-    Get georeferenced richDEM array from geoutils.Raster
-    :param rst: DEM as raster
-    :return: DEM
-    """
-    arr = rst.data.filled(rst.nodata).squeeze()
-    rda = rd.rdarray(arr, no_data=rst.nodata)
-    rda.geotransform = rst.transform.to_gdal()
-
-    return rda
-
-
-def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") -> NDArrayf:
-    """
-    Derive terrain attribute for DEM opened with rasterio. One of "slope_degrees", "slope_percentage", "aspect",
-    "profile_curvature", "planform_curvature", "curvature" and others (see RichDEM documentation).
-    :param rst: DEM as raster
-    :param attribute: RichDEM terrain attribute
-    :return:
-    """
-    rda = _raster_to_rda(rst)
-    terrattr = rd.TerrainAttribute(rda, attrib=attribute)
-    terrattr[terrattr == terrattr.no_data] = np.nan
-
-    return np.array(terrattr)
 
 
 @numba.njit(parallel=True)  # type: ignore
@@ -321,15 +286,15 @@ def get_quadric_coefficients(
     if len(dem_arr.shape) != 2:
         raise ValueError(
             f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)"
+            "Expected 2D array or 3D array of shape (1, row, col)."
         )
 
     if any(dim < 3 for dim in dem_arr.shape):
-        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
+        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3).")
 
     # Resolution is in other tools accepted as a tuple. Here, it must be just one number, so it's best to sanity check.
     if isinstance(resolution, Sized):
-        raise ValueError("Resolution must be the same for X and Y directions")
+        raise ValueError("Resolution must be the same for X and Y directions.")
 
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
@@ -337,7 +302,7 @@ def get_quadric_coefficients(
         [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
     ):
         if value.lower() not in allowed:
-            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
+            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}.")
 
     # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
     try:
@@ -540,7 +505,7 @@ def get_windowed_indexes(
         http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf, for topography and from Wilson
         et al. (2007), http://dx.doi.org/10.1080/01490410701295962, for bathymetry.
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
-    - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    - Roughness from Dartnell (2000), thesis referenced in Wilson et al. (2007) above.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     Nearly all are also referenced in Wilson et al. (2007).
@@ -638,7 +603,6 @@ def get_terrain_attribute(
     tri_method: str = "Riley",
     fill_method: str = "none",
     edge_method: str = "none",
-    use_richdem: bool = False,
     window_size: int = 3,
 ) -> NDArrayf:
     ...
@@ -657,7 +621,6 @@ def get_terrain_attribute(
     tri_method: str = "Riley",
     fill_method: str = "none",
     edge_method: str = "none",
-    use_richdem: bool = False,
     window_size: int = 3,
 ) -> list[NDArrayf]:
     ...
@@ -676,7 +639,6 @@ def get_terrain_attribute(
     tri_method: str = "Riley",
     fill_method: str = "none",
     edge_method: str = "none",
-    use_richdem: bool = False,
     window_size: int = 3,
 ) -> list[RasterType]:
     ...
@@ -695,7 +657,6 @@ def get_terrain_attribute(
     tri_method: str = "Riley",
     fill_method: str = "none",
     edge_method: str = "none",
-    use_richdem: bool = False,
     window_size: int = 3,
 ) -> RasterType:
     ...
@@ -713,7 +674,6 @@ def get_terrain_attribute(
     tri_method: str = "Riley",
     fill_method: str = "none",
     edge_method: str = "none",
-    use_richdem: bool = False,
     window_size: int = 3,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
@@ -727,13 +687,12 @@ def get_terrain_attribute(
     - Terrain Ruggedness Index (topography) from Riley et al. (1999),
         http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
     - Terrain Ruggedness Index (bathymetry) from Wilson et al. (2007), http://dx.doi.org/10.1080/01490410701295962.
-    - Roughness from Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    - Roughness from Dartnell (2000), thesis referenced in Wilson et al. (2007) above.
     - Rugosity from Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     Aspect and hillshade are derived using the slope, and thus depend on the same method.
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
-    The slope, aspect ("Horn" method), and all curvatures ("ZevenbergThorne" method) can also be derived using RichDEM.
 
     Attributes:
 
@@ -765,7 +724,6 @@ def get_terrain_attribute(
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param fill_method: See the 'get_quadric_coefficients()' docstring for information.
     :param edge_method: See the 'get_quadric_coefficients()' docstring for information.
-    :param use_richdem: Whether to use richDEM for slope, aspect and curvature calculations.
     :param window_size: The window size for windowed ruggedness and roughness indexes.
 
     :raises ValueError: If the inputs are poorly formatted or are invalid.
@@ -809,33 +767,6 @@ def get_terrain_attribute(
         "rugosity",
     ]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
-
-    if use_richdem:
-
-        if not _has_rd:
-            raise ValueError("Optional dependency needed. Install 'richdem'")
-
-        if ("slope" in attribute or "aspect" in attribute) and slope_method == "ZevenbergThorne":
-            raise ValueError("RichDEM can only compute the slope and aspect using the default method of Horn (1981)")
-
-        list_requiring_richdem = [
-            "slope",
-            "aspect",
-            "hillshade",
-            "curvature",
-            "planform_curvature",
-            "profile curvature",
-            "maximum_curvature",
-        ]
-        attributes_using_richdem = [attr for attr in attribute if attr in list_requiring_richdem]
-        for attr in attributes_using_richdem:
-            attributes_requiring_surface_fit.remove(attr)
-
-        if not isinstance(dem, gu.Raster):
-            # Here, maybe we could pass the geotransform based on the resolution, and add a "default" projection as
-            # this is mandated but likely not used by the rdarray format of RichDEM...
-            # For now, not supported
-            raise ValueError("To derive RichDEM attributes, the DEM passed must be a Raster object")
 
     list_requiring_windowed_index = [
         "terrain_ruggedness_index",
@@ -909,59 +840,44 @@ def get_terrain_attribute(
 
     if make_slope:
 
-        if use_richdem:
-            terrain_attributes["slope"] = _get_terrainattr_richdem(dem, attribute="slope_radians")
+        if slope_method == "Horn":
+            # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
+            # http://dx.doi.org/10.1109/PROC.1981.11918.
+            terrain_attributes["slope"] = np.arctan(
+                (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2)
+                ** 0.5
+            )
 
-        else:
-            if slope_method == "Horn":
-                # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
-                # http://dx.doi.org/10.1109/PROC.1981.11918.
-                terrain_attributes["slope"] = np.arctan(
-                    (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2)
-                    ** 0.5
-                )
-
-            elif slope_method == "ZevenbergThorne":
-                # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
-                # http://dx.doi.org/10.1002/esp.3290120107.
-                # SLOPE = ARCTAN((G²+H²)**(1/2))
-                terrain_attributes["slope"] = np.arctan(
-                    (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
-                    ** 0.5
-                )
+        elif slope_method == "ZevenbergThorne":
+            # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
+            # http://dx.doi.org/10.1002/esp.3290120107.
+            # SLOPE = ARCTAN((G²+H²)**(1/2))
+            terrain_attributes["slope"] = np.arctan(
+                (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                ** 0.5
+            )
 
     if make_aspect:
 
-        if use_richdem:
-            # The aspect of RichDEM is returned in degrees, we convert to radians to match the others
-            terrain_attributes["aspect"] = np.deg2rad(_get_terrainattr_richdem(dem, attribute="aspect"))
-            # For flat slopes, RichDEM returns a 90° aspect by default, while GDAL return a 180° aspect
-            # We stay consistent with GDAL
-            slope_tmp = _get_terrainattr_richdem(dem, attribute="slope_radians")
-            terrain_attributes["aspect"][slope_tmp == 0] = np.pi
+        # ASPECT = ARCTAN(-H/-G)  # This did not work
+        # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in remainder")
+            if slope_method == "Horn":
+                # This uses the estimates from Horn (1981).
+                terrain_attributes["aspect"] = (
+                    -np.arctan2(
+                        -terrain_attributes["surface_fit"][9, :, :], terrain_attributes["surface_fit"][10, :, :]
+                    )
+                    - np.pi
+                ) % (2 * np.pi)
 
-        else:
-            # ASPECT = ARCTAN(-H/-G)  # This did not work
-            # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in remainder")
-                if slope_method == "Horn":
-                    # This uses the estimates from Horn (1981).
-                    terrain_attributes["aspect"] = (
-                        -np.arctan2(
-                            -terrain_attributes["surface_fit"][9, :, :], terrain_attributes["surface_fit"][10, :, :]
-                        )
-                        - np.pi
-                    ) % (2 * np.pi)
-
-                elif slope_method == "ZevenbergThorne":
-                    # This uses the slope estimate from Zevenbergen and Thorne (1987).
-                    terrain_attributes["aspect"] = (
-                        np.arctan2(
-                            -terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :]
-                        )
-                        + np.pi / 2
-                    ) % (2 * np.pi)
+            elif slope_method == "ZevenbergThorne":
+                # This uses the slope estimate from Zevenbergen and Thorne (1987).
+                terrain_attributes["aspect"] = (
+                    np.arctan2(-terrain_attributes["surface_fit"][6, :, :], terrain_attributes["surface_fit"][7, :, :])
+                    + np.pi / 2
+                ) % (2 * np.pi)
 
     if make_hillshade:
         # If a different z-factor was given, slopemap with exaggerated gradients.
@@ -987,77 +903,56 @@ def get_terrain_attribute(
         ).astype("float32")
 
     if make_curvature:
-
-        if use_richdem:
-            terrain_attributes["curvature"] = _get_terrainattr_richdem(dem, attribute="curvature")
-
-        else:
-            # Curvature is the second derivative of the surface fit equation.
-            # (URL in get_quadric_coefficients() docstring)
-            # Curvature = -2(D + E) * 100
-            terrain_attributes["curvature"] = (
-                -2 * (terrain_attributes["surface_fit"][3, :, :] + terrain_attributes["surface_fit"][4, :, :]) * 100
-            )
+        # Curvature is the second derivative of the surface fit equation.
+        # (URL in get_quadric_coefficients() docstring)
+        # Curvature = -2(D + E) * 100
+        terrain_attributes["curvature"] = (
+            -2 * (terrain_attributes["surface_fit"][3, :, :] + terrain_attributes["surface_fit"][4, :, :]) * 100
+        )
 
     if make_planform_curvature:
-
-        if use_richdem:
-            terrain_attributes["planform_curvature"] = _get_terrainattr_richdem(dem, attribute="planform_curvature")
-
-        else:
-            # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-                terrain_attributes["planform_curvature"] = (
-                    -2
-                    * (
-                        terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
-                        + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
-                        - terrain_attributes["surface_fit"][5, :, :]
-                        * terrain_attributes["surface_fit"][6, :, :]
-                        * terrain_attributes["surface_fit"][7, :, :]
-                    )
-                    / (
-                        terrain_attributes["surface_fit"][6, :, :] ** 2
-                        + terrain_attributes["surface_fit"][7, :, :] ** 2
-                    )
-                    * 100
+        # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in *divide")
+            terrain_attributes["planform_curvature"] = (
+                -2
+                * (
+                    terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
+                    + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
+                    - terrain_attributes["surface_fit"][5, :, :]
+                    * terrain_attributes["surface_fit"][6, :, :]
+                    * terrain_attributes["surface_fit"][7, :, :]
                 )
+                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                * 100
+            )
 
-            # Completely flat surfaces trigger the warning above. These need to be set to zero
-            terrain_attributes["planform_curvature"][
-                terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0
-            ] = 0.0
+        # Completely flat surfaces trigger the warning above. These need to be set to zero
+        terrain_attributes["planform_curvature"][
+            terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0
+        ] = 0.0
 
     if make_profile_curvature:
-
-        if use_richdem:
-            terrain_attributes["profile_curvature"] = _get_terrainattr_richdem(dem, attribute="profile_curvature")
-
-        else:
-            # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-                terrain_attributes["profile_curvature"] = (
-                    2
-                    * (
-                        terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
-                        + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
-                        + terrain_attributes["surface_fit"][5, :, :]
-                        * terrain_attributes["surface_fit"][6, :, :]
-                        * terrain_attributes["surface_fit"][7, :, :]
-                    )
-                    / (
-                        terrain_attributes["surface_fit"][6, :, :] ** 2
-                        + terrain_attributes["surface_fit"][7, :, :] ** 2
-                    )
-                    * 100
+        # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in *divide")
+            terrain_attributes["profile_curvature"] = (
+                2
+                * (
+                    terrain_attributes["surface_fit"][3, :, :] * terrain_attributes["surface_fit"][6, :, :] ** 2
+                    + terrain_attributes["surface_fit"][4, :, :] * terrain_attributes["surface_fit"][7, :, :] ** 2
+                    + terrain_attributes["surface_fit"][5, :, :]
+                    * terrain_attributes["surface_fit"][6, :, :]
+                    * terrain_attributes["surface_fit"][7, :, :]
                 )
+                / (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
+                * 100
+            )
 
-            # Completely flat surfaces trigger the warning above. These need to be set to zero
-            terrain_attributes["profile_curvature"][
-                terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0
-            ] = 0.0
+        # Completely flat surfaces trigger the warning above. These need to be set to zero
+        terrain_attributes["profile_curvature"][
+            terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2 == 0.0
+        ] = 0.0
 
     if make_maximum_curvature:
         minc = np.minimum(terrain_attributes["profile_curvature"], terrain_attributes["planform_curvature"])
@@ -1117,7 +1012,6 @@ def slope(
     method: str = "Horn",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf:
     ...
 
@@ -1128,7 +1022,6 @@ def slope(
     method: str = "Horn",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> Raster:
     ...
 
@@ -1138,7 +1031,6 @@ def slope(
     method: str = "Horn",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf | Raster:
     """
     Generate a slope map for a DEM, returned in degrees by default.
@@ -1150,7 +1042,6 @@ def slope(
     :param method: Method to calculate slope: "Horn" or "ZevenbergThorne".
     :param degrees: Whether to use degrees or radians (False means radians).
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:
         >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
@@ -1165,9 +1056,7 @@ def slope(
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
-    return get_terrain_attribute(
-        dem, attribute="slope", slope_method=method, resolution=resolution, degrees=degrees, use_richdem=use_richdem
-    )
+    return get_terrain_attribute(dem, attribute="slope", slope_method=method, resolution=resolution, degrees=degrees)
 
 
 @overload
@@ -1175,7 +1064,6 @@ def aspect(
     dem: NDArrayf | MArrayf,
     method: str = "Horn",
     degrees: bool = True,
-    use_richdem: bool = False,
 ) -> NDArrayf:
     ...
 
@@ -1185,7 +1073,6 @@ def aspect(
     dem: RasterType,
     method: str = "Horn",
     degrees: bool = True,
-    use_richdem: bool = False,
 ) -> RasterType:
     ...
 
@@ -1194,7 +1081,6 @@ def aspect(
     dem: NDArrayf | MArrayf | RasterType,
     method: str = "Horn",
     degrees: bool = True,
-    use_richdem: bool = False,
 ) -> NDArrayf | Raster:
     """
     Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
@@ -1210,7 +1096,6 @@ def aspect(
     :param dem: The DEM to calculate the aspect from.
     :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
     :param degrees: Whether to use degrees or radians (False means radians).
-    :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :examples:
         >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
@@ -1228,9 +1113,7 @@ def aspect(
         270.0
 
     """
-    return get_terrain_attribute(
-        dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees, use_richdem=use_richdem
-    )
+    return get_terrain_attribute(dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees)
 
 
 @overload
@@ -1241,7 +1124,6 @@ def hillshade(
     altitude: float = 45.0,
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf:
     ...
 
@@ -1254,7 +1136,6 @@ def hillshade(
     altitude: float = 45.0,
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> RasterType:
     ...
 
@@ -1266,7 +1147,6 @@ def hillshade(
     altitude: float = 45.0,
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf | RasterType:
     """
     Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
@@ -1279,7 +1159,6 @@ def hillshade(
     :param altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param z_factor: Vertical exaggeration factor.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param use_richdem: Whether to use RichDEM to compute the slope and aspect used for the hillshade.
 
 
     :raises AssertionError: If the given DEM is not a 2D array.
@@ -1295,7 +1174,6 @@ def hillshade(
         hillshade_azimuth=azimuth,
         hillshade_altitude=altitude,
         hillshade_z_factor=z_factor,
-        use_richdem=use_richdem,
     )
 
 
@@ -1303,7 +1181,6 @@ def hillshade(
 def curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf:
     ...
 
@@ -1312,7 +1189,6 @@ def curvature(
 def curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> RasterType:
     ...
 
@@ -1320,7 +1196,6 @@ def curvature(
 def curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
@@ -1337,7 +1212,6 @@ def curvature(
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1350,15 +1224,11 @@ def curvature(
 
     :returns: The curvature array of the DEM.
     """
-    return get_terrain_attribute(dem=dem, attribute="curvature", resolution=resolution, use_richdem=use_richdem)
+    return get_terrain_attribute(dem=dem, attribute="curvature", resolution=resolution)
 
 
 @overload
-def planform_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
-) -> NDArrayf:
+def planform_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf:
     ...
 
 
@@ -1366,7 +1236,6 @@ def planform_curvature(
 def planform_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> RasterType:
     ...
 
@@ -1374,7 +1243,6 @@ def planform_curvature(
 def planform_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
 ) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
@@ -1383,7 +1251,6 @@ def planform_curvature(
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1401,33 +1268,21 @@ def planform_curvature(
 
     :returns: The planform curvature array of the DEM.
     """
-    return get_terrain_attribute(
-        dem=dem, attribute="planform_curvature", resolution=resolution, use_richdem=use_richdem
-    )
+    return get_terrain_attribute(dem=dem, attribute="planform_curvature", resolution=resolution)
 
 
 @overload
-def profile_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
-) -> NDArrayf:
+def profile_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf:
     ...
 
 
 @overload
-def profile_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
-) -> RasterType:
+def profile_curvature(dem: RasterType, resolution: float | tuple[float, float] | None = None) -> RasterType:
     ...
 
 
 def profile_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
 ) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
@@ -1436,7 +1291,6 @@ def profile_curvature(
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1454,31 +1308,21 @@ def profile_curvature(
 
     :returns: The profile curvature array of the DEM.
     """
-    return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution, use_richdem=use_richdem)
+    return get_terrain_attribute(dem=dem, attribute="profile_curvature", resolution=resolution)
 
 
 @overload
-def maximum_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
-) -> NDArrayf:
+def maximum_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf:
     ...
 
 
 @overload
-def maximum_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
-) -> RasterType:
+def maximum_curvature(dem: RasterType, resolution: float | tuple[float, float] | None = None) -> RasterType:
     ...
 
 
 def maximum_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
-    resolution: float | tuple[float, float] | None = None,
-    use_richdem: bool = False,
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
 ) -> NDArrayf | RasterType:
     """
     Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
@@ -1488,13 +1332,12 @@ def maximum_curvature(
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param use_richdem: Whether to use RichDEM to compute the attribute.
 
     :raises ValueError: If the inputs are poorly formatted.
 
     :returns: The profile curvature array of the DEM.
     """
-    return get_terrain_attribute(dem=dem, attribute="maximum_curvature", resolution=resolution, use_richdem=use_richdem)
+    return get_terrain_attribute(dem=dem, attribute="maximum_curvature", resolution=resolution)
 
 
 @overload
@@ -1600,7 +1443,7 @@ def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDA
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
     unit of the DEM (typically meters).
 
-    Based on: Dartnell (2000), http://dx.doi.org/10.14358/PERS.70.9.1081.
+    Based on: Dartnell (2000), https://environment.sfsu.edu/node/11292.
 
     :param dem: The DEM to calculate the roughness from.
     :param window_size: The size of the window for deriving the metric.

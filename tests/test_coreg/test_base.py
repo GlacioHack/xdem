@@ -69,12 +69,7 @@ class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
-    fit_params = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask,
-        verbose=False,
-    )
+    fit_params = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
     points = gpd.GeoDataFrame(
@@ -113,16 +108,11 @@ class TestCoregClass:
         # Assert all keys exist in the mapping key to str dictionary used for info
         list_info_keys = list(dict_key_to_str.keys())
 
-        # TODO: Remove GradientDescending + ICP keys here once generic optimizer is used
+        # TODO: Remove ICP keys here once generic optimizer is used
         # Temporary exceptions: pipeline/blockwise + gradientdescending/icp
         list_exceptions = [
             "step_meta",
             "pipeline",
-            "x0",
-            "bounds",
-            "deltainit",
-            "deltatol",
-            "feps",
             "rejection_scale",
             "num_levels",
         ]
@@ -136,7 +126,7 @@ class TestCoregClass:
 
         # Check that info() contains the mapped string for an example
         c = coreg.Coreg(meta={"subsample": 10000})
-        assert dict_key_to_str["subsample"] in c.info(verbose=False)
+        assert dict_key_to_str["subsample"] in c.info(as_str=True)
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -634,7 +624,6 @@ class TestCoregPipeline:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -771,7 +760,7 @@ class TestCoregPipeline:
 
     def test_pipeline_pts(self) -> None:
 
-        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
+        pipeline = coreg.NuthKaab() + coreg.DhMinimize()
         ref_points = self.ref.to_pointcloud(subsample=5000, random_state=42).ds
         ref_points["E"] = ref_points.geometry.x
         ref_points["N"] = ref_points.geometry.y
@@ -865,7 +854,6 @@ class TestBlockwiseCoreg:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -960,7 +948,6 @@ class TestBlockwiseCoreg:
         ddem_post = (aligned - self.ref).data.compressed()
         ddem_pre = (tba - self.ref).data.compressed()
         assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
-        # TODO: Figure out why STD here is larger since PR #530
         # assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Literal, overload
+from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
 import numpy as np
@@ -21,6 +21,7 @@ from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
+    nmad,
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
@@ -110,7 +111,10 @@ class DEM(SatelliteImage):  # type: ignore
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
         if self.bands is not None and len(self.bands) > 1:
-            raise ValueError("DEM rasters should be composed of one band only")
+            raise ValueError(
+                "DEM rasters should be composed of one band only. Either use argument `bands` to specify "
+                "a single band on opening, or use .split_bands() on an opened raster."
+            )
 
         # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
         vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))
@@ -375,69 +379,44 @@ class DEM(SatelliteImage):  # type: ignore
             )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(
-        self,
-        method: str = "Horn",
-        degrees: bool = True,
-        use_richdem: bool = False,
-    ) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees, use_richdem=use_richdem)
+    def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
+        return terrain.slope(self, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
         method: str = "Horn",
         degrees: bool = True,
-        use_richdem: bool = False,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees, use_richdem=use_richdem)
+        return terrain.aspect(self, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
-        self,
-        method: str = "Horn",
-        azimuth: float = 315.0,
-        altitude: float = 45.0,
-        z_factor: float = 1.0,
-        use_richdem: bool = False,
+        self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
     ) -> RasterType:
 
-        return terrain.hillshade(
-            self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor, use_richdem=use_richdem
-        )
+        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def curvature(self) -> RasterType:
 
-        return terrain.curvature(self, use_richdem=use_richdem)
+        return terrain.curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def planform_curvature(self) -> RasterType:
 
-        return terrain.planform_curvature(self, use_richdem=use_richdem)
+        return terrain.planform_curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def profile_curvature(self) -> RasterType:
 
-        return terrain.profile_curvature(self, use_richdem=use_richdem)
+        return terrain.profile_curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(
-        self,
-        use_richdem: bool = False,
-    ) -> RasterType:
+    def maximum_curvature(self) -> RasterType:
 
-        return terrain.maximum_curvature(self, use_richdem=use_richdem)
+        return terrain.maximum_curvature(self)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(self, window_size: int = 3) -> RasterType:
@@ -505,54 +484,109 @@ class DEM(SatelliteImage):  # type: ignore
 
     def estimate_uncertainty(
         self,
-        other_dem: DEM,
+        other_elev: DEM | gpd.GeoDataFrame,
         stable_terrain: Mask | NDArrayb = None,
+        approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
+        spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        variogram_estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
         list_vars: tuple[RasterType | str, ...] = ("slope", "maximum_curvature"),
-        list_vario_models: str | tuple[str, ...] = ("spherical", "spherical"),
+        list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
+        z_name: str = "z",
+        random_state: int | np.random.Generator | None = None,
     ) -> tuple[RasterType, Variogram]:
         """
         Estimate uncertainty of DEM.
 
-        Derives a map of per-pixel errors (based on slope and curvature by default) and a function describing the
+        Derives either a map of variable errors (based on slope and curvature by default) and a function describing the
         spatial correlation of error (between 0 and 1) with spatial lag (distance between observations).
 
-        Uses stable terrain as an error proxy and assumes a higher or similar-precision DEM is used as reference,
-        see Hugonnet et al. (2022).
+        Uses stable terrain as an error proxy and assumes a higher or similar-precision DEM is used as reference.
 
-        :param other_dem: Other DEM to use for estimation, either of finer or similar precision for reliable estimates.
+        See Hugonnet et al. (2022) for methodological details.
+
+        :param other_elev: Other elevation dataset to use for estimation, either of finer or similar precision for
+            reliable estimates.
         :param stable_terrain: Mask of stable terrain to use as error proxy.
+        :param approach: Whether to use Hugonnet et al., 2022 (variable errors, multiple ranges of error correlation),
+            or Rolstad et al., 2009 (constant error, multiple ranges of error correlation), or a basic approach
+            (constant error, single range of error correlation). Note that all approaches use robust estimators of
+            variance (NMAD) and variograms (Dowd) by default, despite not being used in Rolstad et al., 2009. These
+            estimators can be tuned separately.
         :param precision_of_other: Whether finer precision (3 times more precise = 95% of estimated error will come from
             this DEM) or similar precision (for instance another acquisition of the same DEM).
+        :param spread_estimator: Estimator for statistical dispersion (e.g., standard deviation), defaults to the
+            normalized median absolute deviation (NMAD) for robustness.
+        :param variogram_estimator: Estimator for empirical variogram, defaults to Dowd for robustness and consistency
+            with the NMAD estimator for the spread.
+        :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
         :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity). Either rasters
             or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
         :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
-            a sum of models.
+            a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
 
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """
 
-        # Elevation change
-        dh = other_dem.reproject(self, silent=True) - self
+        # Summarize approach steps
+        approach_dict = {
+            "H2022": {"heterosc": True, "multi_range": True},
+            "R2009": {"heterosc": False, "multi_range": True},
+            "Basic": {"heterosc": False, "multi_range": False},
+        }
+
+        # Elevation change with the other DEM or elevation point cloud
+        if isinstance(other_elev, DEM):
+            dh = other_elev.reproject(self, silent=True) - self
+        elif isinstance(other_elev, gpd.GeoDataFrame):
+            other_elev = other_elev.to_crs(self.crs)
+            points = (other_elev.geometry.x.values, other_elev.geometry.y.values)
+            dh = other_elev[z_name].values - self.interp_points(points)
+            stable_terrain = stable_terrain
+        else:
+            raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
 
         # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
         # See Equation 7 and 8 of Hugonnet et al. (2022)
         if precision_of_other == "same":
             dh /= np.sqrt(2)
 
-        # Derive terrain attributes of DEM if string are passed in the list of variables
-        list_var_rast = []
-        for var in list_vars:
-            if isinstance(var, str):
-                list_var_rast.append(getattr(terrain, var)(self))
-            else:
-                list_var_rast.append(var)
+        # If approach allows heteroscedasticity, derive a map of errors
+        if approach_dict[approach]["heterosc"]:
+            # Derive terrain attributes of DEM if string are passed in the list of variables
+            list_var_rast = []
+            for var in list_vars:
+                if isinstance(var, str):
+                    list_var_rast.append(getattr(terrain, var)(self))
+                else:
+                    list_var_rast.append(var)
 
-        # Estimate per-pixel uncertainty
-        sig_dh = infer_heteroscedasticity_from_stable(dvalues=dh, list_var=list_var_rast, stable_mask=stable_terrain)[0]
+            # Estimate variable error from these variables
+            sig_dh = infer_heteroscedasticity_from_stable(
+                dvalues=dh, list_var=list_var_rast, spread_statistic=spread_estimator, stable_mask=stable_terrain
+            )[0]
+        # Otherwise, return a constant error raster
+        else:
+            sig_dh = self.copy(new_array=spread_estimator(dh[stable_terrain]) * np.ones(self.shape))
 
-        # Estimate spatial correlation
+        # If the approach does not allow multiple ranges of spatial correlation
+        if not approach_dict[approach]["multi_range"]:
+            if not isinstance(list_vario_models, str) and len(list_vario_models) > 1:
+                warnings.warn(
+                    "Several variogram models passed but this approach uses a single range,"
+                    "keeping only the first model.",
+                    category=UserWarning,
+                )
+                list_vario_models = list_vario_models[0]
+
+        # Otherwise keep all ranges
         corr_sig = infer_spatial_correlation_from_stable(
-            dvalues=dh, list_models=list(list_vario_models), stable_mask=stable_terrain, errors=sig_dh
+            dvalues=dh,
+            list_models=list(list_vario_models),
+            stable_mask=stable_terrain,
+            errors=sig_dh,
+            estimator=variogram_estimator,
+            random_state=random_state,
         )[2]
+
         return sig_dh, corr_sig
