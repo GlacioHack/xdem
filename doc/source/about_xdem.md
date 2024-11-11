@@ -31,11 +31,11 @@ which have their own modular Python-based implementation, are tested to match ex
 
 ## Who uses xDEM?
 
-xDEM was created by a group of researchers with expertise in elevation data analysis for change detection **applied to glaciology**.
+xDEM was created by a group of researchers with expertise in elevation data analysis for change detection applied to glaciology.
 
 Nowadays, its development is **jointly led by researchers in elevation data analysis** (including funding from NASA and SNSF) **and
 engineers from CNES** (French Space Agency).
-It is used by scientists or industrials across various fields of Earth observation.
+It is used by scientists or industrials **across various fields of Earth observation**.
 
 ```{note}
 :class: tip

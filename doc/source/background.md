@@ -30,17 +30,17 @@ Grenoble Alpes.
 ```
 
 The current lead development team includes **researchers in Earth observation and engineers from
-[CNES](https://cnes.fr/en)** (French Space Agency). We specialize in elevation data, for analysis in Earth science or
-for operational use for 3D satellite missions<sup>3</sup>.
+[CNES](https://cnes.fr/en)** (French Space Agency). We specialize in elevation data analysis, for application in Earth 
+science or for operational use for 3D satellite missions<sup>3</sup>.
 
-Volunteers contributors span various backgrounds, in industry or research. We welcome
+Other volunteer contributors span diverse scientific backgrounds in industry or research. We welcome
 any new contributors! See how to contribute on [the dedicated page of our repository](https://github.com/GlacioHack/xdem/blob/main/CONTRIBUTING.md).
 
 ## Funding acknowledgments
 
 Members of the lead development team acknowledge funding from:
-- SNSF (Swiss National Science Foundation), grant no. 184634, a MeteoSwiss [GCOS](https://gcos.wmo.int/en/home) project,
-- NASA award 80NSSC22K1094, a [Surface Topography and Vegetation](https://science.nasa.gov/earth-science/decadal-surveys/decadal-stv/) project on the fusion of elevation data,
+- SNSF grant no. 184634, a MeteoSwiss [GCOS](https://gcos.wmo.int/en/home) project on elevation data analysis for glaciology,
+- NASA award 80NSSC22K1094, an [STV](https://science.nasa.gov/earth-science/decadal-surveys/decadal-stv/) project on the fusion of elevation data,
 - NASA award 80NSSC20K0995, an [ICESat-2](https://icesat-2.gsfc.nasa.gov/) project on the processing of elevation data in the cloud,
 - CNES (French Space Agency): ?.
 
