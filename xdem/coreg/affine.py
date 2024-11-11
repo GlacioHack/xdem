@@ -6,6 +6,8 @@ import logging
 import warnings
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
+import affine
+
 import xdem.coreg.base
 
 try:
@@ -71,8 +73,8 @@ def _matrix_from_translations_rotations(t1: float, t2: float, t3: float,
 
     return matrix
 
-def _icp_fit_func(inputs: NDArrayf, t1: float, t2: float, t3: float, alpha1: float,
-                  alpha2: float, alpha3: float, method=Literal["point-to-point", "point-to-plane"]) -> NDArrayf:
+def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf | None], t1: float, t2: float, t3: float, alpha1: float,
+                  alpha2: float, alpha3: float, method: Literal["point-to-point", "point-to-plane"]) -> NDArrayf:
     """
     The ICP function to optimize is a rigid transformation with 6 parameters (3 translations and 3 rotations)
     between nearest neighbour points (that are fixed for the optimization, and update at each iterative step).
@@ -81,7 +83,7 @@ def _icp_fit_func(inputs: NDArrayf, t1: float, t2: float, t3: float, alpha1: flo
     """
 
     # Get inputs
-    ref, tba, norm = inputs[:, :, 0], inputs[:, :, 1], inputs[:, :, 2]
+    ref, tba, norm = inputs
 
     # Build an affine matrix for 3D translations and rotations
     matrix = _matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3)
@@ -98,16 +100,20 @@ def _icp_fit_func(inputs: NDArrayf, t1: float, t2: float, t3: float, alpha1: flo
     elif method == "point-to-plane":
         diffs = (trans_tba - ref) * norm
 
+    else:
+        raise ValueError("ICP method must be 'point-to-point' or 'point-to-plane'.")
+
     # Sum residuals for any dimension
     res = np.sum(diffs**2, axis=1)
 
     return res
 
 
-def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf, params_fit_or_bin: InFitOrBinDict) -> NDArrayf:
+def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf, method: Literal["point-to-point", "point-to-plane"],
+             params_fit_or_bin: InFitOrBinDict, **kwargs: Any) -> NDArrayf:
 
     # Group inputs into a single array
-    inputs = np.dstack(ref, normals, tba)
+    inputs = (ref, normals, tba)
 
     # For this type of method, the procedure can only be fit
     if params_fit_or_bin["fit_or_bin"] not in ["fit"]:
@@ -115,14 +121,18 @@ def _icp_fit(ref: NDArrayf, normals: NDArrayf, tba: NDArrayf, params_fit_or_bin:
 
     params_fit_or_bin["fit_func"] = _icp_fit_func
 
-    # Call generic fit function, aiming for the residuals to be zero
-    y = np.zeros(len(ref))
-    _, results = _bin_or_and_fit_nd(
-        fit_or_bin=params_fit_or_bin["fit_or_bin"],
-        params_fit_or_bin=params_fit_or_bin,
-        values=y,
-        bias_vars={"inputs": inputs},
-    )
+    # Define partial function
+    loss_func = params_fit_or_bin["fit_loss_func"]
+
+    def fit_func(offsets: tuple[float, float, float, float, float, float]) -> np.floating[Any]:
+        return loss_func(_icp_fit_func(inputs=inputs, t1=offsets[0], t2=offsets[1], t3=offsets[2], alpha1=offsets[3],
+                                       alpha2=offsets[4], alpha3=offsets[5], method=method))
+
+    # Initial offset near zero
+    init_offsets = (0., 0., 0., 0., 0., 0.)
+
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
+
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
     # Build matrix out of optimized parameters
@@ -154,25 +164,51 @@ def _icp_iteration_step(matrix, ref_epc, tba_epc, normals, centroid, distance_up
 
     return new_matrix
 
-def icp(ref_epc,
-        tba_epc,
+def _icp_norms(dem: NDArrayf, transform: affine.Affine):
+    """
+    Derive normals from the DEM for "point-to-plane" method.
+
+    :param dem:
+    :param transform:
+    :return:
+    """
+    resolution = _res(transform)
+
+    # Generate the x and y coordinates for the reference_dem
+    gradient_x, gradient_y = np.gradient(dem)
+
+    normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
+    normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
+    normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
+
+    return np.dstack(normal_east, normal_north, normal_up)
+
+def icp(ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        transform: affine.Affine,
+        area_or_point: Literal["Area", "Point"] | None,
         max_iterations: int,
         tolerance: float,
         method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
         verbose: bool = False):
-    """Main function for ICP method."""
+    """
+    Main function for ICP method.
 
-    # Pre-processing for point-point??
+    The function assumes we have a DEM and an elevation point cloud in the same CRS.
+    The normals (for point-to-plane) are computed on the DEM for speed.
+    """
+
+    # Pre-process inputs
 
     # Derive normals if method is point-to-plane
     if method == "point-to-plane":
-        normals = _icp_norms()
+        normals = _icp_norms(dem, transform)
     else:
         normals = None
 
     # Iterate through method until tolerance or max number of iterations is reached
     init_matrix = np.zeros(6)
-    constant_inputs = (ref_epc, tba_epc, normals)
+    constant_inputs = (ref_epc, tba_epc, ref_norms)
     final_offsets = _iterate_method(
         method=_icp_iteration_step,
         iterating_input=init_matrix,
