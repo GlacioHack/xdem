@@ -104,8 +104,7 @@ dict_key_to_str = {
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
-    "rejection_scale": "Rejection scale",
-    "num_levels": "Number of levels",
+    "icp_method": "Type of ICP method"
 }
 #####################################
 # Generic functions for preprocessing
@@ -683,13 +682,14 @@ def _subsample_on_mask(
     transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
+    return_coords: bool = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None | tuple[NDArrayf, NDArrayf]]:
     """
     Perform subsampling on mask for raster-raster or point-raster datasets on valid points of all inputs (including
     potential auxiliary variables).
 
     Returns 1D arrays of subsampled inputs: reference elevation, to-be-aligned elevation and auxiliary variables
-    (in dictionary).
+    (in dictionary), and (optionally) tuple of X/Y coordinates.
     """
 
     # For two rasters
@@ -704,6 +704,13 @@ def _subsample_on_mask(
                 sub_bias_vars[var] = aux_vars[var][sub_mask]
         else:
             sub_bias_vars = None
+
+        # Return coordinates if required
+        if return_coords:
+            coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=area_or_point)
+            sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
+        else:
+            sub_coords = None
 
     # For one raster and one point cloud
     else:
@@ -734,7 +741,13 @@ def _subsample_on_mask(
         else:
             sub_bias_vars = None
 
-    return sub_ref, sub_tba, sub_bias_vars
+        # Return coordinates if required
+        if return_coords:
+            sub_coords = pts
+        else:
+            sub_coords = None
+
+    return sub_ref, sub_tba, sub_bias_vars, sub_coords
 
 
 def _preprocess_pts_rst_subsample(
@@ -747,7 +760,8 @@ def _preprocess_pts_rst_subsample(
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
+    return_coords: bool = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None | tuple[NDArrayf, NDArrayf]]:
     """
     Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
     (and interpolated in the case of point-raster input).
@@ -768,7 +782,7 @@ def _preprocess_pts_rst_subsample(
     )
 
     # Perform subsampling on mask for all inputs
-    sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(
+    sub_ref, sub_tba, sub_bias_vars, sub_coords = _subsample_on_mask(
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         aux_vars=aux_vars,
@@ -776,10 +790,11 @@ def _preprocess_pts_rst_subsample(
         transform=transform,
         area_or_point=area_or_point,
         z_name=z_name,
+        return_coords=return_coords,
     )
 
     # Return 1D arrays of subsampled points at the same location
-    return sub_ref, sub_tba, sub_bias_vars
+    return sub_ref, sub_tba, sub_bias_vars, sub_coords
 
 
 @overload
@@ -978,6 +993,32 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
 
+
+def _apply_matrix_pts_mat(
+        mat: NDArrayf,
+        matrix: NDArrayf,
+        centroid: tuple[float, float, float] | None = None,
+        invert: bool = False,) -> NDArrayf:
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # First, get 4xN array, adding a column of ones for translations during matrix multiplication
+    points = np.concatenate((mat, np.ones((1, mat.shape[1]))))
+
+    # Temporarily subtract centroid coordinates
+    if centroid is not None:
+        points[:3, :] -= np.array(centroid)[:, None]
+
+    # Transform using matrix multiplication, and get only the first three columns
+    transformed_points = (matrix @ points)[:3, :]
+
+    # Add back centroid coordinates
+    if centroid is not None:
+        transformed_points += np.array(centroid)[:, None]
+
+    return transformed_points
 
 def _apply_matrix_pts_arr(
     x: NDArrayf,
@@ -1543,11 +1584,8 @@ class InSpecificDict(TypedDict, total=False):
     angle: float
     # (Using Deramp) Polynomial order selected for deramping
     poly_order: int
-
-    # (Using ICP)
-    rejection_scale: float
-    num_levels: int
-
+    # (Using ICP) Method type
+    icp_method: Literal["point-to-point", "point-to-plane"]
 
 class OutSpecificDict(TypedDict, total=False):
     """Keys and types of outputs associated with specific methods."""
@@ -1899,7 +1937,7 @@ class Coreg:
         )
 
         # Perform subsampling on mask for all inputs
-        sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(
+        sub_ref, sub_tba, sub_bias_vars, _ = _subsample_on_mask(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             aux_vars=aux_vars,
