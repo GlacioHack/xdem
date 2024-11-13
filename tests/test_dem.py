@@ -392,7 +392,7 @@ class TestDEM:
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
 
-        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref)
+        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref, random_state=42)
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
