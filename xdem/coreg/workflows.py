@@ -31,7 +31,7 @@ from geoutils._typing import Number
 from geoutils.raster import RasterType
 
 from xdem._typing import NDArrayf
-from xdem.coreg import CoregPipeline
+from xdem.coreg import AffineCoreg, CoregPipeline
 from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.coreg.base import Coreg
 from xdem.dem import DEM
@@ -162,7 +162,7 @@ def dem_coregistration(
     random_state: int | np.random.Generator | None = None,
     plot: bool = False,
     out_fig: str = None,
-    estimated_initial_shift: list[float] | tuple[float, float] = None,
+    estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
 ) -> tuple[DEM, Coreg | CoregPipeline, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
@@ -175,7 +175,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param src_dem_path: Path to the input DEM to be coregistered
     :param ref_dem_path: Path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param coreg_method: Coregistration method or pipeline. Defaults to NuthKaab + VerticalShift.
+    :param coreg_method: Coregistration method, or pipeline.
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
@@ -225,21 +225,32 @@ coregistration and 4) the inlier_mask used.
     if grid not in ["ref", "src"]:
         raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
 
+    # Ensure that if an initial shift is provided, at least one coregistration method is affine.
+    if estimated_initial_shift:
+        if isinstance(coreg_method, CoregPipeline):
+            if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
+                raise TypeError(
+                    "An initial shift has been provided, but none of the coregistration methods in the pipeline "
+                    "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
+                )
+        elif not isinstance(coreg_method, AffineCoreg):
+            raise TypeError(
+                "An initial shift has been provided, but the coregistration method is not affine. "
+                "An affine coregistration method (e.g., AffineCoreg) is required."
+            )
+
     # Load both DEMs
     logging.info("Loading and reprojecting input data")
 
     if isinstance(ref_dem_path, str):
-        if grid == "ref":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
-        elif grid == "src":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
-    else:
+        ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
+
+    elif isinstance(src_dem_path, gu.Raster):
         ref_dem = ref_dem_path
-        src_dem = src_dem_path
+        src_dem = src_dem_path.copy()
 
     # If an initial shift is provided, apply it before coregistration
     if estimated_initial_shift:
-        logging.warning("Initial shift in affine mode only")
 
         # convert shift
         shift_x = estimated_initial_shift[0] * src_dem.res[0]
