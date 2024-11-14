@@ -16,14 +16,9 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.raster import (
-    Mask,
-    Raster,
-    RasterType,
-    get_array_and_mask,
-    subsample_array,
-)
-from geoutils.vector import Vector, VectorType
+from geoutils.raster import Mask, Raster, RasterType, subsample_array
+from geoutils.raster.array import get_array_and_mask
+from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata

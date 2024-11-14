@@ -9,7 +9,8 @@ import numpy as np
 import pyogrio
 import rasterio as rio
 import shapely
-from geoutils.raster import Raster, RasterType, get_array_and_mask
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.array import get_array_and_mask
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 
