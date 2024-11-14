@@ -31,6 +31,7 @@ from geoutils._typing import Number
 from geoutils.raster import RasterType
 
 from xdem._typing import NDArrayf
+from xdem.coreg import CoregPipeline
 from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.coreg.base import Coreg
 from xdem.dem import DEM
@@ -148,7 +149,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = None,
+    coreg_method: Coreg | CoregPipeline | None = None,
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -161,7 +162,8 @@ def dem_coregistration(
     random_state: int | np.random.Generator | None = None,
     plot: bool = False,
     out_fig: str = None,
-) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
+    estimated_initial_shift: list[float] | tuple[float, float] = None,
+) -> tuple[DEM, Coreg | CoregPipeline, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 
@@ -189,6 +191,8 @@ be excluded.
     :param random_state: Random state or seed number to use for subsampling and optimizer.
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
+    :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
+the coregistration process begins.
 
     :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
@@ -226,16 +230,28 @@ coregistration and 4) the inlier_mask used.
 
     if isinstance(ref_dem_path, str):
         if grid == "ref":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
+            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
         elif grid == "src":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
+            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
     else:
         ref_dem = ref_dem_path
         src_dem = src_dem_path
-        if grid == "ref":
-            src_dem = src_dem.reproject(ref_dem, silent=True)
-        elif grid == "src":
-            ref_dem = ref_dem.reproject(src_dem, silent=True)
+
+    # If an initial shift is provided, apply it before coregistration
+    if estimated_initial_shift:
+        logging.warning("Initial shift in affine mode only")
+
+        # convert shift
+        shift_x = estimated_initial_shift[0] * src_dem.res[0]
+        shift_y = estimated_initial_shift[1] * src_dem.res[1]
+
+        # Apply the shift to the source dem
+        src_dem.translate(shift_x, shift_y, inplace=True)
+
+    if grid == "ref":
+        src_dem = src_dem.reproject(ref_dem, silent=True)
+    elif grid == "src":
+        ref_dem = ref_dem.reproject(src_dem, silent=True)
 
     # Convert to DEM instance with Float32 dtype
     # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
@@ -267,6 +283,27 @@ coregistration and 4) the inlier_mask used.
     # Coregister to reference - Note: this will spread NaN
     coreg_method.fit(ref_dem, src_dem, inlier_mask, random_state=random_state)
     dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
+
+    # Add the initial shift to the calculated shift
+    if estimated_initial_shift:
+
+        def update_shift(
+            coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+        ) -> None:
+            if isinstance(coreg_method, CoregPipeline):
+                for step in coreg_method.pipeline:
+                    update_shift(step)
+            else:
+                # check if the keys exists
+                if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                    if "shift_x" in coreg_method.meta["outputs"]["affine"]:
+                        coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
+                        logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
+                    if "shift_y" in coreg_method.meta["outputs"]["affine"]:
+                        coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
+                        logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+
+        update_shift(coreg_method)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
     ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
