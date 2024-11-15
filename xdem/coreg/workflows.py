@@ -140,6 +140,7 @@ def dem_coregistration(
     dh_max: Number = None,
     nmad_factor: Number = 5,
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
+    random_state: int | np.random.Generator | None = None,
     plot: bool = False,
     out_fig: str = None,
 ) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
@@ -167,6 +168,7 @@ to mask inside (resp. outside) of the polygons. Defaults to masking inside polyg
     :param nmad_factor: Remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
     :param slope_lim: A list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
 be excluded.
+    :param random_state: Random state or seed number to use for subsampling and optimizer.
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
 
@@ -240,7 +242,7 @@ coregistration and 4) the inlier_mask used.
     med_orig, nmad_orig = np.median(inlier_data), nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    coreg_method.fit(ref_dem, src_dem, inlier_mask)
+    coreg_method.fit(ref_dem, src_dem, inlier_mask, random_state=random_state)
     dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
