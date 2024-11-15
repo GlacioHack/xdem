@@ -65,9 +65,10 @@ Additionally, **some important yet non-breaking changes**:
 Based on recent and ongoing progress, we envision the following roadmap.
 
 **Releases of 0.2, 0.3, 0.4, etc**, for the following planned (ongoing) additions:
+- The **addition of a command-line interface for features such as coregistration**, in the frame of the merging effort with [demcompare](https://github.com/CNES/demcompare),
 - The **addition of an elevation point cloud `EPC` data object**, inherited from the ongoing `PointCloud` object of GeoUtils alongside many features at the interface of point and raster,
-- The **addition of an Xarray accessor `dem`** mirroring the `DEM` object, to work natively with Xarray objects and add support on out-of-memory Dask operations for most of xDEM's features,
-- The **addition of an GeoPandas accessor `epc`** mirroring the `EPC` object, to work natively with GeoPandas objects,
+- The **addition of a Xarray accessor `dem`** mirroring the `DEM` object, to work natively with Xarray objects and add support on out-of-memory Dask operations for most of xDEM's features,
+- The **addition of a GeoPandas accessor `epc`** mirroring the `EPC` object, to work natively with GeoPandas objects,
 - The **re-structuration of uncertainty analysis features** to rely directly on SciKit-GStat's `Variogram` object.
 
 **Release of 1.0** once all these additions are fully implemented, and after feedback from the community.
