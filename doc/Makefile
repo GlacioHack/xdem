@@ -14,9 +14,9 @@ help:
 
 clean:
 	echo "Removing build files..."
-	if [[ -d "$(BUILDDIR)" ]]; then rm -r "$(BUILDDIR)"; fi
-	if [[ -d "$(SOURCEDIR)/auto_examples" ]]; then rm -r "$(SOURCEDIR)/auto_examples"; fi
-	if [[ -d "$(SOURCEDIR)/gen_modules" ]]; then rm -r "$(SOURCEDIR)/gen_modules"; fi
+	if [ -d "$(BUILDDIR)" ]; then rm -r "$(BUILDDIR)"; fi
+	if [ -d "$(SOURCEDIR)/auto_examples" ]; then rm -r "$(SOURCEDIR)/auto_examples"; fi
+	if [ -d "$(SOURCEDIR)/gen_modules" ]; then rm -r "$(SOURCEDIR)/gen_modules"; fi
 
 .PHONY: help Makefile
 
