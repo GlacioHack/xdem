@@ -141,8 +141,16 @@ advanced_examples/index.rst
 api
 config
 release_notes
+```
+
+```{toctree}
+:caption: Project information
+:maxdepth: 2
+
 publis
 background
+authors
+license
 ```
 
 # Indices and tables
