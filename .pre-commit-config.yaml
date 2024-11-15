@@ -124,3 +124,12 @@ repos:
                   files: ^(environment.yml|requirements.txt)$
                   pass_filenames: false
                   additional_dependencies: [tomli, pyyaml]
+
+        # Add license header to the source files
+        - repo: local
+          hooks:
+            - id: add-license_header
+              name: Add License Header
+              entry: python apply_license_header.py
+              language: python
+              files: \.py$
