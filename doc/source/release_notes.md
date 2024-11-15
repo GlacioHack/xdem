@@ -4,7 +4,7 @@ Below, the release notes for all minor versions and our roadmap to a first major
 
 ## 0.1.0
 
-xDEM 0.1.0 is the **first minor release** since the creation of the project in 2020. It is the result of years of work
+xDEM version 0.1 is the **first minor release** since the creation of the project in 2020. It is the result of years of work
 to consolidate and re-structure features into a mature and stable API to minimize future breaking changes.
 
 **All the core features drafted at the start of the project are now supported**, and there is a **clear roadmap
@@ -44,6 +44,7 @@ We have added warnings throughout the documentation and API related to planned d
 Changes related to **gap-filling** and **uncertainty analysis** will have deprecation warnings, while the function
 remain available during a few more releases.
 
+(migrate-early)=
 ### Migrate from early versions
 
 The following changes **might be required to solve breaking changes**, depending on your early-development version:
@@ -64,9 +65,10 @@ Additionally, **some important yet non-breaking changes**:
 Based on recent and ongoing progress, we envision the following roadmap.
 
 **Releases of 0.2, 0.3, 0.4, etc**, for the following planned (ongoing) additions:
+- The **addition of a command-line interface for features such as coregistration**, in the frame of the merging effort with [demcompare](https://github.com/CNES/demcompare),
 - The **addition of an elevation point cloud `EPC` data object**, inherited from the ongoing `PointCloud` object of GeoUtils alongside many features at the interface of point and raster,
-- The **addition of an Xarray accessor `dem`** mirroring the `DEM` object, to work natively with Xarray objects and add support on out-of-memory Dask operations for most of xDEM's features,
-- The **addition of an GeoPandas accessor `epc`** mirroring the `EPC` object, to work natively with GeoPandas objects,
+- The **addition of a Xarray accessor `dem`** mirroring the `DEM` object, to work natively with Xarray objects and add support on out-of-memory Dask operations for most of xDEM's features,
+- The **addition of a GeoPandas accessor `epc`** mirroring the `EPC` object, to work natively with GeoPandas objects,
 - The **re-structuration of uncertainty analysis features** to rely directly on SciKit-GStat's `Variogram` object.
 
 **Release of 1.0** once all these additions are fully implemented, and after feedback from the community.
