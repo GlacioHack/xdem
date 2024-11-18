@@ -114,8 +114,14 @@ class DEM(Raster):  # type: ignore
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
-                super().__init__(filename_or_dataset, load_data=load_data, parse_sensor_metadata=parse_sensor_metadata,
-                                 silent=silent, downsample=downsample, nodata=nodata)
+                super().__init__(
+                    filename_or_dataset,
+                    load_data=load_data,
+                    parse_sensor_metadata=parse_sensor_metadata,
+                    silent=silent,
+                    downsample=downsample,
+                    nodata=nodata,
+                )
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
         if self.bands is not None and len(self.bands) > 1:
@@ -200,7 +206,7 @@ class DEM(Raster):  # type: ignore
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
-        rast = SatelliteImage.from_array(
+        rast = Raster.from_array(
             data=data,
             transform=transform,
             crs=crs,
