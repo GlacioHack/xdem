@@ -29,6 +29,7 @@ be reported by CoverAlls.
 
 ### Setup
 
+#### With `mamba`
 Clone the git repo and create a `mamba` environment (see how to install `mamba` in the [mamba documentation](https://mamba.readthedocs.io/en/latest/)):
 
 ```bash
@@ -37,6 +38,15 @@ cd xdem
 mamba env create -f dev-environment.yml  # Add '-n custom_name' if you want.
 mamba activate xdem-dev  # Or any other name specified above
 ```
+
+#### With `pip`
+```bash
+git clone https://github.com/GlacioHack/xdem.git
+cd xdem
+make install
+```
+
+Please note: pip installation is currently only possible under python3.10.
 
 ### Tests
 
