@@ -81,7 +81,7 @@ class DEM(Raster):  # type: ignore
         The vertical reference of the DEM can be defined by passing the `vcrs` argument.
         Otherwise, a vertical reference is tentatively parsed from the DEM product name.
 
-        Inherits all attributes from the :class:`geoutils.Raster` and :class:`geoutils.SatelliteImage` classes.
+        Inherits all attributes from the :class:`geoutils.Raster` class.
 
         :param filename_or_dataset: The filename of the dataset.
         :param vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
@@ -103,7 +103,7 @@ class DEM(Raster):  # type: ignore
             for key in filename_or_dataset.__dict__:
                 setattr(self, key, filename_or_dataset.__dict__[key])
             return
-        # Else rely on parent SatelliteImage class options (including raised errors)
+        # Else rely on parent Raster class options (including raised errors)
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
