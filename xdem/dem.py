@@ -68,14 +68,7 @@ class DEM(Raster):  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["Ellipsoid"]
-        | Literal["EGM08"]
-        | Literal["EGM96"]
-        | VerticalCRS
-        | str
-        | pathlib.Path
-        | int
-        | None = None,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
         load_data: bool = False,
         parse_sensor_metadata: bool = False,
         silent: bool = True,
