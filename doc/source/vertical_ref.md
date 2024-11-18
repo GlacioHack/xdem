@@ -130,11 +130,11 @@ import os
 os.remove("mydem_with3dcrs.tif")
 ```
 
-2. **From the {attr}`~xdem.DEM.product` name of the DEM**, if parsed from the filename by {class}`geoutils.SatelliteImage`.
+2. **From the {attr}`~xdem.DEM.product` name of the DEM**, if parsed from the filename by the ``parse_sensor_metadata`` of {class}`geoutils.Raster`.
 
 
 ```{seealso}
-The {class}`~geoutils.SatelliteImage` parent class that parses the product metadata is described in [a dedicated section of GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/satimg_class.html).
+The {class}`~geoutils.Raster` parent class can parse sensor metadata, see its [documentation page](https://geoutils.readthedocs.io/en/stable/core_satimg.html).
 ```
 
 ```{code-cell} ipython3
@@ -151,7 +151,7 @@ dem.save("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem
 ```
 
 ```{code-cell} ipython3
-# Open an ArcticDEM strip file, recognized as an ArcticDEM product by SatelliteImage
+# Open an ArcticDEM strip file, recognized as an ArcticDEM product
 dem = xdem.DEM("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
 # The vertical CRS is set as "Ellipsoid" from knowing that is it an ArcticDEM product
 dem.vcrs
