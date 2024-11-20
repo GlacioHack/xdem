@@ -31,7 +31,7 @@ jobs:
     - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v3
       with:
-        miniforge-variant: Mambaforge
+        miniforge-variant: Miniforge
         miniforge-version: latest
         auto-update-conda: true
         use-mamba: true
