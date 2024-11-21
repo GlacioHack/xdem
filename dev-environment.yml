@@ -13,6 +13,10 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0.18,<1.1
+  - xarray
+  - rioxarray=0.*
+  - geocube
+  - dask
   - geoutils=0.1.10
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].

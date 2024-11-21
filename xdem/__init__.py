@@ -26,7 +26,8 @@ from xdem import (  # noqa
     volume,
 )
 from xdem.ddem import dDEM  # noqa
-from xdem.dem import DEM  # noqa
+from xdem.dem import DEM, xr_accessor  # noqa
+from xdem.dem.xr_accessor import open_dem  # noqa
 from xdem.demcollection import DEMCollection  # noqa
 
 try:
