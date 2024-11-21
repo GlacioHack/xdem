@@ -128,8 +128,8 @@ repos:
         # Add license header to the source files
         - repo: local
           hooks:
-            - id: add-license_header
+            - id: add-license-header
               name: Add License Header
-              entry: python apply_license_header.py
+              entry: python .github/scripts/apply_license_header.py
               language: python
               files: \.py$
