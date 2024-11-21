@@ -1,3 +1,20 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Spatial statistical tools to estimate uncertainties related to DEMs"""
 from __future__ import annotations
 
@@ -602,8 +619,7 @@ def _preprocess_values_with_mask_to_array(  # type: ignore
     exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
-) -> tuple[list[NDArrayf], float]:
-    ...
+) -> tuple[list[NDArrayf], float]: ...
 
 
 @overload
@@ -613,8 +629,7 @@ def _preprocess_values_with_mask_to_array(
     exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
-) -> tuple[NDArrayf, float]:
-    ...
+) -> tuple[NDArrayf, float]: ...
 
 
 def _preprocess_values_with_mask_to_array(
@@ -739,7 +754,7 @@ def _preprocess_values_with_mask_to_array(
 
     # If input was a list, give a list. If it was a single array, give a single array.
     if return_unlist:
-        values_stable_arr = values_stable_arr[0]
+        values_stable_arr = values_stable_arr[0]  # type: ignore
 
     return values_stable_arr, gsd
 
@@ -755,8 +770,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
-) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]:
-    ...
+) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
 @overload
@@ -770,8 +784,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
-) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]:
-    ...
+) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
 def infer_heteroscedasticity_from_stable(
@@ -1782,7 +1795,6 @@ def _estimate_model_spatial_correlation(
     p0: list[float] = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[NDArrayf], NDArrayf]]:
-
     """
     Estimate and model the spatial correlation of the input variable by empirical variogram sampling and fitting of a
     sum of variogram model.
@@ -2048,9 +2060,7 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
     def cubic_exact_integral(a1: float, c1: float, L: float) -> float:
         if l_equiv <= a1:
             squared_se = (
-                c1
-                * (6 * a1**7 - 21 * a1**5 * L**2 + 21 * a1**4 * L**3 - 6 * a1**2 * L**5 + L**7)
-                / (6 * a1**7)
+                c1 * (6 * a1**7 - 21 * a1**5 * L**2 + 21 * a1**4 * L**3 - 6 * a1**2 * L**5 + L**7) / (6 * a1**7)
             )
         else:
             squared_se = 1 / 6 * c1 * a1**2 / L**2
@@ -2197,7 +2207,7 @@ def neff_exact(
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / n**2
-    neff = np.mean(errors) ** 2 / squared_se_dsc
+    neff = float(np.mean(errors)) ** 2 / squared_se_dsc
 
     return neff
 
@@ -2283,7 +2293,7 @@ def neff_hugonnet_approx(
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / (n * subsample)
-    neff = np.mean(errors) ** 2 / squared_se_dsc
+    neff = float(np.mean(errors)) ** 2 / squared_se_dsc
 
     return neff
 
@@ -2608,7 +2618,7 @@ def mean_filter_nan(
 
     # Count the number of valid pixels in the kernel with a convolution
     nb_valid_img = convolution(
-        imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
+        imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),  # type: ignore
         filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
         method=method,
     ).squeeze()
@@ -2863,8 +2873,7 @@ def patches_method(
     *,
     return_in_patch_statistics: Literal[False] = False,
     random_state: int | np.random.Generator | None = None,
-) -> pd.DataFrame:
-    ...
+) -> pd.DataFrame: ...
 
 
 @overload
@@ -2884,8 +2893,7 @@ def patches_method(
     *,
     return_in_patch_statistics: Literal[True],
     random_state: int | np.random.Generator | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    ...
+) -> tuple[pd.DataFrame, pd.DataFrame]: ...
 
 
 def patches_method(
@@ -2904,7 +2912,6 @@ def patches_method(
     return_in_patch_statistics: bool = False,
     random_state: int | np.random.Generator | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
-
     """
     Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
     computes a statistic in each patch. Then, another statistic is computed between all patches. Typically, a statistic

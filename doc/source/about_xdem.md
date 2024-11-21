@@ -22,12 +22,77 @@ It has three main focus points:
 
 Although modularity can sometimes hamper performance, we also aim to **preserve scalibility** as much as possible[^sn2].
 
-[^sn2]: Out-of-memory, parallelizable computations relying on Dask are planned for late 2024!
+[^sn2]: Out-of-memory, parallelizable computations relying on Dask are planned for 2025!
 
 We particularly take to heart to verify the accuracy of our methods. For instance, our terrain attributes
 which have their own modular Python-based implementation, are tested to match exactly
 [gdaldem](https://gdal.org/programs/gdaldem.html) (slope, aspect, hillshade, roughness) and
 [RichDEM](https://richdem.readthedocs.io/en/latest/) (curvatures).
 
-More details about the people behind xDEM and the package's objectives can be found on the **{ref}`background` reference
+## Who is behind xDEM?
+
+xDEM was created by a group of researchers with expertise in elevation data analysis for change detection applied to glaciology.
+Nowadays, its development is **jointly led by researchers in elevation data analysis** (including funding from NASA and SNSF) **and
+engineers from CNES** (French Space Agency).
+
+Most contributors and users are scientists or industrials working in **various fields of Earth observation**.
+
+
+```{note}
+:class: tip
+:class: margin
+
+xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demcompare)** to combine the best of both tools into one!
+```
+
+::::{grid}
+:reverse:
+
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/nasa_logo.svg
+    :width: 200px
+    :class: dark-light
+```
+
+:::
+
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/snsf_logo.svg
+    :width: 220px
+    :class: only-light
+```
+
+```{image} ./_static/snsf_logo_dark.svg
+    :width: 220px
+    :class: only-dark
+```
+
+:::
+
+:::{grid-item}
+:columns: 4
+:child-align: center
+
+```{image} ./_static/cnes_logo.svg
+    :width: 200px
+    :class: only-light
+```
+
+```{image} ./_static/cnes_logo_dark.svg
+    :width: 200px
+    :class: only-dark
+```
+
+:::
+
+
+::::
+
+More details about the people behind xDEM, funding sources, and the package's objectives can be found on the **{ref}`background` reference
 page**.

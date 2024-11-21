@@ -10,6 +10,7 @@ while respecting nodata values and checking that georeferencing is consistent. T
 Before DEMs can be compared, they need to be reprojected to the same grid and have the same 3D CRSs. The :func:`~xdem.DEM.reproject` and :func:`~xdem.DEM.to_vcrs` methods are used for this.
 
 """
+
 import geoutils as gu
 
 import xdem

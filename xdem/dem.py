@@ -1,4 +1,25 @@
+<<<<<<< HEAD
 """This module defines the DEM class."""
+=======
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""DEM class and functions."""
+>>>>>>> upstream/main
 from __future__ import annotations
 
 import pathlib
@@ -174,14 +195,9 @@ class DEM(Raster):  # type: ignore
         area_or_point: Literal["Area", "Point"] | None = None,
         tags: dict[str, Any] = None,
         cast_nodata: bool = True,
-        vcrs: Literal["Ellipsoid"]
-        | Literal["EGM08"]
-        | Literal["EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        vcrs: (
+            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
     ) -> DEM:
         """Create a DEM from a numpy array and the georeferencing information.
 
@@ -269,56 +285,41 @@ class DEM(Raster):  # type: ignore
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: Literal[False] = False,
-    ) -> DEM:
-        ...
+    ) -> DEM: ...
 
     @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: Literal[True],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: bool = False,
-    ) -> DEM | None:
-        ...
+    ) -> DEM | None: ...
 
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         inplace: bool = False,
     ) -> DEM | None:
         """
@@ -487,7 +488,7 @@ class DEM(Raster):  # type: ignore
             bias_vars=bias_vars,
             **kwargs,
         )
-        return coreg_method.apply(self)
+        return coreg_method.apply(self)  # type: ignore
 
     def estimate_uncertainty(
         self,

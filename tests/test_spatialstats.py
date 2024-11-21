@@ -1,4 +1,5 @@
 """Functions to test the spatial statistics."""
+
 from __future__ import annotations
 
 import os

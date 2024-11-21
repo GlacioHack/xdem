@@ -1,4 +1,5 @@
 """Functions to test the documentation."""
+
 import logging
 import os
 import platform

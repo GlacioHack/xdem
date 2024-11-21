@@ -10,6 +10,7 @@ demonstrated below!
 
 **References**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
 """
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np

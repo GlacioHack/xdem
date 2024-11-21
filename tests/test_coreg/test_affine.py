@@ -1,4 +1,5 @@
 """Functions to test the affine coregistrations."""
+
 from __future__ import annotations
 
 import warnings
@@ -409,7 +410,7 @@ class TestAffineCoreg:
         matrix[:3, 3] = shifts
 
         # Pass a centroid
-        centroid = [ref.bounds.left, ref.bounds.bottom, np.nanmean(ref)]
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
         ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
 
         # Convert to point cloud if input was point cloud

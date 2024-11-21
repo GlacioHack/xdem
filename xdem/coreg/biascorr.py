@@ -1,3 +1,20 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Bias corrections (i.e., non-affine coregistration) classes."""
 from __future__ import annotations
 
@@ -31,9 +48,9 @@ class BiasCorr(Coreg):
     def __init__(
         self,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
+        fit_func: (
+            Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
+        ) = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
@@ -444,9 +461,9 @@ class TerrainBias(BiasCorr):
         self,
         terrain_attribute: str = "maximum_curvature",
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
+        fit_func: (
+            Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
+        ) = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,

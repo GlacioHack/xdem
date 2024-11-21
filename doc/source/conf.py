@@ -26,8 +26,8 @@ import xdem
 # -- Project information -----------------------------------------------------
 
 project = "xDEM"
-copyright = "2020, GlacioHack"
-author = "xDEM contributors"
+copyright = "2024, xDEM developers"
+author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
 release = xdem.__version__

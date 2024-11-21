@@ -1,3 +1,20 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Terrain attribute calculations, such as slope, aspect, hillshade, curvature and ruggedness indexes."""
 from __future__ import annotations
 
@@ -604,8 +621,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
@@ -622,8 +638,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
-) -> list[NDArrayf]:
-    ...
+) -> list[NDArrayf]: ...
 
 
 @overload
@@ -640,8 +655,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
-) -> list[RasterType]:
-    ...
+) -> list[RasterType]: ...
 
 
 @overload
@@ -658,8 +672,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
-) -> RasterType:
-    ...
+) -> RasterType: ...
 
 
 def get_terrain_attribute(
@@ -907,7 +920,7 @@ def get_terrain_attribute(
         # (URL in get_quadric_coefficients() docstring)
         # Curvature = -2(D + E) * 100
         terrain_attributes["curvature"] = (
-            -2 * (terrain_attributes["surface_fit"][3, :, :] + terrain_attributes["surface_fit"][4, :, :]) * 100
+            -2.0 * (terrain_attributes["surface_fit"][3, :, :] + terrain_attributes["surface_fit"][4, :, :]) * 100
         )
 
     if make_planform_curvature:
@@ -1012,8 +1025,7 @@ def slope(
     method: str = "Horn",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
@@ -1022,8 +1034,7 @@ def slope(
     method: str = "Horn",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
-) -> Raster:
-    ...
+) -> Raster: ...
 
 
 def slope(
@@ -1064,8 +1075,7 @@ def aspect(
     dem: NDArrayf | MArrayf,
     method: str = "Horn",
     degrees: bool = True,
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
@@ -1073,8 +1083,7 @@ def aspect(
     dem: RasterType,
     method: str = "Horn",
     degrees: bool = True,
-) -> RasterType:
-    ...
+) -> RasterType: ...
 
 
 def aspect(
@@ -1124,8 +1133,7 @@ def hillshade(
     altitude: float = 45.0,
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
@@ -1136,8 +1144,7 @@ def hillshade(
     altitude: float = 45.0,
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
-) -> RasterType:
-    ...
+) -> RasterType: ...
 
 
 def hillshade(
@@ -1181,16 +1188,14 @@ def hillshade(
 def curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
 def curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
-) -> RasterType:
-    ...
+) -> RasterType: ...
 
 
 def curvature(
@@ -1228,16 +1233,14 @@ def curvature(
 
 
 @overload
-def planform_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf:
-    ...
+def planform_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf: ...
 
 
 @overload
 def planform_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
-) -> RasterType:
-    ...
+) -> RasterType: ...
 
 
 def planform_curvature(
@@ -1272,13 +1275,11 @@ def planform_curvature(
 
 
 @overload
-def profile_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf:
-    ...
+def profile_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf: ...
 
 
 @overload
-def profile_curvature(dem: RasterType, resolution: float | tuple[float, float] | None = None) -> RasterType:
-    ...
+def profile_curvature(dem: RasterType, resolution: float | tuple[float, float] | None = None) -> RasterType: ...
 
 
 def profile_curvature(
@@ -1312,13 +1313,11 @@ def profile_curvature(
 
 
 @overload
-def maximum_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf:
-    ...
+def maximum_curvature(dem: NDArrayf | MArrayf, resolution: float | tuple[float, float] | None = None) -> NDArrayf: ...
 
 
 @overload
-def maximum_curvature(dem: RasterType, resolution: float | tuple[float, float] | None = None) -> RasterType:
-    ...
+def maximum_curvature(dem: RasterType, resolution: float | tuple[float, float] | None = None) -> RasterType: ...
 
 
 def maximum_curvature(
@@ -1341,13 +1340,11 @@ def maximum_curvature(
 
 
 @overload
-def topographic_position_index(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
-    ...
+def topographic_position_index(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf: ...
 
 
 @overload
-def topographic_position_index(dem: RasterType, window_size: int = 3) -> RasterType:
-    ...
+def topographic_position_index(dem: RasterType, window_size: int = 3) -> RasterType: ...
 
 
 def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
@@ -1380,13 +1377,11 @@ def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size
 
 
 @overload
-def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str = "Riley", window_size: int = 3) -> NDArrayf:
-    ...
+def terrain_ruggedness_index(dem: NDArrayf | MArrayf, method: str = "Riley", window_size: int = 3) -> NDArrayf: ...
 
 
 @overload
-def terrain_ruggedness_index(dem: RasterType, method: str = "Riley", window_size: int = 3) -> RasterType:
-    ...
+def terrain_ruggedness_index(dem: RasterType, method: str = "Riley", window_size: int = 3) -> RasterType: ...
 
 
 def terrain_ruggedness_index(
@@ -1429,13 +1424,11 @@ def terrain_ruggedness_index(
 
 
 @overload
-def roughness(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf:
-    ...
+def roughness(dem: NDArrayf | MArrayf, window_size: int = 3) -> NDArrayf: ...
 
 
 @overload
-def roughness(dem: RasterType, window_size: int = 3) -> RasterType:
-    ...
+def roughness(dem: RasterType, window_size: int = 3) -> RasterType: ...
 
 
 def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
@@ -1471,16 +1464,14 @@ def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDA
 def rugosity(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
 def rugosity(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
-) -> RasterType:
-    ...
+) -> RasterType: ...
 
 
 def rugosity(
@@ -1515,13 +1506,11 @@ def rugosity(
 
 
 @overload
-def fractal_roughness(dem: NDArrayf | MArrayf, window_size: int = 13) -> NDArrayf:
-    ...
+def fractal_roughness(dem: NDArrayf | MArrayf, window_size: int = 13) -> NDArrayf: ...
 
 
 @overload
-def fractal_roughness(dem: RasterType, window_size: int = 13) -> RasterType:
-    ...
+def fractal_roughness(dem: RasterType, window_size: int = 13) -> RasterType: ...
 
 
 def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 13) -> NDArrayf | RasterType:

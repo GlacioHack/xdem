@@ -1,3 +1,20 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Coregistration pipelines pre-defined with convenient user inputs and parameters."""
 
 from __future__ import annotations
@@ -130,7 +147,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),
+    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),  # noqa
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -140,6 +157,7 @@ def dem_coregistration(
     dh_max: Number = None,
     nmad_factor: Number = 5,
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
+    random_state: int | np.random.Generator | None = None,
     plot: bool = False,
     out_fig: str = None,
 ) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
@@ -154,7 +172,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param src_dem_path: Path to the input DEM to be coregistered
     :param ref_dem_path: Path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param coreg_method: The xdem coregistration method, or pipeline.
+    :param coreg_method: Coregistration method or pipeline.
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
@@ -167,6 +185,7 @@ to mask inside (resp. outside) of the polygons. Defaults to masking inside polyg
     :param nmad_factor: Remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
     :param slope_lim: A list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
 be excluded.
+    :param random_state: Random state or seed number to use for subsampling and optimizer.
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
 
@@ -240,7 +259,7 @@ coregistration and 4) the inlier_mask used.
     med_orig, nmad_orig = np.median(inlier_data), nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    coreg_method.fit(ref_dem, src_dem, inlier_mask)
+    coreg_method.fit(ref_dem, src_dem, inlier_mask, random_state=random_state)
     dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only

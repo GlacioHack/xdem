@@ -1,4 +1,5 @@
 """Functions to test the coregistration workflows."""
+
 from __future__ import annotations
 
 import os
@@ -183,7 +184,6 @@ class TestWorkflows:
         with pytest.raises(ValueError, match=r"`slope_lim` must be a tuple/list of 2 elements in the range \[0-90\]"):
             create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
 
-    @pytest.mark.skip(reason="The test segfaults locally and in CI (2023-08-21)")  # type: ignore
     def test_dem_coregistration(self) -> None:
         """
         Test that the dem_coregistration function works expectedly.
@@ -195,7 +195,7 @@ class TestWorkflows:
         ref_dem, tba_dem, outlines = load_examples()
 
         # - Check that it works with default parameters - #
-        dem_coreg, coreg_method, coreg_stats, inlier_mask = dem_coregistration(tba_dem, ref_dem)
+        dem_coreg, coreg_method, coreg_stats, inlier_mask = dem_coregistration(tba_dem, ref_dem, random_state=42)
 
         # Assert that outputs have expected format
         assert isinstance(dem_coreg, xdem.DEM)
@@ -213,9 +213,11 @@ class TestWorkflows:
         # - no resampling
         coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
         inlier_mask = create_inlier_mask(tba_dem, ref_dem)
-        coreg_method_ref.fit(ref_dem.astype("float32"), tba_dem.astype("float32"), inlier_mask=inlier_mask)
-        dem_coreg_ref = coreg_method_ref.apply(tba_dem, resample=False)
-        assert dem_coreg == dem_coreg_ref
+        coreg_method_ref.fit(
+            ref_dem.astype(np.float32), tba_dem.astype(np.float32), inlier_mask=inlier_mask, random_state=42
+        )
+        dem_coreg_ref = coreg_method_ref.apply(tba_dem.astype(np.float32), resample=False)
+        assert dem_coreg.raster_equal(dem_coreg_ref, warn_failure_reason=True)
 
         # Assert that coregistration improved the residuals
         assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
@@ -223,14 +225,14 @@ class TestWorkflows:
 
         # - Check some alternative arguments - #
         # Test with filename instead of DEMs
-        dem_coreg2, _, _, _ = dem_coregistration(tba_dem.filename, ref_dem.filename)
-        assert dem_coreg2 == dem_coreg
+        dem_coreg2, _, _, _ = dem_coregistration(tba_dem.filename, ref_dem.filename, random_state=42)
+        assert dem_coreg2.raster_equal(dem_coreg, warn_failure_reason=True)
 
         # Test saving to file (mode = "w" is necessary to work on Windows)
         outfile = tempfile.NamedTemporaryFile(suffix=".tif", mode="w", delete=False)
-        dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name)
+        dem_coregistration(tba_dem, ref_dem, out_dem_path=outfile.name, random_state=42)
         dem_coreg2 = xdem.DEM(outfile.name)
-        assert dem_coreg2 == dem_coreg
+        assert dem_coreg2.raster_equal(dem_coreg, warn_failure_reason=True)
         outfile.close()
 
         # Test that shapefile is properly taken into account - inlier_mask should be False inside outlines
@@ -255,8 +257,8 @@ class TestWorkflows:
 
         # Testing different coreg method
         dem_coreg, coreg_method, coreg_stats, inlier_mask = dem_coregistration(
-            tba_dem, ref_dem, coreg_method=xdem.coreg.Tilt()
+            tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp()
         )
-        assert isinstance(coreg_method, xdem.coreg.Tilt)
+        assert isinstance(coreg_method, xdem.coreg.Deramp)
         assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
         assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values

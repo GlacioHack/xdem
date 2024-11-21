@@ -30,11 +30,16 @@ xDEM aims at making the analysis of digital elevation models **easy**, **modular
 
 ::::
 
-```{important}
+:::{admonition} Announcement
+:class: tip
 :class: margin
-xDEM ``v0.1`` is released, with nearly all features planned 4 years ago 🎉! We are now adding an **Xarray accessor**, and re-structuring the "Uncertainty" features for 2025. Note the version you are
-working on for reproducibility!
-```
+
+xDEM `v0.1` is released, with all core features envisioned at creation 4 years ago 🎉!
+
+We are **merging efforts with [demcompare](https://github.com/CNES/demcompare)** to combine the best of both tools into one!
+
+We are working on **adding a ``dem`` Xarray accessor** with native Dask support for 2025.
+:::
 
 xDEM is **tailored to perform quantitative analysis that implicitly understands the intricacies of elevation data**,
 both from a **georeferencing viewpoint** (vertical referencing, nodata values, projection, pixel interpretation) and
@@ -136,8 +141,16 @@ advanced_examples/index.rst
 api
 config
 release_notes
+```
+
+```{toctree}
+:caption: Project information
+:maxdepth: 2
+
 publis
 background
+authors
+license
 ```
 
 # Indices and tables
