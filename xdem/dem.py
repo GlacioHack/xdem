@@ -85,14 +85,9 @@ class DEM(SatelliteImage):  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["Ellipsoid"]
-        | Literal["EGM08"]
-        | Literal["EGM96"]
-        | VerticalCRS
-        | str
-        | pathlib.Path
-        | int
-        | None = None,
+        vcrs: (
+            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | VerticalCRS | str | pathlib.Path | int | None
+        ) = None,
         silent: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -184,14 +179,9 @@ class DEM(SatelliteImage):  # type: ignore
         area_or_point: Literal["Area", "Point"] | None = None,
         tags: dict[str, Any] = None,
         cast_nodata: bool = True,
-        vcrs: Literal["Ellipsoid"]
-        | Literal["EGM08"]
-        | Literal["EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        vcrs: (
+            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
     ) -> DEM:
         """Create a DEM from a numpy array and the georeferencing information.
 
@@ -279,56 +269,41 @@ class DEM(SatelliteImage):  # type: ignore
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: Literal[False] = False,
-    ) -> DEM:
-        ...
+    ) -> DEM: ...
 
     @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: Literal[True],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: bool = False,
-    ) -> DEM | None:
-        ...
+    ) -> DEM | None: ...
 
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-        | str
-        | pathlib.Path
-        | VerticalCRS
-        | int
-        | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         inplace: bool = False,
     ) -> DEM | None:
         """
@@ -497,7 +472,7 @@ class DEM(SatelliteImage):  # type: ignore
             bias_vars=bias_vars,
             **kwargs,
         )
-        return coreg_method.apply(self)
+        return coreg_method.apply(self)  # type: ignore
 
     def estimate_uncertainty(
         self,

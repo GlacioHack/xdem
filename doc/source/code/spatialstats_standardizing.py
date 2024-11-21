@@ -1,4 +1,5 @@
 """Documentation plot illustrating standardization of a distribution"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 

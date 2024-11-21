@@ -1,4 +1,5 @@
 """Functions to test the coregistration workflows."""
+
 from __future__ import annotations
 
 import os

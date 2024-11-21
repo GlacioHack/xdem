@@ -19,6 +19,7 @@ We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_ and robust s
 
 **Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
+
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 8

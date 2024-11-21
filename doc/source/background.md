@@ -130,4 +130,4 @@ And finally:
 - **Reproducibility:** all code should be version-controlled and release-based, to ensure consistency of dependent
   packages and works;
 
-- **Open-source:** all code should be accessible and re-usable to anyone in the community, for transparency and open governance.
+- **Open-source:** all code should be accessible and reusable to anyone in the community, for transparency and open governance.

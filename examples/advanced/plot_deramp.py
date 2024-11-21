@@ -7,6 +7,7 @@ In xDEM, this approach is implemented through the :class:`xdem.coreg.Deramp` cla
 
 See also the :ref:`deramp` section in feature pages.
 """
+
 import geoutils as gu
 import numpy as np
 

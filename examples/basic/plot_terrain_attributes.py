@@ -12,6 +12,7 @@ For more information, see the :ref:`terrain-attributes` feature page.
 `Riley et al. (1999) <http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf>`_ (terrain
 ruggedness index), `Jenness (2004) <https://doi.org/10.2193/0091-7648(2004)032%5B0829:CLSAFD%5D2.0.CO;2>`_ (rugosity).
 """
+
 # sphinx_gallery_thumbnail_number = 1
 import matplotlib.pyplot as plt
 

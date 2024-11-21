@@ -9,6 +9,7 @@ See also the :ref:`terrain-attributes` feature page.
 
 **References:** `Horn (1981) <https://ieeexplore.ieee.org/document/1456186>`_, `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 """
+
 import matplotlib.pyplot as plt
 import numpy as np
 

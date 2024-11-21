@@ -49,7 +49,7 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     """Short test function to check equality of coreg dictionary values."""
 
     # Different equality check based on input: number, callable, array, dataframe
-    if type(input1) != type(input2):
+    if not isinstance(input1, type(input2)):
         return False
     elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
         return input1 == input2
@@ -466,12 +466,16 @@ class TestCoregClass:
         assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
         assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
         assert all(
-            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k])
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
+            )
             for k in coreg_fit_and_apply.pipeline[0].meta.keys()
         )
         assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
         assert all(
-            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k])
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
+            )
             for k in coreg_fit_and_apply.pipeline[1].meta.keys()
         )
 
@@ -702,9 +706,7 @@ class TestCoregPipeline:
         """Test pipelines with all combinations of coregistration subclasses with bias variables"""
 
         # Create a pipeline from one affine and one biascorr methods
-        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])
-        print(pipeline.pipeline[0].meta["inputs"]["random"]["subsample"])
-        print(pipeline.pipeline[1].meta["inputs"]["random"]["subsample"])
+        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])  # type: ignore
         bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
         pipeline.fit(**self.fit_params, bias_vars=bias_vars, subsample=5000, random_state=42)
 

@@ -1,4 +1,5 @@
 """Plot example of Dowd variogram as robust estimator for guide page."""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from skgstat import OrdinaryKriging, Variogram
