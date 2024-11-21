@@ -45,7 +45,7 @@ repos:
                   # More than one argument in the second list, so need to pass arguments as below (and -- to finish)
                   args: [
                           '--max-line-length', '120',  # we can write dicts however we want
-                          '--extend-ignore', 'E203,C408', # flake8 disagrees with black, so this should be ignored.
+                          '--extend-ignore', 'E203,C408,B028', # flake8 disagrees with black, so this should be ignored.
                           '--'
                   ]
                   additional_dependencies:
