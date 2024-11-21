@@ -1,4 +1,5 @@
 """Plot example of NMAD/median as robust estimators for guide page."""
+
 import matplotlib.pyplot as plt
 import numpy as np
 

@@ -10,6 +10,7 @@ See also the :ref:`nuthkaab` section in feature pages.
 
 **Reference:** `Nuth and Kääb (2011) <https:https://doi.org/10.5194/tc-5-271-2011>`_.
 """
+
 import geoutils as gu
 import numpy as np
 

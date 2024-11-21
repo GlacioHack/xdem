@@ -1,4 +1,5 @@
 """ Functions to test the DEM tools."""
+
 from __future__ import annotations
 
 import os

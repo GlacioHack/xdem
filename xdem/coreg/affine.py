@@ -205,8 +205,8 @@ def _subsample_on_mask_interpolator(
     else:
 
         # Identify which dataset is point or raster
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         # Check which input is reference, to compute the dh always in the same direction (ref minus tba) further below
         ref = "point" if isinstance(ref_elev, gpd.GeoDataFrame) else "raster"
 

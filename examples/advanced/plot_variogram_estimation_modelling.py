@@ -20,6 +20,7 @@ robustness of our results using :func:`~xdem.spatialstats.patches_method`, an in
 
 **References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
+
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 6

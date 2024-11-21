@@ -1,4 +1,5 @@
 """Plot an example of local hypsometric interpolation at Scott Turnerbreen, Svalbard."""
+
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
