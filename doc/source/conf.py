@@ -118,7 +118,6 @@ plot_formats = [(".png", 600)]
 inheritance_alias = {
     "geoutils.georaster.raster.Raster": "geoutils.Raster",
     "geoutils.georaster.raster.Mask": "geoutils.Mask",
-    "geoutils.georaster.satimg.SatelliteImage": "geoutils.SatelliteImage",
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
     "xdem.coreg.base.Coreg": "xdem.Coreg",

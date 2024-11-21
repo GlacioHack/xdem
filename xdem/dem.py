@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DEM class and functions."""
+"""This module defines the DEM class."""
 from __future__ import annotations
 
 import pathlib
@@ -27,7 +27,7 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geoutils import SatelliteImage
+from geoutils import Raster
 from geoutils.raster import Mask, RasterType
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
@@ -53,7 +53,7 @@ from xdem.vcrs import (
 dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
 
 
-class DEM(SatelliteImage):  # type: ignore
+class DEM(Raster):  # type: ignore
     """
     The digital elevation model.
 
@@ -86,11 +86,12 @@ class DEM(SatelliteImage):  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: (
-            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | VerticalCRS | str | pathlib.Path | int | None
-        ) = None,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
+        load_data: bool = False,
+        parse_sensor_metadata: bool = False,
         silent: bool = True,
-        **kwargs: Any,
+        downsample: int = 1,
+        nodata: int | float | None = None,
     ) -> None:
         """
         Instantiate a digital elevation model.
@@ -98,12 +99,16 @@ class DEM(SatelliteImage):  # type: ignore
         The vertical reference of the DEM can be defined by passing the `vcrs` argument.
         Otherwise, a vertical reference is tentatively parsed from the DEM product name.
 
-        Inherits all attributes from the :class:`geoutils.Raster` and :class:`geoutils.SatelliteImage` classes.
+        Inherits all attributes from the :class:`geoutils.Raster` class.
 
         :param filename_or_dataset: The filename of the dataset.
         :param vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+        :param load_data: Whether to load the array during instantiation. Default is False.
+        :param parse_sensor_metadata: Whether to parse sensor metadata from filename and similarly-named metadata files.
         :param silent: Whether to display vertical reference parsing.
+        :param downsample: Downsample the array once loaded by a round factor. Default is no downsampling.
+        :param nodata: Nodata value to be used (overwrites the metadata). Default reads from metadata.
         """
 
         self.data: NDArrayf
@@ -116,11 +121,18 @@ class DEM(SatelliteImage):  # type: ignore
             for key in filename_or_dataset.__dict__:
                 setattr(self, key, filename_or_dataset.__dict__[key])
             return
-        # Else rely on parent SatelliteImage class options (including raised errors)
+        # Else rely on parent Raster class options (including raised errors)
         else:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
-                super().__init__(filename_or_dataset, silent=silent, **kwargs)
+                super().__init__(
+                    filename_or_dataset,
+                    load_data=load_data,
+                    parse_sensor_metadata=parse_sensor_metadata,
+                    silent=silent,
+                    downsample=downsample,
+                    nodata=nodata,
+                )
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
         if self.bands is not None and len(self.bands) > 1:
@@ -147,8 +159,8 @@ class DEM(SatelliteImage):  # type: ignore
                 vcrs = vcrs_from_crs
 
         # If no vertical CRS was provided by the user or defined in the CRS
-        if vcrs is None:
-            vcrs = _parse_vcrs_name_from_product(self.product)
+        if vcrs is None and "product" in self.tags:
+            vcrs = _parse_vcrs_name_from_product(self.tags["product"])
 
         # If a vertical reference was parsed or provided by user
         if vcrs is not None:
@@ -200,7 +212,7 @@ class DEM(SatelliteImage):  # type: ignore
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
-        rast = SatelliteImage.from_array(
+        rast = Raster.from_array(
             data=data,
             transform=transform,
             crs=crs,

@@ -36,8 +36,8 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 import scipy.optimize
+from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _bounds, _coords, _res
-from geoutils.raster.interpolate import _interp_points
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf

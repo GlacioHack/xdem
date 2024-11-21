@@ -50,17 +50,17 @@ import scipy.ndimage
 import scipy.optimize
 import skimage.transform
 from geoutils._typing import Number
-from geoutils.misc import resampling_method_from_str
-from geoutils.raster import (
-    Mask,
-    RasterType,
-    get_array_and_mask,
-    raster,
-    subdivide_array,
+from geoutils.interface.gridding import _grid_pointcloud
+from geoutils.interface.interpolate import _interp_points
+from geoutils.raster import Mask, RasterType, raster, subdivide_array
+from geoutils.raster.array import get_array_and_mask
+from geoutils.raster.georeferencing import (
+    _bounds,
+    _cast_pixel_interpretation,
+    _coords,
+    _res,
 )
-from geoutils.raster.georeferencing import _bounds, _coords, _res
-from geoutils.raster.interpolate import _interp_points
-from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
+from geoutils.raster.geotransformations import _resampling_method_from_str, _translate
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -541,7 +541,7 @@ def _postprocess_coreg_apply(
     """
 
     # Define resampling
-    resampling = resampling if isinstance(resampling, rio.warp.Resampling) else resampling_method_from_str(resampling)
+    resampling = resampling if isinstance(resampling, rio.warp.Resampling) else _resampling_method_from_str(resampling)
 
     # Distribute between raster and point apply methods
     if isinstance(applied_elev, np.ndarray):
@@ -1264,7 +1264,7 @@ def _apply_matrix_rst(
 
     # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
     if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
-        new_transform = _shift_transform(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+        new_transform = _translate(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
         return dem + matrix[2, 3], new_transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
@@ -1280,7 +1280,6 @@ def _apply_matrix_rst(
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
-    from geoutils.pointcloud import _grid_pointcloud
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
