@@ -1,7 +1,7 @@
 import os
 
 # Path to the license header
-HEADER_FILE = "license-header.txt"
+HEADER_FILE = os.path.join(os.path.dirname(__file__), "license-header.txt")
 
 # read license header
 with open(HEADER_FILE) as file:
@@ -32,7 +32,7 @@ def apply_license_header_to_all_py_files(root_dir):
                 add_license_header(file_path, license_header)
 
 
-# Source repertory
+# Source directory
 PROJECT_SRC = "xdem"
 
 # Add header to every source files
