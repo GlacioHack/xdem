@@ -51,8 +51,9 @@ timestamps = [datetime(1990, 8, 1), datetime(2009, 8, 1), datetime(2060, 8, 1)]
 # 2. Two glacier outline timestamps from 1990 and 2009
 #
 
-demcollection = xdem.DEMCollection(dems=[dem_1990, dem_2009, dem_2060], timestamps=timestamps,
-                                   outlines=outlines, reference_dem=1)
+demcollection = xdem.DEMCollection(
+    dems=[dem_1990, dem_2009, dem_2060], timestamps=timestamps, outlines=outlines, reference_dem=1
+)
 
 # %%
 # We can generate :class:`xdem.dDEM` objects using :func:`xdem.DEMCollection.subtract_dems`.
