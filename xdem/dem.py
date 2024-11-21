@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-"""This module defines the DEM class."""
-=======
 # Copyright (c) 2024 xDEM developers
 #
 # This file is part of xDEM project:
@@ -18,8 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""DEM class and functions."""
->>>>>>> upstream/main
+"""This module defines the DEM class."""
 from __future__ import annotations
 
 import pathlib
