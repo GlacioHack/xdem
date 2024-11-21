@@ -2,6 +2,8 @@
 Working with a collection of DEMs
 =================================
 
+.. caution:: This functionality might be removed in future package versions.
+
 Oftentimes, more than two timestamps (DEMs) are analyzed simultaneously.
 One single dDEM only captures one interval, so multiple dDEMs have to be created.
 In addition, if multiple masking polygons exist (e.g. glacier outlines from multiple years), these should be accounted for properly.
@@ -21,8 +23,8 @@ import xdem
 # We can load the DEMs as usual, but with the addition that the ``datetime`` argument should be filled.
 # Since multiple DEMs are in question, the "time dimension" is what keeps them apart.
 
-dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
-dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), datetime=datetime(1990, 8, 1))
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 
 
 # %%
@@ -39,8 +41,8 @@ outlines = {
 
 # Fake a 2060 DEM by assuming twice the change from 1990-2009 between 2009 and 2060
 dem_2060 = dem_2009 + (dem_2009 - dem_1990).data * 3
-dem_2060.datetime = datetime(2060, 8, 1)
 
+timestamps = [datetime(1990, 8, 1), datetime(2009, 8, 1), datetime(2060, 8, 1)]
 
 # %%
 # Now, all data are ready to be collected in an :class:`xdem.DEMCollection` object.
@@ -49,8 +51,8 @@ dem_2060.datetime = datetime(2060, 8, 1)
 # 2. Two glacier outline timestamps from 1990 and 2009
 #
 
-demcollection = xdem.DEMCollection(dems=[dem_1990, dem_2009, dem_2060], outlines=outlines, reference_dem=1)
-
+demcollection = xdem.DEMCollection(dems=[dem_1990, dem_2009, dem_2060], timestamps=timestamps,
+                                   outlines=outlines, reference_dem=1)
 
 # %%
 # We can generate :class:`xdem.dDEM` objects using :func:`xdem.DEMCollection.subtract_dems`.

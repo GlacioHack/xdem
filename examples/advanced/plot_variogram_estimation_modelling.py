@@ -39,6 +39,7 @@ mask_glacier = glacier_outlines.create_mask(dh)
 
 # %%
 # We exclude values on glacier terrain in order to isolate stable terrain, our proxy for elevation errors.
+dh.load()
 dh.set_mask(mask_glacier)
 
 # %%
