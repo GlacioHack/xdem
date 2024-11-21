@@ -1,4 +1,5 @@
 """ Functions to test the DEM tools."""
+
 from __future__ import annotations
 
 import os
@@ -39,18 +40,11 @@ class TestDEM:
         dem3 = DEM(r)
         assert isinstance(dem3, DEM)
 
-        # From SatelliteImage
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Parse metadata from file not implemented")
-            img = gu.SatelliteImage(fn_img)
-        dem4 = DEM(img)
-        assert isinstance(dem4, DEM)
-
-        list_dem = [dem, dem2, dem3, dem4]
+        list_dem = [dem, dem2, dem3]
 
         # Check all attributes
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + gu.raster.satimg.satimg_attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
             assert all(at == attrs_per_dem[0] for at in attrs_per_dem)
@@ -59,7 +53,6 @@ class TestDEM:
             (
                 np.array_equal(dem.data, dem2.data, equal_nan=True),
                 np.array_equal(dem2.data, dem3.data, equal_nan=True),
-                np.array_equal(dem3.data, dem4.data, equal_nan=True),
             )
         )
 
@@ -67,7 +60,6 @@ class TestDEM:
             (
                 np.all(dem.data.mask == dem2.data.mask),
                 np.all(dem2.data.mask == dem3.data.mask),
-                np.all(dem3.data.mask == dem4.data.mask),
             )
         )
 
@@ -192,7 +184,7 @@ class TestDEM:
 
         # using list directly available in Class
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + gu.raster.satimg.satimg_attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)
 

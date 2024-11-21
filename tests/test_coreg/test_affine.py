@@ -1,4 +1,5 @@
 """Functions to test the affine coregistrations."""
+
 from __future__ import annotations
 
 import warnings
@@ -12,7 +13,7 @@ import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
-from geoutils.raster.raster import _shift_transform
+from geoutils.raster.geotransformations import _translate
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
@@ -128,7 +129,7 @@ class TestAffineCoreg:
 
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
-        dst_transform = _shift_transform(transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
+        dst_transform = _translate(transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
         output = _reproject_horizontal_shift_samecrs(
             raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform
         )
@@ -409,7 +410,7 @@ class TestAffineCoreg:
         matrix[:3, 3] = shifts
 
         # Pass a centroid
-        centroid = [ref.bounds.left, ref.bounds.bottom, np.nanmean(ref)]
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
         ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
 
         # Convert to point cloud if input was point cloud

@@ -53,9 +53,9 @@ import matplotlib.pyplot as plt
 import xdem
 
 # Load a reference DEM from 2009
-dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), datetime=datetime(2009, 8, 1))
+dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 # Load a DEM from 1990
-dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"), datetime=datetime(1990, 8, 1))
+dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 # Load glacier outlines from 1990.
 glaciers_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 glaciers_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
@@ -76,7 +76,7 @@ dem_1990 = dem_1990.crop(bounds)
 We create a difference of DEMs object {class}`xdem.ddem.dDEM` to experiment on:
 
 ```{code-cell} ipython3
-ddem = xdem.dDEM(raster=dem_2009 - dem_1990, start_time=dem_1990.datetime, end_time=dem_2009.datetime)
+ddem = xdem.dDEM(raster=dem_2009 - dem_1990, start_time=datetime(1990, 8, 1), end_time=datetime(2009, 8, 1))
 
 # The example DEMs are void-free, so let's make some random voids.
 # Introduce a fifth of nans randomly throughout the dDEM.

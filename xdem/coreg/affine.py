@@ -1,10 +1,11 @@
 # Copyright (c) 2024 xDEM developers
 #
-# This file is part of xDEM project:
+# This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
+#
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
@@ -35,8 +36,8 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 import scipy.optimize
+from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _bounds, _coords, _res
-from geoutils.raster.interpolate import _interp_points
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
@@ -205,8 +206,8 @@ def _subsample_on_mask_interpolator(
     else:
 
         # Identify which dataset is point or raster
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         # Check which input is reference, to compute the dh always in the same direction (ref minus tba) further below
         ref = "point" if isinstance(ref_elev, gpd.GeoDataFrame) else "raster"
 

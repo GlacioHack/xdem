@@ -1,10 +1,11 @@
 # Copyright (c) 2024 xDEM developers
 #
-# This file is part of xDEM project:
+# This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
+#
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
@@ -49,17 +50,17 @@ import scipy.ndimage
 import scipy.optimize
 import skimage.transform
 from geoutils._typing import Number
-from geoutils.misc import resampling_method_from_str
-from geoutils.raster import (
-    Mask,
-    RasterType,
-    get_array_and_mask,
-    raster,
-    subdivide_array,
+from geoutils.interface.gridding import _grid_pointcloud
+from geoutils.interface.interpolate import _interp_points
+from geoutils.raster import Mask, RasterType, raster, subdivide_array
+from geoutils.raster.array import get_array_and_mask
+from geoutils.raster.georeferencing import (
+    _bounds,
+    _cast_pixel_interpretation,
+    _coords,
+    _res,
 )
-from geoutils.raster.georeferencing import _bounds, _coords, _res
-from geoutils.raster.interpolate import _interp_points
-from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
+from geoutils.raster.geotransformations import _resampling_method_from_str, _translate
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -540,7 +541,7 @@ def _postprocess_coreg_apply(
     """
 
     # Define resampling
-    resampling = resampling if isinstance(resampling, rio.warp.Resampling) else resampling_method_from_str(resampling)
+    resampling = resampling if isinstance(resampling, rio.warp.Resampling) else _resampling_method_from_str(resampling)
 
     # Distribute between raster and point apply methods
     if isinstance(applied_elev, np.ndarray):
@@ -662,8 +663,8 @@ def _get_subsample_mask_pts_rst(
     else:
 
         # Interpolate inlier mask and bias vars at point coordinates
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # Get coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
@@ -726,7 +727,8 @@ def _subsample_on_mask(
     else:
 
         # Identify which dataset is point or raster
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # Subsample point coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
@@ -734,12 +736,16 @@ def _subsample_on_mask(
 
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
+        sub_rst = _interp_points(array=rst_elev, transform=transform, points=pts, area_or_point=area_or_point)
+        sub_pts = pts_elev[z_name].values[sub_mask]
+
+        # Assign arrays depending on which one is the reference
         if isinstance(ref_elev, gpd.GeoDataFrame):
-            sub_tba = _interp_points(array=tba_elev, transform=transform, points=pts, area_or_point=area_or_point)
-            sub_ref = ref_elev[z_name].values[sub_mask]
+            sub_ref = sub_pts
+            sub_tba = sub_rst
         else:
-            sub_ref = _interp_points(array=ref_elev, transform=transform, points=pts, area_or_point=area_or_point)
-            sub_tba = tba_elev[z_name].values[sub_mask]
+            sub_ref = sub_rst
+            sub_tba = sub_pts
 
         # Interpolate arrays of bias variables to the subsample point coordinates
         if aux_vars is not None:
@@ -807,8 +813,7 @@ def _bin_or_and_fit_nd(
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
     **kwargs: Any,
-) -> tuple[None, tuple[NDArrayf, Any]]:
-    ...
+) -> tuple[None, tuple[NDArrayf, Any]]: ...
 
 
 @overload
@@ -819,8 +824,7 @@ def _bin_or_and_fit_nd(
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
     **kwargs: Any,
-) -> tuple[pd.DataFrame, None]:
-    ...
+) -> tuple[pd.DataFrame, None]: ...
 
 
 @overload
@@ -831,8 +835,7 @@ def _bin_or_and_fit_nd(
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
     **kwargs: Any,
-) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]:
-    ...
+) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]: ...
 
 
 def _bin_or_and_fit_nd(
@@ -1261,7 +1264,7 @@ def _apply_matrix_rst(
 
     # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
     if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
-        new_transform = _shift_transform(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+        new_transform = _translate(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
         return dem + matrix[2, 3], new_transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
@@ -1277,7 +1280,6 @@ def _apply_matrix_rst(
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
-    from geoutils.pointcloud import _grid_pointcloud
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
@@ -1294,8 +1296,7 @@ def _reproject_horizontal_shift_samecrs(
     *,
     return_interpolator: Literal[False] = False,
     resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> NDArrayf:
-    ...
+) -> NDArrayf: ...
 
 
 @overload
@@ -1306,8 +1307,7 @@ def _reproject_horizontal_shift_samecrs(
     *,
     return_interpolator: Literal[True],
     resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
-    ...
+) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]: ...
 
 
 def _reproject_horizontal_shift_samecrs(
@@ -1364,8 +1364,7 @@ def apply_matrix(
     transform: rio.transform.Affine = None,
     z_name: str = "z",
     **kwargs: Any,
-) -> tuple[NDArrayf, affine.Affine]:
-    ...
+) -> tuple[NDArrayf, affine.Affine]: ...
 
 
 @overload
@@ -1379,8 +1378,7 @@ def apply_matrix(
     transform: rio.transform.Affine = None,
     z_name: str = "z",
     **kwargs: Any,
-) -> gu.Raster | gpd.GeoDataFrame:
-    ...
+) -> gu.Raster | gpd.GeoDataFrame: ...
 
 
 def apply_matrix(
@@ -1739,12 +1737,10 @@ class Coreg:
         return self._meta
 
     @overload
-    def info(self, as_str: Literal[False] = ...) -> None:
-        ...
+    def info(self, as_str: Literal[False] = ...) -> None: ...
 
     @overload
-    def info(self, as_str: Literal[True]) -> str:
-        ...
+    def info(self, as_str: Literal[True]) -> str: ...
 
     def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
@@ -2043,8 +2039,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -2057,8 +2052,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -2071,8 +2065,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
+    ) -> RasterType | gpd.GeoDataFrame: ...
 
     def apply(
         self,
@@ -2156,8 +2149,7 @@ class Coreg:
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
     @overload
     def fit_and_apply(
@@ -2177,8 +2169,7 @@ class Coreg:
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def fit_and_apply(
@@ -2198,8 +2189,7 @@ class Coreg:
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
+    ) -> RasterType | gpd.GeoDataFrame: ...
 
     def fit_and_apply(
         self,
@@ -2332,8 +2322,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
-        ...
+    ) -> list[np.floating[Any] | float | np.integer[Any] | int]: ...
 
     @overload
     def error(
@@ -2345,8 +2334,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int:
-        ...
+    ) -> np.floating[Any] | float | np.integer[Any] | int: ...
 
     def error(
         self,
@@ -2708,12 +2696,10 @@ class CoregPipeline(Coreg):
         return f"Pipeline: {self.pipeline}"
 
     @overload
-    def info(self, as_str: Literal[False] = ...) -> None:
-        ...
+    def info(self, as_str: Literal[False] = ...) -> None: ...
 
     @overload
-    def info(self, as_str: Literal[True]) -> str:
-        ...
+    def info(self, as_str: Literal[True]) -> str: ...
 
     def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
@@ -2881,8 +2867,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -2895,8 +2880,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -2909,8 +2893,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
+    ) -> RasterType | gpd.GeoDataFrame: ...
 
     # Need to override base Coreg method to work on pipeline steps
     def apply(
@@ -2974,7 +2957,7 @@ class CoregPipeline(Coreg):
         else:
             return applied_elev, out_transform
 
-    def __iter__(self) -> Generator[Coreg, None, None]:
+    def __iter__(self) -> Generator[Coreg]:
         """Iterate over the pipeline steps."""
         yield from self.pipeline
 

@@ -17,7 +17,7 @@ dependencies:
   - rioxarray=0.*
   - geocube
   - dask
-  - geoutils=0.1.10
+  - geoutils=0.1.12
   - pip
 
    # To run CI against latest GeoUtils

@@ -1,4 +1,5 @@
 """Plot an example of spatial interpolation of randomly generated errors."""
+
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np

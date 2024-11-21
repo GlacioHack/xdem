@@ -3,7 +3,7 @@ ci:
     autoupdate_schedule: quarterly
 repos:
         - repo: https://github.com/pre-commit/pre-commit-hooks
-          rev: v4.3.0
+          rev: v5.0.0
           hooks:
                 - id: check-yaml
                 - id: end-of-file-fixer
@@ -13,7 +13,7 @@ repos:
 
         # Fix common spelling mistakes
         - repo: https://github.com/codespell-project/codespell
-          rev: v2.2.1
+          rev: v2.3.0
           hooks:
                 - id: codespell
                   args: [
@@ -32,30 +32,30 @@ repos:
 
         # Format the code aggressively using black
         - repo: https://github.com/psf/black
-          rev: 22.10.0
+          rev: 24.10.0
           hooks:
                   - id: black
                     args: [--line-length=120]
 
         # Lint the code using flake8
         - repo: https://github.com/pycqa/flake8
-          rev: 3.9.2
+          rev: 7.1.1
           hooks:
                 - id: flake8
                   # More than one argument in the second list, so need to pass arguments as below (and -- to finish)
                   args: [
                           '--max-line-length', '120',  # we can write dicts however we want
-                          '--extend-ignore', 'E203,C408', # flake8 disagrees with black, so this should be ignored.
+                          '--extend-ignore', 'E203,C408,B028', # flake8 disagrees with black, so this should be ignored.
                           '--'
                   ]
                   additional_dependencies:
-                          - flake8-comprehensions==3.1.0
-                          - flake8-bugbear==21.3.2
+                          - flake8-comprehensions
+                          - flake8-bugbear
                   files: ^(xdem|tests)
 
         # Lint the code using mypy
         - repo: https://github.com/pre-commit/mirrors-mypy
-          rev: v0.982
+          rev: v1.13.0
           hooks:
                 - id: mypy
                   args: [
@@ -72,27 +72,27 @@ repos:
                         --disable-error-code=no-any-return
 
                   ]
-                  additional_dependencies: [tokenize-rt==3.2.0, numpy==1.22]
+                  additional_dependencies: [tokenize-rt==3.2.0, numpy==1.26]
                   files: ^(xdem|tests|doc/code)
 
 
         # Sort imports using isort
         - repo: https://github.com/PyCQA/isort
-          rev: 5.12.0
+          rev: 5.13.2
           hooks:
                   - id: isort
                     args: ["--profile", "black"]
 
         # Automatically upgrade syntax to a minimum version
         - repo: https://github.com/asottile/pyupgrade
-          rev: v3.1.0
+          rev: v3.19.0
           hooks:
                 - id: pyupgrade
                   args: [--py37-plus]
 
         # Various formattings
         - repo: https://github.com/pre-commit/pygrep-hooks
-          rev: v1.9.0
+          rev: v1.10.0
           hooks:
                 # Single backticks should apparently not be used
                 - id: rst-backticks
@@ -111,7 +111,7 @@ repos:
 
         # Add custom regex lints (see .relint.yml)
         - repo: https://github.com/codingjoe/relint
-          rev: 2.0.0
+          rev: 3.3.1
           hooks:
                 - id: relint
         - repo: local
@@ -128,8 +128,8 @@ repos:
         # Add license header to the source files
         - repo: local
           hooks:
-            - id: add-license_header
+            - id: add-license-header
               name: Add License Header
-              entry: python apply_license_header.py
+              entry: python .github/scripts/apply_license_header.py
               language: python
               files: \.py$

@@ -1,10 +1,11 @@
 # Copyright (c) 2024 xDEM developers
 #
-# This file is part of xDEM project:
+# This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
+#
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
@@ -147,7 +148,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),
+    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),  # noqa
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -172,7 +173,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param src_dem_path: Path to the input DEM to be coregistered
     :param ref_dem_path: Path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param coreg_method: The xdem coregistration method, or pipeline.
+    :param coreg_method: Coregistration method or pipeline.
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.

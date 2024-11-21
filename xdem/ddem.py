@@ -1,10 +1,11 @@
 # Copyright (c) 2024 xDEM developers
 #
-# This file is part of xDEM project:
+# This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
+#
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
@@ -26,7 +27,8 @@ import numpy as np
 import pyogrio
 import rasterio as rio
 import shapely
-from geoutils.raster import Raster, RasterType, get_array_and_mask
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.array import get_array_and_mask
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 

@@ -1,4 +1,5 @@
 """Code example for spatial statistics"""
+
 import geoutils as gu
 import numpy as np
 
