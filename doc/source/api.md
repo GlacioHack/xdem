@@ -231,6 +231,14 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     coreg.Coreg.meta
 ```
 
+#### Quick coregistration
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    coreg.workflows.dem_coregistration
+```
+
 ### Affine coregistration
 
 #### Parent object (to define custom methods)
