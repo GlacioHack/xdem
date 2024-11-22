@@ -21,6 +21,7 @@ from scipy.ndimage import binary_dilation
 import xdem
 from xdem import coreg, examples, misc, spatialstats
 from xdem._typing import NDArrayf
+from xdem.coreg import BlockwiseCoreg
 from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
 
@@ -928,7 +929,7 @@ class TestBlockwiseCoreg:
         assert stats.shape[0] < 64
 
         # Statistics are only calculated on finite values, so all of these should be finite as well.
-        assert np.all(np.isfinite(stats))
+        assert np.all(np.isfinite(stats) | np.isnan(stats))
 
         # Copy the TBA DEM and set a square portion to nodata
         tba = self.tba.copy()
@@ -951,6 +952,39 @@ class TestBlockwiseCoreg:
         ddem_pre = (tba - self.ref).data.compressed()
         assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
         # assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
+
+    def test_failed_chunks_return_nan(self) -> None:
+        blockwise = BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=4)
+        blockwise.fit(**self.fit_params)
+        # Missing chunk 1 to simulate failure
+        blockwise._meta["step_meta"] = [meta for meta in blockwise._meta["step_meta"] if meta.get("i") != 1]
+
+        result_df = blockwise.stats()
+
+        # Check that chunk 1 (index 1) has NaN values for the statistics
+        assert np.isnan(result_df.loc[1, "inlier_count"])
+        assert np.isnan(result_df.loc[1, "nmad"])
+        assert np.isnan(result_df.loc[1, "median"])
+        assert np.isnan(result_df.loc[1, "center_x"])
+        assert np.isnan(result_df.loc[1, "center_y"])
+        assert np.isnan(result_df.loc[1, "center_z"])
+        assert np.isnan(result_df.loc[1, "x_off"])
+        assert np.isnan(result_df.loc[1, "y_off"])
+        assert np.isnan(result_df.loc[1, "z_off"])
+
+    def test_successful_chunks_return_values(self) -> None:
+        blockwise = BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=2)
+        blockwise.fit(**self.fit_params)
+        result_df = blockwise.stats()
+
+        # Check that the correct statistics are returned for successful chunks
+        assert result_df.loc[0, "inlier_count"] == blockwise._meta["step_meta"][0]["inlier_count"]
+        assert result_df.loc[0, "nmad"] == blockwise._meta["step_meta"][0]["nmad"]
+        assert result_df.loc[0, "median"] == blockwise._meta["step_meta"][0]["median"]
+
+        assert result_df.loc[1, "inlier_count"] == blockwise._meta["step_meta"][1]["inlier_count"]
+        assert result_df.loc[1, "nmad"] == blockwise._meta["step_meta"][1]["nmad"]
+        assert result_df.loc[1, "median"] == blockwise._meta["step_meta"][1]["median"]
 
 
 class TestAffineManipulation:
