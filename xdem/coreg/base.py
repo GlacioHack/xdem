@@ -3307,28 +3307,45 @@ class BlockwiseCoreg(Coreg):
         :raises ValueError: If no coregistration results exist yet.
 
         :returns: A dataframe of statistics for each chunk.
+        If a chunk fails (not present in `chunk_meta`), the statistics will be returned as `NaN`.
         """
         points = self.to_points()
 
         chunk_meta = {meta["i"]: meta for meta in self.meta["step_meta"]}
 
         statistics: list[dict[str, Any]] = []
+        cpt_in_chunk = 0
         for i in range(points.shape[0]):
             if i not in chunk_meta:
-                continue
-            statistics.append(
-                {
-                    "center_x": points[i, 0, 0],
-                    "center_y": points[i, 1, 0],
-                    "center_z": points[i, 2, 0],
-                    "x_off": points[i, 0, 1] - points[i, 0, 0],
-                    "y_off": points[i, 1, 1] - points[i, 1, 0],
-                    "z_off": points[i, 2, 1] - points[i, 2, 0],
-                    "inlier_count": chunk_meta[i]["inlier_count"],
-                    "nmad": chunk_meta[i]["nmad"],
-                    "median": chunk_meta[i]["median"],
-                }
-            )
+                # For missing chunks, return NaN for all stats
+                statistics.append(
+                    {
+                        "center_x": np.nan,
+                        "center_y": np.nan,
+                        "center_z": np.nan,
+                        "x_off": np.nan,
+                        "y_off": np.nan,
+                        "z_off": np.nan,
+                        "inlier_count": np.nan,
+                        "nmad": np.nan,
+                        "median": np.nan,
+                    }
+                )
+            else:
+                statistics.append(
+                    {
+                        "center_x": points[cpt_in_chunk, 0, 0],
+                        "center_y": points[cpt_in_chunk, 1, 0],
+                        "center_z": points[cpt_in_chunk, 2, 0],
+                        "x_off": points[cpt_in_chunk, 0, 1] - points[cpt_in_chunk, 0, 0],
+                        "y_off": points[cpt_in_chunk, 1, 1] - points[cpt_in_chunk, 1, 0],
+                        "z_off": points[cpt_in_chunk, 2, 1] - points[cpt_in_chunk, 2, 0],
+                        "inlier_count": chunk_meta[i]["inlier_count"],
+                        "nmad": chunk_meta[i]["nmad"],
+                        "median": chunk_meta[i]["median"],
+                    }
+                )
+                cpt_in_chunk += 1
 
         stats_df = pd.DataFrame(statistics)
         stats_df.index.name = "chunk"
