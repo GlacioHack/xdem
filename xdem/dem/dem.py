@@ -34,11 +34,12 @@ from xdem.vcrs import (
     _vcrs_from_crs,
     _vcrs_from_user_input,
 )
+from xdem.dem.base import DEMBase
 
 dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
 
 
-class DEM(Raster):  # type: ignore
+class DEM(Raster, DEMBase):  # type: ignore
     """
     The digital elevation model.
 
@@ -76,7 +77,7 @@ class DEM(Raster):  # type: ignore
             parse_sensor_metadata: bool = False,
             silent: bool = True,
             downsample: int = 1,
-            nodata: int | float | None = None,
+            force_nodata: int | float | None = None,
     ) -> None:
         """
         Instantiate a digital elevation model.
@@ -93,7 +94,7 @@ class DEM(Raster):  # type: ignore
         :param parse_sensor_metadata: Whether to parse sensor metadata from filename and similarly-named metadata files.
         :param silent: Whether to display vertical reference parsing.
         :param downsample: Downsample the array once loaded by a round factor. Default is no downsampling.
-        :param nodata: Nodata value to be used (overwrites the metadata). Default reads from metadata.
+        :param force_nodata: Force nodata value to be used (overwrites the metadata). Default reads from metadata.
         """
 
         self.data: NDArrayf
@@ -116,7 +117,7 @@ class DEM(Raster):  # type: ignore
                     parse_sensor_metadata=parse_sensor_metadata,
                     silent=silent,
                     downsample=downsample,
-                    nodata=nodata,
+                    force_nodata=force_nodata,
                 )
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class

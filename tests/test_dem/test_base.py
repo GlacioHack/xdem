@@ -86,7 +86,10 @@ class TestClassVsAccessorConsistency:
     longyearbyen_path = examples.get_path("longyearbyen_ref_dem")
 
     # Test common attributes
-    attributes = ["vcrs", "vcrs_grid", "vcrs_name"]
+    attributes_raster = ["crs", "transform", "nodata", "area_or_point", "res", "count", "height", "width", "footprint",
+                         "shape", "bands", "indexes", "_is_xr", "is_loaded"]
+    attributes_dem = ["vcrs", "vcrs_grid", "vcrs_name"]
+    attributes = attributes_dem + attributes_raster
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
     @pytest.mark.parametrize("attr", attributes)  # type: ignore
@@ -103,10 +106,10 @@ class TestClassVsAccessorConsistency:
 
         # Get attribute for each object
         output_dem = getattr(dem, attr)
-        output_ds = getattr(getattr(ds, "rst"), attr)
+        output_ds = getattr(getattr(ds, "dem"), attr)
 
         # Assert equality
-        if attr != "is_xr":  # Only attribute that is (purposely) not the same, but the opposite
+        if attr != "_is_xr":  # Only attribute that is (purposely) not the same, but the opposite
             assert output_equal(output_dem, output_ds)
         else:
             assert output_dem != output_ds
@@ -139,7 +142,7 @@ class TestClassVsAccessorConsistency:
 
         # Apply method for each class
         output_dem = getattr(dem, method)(**args)
-        output_ds = getattr(getattr(ds, "rst"), method)(**args)
+        output_ds = getattr(getattr(ds, "dem"), method)(**args)
 
         # Assert equality of output
         assert output_equal(output_dem, output_ds)

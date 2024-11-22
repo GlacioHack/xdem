@@ -26,9 +26,6 @@ from typing import Any, Callable, Literal, overload, TypeVar
 import geopandas as gpd
 import numpy as np
 
-import rasterio as rio
-from affine import Affine
-from geoutils import Raster
 from geoutils.raster import Mask, RasterType
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
@@ -62,7 +59,9 @@ class DEMBase(RasterBase):
     """
 
     def __init__(self):
-        """Initialize additional DEM metadata as None, for it to be overridden in sublasses."""
+        """
+        Initialize additional DEM metadata as None, for it to be overridden in sublasses.
+        """
 
         super().__init__()
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
@@ -248,7 +247,9 @@ class DEMBase(RasterBase):
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees)
+        slope = terrain.slope(dem=self.data, resolution=self.res, method=method, degrees=degrees)
+        return self.copy(new_array=slope)
+
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
@@ -257,63 +258,79 @@ class DEMBase(RasterBase):
             degrees: bool = True,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees)
+        aspect = terrain.aspect(self.data, method=method, degrees=degrees)
+        return self.copy(new_array=aspect)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
             self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
     ) -> RasterType:
 
-        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
+        hillshade = terrain.hillshade(self.data, resolution=self.res, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
+        return self.copy(new_array=hillshade)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def curvature(self) -> RasterType:
 
-        return terrain.curvature(self)
+        curv = terrain.curvature(self.data, resolution=self.res)
+        return self.copy(new_array=curv)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def planform_curvature(self) -> RasterType:
 
-        return terrain.planform_curvature(self)
+        plan_curv = terrain.planform_curvature(self.data, resolution=self.res)
+        return self.copy(new_array=plan_curv)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def profile_curvature(self) -> RasterType:
 
-        return terrain.profile_curvature(self)
+        prof_curv = terrain.profile_curvature(self.data, resolution=self.res)
+        return self.copy(new_array=prof_curv)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def maximum_curvature(self) -> RasterType:
 
-        return terrain.maximum_curvature(self)
+        max_curv = terrain.maximum_curvature(self)
+        return self.copy(new_array=max_curv)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(self, window_size: int = 3) -> RasterType:
 
-        return terrain.topographic_position_index(self, window_size=window_size)
+        tpi = terrain.topographic_position_index(self, window_size=window_size)
+        return self.copy(new_array=tpi)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
 
-        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
+        tri = terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
+        return self.copy(new_array=tri)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def roughness(self, window_size: int = 3) -> RasterType:
 
-        return terrain.roughness(self, window_size=window_size)
+        roughness = terrain.roughness(self, window_size=window_size)
+        return self.copy(new_array=roughness)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def rugosity(self) -> RasterType:
 
-        return terrain.rugosity(self)
+        rugosity = terrain.rugosity(self)
+        return self.copy(new_array=rugosity)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def fractal_roughness(self, window_size: int = 13) -> RasterType:
 
-        return terrain.fractal_roughness(self, window_size=window_size)
+        frac_roughness = terrain.fractal_roughness(self, window_size=window_size)
+        return self.copy(new_array=frac_roughness)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
-        return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
+        attrs = terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
+
+        if isinstance(attrs, list):
+            return [self.copy(new_array=a) for a in attrs]
+        else:
+            return self.copy(new_array=attrs)
 
     def coregister_3d(
             self,

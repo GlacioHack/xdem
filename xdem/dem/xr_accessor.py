@@ -17,7 +17,7 @@ def open_dem(filename: str, **kwargs):
     return ds
 
 @xr.register_dataarray_accessor("dem")
-class DEMAccessor(DEMBase, RasterAccessor):
+class DEMAccessor(RasterAccessor, DEMBase):
     """
     This class defines the Xarray accessor 'dem' for digital elevation models.
 
@@ -28,7 +28,6 @@ class DEMAccessor(DEMBase, RasterAccessor):
     """
     def __init__(self, xarray_obj: xr.DataArray):
 
-        super().__init__()
+        super().__init__(xarray_obj=xarray_obj)
 
         self._obj = xarray_obj
-        self._area_or_point = self._obj.attrs.get("AREA_OR_POINT", None)
