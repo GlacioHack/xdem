@@ -234,16 +234,20 @@ class DEMBase(RasterBase):
             return None
         # Otherwise, return new DEM
         else:
-            return DEMType.from_array(
+            new_dem = self.from_array(
                 data=new_data,
                 transform=self.transform,
                 crs=self.crs,
                 nodata=self.nodata,
                 area_or_point=self.area_or_point,
                 tags=self.tags,
-                vcrs=vcrs,
                 cast_nodata=False,
             )
+            if self._is_xr:
+                new_dem.dem.set_vcrs(vcrs)
+            else:
+                new_dem.set_vcrs(vcrs)
+            return new_dem
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
@@ -290,42 +294,42 @@ class DEMBase(RasterBase):
     @copy_doc(terrain, remove_dem_res_params=True)
     def maximum_curvature(self) -> RasterType:
 
-        max_curv = terrain.maximum_curvature(self)
+        max_curv = terrain.maximum_curvature(self.data, resolution=self.res)
         return self.copy(new_array=max_curv)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(self, window_size: int = 3) -> RasterType:
 
-        tpi = terrain.topographic_position_index(self, window_size=window_size)
+        tpi = terrain.topographic_position_index(self.data, window_size=window_size)
         return self.copy(new_array=tpi)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
 
-        tri = terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
+        tri = terrain.terrain_ruggedness_index(self.data, method=method, window_size=window_size)
         return self.copy(new_array=tri)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def roughness(self, window_size: int = 3) -> RasterType:
 
-        roughness = terrain.roughness(self, window_size=window_size)
+        roughness = terrain.roughness(self.data, window_size=window_size)
         return self.copy(new_array=roughness)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def rugosity(self) -> RasterType:
 
-        rugosity = terrain.rugosity(self)
+        rugosity = terrain.rugosity(self.data, resolution=self.res)
         return self.copy(new_array=rugosity)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def fractal_roughness(self, window_size: int = 13) -> RasterType:
 
-        frac_roughness = terrain.fractal_roughness(self, window_size=window_size)
+        frac_roughness = terrain.fractal_roughness(self.data, window_size=window_size)
         return self.copy(new_array=frac_roughness)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
-        attrs = terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
+        attrs = terrain.get_terrain_attribute(self.data, attribute=attribute, resolution=self.res, **kwargs)
 
         if isinstance(attrs, list):
             return [self.copy(new_array=a) for a in attrs]

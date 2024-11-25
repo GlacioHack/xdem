@@ -17,15 +17,15 @@ class TestDEMBase:
     pass
 
 
-def equal_xr_dem(ds: xr.DataArray, rast: DEM, warn_failure_reason: bool = True) -> bool:
+def equal_xr_dem(ds: xr.DataArray, dem: DEM, warn_failure_reason: bool = True) -> bool:
     """Check equality of a Raster object and Xarray object"""
 
     # TODO: Move to raster_equal?
     equalities = [
-        np.allclose(ds.data, rast.get_nanarray(), equal_nan=True),
-        ds.rst.transform == rast.transform,
-        ds.rst.crs == rast.crs,
-        ds.rst.nodata == rast.nodata,
+        np.allclose(ds.data, dem.get_nanarray(), equal_nan=True),
+        ds.dem.transform == dem.transform,
+        ds.dem.crs == dem.crs,
+        ds.dem.nodata == dem.nodata,
     ]
 
     names = ["data", "transform", "crs", "nodata"]
@@ -39,10 +39,6 @@ def equal_xr_dem(ds: xr.DataArray, rast: DEM, warn_failure_reason: bool = True) 
         )
         print(f"Equality failed for: {', '.join([names[w] for w in where_fail])}.")
 
-    print(np.count_nonzero(np.isfinite(ds.data) != np.isfinite(rast.get_nanarray())))
-    print(np.nanmin(ds.data - rast.get_nanarray()))
-    print(ds.data)
-
     return complete_equality
 
 def output_equal(output1: Any, output2: Any) -> bool:
@@ -52,13 +48,19 @@ def output_equal(output1: Any, output2: Any) -> bool:
     if isinstance(output1, Vector) and isinstance(output2, Vector):
         return output1.vector_equal(output2)
 
-    # For two raster: Xarray or Raster objects
+    # For two dems: Xarray or DEM objects
     elif isinstance(output1, DEM) and isinstance(output2, DEM):
         return output1.raster_equal(output2)
     elif isinstance(output1, DEM) and isinstance(output2, xr.DataArray):
-        return equal_xr_dem(ds=output2, rast=output1)
+        return equal_xr_dem(ds=output2, dem=output1)
     elif isinstance(output1, xr.DataArray) and isinstance(output2, DEM):
-        return equal_xr_dem(ds=output1, rast=output2)
+        return equal_xr_dem(ds=output1, dem=output2)
+
+    # For a list of Xarray or DEM objects
+    elif isinstance(output1, list) and all(isinstance(output1[i], DEM) for i in range(len(output1))):
+        return all(equal_xr_dem(ds=output2[i], dem=output1[i]) for i in range(len(output1)))
+    elif isinstance(output1, list) and all(isinstance(output1[i], xr.DataArray) for i in range(len(output1))):
+        return all(equal_xr_dem(ds=output1[i], dem=output2[i]) for i in range(len(output1)))
 
     # For arrays
     elif isinstance(output1, np.ndarray):
@@ -115,11 +117,24 @@ class TestClassVsAccessorConsistency:
             assert output_dem != output_ds
 
 
-    # Test common methods
+    # Test DEM methods
     methods_and_args = {
+        "to_vcrs": {"vcrs": "EGM96", "force_source_vcrs": "Ellipsoid"},
         "slope": {},
         "aspect": {},
         "hillshade": {},
+        "curvature": {},
+        "profile_curvature": {},
+        "planform_curvature": {},
+        "maximum_curvature": {},
+        "topographic_position_index": {},
+        "terrain_ruggedness_index": {},
+        "roughness": {},
+        "rugosity": {},
+        "fractal_roughness": {},
+        "get_terrain_attribute": {"attribute": ["slope", "aspect"]},
+        "coregister_3d": {},
+        "estimate_uncertainty": {}
     }
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
