@@ -148,7 +148,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),  # noqa
+    coreg_method: Coreg | None = None,
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -173,7 +173,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param src_dem_path: Path to the input DEM to be coregistered
     :param ref_dem_path: Path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param coreg_method: Coregistration method or pipeline.
+    :param coreg_method: Coregistration method or pipeline. Defaults to NuthKaab + VerticalShift.
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
@@ -194,6 +194,11 @@ be excluded.
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
 coregistration and 4) the inlier_mask used.
     """
+
+    # Define default Coreg if None is passed
+    if coreg_method is None:
+        coreg_method = NuthKaab() + VerticalShift()
+
     # Check inputs
     if not isinstance(coreg_method, Coreg):
         raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
