@@ -13,3 +13,7 @@ scikit-image==0.*
 scikit-gstat>=1.0.18,<1.1
 geoutils==0.1.12
 pip
+affine
+pandas
+pyogrio
+shapely

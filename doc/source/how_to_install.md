@@ -28,9 +28,20 @@ Updating packages with `pip` (and sometimes `mamba`) can break your installation
 
 ## Installing for contributors
 
+### With ``mamba``
+
 ```bash
 git clone https://github.com/GlacioHack/xdem.git
 mamba env create -f xdem/dev-environment.yml
+```
+
+### With ``pip``
+
+Please note: pip installation is currently only possible under python3.10.
+
+```bash
+git clone https://github.com/GlacioHack/xdem.git
+make install
 ```
 
 After installing, you can check that everything is working by running the tests: `pytest`.

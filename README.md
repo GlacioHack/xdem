@@ -40,10 +40,18 @@ For a quick start, full feature description or search through the API, see xDEM'
 
 ## Installation
 
+### With `mamba`
+
 ```bash
 mamba install -c conda-forge xdem
 ```
 See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install `mamba`, which will solve your environment much faster than `conda`.
+
+### With `pip`
+
+```bash
+pip install xdem
+```
 
 ## Citing methods implemented in the package
 
