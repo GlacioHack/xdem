@@ -320,3 +320,19 @@ class TestWorkflows:
                 estimated_initial_shift=test_shift_tuple,
                 random_state=42,
             )
+
+        # Check if the appropriate exception is raised with a wrong type initial shift
+        with pytest.raises(ValueError, match=r".*two numerical values.*"):
+            dem_coregistration(
+                tba_dem,
+                ref_dem,
+                estimated_initial_shift=["2", 2],
+                random_state=42,
+            )
+        with pytest.raises(ValueError, match=r".*two numerical values.*"):
+            dem_coregistration(
+                tba_dem,
+                ref_dem,
+                estimated_initial_shift=[2, 3, 5],
+                random_state=42,
+            )

@@ -227,6 +227,14 @@ coregistration and 4) the inlier_mask used.
 
     # Ensure that if an initial shift is provided, at least one coregistration method is affine.
     if estimated_initial_shift:
+        if not (
+            isinstance(estimated_initial_shift, (list, tuple))
+            and len(estimated_initial_shift) == 2
+            and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+        ):
+            raise ValueError(
+                "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+            )
         if isinstance(coreg_method, CoregPipeline):
             if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
                 raise TypeError(
