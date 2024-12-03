@@ -256,9 +256,83 @@ class TestWorkflows:
         out_fig.close()
 
         # Testing different coreg method
-        dem_coreg, coreg_method, coreg_stats, inlier_mask = dem_coregistration(
+        dem_coreg2, coreg_method2, coreg_stats2, inlier_mask2 = dem_coregistration(
             tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp()
         )
-        assert isinstance(coreg_method, xdem.coreg.Deramp)
-        assert abs(coreg_stats["med_orig"].values) > abs(coreg_stats["med_coreg"].values)
-        assert coreg_stats["nmad_orig"].values > coreg_stats["nmad_coreg"].values
+        assert isinstance(coreg_method2, xdem.coreg.Deramp)
+        assert abs(coreg_stats2["med_orig"].values) > abs(coreg_stats2["med_coreg"].values)
+        assert coreg_stats2["nmad_orig"].values > coreg_stats2["nmad_coreg"].values
+
+        # Testing with initial shift
+        test_shift_list = [10, 5]
+        tba_dem_origin = tba_dem.copy()
+        coreg_pipeline = xdem.coreg.affine.NuthKaab() + xdem.coreg.affine.VerticalShift()
+
+        dem_coreg2, coreg_method2, coreg_stats2, inlier_mask2 = dem_coregistration(
+            tba_dem, ref_dem, coreg_method=coreg_pipeline, estimated_initial_shift=test_shift_list, random_state=42
+        )
+        dem_coreg3, coreg_method3, coreg_stats3, inlier_mask3 = dem_coregistration(
+            tba_dem, ref_dem, coreg_method=coreg_pipeline, random_state=42
+        )
+        assert tba_dem.raster_equal(tba_dem_origin)
+        assert isinstance(coreg_method2, xdem.coreg.CoregPipeline)
+        assert isinstance(coreg_method3, xdem.coreg.CoregPipeline)
+        assert isinstance(coreg_method2.pipeline[0], xdem.coreg.AffineCoreg)
+        assert isinstance(coreg_method3.pipeline[0], xdem.coreg.AffineCoreg)
+        assert (
+            coreg_method2.pipeline[0].meta["outputs"]["affine"]["shift_x"]
+            == coreg_method3.pipeline[0].meta["outputs"]["affine"]["shift_x"]
+        )
+        assert (
+            coreg_method2.pipeline[0].meta["outputs"]["affine"]["shift_y"]
+            == coreg_method3.pipeline[0].meta["outputs"]["affine"]["shift_y"]
+        )
+
+        # Testing without coreg pipeline
+        test_shift_tuple = (-5, 2)  # tuple
+        coreg_simple = xdem.coreg.affine.DhMinimize()
+
+        dem_coreg2, coreg_method2, coreg_stats2, inlier_mask2 = dem_coregistration(
+            tba_dem, ref_dem, coreg_method=coreg_simple, estimated_initial_shift=test_shift_tuple, random_state=42
+        )
+        dem_coreg3, coreg_method3, coreg_stats3, inlier_mask3 = dem_coregistration(
+            tba_dem, ref_dem, coreg_method=coreg_simple, random_state=42
+        )
+        assert isinstance(coreg_method2, xdem.coreg.AffineCoreg)
+        assert isinstance(coreg_method3, xdem.coreg.AffineCoreg)
+        assert coreg_method2.meta["outputs"]["affine"]["shift_x"] == coreg_method3.meta["outputs"]["affine"]["shift_x"]
+        assert coreg_method2.meta["outputs"]["affine"]["shift_y"] == coreg_method3.meta["outputs"]["affine"]["shift_y"]
+
+        # Check if the appropriate exception is raised with an initial shift and without affine coreg
+        with pytest.raises(TypeError, match=r".*affine.*"):
+            dem_coregistration(
+                tba_dem,
+                ref_dem,
+                coreg_method=xdem.coreg.Deramp(),
+                estimated_initial_shift=test_shift_tuple,
+                random_state=42,
+            )
+        with pytest.raises(TypeError, match=r".*affine.*"):
+            dem_coregistration(
+                tba_dem,
+                ref_dem,
+                coreg_method=xdem.coreg.Deramp() + xdem.coreg.TerrainBias(),
+                estimated_initial_shift=test_shift_tuple,
+                random_state=42,
+            )
+
+        # Check if the appropriate exception is raised with a wrong type initial shift
+        with pytest.raises(ValueError, match=r".*two numerical values.*"):
+            dem_coregistration(
+                tba_dem,
+                ref_dem,
+                estimated_initial_shift=["2", 2],
+                random_state=42,
+            )
+        with pytest.raises(ValueError, match=r".*two numerical values.*"):
+            dem_coregistration(
+                tba_dem,
+                ref_dem,
+                estimated_initial_shift=[2, 3, 5],
+                random_state=42,
+            )

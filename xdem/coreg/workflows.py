@@ -31,6 +31,7 @@ from geoutils._typing import Number
 from geoutils.raster import RasterType
 
 from xdem._typing import NDArrayf
+from xdem.coreg import AffineCoreg, CoregPipeline
 from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.coreg.base import Coreg
 from xdem.dem import DEM
@@ -148,7 +149,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = None,
+    coreg_method: Coreg | CoregPipeline | None = None,
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -161,7 +162,8 @@ def dem_coregistration(
     random_state: int | np.random.Generator | None = None,
     plot: bool = False,
     out_fig: str = None,
-) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
+    estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
+) -> tuple[DEM, Coreg | CoregPipeline, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 
@@ -173,7 +175,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param src_dem_path: Path to the input DEM to be coregistered
     :param ref_dem_path: Path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param coreg_method: Coregistration method or pipeline. Defaults to NuthKaab + VerticalShift.
+    :param coreg_method: Coregistration method, or pipeline.
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
@@ -189,6 +191,8 @@ be excluded.
     :param random_state: Random state or seed number to use for subsampling and optimizer.
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
+    :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
+the coregistration process begins.
 
     :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
@@ -221,21 +225,52 @@ coregistration and 4) the inlier_mask used.
     if grid not in ["ref", "src"]:
         raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
 
+    # Ensure that if an initial shift is provided, at least one coregistration method is affine.
+    if estimated_initial_shift:
+        if not (
+            isinstance(estimated_initial_shift, (list, tuple))
+            and len(estimated_initial_shift) == 2
+            and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+        ):
+            raise ValueError(
+                "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+            )
+        if isinstance(coreg_method, CoregPipeline):
+            if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
+                raise TypeError(
+                    "An initial shift has been provided, but none of the coregistration methods in the pipeline "
+                    "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
+                )
+        elif not isinstance(coreg_method, AffineCoreg):
+            raise TypeError(
+                "An initial shift has been provided, but the coregistration method is not affine. "
+                "An affine coregistration method (e.g., AffineCoreg) is required."
+            )
+
     # Load both DEMs
     logging.info("Loading and reprojecting input data")
 
     if isinstance(ref_dem_path, str):
-        if grid == "ref":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
-        elif grid == "src":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
-    else:
+        ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
+
+    elif isinstance(src_dem_path, gu.Raster):
         ref_dem = ref_dem_path
-        src_dem = src_dem_path
-        if grid == "ref":
-            src_dem = src_dem.reproject(ref_dem, silent=True)
-        elif grid == "src":
-            ref_dem = ref_dem.reproject(src_dem, silent=True)
+        src_dem = src_dem_path.copy()
+
+    # If an initial shift is provided, apply it before coregistration
+    if estimated_initial_shift:
+
+        # convert shift
+        shift_x = estimated_initial_shift[0] * src_dem.res[0]
+        shift_y = estimated_initial_shift[1] * src_dem.res[1]
+
+        # Apply the shift to the source dem
+        src_dem.translate(shift_x, shift_y, inplace=True)
+
+    if grid == "ref":
+        src_dem = src_dem.reproject(ref_dem, silent=True)
+    elif grid == "src":
+        ref_dem = ref_dem.reproject(src_dem, silent=True)
 
     # Convert to DEM instance with Float32 dtype
     # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
@@ -267,6 +302,27 @@ coregistration and 4) the inlier_mask used.
     # Coregister to reference - Note: this will spread NaN
     coreg_method.fit(ref_dem, src_dem, inlier_mask, random_state=random_state)
     dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
+
+    # Add the initial shift to the calculated shift
+    if estimated_initial_shift:
+
+        def update_shift(
+            coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+        ) -> None:
+            if isinstance(coreg_method, CoregPipeline):
+                for step in coreg_method.pipeline:
+                    update_shift(step)
+            else:
+                # check if the keys exists
+                if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                    if "shift_x" in coreg_method.meta["outputs"]["affine"]:
+                        coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
+                        logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
+                    if "shift_y" in coreg_method.meta["outputs"]["affine"]:
+                        coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
+                        logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+
+        update_shift(coreg_method)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
     ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
