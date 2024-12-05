@@ -42,6 +42,8 @@ import numpy as np
 
 # Open example DEM
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+dem.set_vcrs("EGM96")
+dem = dem.to_vcrs("Ellipsoid")
 
 # Derive inlier mask as glaciers
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
@@ -81,26 +83,30 @@ aligned_dem = nk.fit_and_apply(reference_elev=gdf, to_be_aligned_elev=dem, inlie
 :  code_prompt_show: "Show plotting code"
 :  code_prompt_hide: "Hide plotting code"
 
+# Derive hillshade for background
 hs = dem.hillshade()
+# Convert to same CRS
+gdf = gdf.to_crs(dem.crs)
+vect = gu.Vector(gdf)
+# Mask areas not in inlier mask (glaciers here)
+pc_mask = inlier_mask.astype("uint8").interp_points((gdf.geometry.x.values, gdf.geometry.y.values), method="nearest")
+vect.ds = vect.ds[pc_mask == 1]
+# Get point differences before and after
+z_pc = dem.interp_points((vect.ds.geometry.x.values, vect.ds.geometry.y.values))
+vect.ds["dh_bef"] = vect.ds["h_li"] - z_pc
+z_pc_aligned = aligned_dem.interp_points((vect.ds.geometry.x.values, vect.ds.geometry.y.values))
+vect.ds["dh_aft"] = vect.ds["h_li"] - z_pc_aligned
+
 # Plot before and after
 import matplotlib.pyplot as plt
-gdf = gdf.to_crs(dem.crs)
 f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before translations")
+ax[0].set_title("Before\ncoregistration")
 hs.plot(cmap="Greys_r", add_cbar=False)
-z_pc = dem.interp_points((gdf.geometry.x.values, gdf.geometry.y.values))
-gdf["dh_bef"] = gdf["h_li"] - z_pc
-gdf.plot(column="dh_bef", cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0], markersize=0.5)
-ax[1].set_title("After translations")
+vect.plot(column="dh_bef", cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[0], markersize=0.5, cbar_title="Elevation differences (m)")
+ax[1].set_title("After\ncoregistration")
 hs.plot(cmap="Greys_r", add_cbar=False)
-z_pc_aligned = aligned_dem.interp_points((gdf.geometry.x.values, gdf.geometry.y.values))
-gdf["dh_aft"] = gdf["h_li"] - z_pc_aligned
-gdf.plot(column="dh_aft", cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], markersize=0.5)
+vect.plot(column="dh_aft", cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[1], markersize=0.5, legend=True, cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
+plt.tight_layout()
 plt.savefig("/home/atom/ongoing/test.png", dpi=400)
-```
-
-```{code-cell} ipython3
-# Run uncertainty analysis
-sig_dem, rho_sig = aligned_dem.estimate_uncertainty(other_elev=gdf, z_name="h_li")
 ```
