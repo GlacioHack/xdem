@@ -490,7 +490,7 @@ class DEM(Raster):  # type: ignore
     def estimate_uncertainty(
         self,
         other_elev: DEM | gpd.GeoDataFrame,
-        stable_terrain: Mask | NDArrayb = None,
+        stable_terrain: Mask = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
@@ -542,7 +542,7 @@ class DEM(Raster):  # type: ignore
 
         # Stable terrain depending on input
         if stable_terrain is None:
-            stable_terrain = np.ones(self.shape, dtype="uint8")
+            stable_terrain = self.copy(new_array=np.ones(self.shape, dtype=bool))
 
         # Elevation change with the other DEM or elevation point cloud
         if isinstance(other_elev, DEM):

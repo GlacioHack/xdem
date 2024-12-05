@@ -16,10 +16,10 @@ kernelspec:
 
 # Pair with SlideRule for reference
 
-Most analysis of **xDEM relies on independent, high-precision elevation data to use as reference**, whether for 
+Most analysis of **xDEM relies on independent, high-precision elevation data to use as reference**, whether for
 coregistration, bias-corrections or uncertainty analysis.
 
-[SlideRule](https://slideruleearth.io/) provides the ideal way to retrieve such data by accessing big data archives 
+[SlideRule](https://slideruleearth.io/) provides the ideal way to retrieve such data by accessing big data archives
 of high-precision elevations, such as ICESat-2 or GEDI, efficiently in the cloud.
 
 Below, a short example to coregister and perform uncertainty analysis of a DEM with ICESat-2 ATL06.
@@ -53,7 +53,7 @@ inlier_mask = ~glacier_outlines.create_mask(dem)
 bounds = list(dem.get_bounds_projected(4326))
 region = sliderule.toregion(bounds)["poly"]
 
-# Initiliaze SlideRule client
+# Initialize SlideRule client
 sliderule.init("slideruleearth.io")
 
 # Define desired parameters for ICESat-2 ATL06
