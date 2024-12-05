@@ -547,6 +547,7 @@ class DEM(Raster):  # type: ignore
         # Elevation change with the other DEM or elevation point cloud
         if isinstance(other_elev, DEM):
             dh = other_elev.reproject(self, silent=True) - self
+            stable_terrain = stable_terrain.data
         elif isinstance(other_elev, gpd.GeoDataFrame):
             other_elev = other_elev.to_crs(self.crs)
             points = (other_elev.geometry.x.values, other_elev.geometry.y.values)

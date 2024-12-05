@@ -1,7 +1,7 @@
 ---
 file_format: mystnb
 mystnb:
-  execution_timeout: 60
+  execution_timeout: 150
 jupytext:
   formats: md:myst
   text_representation:
@@ -14,7 +14,7 @@ kernelspec:
 ---
 (cheatsheet)=
 
-# Pair with SlideRule for reference
+# Elevation reference with SlideRule
 
 Most analysis of **xDEM relies on independent, high-precision elevation data to use as reference**, whether for
 coregistration, bias-corrections or uncertainty analysis.
@@ -75,6 +75,9 @@ gdf = gdf[gdf["atl06_quality_summary"]==0]  # Keep very high-confidence data
 # Run a translation coregistration
 nk = xdem.coreg.NuthKaab()
 aligned_dem = nk.fit_and_apply(reference_elev=gdf, to_be_aligned_elev=dem, inlier_mask=inlier_mask, z_name="h_li")
+
+# Print the estimated translation parameters
+print([k+f': {nk.meta["outputs"]["affine"][k]:.2f} meters' for k in ["shift_x", "shift_y", "shift_z"]])
 ```
 
 ```{code-cell} ipython3
@@ -108,5 +111,9 @@ hs.plot(cmap="Greys_r", add_cbar=False)
 vect.plot(column="dh_aft", cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[1], markersize=0.5, legend=True, cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 plt.tight_layout()
-plt.savefig("/home/atom/ongoing/test.png", dpi=400)
+```
+
+```{code-cell} ipython3
+# Show full coregistration summary
+nk.info()
 ```
