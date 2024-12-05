@@ -925,11 +925,8 @@ class TestBlockwiseCoreg:
 
         stats = blockwise.stats()
 
-        # We expect holes in the blockwise coregistration, so there should not be 64 "successful" blocks.
-        assert stats.shape[0] < 64
-
-        # Statistics are only calculated on finite values, so all of these should be finite as well.
-        assert np.all(np.isfinite(stats) | np.isnan(stats))
+        # We expect holes in the blockwise coregistration, but not in stats due to nan padding for failing chunks
+        assert stats.shape[0] == 64
 
         # Copy the TBA DEM and set a square portion to nodata
         tba = self.tba.copy()
@@ -939,7 +936,7 @@ class TestBlockwiseCoreg:
 
         blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
 
-        # Align the DEM and apply the blockwise to a zero-array (to get the zshift)
+        # Align the DEM and apply blockwise to a zero-array (to get the z_shift)
         aligned = blockwise.fit(self.ref, tba).apply(tba)
         zshift, _ = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform, crs=tba.crs)
 
@@ -965,8 +962,8 @@ class TestBlockwiseCoreg:
         assert np.isnan(result_df.loc[1, "inlier_count"])
         assert np.isnan(result_df.loc[1, "nmad"])
         assert np.isnan(result_df.loc[1, "median"])
-        assert np.isnan(result_df.loc[1, "center_x"])
-        assert np.isnan(result_df.loc[1, "center_y"])
+        assert isinstance(result_df.loc[1, "center_x"], float)
+        assert isinstance(result_df.loc[1, "center_y"], float)
         assert np.isnan(result_df.loc[1, "center_z"])
         assert np.isnan(result_df.loc[1, "x_off"])
         assert np.isnan(result_df.loc[1, "y_off"])
