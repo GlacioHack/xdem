@@ -16,6 +16,7 @@ The ``BlockwiseCoreg`` class runs in five steps:
 5. Warp the DEM to apply the X/Y/Z shifts.
 
 """
+
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 2
@@ -25,7 +26,7 @@ import numpy as np
 import xdem
 
 # %%
-# **Example files**
+# We open example files.
 
 reference_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dem_to_be_aligned = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
@@ -48,7 +49,7 @@ plt_extent = [
 
 diff_before = reference_dem - dem_to_be_aligned
 
-diff_before.plot(cmap="coolwarm_r", vmin=-10, vmax=10)
+diff_before.plot(cmap="RdYlBu", vmin=-10, vmax=10)
 plt.show()
 
 # %%
@@ -70,9 +71,7 @@ plt.show()
 # Coregistration is performed with the ``.fit()`` method.
 # This runs in multiple threads by default, so more CPU cores are preferable here.
 
-blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
-
-aligned_dem = blockwise.apply(dem_to_be_aligned)
+aligned_dem = blockwise.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
@@ -83,7 +82,7 @@ z_correction = blockwise.apply(
     np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs
 )[0]
 plt.title("Vertical correction")
-plt.imshow(z_correction, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
+plt.imshow(z_correction, cmap="RdYlBu", vmin=-10, vmax=10, extent=plt_extent)
 for _, row in blockwise.stats().iterrows():
     plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha="center")
 
@@ -92,11 +91,12 @@ for _, row in blockwise.stats().iterrows():
 
 diff_after = reference_dem - aligned_dem
 
-diff_after.plot(cmap="coolwarm_r", vmin=-10, vmax=10)
+diff_after.plot(cmap="RdYlBu", vmin=-10, vmax=10)
 plt.show()
 
 # %%
-# We can compare the NMAD to validate numerically that there was an improvment:
+# We can compare the NMAD to validate numerically that there was an improvement:
 
-print(f"Error before: {xdem.spatialstats.nmad(diff_before):.2f} m")
-print(f"Error after: {xdem.spatialstats.nmad(diff_after):.2f} m")
+
+print(f"Error before: {xdem.spatialstats.nmad(diff_before[inlier_mask]):.2f} m")
+print(f"Error after: {xdem.spatialstats.nmad(diff_after[inlier_mask]):.2f} m")

@@ -1,6 +1,25 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Volume change calculation tools (aimed for glaciers)."""
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import Any, Callable
 
@@ -9,8 +28,8 @@ import numpy as np
 import pandas as pd
 import rasterio.fill
 import scipy.interpolate
-from geoutils.raster import (
-    RasterType,
+from geoutils.raster import RasterType
+from geoutils.raster.array import (
     get_array_and_mask,
     get_mask_from_array,
     get_valid_extent,
@@ -77,7 +96,7 @@ def hypsometric_binning(
     elif kind == "custom":
         zbins = bins  # type: ignore
     else:
-        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom']")
+        raise ValueError(f"Invalid bin kind: {kind}. Choices: ['fixed', 'count', 'quantile', 'custom'].")
 
     # Generate bins and get bin indices from the mean DEM
     indices = np.digitize(ref_dem, bins=zbins)
@@ -248,7 +267,9 @@ def calculate_hypsometry_area(
     assert not np.any(np.isnan(ref_dem)), "The given reference DEM has NaNs. No NaNs are allowed to calculate area!"
 
     if timeframe not in ["reference", "nonreference", "mean"]:
-        raise ValueError(f"Argument 'timeframe={timeframe}' is invalid. Choices: ['reference', 'nonreference', 'mean']")
+        raise ValueError(
+            f"Argument 'timeframe={timeframe}' is invalid. Choices: ['reference', 'nonreference', 'mean']."
+        )
 
     if isinstance(ddem_bins, pd.DataFrame):
         ddem_bins = ddem_bins["value"]
@@ -283,7 +304,7 @@ def calculate_hypsometry_area(
     return output
 
 
-def linear_interpolation(
+def idw_interpolation(
     array: NDArrayf | MArrayf,
     max_search_distance: int = 10,
     extrapolate: bool = False,
@@ -301,7 +322,7 @@ to interpolate from. The default is 10.
     :returns: A filled array with no NaNs
     """
     if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
+        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     # Create a mask for where nans exist
     nan_mask = get_mask_from_array(array)
@@ -445,7 +466,7 @@ for areas filling the min_coverage criterion.
 
     # List of indexes to loop on
     geometry_index = np.unique(mask[mask != 0])
-    print(f"Found {len(geometry_index):d} geometries")
+    logging.info("Found %d geometries", len(geometry_index))
 
     # Get fraction of valid pixels for each geometry
     coverage = np.zeros(len(geometry_index))
@@ -457,7 +478,7 @@ for areas filling the min_coverage criterion.
 
     # Filter geometries with too little coverage
     valid_geometry_index = geometry_index[coverage >= min_coverage]
-    print(f"Found {len(valid_geometry_index):d} geometries with sufficient coverage")
+    logging.info("Found %d geometries with sufficient coverage", len(valid_geometry_index))
 
     idealized_ddem = nodata * np.ones_like(dem)
 
@@ -529,7 +550,7 @@ for areas filling the min_coverage criterion.
     ddem_difference[idealized_ddem == nodata] = np.nan
 
     # Spatially interpolate the difference between these two products.
-    interpolated_ddem_diff = linear_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
+    interpolated_ddem_diff = idw_interpolation(np.where(ddem_mask, np.nan, ddem_difference))
     interpolated_ddem_diff[np.isnan(interpolated_ddem_diff)] = 0
 
     # Correct the idealized dDEM with the difference to the original dDEM.
@@ -552,7 +573,6 @@ def get_regional_hypsometric_signal(
     ref_dem: NDArrayf | MArrayf | RasterType,
     glacier_index_map: NDArrayf | RasterType,
     n_bins: int = 20,
-    verbose: bool = False,
     min_coverage: float = 0.05,
 ) -> pd.DataFrame:
     """
@@ -561,7 +581,6 @@ def get_regional_hypsometric_signal(
     :param ddem: The dDEM to analyse.
     :param ref_dem: A void-free reference DEM.
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
-    :param verbose: Show progress bar.
     n_bins = 20  # TODO: This should be an argument.
     :param n_bins: The number of elevation bins to subdivide each glacier in.
 
@@ -585,7 +604,11 @@ def get_regional_hypsometric_signal(
     # Start a counter of glaciers that are actually processed.
     count = 0
     # Loop over each unique glacier.
-    for i in tqdm(np.unique(glacier_index_map), desc="Finding regional signal", disable=(not verbose)):
+    for i in tqdm(
+        np.unique(glacier_index_map),
+        desc="Finding regional signal",
+        disable=logging.getLogger().getEffectiveLevel() > logging.INFO,
+    ):
         # If i ==0, it's assumed to be periglacial.
         if i == 0:
             continue
@@ -651,7 +674,6 @@ def norm_regional_hypsometric_interpolation(
     glacier_index_map: NDArrayf | RasterType,
     min_coverage: float = 0.1,
     regional_signal: pd.DataFrame | None = None,
-    verbose: bool = False,
     min_elevation_range: float = 0.33,
     idealized_ddem: bool = False,
 ) -> NDArrayf:
@@ -665,7 +687,6 @@ def norm_regional_hypsometric_interpolation(
     :param glacier_index_map: An array glacier indices of the same shape as the previous inputs.
     :param min_coverage: The minimum fractional coverage of a glacier to interpolate. Defaults to 10%.
     :param regional_signal: A regional signal is already estimate. Otherwise one will be estimated.
-    :param verbose: Show progress bars.
     :param min_elevation_range: The minimum allowed min/max bin range to scale a signal from.\
             Default: 1/3 of the elevation range needs to be present.
     :param idealized_ddem: Replace observed glacier values with the hypsometric signal. Good for error assessments.
@@ -685,7 +706,7 @@ def norm_regional_hypsometric_interpolation(
     # If the regional signal was not given as an argument, find it from the dDEM.
     if regional_signal is None:
         regional_signal = get_regional_hypsometric_signal(
-            ddem=ddem_arr, ref_dem=ref_arr, glacier_index_map=glacier_index_map, verbose=verbose
+            ddem=ddem_arr, ref_dem=ref_arr, glacier_index_map=glacier_index_map
         )
 
     # The unique indices are the unique glaciers.
@@ -694,7 +715,9 @@ def norm_regional_hypsometric_interpolation(
     # Make a copy of the dDEM which will be filled iteratively.
     ddem_filled = ddem_arr.copy()
     # Loop over all glaciers and fill the dDEM accordingly.
-    for i in tqdm(unique_indices, desc="Interpolating dDEM", disable=(not verbose)):
+    for i in tqdm(
+        unique_indices, desc="Interpolating dDEM", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
+    ):
         if i == 0:  # i==0 is assumed to mean stable ground.
             continue
         # Create a mask representing a particular glacier.

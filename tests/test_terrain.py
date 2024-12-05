@@ -183,7 +183,7 @@ class TestTerrainAttribute:
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
     )  # type: ignore
-    def test_attribute_functions_against_richdem(self, attribute: str) -> None:
+    def test_attribute_functions_against_richdem(self, attribute: str, get_terrain_attribute_richdem) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
 
@@ -202,12 +202,14 @@ class TestTerrainAttribute:
 
         # Functions for RichDEM wrapper methods
         functions_richdem = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem, degrees=True, use_richdem=True),
-            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem, degrees=True, use_richdem=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem, use_richdem=True),
-            "curvature": lambda dem: xdem.terrain.curvature(dem, use_richdem=True),
-            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem, use_richdem=True),
-            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem, use_richdem=True),
+            "slope_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="slope", degrees=True),
+            "aspect_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="aspect", degrees=True),
+            "hillshade_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="hillshade"),
+            "curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="curvature"),
+            "profile_curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="profile_curvature"),
+            "planform_curvature": lambda dem: get_terrain_attribute_richdem(
+                dem, attribute="planform_curvature", degrees=True
+            ),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -357,15 +359,6 @@ class TestTerrainAttribute:
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
         with pytest.raises(
             ValueError,
-            match=re.escape("RichDEM can only compute the slope and aspect using the " "default method of Horn (1981)"),
-        ):
-            xdem.terrain.slope(self.dem, method="ZevenbergThorne", use_richdem=True)
-
-        with pytest.raises(ValueError, match="To derive RichDEM attributes, the DEM passed must be a Raster object"):
-            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, use_richdem=True)
-
-        with pytest.raises(
-            ValueError,
             match=re.escape(
                 "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
             ),
@@ -384,7 +377,7 @@ class TestTerrainAttribute:
 
         assert slope != aspect
 
-        assert type(slope) == type(aspect)
+        assert isinstance(slope, type(aspect))
         assert all(isinstance(r, gu.Raster) for r in (aspect, slope, self.dem))
 
         assert slope.transform == self.dem.transform == aspect.transform

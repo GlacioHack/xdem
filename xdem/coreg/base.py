@@ -1,3 +1,21 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Base coregistration classes to define generic methods and pre/post-processing of input data."""
 
 from __future__ import annotations
@@ -5,6 +23,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import inspect
+import logging
 import warnings
 from typing import (
     Any,
@@ -31,17 +50,17 @@ import scipy.ndimage
 import scipy.optimize
 import skimage.transform
 from geoutils._typing import Number
-from geoutils.misc import resampling_method_from_str
-from geoutils.raster import (
-    Mask,
-    RasterType,
-    get_array_and_mask,
-    raster,
-    subdivide_array,
+from geoutils.interface.gridding import _grid_pointcloud
+from geoutils.interface.interpolate import _interp_points
+from geoutils.raster import Mask, RasterType, raster, subdivide_array
+from geoutils.raster.array import get_array_and_mask
+from geoutils.raster.georeferencing import (
+    _bounds,
+    _cast_pixel_interpretation,
+    _coords,
+    _res,
 )
-from geoutils.raster.georeferencing import _bounds, _res
-from geoutils.raster.interpolate import _interp_points
-from geoutils.raster.raster import _cast_pixel_interpretation, _shift_transform
+from geoutils.raster.geotransformations import _resampling_method_from_str, _translate
 from tqdm import tqdm
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -72,7 +91,7 @@ fit_workflows = {
 # Map each key name to a descriptor string
 dict_key_to_str = {
     "subsample": "Subsample size requested",
-    "random_state": "Random generator for subsampling and (if applic.) optimizer",
+    "random_state": "Random generator",
     "subsample_final": "Subsample size drawn from valid values",
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
@@ -91,22 +110,24 @@ dict_key_to_str = {
     "tolerance": "Tolerance to reach (pixel size)",
     "last_iteration": "Iteration at which algorithm stopped",
     "all_tolerances": "Tolerances at each iteration",
-    "terrain_attribute": "Terrain attribute used for TerrainBias",
-    "angle": "Angle used for DirectionalBias",
-    "poly_order": "Polynomial order used for Deramp",
-    "best_poly_order": "Best polynomial order kept for fit",
-    "best_nb_sin_freq": "Best number of sinusoid frequencies kept for fit",
+    "terrain_attribute": "Terrain attribute used for correction",
+    "angle": "Angle of directional correction",
+    "poly_order": "Polynomial order",
+    "best_poly_order": "Best polynomial order",
+    "best_nb_sin_freq": "Best number of sinusoid frequencies",
     "vshift_reduc_func": "Reduction function used to remove vertical shift",
     "centroid": "Centroid found for affine rotation",
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
+    "rejection_scale": "Rejection scale",
+    "num_levels": "Number of levels",
 }
 
 #####################################
 # Generic functions for preprocessing
-#####################################
+###########################################
 
 
 def _calculate_ddem_stats(
@@ -520,7 +541,7 @@ def _postprocess_coreg_apply(
     """
 
     # Define resampling
-    resampling = resampling if isinstance(resampling, rio.warp.Resampling) else resampling_method_from_str(resampling)
+    resampling = resampling if isinstance(resampling, rio.warp.Resampling) else _resampling_method_from_str(resampling)
 
     # Distribute between raster and point apply methods
     if isinstance(applied_elev, np.ndarray):
@@ -544,7 +565,7 @@ def _postprocess_coreg_apply(
 ###############################################
 
 
-def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
+def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArrayb) -> NDArrayb:
     """
     Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
 
@@ -585,12 +606,9 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # If no subsample is taken, use all valid values
         subsample_mask = valid_mask
 
-    if verbose:
-        print(
-            "Using a subsample of {} among {} valid values.".format(
-                np.count_nonzero(subsample_mask), np.count_nonzero(valid_mask)
-            )
-        )
+    logging.debug(
+        "Using a subsample of %d among %d valid values.", np.count_nonzero(subsample_mask), np.count_nonzero(valid_mask)
+    )
 
     return subsample_mask
 
@@ -603,7 +621,6 @@ def _get_subsample_mask_pts_rst(
     transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
     area_or_point: Literal["Area", "Point"] | None,
     aux_vars: None | dict[str, NDArrayf] = None,
-    verbose: bool = False,
 ) -> NDArrayb:
     """
     Get subsample mask for raster-raster or point-raster datasets on valid points of all inputs (including
@@ -640,14 +657,14 @@ def _get_subsample_mask_pts_rst(
         # (Others are already checked in pre-processing of Coreg.fit())
 
         # Perform subsampling
-        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
+        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
 
     # For one raster and one point cloud
     else:
 
         # Interpolate inlier mask and bias vars at point coordinates
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # Get coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
@@ -669,7 +686,7 @@ def _get_subsample_mask_pts_rst(
         ).astype(bool)
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
-        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
+        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
 
     # TODO: Move check to Coreg.fit()?
 
@@ -710,7 +727,8 @@ def _subsample_on_mask(
     else:
 
         # Identify which dataset is point or raster
-        pts_elev = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
         # Subsample point coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
@@ -718,12 +736,16 @@ def _subsample_on_mask(
 
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
+        sub_rst = _interp_points(array=rst_elev, transform=transform, points=pts, area_or_point=area_or_point)
+        sub_pts = pts_elev[z_name].values[sub_mask]
+
+        # Assign arrays depending on which one is the reference
         if isinstance(ref_elev, gpd.GeoDataFrame):
-            sub_tba = _interp_points(array=tba_elev, transform=transform, points=pts, area_or_point=area_or_point)
-            sub_ref = ref_elev[z_name].values[sub_mask]
+            sub_ref = sub_pts
+            sub_tba = sub_rst
         else:
-            sub_ref = _interp_points(array=ref_elev, transform=transform, points=pts, area_or_point=area_or_point)
-            sub_tba = tba_elev[z_name].values[sub_mask]
+            sub_ref = sub_rst
+            sub_tba = sub_pts
 
         # Interpolate arrays of bias variables to the subsample point coordinates
         if aux_vars is not None:
@@ -748,7 +770,6 @@ def _preprocess_pts_rst_subsample(
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
-    verbose: bool = False,
 ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
     """
     Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
@@ -767,7 +788,6 @@ def _preprocess_pts_rst_subsample(
         transform=transform,
         area_or_point=area_or_point,
         aux_vars=aux_vars,
-        verbose=verbose,
     )
 
     # Perform subsampling on mask for all inputs
@@ -792,10 +812,8 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
-    verbose: bool = False,
     **kwargs: Any,
-) -> tuple[None, tuple[NDArrayf, Any]]:
-    ...
+) -> tuple[None, tuple[NDArrayf, Any]]: ...
 
 
 @overload
@@ -805,10 +823,8 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
-    verbose: bool = False,
     **kwargs: Any,
-) -> tuple[pd.DataFrame, None]:
-    ...
+) -> tuple[pd.DataFrame, None]: ...
 
 
 @overload
@@ -818,10 +834,8 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
-    verbose: bool = False,
     **kwargs: Any,
-) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]:
-    ...
+) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]: ...
 
 
 def _bin_or_and_fit_nd(
@@ -830,7 +844,6 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
-    verbose: bool = False,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame | None, tuple[NDArrayf, Any] | None]:
     """
@@ -843,7 +856,6 @@ def _bin_or_and_fit_nd(
     :param values: Valid values to bin or fit.
     :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
     :param weights: Array of weights for the coregistration.
-    :param verbose: Print progress messages.
     """
 
     if fit_or_bin is None:
@@ -892,13 +904,11 @@ def _bin_or_and_fit_nd(
 
     # Option 1: Run fit and save optimized function parameters
     if fit_or_bin == "fit":
-
-        # Print if verbose
-        if verbose:
-            print(
-                "Estimating alignment along variables {} by fitting "
-                "with function {}.".format(", ".join(list(bias_vars.keys())), params_fit_or_bin["fit_func"].__name__)
-            )
+        logging.debug(
+            "Estimating alignment along variables %s by fitting with function %s.",
+            ", ".join(list(bias_vars.keys())),
+            params_fit_or_bin["fit_func"].__name__,
+        )
 
         results = params_fit_or_bin["fit_optimizer"](
             f=params_fit_or_bin["fit_func"],
@@ -912,14 +922,11 @@ def _bin_or_and_fit_nd(
 
     # Option 2: Run binning and save dataframe of result
     elif fit_or_bin == "bin":
-
-        if verbose:
-            print(
-                "Estimating alignment along variables {} by binning "
-                "with statistic {}.".format(
-                    ", ".join(list(bias_vars.keys())), params_fit_or_bin["bin_statistic"].__name__
-                )
-            )
+        logging.debug(
+            "Estimating alignment along variables %s by binning with statistic %s.",
+            ", ".join(list(bias_vars.keys())),
+            params_fit_or_bin["bin_statistic"].__name__,
+        )
 
         df = nd_binning(
             values=values,
@@ -932,17 +939,12 @@ def _bin_or_and_fit_nd(
 
     # Option 3: Run binning, then fitting, and save both results
     else:
-
-        # Print if verbose
-        if verbose:
-            print(
-                "Estimating alignment along variables {} by binning with statistic {} and then fitting "
-                "with function {}.".format(
-                    ", ".join(list(bias_vars.keys())),
-                    params_fit_or_bin["bin_statistic"].__name__,
-                    params_fit_or_bin["fit_func"].__name__,
-                )
-            )
+        logging.debug(
+            "Estimating alignment along variables %s by binning with statistic %s and then fitting with function %s.",
+            ", ".join(list(bias_vars.keys())),
+            params_fit_or_bin["bin_statistic"].__name__,
+            params_fit_or_bin["fit_func"].__name__,
+        )
 
         df = nd_binning(
             values=values,
@@ -976,9 +978,7 @@ def _bin_or_and_fit_nd(
             absolute_sigma=True,
             **kwargs,
         )
-
-    if verbose:
-        print(f"{nd}D bias estimated.")
+    logging.debug("%dD bias estimated.", nd)
 
     return df, results
 
@@ -1075,7 +1075,6 @@ def _iterate_affine_regrid_small_rotations(
     matrix: NDArrayf,
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    verbose: bool = True,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Iterative process to find the best reprojection of affine transformation for small rotations.
@@ -1157,12 +1156,12 @@ def _iterate_affine_regrid_small_rotations(
             diff_x = x0 - x
             diff_y = y0 - y
 
-            if verbose:
-                print(
-                    f"Residual check at iteration number {niter}:"
-                    f"\n    Mean diff x: {np.nanmean(np.abs(diff_x))}"
-                    f"\n    Mean diff y: {np.nanmean(np.abs(diff_y))}"
-                )
+            logging.debug(
+                "Residual check at iteration number %d:" "\n    Mean diff x: %f" "\n    Mean diff y: %f",
+                niter,
+                np.nanmean(np.abs(diff_x)),
+                np.nanmean(np.abs(diff_y)),
+            )
 
             # Get index of points below tolerance in both X/Y for this subsample (all points before convergence update)
             # Nodata values are considered having converged
@@ -1170,12 +1169,11 @@ def _iterate_affine_regrid_small_rotations(
             subind_diff_y = np.logical_or(np.abs(diff_y) < (tolerance * res_y), ~np.isfinite(diff_y))
             subind_converged = np.logical_and(subind_diff_x, subind_diff_y)
 
-            if verbose:
-                print(
-                    f"    Points not within tolerance: "
-                    f"{np.count_nonzero(~subind_diff_x)} for X; "
-                    f"{np.count_nonzero(~subind_diff_y)} for Y"
-                )
+            logging.debug(
+                "    Points not within tolerance: %d for X; %d for Y",
+                np.count_nonzero(~subind_diff_x),
+                np.count_nonzero(~subind_diff_y),
+            )
 
             # If all points left are below convergence, update Z one final time and stop here
             if all(subind_converged):
@@ -1226,7 +1224,6 @@ def _apply_matrix_rst(
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    verbose: bool = True,
     force_regrid_method: Literal["iterative", "griddata"] | None = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
@@ -1267,14 +1264,14 @@ def _apply_matrix_rst(
 
     # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
     if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
-        new_transform = _shift_transform(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+        new_transform = _translate(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
         return dem + matrix[2, 3], new_transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
     rotations = _get_rotations_from_matrix(matrix)
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
         new_dem, transform = _iterate_affine_regrid_small_rotations(
-            dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling, verbose=verbose
+            dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling
         )
         return new_dem, transform
 
@@ -1283,7 +1280,6 @@ def _apply_matrix_rst(
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
-    from geoutils.pointcloud import _grid_pointcloud
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
@@ -1293,17 +1289,82 @@ def _apply_matrix_rst(
 
 
 @overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[False] = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf: ...
+
+
+@overload
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    *,
+    return_interpolator: Literal[True],
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]: ...
+
+
+def _reproject_horizontal_shift_samecrs(
+    raster_arr: NDArrayf,
+    src_transform: rio.transform.Affine,
+    dst_transform: rio.transform.Affine = None,
+    return_interpolator: bool = False,
+    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+    """
+    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
+
+    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
+    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
+    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
+
+    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
+    """
+
+    # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
+    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
+    if not return_interpolator:
+        coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
+        # Flatten the arrays (only 1D supported in rowcol/xy after Rasterio 1.4)
+        coords_dst = (coords_dst[0].ravel(), coords_dst[1].ravel())
+    # If we just want the interpolator, we don't need to coordinates of destination points
+    else:
+        coords_dst = None
+
+    output = _interp_points(
+        array=raster_arr,
+        area_or_point="Area",
+        transform=src_transform,
+        points=coords_dst,
+        method=resampling,
+        return_interpolator=return_interpolator,
+    )
+
+    # Reshape output
+    if coords_dst is not None:
+        output = output.reshape(np.shape(raster_arr))
+
+    return output
+
+
+@overload
 def apply_matrix(
     elev: NDArrayf,
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
     **kwargs: Any,
-) -> tuple[NDArrayf, affine.Affine]:
-    ...
+) -> tuple[NDArrayf, affine.Affine]: ...
 
 
 @overload
@@ -1312,12 +1373,12 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
     **kwargs: Any,
-) -> gu.Raster | gpd.GeoDataFrame:
-    ...
+) -> gu.Raster | gpd.GeoDataFrame: ...
 
 
 def apply_matrix(
@@ -1325,6 +1386,7 @@ def apply_matrix(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
@@ -1355,6 +1417,8 @@ def apply_matrix(
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
+    :param resample: (For translations) If set to True, will resample output on the translated grid to match the input
+        transform. Otherwise, only the transform will be updated and no resampling is done.
     :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
         information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
     :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
@@ -1364,15 +1428,18 @@ def apply_matrix(
     :return: Affine transformed elevation point cloud or DEM.
     """
 
+    # Apply matrix to elevation point cloud
     if isinstance(elev, gpd.GeoDataFrame):
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
+    # Or apply matrix to raster (often requires re-gridding)
     else:
+
+        # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
             transform = elev.transform
             dem = elev.data.filled(np.nan)
         else:
             dem = elev
-
         applied_dem, out_transform = _apply_matrix_rst(
             dem=dem,
             transform=transform,
@@ -1382,6 +1449,15 @@ def apply_matrix(
             resampling=resampling,
             **kwargs,
         )
+
+        # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+        if resample:
+            applied_dem = _reproject_horizontal_shift_samecrs(
+                applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
+            )
+            out_transform = transform
+
+        # We return a raster if input was a raster
         if isinstance(elev, gu.Raster):
             applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
             return applied_dem
@@ -1661,14 +1737,12 @@ class Coreg:
         return self._meta
 
     @overload
-    def info(self, verbose: Literal[True] = ...) -> None:
-        ...
+    def info(self, as_str: Literal[False] = ...) -> None: ...
 
     @overload
-    def info(self, verbose: Literal[False]) -> str:
-        ...
+    def info(self, as_str: Literal[True]) -> str: ...
 
-    def info(self, verbose: bool = True) -> None | str:
+    def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
 
         # Define max tabulation: longest name + 2 spaces
@@ -1685,19 +1759,39 @@ class Coreg:
         existing_deep_keys = [k for k, v in recursive_items(self._meta)]
 
         # Formatting function for key values, rounding up digits for numbers and returning function names
-        def format_coregdict_values(val: Any) -> str:
+        def format_coregdict_values(val: Any, tab: int) -> str:
+            """
+            Format coregdict values for printing.
 
-            # Function to round to a certain number of digits relative to magnitude, for floating numbers
-            def round_to_n(x: float | np.floating[Any], n: int) -> float | np.floating[Any]:
-                return round(x, -int(np.floor(np.log10(x))) + (n - 1))  # type: ignore
+            :param val: Input value.
+            :param tab: Tabulation (if value is printed on multiple lines).
 
-            # Different formatting depending on key value type
+            :return: String representing input value.
+            """
+
+            # Function to get decimal to round to a certain number of digits relative to magnitude, for floating numbers
+            def dec_round_to_n(x: float | np.floating[Any], n: int) -> int:
+                return -int(np.floor(np.log10(np.abs(x)))) + (n - 1)
+
+            # Different formatting to string depending on key value type
             if isinstance(val, (float, np.floating)):
-                return str(round_to_n(val, 3))
+                if np.isfinite(val):
+                    str_val = str(round(val, dec_round_to_n(val, 3)))
+                else:
+                    str_val = str(val)
+            elif isinstance(val, np.ndarray):
+                min_val = np.min(val)
+                str_val = str(np.round(val, decimals=dec_round_to_n(min_val, 3)))
             elif callable(val):
-                return val.__name__
+                str_val = val.__name__
             else:
-                return str(val)
+                str_val = str(val)
+
+            # Add tabulation if string has a return to line
+            if "\n" in str_val:
+                str_val = "\n".ljust(tab).join(str_val.split("\n"))
+
+            return str_val
 
         # Sublevels of metadata to show
         sublevels = {
@@ -1727,7 +1821,7 @@ class Coreg:
                 if len(existing_level_keys) > 0:
                     inputs_str += [f"  {lv}\n"]
                     inputs_str += [
-                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
                         for k, v in existing_level_keys
                     ]
 
@@ -1743,7 +1837,7 @@ class Coreg:
                     if len(existing_level_keys) > 0:
                         outputs_str += [f"  {lv}\n"]
                         outputs_str += [
-                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v)}\n"
+                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
                             for k, v in existing_level_keys
                         ]
         elif not self._fit_called:
@@ -1756,13 +1850,13 @@ class Coreg:
         final_str = header_str + inputs_str + outputs_str
 
         # Return as string or print (default)
-        if verbose:
+        if as_str:
+            return "".join(final_str)
+        else:
             print("".join(final_str))
             return None
-        else:
-            return "".join(final_str)
 
-    def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb, verbose: bool = False) -> NDArrayb:
+    def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb) -> NDArrayb:
         """
         Get mask of values to subsample on valid mask.
 
@@ -1773,7 +1867,10 @@ class Coreg:
         params_random = self._meta["inputs"]["random"]
 
         # Derive subsampling mask
-        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask, verbose=verbose)
+        sub_mask = _get_subsample_on_valid_mask(
+            params_random=params_random,
+            valid_mask=valid_mask,
+        )
 
         # Write final subsample to class
         self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
@@ -1791,7 +1888,6 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
-        verbose: bool = False,
     ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
         """
         Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
@@ -1813,7 +1909,6 @@ class Coreg:
             transform=transform,
             area_or_point=area_or_point,
             aux_vars=aux_vars,
-            verbose=verbose,
         )
 
         # Perform subsampling on mask for all inputs
@@ -1844,7 +1939,6 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
@@ -1861,7 +1955,6 @@ class Coreg:
         :param crs: CRS of the reference elevation, only if provided as 2D array.
         :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
-        :param verbose: Print progress messages.
         :param random_state: Random state or seed number to use for calculations (to fix random sampling).
         """
 
@@ -1910,7 +2003,6 @@ class Coreg:
             "area_or_point": area_or_point,
             "z_name": z_name,
             "weights": weights,
-            "verbose": verbose,
         }
 
         # If bias_vars are defined, update dictionary content to array
@@ -1947,8 +2039,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -1961,8 +2052,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -1975,8 +2065,7 @@ class Coreg:
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
+    ) -> RasterType | gpd.GeoDataFrame: ...
 
     def apply(
         self,
@@ -2057,12 +2146,10 @@ class Coreg:
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
     @overload
     def fit_and_apply(
@@ -2079,12 +2166,10 @@ class Coreg:
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def fit_and_apply(
@@ -2101,12 +2186,10 @@ class Coreg:
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
+    ) -> RasterType | gpd.GeoDataFrame: ...
 
     def fit_and_apply(
         self,
@@ -2122,7 +2205,6 @@ class Coreg:
         z_name: str = "z",
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
@@ -2142,7 +2224,6 @@ class Coreg:
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
             only the transform might be updated and no resampling is done.
         :param resampling: Resampling method if resample is used. Defaults to "bilinear".
-        :param verbose: Print progress messages.
         :param random_state: Random state or seed number to use for calculations (to fix random sampling).
         :param fit_kwargs: Keyword arguments to be passed to fit.
         :param apply_kwargs: Keyword argument to be passed to apply.
@@ -2164,7 +2245,6 @@ class Coreg:
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
-            verbose=verbose,
             random_state=random_state,
             **fit_kwargs,
         )
@@ -2242,8 +2322,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> list[np.floating[Any] | float | np.integer[Any] | int]:
-        ...
+    ) -> list[np.floating[Any] | float | np.integer[Any] | int]: ...
 
     @overload
     def error(
@@ -2255,8 +2334,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int:
-        ...
+    ) -> np.floating[Any] | float | np.integer[Any] | int: ...
 
     def error(
         self,
@@ -2452,9 +2530,9 @@ class Coreg:
             try:
                 applied_elev = self._apply_pts(**kwargs)
 
-            # If it doesn't exist, use opencv's perspectiveTransform
+            # If it doesn't exist, use apply_matrix()
             except NotImplementedCoregApply:
-                if self.is_affine:  # This only works on it's rigid, however.
+                if self.is_affine:
 
                     applied_elev = _apply_matrix_pts(
                         epc=kwargs["elev"],
@@ -2473,7 +2551,6 @@ class Coreg:
         values: NDArrayf,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
         """
@@ -2496,7 +2573,6 @@ class Coreg:
             values=values,
             bias_vars=bias_vars,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -2541,7 +2617,6 @@ class Coreg:
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
@@ -2558,7 +2633,6 @@ class Coreg:
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
@@ -2574,7 +2648,6 @@ class Coreg:
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
@@ -2621,6 +2694,30 @@ class CoregPipeline(Coreg):
 
     def __repr__(self) -> str:
         return f"Pipeline: {self.pipeline}"
+
+    @overload
+    def info(self, as_str: Literal[False] = ...) -> None: ...
+
+    @overload
+    def info(self, as_str: Literal[True]) -> str: ...
+
+    def info(self, as_str: bool = False) -> None | str:
+        """Summarize information about this coregistration."""
+
+        # Get the pipeline information for each step as a string
+        final_str = []
+        for i, step in enumerate(self.pipeline):
+
+            final_str.append(f"Pipeline step {i}:\n" f"################\n")
+            step_str = step.info(as_str=True)
+            final_str.append(step_str)
+
+        # Return as string or print (default)
+        if as_str:
+            return "".join(final_str)
+        else:
+            print("".join(final_str))
+            return None
 
     def copy(self: CoregType) -> CoregType:
         """Return an identical copy of the class."""
@@ -2685,7 +2782,6 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
@@ -2721,8 +2817,7 @@ class CoregPipeline(Coreg):
         out_transform = transform
 
         for i, coreg in enumerate(self.pipeline):
-            if verbose:
-                print(f"Running pipeline step: {i + 1} / {len(self.pipeline)}")
+            logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
 
             main_args_fit = {
                 "reference_elev": ref_dem,
@@ -2732,7 +2827,6 @@ class CoregPipeline(Coreg):
                 "crs": crs,
                 "z_name": z_name,
                 "weights": weights,
-                "verbose": verbose,
                 "subsample": subsample,
                 "random_state": random_state,
             }
@@ -2773,8 +2867,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -2787,8 +2880,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        ...
+    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
@@ -2801,8 +2893,7 @@ class CoregPipeline(Coreg):
         crs: rio.crs.CRS | None = None,
         z_name: str = "z",
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame:
-        ...
+    ) -> RasterType | gpd.GeoDataFrame: ...
 
     # Need to override base Coreg method to work on pipeline steps
     def apply(
@@ -2866,7 +2957,7 @@ class CoregPipeline(Coreg):
         else:
             return applied_elev, out_transform
 
-    def __iter__(self) -> Generator[Coreg, None, None]:
+    def __iter__(self) -> Generator[Coreg]:
         """Iterate over the pipeline steps."""
         yield from self.pipeline
 
@@ -2958,7 +3049,6 @@ class BlockwiseCoreg(Coreg):
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
-        verbose: bool = False,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
@@ -2995,11 +3085,19 @@ class BlockwiseCoreg(Coreg):
             area_or_point=area_or_point,
         )
 
+        # Define inlier mask if None, before indexing subdivided array in process function below
+        if inlier_mask is None:
+            mask = np.ones(tba_dem.shape, dtype=bool)
+        else:
+            mask = inlier_mask
+
         groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
 
         indices = np.unique(groups)
 
-        progress_bar = tqdm(total=indices.size, desc="Processing chunks", disable=(not verbose))
+        progress_bar = tqdm(
+            total=indices.size, desc="Processing chunks", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
+        )
 
         def process(i: int) -> dict[str, Any] | BaseException | None:
             """
@@ -3010,10 +3108,10 @@ class BlockwiseCoreg(Coreg):
                 * If it fails: The associated exception.
                 * If the block is empty: None
             """
-            inlier_mask = groups == i
+            group_mask = groups == i
 
             # Find the corresponding slice of the inlier_mask to subset the data
-            rows, cols = np.where(inlier_mask)
+            rows, cols = np.where(group_mask)
             arrayslice = np.s_[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1]
 
             # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
@@ -3022,7 +3120,7 @@ class BlockwiseCoreg(Coreg):
 
             if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
                 return None
-            mask_subset = inlier_mask[arrayslice].copy()
+            mask_subset = mask[arrayslice].copy()
             west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
             transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)  # type: ignore
             procstep = self.procstep.copy()
@@ -3041,7 +3139,6 @@ class BlockwiseCoreg(Coreg):
                     z_name=z_name,
                     subsample=subsample,
                     random_state=random_state,
-                    verbose=verbose,
                 )
                 nmad, median = procstep.error(
                     reference_elev=ref_subset,

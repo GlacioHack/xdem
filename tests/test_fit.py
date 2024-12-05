@@ -1,6 +1,7 @@
 """
 Functions to test the fitting tools.
 """
+
 import platform
 import warnings
 

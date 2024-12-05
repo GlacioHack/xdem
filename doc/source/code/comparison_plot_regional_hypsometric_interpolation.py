@@ -1,4 +1,5 @@
 """Plot an example of regional hypsometric interpolation in central Svalbard."""
+
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np

@@ -16,8 +16,8 @@ jobs:
 
     strategy:
       matrix:
-        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
-        python-version: ["3.9", "3.10", "3.11"]
+        os: ["ubuntu-latest", "macos-latest"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     # Run all shells using bash (including Windows)
     defaults:
@@ -31,7 +31,6 @@ jobs:
     - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v3
       with:
-        miniforge-variant: Mambaforge
         miniforge-version: latest
         auto-update-conda: true
         use-mamba: true

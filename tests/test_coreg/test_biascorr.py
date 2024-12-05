@@ -1,4 +1,5 @@
 """Tests for the biascorr module (non-rigid coregistrations)."""
+
 from __future__ import annotations
 
 import re
@@ -45,32 +46,17 @@ class TestBiasCorr:
 
     # Check all possibilities supported by biascorr:
     # Raster-Raster
-    fit_args_rst_rst = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask,
-        verbose=True,
-    )
+    fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     # Raster-Point
-    fit_args_rst_pts = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba_pts,
-        inlier_mask=inlier_mask,
-        verbose=True,
-    )
+    fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
 
     # Point-Raster
-    fit_args_pts_rst = dict(
-        reference_elev=ref_pts,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask,
-        verbose=True,
-    )
+    fit_args_pts_rst = dict(reference_elev=ref_pts, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
 

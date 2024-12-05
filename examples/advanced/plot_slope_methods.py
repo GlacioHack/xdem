@@ -5,22 +5,22 @@ Slope and aspect methods
 Terrain slope and aspect can be estimated using different methods.
 Here is an example of how to generate the two with each method, and understand their differences.
 
-For more information, see the :ref:`terrain-attributes` chapter and the
-:ref:`sphx_glr_basic_examples_plot_terrain_attributes.py` example.
+See also the :ref:`terrain-attributes` feature page.
+
+**References:** `Horn (1981) <https://ieeexplore.ieee.org/document/1456186>`_, `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 """
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 import xdem
 
 # %%
-# **Example data**
-
+# We open example data.
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 
 def plot_attribute(attribute, cmap, label=None, vlim=None):
-    plt.figure(figsize=(8, 5))
 
     if vlim is not None:
         if isinstance(vlim, (int, np.integer, float, np.floating)):
@@ -30,7 +30,7 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     else:
         vlims = {}
 
-    attribute.plot(cmap=cmap, cbar_title=label)
+    attribute.plot(cmap=cmap, cbar_title=label, **vlims)
 
     plt.xticks([])
     plt.yticks([])
@@ -40,15 +40,15 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
 
 
 # %%
-# Slope with method of `Horn (1981) <http://dx.doi.org/10.1109/PROC.1981.11918>`_ (GDAL default), based on a refined
-# approximation of the gradient  (page 18, bottom left, and pages 20-21).
+# Slope with method of Horn (1981) (GDAL default), based on a refined
+# approximation of the gradient (page 18, bottom left, and pages 20-21).
 
 slope_horn = xdem.terrain.slope(dem)
 
 plot_attribute(slope_horn, "Reds", "Slope of Horn (1981) (°)")
 
 # %%
-# Slope with method of `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_, Equation 13.
+# Slope with method of Zevenbergen and Thorne (1987), Equation 13.
 
 slope_zevenberg = xdem.terrain.slope(dem, method="ZevenbergThorne")
 
@@ -109,4 +109,4 @@ plot_attribute(
 # differences for areas with nearly flat slopes, owing to the high sensitivity of orientation estimation
 # for flat terrain.
 
-# Note: the default aspect for a 0° slope is 180°, as in GDAL.
+# .. note:: The default aspect for a 0° slope is 180°, as in GDAL.

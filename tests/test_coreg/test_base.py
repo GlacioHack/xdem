@@ -49,7 +49,7 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     """Short test function to check equality of coreg dictionary values."""
 
     # Different equality check based on input: number, callable, array, dataframe
-    if type(input1) != type(input2):
+    if not isinstance(input1, type(input2)):
         return False
     elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
         return input1 == input2
@@ -69,12 +69,7 @@ class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
-    fit_params = dict(
-        reference_elev=ref,
-        to_be_aligned_elev=tba,
-        inlier_mask=inlier_mask,
-        verbose=False,
-    )
+    fit_params = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
     points = gpd.GeoDataFrame(
@@ -131,7 +126,7 @@ class TestCoregClass:
 
         # Check that info() contains the mapped string for an example
         c = coreg.Coreg(meta={"subsample": 10000})
-        assert dict_key_to_str["subsample"] in c.info(verbose=False)
+        assert dict_key_to_str["subsample"] in c.info(as_str=True)
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -471,12 +466,16 @@ class TestCoregClass:
         assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
         assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
         assert all(
-            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k])
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
+            )
             for k in coreg_fit_and_apply.pipeline[0].meta.keys()
         )
         assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
         assert all(
-            assert_coreg_meta_equal(coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k])
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
+            )
             for k in coreg_fit_and_apply.pipeline[1].meta.keys()
         )
 
@@ -629,7 +628,6 @@ class TestCoregPipeline:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=True,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -708,9 +706,7 @@ class TestCoregPipeline:
         """Test pipelines with all combinations of coregistration subclasses with bias variables"""
 
         # Create a pipeline from one affine and one biascorr methods
-        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])
-        print(pipeline.pipeline[0].meta["inputs"]["random"]["subsample"])
-        print(pipeline.pipeline[1].meta["inputs"]["random"]["subsample"])
+        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])  # type: ignore
         bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
         pipeline.fit(**self.fit_params, bias_vars=bias_vars, subsample=5000, random_state=42)
 
@@ -860,7 +856,6 @@ class TestBlockwiseCoreg:
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=False,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -955,7 +950,6 @@ class TestBlockwiseCoreg:
         ddem_post = (aligned - self.ref).data.compressed()
         ddem_pre = (tba - self.ref).data.compressed()
         assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
-        # TODO: Figure out why STD here is larger since PR #530
         # assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
 
 

@@ -1,3 +1,21 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Small functions for testing, examples, and other miscellaneous uses."""
 from __future__ import annotations
 
@@ -51,7 +69,7 @@ def generate_random_field(
     rng = np.random.default_rng(random_state)
 
     if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
+        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     field = cv2.resize(
         cv2.GaussianBlur(
@@ -195,7 +213,7 @@ def diff_environment_yml(
     """
 
     if not _has_yaml:
-        raise ValueError("Test dependency needed. Install 'pyyaml'")
+        raise ValueError("Test dependency needed. Install 'pyyaml'.")
 
     if not input_dict:
         # Load the yml as dictionaries

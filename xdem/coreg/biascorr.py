@@ -1,6 +1,25 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Bias corrections (i.e., non-affine coregistration) classes."""
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import geopandas as gpd
@@ -23,14 +42,16 @@ class BiasCorr(Coreg):
 
     Variables for bias-correction can include the elevation coordinates (deramping, directional biases), terrain
     attributes (terrain corrections), or any other user-input variable (quality metrics, land cover).
+
+    The binning and/or fitting correction parameters are stored in the `self.meta["outputs"]["fitorbin"]`.
     """
 
     def __init__(
         self,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
+        fit_func: (
+            Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
+        ) = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
@@ -41,7 +62,7 @@ class BiasCorr(Coreg):
         """
         Instantiate an N-dimensional bias correction using binning, fitting or both sequentially.
 
-        All "fit_" arguments apply to "fit" and "bin_and_fit", and "bin_" arguments to "bin" and "bin_and_fit".
+        All fit arguments apply to "fit" and "bin_and_fit", and bin arguments to "bin" and "bin_and_fit".
 
         :param fit_or_bin: Whether to fit or bin, or both. Use "fit" to correct by optimizing a function or
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
@@ -153,7 +174,6 @@ class BiasCorr(Coreg):
         z_name: str,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
         """Function for fitting raster-raster and raster-point for bias correction methods."""
@@ -168,7 +188,6 @@ class BiasCorr(Coreg):
             area_or_point=area_or_point,
             z_name=z_name,
             aux_vars=bias_vars,
-            verbose=verbose,
         )
 
         # Derive difference to get dh
@@ -179,7 +198,6 @@ class BiasCorr(Coreg):
             values=diff,
             bias_vars=sub_bias_vars,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -194,7 +212,6 @@ class BiasCorr(Coreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Called by other classes"""
@@ -209,7 +226,6 @@ class BiasCorr(Coreg):
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -224,7 +240,6 @@ class BiasCorr(Coreg):
         z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Called by other classes"""
@@ -239,7 +254,6 @@ class BiasCorr(Coreg):
             z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -298,6 +312,8 @@ class BiasCorr(Coreg):
 class DirectionalBias(BiasCorr):
     """
     Bias correction for directional biases, for example along- or across-track of satellite angle.
+
+    The binning and/or fitting correction parameters are stored in the `self.meta["outputs"]["fitorbin"]`.
     """
 
     def __init__(
@@ -344,23 +360,15 @@ class DirectionalBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
-        if verbose:
-            print("Estimating rotated coordinates.")
+        logging.info("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
             along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
-
-        # Parameters dependent on resolution cannot be derived from the rotated x coordinates, need to be passed below
-        if "hop_length" not in kwargs:
-            # The hop length will condition jump in function values, need to be larger than average resolution
-            average_res = (transform[0] + abs(transform[4])) / 2
-            kwargs.update({"hop_length": average_res})
 
         super()._fit_rst_rst_and_rst_pts(
             ref_elev=ref_elev,
@@ -372,7 +380,6 @@ class DirectionalBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -387,15 +394,13 @@ class DirectionalBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
         # Figure out which data is raster format to get gridded attributes
         rast_elev = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
-        if verbose:
-            print("Estimating rotated coordinates.")
+        logging.info("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
             raster=gu.Raster.from_array(data=rast_elev, crs=crs, transform=transform, nodata=-9999),
@@ -418,7 +423,6 @@ class DirectionalBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -447,6 +451,8 @@ class TerrainBias(BiasCorr):
     With elevation: often useful for nadir image DEM correction, where the focal length is slightly miscalculated.
     With curvature: often useful for a difference of DEMs with different effective resolution.
 
+    The binning and/or fitting correction parameters are stored in the `self.meta["outputs"]["fitorbin"]`.
+
     DISCLAIMER: An elevation correction may introduce error when correcting non-photogrammetric biases, as generally
     elevation biases are interlinked with curvature biases.
     See Gardelle et al. (2012) (Figure 2), http://dx.doi.org/10.3189/2012jog11j175, for curvature-related biases.
@@ -456,9 +462,9 @@ class TerrainBias(BiasCorr):
         self,
         terrain_attribute: str = "maximum_curvature",
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
-        fit_func: Callable[..., NDArrayf]
-        | Literal["norder_polynomial"]
-        | Literal["nfreq_sumsin"] = "norder_polynomial",
+        fit_func: (
+            Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
+        ) = "norder_polynomial",
         fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
@@ -506,7 +512,6 @@ class TerrainBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -537,7 +542,6 @@ class TerrainBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -552,7 +556,6 @@ class TerrainBias(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -586,7 +589,6 @@ class TerrainBias(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             **kwargs,
         )
 
@@ -617,7 +619,10 @@ class TerrainBias(BiasCorr):
 class Deramp(BiasCorr):
     """
     Correct for a 2D polynomial along X/Y coordinates, for example from residual camera model deformations
-    (dome-like errors).
+    (dome-like errors) or tilts (rotational errors).
+
+    The correction parameters are stored in the `self.meta["outputs"]["fitorbin"]` key "fit_params", that can be passed
+    to the associated function in key "fit_func".
     """
 
     def __init__(
@@ -670,7 +675,6 @@ class Deramp(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -690,7 +694,6 @@ class Deramp(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             p0=p0,
             **kwargs,
         )
@@ -706,7 +709,6 @@ class Deramp(BiasCorr):
         z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
-        verbose: bool = False,
         **kwargs,
     ) -> None:
 
@@ -729,7 +731,6 @@ class Deramp(BiasCorr):
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
-            verbose=verbose,
             p0=p0,
             **kwargs,
         )

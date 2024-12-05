@@ -6,15 +6,16 @@ Digital elevation models have errors that are spatially correlated due to instru
 rely on a non-stationary spatial statistics framework to estimate and model spatial correlations in elevation error.
 We use a sum of variogram forms to model this correlation, with stable terrain as an error proxy for moving terrain.
 
-**Reference**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure 5 and Equations 13–16.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
+
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 1
 import xdem
 
 # %%
-# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`coregistration-nuthkaab` as shown in
+# We load a difference of DEMs at Longyearbyen, already coregistered using :ref:`nuthkaab` as shown in
 # the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example. We also load the glacier outlines here corresponding to
 # moving terrain.
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
@@ -34,7 +35,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 
 # %%
 # The first output corresponds to the dataframe of the empirical variogram, by default estimated using Dowd's estimator
-# and the circular sampling scheme of ``skgstat.RasterEquidistantMetricSpace`` (Fig. S13 of Hugonnet et al. (2022)). The
+# and a circular sampling scheme in SciKit-GStat (following Fig. S13 of Hugonnet et al. (2022)). The
 # ``lags`` columns is the upper bound of spatial lag bins (lower bound of first bin being 0), the ``exp`` column is the
 # "experimental" variance value of the variogram in that bin, the ``count`` the number of pairwise samples, and
 # ``err_exp`` the 1-sigma error of the "experimental" variance, if more than one variogram is estimated with the

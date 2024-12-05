@@ -4,31 +4,31 @@ Estimation and modelling of heteroscedasticity
 
 Digital elevation models have a precision that can vary with terrain and instrument-related variables. This variability
 in variance is called `heteroscedasticy <https://en.wikipedia.org/wiki/Homoscedasticity_and_heteroscedasticity>`_,
-and rarely accounted for in DEM studies (see :ref:`intro`). Quantifying elevation heteroscedasticity is essential to
+and rarely accounted for in DEM studies (see :ref:`accuracy-precision`). Quantifying elevation heteroscedasticity is essential to
 use stable terrain as an error proxy for moving terrain, and standardize data towards a stationary variance, necessary
-to apply spatial statistics (see :ref:`spatialstats`).
+to apply spatial statistics (see :ref:`uncertainty`).
 
 Here, we show an advanced example in which we look for terrain-dependent explanatory variables to explain the
-heteroscedasticity for a DEM difference at Longyearbyen. We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_
-and robust statistics in N-dimension with :func:`xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
-:func:`xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
-:func:`xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
+heteroscedasticity for a DEM difference at Longyearbyen. We detail the steps used by
+:func:`~xdem.spatialstats.infer_heteroscedasticity_from_stable` exemplified in :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`.
 
-**References**: `Hugonnet et al. (2021) <https://doi.org/10.1038/s41586-021-03436-z>`_, Equation 1, Extended Data Fig.
-3a and `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figs. 4 and S6–S9. Equations 7 or 8 can
-be used to convert elevation change errors into elevation errors.
+We use `data binning <https://en.wikipedia.org/wiki/Data_binning>`_ and robust statistics in N-dimension with
+:func:`~xdem.spatialstats.nd_binning`, apply a N-dimensional interpolation with
+:func:`~xdem.spatialstats.interp_nd_binning`, and scale our interpolant function with a two-step standardization
+:func:`~xdem.spatialstats.two_step_standardization` to produce the final elevation error function.
+
+**Reference:** `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
+
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 8
-import matplotlib.pyplot as plt
 import numpy as np
 
 import xdem
 
 # %%
-# Here, we detail the steps used by ``xdem.spatialstats.infer_heteroscedasticity_from_stable`` exemplified in
-# :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py`. First, we load example files and create a glacier mask.
+# We load example files and create a glacier mask.
 
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
@@ -100,11 +100,10 @@ xdem.spatialstats.plot_1d_binning(df, "planc", "nmad", "Planform curvature (100 
 # %%
 # The relation with the plan curvature remains ambiguous.
 # We should better define our bins to avoid sampling bins with too many or too few samples. For this, we can partition
-# the data in quantiles in :func:`xdem.spatialstats.nd_binning`.
-# *Note: we need a higher number of bins to work with quantiles and still resolve the edges of the distribution. As
-# with many dimensions the ND bin size increases exponentially, we avoid binning all variables at the same
-# time and instead bin one at a time.*
-# We define 1000 quantile bins of size 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
+# the data in quantiles in :func:`xdem.spatialstats.nd_binning`. We define 1000 quantile bins of size
+# 0.001 (equivalent to 0.1% percentile bins) for the profile curvature:
+#
+# .. note:: We need a higher number of bins to work with quantiles and still resolve the edges of the distribution.
 
 df = xdem.spatialstats.nd_binning(
     values=dh_arr,

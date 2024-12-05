@@ -2,7 +2,9 @@
 Normalized regional hypsometric interpolation
 =============================================
 
-There are many ways of interpolating gaps in a dDEM.
+.. caution:: This functionality is specific to glaciers, and might be removed in future package versions.
+
+There are many ways of interpolating gaps in elevation differences.
 In the case of glaciers, one very useful fact is that elevation change generally varies with elevation.
 This means that if valid pixels exist in a certain elevation bin, their values can be used to fill other pixels in the same approximate elevation.
 Filling gaps by elevation is the main basis of "hypsometric interpolation approaches", of which there are many variations of.
@@ -24,8 +26,8 @@ Normalized regional hypsometric interpolation solves the scale and elevation ran
     2. Re-scales that signal to fit each glacier once determined.
 
 The consequence is a much more accurate interpolation approach that can be used in a multitude of glacierized settings.
-
 """
+
 import geoutils as gu
 
 # sphinx_gallery_thumbnail_number = 2
@@ -95,8 +97,7 @@ ddem_filled = xdem.volume.norm_regional_hypsometric_interpolation(
 )
 
 
-plt.figure(figsize=(8, 5))
-plt.imshow(ddem_filled.data, cmap="coolwarm_r", vmin=-10, vmax=10, extent=plt_extent)
+plt.imshow(ddem_filled.data, cmap="RdYlBu", vmin=-10, vmax=10, extent=plt_extent)
 plt.colorbar()
 plt.show()
 
@@ -105,7 +106,7 @@ plt.show()
 # We can plot the difference between the actual and the interpolated values, to validate the method.
 
 difference = (ddem_filled - ddem)[random_nans]
-median = np.nanmedian(difference)
+median = np.ma.median(difference)
 nmad = xdem.spatialstats.nmad(difference)
 
 plt.title(f"Median: {median:.2f} m, NMAD: {nmad:.2f} m")

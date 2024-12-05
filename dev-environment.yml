@@ -2,25 +2,30 @@ name: xdem-dev
 channels:
   - conda-forge
 dependencies:
-  - python>=3.9,<3.12
+  - python>=3.10,<3.13
   - geopandas>=0.12.0
   - numba=0.*
   - numpy=1.*
   - matplotlib=3.*
   - pyproj>=3.4,<4
-  - rasterio>=1.3,<1.4
+  - rasterio>=1.3,<2
   - scipy=1.*
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0.18,<1.1
-  - geoutils=0.1.9
+  - geoutils=0.1.12
+  - affine
+  - pandas
+  - pyogrio
+  - shapely
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
 
   # Optional dependencies
   - pytransform3d
-  - richdem
+  - pyyaml
+  - scikit-learn
 
   # Test dependencies
   - gdal  # To test against GDAL
@@ -29,6 +34,7 @@ dependencies:
   - pyyaml
   - flake8
   - pylint
+  - richdem # To test against richdem
 
   # Doc dependencies
   - sphinx
@@ -47,6 +53,7 @@ dependencies:
     # Optional dependency
     - -e ./
 
+    - noisyopt
     # "Headless" needed for opencv to install without requiring system dependencies
     - opencv-contrib-python-headless
 

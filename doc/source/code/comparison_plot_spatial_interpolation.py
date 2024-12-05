@@ -1,4 +1,5 @@
 """Plot an example of spatial interpolation of randomly generated errors."""
+
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +16,7 @@ ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)  # Reset the mask
 # Introduce 50000 nans randomly throughout the dDEM.
 ddem.data.mask.ravel()[np.random.default_rng(42).choice(ddem.data.size, 50000, replace=False)] = True
 
-ddem.interpolate(method="linear")
+ddem.interpolate(method="idw")
 
 ylim = (300, 100)
 xlim = (800, 1050)

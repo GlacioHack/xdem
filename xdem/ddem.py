@@ -1,15 +1,34 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Difference of DEMs classes and functions."""
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import Any, Literal
 
 import geoutils as gu
 import numpy as np
 import pyogrio
 import rasterio as rio
 import shapely
-from geoutils.raster import Raster, RasterType, get_array_and_mask
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.array import get_array_and_mask
 from rasterio.crs import CRS
 from rasterio.warp import Affine
 
@@ -163,7 +182,7 @@ class dDEM(Raster):  # type: ignore
 
     def interpolate(
         self,
-        method: str = "linear",
+        method: Literal["idw", "local_hypsometric", "regional_hypsometric"] = "idw",
         reference_elevation: NDArrayf | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] | xdem.DEM = None,
         mask: NDArrayf | xdem.DEM | gu.Vector = None,
     ) -> NDArrayf | None:
@@ -188,8 +207,8 @@ class dDEM(Raster):  # type: ignore
                 f" different from 'self' ({self.data.shape})"
             )
 
-        if method == "linear":
-            self.filled_data = xdem.volume.linear_interpolation(self.data)
+        if method == "idw":
+            self.filled_data = xdem.volume.idw_interpolation(self.data)
         elif method == "local_hypsometric":
             assert reference_elevation is not None
             assert mask is not None
@@ -231,7 +250,7 @@ class dDEM(Raster):  # type: ignore
             diff = abs(np.nanmean(interpolated_ddem - self.data))
             assert diff < 0.01, (diff, self.data.mean())
 
-            self.filled_data = xdem.volume.linear_interpolation(interpolated_ddem)
+            self.filled_data = xdem.volume.idw_interpolation(interpolated_ddem)
 
         elif method == "regional_hypsometric":
             assert reference_elevation is not None
