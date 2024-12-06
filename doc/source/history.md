@@ -22,11 +22,11 @@ Grenoble Alpes.
 
 ## Joining effort with **demcompare**
 
-In 2024, xDEM and [demcompare](https://github.com/CNES/demcompare) joined efforts in the perspective of 
-merging the best of both packages into one, and to jointly continue the development of new features for 
+In 2024, xDEM and [demcompare](https://github.com/CNES/demcompare) joined efforts in the perspective of
+merging the best of both packages into one, and to jointly continue the development of new features for
 analyzing elevation data with a larger expertise pool.
 
-[demcompare](https://github.com/CNES/demcompare) is a tool developed by the CNES (French Space Agency) to 
+[demcompare](https://github.com/CNES/demcompare) is a tool developed by the CNES (French Space Agency) to
 support its 3D satellite missions in analyzing elevation data, for instance from stereophotogrammetric DEMs
 that can be generated with [CARS](https://github.com/CNES/cars).
 

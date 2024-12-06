@@ -32,7 +32,7 @@ Still, many methods rely either on coordinates (e.g., deramping, along-track cor
 #################################################################################
 # This a temporary trick to allow vertical referencing to work in other notebooks
 #################################################################################
-# Somehow, only on Readthedocs (locally works fine), the first notebook to run (in alphabetical order) fails 
+# Somehow, only on Readthedocs (locally works fine), the first notebook to run (in alphabetical order) fails
 # to download from PROJ... while all other notebook render normally.
 # The first alphabetical notebook is "biascorr", so adding this trick here
 

@@ -177,7 +177,7 @@ html_theme_options = {
     },
     "announcement": (
         "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
-        'to update your code see the release notes. ⚠️'
+        "to update your code see the release notes. ⚠️"
     ),
 }
 
