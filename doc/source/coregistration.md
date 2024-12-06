@@ -493,3 +493,39 @@ These metadata are only inputs specific to a given method, outlined in the metho
 
 For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and
 for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
+
+## Dividing coregistration in blocks
+ 
+### The {class}`~xdem.coreg.BlockwiseCoreg` object
+ 
+Sometimes, we want to split a coregistration across different spatial subsets of an elevation dataset, running that 
+method independently in each subset. A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
+
+```{code-cell} ipython3
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=16)
+```
+
+The subdivision corresponds to an equal-length block division across the extent of the elevation dataset. It needs 
+to be a number of the form 2{sup}`n` (such as 4 or 256).
+
+It is run the same way as other coregistrations:
+
+```{code-cell} ipython3
+# Run 16 block coregistrations
+aligned_dem = blockwise.fit_and_apply(ref_dem, tba_dem_shifted)
+```
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before block NK")
+(tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After block NK")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+```
