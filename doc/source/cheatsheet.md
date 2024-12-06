@@ -81,6 +81,28 @@ pyplot.rcParams['savefig.dpi'] = 600
 pyplot.rcParams['font.size'] = 9  # Default 10 is a bit too big for coregistration plots
 ```
 
+```{code-cell} ipython3
+:tags: [hide-cell]
+:mystnb:
+:  code_prompt_show: "Show the code for opening example data"
+:  code_prompt_hide: "Hide the code for opening example data"
+
+import xdem
+import matplotlib.pyplot as plt
+
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+```
+
+```{code-cell} ipython3
+# Set current vertical CRS
+ref_dem.set_vcrs("EGM96")
+# Transform to a local reference system from https://cdn.proj.org/
+trans_dem = ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
+
+# Plot the elevation differences of the vertical transformation
+(trans_dem - ref_dem).plot(cmap='RdYlBu', cbar_title="Elevation differences of\n vertical transform (m)")
+```
+
 It is often crucial to relate the location of your errors on static surfaces to the terrain distribution
 (in particular, its slope and curvature), which can usually be inferred visually from a hillshade.
 
