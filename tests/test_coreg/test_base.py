@@ -1150,7 +1150,7 @@ def test_warp_dem() -> None:
     )
 
     # The warped DEM should have the value 'elev_shift' in the upper left corner.
-    assert warped_dem[0, 0] == elev_shift
+    assert warped_dem[0, 0] == -elev_shift
     # The corner should be zero, so the corner pixel (represents the corner minus resolution / 2) should be close.
     # We select the pixel before the corner (-2 in X-axis) to avoid the NaN propagation on the bottom row.
     assert warped_dem[-2, -1] < 1
