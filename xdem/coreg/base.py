@@ -3393,8 +3393,8 @@ class BlockwiseCoreg(Coreg):
         warped_dem = warp_dem(
             dem=elev,
             transform=transform,
-            source_coords=all_points[:, :, 0],
-            destination_coords=all_points[:, :, 1],
+            source_coords=all_points[:, :, 1],
+            destination_coords=all_points[:, :, 0],
             resampling="linear",
         )
 
@@ -3538,7 +3538,7 @@ def warp_dem(
     if not no_vertical:
         grid_offsets = scipy.interpolate.griddata(
             points=destination_coords_scaled[:, :2],
-            values=destination_coords_scaled[:, 2] - source_coords_scaled[:, 2],
+            values=source_coords_scaled[:, 2] - destination_coords_scaled[:, 2],
             xi=(grid_x, grid_y),
             method=resampling,
             fill_value=np.nan,

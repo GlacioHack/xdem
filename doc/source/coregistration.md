@@ -495,17 +495,22 @@ For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define th
 for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
 
 ## Dividing coregistration in blocks
- 
+
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object
- 
-Sometimes, we want to split a coregistration across different spatial subsets of an elevation dataset, running that 
+
+```{caution}
+The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental: it might not support all coregistration
+methods, and create edge artefacts.
+```
+
+Sometimes, we want to split a coregistration across different spatial subsets of an elevation dataset, running that
 method independently in each subset. A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=16)
 ```
 
-The subdivision corresponds to an equal-length block division across the extent of the elevation dataset. It needs 
+The subdivision corresponds to an equal-length block division across the extent of the elevation dataset. It needs
 to be a number of the form 2{sup}`n` (such as 4 or 256).
 
 It is run the same way as other coregistrations:
