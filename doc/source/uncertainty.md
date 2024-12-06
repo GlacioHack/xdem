@@ -79,7 +79,7 @@ tba_dem_coreg = tba_dem.coregister_3d(ref_dem, inlier_mask=inlier_mask)
 
 ```{code-cell} ipython3
 # Estimate elevation uncertainty assuming both DEMs have similar precision
-sig_dem, rho_sig = tba_dem_coreg.estimate_uncertainty(ref_dem, stable_terrain=inlier_mask, precision_of_other="same")
+sig_dem, rho_sig = tba_dem_coreg.estimate_uncertainty(ref_dem, stable_terrain=inlier_mask, precision_of_other="same", random_state=42)
 
 # The error map variability is estimated from slope and curvature by default
 sig_dem.plot(cmap="Purples", cbar_title=r"Error in elevation (1$\sigma$, m)")
