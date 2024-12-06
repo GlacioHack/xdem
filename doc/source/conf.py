@@ -27,7 +27,7 @@ import xdem
 
 project = "xDEM"
 copyright = "2024, xDEM developers"
-author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
+author = "Romain Hugonnet, Erik Mannerfelt, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
 release = xdem.__version__
@@ -178,7 +178,7 @@ html_theme_options = {
     },
     "announcement": (
         "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
-        'to update your code see <a href="https://github.com/GlacioHack/xdem/releases/tag/v0.1.0">here</a>. ⚠️'
+        'to update your code see the release notes. ⚠️'
     ),
 }
 

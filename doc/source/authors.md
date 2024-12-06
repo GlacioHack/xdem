@@ -1,32 +1,19 @@
----
-file_format: mystnb
-jupytext:
-  formats: md:myst
-  text_representation:
-    extension: .md
-    format_name: myst
-kernelspec:
-  display_name: xdem-env
-  language: python
-  name: xdem
----
 (authors)=
-
-# Credits
+## Authors
 
 © 2024 **xDEM developers**.
 
-**xDEM** is licensed under permissive Apache 2 license (See [LICENSE file](license.md)).
+**xDEM** is licensed under permissive Apache 2 license (See [LICENSE file](license.md) or below).
 
 All contributors listed in this document are part of the **xDEM developers**, and their
 contributions are subject to the project's copyright under the terms of the
 [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 
-This file keeps track of authors contributions.
+This section keeps track of authors contributions.
 
 ---
 
-## Development Lead
+### Development lead
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
 - **Amaury Dehecq** [@adehecq](https://github/adehecq) <amaury.dehecq@univ-grenoble-alpes.fr>
@@ -34,7 +21,7 @@ This file keeps track of authors contributions.
 
 ---
 
-## Contributors
+### Contributors
 
 
 - **Friedrich Knuth** [@friedrichknuth](https://github/friedrichknuth)
@@ -52,11 +39,9 @@ This file keeps track of authors contributions.
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
 
-Update here with new contributors.
-
 ---
 
-## Original Developers/Designers/Supporters
+### Original developers
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
 - **Amaury Dehecq** [@adehecq](https://github/adehecq) <amaury.dehecq@univ-grenoble-alpes.fr>
