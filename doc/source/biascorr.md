@@ -37,11 +37,11 @@ Still, many methods rely either on coordinates (e.g., deramping, along-track cor
 # The first alphabetical notebook is "biascorr", so adding this trick here
 
 import xdem
-ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-# Set current vertical CRS
-ref_dem.set_vcrs("EGM96")
-# Transform to a local reference system from https://cdn.proj.org/
-trans_dem = ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+# Define the vertical CRS as the 3D ellipsoid of the 2D CRS
+dem.set_vcrs("Ellipsoid")
+# Transform to the EGM96 geoid
+dem.to_vcrs("EGM96")
 ```
 
 ## Quick use
