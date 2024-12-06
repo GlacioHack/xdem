@@ -58,7 +58,7 @@ bounds = list(dem.get_bounds_projected(4326))
 region = sliderule.toregion(bounds)["poly"]
 ```
 
-We can then initialize the SlideRule client, and fetch the ICESat-2 ATL06 reference data in the region of interest 
+We can then initialize the SlideRule client, and fetch the ICESat-2 ATL06 reference data in the region of interest
 using {func}`icesat2.atl06sp`.
 
 ```{code-cell} ipython3
