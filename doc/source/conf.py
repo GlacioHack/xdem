@@ -79,6 +79,7 @@ intersphinx_mapping = {
     "geopandas": ("https://geopandas.org/en/stable", None),
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "rioxarray": ("https://corteva.github.io/rioxarray/stable/", None),
+    "sliderule": ("https://slideruleearth.io/web/rtd/", None),
 }
 
 sphinx_gallery_conf = {
