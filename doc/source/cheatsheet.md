@@ -40,6 +40,10 @@ you can use to compare to your own elevation differences.
      - Positive and negative errors that are larger near high slopes and symmetric with opposite slope orientation, making landforms appear visually.
      - Likely horizontal shift due to geopositioning errors, use a {ref}`coregistration` such as {class}`~xdem.coreg.NuthKaab`.
      - Even a tiny horizontal misalignment can be visually identified! To not confuse with {ref}`peak-cavity`.
+   * - {ref}`peak-cavity`
+     - Positive and negative errors, with one sign located exclusively near peaks and the other exclusively near cavities.
+     - Likely resolution-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.TerrainBias`.
+     - Can be over-corrected, sometimes better to simply ignore during analysis. Or avoid by downsampling all elevation data to the lowest resolution, rather than upsampling to the highest.
    * - {ref}`smooth-large-field`
      - Smooth offsets varying at scale of 10 km+, often same sign (either positive or negative).
      - Likely wrong {ref}`vertical-ref`, can set and transform with {func}`~xdem.DEM.set_vcrs` and {func}`~xdem.DEM.to_vcrs`.
@@ -52,10 +56,6 @@ you can use to compare to your own elevation differences.
      - Positive and negative errors undulating patterns at one or several frequencies well larger than pixel size.
      - Likely jitter-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.DirectionalBias`.
      - Can sometimes be more rigorously fixed ahead of DEM generation with jitter correction.
-   * - {ref}`peak-cavity`
-     - Positive and negative errors, with one sign located exclusively near peaks and the other exclusively near cavities.
-     - Likely resolution-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.TerrainBias`.
-     - Can be over-corrected, sometimes better to simply ignore during analysis. Or avoid by downsampling all elevation data to the lowest resolution, rather than upsampling to the highest.
    * - {ref}`point-alternating`
      - Point data errors that alternate between negative and positive, higher on steeper slopes.
      - Likely wrong point-raster comparison, use [point interpolation or reduction on the raster instead](https://geoutils.readthedocs.io/en/stable/raster_vector_point.html#rasterpoint-operations) such as {func}`~xdem.DEM.interp_points`.
@@ -79,28 +79,6 @@ from matplotlib import pyplot
 pyplot.rcParams['figure.dpi'] = 600
 pyplot.rcParams['savefig.dpi'] = 600
 pyplot.rcParams['font.size'] = 9  # Default 10 is a bit too big for coregistration plots
-```
-
-```{code-cell} ipython3
-:tags: [hide-cell]
-:mystnb:
-:  code_prompt_show: "Show the code for opening example data"
-:  code_prompt_hide: "Hide the code for opening example data"
-
-import xdem
-import matplotlib.pyplot as plt
-
-ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-```
-
-```{code-cell} ipython3
-# Set current vertical CRS
-ref_dem.set_vcrs("EGM96")
-# Transform to a local reference system from https://cdn.proj.org/
-trans_dem = ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
-
-# Plot the elevation differences of the vertical transformation
-(trans_dem - ref_dem).plot(cmap='RdYlBu', cbar_title="Elevation differences of\n vertical transform (m)")
 ```
 
 It is often crucial to relate the location of your errors on static surfaces to the terrain distribution
@@ -148,6 +126,27 @@ dem_shift = dem.translate(x_shift, y_shift, distance_unit="pixel")
 # Resample and plot the elevation differences of the horizontal shift
 dh = dem - dem_shift.reproject(dem)
 dh.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differences of\nhorizontal shift (m)")
+```
+
+(peak-cavity)=
+### Peak cuts and cavity fills
+
+Example of peak cutting and cavity filling errors. We here downsampled our DEM from 20 m to 100 m to simulate a lower
+native resolution, then upsample it again to 20 m, to show the errors affect areas near high curvatures such as
+peaks and cavities.
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate resolution errors"
+:  code_prompt_hide: "Hide code to simulate resolution errors"
+
+# Downsample DEM (bilinear)
+dem_100m = dem.reproject(res=100)
+
+# Upsample (bilinear again) and compare
+dh = dem - dem_100m.reproject(dem)
+dh.plot(cmap='RdYlBu', vmin=-40, vmax=40, cbar_title="Elevation differences of\nresolution change (m)")
 ```
 
 (smooth-large-field)=
@@ -230,27 +229,6 @@ synthetic_bias_arr = sumsin_1d(xx.flatten(), *params).reshape(np.shape(dem.data)
 # Plot the elevation differences of the undulations
 synthetic_bias = dem.copy(new_array=synthetic_bias_arr)
 synthetic_bias.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differences of\nundulations (m)")
-```
-
-(peak-cavity)=
-### Peak cuts and cavity fills
-
-Example of peak cutting and cavity filling errors. We here downsampled our DEM from 20 m to 100 m to simulate a lower
-native resolution, then upsample it again to 20 m, to show the errors affect areas near high curvatures such as
-peaks and cavities.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-:mystnb:
-:  code_prompt_show: "Show code to simulate resolution errors"
-:  code_prompt_hide: "Hide code to simulate resolution errors"
-
-# Downsample DEM (bilinear)
-dem_100m = dem.reproject(res=100)
-
-# Upsample (bilinear again) and compare
-dh = dem - dem_100m.reproject(dem)
-dh.plot(cmap='RdYlBu', vmin=-40, vmax=40, cbar_title="Elevation differences of\nresolution change (m)")
 ```
 
 (point-alternating)=
