@@ -26,6 +26,24 @@ passed any external variables (e.g., land cover type, processing metric) to atte
 Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain
 (e.g., curvature- or elevation-dependant corrections), derived solely from the elevation data.
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+#################################################################################
+# This a temporary trick to allow vertical referencing to work in other notebooks
+#################################################################################
+# Somehow, only on Readthedocs (locally works fine), the first notebook to run (in alphabetical order) fails 
+# to download from PROJ... while all other notebook render normally.
+# The first alphabetical notebook is "biascorr", so adding this trick here
+
+import xdem
+ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+# Set current vertical CRS
+ref_dem.set_vcrs("EGM96")
+# Transform to a local reference system from https://cdn.proj.org/
+trans_dem = ref_dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
+```
+
 ## Quick use
 
 Bias-correction methods are **used the same way as coregistrations**:
