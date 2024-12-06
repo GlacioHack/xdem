@@ -122,7 +122,7 @@ uncertainty
 :maxdepth: 2
 
 guides
-cheatsheet
+zheatsheet
 ecosystem
 ```
 
