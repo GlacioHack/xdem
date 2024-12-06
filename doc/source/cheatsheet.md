@@ -131,7 +131,7 @@ dh.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differences of\nho
 (smooth-large-field)=
 ### Smooth-field offset
 
-Example of smooth large offset field created by a wrong vertical CRS. We here show the difference due to the EGM96
+Example of smooth large offset field created by a wrong vertical CRS. We here show the difference due to a local
 geoid added on top of the ellipsoid.
 
 ```{code-cell} ipython3
@@ -140,10 +140,10 @@ geoid added on top of the ellipsoid.
 :  code_prompt_show: "Show code to simulate vertical referencing errors"
 :  code_prompt_hide: "Hide code to simulate vertical referencing errors"
 
-# Set current vertical CRS as ellipsoid
-dem.set_vcrs("Ellipsoid")
-# Transform vertical reference to geoid
-trans_dem = dem.to_vcrs("EGM96")
+# Set current vertical CRS
+dem.set_vcrs("EGM96")
+# Transform to a local reference system from https://cdn.proj.org/
+trans_dem = dem.to_vcrs("no_kv_arcgp-2006-sk.tif")
 
 # Plot the elevation differences of the vertical transformation
 dh = dem - trans_dem
