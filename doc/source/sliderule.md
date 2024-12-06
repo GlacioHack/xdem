@@ -58,7 +58,8 @@ bounds = list(dem.get_bounds_projected(4326))
 region = sliderule.toregion(bounds)["poly"]
 ```
 
-We can then initialize the SlideRule client, and fetch the ICESat-2 ATL06 reference data using {func}`icesat2.atl06sp`.
+We can then initialize the SlideRule client, and fetch the ICESat-2 ATL06 reference data in the region of interest 
+using {func}`icesat2.atl06sp`.
 
 ```{code-cell} ipython3
 # Initialize SlideRule client
@@ -93,7 +94,7 @@ aligned_dem = nk.fit_and_apply(reference_elev=gdf, to_be_aligned_elev=dem, inlie
 print([k+f': {nk.meta["outputs"]["affine"][k]:.2f} meters' for k in ["shift_x", "shift_y", "shift_z"]])
 ```
 
-We can plot the improvement due to the coregistration.
+Let's visualize the improvement in elevation differences after coregistration.
 
 ```{code-cell} ipython3
 :tags: [hide-input]
@@ -132,9 +133,9 @@ _ = ax[1].set_yticklabels([])
 plt.tight_layout()
 ```
 
-And the full information around the coregistration using {func}`~xdem.coreg.Coreg.info`.
+We can print a coregistration summary using {func}`~xdem.coreg.Coreg.info`.
 
 ```{code-cell} ipython3
-# Show full coregistration summary
+# Show full coregistration information
 nk.info()
 ```
