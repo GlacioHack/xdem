@@ -148,9 +148,7 @@ release_notes
 :maxdepth: 2
 
 publis
-background
-authors
-license
+credits
 ```
 
 # Indices and tables
