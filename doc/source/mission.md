@@ -1,5 +1,5 @@
 (mission)=
-## Mission
+# Mission
 
 ```{epigraph}
 The core mission of xDEM is to be **easy-of-use**, **modular** and **robust**.

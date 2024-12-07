@@ -1,5 +1,5 @@
 (authors)=
-## Authors
+# Authors
 
 © 2024 **xDEM developers**.
 
@@ -13,7 +13,7 @@ This section keeps track of authors contributions.
 
 ---
 
-### Development lead
+## Development lead
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
 - **Amaury Dehecq** [@adehecq](https://github/adehecq) <amaury.dehecq@univ-grenoble-alpes.fr>
@@ -21,7 +21,7 @@ This section keeps track of authors contributions.
 
 ---
 
-### Contributors
+## Contributors
 
 
 - **Friedrich Knuth** [@friedrichknuth](https://github/friedrichknuth)
@@ -41,7 +41,7 @@ This section keeps track of authors contributions.
 
 ---
 
-### Original developers
+## Original developers
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
 - **Amaury Dehecq** [@adehecq](https://github/adehecq) <amaury.dehecq@univ-grenoble-alpes.fr>

@@ -1,5 +1,5 @@
 (funding)=
-## Funding acknowledgments
+# Funding acknowledgments
 
 Members of the lead development team acknowledge funding from:
 - SNSF grant no. 184634, a MeteoSwiss [GCOS](https://gcos.wmo.int/en/home) project on elevation data analysis for glaciology,
