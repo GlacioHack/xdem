@@ -1204,6 +1204,30 @@ def test_warp_dem() -> None:
     # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
     assert spatialstats.nmad(dem - untransformed_dem) < 0.5
 
+    # Test with Z-correction disabled
+    transformed_dem_no_z = coreg.base.warp_dem(
+        dem=dem,
+        transform=transform,
+        source_coords=source_coords,
+        destination_coords=dest_coords,
+        resampling="linear",
+        apply_z_correction=False,
+    )
+
+    # Try to undo the warp by reversing the source-destination coordinates with Z-correction disabled
+    untransformed_dem_no_z = coreg.base.warp_dem(
+        dem=transformed_dem_no_z,
+        transform=transform,
+        source_coords=dest_coords,
+        destination_coords=source_coords,
+        resampling="linear",
+        apply_z_correction=False,
+    )
+
+    # Validate that the DEM is now more or less the same as the original, with Z-correction disabled.
+    # The result should be similar to the original, but with no Z-shift applied.
+    assert spatialstats.nmad(dem - untransformed_dem_no_z) < 0.5
+
     if False:
         import matplotlib.pyplot as plt
 
