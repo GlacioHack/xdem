@@ -16,7 +16,7 @@ from geoutils import Raster, Vector
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
-from xdem.spatialstats import EmpiricalVariogramKArgs, nmad
+from xdem.spatialstats import EmpiricalVariogramKArgs, nmad, neff_hugonnet_approx
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -1066,31 +1066,23 @@ class TestNeffEstimation:
         )
 
         # Check that the function runs with default parameters
-        # t0 = time.time()
         neff_exact = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model
         )
-        # t1 = time.time()
 
         # Check that the non-vectorized version gives the same result
         neff_exact_nv = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, vectorized=False
         )
-        # t2 = time.time()
         assert neff_exact == pytest.approx(neff_exact_nv, rel=0.001)
 
-        # Check that the vectorized version is faster (vectorized for about 250 points here)
-        # assert (t1 - t0) < (t2 - t1)
-
         # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
-        # t3 = time.time()
-        neff_approx = xdem.spatialstats.neff_hugonnet_approx(
+        neff_approx = neff_hugonnet_approx(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, subsample=100, random_state=42
         )
-        # t4 = time.time()
 
         # Check that the non-vectorized version gives the same result, sampling 100 out of 250 samples
-        neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(
+        neff_approx_nv = neff_hugonnet_approx(
             coords=coords,
             errors=errors,
             params_variogram_model=params_variogram_model,
@@ -1101,12 +1093,24 @@ class TestNeffEstimation:
 
         assert neff_approx == pytest.approx(neff_approx_nv, rel=0.001)
 
-        # Check that the approximation version is faster within 30% error
-        # TODO: find a more robust way to test time for CI
-        # assert (t4 - t3) < (t1 - t0)
-
         # Check that the approximation is about the same as the original estimate within 10%
         assert neff_approx == pytest.approx(neff_exact, rel=0.1)
+
+        # Check that the approximation works even on large dataset without creating memory errors
+        # 100,000 points squared (pairwise) should use more than 64GB of RAM without subsample
+        rng = np.random.default_rng(42)
+        coords = rng.normal(size=(100000, 2))
+        errors = rng.normal(size=(100000))
+        # This uses a subsample of 100, so should run just fine despite the large size
+        neff_approx_nv = neff_hugonnet_approx(
+            coords=coords,
+            errors=errors,
+            params_variogram_model=params_variogram_model,
+            subsample=100,
+            vectorized=True,
+            random_state=42,
+        )
+        assert neff_approx_nv is not None
 
     def test_number_effective_samples(self) -> None:
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
