@@ -42,7 +42,7 @@ from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
-from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from skimage.draw import disk
 
@@ -2248,9 +2248,8 @@ def neff_hugonnet_approx(
     # Get spatial correlation function from variogram parameters
     rho = correlation_from_variogram(params_variogram_model)
 
-    # Get number of points and pairwise distance compacted matrix from scipy.pdist
+    # Get number of points and pairwise distance matrix from scipy.cdist
     n = len(coords)
-    pds = pdist(coords)
 
     # At maximum, the number of subsamples has to be equal to number of points
     subsample = min(subsample, n)
@@ -2258,38 +2257,25 @@ def neff_hugonnet_approx(
     # Get random subset of points for one of the sums
     rand_points = rng.choice(n, size=subsample, replace=False)
 
+    # Subsample coordinates in 1D before computing pairwise distances
+    sub_coords = coords[rand_points, :]
+    sub_errors = errors[rand_points]
+    pds_matrix = cdist(coords, sub_coords, "euclidean")
+
     # Now we compute the double covariance sum
     # Either using for-loop-version
     if not vectorized:
         var = 0.0
-        for ind_sub in range(subsample):
-            for j in range(n):
-
-                i = rand_points[ind_sub]
-                # For index calculation of the pairwise distance,
-                # see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
-                if i == j:
-                    d = 0
-                elif i < j:
-                    ind = n * i + j - ((i + 2) * (i + 1)) // 2
-                    d = pds[ind]
-                else:
-                    ind = n * j + i - ((j + 2) * (j + 1)) // 2
-                    d = pds[ind]
-
+        for i in range(pds_matrix.shape[0]):
+            for j in range(pds_matrix.shape[1]):
+                d = pds_matrix[i, j]
                 var += rho(d) * errors[i] * errors[j]  # type: ignore
 
     # Or vectorized version
     else:
-        # We subset the points used in one dimension, for errors and pairwise distances computed
-        errors_sub = errors[rand_points]
-        pds_matrix = squareform(pds)
-        pds_matrix_sub = pds_matrix[:, rand_points]
         # Vectorized calculation
         var = np.sum(
-            errors.reshape((-1, 1))
-            @ errors_sub.reshape((1, -1))
-            * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape)
+            errors.reshape((-1, 1)) @ sub_errors.reshape((1, -1)) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
         )
 
     # The number of effective sample is the fraction of total sill by squared standard error
