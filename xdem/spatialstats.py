@@ -42,7 +42,7 @@ from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
-from scipy.spatial.distance import pdist, cdist, squareform
+from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from skimage.draw import disk
 
@@ -2275,9 +2275,7 @@ def neff_hugonnet_approx(
     else:
         # Vectorized calculation
         var = np.sum(
-            errors.reshape((-1, 1))
-            @ sub_errors.reshape((1, -1))
-            * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
+            errors.reshape((-1, 1)) @ sub_errors.reshape((1, -1)) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
         )
 
     # The number of effective sample is the fraction of total sill by squared standard error

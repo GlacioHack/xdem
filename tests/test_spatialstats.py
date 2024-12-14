@@ -16,7 +16,7 @@ from geoutils import Raster, Vector
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
-from xdem.spatialstats import EmpiricalVariogramKArgs, nmad, neff_hugonnet_approx
+from xdem.spatialstats import EmpiricalVariogramKArgs, neff_hugonnet_approx, nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
