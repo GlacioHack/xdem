@@ -125,11 +125,11 @@ repos:
                   pass_filenames: false
                   additional_dependencies: [tomli, pyyaml]
 
-        # Add license header to the source files
-        - repo: local
-          hooks:
-            - id: add-license-header
-              name: Add License Header
-              entry: python .github/scripts/apply_license_header.py
-              language: python
-              files: \.py$
+#        # Add license header to the source files
+#        - repo: local
+#          hooks:
+#            - id: add-license-header
+#              name: Add License Header
+#              entry: python .github/scripts/apply_license_header.py
+#              language: python
+#              files: \.py$
