@@ -1204,6 +1204,37 @@ def test_warp_dem() -> None:
     # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
     assert spatialstats.nmad(dem - untransformed_dem) < 0.5
 
+    # Test with Z-correction disabled
+    transformed_dem_no_z = coreg.base.warp_dem(
+        dem=dem,
+        transform=transform,
+        source_coords=source_coords,
+        destination_coords=dest_coords,
+        resampling="linear",
+        apply_z_correction=False,
+    )
+
+    # Try to undo the warp by reversing the source-destination coordinates with Z-correction disabled
+    untransformed_dem_no_z = coreg.base.warp_dem(
+        dem=transformed_dem_no_z,
+        transform=transform,
+        source_coords=dest_coords,
+        destination_coords=source_coords,
+        resampling="linear",
+        apply_z_correction=False,
+    )
+
+    # Validate that the DEM is now more or less the same as the original, with Z-correction disabled.
+    # The result should be similar to the original, but with no Z-shift applied.
+    assert spatialstats.nmad(dem - untransformed_dem_no_z) < 0.5
+
+    # The difference between the two DEMs should be the vertical shift.
+    # We expect the difference to be approximately equal to the average vertical shift.
+    expected_vshift = np.mean(dest_coords[:, 2] - source_coords[:, 2])
+
+    # Check that the mean difference between the DEMs matches the expected vertical shift.
+    assert np.nanmean(transformed_dem_no_z - transformed_dem) == pytest.approx(expected_vshift, rel=0.3)
+
     if False:
         import matplotlib.pyplot as plt
 
