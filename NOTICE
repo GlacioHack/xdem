@@ -110,6 +110,11 @@ Copyright (c) 2014-2023, Alexander Fabisch, and pytransform3d contributors.
 Website: https://github.com/rock-learning/pytransform3d
 License: BSD 3-Clause.
 
+argcomplete: Python and tab completion, better together.
+Copyright (c) 2012-2023, Andrey Kislyuk and argcomplete contributors.
+Website: https://github.com/kislyuk/argcomplete
+License: Apache v2.0.
+
 tqdm: A fast, extensible progress bar for Python an CLI applications.
 Copyright (c) MIT 2013 Noam Yorav-Raphael, original author.
 Copyright (c) MPL-2.0 2015-2024 Casper da Costa-Luis.
