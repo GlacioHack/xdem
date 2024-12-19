@@ -1,5 +1,4 @@
-"""
-Terrain attributes
+"""Terrain attributes
 ==================
 
 Terrain attributes generated from a DEM have a multitude of uses for analytic and visual purposes.

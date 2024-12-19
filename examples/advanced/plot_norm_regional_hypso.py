@@ -1,18 +1,21 @@
-"""
-Normalized regional hypsometric interpolation
+"""Normalized regional hypsometric interpolation
 =============================================
 
 .. caution:: This functionality is specific to glaciers, and might be removed in future package versions.
 
 There are many ways of interpolating gaps in elevation differences.
 In the case of glaciers, one very useful fact is that elevation change generally varies with elevation.
-This means that if valid pixels exist in a certain elevation bin, their values can be used to fill other pixels in the same approximate elevation.
-Filling gaps by elevation is the main basis of "hypsometric interpolation approaches", of which there are many variations of.
+This means that if valid pixels exist in a certain elevation bin,
+their values can be used to fill other pixels in the same approximate elevation.
+Filling gaps by elevation is the main basis of "hypsometric interpolation approaches",
+of which there are many variations of.
 
-One problem with simple hypsometric approaches is that they may not work for glaciers with different elevation ranges and scales.
+One problem with simple hypsometric approaches is that they may not work for glaciers
+with different elevation ranges and scales.
 Let's say we have two glaciers: one gigantic reaching from 0-1000 m, and one small from 900-1100 m.
 Usually in the 2000s, glaciers thin rapidly at the bottom, while they may be neutral or only thin slightly in the top.
-If we extrapolate the hypsometric signal of the gigantic glacier to use on the small one, it may seem like the smaller glacier has almost no change whatsoever.
+If we extrapolate the hypsometric signal of the gigantic glacier to use on the small one,
+it may seem like the smaller glacier has almost no change whatsoever.
 This may be right, or it may be catastrophically wrong!
 
 Normalized regional hypsometric interpolation solves the scale and elevation range problems in one go. It:
@@ -69,8 +72,10 @@ random_nans.plot()
 # %%
 # The normalized hypsometric signal shows the tendency for elevation change as a function of elevation.
 # The magnitude may vary between glaciers, but the shape is generally similar.
-# Normalizing by both elevation and elevation change, and then re-scaling the signal to every glacier, ensures that it is as accurate as possible.
-# **NOTE**: The hypsometric signal does not need to be generated separately; it will be created by :func:`xdem.volume.norm_regional_hypsometric_interpolation`.
+# Normalizing by both elevation and elevation change, and then re-scaling the signal to every glacier,
+# ensures that it is as accurate as possible.
+# **NOTE**: The hypsometric signal does not need to be generated separately;
+# it will be created by :func:`xdem.volume.norm_regional_hypsometric_interpolation`.
 # Generating it first, however, allows us to visualize and validate it.
 
 ddem = dem_2009 - dem_1990
@@ -93,7 +98,7 @@ plt.show()
 # The signal can now be used (or simply estimated again if not provided) to interpolate the DEM.
 
 ddem_filled = xdem.volume.norm_regional_hypsometric_interpolation(
-    voided_ddem=ddem_voided, ref_dem=dem_2009, glacier_index_map=glacier_index_map, regional_signal=signal
+    voided_ddem=ddem_voided, ref_dem=dem_2009, glacier_index_map=glacier_index_map, regional_signal=signal,
 )
 
 
@@ -115,5 +120,6 @@ plt.show()
 
 # %%
 # As we see, the median is close to zero, while the NMAD varies slightly more.
-# This is expected, as the regional signal is good for multiple glaciers at once, but it cannot account for difficult local topography and meteorological conditions.
+# This is expected, as the regional signal is good for multiple glaciers at once,
+# but it cannot account for difficult local topography and meteorological conditions.
 # It is therefore highly recommended for large regions; just don't zoom in too close!

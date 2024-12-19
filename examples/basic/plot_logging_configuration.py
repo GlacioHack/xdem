@@ -1,5 +1,4 @@
-"""
-Configuring verbosity level
+"""Configuring verbosity level
 ===========================
 
 This example demonstrates how to configure verbosity level, or logging, using a coregistration method.

@@ -1,5 +1,4 @@
-"""
-Slope and aspect methods
+"""Slope and aspect methods
 ========================
 
 Terrain slope and aspect can be estimated using different methods.
@@ -7,11 +6,13 @@ Here is an example of how to generate the two with each method, and understand t
 
 See also the :ref:`terrain-attributes` feature page.
 
-**References:** `Horn (1981) <https://ieeexplore.ieee.org/document/1456186>`_, `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
+**References:** `Horn (1981) <https://ieeexplore.ieee.org/document/1456186>`_,
+ `Zevenbergen and Thorne (1987) <http://dx.doi.org/10.1002/esp.3290120107>`_.
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.raster import RasterType
 
 import xdem
 
@@ -20,8 +21,28 @@ import xdem
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 
-def plot_attribute(attribute, cmap, label=None, vlim=None):
+def plot_attribute(attribute: RasterType,
+                   cmap: str,
+                   label: str | None = None,
+                   vlim: float | None = None) -> None:
+    """Plot a specified attribute.
 
+    Parameters
+    ----------
+    attribute : RasterType
+        Attribute to plot.
+    cmap : str
+        Colorbar used from matplotlib.
+    label : str
+        Colorbar title.
+    vlim : float
+        Colorbar upper and lower limits.
+
+    Returns
+    -------
+    None
+
+    """
     if vlim is not None:
         if isinstance(vlim, (int, np.integer, float, np.floating)):
             vlims = {"vmin": -vlim, "vmax": vlim}
@@ -37,7 +58,6 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
     plt.tight_layout()
 
     plt.show()
-
 
 # %%
 # Slope with method of Horn (1981) (GDAL default), based on a refined
@@ -59,7 +79,9 @@ plot_attribute(slope_zevenberg, "Reds", "Slope of Zevenberg and Thorne (1987) (�
 
 diff_slope = slope_horn - slope_zevenberg
 
-plot_attribute(diff_slope, "RdYlBu", "Slope of Horn (1981) minus\n slope of Zevenberg and Thorne (1987) (째)", vlim=3)
+plot_attribute(diff_slope,
+               "RdYlBu",
+               "Slope of Horn (1981) minus\n slope of Zevenberg and Thorne (1987) (째)", vlim=3)
 
 # %%
 # The differences are negative, implying that the method of Horn always provides flatter slopes.
@@ -86,7 +108,7 @@ xdem.spatialstats.plot_1d_binning(
     var_name="maxc",
     statistic_name="nanmedian",
     label_var="Maximum absolute curvature (100 m$^{-1}$)",
-    label_statistic="Slope of Horn (1981) minus\n " "slope of Zevenberg and Thorne (1987) (째)",
+    label_statistic="Slope of Horn (1981) minus\n slope of Zevenberg and Thorne (1987) (째)",
 )
 
 
@@ -101,7 +123,9 @@ diff_aspect = aspect_horn - aspect_zevenberg
 diff_aspect_mod = np.minimum(diff_aspect % 360, 360 - diff_aspect % 360)
 
 plot_attribute(
-    diff_aspect_mod, "Spectral", "Aspect of Horn (1981) minus\n aspect of Zevenberg and Thorne (1987) (째)", vlim=[0, 90]
+    diff_aspect_mod,
+    "Spectral",
+    "Aspect of Horn (1981) minus\n aspect of Zevenberg and Thorne (1987) (째)", vlim=[0, 90],
 )
 
 # %%

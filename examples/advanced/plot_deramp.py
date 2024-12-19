@@ -1,5 +1,4 @@
-"""
-Bias-correction with deramping
+"""Bias-correction with deramping
 ==============================
 
 Deramping can help correct rotational or doming errors in elevation data.

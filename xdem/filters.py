@@ -34,8 +34,7 @@ from xdem._typing import NDArrayf
 
 
 def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
-    """
-    Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
+    """Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
     gaussian_filter_cv is recommended as it is usually faster, but this depends on the value of sigma.
 
     N.B: kernel_size is set automatically based on sigma.
@@ -55,30 +54,28 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
 
     # If array contain NaNs, need a more sophisticated approach
     # Inspired by https://stackoverflow.com/a/36307291
-    else:
 
-        # Run filter on a copy with NaNs set to 0
-        array_no_nan = array.copy()
-        array_no_nan[np.isnan(array)] = 0
-        gauss_no_nan = scipy.ndimage.gaussian_filter(array_no_nan, sigma=sigma)
-        del array_no_nan
+    # Run filter on a copy with NaNs set to 0
+    array_no_nan = array.copy()
+    array_no_nan[np.isnan(array)] = 0
+    gauss_no_nan = scipy.ndimage.gaussian_filter(array_no_nan, sigma=sigma)
+    del array_no_nan
 
-        # Mask of NaN values
-        nan_mask = 0 * array.copy() + 1
-        nan_mask[np.isnan(array)] = 0
-        gauss_mask = scipy.ndimage.gaussian_filter(nan_mask, sigma=sigma)
-        del nan_mask
+    # Mask of NaN values
+    nan_mask = 0 * array.copy() + 1
+    nan_mask[np.isnan(array)] = 0
+    gauss_mask = scipy.ndimage.gaussian_filter(nan_mask, sigma=sigma)
+    del nan_mask
 
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="invalid value encountered")
-            gauss = gauss_no_nan / gauss_mask
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="invalid value encountered")
+        gauss = gauss_no_nan / gauss_mask
 
-        return gauss
+    return gauss
 
 
 def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
-    """
-    Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
+    """Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
     Arguments are for now hard-coded to be identical to scipy.
 
     N.B: kernel_size is set automatically based on sigma
@@ -141,8 +138,7 @@ def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
 
 
 def distance_filter(array: NDArrayf, radius: float, outlier_threshold: float) -> NDArrayf:
-    """
-    Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \
+    """Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \
 pixels within a given radius.
     Filtered pixels are set to NaN.
 

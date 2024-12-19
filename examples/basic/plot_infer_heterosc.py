@@ -1,5 +1,4 @@
-"""
-Elevation error map
+"""Elevation error map
 ===================
 
 Digital elevation models have a precision that can vary with terrain and instrument-related variables. Here, we
@@ -30,7 +29,7 @@ slope, maximum_curvature = xdem.terrain.get_terrain_attribute(ref_dem, attribute
 # %%
 # Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain:
 errors, df_binning, error_function = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-    dvalues=dh, list_var=[slope, maximum_curvature], list_var_names=["slope", "maxc"], unstable_mask=glacier_outlines
+    dvalues=dh, list_var=[slope, maximum_curvature], list_var_names=["slope", "maxc"], unstable_mask=glacier_outlines,
 )
 
 # %%
@@ -39,19 +38,20 @@ errors.plot(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$
 
 # %%
 # The second output is the dataframe of 2D binning with slope and maximum curvature:
-df_binning
+print(df_binning)
 
 # %%
 # The third output is the 2D binning interpolant, i.e. an error function with the slope and maximum curvature
 # (*Note: below we divide the maximum curvature by 100 to convert it in* m\ :sup:`-1` ):
 for slope, maxc in [(0, 0), (40, 0), (0, 5), (40, 5)]:
     print(
-        "Error for a slope of {:.0f} degrees and"
-        " {:.2f} m-1 max. curvature: {:.1f} m".format(slope, maxc / 100, error_function((slope, maxc)))
+        f"Error for a slope of {slope:.0f} degrees and"
+        f" {maxc / 100:.2f} m-1 max. curvature: {error_function((slope, maxc)):.1f} m",
     )
 
 # %%
 # This pipeline will not always work optimally with default parameters: spread estimates can be affected by skewed
 # distributions, the binning by extreme range of values, some DEMs do not have any error variability with terrain (e.g.,
-# terrestrial photogrammetry). **To learn how to tune more parameters and use the subfunctions, see the gallery example:**
+# terrestrial photogrammetry).
+# **To learn how to tune more parameters and use the subfunctions, see the gallery example:**
 # :ref:`sphx_glr_advanced_examples_plot_heterosc_estimation_modelling.py`!

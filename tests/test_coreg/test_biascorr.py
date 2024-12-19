@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import warnings
+from typing import ClassVar
 
 import geopandas as gpd
 import geoutils as gu
@@ -21,7 +22,6 @@ PLOT = False
 
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
     """Load example files to try coregistration methods with."""
-
     reference_dem = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
     to_be_aligned_dem = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
@@ -46,23 +46,22 @@ class TestBiasCorr:
 
     # Check all possibilities supported by biascorr:
     # Raster-Raster
-    fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
+    fit_args_rst_rst: ClassVar[dict] = {"reference_elev":ref, "to_be_aligned_elev":tba, "inlier_mask":inlier_mask}
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     # Raster-Point
-    fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
+    fit_args_rst_pts: ClassVar[dict] = {"reference_elev":ref, "to_be_aligned_elev":tba_pts, "inlier_mask":inlier_mask}
 
     # Point-Raster
-    fit_args_pts_rst = dict(reference_elev=ref_pts, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
+    fit_args_pts_rst: ClassVar[dict] = {"reference_elev":ref_pts, "to_be_aligned_elev":tba, "inlier_mask":inlier_mask}
 
-    all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
+    all_fit_args: ClassVar[list(dict, dict, dict)] = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
 
     def test_biascorr(self) -> None:
         """Test the parent class BiasCorr instantiation."""
-
         # Create a bias correction instance
         bcorr = biascorr.BiasCorr()
 
@@ -74,10 +73,10 @@ class TestBiasCorr:
         )
         assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] is None
 
-        # Check that the _is_affine attribute is set correctly
-        assert not bcorr._is_affine
+        # Check that the is_affine attribute is set correctly
+        assert not bcorr.is_affine
         assert bcorr.meta["inputs"]["fitorbin"]["fit_or_bin"] == "fit"
-        assert bcorr._needs_vars is True
+        assert bcorr.needs_vars is True
 
         # Or with default bin arguments
         bcorr2 = biascorr.BiasCorr(fit_or_bin="bin")
@@ -111,107 +110,105 @@ class TestBiasCorr:
 
     def test_biascorr__errors(self) -> None:
         """Test the errors that should be raised by BiasCorr."""
-
         # And raises an error when "fit" or "bin" is wrongly passed
         with pytest.raises(ValueError, match="Argument `fit_or_bin` must be 'bin_and_fit', 'fit' or 'bin'."):
-            biascorr.BiasCorr(fit_or_bin=True)  # type: ignore
+            biascorr.BiasCorr(fit_or_bin=True)
 
         # For fit function
         with pytest.raises(
             TypeError,
             match=re.escape(
                 "Argument `fit_func` must be a function (callable) or the string '{}', "
-                "got <class 'str'>.".format("', '".join(biascorr.fit_workflows.keys()))
+                "got <class 'str'>.".format("', '".join(biascorr.fit_workflows.keys())),
             ),
         ):
-            biascorr.BiasCorr(fit_func="yay")  # type: ignore
+            biascorr.BiasCorr(fit_func="yay")
 
         # For fit optimizer
         with pytest.raises(
-            TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable), " "got <class 'int'>.")
+            TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable), got <class 'int'>."),
         ):
-            biascorr.BiasCorr(fit_optimizer=3)  # type: ignore
+            biascorr.BiasCorr(fit_optimizer=3)
 
         # For bin sizes
         with pytest.raises(
             TypeError,
             match=re.escape(
                 "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
-                "got <class 'dict'>."
+                "got <class 'dict'>.",
             ),
         ):
-            biascorr.BiasCorr(fit_or_bin="bin", bin_sizes={"a": 1.5})  # type: ignore
+            biascorr.BiasCorr(fit_or_bin="bin", bin_sizes={"a": 1.5})
 
         # For bin statistic
         with pytest.raises(
-            TypeError, match=re.escape("Argument `bin_statistic` must be a function (callable), " "got <class 'str'>.")
+            TypeError, match=re.escape("Argument `bin_statistic` must be a function (callable), got <class 'str'>."),
         ):
-            biascorr.BiasCorr(fit_or_bin="bin", bin_statistic="count")  # type: ignore
+            biascorr.BiasCorr(fit_or_bin="bin", bin_statistic="count")
 
         # For bin apply method
         with pytest.raises(
             TypeError,
             match=re.escape(
-                "Argument `bin_apply_method` must be the string 'linear' or 'per_bin', " "got <class 'int'>."
+                "Argument `bin_apply_method` must be the string 'linear' or 'per_bin', got <class 'int'>.",
             ),
         ):
-            biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)  # type: ignore
+            biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)
 
         # When wrong number of parameters are passed
 
         # Copy fit parameters
         fit_args = self.fit_args_rst_rst.copy()
+        bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
+        bcorr1d = biascorr.BiasCorr(bias_var_names=["elevation"])
         with pytest.raises(
             ValueError,
-            match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', " "got 2."),
+            match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', got 2."),
         ):
-            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
-            bcorr1d = biascorr.BiasCorr(bias_var_names=["elevation"])
             bcorr1d.fit(**fit_args, bias_vars=bias_vars_dict)
 
+        bias_vars_dict = {"elevation": self.ref}
+        bcorr2d = biascorr.BiasCorr(bias_var_names=["elevation", "slope"])
         with pytest.raises(
             ValueError,
-            match=re.escape("A number of 2 variable(s) has to be provided through the argument " "'bias_vars', got 1."),
+            match=re.escape("A number of 2 variable(s) has to be provided through the argument 'bias_vars', got 1."),
         ):
-            bias_vars_dict = {"elevation": self.ref}
-            bcorr2d = biascorr.BiasCorr(bias_var_names=["elevation", "slope"])
             bcorr2d.fit(**fit_args, bias_vars=bias_vars_dict)
 
+        bcorr1d2 = biascorr.BiasCorr(bias_var_names=["ncc"])
+        bias_vars_dict = {"elevation": self.ref}
         # When variables don't match
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during instantiation: ['ncc'].",
             ),
         ):
-            bcorr1d2 = biascorr.BiasCorr(bias_var_names=["ncc"])
-            bias_vars_dict = {"elevation": self.ref}
             bcorr1d2.fit(**fit_args, bias_vars=bias_vars_dict)
 
+        bcorr2d2 = biascorr.BiasCorr(bias_var_names=["elevation", "ncc"])
+        bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
         with pytest.raises(
             ValueError,
             match=re.escape(
                 "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                "instantiation: ['elevation', 'ncc']."
+                "instantiation: ['elevation', 'ncc'].",
             ),
         ):
-            bcorr2d2 = biascorr.BiasCorr(bias_var_names=["elevation", "ncc"])
-            bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
             bcorr2d2.fit(**fit_args, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
-        "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
-    )  # type: ignore
+        "fit_func", [("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)],
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    def test_biascorr__fit_1d(self, fit_args, fit_func, fit_optimizer, capsys) -> None:
+    )
+    def test_biascorr__fit_1d(self, fit_args: dict, fit_func, fit_optimizer, capsys) -> None: # noqa: ANN001
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
-
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(fit_or_bin="fit", fit_func=fit_func, fit_optimizer=fit_optimizer)
 
@@ -234,19 +231,18 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", [fit_args_rst_pts, fit_args_rst_rst])  # type: ignore
+    @pytest.mark.parametrize("fit_args", [fit_args_rst_pts, fit_args_rst_rst])
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)
-    )  # type: ignore
+        "fit_func", [(polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)],
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    def test_biascorr__fit_2d(self, fit_args, fit_func, fit_optimizer) -> None:
+    )
+    def test_biascorr__fit_2d(self, fit_args: dict, fit_func: tuple, fit_optimizer) -> None: # noqa: ANN001
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
-
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(fit_or_bin="fit", fit_func=fit_func, fit_optimizer=fit_optimizer)
 
@@ -265,12 +261,11 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (0, 500, 1000)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_1d(self, fit_args, bin_sizes, bin_statistic) -> None:
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("bin_sizes", [(10, {"elevation": 20}, {"elevation": (0, 500, 1000)})])
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_1d(self, fit_args: dict, bin_sizes: tuple, bin_statistic) -> None: # noqa: ANN001
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
-
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(fit_or_bin="bin", bin_sizes=bin_sizes, bin_statistic=bin_statistic)
 
@@ -288,12 +283,11 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_2d(self, fit_args, bin_sizes, bin_statistic) -> None:
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("bin_sizes", [(10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)})])
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_2d(self, fit_args: dict, bin_sizes: tuple, bin_statistic) -> None: # noqa: ANN001
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
-
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(fit_or_bin="bin", bin_sizes=bin_sizes, bin_statistic=bin_statistic)
 
@@ -311,26 +305,32 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
-        "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
-    )  # type: ignore
+        "fit_func", [("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)],
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": np.arange(0, 1000, 100)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_and_fit_1d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
+    )
+    @pytest.mark.parametrize("bin_sizes", [(10, {"elevation": np.arange(0, 1000, 100)})])
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_and_fit_1d(self,
+                                      fit_args: dict,
+                                      fit_func: tuple,
+                                      fit_optimizer, # noqa: ANN001
+                                      bin_sizes: tuple,
+                                      bin_statistic) -> None: # noqa: ANN001
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
-
         # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
         # We don't care for this test
         warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
         # Apply the transform can create data exactly equal to the nodata
-        warnings.filterwarnings("ignore", category=UserWarning, message="Unmasked values equal to the nodata value*")
+        warnings.filterwarnings("ignore",
+                                category=UserWarning,
+                                message="Unmasked values equal to the nodata value*")
         # Ignore SciKit-Learn warnings
         warnings.filterwarnings("ignore", message="Maximum number of iterations*")
 
@@ -362,21 +362,25 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
-        "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)
-    )  # type: ignore
+        "fit_func", [(polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)],
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_and_fit_2d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
+    )
+    @pytest.mark.parametrize("bin_sizes", [(10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)})])
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_and_fit_2d(self,
+                                      fit_args: dict,
+                                      fit_func: tuple,
+                                      fit_optimizer, # noqa: ANN001
+                                      bin_sizes: tuple,
+                                      bin_statistic) -> None: # noqa: ANN001
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
-
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(
             fit_or_bin="bin_and_fit",
@@ -403,7 +407,6 @@ class TestBiasCorr:
 
     def test_directionalbias(self) -> None:
         """Test the subclass DirectionalBias."""
-
         # Try default "fit" parameters instantiation
         dirbias = biascorr.DirectionalBias(angle=45)
 
@@ -413,17 +416,16 @@ class TestBiasCorr:
             dirbias.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         )
         assert dirbias.meta["inputs"]["specific"]["angle"] == 45
-        assert dirbias._needs_vars is False
+        assert dirbias.needs_vars is False
 
         # Check that variable names are defined during instantiation
         assert dirbias.meta["inputs"]["fitorbin"]["bias_var_names"] == ["angle"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("angle", [20, 90])  # type: ignore
-    @pytest.mark.parametrize("nb_freq", [1, 2, 3])  # type: ignore
-    def test_directionalbias__synthetic(self, fit_args, angle, nb_freq) -> None:
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("angle", [20, 90])
+    @pytest.mark.parametrize("nb_freq", [1, 2, 3])
+    def test_directionalbias__synthetic(self, fit_args: dict, angle: int, nb_freq: int) -> None:
         """Test the subclass DirectionalBias with synthetic data."""
-
         # Get along track
         xx = gu.raster.get_xy_rotated(self.ref, along_track_angle=angle)[0]
 
@@ -494,7 +496,6 @@ class TestBiasCorr:
 
     def test_deramp(self) -> None:
         """Test the subclass Deramp."""
-
         # Try default "fit" parameters instantiation
         deramp = biascorr.Deramp()
 
@@ -502,16 +503,15 @@ class TestBiasCorr:
         assert deramp.meta["inputs"]["fitorbin"]["fit_func"] == polynomial_2d
         assert deramp.meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp.meta["inputs"]["specific"]["poly_order"] == 2
-        assert deramp._needs_vars is False
+        assert deramp.needs_vars is False
 
         # Check that variable names are defined during instantiation
         assert deramp.meta["inputs"]["fitorbin"]["bias_var_names"] == ["xx", "yy"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
-    def test_deramp__synthetic(self, fit_args, order: int) -> None:
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("order", [1, 2, 3, 4])
+    def test_deramp__synthetic(self, fit_args: dict, order: int) -> None:
         """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
-
         # Get coordinates
         xx, yy = np.meshgrid(np.arange(0, self.ref.shape[1]), np.arange(0, self.ref.shape[0]))
 
@@ -539,7 +539,9 @@ class TestBiasCorr:
         fit_params = deramp.meta["outputs"]["fitorbin"]["fit_params"]
         assert np.shape(fit_params) == np.shape(params)
         assert np.allclose(
-            params.reshape(order + 1, order + 1)[-1:, -1:], fit_params.reshape(order + 1, order + 1)[-1:, -1:], rtol=0.1
+            params.reshape(order + 1, order + 1)[-1:, -1:],
+            fit_params.reshape(order + 1, order + 1)[-1:, -1:],
+            rtol=0.1,
         )
 
         # Run apply and check that 99% of the variance was corrected
@@ -549,7 +551,6 @@ class TestBiasCorr:
 
     def test_terrainbias(self) -> None:
         """Test the subclass TerrainBias."""
-
         # Try default "fit" parameters instantiation
         tb = biascorr.TerrainBias()
 
@@ -557,14 +558,13 @@ class TestBiasCorr:
         assert tb.meta["inputs"]["fitorbin"]["bin_sizes"] == 100
         assert tb.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
         assert tb.meta["inputs"]["specific"]["terrain_attribute"] == "maximum_curvature"
-        assert tb._needs_vars is False
+        assert tb.needs_vars is False
 
         assert tb.meta["inputs"]["fitorbin"]["bias_var_names"] == ["maximum_curvature"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    def test_terrainbias__synthetic(self, fit_args) -> None:
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    def test_terrainbias__synthetic(self, fit_args: dict) -> None:
         """Test the subclass TerrainBias."""
-
         # Get maximum curvature
         maxc = xdem.terrain.get_terrain_attribute(self.ref, attribute="maximum_curvature")
 

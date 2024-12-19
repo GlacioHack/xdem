@@ -1,4 +1,6 @@
-from typing import Callable, List, Union
+"""Functions to test configuration."""
+
+from collections.abc import Callable
 
 import geoutils as gu
 import numpy as np
@@ -11,10 +13,9 @@ from xdem._typing import NDArrayf
 
 @pytest.fixture(scope="session")  # type: ignore
 def raster_to_rda() -> Callable[[RasterType], rd.rdarray]:
+    """Allows to convert geoutils.Raster to richDEM rdarray through decorator."""
     def _raster_to_rda(rst: RasterType) -> rd.rdarray:
-        """
-        Convert geoutils.Raster to richDEM rdarray.
-        """
+        """Convert geoutils.Raster to richDEM rdarray."""
         arr = rst.data.filled(rst.nodata).squeeze()
         rda = rd.rdarray(arr, no_data=rst.nodata)
         rda.geotransform = rst.transform.to_gdal()
@@ -25,10 +26,9 @@ def raster_to_rda() -> Callable[[RasterType], rd.rdarray]:
 
 @pytest.fixture(scope="session")  # type: ignore
 def get_terrainattr_richdem(raster_to_rda: Callable[[RasterType], rd.rdarray]) -> Callable[[RasterType, str], NDArrayf]:
+    """Allows to get terrain attribute for DEM opened with geoutils.Raster using RichDEM through decorator."""
     def _get_terrainattr_richdem(rst: RasterType, attribute: str = "slope_radians") -> NDArrayf:
-        """
-        Derive terrain attribute for DEM opened with geoutils.Raster using RichDEM.
-        """
+        """Derive terrain attribute for DEM opened with geoutils.Raster using RichDEM."""
         rda = raster_to_rda(rst)
         terrattr = rd.TerrainAttribute(rda, attrib=attribute)
         terrattr[terrattr == terrattr.no_data] = np.nan
@@ -39,24 +39,23 @@ def get_terrainattr_richdem(raster_to_rda: Callable[[RasterType], rd.rdarray]) -
 
 @pytest.fixture(scope="session")  # type: ignore
 def get_terrain_attribute_richdem(
-    get_terrainattr_richdem: Callable[[RasterType, str], NDArrayf]
-) -> Callable[[RasterType, Union[str, list[str]], bool, float, float, float], Union[RasterType, list[RasterType]]]:
+    get_terrainattr_richdem: Callable[[RasterType, str], NDArrayf],
+) -> Callable[[RasterType, str | list[str], bool, float, float, float], RasterType | list[RasterType]]:
+    """Allows to get one or multiple terrain attributes from a DEM using RichDEM through decorator."""
     def _get_terrain_attribute_richdem(
         dem: RasterType,
-        attribute: Union[str, List[str]],
+        attribute: str | list[str],
         degrees: bool = True,
         hillshade_altitude: float = 45.0,
         hillshade_azimuth: float = 315.0,
         hillshade_z_factor: float = 1.0,
-    ) -> Union[RasterType, List[RasterType]]:
-        """
-        Derive one or multiple terrain attributes from a DEM using RichDEM.
-        """
+    ) -> RasterType | list[RasterType]:
+        """Derive one or multiple terrain attributes from a DEM using RichDEM."""
         if isinstance(attribute, str):
             attribute = [attribute]
 
         if not isinstance(dem, gu.Raster):
-            raise ValueError("DEM must be a geoutils.Raster object.")
+            raise TypeError("DEM must be a geoutils.Raster object.")
 
         terrain_attributes = {}
 

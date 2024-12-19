@@ -22,7 +22,9 @@ from __future__ import annotations
 import copy
 import functools
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 from packaging.version import Version
 
@@ -47,10 +49,9 @@ from xdem._typing import NDArrayf
 
 
 def generate_random_field(
-    shape: tuple[int, int], corr_size: int, random_state: int | np.random.Generator | None = None
+    shape: tuple[int, int], corr_size: int, random_state: int | np.random.Generator | None = None,
 ) -> NDArrayf:
-    """
-    Generate a semi-random gaussian field (to simulate a DEM or DEM error)
+    """Generate a semi-random gaussian field (to simulate a DEM or DEM error)
 
     :param shape: The output shape of the field.
     :param corr_size: The correlation size of the field.
@@ -65,7 +66,6 @@ def generate_random_field(
 
     :returns: A numpy array of semi-random values from 0 to 1
     """
-
     rng = np.random.default_rng(random_state)
 
     if not _has_cv2:
@@ -91,9 +91,8 @@ def generate_random_field(
     return field
 
 
-def deprecate(removal_version: Version = None, details: str = None) -> Callable[[Any], Any]:
-    """
-    Trigger a DeprecationWarning for the decorated function.
+def deprecate(removal_version: Version = None, details: str | None = None) -> Callable[[Any], Any]:
+    """Trigger a DeprecationWarning for the decorated function.
 
     :param func: The function to be deprecated.
     :param removal_version: Optional. The version at which this will be removed.
@@ -156,8 +155,7 @@ def copy_doc(
     module_to_copy: object,
     remove_dem_res_params: bool = False,
 ) -> Callable:  # type: ignore
-    """
-    A decorator to copy docstring from a function to another one while replacing the docstring.
+    """A decorator to copy docstring from a function to another one while replacing the docstring.
     Used for copying xdem.terrain documentation to xdem.DEM.
 
     :param module_to_copy: Name of module to copy the function from
@@ -201,24 +199,22 @@ def copy_doc(
 
 
 def diff_environment_yml(
-    fn_env: str | dict[str, Any], fn_devenv: str | dict[str, Any], print_dep: str = "both", input_dict: bool = False
+    fn_env: str | dict[str, Any], fn_devenv: str | dict[str, Any], print_dep: str = "both", input_dict: bool = False,
 ) -> None:
-    """
-    Compute the difference between environment.yml and dev-environment.yml for setup of continuous integration,
+    """Compute the difference between environment.yml and dev-environment.yml for setup of continuous integration,
     while checking that all the dependencies listed in environment.yml are also in dev-environment.yml
     :param fn_env: Filename path to environment.yml
     :param fn_devenv: Filename path to dev-environment.yml
     :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
-
     if not _has_yaml:
         raise ValueError("Test dependency needed. Install 'pyyaml'.")
 
     if not input_dict:
         # Load the yml as dictionaries
-        yaml_env = yaml.safe_load(open(fn_env))  # type: ignore
-        yaml_devenv = yaml.safe_load(open(fn_devenv))  # type: ignore
+        yaml_env = yaml.safe_load(Path(fn_env).open())  # type: ignore
+        yaml_devenv = yaml.safe_load(Path(fn_devenv).open())  # type: ignore
     else:
         # We need a copy as we'll pop things out and don't want to affect input
         # dict.copy() is shallow and does not work with embedded list in dicts (as is the case here)
@@ -246,7 +242,7 @@ def diff_environment_yml(
             diff_pip_check = list(set(pip_dep_env) - set(pip_dep_devenv))
             if len(diff_pip_check) != 0:
                 raise ValueError(
-                    "The following pip dependencies are listed in env but not dev-env: " + ",".join(diff_pip_check)
+                    "The following pip dependencies are listed in env but not dev-env: " + ",".join(diff_pip_check),
                 )
 
             # The diff below computes the dependencies that are in dev-env but not in env, to add during CI

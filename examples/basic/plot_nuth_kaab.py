@@ -1,5 +1,4 @@
-"""
-Nuth and Kääb coregistration
+"""Nuth and Kääb coregistration
 ============================
 
 The Nuth and Kääb coregistration corrects horizontal and vertical shifts, and is especially performant for precise
@@ -26,7 +25,8 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = ~glacier_outlines.create_mask(reference_dem)
 
 # %%
-# The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to reduce.
+# The DEM to be aligned (a 1990 photogrammetry-derived DEM)
+# has some vertical and horizontal biases that we want to reduce.
 # These can be visualized by plotting a change map:
 
 diff_before = reference_dem - dem_to_be_aligned
@@ -64,4 +64,5 @@ print(f"Error after: median = {med_after:.2f} - NMAD = {nmad_after:.2f} m")
 # %%
 # In the plot above, one may notice a positive (blue) tendency toward the east.
 # The 1990 DEM is a mosaic, and likely has a "seam" near there.
-# :ref:`sphx_glr_advanced_examples_plot_blockwise_coreg.py` tackles this issue, using a nonlinear coregistration approach.
+# :ref:`sphx_glr_advanced_examples_plot_blockwise_coreg.py` tackles this issue,
+# using a nonlinear coregistration approach.

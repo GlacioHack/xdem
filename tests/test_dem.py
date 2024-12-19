@@ -1,11 +1,11 @@
-""" Functions to test the DEM tools."""
+"""Functions to test the DEM tools."""
 
 from __future__ import annotations
 
 import os
 import tempfile
 import warnings
-from typing import Any
+from typing import Any, ClassVar
 
 import geoutils as gu
 import numpy as np
@@ -53,14 +53,14 @@ class TestDEM:
             (
                 np.array_equal(dem.data, dem2.data, equal_nan=True),
                 np.array_equal(dem2.data, dem3.data, equal_nan=True),
-            )
+            ),
         )
 
         assert np.logical_and.reduce(
             (
                 np.all(dem.data.mask == dem2.data.mask),
                 np.all(dem2.data.mask == dem3.data.mask),
-            )
+            ),
         )
 
         # Check that an error is raised when more than one band is provided
@@ -74,7 +74,6 @@ class TestDEM:
 
     def test_init__vcrs(self) -> None:
         """Test that vcrs is set properly during instantiation."""
-
         # Tests 1: instantiation with a file that has a 2D CRS
 
         # First, check a DEM that does not have any vertical CRS set
@@ -110,7 +109,6 @@ class TestDEM:
 
     def test_from_array(self) -> None:
         """Test that overridden from_array works as expected."""
-
         # Create a 5x5 DEM
         data = np.ones((5, 5))
         transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
@@ -126,11 +124,10 @@ class TestDEM:
         assert dem.transform == transform
         assert dem.crs == crs
         assert dem.nodata == nodata
-        assert dem.vcrs == xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs)
+        assert dem.vcrs == xdem.vcrs.vcrs_from_user_input(vcrs_input=vcrs)
 
     def test_from_array__vcrs(self) -> None:
         """Test that overridden from_array rightly sets the vertical CRS."""
-
         # Create a 5x5 DEM with a 2D CRS
         transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
         dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=None)
@@ -142,25 +139,24 @@ class TestDEM:
 
         # One with a 2D and the ellipsoid vertical CRS
         dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs="Ellipsoid"
+            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs="Ellipsoid",
         )
         assert dem.vcrs == "Ellipsoid"
 
         # One with a compound CRS
         dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None, vcrs=None
+            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None, vcrs=None,
         )
         assert dem.vcrs == CRS("EPSG:5773")
 
         # One with a CRS and vertical CRS
         dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=CRS("EPSG:5773")
+            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=CRS("EPSG:5773"),
         )
         assert dem.vcrs == CRS("EPSG:5773")
 
     def test_copy(self) -> None:
-        """
-        Test that the copy method works as expected for DEM. In particular
+        """Test that the copy method works as expected for DEM. In particular
         when copying r to r2:
         - if r.data is modified and r copied, the updated data is copied
         - if r is copied, r.data changed, r2.data should be unchanged
@@ -205,7 +201,6 @@ class TestDEM:
 
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
-
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
@@ -243,8 +238,7 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.warns(UserWarning, match="Grid not found in*"):
-            with pytest.raises(
+        with pytest.warns(UserWarning, match="Grid not found in*"), pytest.raises(
                 ValueError,
                 match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
                 "Provide an existing grid.",
@@ -253,7 +247,6 @@ class TestDEM:
 
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
-
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
@@ -284,7 +277,7 @@ class TestDEM:
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
 
         # Check that the results are consistent with the operation done independently
-        ccrs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
+        ccrs_dest = xdem.vcrs.build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs.vcrs_from_user_input("EGM96"))
         transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
 
         xx, yy = dem.coords()
@@ -297,34 +290,32 @@ class TestDEM:
 
     def test_to_vcrs__equal_warning(self) -> None:
         """Test that DEM.to_vcrs() does not transform if both 3D CRS are equal."""
-
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # With both inputs as names
         dem.set_vcrs("EGM96")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation.",
         ):
             dem.to_vcrs("EGM96")
 
         # With one input as name, the other as CRS
         dem.set_vcrs("Ellipsoid")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation.",
         ):
             dem.to_vcrs(CRS("EPSG:4979"))
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
-    egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
-    egm08_chile = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}
-    geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
-    isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
+    egm96_chile: ClassVar[dict] = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
+    egm08_chile: ClassVar[dict] = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}
+    geoid96_alaska: ClassVar[dict] = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
+    isn93_iceland: ClassVar[dict] = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
-    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
+    @pytest.mark.parametrize("grid_shifts", [egm96_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
-
         # Most grids aren't going to be downloaded, so this warning can be raised
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
@@ -332,7 +323,12 @@ class TestDEM:
         dem = DEM.from_array(
             data=np.array([[100, 100]]),
             transform=rio.transform.from_bounds(
-                grid_shifts["lon"], grid_shifts["lat"], grid_shifts["lon"] + 0.01, grid_shifts["lat"] + 0.01, 0.01, 0.01
+                grid_shifts["lon"],
+                grid_shifts["lat"],
+                grid_shifts["lon"] + 0.01,
+                grid_shifts["lat"] + 0.01,
+                0.01,
+                0.01,
             ),
             crs=CRS.from_epsg(4326),
             nodata=None,
@@ -351,7 +347,6 @@ class TestDEM:
     @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)  # type: ignore
     def test_terrain_attributes_wrappers(self, terrain_attribute: str) -> None:
         """Check the terrain attributes corresponds to the ones derived in the terrain module."""
-
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
@@ -361,7 +356,7 @@ class TestDEM:
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
     def test_coregister_3d_wrapper(self) -> None:
-
+        """Test the coregister 3d wrapper."""
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 
@@ -377,7 +372,7 @@ class TestDEM:
         assert dem_class_aligned.raster_equal(coreg_module_aligned)
 
     def test_estimate_uncertainty(self) -> None:
-
+        """Test the estimate_uncertainty module."""
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 

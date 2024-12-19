@@ -1,5 +1,4 @@
-"""
-Standardization for stable terrain as error proxy
+"""Standardization for stable terrain as error proxy
 =================================================
 
 Digital elevation models have both a precision that can vary with terrain or instrument-related variables, and
@@ -24,7 +23,8 @@ import xdem
 from xdem.spatialstats import nmad
 
 # %%
-# We start by estimating the elevation heteroscedasticity and deriving a terrain-dependent measurement error as a function of both
+# We start by estimating the elevation heteroscedasticity and
+# deriving a terrain-dependent measurement error as a function of both
 # slope and maximum curvature, as shown in the :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py` example.
 
 # Load the data
@@ -35,7 +35,7 @@ mask_glacier = glacier_outlines.create_mask(dh)
 
 # Compute the slope and maximum curvature
 slope, planc, profc = xdem.terrain.get_terrain_attribute(
-    dem=ref_dem, attribute=["slope", "planform_curvature", "profile_curvature"]
+    dem=ref_dem, attribute=["slope", "planform_curvature", "profile_curvature"],
 )
 
 # Remove values on unstable terrain
@@ -55,8 +55,8 @@ custom_bin_slope = np.unique(
             np.nanquantile(slope_arr, np.linspace(0, 0.95, 20)),
             np.nanquantile(slope_arr, np.linspace(0.96, 0.99, 5)),
             np.nanquantile(slope_arr, np.linspace(0.991, 1, 10)),
-        ]
-    )
+        ],
+    ),
 )
 
 custom_bin_curvature = np.unique(
@@ -65,12 +65,12 @@ custom_bin_curvature = np.unique(
             np.nanquantile(maxc_arr, np.linspace(0, 0.95, 20)),
             np.nanquantile(maxc_arr, np.linspace(0.96, 0.99, 5)),
             np.nanquantile(maxc_arr, np.linspace(0.991, 1, 10)),
-        ]
-    )
+        ],
+    ),
 )
 
 # Perform 2D binning to estimate the measurement error with slope and maximum curvature
-df = xdem.spatialstats.nd_binning(
+df_bin = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[slope_arr, maxc_arr],
     list_var_names=["slope", "maxc"],
@@ -80,7 +80,7 @@ df = xdem.spatialstats.nd_binning(
 
 # Estimate an interpolant of the measurement error with slope and maximum curvature
 slope_curv_to_dh_err = xdem.spatialstats.interp_nd_binning(
-    df, list_var_names=["slope", "maxc"], statistic="nmad", min_count=30
+    df_bin, list_var_names=["slope", "maxc"], statistic="nmad", min_count=30,
 )
 maxc = np.maximum(np.abs(profc), np.abs(planc))
 
@@ -122,7 +122,8 @@ plt.legend(loc="lower right")
 plt.show()
 
 # %%
-# Now, we can perform an analysis of spatial correlation as shown in the :ref:`sphx_glr_advanced_examples_plot_variogram_estimation_modelling.py`
+# Now, we can perform an analysis of spatial correlation as shown in the
+# :ref:`sphx_glr_advanced_examples_plot_variogram_estimation_modelling.py`
 # example, by estimating a variogram and fitting a sum of two models.
 # Dowd's variogram is used for robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 df_vgm = xdem.spatialstats.sample_empirical_variogram(
@@ -135,7 +136,7 @@ df_vgm = xdem.spatialstats.sample_empirical_variogram(
 )
 
 func_sum_vgm, params_vgm = xdem.spatialstats.fit_sum_model_variogram(
-    ["Gaussian", "Spherical"], empirical_variogram=df_vgm
+    ["Gaussian", "Spherical"], empirical_variogram=df_vgm,
 )
 xdem.spatialstats.plot_variogram(
     df_vgm,
@@ -189,11 +190,11 @@ print(f"Average maximum curvature of Medalsbreen glacier : {np.nanmean(maxc[meda
 # %%
 # We calculate the number of effective samples for each glacier based on the variogram
 svendsen_neff = xdem.spatialstats.neff_circular_approx_numerical(
-    area=svendsen_shp.ds.area.values[0], params_variogram_model=params_vgm
+    area=svendsen_shp.ds.area.values[0], params_variogram_model=params_vgm,
 )
 
 medals_neff = xdem.spatialstats.neff_circular_approx_numerical(
-    area=medals_shp.ds.area.values[0], params_variogram_model=params_vgm
+    area=medals_shp.ds.area.values[0], params_variogram_model=params_vgm,
 )
 
 print(f"Number of effective samples of Svendsenbreen glacier: {svendsen_neff:.1f}")
@@ -255,5 +256,6 @@ plt.show()
 # %%
 # Because of slightly higher slopes and curvatures, the final uncertainty for Medalsbreen is larger by about 10%.
 # The differences between the mean terrain slope and curvatures of stable terrain and those of glaciers is quite limited
-# on Svalbard. In high moutain terrain, such as the Alps or Himalayas, the difference between stable terrain and glaciers,
+# on Svalbard. In high moutain terrain, such as the Alps or Himalayas,
+# the difference between stable terrain and glaciers,
 # and among glaciers, would be much larger.

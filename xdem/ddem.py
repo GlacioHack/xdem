@@ -37,8 +37,7 @@ from xdem._typing import MArrayf, NDArrayf
 
 
 def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
-    """
-    Convert a given mask into an array.
+    """Convert a given mask into an array.
 
     :param reference_raster: The raster to use for rasterizing the mask if the mask is a vector.
     :param mask: A valid Vector, Raster or a respective filepath to a mask.
@@ -67,29 +66,34 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
         mask_array = mask.create_mask(reference_raster, as_array=True)
     elif isinstance(mask, gu.Raster):
         # The true value is the maximum value in the raster, unless the maximum value is 0 or False
-        true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
+        true_value = np.nanmax(mask.data) if np.nanmax(mask.data) not in [0, False] else True
         mask_array = (mask.data == true_value).squeeze()
     else:
         raise TypeError(
-            f"Mask has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
+            f"Mask has invalid type: {type(mask)}. Expected one of: {[gu.Raster, gu.Vector, str, type(None)]}",
         )
 
     return mask_array
 
 
-class dDEM(Raster):  # type: ignore
+class Ddem(Raster):  # type: ignore
     """A difference-DEM object."""
 
-    def __init__(self, raster: gu.Raster, start_time: np.datetime64, end_time: np.datetime64, error: Any | None = None):
-        """
-        Create a dDEM object from a Raster.
+    def __init__(
+        self,
+        raster: gu.Raster,
+        start_time: np.datetime64,
+        end_time: np.datetime64,
+        error: Any | None = None,
+    ) -> None:
+        """Create a Ddem object from a Raster.
 
         :param raster: A georeferenced Raster object.
-        :param start_time: The starting time of the dDEM.
-        :param end_time: The end time of the dDEM.
-        :param error: An error measure for the dDEM (UNUSED).
+        :param start_time: The starting time of the Ddem.
+        :param end_time: The end time of the Ddem.
+        :param error: An error measure for the Ddem (UNUSED).
 
-        :returns: A new dDEM instance.
+        :returns: A new Ddem instance.
         """
         # super().__init__(raster)
 
@@ -101,22 +105,20 @@ class dDEM(Raster):  # type: ignore
         self._fill_method = ""
 
     def __str__(self) -> str:
-        """Return a summary of the dDEM."""
-        return f"dDEM from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
+        """Return a summary of the Ddem."""
+        return f"Ddem from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
 
-    def copy(self, new_array: NDArrayf = None) -> dDEM:
+    def copy(self, new_array: NDArrayf = None) -> Ddem:
         """Return a copy of the DEM."""
-
         if new_array is None:
             new_array = self.data.copy()
 
-        new_ddem = dDEM.from_array(new_array, self.transform, self.crs, self.start_time, self.end_time)
+        new_ddem = Ddem.from_array(new_array, self.transform, self.crs, self.start_time, self.end_time)
         return new_ddem
 
     @property
     def filled_data(self) -> NDArrayf | None:
-        """
-        Get the filled data array if it exists, or else the original data if it has no nans.
+        """Get the filled data array if it exists, or else the original data if it has no nans.
 
         Returns None if the filled_data array does not exist, and the original data has nans.
 
@@ -132,7 +134,6 @@ class dDEM(Raster):  # type: ignore
     @filled_data.setter
     def filled_data(self, array: NDArrayf) -> None:
         """Set the filled_data attribute and make sure that it is valid."""
-
         assert (
             self.data.size == array.size
         ), f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
@@ -158,20 +159,19 @@ class dDEM(Raster):  # type: ignore
         start_time: np.datetime64,
         end_time: np.datetime64,
         nodata: int | float | None = None,
-        error: float = None,
-    ) -> dDEM:  # type: ignore
-        """
-        Create a new dDEM object from an array.
+        error: float | None = None,
+    ) -> Ddem:  # type: ignore
+        """Create a new Ddem object from an array.
 
-        :param data: The dDEM data array.
+        :param data: The Ddem data array.
         :param transform: A geometric transform.
-        :param crs: The coordinate reference system of the dDEM.
-        :param start_time: The starting time of the dDEM.
-        :param end_time: The end time of the dDEM.
-        :param error: An error measure for the dDEM.
+        :param crs: The coordinate reference system of the Ddem.
+        :param start_time: The starting time of the Ddem.
+        :param end_time: The end time of the Ddem.
+        :param error: An error measure for the Ddem.
         :param nodata: The nodata value.
 
-        :returns: A new dDEM instance.
+        :returns: A new Ddem instance.
         """
         return cls(
             gu.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
@@ -186,8 +186,7 @@ class dDEM(Raster):  # type: ignore
         reference_elevation: NDArrayf | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] | xdem.DEM = None,
         mask: NDArrayf | xdem.DEM | gu.Vector = None,
     ) -> NDArrayf | None:
-        """
-        Interpolate the dDEM using the given method.
+        """Interpolate the Ddem using the given method.
 
         :param method: The method to use for interpolation.
         :param reference_elevation: Reference DEM. Only required for hypsometric approaches.
@@ -222,7 +221,7 @@ class dDEM(Raster):  # type: ignore
             ddem_mask = nans.copy().squeeze()
             for i in entries.index:
                 feature_mask = (gu.Vector(entries.loc[entries.index == i]).create_mask(self, as_array=True)).reshape(
-                    interpolated_ddem.shape
+                    interpolated_ddem.shape,
                 )
                 if np.count_nonzero(feature_mask) == 0:
                     continue
@@ -232,8 +231,8 @@ class dDEM(Raster):  # type: ignore
                         warnings.filterwarnings("ignore", "invalid value encountered in divide")
                         interpolated_ddem = np.asarray(
                             xdem.volume.hypsometric_interpolation(
-                                interpolated_ddem, reference_elevation.data, mask=feature_mask
-                            )
+                                interpolated_ddem, reference_elevation.data, mask=feature_mask,
+                            ),
                         )
                 except ValueError as exception:
                     # Skip the feature if too few glacier values exist.
@@ -244,7 +243,7 @@ class dDEM(Raster):  # type: ignore
                 ddem_mask[feature_mask] = False
 
                 # All values that were nan in the start and are without the updated validity mask should now be nan
-                # The above interpolates values outside of the dDEM, so this is necessary.
+                # The above interpolates values outside of the Ddem, so this is necessary.
                 interpolated_ddem[ddem_mask] = np.nan
 
             diff = abs(np.nanmean(interpolated_ddem - self.data))
@@ -259,7 +258,7 @@ class dDEM(Raster):  # type: ignore
             mask_array = _mask_as_array(self, mask).reshape(self.data.shape)
 
             self.filled_data = xdem.volume.hypsometric_interpolation(
-                self.data, reference_elevation.data, mask=mask_array
+                self.data, reference_elevation.data, mask=mask_array,
             ).data
 
         else:

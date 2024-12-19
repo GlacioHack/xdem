@@ -16,15 +16,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Functions to perform normal, weighted and robust fitting.
-"""
+"""Functions to perform normal, weighted and robust fitting."""
 from __future__ import annotations
 
 import inspect
 import logging
 import warnings
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import scipy
@@ -50,8 +49,7 @@ except ImportError:
 
 
 def rmse(z: NDArrayf) -> float:
-    """
-    Return root mean square error
+    """Return root mean square error
     :param z: Residuals between predicted and true value
     :return: Root Mean Square Error
     """
@@ -59,8 +57,7 @@ def rmse(z: NDArrayf) -> float:
 
 
 def huber_loss(z: NDArrayf) -> float:
-    """
-    Huber loss cost (reduces the weight of outliers)
+    """Huber loss cost (reduces the weight of outliers)
     :param z: Residuals between predicted and true values
     :return: Huber cost
     """
@@ -70,8 +67,7 @@ def huber_loss(z: NDArrayf) -> float:
 
 
 def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
-    """
-    Soft loss cost (reduces the weight of outliers)
+    """Soft loss cost (reduces the weight of outliers)
     :param z: Residuals between predicted and true values
     :param scale: Scale factor
     :return: Soft loss cost
@@ -85,13 +81,11 @@ def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
 
 
 def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
-    """
-    Sum of N sinusoids in 1D.
+    """Sum of N sinusoids in 1D.
 
     :param xx: Array of coordinates.
     :param params: 3 x N parameters in order of amplitude (Y unit), wavelength (X unit) and phase (radians).
     """
-
     # Squeeze input in case it is a 1-D tuple or such
     xx = np.array(xx).squeeze()
 
@@ -113,8 +107,7 @@ def sumsin_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
 
 
 def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
-    """
-    N-order 1D polynomial.
+    """N-order 1D polynomial.
 
     :param xx: 1D array of values.
     :param params: N polynomial parameters.
@@ -125,22 +118,20 @@ def polynomial_1d(xx: NDArrayf, *params: NDArrayf) -> NDArrayf:
 
 
 def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
-    """
-    N-order 2D polynomial.
+    """N-order 2D polynomial.
 
     :param xx: The two 1D array of values.
     :param params: The N parameters (a, b, c, etc.) of the polynomial.
 
     :returns: Output value.
     """
-
     # The number of parameters of np.polyval2d is order^2, so a square array needs to be passed
     poly_order = np.sqrt(len(params))
 
     if not poly_order.is_integer():
         raise ValueError(
             "The parameters of the 2D polynomial should have a length equal to order^2, "
-            "see np.polyval2d for more details."
+            "see np.polyval2d for more details.",
         )
 
     # We reshape the parameter into the N x N shape expected by NumPy
@@ -155,8 +146,7 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
 
 
 def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0) -> int:
-    """
-    Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
+    """Choice of the best order (polynomial, sum of sinusoids) with a margin of improvement. The best cost value does
     not necessarily mean the best predictive fit because high-degree polynomials tend to overfit, and sum of sinusoids
     as well. To mitigate this issue, we should choose the lesser order from which improvement becomes negligible.
 
@@ -165,7 +155,6 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0) -> int:
 
     :return: degree: degree for the best-fit polynomial
     """
-
     # Get percentage of spread from the minimal cost
     ind_min = cost.argmin()
     min_cost = cost[ind_min]
@@ -177,10 +166,10 @@ def _choice_best_order(cost: NDArrayf, margin_improvement: float = 20.0) -> int:
     # Choose the good-performance cost with lowest degree
     ind = next((i for i, j in enumerate(below_margin) if j))
 
-    logging.debug("Order " + str(ind_min + 1) + " has the minimum cost value of " + str(min_cost))
+    logging.debug("Order %s has the minimum cost value of %s", str(ind_min + 1), str(min_cost))
     logging.debug(
-        "Order " + str(ind + 1) + " is selected as its cost is within a " + str(margin_improvement) + "% margin of"
-        " the minimum cost"
+        "Order %s is selected as its cost is within a %s % margin of"
+        " the minimum cost", str(ind + 1), str(margin_improvement),
     )
 
     return ind
@@ -194,8 +183,7 @@ def _wrapper_scipy_leastsquares(
     p0: NDArrayf = None,
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
-    """
-    Wrapper function for scipy.optimize.least_squares: passes down keyword, extracts cost and final parameters, print
+    """Wrapper function for scipy.optimize.least_squares: passes down keyword, extracts cost and final parameters, print
     statements in the console
 
     :param f: Function to fit.
@@ -204,7 +192,6 @@ def _wrapper_scipy_leastsquares(
     :param y: Y vector.
     :return:
     """
-
     # Get arguments of scipy.optimize.curve_fit and subfunction least_squares
     fun_args = scipy.optimize.curve_fit.__code__.co_varnames[: scipy.optimize.curve_fit.__code__.co_argcount]
     ls_args = scipy.optimize.least_squares.__code__.co_varnames[: scipy.optimize.least_squares.__code__.co_argcount]
@@ -235,12 +222,9 @@ def _wrapper_scipy_leastsquares(
     coefs = np.array([np.round(coef, 5) for coef in coefs])
 
     # If a specific loss function was passed, construct it to get the cost
-    if "loss" in kwargs.keys():
+    if "loss" in kwargs:
         loss = kwargs["loss"]
-        if "f_scale" in kwargs.keys():
-            f_scale = kwargs["f_scale"]
-        else:
-            f_scale = 1.0
+        f_scale = kwargs.get("f_scale", 1.0)
         from scipy.optimize._lsq.least_squares import construct_loss_function
 
         loss_func = construct_loss_function(m=ydata.size, loss=loss, f_scale=f_scale)
@@ -261,8 +245,7 @@ def _wrapper_sklearn_robustlinear(
     estimator_name: str = "Linear",
     **kwargs: Any,
 ) -> tuple[float, NDArrayf]:
-    """
-    Wrapper function of sklearn.linear_models: passes down keyword, extracts cost and final parameters, sets random
+    """Wrapper function of sklearn.linear_models: passes down keyword, extracts cost and final parameters, sets random
     states, scales input and de-scales output data, prints out statements
 
     :param model: Function model to fit (e.g., Polynomial features)
@@ -310,7 +293,7 @@ def _wrapper_sklearn_robustlinear(
 
     # Run with data
     # The sample weight can only be passed if it exists in the estimator call
-    if sigma is not None and "sample_weight" in inspect.signature(est.fit).parameters.keys():
+    if sigma is not None and "sample_weight" in inspect.signature(est.fit).parameters:
         # The weight is the inverse of the squared standard error
         sample_weight = 1 / sigma**2
         # The argument name to pass it through a pipeline is "estimatorname__sample_weight"
@@ -347,8 +330,7 @@ def robust_norder_polynomial_fit(
     random_state: int | np.random.Generator | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, int]:
-    """
-    Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
+    """Given 1D vectors x and y, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
     residuals for multiple fit orders of a given estimator.
 
     Any keyword argument will be passed down to scipy.optimize.least_squares and sklearn linear estimators.
@@ -368,9 +350,9 @@ def robust_norder_polynomial_fit(
     :returns coefs, degree: Polynomial coefficients and degree for the best-fit polynomial
     """
     # Remove "f" and "absolute sigma" arguments passed, as both are fixed here
-    if "f" in kwargs.keys():
+    if "f" in kwargs:
         kwargs.pop("f")
-    if "absolute_sigma" in kwargs.keys():
+    if "absolute_sigma" in kwargs:
         kwargs.pop("absolute_sigma")
 
     # Raise errors for input string parameters
@@ -409,7 +391,7 @@ def robust_norder_polynomial_fit(
             # Run the linear method with scipy
             try:
                 cost, coef = _wrapper_scipy_leastsquares(
-                    f=polynomial_1d, xdata=x, ydata=y, p0=p0, sigma=sigma, **kwargs
+                    f=polynomial_1d, xdata=x, ydata=y, p0=p0, sigma=sigma, **kwargs,
                 )
             except RuntimeError:
                 cost = np.inf
@@ -425,7 +407,7 @@ def robust_norder_polynomial_fit(
 
             # Run the linear method with sklearn
             cost, coef = _wrapper_sklearn_robustlinear(
-                model, estimator_name=estimator_name, cost_func=cost_func, xdata=x, ydata=y, sigma=sigma, **kwargs
+                model, estimator_name=estimator_name, cost_func=cost_func, xdata=x, ydata=y, sigma=sigma, **kwargs,
             )
 
         list_costs[deg - 1] = cost
@@ -444,9 +426,7 @@ def _cost_sumofsin(
     cost_func: Callable[[NDArrayf], float],
     *p: NDArrayf,
 ) -> float:
-    """
-    Calculate robust cost function for sum of sinusoids
-    """
+    """Calculate robust cost function for sum of sinusoids"""
     z = y - sumsin_1d(x, *p)
     return cost_func(z)
 
@@ -454,17 +434,16 @@ def _cost_sumofsin(
 def robust_nfreq_sumsin_fit(
     xdata: NDArrayf,
     ydata: NDArrayf,
-    sigma: NDArrayf | None = None,
+    sigma: NDArrayf | None = None, # noqa: ARG001
     max_nb_frequency: int = 3,
     bounds_amp_wave_phase: list[tuple[float, float]] | None = None,
     cost_func: Callable[[NDArrayf], float] = soft_loss,
-    subsample: float | int = 1,
+    subsample: float | int = 1, # noqa: ARG001
     hop_length: float | None = None,
     random_state: int | np.random.Generator | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, int]:
-    """
-    Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
+    """Given 1D vectors x and y, compute a robust sum of sinusoid fit to the data. The number of frequency is chosen
     automatically by comparing residuals for multiple fit orders of a given estimator.
 
     Any keyword argument will be passed down to scipy.optimize.basinhopping.
@@ -485,11 +464,10 @@ def robust_nfreq_sumsin_fit(
 
     :returns coefs, degree: sinusoid coefficients (amplitude, frequency, phase) x N, Number N of summed sinusoids
     """
-
     # Remove "f" and "absolute sigma" arguments passed, as both are fixed here
-    if "f" in kwargs.keys():
+    if "f" in kwargs:
         kwargs.pop("f")
-    if "absolute_sigma" in kwargs.keys():
+    if "absolute_sigma" in kwargs:
         kwargs.pop("absolute_sigma")
 
     # Extract xdata from iterable
@@ -497,9 +475,9 @@ def robust_nfreq_sumsin_fit(
         xdata = xdata[0]
 
     # Check if there is a number of iterations to stop the run if the global minimum candidate remains the same.
-    if "niter_success" not in kwargs.keys():
+    if "niter_success" not in kwargs:
         # Check if there is a number of basin-hopping iterations passed down to the function.
-        if "niter" not in kwargs.keys():
+        if "niter" not in kwargs:
             niter_success = 40
         else:
             niter_success = min(40, kwargs.get("niter"))  # type: ignore
@@ -557,7 +535,7 @@ def robust_nfreq_sumsin_fit(
         logging.debug(ub)
 
         # Minimize the globalization with a larger number of points
-        minimizer_kwargs = dict(args=(xdata, ydata), bounds=scipy_bounds)
+        minimizer_kwargs = {"args":(xdata, ydata), "bounds":scipy_bounds}
         myresults = scipy.optimize.basinhopping(
             wrapper_cost_sumofsin,
             p0,
@@ -611,7 +589,7 @@ def robust_nfreq_sumsin_fit(
     new_phases = final_coefs[2::3][indices]
 
     final_coefs = np.array(
-        [(new_amplitudes[i], new_wavelengths[i], new_phases[i]) for i in range(final_degree)]
+        [(new_amplitudes[i], new_wavelengths[i], new_phases[i]) for i in range(final_degree)],
     ).flatten()
 
     # The number of frequencies corresponds to the final index plus one

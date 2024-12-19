@@ -49,8 +49,7 @@ def create_inlier_mask(
     nmad_factor: Number = 5,
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
 ) -> NDArrayf:
-    """
-    Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
+    """Create a mask of inliers pixels to be used for coregistration. The following pixels can be excluded:
     - pixels within polygons of file(s) in shp_list (with corresponding inout element set to 1) - useful for \
     masking unstable terrain like glaciers.
     - pixels outside polygons of file(s) in shp_list (with corresponding inout element set to -1) - useful to \
@@ -76,14 +75,14 @@ be excluded.
     # - Sanity check on inputs - #
     # Check correct input type of shp_list
     if not isinstance(shp_list, (list, tuple)):
-        raise ValueError("Argument `shp_list` must be a list/tuple.")
+        raise TypeError("Argument `shp_list` must be a list/tuple.")
     for el in shp_list:
         if not isinstance(el, (str, gu.Vector)):
-            raise ValueError("Argument `shp_list` must be a list/tuple of strings or geoutils.Vector instance.")
+            raise TypeError("Argument `shp_list` must be a list/tuple of strings or geoutils.Vector instance.")
 
     # Check correct input type of inout
     if not isinstance(inout, (list, tuple)):
-        raise ValueError("Argument `inout` must be a list/tuple.")
+        raise TypeError("Argument `inout` must be a list/tuple.")
 
     if len(shp_list) > 0:
         if len(inout) == 0:
@@ -99,7 +98,7 @@ be excluded.
 
     # Check slope_lim type
     if not isinstance(slope_lim, (list, tuple)):
-        raise ValueError("Argument `slope_lim` must be a list/tuple.")
+        raise TypeError("Argument `slope_lim` must be a list/tuple.")
     if len(slope_lim) != 2:
         raise ValueError("Argument `slope_lim` must contain 2 elements.")
     for el in slope_lim:
@@ -161,11 +160,10 @@ def dem_coregistration(
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
     random_state: int | np.random.Generator | None = None,
     plot: bool = False,
-    out_fig: str = None,
+    out_fig: str | None = None,
     estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
 ) -> tuple[DEM, Coreg | CoregPipeline, pd.DataFrame, NDArrayf]:
-    """
-    A one-line function to coregister a selected DEM to a reference DEM.
+    """A one-line function to coregister a selected DEM to a reference DEM.
 
     Reads both DEMs, reprojects them on the same grid, mask pixels based on shapefile(s), filter steep slopes and \
 outliers, run the coregistration, returns the coregistered DEM and some statistics.
@@ -198,29 +196,28 @@ the coregistration process begins.
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
 coregistration and 4) the inlier_mask used.
     """
-
     # Define default Coreg if None is passed
     if coreg_method is None:
         coreg_method = NuthKaab() + VerticalShift()
 
     # Check inputs
     if not isinstance(coreg_method, Coreg):
-        raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
+        raise TypeError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
     if isinstance(ref_dem_path, str):
         if not isinstance(src_dem_path, str):
-            raise ValueError(
+            raise TypeError(
                 f"Argument `ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
-                "Both must have same type."
+                "Both must have same type.",
             )
     elif isinstance(ref_dem_path, gu.Raster):
         if not isinstance(src_dem_path, gu.Raster):
-            raise ValueError(
+            raise TypeError(
                 f"Argument `ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
-                "Both must have same type."
+                "Both must have same type.",
             )
     else:
-        raise ValueError("Argument `ref_dem_path` must be either a string or a Raster.")
+        raise TypeError("Argument `ref_dem_path` must be either a string or a Raster.")
 
     if grid not in ["ref", "src"]:
         raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
@@ -233,18 +230,18 @@ coregistration and 4) the inlier_mask used.
             and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
         ):
             raise ValueError(
-                "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+                "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values.",
             )
         if isinstance(coreg_method, CoregPipeline):
             if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
                 raise TypeError(
                     "An initial shift has been provided, but none of the coregistration methods in the pipeline "
-                    "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
+                    "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required.",
                 )
         elif not isinstance(coreg_method, AffineCoreg):
             raise TypeError(
                 "An initial shift has been provided, but the coregistration method is not affine. "
-                "An affine coregistration method (e.g., AffineCoreg) is required."
+                "An affine coregistration method (e.g., AffineCoreg) is required.",
             )
 
     # Load both DEMs
@@ -307,20 +304,19 @@ coregistration and 4) the inlier_mask used.
     if estimated_initial_shift:
 
         def update_shift(
-            coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+            coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y,
         ) -> None:
             if isinstance(coreg_method, CoregPipeline):
                 for step in coreg_method.pipeline:
                     update_shift(step)
-            else:
-                # check if the keys exists
-                if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
-                    if "shift_x" in coreg_method.meta["outputs"]["affine"]:
-                        coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
-                        logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
-                    if "shift_y" in coreg_method.meta["outputs"]["affine"]:
-                        coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
-                        logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+            # check if the keys exists
+            elif "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                if "shift_x" in coreg_method.meta["outputs"]["affine"]:
+                    coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
+                    logging.debug("Updated shift_x by %s in %s", shift_x, coreg_method)
+                if "shift_y" in coreg_method.meta["outputs"]["affine"]:
+                    coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
+                    logging.debug("Updated shift_y by %s in %s", shift_y, coreg_method)
 
         update_shift(coreg_method)
 
@@ -350,7 +346,7 @@ coregistration and 4) the inlier_mask used.
         cb = plt.colorbar()
         cb.set_label("Elevation change (m)")
         ax2.set_title(
-            f"After coreg\n\n\nmean = {mean_coreg:.1f} m - med = {med_coreg:.1f} m - NMAD = {nmad_coreg:.1f} m"
+            f"After coreg\n\n\nmean = {mean_coreg:.1f} m - med = {med_coreg:.1f} m - NMAD = {nmad_coreg:.1f} m",
         )
 
         plt.tight_layout()

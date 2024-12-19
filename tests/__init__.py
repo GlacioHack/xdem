@@ -1,4 +1,4 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2024 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -15,24 +15,4 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import annotations
-
-import sys
-from typing import Any
-
-import numpy as np
-
-# Only for Python >= 3.9
-if sys.version_info.minor >= (3, 9):
-
-    from numpy.typing import NDArray  # this syntax works starting on Python 3.9
-
-    NDArrayf = NDArray[np.floating[Any]]
-    NDArrayb = NDArray[np.bool_]
-    MArrayf = np.ma.masked_array[Any, np.dtype[np.floating[Any]]]
-
-else:
-    NDArrayf = np.ndarray  # type: ignore
-    NDArrayb = np.ndarray  # type: ignore
-    MArrayf = np.ma.masked_array  # type: ignore
+"""xDEM tests module init file."""

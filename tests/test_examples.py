@@ -13,7 +13,6 @@ from xdem._typing import NDArrayf
 
 def load_examples() -> tuple[Raster, Raster, Vector, Raster]:
     """Load example files to try coregistration methods with."""
-
     ref_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
     tba_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
@@ -48,7 +47,6 @@ class TestExamples:
     )  # type: ignore
     def test_array_content(self, rst_and_truevals: tuple[Raster, NDArrayf]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
-
         rst = rst_and_truevals[0]
         truevals = rst_and_truevals[1]
         rng = np.random.default_rng(42)
@@ -60,7 +58,6 @@ class TestExamples:
     @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0)])  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
-
         rst = rst_and_truenodata[0]
         truenodata = rst_and_truenodata[1]
         mask = gu.raster.get_array_and_mask(rst)[1]

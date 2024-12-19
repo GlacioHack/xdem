@@ -1,11 +1,12 @@
-"""
-Blockwise coregistration
+"""Blockwise coregistration
 ========================
 
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
-In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
+In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment
+significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
-One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
+One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid,
+and then "puppet warp" the DEM to fit the reference best.
 
 The ``BlockwiseCoreg`` class runs in five steps:
 
@@ -43,7 +44,8 @@ plt_extent = [
 ]
 
 # %%
-# The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to avoid, as well as possible nonlinear distortions.
+# The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to
+# avoid, as well as possible nonlinear distortions.
 # The product is a mosaic of multiple DEMs, so "seams" may exist in the data.
 # These can be visualized by plotting a change map:
 
@@ -75,11 +77,12 @@ aligned_dem = blockwise.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_m
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
-# This shows the estimated shifts that would be applied in elevation; additional horizontal shifts will also be applied if the method supports it.
+# This shows the estimated shifts that would be applied in elevation; additional horizontal shifts will also be applied
+# if the method supports it.
 # The :func:`xdem.coreg.BlockwiseCoreg.stats` method can be used to annotate each block with its associated Z shift.
 
 z_correction = blockwise.apply(
-    np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs
+    np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs,
 )[0]
 plt.title("Vertical correction")
 plt.imshow(z_correction, cmap="RdYlBu", vmin=-10, vmax=10, extent=plt_extent)

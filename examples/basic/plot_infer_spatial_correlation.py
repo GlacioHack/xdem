@@ -1,12 +1,12 @@
-"""
-Spatial correlation of errors
+"""Spatial correlation of errors
 =============================
 
 Digital elevation models have errors that are spatially correlated due to instrument or processing effects. Here, we
 rely on a non-stationary spatial statistics framework to estimate and model spatial correlations in elevation error.
 We use a sum of variogram forms to model this correlation, with stable terrain as an error proxy for moving terrain.
 
-**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_,
+`Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 
 import geoutils as gu
@@ -30,7 +30,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
     df_model_params,
     spatial_corr_function,
 ) = xdem.spatialstats.infer_spatial_correlation_from_stable(
-    dvalues=dh, list_models=["Gaussian", "Spherical"], unstable_mask=glacier_outlines, random_state=42
+    dvalues=dh, list_models=["Gaussian", "Spherical"], unstable_mask=glacier_outlines, random_state=42,
 )
 
 # %%
@@ -40,20 +40,18 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # "experimental" variance value of the variogram in that bin, the ``count`` the number of pairwise samples, and
 # ``err_exp`` the 1-sigma error of the "experimental" variance, if more than one variogram is estimated with the
 # ``n_variograms`` parameter.
-df_empirical_variogram
+print(df_empirical_variogram)
 
 # %%
 # The second output is the dataframe of optimized model parameters (``range``, ``sill``, and possibly ``smoothness``)
 # for a sum of gaussian and spherical models:
-df_model_params
+print(df_model_params)
 
 # %%
 # The third output is the spatial correlation function with spatial lags, derived from the variogram:
 for spatial_lag in [0, 100, 1000, 10000, 30000]:
     print(
-        "Errors are correlated at {:.1f}% for a {:,.0f} m spatial lag".format(
-            spatial_corr_function(spatial_lag) * 100, spatial_lag
-        )
+    f"Errors are correlated at {spatial_corr_function(spatial_lag) * 100:.1f}% for a {spatial_lag:,.0f} m spatial lag",
     )
 
 # %%

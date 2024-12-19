@@ -12,8 +12,10 @@ build-backend = "setuptools.build_meta"
 version_file = "xdem/_version.py"
 fallback_version = "0.0.1"
 
-[tool.black]
-target_version = ['py310']
+#[tool.black]
+#target_version = ['py310']
+
+
 
 [tool.pytest.ini_options]
 addopts = "--doctest-modules -W error::UserWarning"

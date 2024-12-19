@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -18,7 +18,6 @@ from xdem.coreg.workflows import create_inlier_mask, dem_coregistration
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-
     reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
     to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
@@ -29,7 +28,6 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
 class TestWorkflows:
     def test_create_inlier_mask(self) -> None:
         """Test that the create_inlier_mask function works expectedly."""
-
         ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and outlines
 
         # - Assert that without filtering create_inlier_mask behaves as if calling Vector.create_mask - #
@@ -96,14 +94,14 @@ class TestWorkflows:
         nmad_factor = 3
         ddem = tba - ref
         inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * xdem.spatialstats.nmad(ddem)).filled(
-            False
+            False,
         )
         inlier_mask = create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
         assert np.all(inlier_mask == inlier_mask_comp3)
 
         # Test the sum of both
         inlier_mask = create_inlier_mask(
-            tba, ref, shp_list=[], inout=[], filtering=True, slope_lim=slope_lim, nmad_factor=nmad_factor
+            tba, ref, shp_list=[], inout=[], filtering=True, slope_lim=slope_lim, nmad_factor=nmad_factor,
         )
         inlier_mask_all = inlier_mask_comp2 & inlier_mask_comp3
         assert np.all(inlier_mask == inlier_mask_all)
@@ -185,8 +183,7 @@ class TestWorkflows:
             create_inlier_mask(tba, ref, filtering=True, slope_lim=[1, 120])
 
     def test_dem_coregistration(self) -> None:
-        """
-        Test that the dem_coregistration function works expectedly.
+        """Test that the dem_coregistration function works expectedly.
         Tests the features that are specific to dem_coregistration.
         For example, many features are tested in create_inlier_mask, so not tested again here.
         TODO: Add DEMs with different projection/grid to test that regridding works as expected.
@@ -214,7 +211,7 @@ class TestWorkflows:
         coreg_method_ref = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
         inlier_mask = create_inlier_mask(tba_dem, ref_dem)
         coreg_method_ref.fit(
-            ref_dem.astype(np.float32), tba_dem.astype(np.float32), inlier_mask=inlier_mask, random_state=42
+            ref_dem.astype(np.float32), tba_dem.astype(np.float32), inlier_mask=inlier_mask, random_state=42,
         )
         dem_coreg_ref = coreg_method_ref.apply(tba_dem.astype(np.float32), resample=False)
         assert dem_coreg.raster_equal(dem_coreg_ref, warn_failure_reason=True)
@@ -250,14 +247,14 @@ class TestWorkflows:
 
         # Testing with plot
         out_fig = tempfile.NamedTemporaryFile(suffix=".png", mode="w", delete=False)
-        assert os.path.getsize(out_fig.name) == 0
+        assert Path(out_fig.name).stat().st_size == 0
         dem_coregistration(tba_dem, ref_dem, plot=True, out_fig=out_fig.name)
-        assert os.path.getsize(out_fig.name) > 0
+        assert Path(out_fig.name).stat().st_size > 0
         out_fig.close()
 
         # Testing different coreg method
         dem_coreg2, coreg_method2, coreg_stats2, inlier_mask2 = dem_coregistration(
-            tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp()
+            tba_dem, ref_dem, coreg_method=xdem.coreg.Deramp(),
         )
         assert isinstance(coreg_method2, xdem.coreg.Deramp)
         assert abs(coreg_stats2["med_orig"].values) > abs(coreg_stats2["med_coreg"].values)
@@ -269,10 +266,10 @@ class TestWorkflows:
         coreg_pipeline = xdem.coreg.affine.NuthKaab() + xdem.coreg.affine.VerticalShift()
 
         dem_coreg2, coreg_method2, coreg_stats2, inlier_mask2 = dem_coregistration(
-            tba_dem, ref_dem, coreg_method=coreg_pipeline, estimated_initial_shift=test_shift_list, random_state=42
+            tba_dem, ref_dem, coreg_method=coreg_pipeline, estimated_initial_shift=test_shift_list, random_state=42,
         )
         dem_coreg3, coreg_method3, coreg_stats3, inlier_mask3 = dem_coregistration(
-            tba_dem, ref_dem, coreg_method=coreg_pipeline, random_state=42
+            tba_dem, ref_dem, coreg_method=coreg_pipeline, random_state=42,
         )
         assert tba_dem.raster_equal(tba_dem_origin)
         assert isinstance(coreg_method2, xdem.coreg.CoregPipeline)
@@ -293,10 +290,10 @@ class TestWorkflows:
         coreg_simple = xdem.coreg.affine.DhMinimize()
 
         dem_coreg2, coreg_method2, coreg_stats2, inlier_mask2 = dem_coregistration(
-            tba_dem, ref_dem, coreg_method=coreg_simple, estimated_initial_shift=test_shift_tuple, random_state=42
+            tba_dem, ref_dem, coreg_method=coreg_simple, estimated_initial_shift=test_shift_tuple, random_state=42,
         )
         dem_coreg3, coreg_method3, coreg_stats3, inlier_mask3 = dem_coregistration(
-            tba_dem, ref_dem, coreg_method=coreg_simple, random_state=42
+            tba_dem, ref_dem, coreg_method=coreg_simple, random_state=42,
         )
         assert isinstance(coreg_method2, xdem.coreg.AffineCoreg)
         assert isinstance(coreg_method3, xdem.coreg.AffineCoreg)

@@ -1,0 +1,83 @@
+# Exclude a variety of commonly ignored directories.
+exclude = ["ALL"]
+
+extend-exclude = [
+    ".github",
+    "binder",
+    "doc",
+    "xdem.egg-info",
+    ".coveragerc",
+    ".gitignore",
+    ".pre-commit-config.yaml",
+    ".readthedocs.yaml",
+    ".relint.yml",
+]
+
+# Support Python 3.10+.
+target-version = "py310"
+
+# Same as Black.
+# The formatter wraps lines at a length of 120 when enforcing long-lines violations (like E501).
+line-length = 120
+# Number of spaces per tabulation, used by the formatter and when enforcing long-line violations.
+indent-width = 4
+
+[lint.pycodestyle]
+# E501 reports lines that exceed the length of 120.
+max-line-length = 120
+
+[lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default (10).
+select = ["ALL"]
+
+# Skip To do format annotations rules (FIX002, TD002, TD003)
+# Skip pydocstyle rules (D101, D205, D400, D401, D415)
+# Skip flake8-simplify rules (SIM102, SIM108, SIM115)
+# Skip pygrep-hooks rules (PGH003, PGH004)
+# Skip pylint refactor rules (PLR0912, PLR0913, PLR0915, PLR2004)
+# Skip the use of assert (S101)
+# Skip flake8-type-checking rules (TC001, TC002, TC003)
+# Skip tryceratops rules (TRY003, TRY201)
+# Skip pyupgrade rule : non-pep604-isinstance (UP038)
+# ...
+ignore = ["ANN401", "ARG002", "B028", "B904", "BLE001", "C901", "D101", "D205", "D400", "D401", "D415", "EM101",
+          "EM102", "ERA001", "F541", "FBT001", "FBT002", "FBT003", "FIX002", "INP001", "PD011", "PGH003", "PGH004",
+          "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLW0127", "PT011", "PTH118", "PYI041", "PYI051", "RET504",
+          "S101", "SIM102", "SIM108", "SIM115", "T201", "TC001", "TC002", "TC003", "TD002", "TD003", "TRY003",
+          "TRY201", "UP038"]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"

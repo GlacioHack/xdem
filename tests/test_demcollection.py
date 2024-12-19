@@ -2,6 +2,7 @@
 
 import datetime
 import warnings
+from datetime import timezone
 
 import geoutils as gu
 import numpy as np
@@ -16,8 +17,10 @@ class TestDEMCollection:
     outlines_2010 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010"))
 
     def test_init(self) -> None:
-
-        timestamps = [datetime.datetime(1990, 8, 1), datetime.datetime(2009, 8, 1), datetime.datetime(2060, 8, 1)]
+        """Test that the DEMs of the collection are consistent."""
+        timestamps = [datetime.datetime(1990, 8, 1, tzinfo=timezone.utc),
+                      datetime.datetime(2009, 8, 1, tzinfo=timezone.utc),
+                      datetime.datetime(2060, 8, 1, tzinfo=timezone.utc)]
 
         scott_1990 = gu.Vector(self.outlines_1990.ds.loc[self.outlines_1990.ds["NAME"] == "Scott Turnerbreen"])
         scott_2010 = gu.Vector(self.outlines_2010.ds.loc[self.outlines_2010.ds["NAME"] == "Scott Turnerbreen"])
@@ -33,7 +36,7 @@ class TestDEMCollection:
         dems = xdem.DEMCollection(
             [self.dem_1990, self.dem_2009, dem_2060],
             timestamps=timestamps,
-            outlines=dict(zip(timestamps[:2], [self.outlines_1990, self.outlines_2010])),
+            outlines=dict(zip(timestamps[:2], [self.outlines_1990, self.outlines_2010], strict=False)),
             reference_dem=1,
         )
 
@@ -81,8 +84,8 @@ class TestDEMCollection:
 
     def test_dem_datetimes(self) -> None:
         """Try to create the DEMCollection without the timestamps argument (instead relying on datetime attributes)."""
-        self.dem_1990.datetime = datetime.datetime(1990, 8, 1)
-        self.dem_2009.datetime = datetime.datetime(2009, 8, 1)
+        self.dem_1990.datetime = datetime.datetime(1990, 8, 1, tzinfo=timezone.utc)
+        self.dem_2009.datetime = datetime.datetime(2009, 8, 1, tzinfo=timezone.utc)
 
         dems = xdem.DEMCollection([self.dem_1990, self.dem_2009])
 
@@ -90,10 +93,10 @@ class TestDEMCollection:
 
     def test_ddem_interpolation(self) -> None:
         """Test that dDEM interpolation works as it should."""
-
         # Create a DEMCollection object
         dems = xdem.DEMCollection(
-            [self.dem_2009, self.dem_1990], timestamps=[datetime.datetime(year, 8, 1) for year in (2009, 1990)]
+            [self.dem_2009, self.dem_1990],
+            timestamps=[datetime.datetime(year, 8, 1, tzinfo=timezone.utc) for year in (2009, 1990)],
         )
 
         # Create dDEMs

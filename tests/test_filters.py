@@ -18,7 +18,6 @@ class TestFilters:
 
     def test_gauss(self) -> None:
         """Test applying the various Gaussian filters on DEMs with/without NaNs"""
-
         # Test applying scipy's Gaussian filter
         # smoothing should not yield values below.above original DEM
         dem_array = self.dem_1990.data
@@ -67,7 +66,6 @@ class TestFilters:
 
     def test_dist_filter(self) -> None:
         """Test that distance_filter works"""
-
         # Calculate dDEM
         ddem = self.dem_2009.data - self.dem_1990.data
 

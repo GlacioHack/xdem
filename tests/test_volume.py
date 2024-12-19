@@ -33,7 +33,7 @@ class TestLocalHypsometric:
         )
 
         ddem_stds = xdem.volume.hypsometric_binning(
-            ddem[self.mask], self.dem_2009[self.mask], aggregation_function=np.std
+            ddem[self.mask], self.dem_2009[self.mask], aggregation_function=np.std,
         )
         assert ddem_stds["value"].mean() < 50
         assert np.abs(np.mean(ddem_bins["value"] - ddem_bins_masked["value"])) < 0.01
@@ -61,7 +61,6 @@ class TestLocalHypsometric:
 
     def test_area_calculation(self) -> None:
         """Test the area calculation function."""
-
         ddem = self.dem_2009 - self.dem_1990
 
         ddem_bins = xdem.volume.hypsometric_binning(ddem[self.mask], self.dem_2009[self.mask])
@@ -71,12 +70,12 @@ class TestLocalHypsometric:
 
         # Test the area calculation with normal parameters.
         bin_area = xdem.volume.calculate_hypsometry_area(
-            ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0]
+            ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0],
         )
 
         # Test area calculation with differing pixel x/y resolution.
         xdem.volume.calculate_hypsometry_area(
-            ddem_bins, self.dem_2009[self.mask], pixel_size=(self.dem_2009.res[0], self.dem_2009.res[0] + 1)
+            ddem_bins, self.dem_2009[self.mask], pixel_size=(self.dem_2009.res[0], self.dem_2009.res[0] + 1),
         )
 
         # Add some nans to the reference DEM
@@ -93,7 +92,7 @@ class TestLocalHypsometric:
         # Try to pass an incorrect timeframe= parameter
         try:
             xdem.volume.calculate_hypsometry_area(
-                ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0], timeframe="blergh"
+                ddem_bins, self.dem_2009[self.mask], pixel_size=self.dem_2009.res[0], timeframe="blergh",
             )
         except ValueError as exception:
             if "Argument 'timeframe=blergh' is invalid" not in str(exception):
@@ -118,13 +117,13 @@ class TestLocalHypsometric:
 
         # Make a fixed amount of bins
         equal_count_bins = xdem.volume.hypsometric_binning(
-            ddem[self.mask], self.dem_2009[self.mask], bins=50, kind="count"
+            ddem[self.mask], self.dem_2009[self.mask], bins=50, kind="count",
         )
         assert equal_count_bins.shape[0] == 50
 
         # Make 50 bins with approximately the same area (pixel count)
         quantile_bins = xdem.volume.hypsometric_binning(
-            ddem[self.mask], self.dem_2009[self.mask], bins=50, kind="quantile"
+            ddem[self.mask], self.dem_2009[self.mask], bins=50, kind="quantile",
         )
 
         assert quantile_bins.shape[0] == 50
@@ -152,9 +151,9 @@ class TestNormHypsometric:
 
     @pytest.mark.parametrize("n_bins", [5, 10, 20])  # type: ignore
     def test_regional_signal(self, n_bins: int) -> None:
-
+        """Test regional signal."""
         signal = xdem.volume.get_regional_hypsometric_signal(
-            ddem=self.ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map, n_bins=n_bins
+            ddem=self.ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map, n_bins=n_bins,
         )
 
         assert signal["w_mean"].min() >= 0.0
@@ -165,13 +164,13 @@ class TestNormHypsometric:
         assert np.all(np.isfinite(signal.values))
 
     def test_interpolate_small(self) -> None:
-
+        """Test that no interpolation is done when the coverage is too small."""
         dem = np.arange(16, dtype="float32").reshape(4, 4)
         ddem = dem / 10
         glacier_index_map = np.ones_like(dem)
 
         signal = xdem.volume.get_regional_hypsometric_signal(
-            ddem=ddem, ref_dem=dem, glacier_index_map=glacier_index_map, n_bins=10
+            ddem=ddem, ref_dem=dem, glacier_index_map=glacier_index_map, n_bins=10,
         )
 
         # Make it so that only 1/4 of the values exist.
@@ -205,19 +204,21 @@ class TestNormHypsometric:
         assert np.nanmax(np.abs((interpolated_ddem - ddem_orig)[np.isnan(ddem)])) < 0.1
 
     def test_regional_hypsometric_interp(self) -> None:
-
+        """Test regional hypsometric interpolation."""
         # Extract a normalized regional hypsometric signal.
         ddem = self.dem_2009 - self.dem_1990
 
         signal = xdem.volume.get_regional_hypsometric_signal(
-            ddem=self.ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map
+            ddem=self.ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map,
         )
 
         if False:
             import matplotlib.pyplot as plt
 
             plt.fill_between(
-                signal.index.mid, signal["median"] - signal["std"], signal["median"] + signal["std"], label="Median±std"
+                signal.index.mid,
+                signal["median"] - signal["std"], signal["median"] + signal["std"],
+                label="Median±std",
             )
             plt.plot(signal.index.mid, signal["median"], color="black", linestyle=":", label="Median")
             plt.plot(signal.index.mid, signal["w_mean"], color="black", label="Weighted mean")
@@ -234,11 +235,11 @@ class TestNormHypsometric:
         ddem.data.mask.ravel()[rng.choice(ddem.data.size, int(ddem.data.size * 0.80), replace=False)] = True
         # Fill the dDEM using the de-normalized signal.
         filled_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
-            voided_ddem=ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map
+            voided_ddem=ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map,
         )
         # Fill the dDEM using the de-normalized signal and create an idealized dDEM
         idealized_ddem = xdem.volume.norm_regional_hypsometric_interpolation(
-            voided_ddem=ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map, idealized_ddem=True
+            voided_ddem=ddem, ref_dem=self.dem_2009, glacier_index_map=self.glacier_index_map, idealized_ddem=True,
         )
         assert not np.array_equal(filled_ddem, idealized_ddem)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from typing import ClassVar
 
 import geopandas as gpd
 import geoutils
@@ -22,7 +23,6 @@ from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-
     reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
     to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
@@ -43,8 +43,7 @@ def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
 
 
 def gdal_reproject_horizontal_shift_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
-    """
-    Reproject horizontal shift in same CRS with GDAL for testing purposes.
+    """Reproject horizontal shift in same CRS with GDAL for testing purposes.
 
     :param filepath_example: Path to raster file.
     :param xoff: X shift in georeferenced unit.
@@ -52,7 +51,6 @@ def gdal_reproject_horizontal_shift_samecrs(filepath_example: str, xoff: float, 
 
     :return: Reprojected shift array in the same CRS.
     """
-
     from osgeo import gdal, gdalconst
 
     # Open source raster from file
@@ -97,24 +95,24 @@ class TestAffineCoreg:
     # Check all point-raster possibilities supported
     # Use the reference DEM for both, it will be artificially misaligned during tests
     # Raster-Raster
-    fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
+    fit_args_rst_rst: ClassVar[dict] = {"reference_elev":ref, "to_be_aligned_elev":tba, "inlier_mask":inlier_mask}
 
     # Convert DEMs to points with a bit of subsampling for speed-up
     ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
     tba_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
 
     # Raster-Point
-    fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
+    fit_args_rst_pts: ClassVar[dict] = {"reference_elev":ref, "to_be_aligned_elev":tba_pts, "inlier_mask":inlier_mask}
 
     # Point-Raster
-    fit_args_pts_rst = dict(reference_elev=ref_pts, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
+    fit_args_pts_rst: ClassVar[dict] = {"reference_elev":ref_pts, "to_be_aligned_elev":tba, "inlier_mask":inlier_mask}
 
-    all_fit_args = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
+    all_fit_args: ClassVar[list[dict, dict, dict]] = [fit_args_rst_rst, fit_args_rst_pts, fit_args_pts_rst]
 
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
     points = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]},
     )
 
     @pytest.mark.parametrize(
@@ -123,15 +121,15 @@ class TestAffineCoreg:
     )  # type: ignore
     def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]) -> None:
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
-        is accurate by comparing to GDAL."""
-
+        is accurate by comparing to GDAL.
+        """
         ref = load_examples(crop=False)[0]
 
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
         dst_transform = _translate(transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
         output = _reproject_horizontal_shift_samecrs(
-            raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform
+            raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform,
         )
 
         # Reproject with GDAL
@@ -157,7 +155,7 @@ class TestAffineCoreg:
             assert np.array_equal(np.logical_or(mask_dilated_plus_one, ~np.isfinite(output2)), mask_dilated_plus_one)
 
     def test_from_classmethods(self) -> None:
-
+        """Check from_matrix, from_translation functions and that making Coreg object from a nan translation fails."""
         # Check that the from_matrix function works as expected.
         vshift = 5
         matrix = np.diag(np.ones(4, dtype=float))
@@ -181,7 +179,6 @@ class TestAffineCoreg:
 
     def test_raise_all_nans(self) -> None:
         """Check that the coregistration approaches fail gracefully when given only nans."""
-
         dem1 = np.ones((50, 50), dtype=float)
         dem2 = dem1.copy() + np.nan
         affine = rio.transform.from_origin(0, 0, 1, 1)
@@ -199,12 +196,13 @@ class TestAffineCoreg:
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.DhMinimize, coreg.ICP])  # type: ignore
-    def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:
-        """
-        Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])
+    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.DhMinimize, coreg.ICP])
+    def test_coreg_translations__synthetic(self, fit_args: dict,
+                                           shifts: tuple(int, int, int),
+                                           coreg_method: type[AffineCoreg]) -> None:
+        """Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
         ICP and DhMinimize.
 
         We test all combinaison of inputs: raster-raster, point-raster and raster-point.
@@ -214,7 +212,6 @@ class TestAffineCoreg:
         99% of the variance from the initial elevation differences (hence, that the direction of coregistration has
         to be the right one; and that there is no other errors introduced in the process).
         """
-
         warnings.filterwarnings("ignore", message="Covariance of the parameters*")
 
         horizontal_coreg = coreg_method()
@@ -252,8 +249,8 @@ class TestAffineCoreg:
             dh = ref - coreg_elev.reproject(ref)
 
         # Plots for debugging
-        PLOT = False
-        if PLOT and isinstance(dh, geoutils.Raster):
+        plots = False
+        if plots and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
 
             init_dh.plot()
@@ -273,14 +270,11 @@ class TestAffineCoreg:
             (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
             (coreg.ICP, (8.73833, 1.584255, -1.943957)),
         ],
-    )  # type: ignore
+    )
     def test_coreg_translations__example(
-        self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]]
+        self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]],
     ) -> None:
-        """
-        Test that the translation co-registration outputs are always exactly the same on the real example data.
-        """
-
+        """Test that the translation co-registration outputs are always exactly the same on the real example data."""
         # Use entire DEMs here (to compare to original values from older package versions)
         ref, tba = load_examples(crop=False)[0:2]
         inlier_mask = ~self.outlines.create_mask(ref)
@@ -292,18 +286,16 @@ class TestAffineCoreg:
         c.fit(ref, tba, inlier_mask=inlier_mask, random_state=42)
 
         # Check the output translations match the exact values
-        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
         assert shifts == pytest.approx(expected_shifts)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("vshift", [0.2, 10.0, 1000.0])  # type: ignore
-    def test_coreg_vertical_translation__synthetic(self, fit_args, vshift) -> None:
-        """
-        Test the vertical shift coregistration with synthetic shifted data. These tests include VerticalShift.
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("vshift", [0.2, 10.0, 1000.0])
+    def test_coreg_vertical_translation__synthetic(self, fit_args: dict, vshift: float) -> None:
+        """Test the vertical shift coregistration with synthetic shifted data. These tests include VerticalShift.
 
         We test all combinaison of inputs: raster-raster, point-raster and raster-point.
         """
-
         # Create a vertical shift correction instance
         vshiftcorr = coreg.VerticalShift()
 
@@ -337,8 +329,8 @@ class TestAffineCoreg:
             dh = ref - coreg_elev
 
         # Plots for debugging
-        PLOT = False
-        if PLOT and isinstance(dh, geoutils.Raster):
+        plots = False
+        if plots and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
 
             init_dh.plot()
@@ -351,14 +343,13 @@ class TestAffineCoreg:
         assert np.nanmedian(dh) == pytest.approx(0, abs=10e-6)
         assert np.nanvar(dh) == pytest.approx(0, abs=10e-6)
 
-    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])  # type: ignore
+    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])
     def test_coreg_vertical_translation__example(
-        self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]]
+        self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]],
     ) -> None:
+        """Test that the vertical translation co-registration output
+        is always exactly the same on the real example data.
         """
-        Test that the vertical translation co-registration output is always exactly the same on the real example data.
-        """
-
         # Use entire DEMs here (to compare to original values from older package versions)
         ref, tba = load_examples(crop=False)[0:2]
         inlier_mask = ~self.outlines.create_mask(ref)
@@ -374,12 +365,14 @@ class TestAffineCoreg:
         vshift = c.meta["outputs"]["affine"]["shift_z"]
         assert vshift == pytest.approx(expected_vshift)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 0, 0.02, 0.05, 0.1), (-50, 100, 0, 10, 5, 4)])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.ICP])  # type: ignore
-    def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:
-        """
-        Test the rigid coregistrations with synthetic misaligned (shifted and rotatedà data. These tests include ICP.
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 0, 0.02, 0.05, 0.1), (-50, 100, 0, 10, 5, 4)])
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP])
+    def test_coreg_rigid__synthetic(self,
+                                    fit_args: dict,
+                                    shifts_rotations: tuple,
+                                    coreg_method: type[AffineCoreg]) -> None:
+        """Test the rigid coregistrations with synthetic misaligned (shifted and rotatedà data. These tests include ICP.
 
         We test all combinaison of inputs: raster-raster, point-raster and raster-point.
 
@@ -388,7 +381,6 @@ class TestAffineCoreg:
         95% of the variance from the initial elevation differences (hence, that the direction of coregistration has
         to be the right one; and that there is no other errors introduced in the process).
         """
-
         # Initiate coregistration
         horizontal_coreg = coreg_method()
 
@@ -416,7 +408,7 @@ class TestAffineCoreg:
         # Convert to point cloud if input was point cloud
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             ref_shifted_rotated = ref_shifted_rotated.to_pointcloud(
-                data_column_name="z", subsample=50000, random_state=42
+                data_column_name="z", subsample=50000, random_state=42,
             ).ds
         elev_fit_args["to_be_aligned_elev"] = ref_shifted_rotated
 
@@ -429,7 +421,7 @@ class TestAffineCoreg:
         invert_fit_matrix = coreg.invert_matrix(fit_matrix)
         invert_fit_shifts = invert_fit_matrix[:3, 3]
         invert_fit_rotations = pytransform3d.rotations.euler_from_matrix(
-            invert_fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True
+            invert_fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True,
         )
         invert_fit_rotations = np.rad2deg(invert_fit_rotations)
         assert np.allclose(shifts, invert_fit_shifts, rtol=1)
@@ -447,8 +439,8 @@ class TestAffineCoreg:
             dh = ref - coreg_elev
 
         # Plots for debugging
-        PLOT = False
-        if PLOT and isinstance(dh, geoutils.Raster):
+        plots = False
+        if plots and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
 
             init_dh.plot()
@@ -463,14 +455,11 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "coreg_method__shifts_rotations",
         [(coreg.ICP, (8.738332, 1.584255, -1.943957, 0.0069004, -0.00703, -0.0119733))],
-    )  # type: ignore
+    )
     def test_coreg_rigid__example(
-        self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
+        self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]],
     ) -> None:
-        """
-        Test that the rigid co-registration outputs is always exactly the same on the real example data.
-        """
-
+        """Test that the rigid co-registration outputs is always exactly the same on the real example data."""
         # Use entire DEMs here (to compare to original values from older package versions)
         ref, tba = load_examples(crop=False)[0:2]
         inlier_mask = ~self.outlines.create_mask(ref)

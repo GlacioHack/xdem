@@ -1,3 +1,5 @@
+"""Functions to test terrain attributes."""
+
 from __future__ import annotations
 
 import os
@@ -77,22 +79,20 @@ class TestTerrainAttribute:
         ],
     )  # type: ignore
     def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
-        """
-        Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
+        """Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-
         functions = {
             "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, resolution=dem.res, degrees=True),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
             "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
             "slope_Zevenberg": lambda dem: xdem.terrain.slope(
-                dem.data, resolution=dem.res, method="ZevenbergThorne", degrees=True
+                dem.data, resolution=dem.res, method="ZevenbergThorne", degrees=True,
             ),
             "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
             "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(
-                dem.data, resolution=dem.res, method="ZevenbergThorne"
+                dem.data, resolution=dem.res, method="ZevenbergThorne",
             ),
             "tri_Riley": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Riley"),
             "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Wilson"),
@@ -183,13 +183,13 @@ class TestTerrainAttribute:
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
     )  # type: ignore
-    def test_attribute_functions_against_richdem(self, attribute: str, get_terrain_attribute_richdem) -> None:
-        """
-        Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
+    def test_attribute_functions_against_richdem(self,
+                                                 attribute: str,
+                                                 get_terrain_attribute_richdem) -> None: # noqa: ANN001
+        """Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-
         # Functions for xdem-implemented methods
         functions_xdem = {
             "slope_Horn": lambda dem: xdem.terrain.slope(dem, resolution=dem.res, degrees=True),
@@ -208,7 +208,7 @@ class TestTerrainAttribute:
             "curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="curvature"),
             "profile_curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="profile_curvature"),
             "planform_curvature": lambda dem: get_terrain_attribute_richdem(
-                dem, attribute="planform_curvature", degrees=True
+                dem, attribute="planform_curvature", degrees=True,
             ),
         }
 
@@ -283,7 +283,6 @@ class TestTerrainAttribute:
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
-
         zfactor_1 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=1.0)
         zfactor_10 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=10.0)
 
@@ -297,17 +296,16 @@ class TestTerrainAttribute:
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
     @pytest.mark.parametrize(
-        "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
+        "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"],
     )  # type: ignore
     def test_curvatures(self, name: str) -> None:
         """Test the curvature functions"""
-
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
         # Derive curvature without any gaps
         curvature = xdem.terrain.get_terrain_attribute(
-            dem.data, attribute=name, resolution=dem.res, edge_method="nearest"
+            dem.data, attribute=name, resolution=dem.res, edge_method="nearest",
         )
 
         # Validate that the array has the same shape as the input and that all values are finite.
@@ -332,14 +330,13 @@ class TestTerrainAttribute:
 
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
-
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
         assert isinstance(slope, np.ndarray)
 
         # Create three products at the same time
         slope2, _, hillshade = xdem.terrain.get_terrain_attribute(
-            self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res
+            self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res,
         )
 
         # Create a hillshade using its own function
@@ -355,24 +352,23 @@ class TestTerrainAttribute:
 
     def test_get_terrain_attribute_errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
-
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
+                "Slope method 'DoesNotExist' is not supported. Must be one of: ['Horn', 'ZevenbergThorne']",
             ),
         ):
             xdem.terrain.slope(self.dem.data, method="DoesNotExist")
 
         with pytest.raises(
             ValueError,
-            match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
+            match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: ['Riley', 'Wilson']"),
         ):
             xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
 
     def test_raster_argument(self) -> None:
-
+        """Test raster argument."""
         slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
 
         assert slope != aspect
@@ -384,11 +380,9 @@ class TestTerrainAttribute:
         assert slope.crs == self.dem.crs == aspect.crs
 
     def test_rugosity_jenness(self) -> None:
-        """
-        Test the rugosity with the same example as in Jenness (2004),
+        """Test the rugosity with the same example as in Jenness (2004),
         https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
         """
-
         # Derive rugosity from the function
         dem = np.array([[190, 170, 155], [183, 165, 145], [175, 160, 122]], dtype="float32")
 
@@ -406,7 +400,6 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
-
         # We here check the value for a fully symmetric case: the rugosity calculation can be simplified because all
         # eight triangles have the same surface area, see Jenness (2004).
 
@@ -424,21 +417,20 @@ class TestTerrainAttribute:
 
         # Formula for area A of one triangle
         s = (side1 + side2 + side3) / 2.0
-        A = np.sqrt(s * (s - side1) * (s - side2) * (s - side3))
+        a = np.sqrt(s * (s - side1) * (s - side2) * (s - side3))
 
         # We sum the area of the eight triangles, and divide by the planimetric area (resolution squared)
-        r = 8 * A / (resolution**2)
+        r = 8 * a / (resolution**2)
 
         # Check rugosity value is valid
         assert r == pytest.approx(rugosity[1, 1], rel=10 ** (-6))
 
     def test_get_quadric_coefficients(self) -> None:
         """Test the outputs and exceptions of the get_quadric_coefficients() function."""
-
         dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
 
         coefficients = xdem.terrain.get_quadric_coefficients(
-            dem, resolution=1.0, edge_method="nearest", make_rugosity=True
+            dem, resolution=1.0, edge_method="nearest", make_rugosity=True,
         )
 
         # Check all coefficients are finite with an edge method

@@ -15,6 +15,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""xDEM module init file."""
 
 from xdem import (  # noqa
     coreg,
@@ -38,5 +39,5 @@ except ImportError:  # pragma: no cover
         "running from the source directory, please instead "
         "create a new virtual environment (using conda or "
         "virtualenv) and then install it in-place by running: "
-        "pip install -e ."
+        "pip install -e .",
     )

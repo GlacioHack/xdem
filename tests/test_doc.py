@@ -5,25 +5,26 @@ import os
 import platform
 import shutil
 import warnings
+from pathlib import Path
 
 import sphinx.cmd.build
 
 
 class TestDocs:
-    docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "doc/")
+    docs_dir = os.path.join(Path(Path(__file__).resolve()).parent, "../", "doc/")
     n_threads = os.getenv("N_CPUS")
 
     def test_example_code(self) -> None:
         """Try running each python script in the doc/source/code\
-                directory and check that it doesn't raise an error."""
-        current_dir = os.getcwd()
+                directory and check that it doesn't raise an error.
+        """
+        current_dir = Path.cwd()
         os.chdir(os.path.join(self.docs_dir, "source"))
 
         def run_code(filename: str) -> None:
             """Run a python script in one thread."""
-            with open(filename) as infile:
-                # Run everything except plt.show() calls.
-                with warnings.catch_warnings():
+            # Run everything except plt.show() calls.
+            with Path(filename).open() as infile, warnings.catch_warnings():
                     # When running the code asynchronously, matplotlib complains a bit
                     ignored_warnings = [
                         "Starting a Matplotlib GUI outside of the main thread",
@@ -33,12 +34,14 @@ class TestDocs:
                     for warning_text in ignored_warnings:
                         warnings.filterwarnings("ignore", warning_text)
                     try:
-                        exec(infile.read().replace("plt.show()", "plt.close()"))
+                        with Path(infile).open() as file:
+                            file.replace("plt.show()", "plt.close()")
+                        #exec(infile.read().replace("plt.show()", "plt.close()"))
                     except Exception as exception:
                         if isinstance(exception, DeprecationWarning):
                             logging.warning(exception)
                         else:
-                            raise RuntimeError(f"Failed on {filename}") from exception
+                            raise TypeError(f"Failed on {filename}") from exception
 
         filenames = [os.path.join("code", filename) for filename in os.listdir("code/") if filename.endswith(".py")]
 
@@ -55,7 +58,6 @@ class TestDocs:
 
     def test_build(self) -> None:
         """Try building the doc and see if it works."""
-
         # Ignore all warnings raised in the documentation
         # (some UserWarning are shown on purpose in certain examples, so they shouldn't make the test fail,
         # and most other warnings are for Sphinx developers, not meant to be seen by us; or we can check on RTD)
@@ -64,7 +66,7 @@ class TestDocs:
         # Test only on Linux
         if platform.system() == "Linux":
             # Remove the build directory if it exists.
-            if os.path.isdir(os.path.join(self.docs_dir, "build")):
+            if Path(os.path.join(self.docs_dir, "build")).is_dir():
                 shutil.rmtree(os.path.join(self.docs_dir, "build"))
 
             return_code = sphinx.cmd.build.main(
@@ -73,7 +75,7 @@ class TestDocs:
                     "1",
                     os.path.join(self.docs_dir, "source"),
                     os.path.join(self.docs_dir, "build", "html"),
-                ]
+                ],
             )
 
             assert return_code == 0

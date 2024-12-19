@@ -5,6 +5,7 @@
 ############### GLOBAL VARIABLES ######################
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
+PATH :=.
 
 # Virtualenv directory name (can be overridden)
 ifndef VENV
@@ -81,6 +82,26 @@ test: ## run tests
 	else \
 		${VENV}/bin/pytest; \
 	fi
+
+## Code quality, linting section
+
+.PHONY: lint
+lint: ruff	## Apply the ruff linter.
+
+.PHONY: lint-check
+lint-check:  ## Check whether the codebase satisfies the linter rules.
+	@echo
+	@echo "Checking linter rules..."
+	@echo "========================"
+	@echo
+	@ruff check $(PATH)
+
+.PHONY: ruff
+ruff: ## Apply ruff.
+	@echo "Applying ruff..."
+	@echo "================"
+	@echo
+	@ruff --fix $(path)
 
 ## Clean section
 

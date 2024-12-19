@@ -1,16 +1,17 @@
-"""
-Working with a collection of DEMs
+"""Working with a collection of DEMs
 =================================
 
 .. caution:: This functionality might be removed in future package versions.
 
 Oftentimes, more than two timestamps (DEMs) are analyzed simultaneously.
 One single dDEM only captures one interval, so multiple dDEMs have to be created.
-In addition, if multiple masking polygons exist (e.g. glacier outlines from multiple years), these should be accounted for properly.
-The :class:`xdem.DEMCollection` is a tool to properly work with multiple timestamps at the same time, and makes calculations of elevation/volume change over multiple years easy.
+In addition, if multiple masking polygons exist (e.g. glacier outlines from multiple years),
+these should be accounted for properly.
+The :class:`xdem.DEMCollection` is a tool to properly work with multiple timestamps at the same time, and makes
+calculations of elevation/volume change over multiple years easy.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import geoutils as gu
 import matplotlib.pyplot as plt
@@ -32,8 +33,12 @@ dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 # These parts can be delineated with masks or polygons.
 # Here, we have glacier outlines from 1990 and 2009.
 outlines = {
-    datetime(1990, 8, 1): gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines")),
-    datetime(2009, 8, 1): gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines_2010")),
+    datetime(1990, 8, 1, tzinfo=timezone.utc): gu.Vector(
+        xdem.examples.get_path("longyearbyen_glacier_outlines"),
+    ),
+    datetime(2009, 8, 1, tzinfo=timezone.utc): gu.Vector(
+        xdem.examples.get_path("longyearbyen_glacier_outlines_2010"),
+    ),
 }
 
 # %%
@@ -42,7 +47,9 @@ outlines = {
 # Fake a 2060 DEM by assuming twice the change from 1990-2009 between 2009 and 2060
 dem_2060 = dem_2009 + (dem_2009 - dem_1990).data * 3
 
-timestamps = [datetime(1990, 8, 1), datetime(2009, 8, 1), datetime(2060, 8, 1)]
+timestamps = [datetime(1990, 8, 1, tzinfo=timezone.utc),
+              datetime(2009, 8, 1, tzinfo=timezone.utc),
+              datetime(2060, 8, 1, tzinfo=timezone.utc)]
 
 # %%
 # Now, all data are ready to be collected in an :class:`xdem.DEMCollection` object.
@@ -52,7 +59,7 @@ timestamps = [datetime(1990, 8, 1), datetime(2009, 8, 1), datetime(2060, 8, 1)]
 #
 
 demcollection = xdem.DEMCollection(
-    dems=[dem_1990, dem_2009, dem_2060], timestamps=timestamps, outlines=outlines, reference_dem=1
+    dems=[dem_1990, dem_2009, dem_2060], timestamps=timestamps, outlines=outlines, reference_dem=1,
 )
 
 # %%
@@ -69,9 +76,11 @@ _ = demcollection.subtract_dems()
 # These are saved internally, but are also returned as a list.
 #
 # An elevation or volume change series can automatically be generated from the ``DEMCollection``.
-# In this case, we should specify *which* glacier we want the change for, as a regional value may not always be required.
+# In this case, we should specify *which* glacier we want the change for,
+# as a regional value may not always be required.
 # We can look at the glacier called "Scott Turnerbreen", specified in the "NAME" column of the outline data.
-# `See here for the outline filtering syntax <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.query.html>`_.
+# `See here for the outline filtering syntax
+# <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.query.html>`_.
 
 demcollection.get_cumulative_series(kind="dh", outlines_filter="NAME == 'Scott Turnerbreen'")
 

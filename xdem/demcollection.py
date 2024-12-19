@@ -39,9 +39,8 @@ class DEMCollection:
         timestamps: list[datetime.datetime] | None = None,
         outlines: gu.Vector | dict[datetime.datetime, gu.Vector] | None = None,
         reference_dem: int | gu.Raster = 0,
-    ):
-        """
-        Create a new temporal DEM collection.
+    ) -> None:
+        """Create a new temporal DEM collection.
 
         :param dems: A list of DEMs.
         :param timestamps: A list of DEM timestamps.
@@ -55,7 +54,7 @@ class DEMCollection:
             timestamp_attributes = [dem.datetime for dem in dems]
             if any(stamp is None for stamp in timestamp_attributes):
                 raise ValueError(
-                    "Argument `timestamps` not provided and the given DEMs do not all have datetime " "attributes"
+                    "Argument `timestamps` not provided and the given DEMs do not all have datetime attributes",
                 )
 
             timestamps = timestamp_attributes
@@ -76,18 +75,20 @@ class DEMCollection:
         if isinstance(reference_dem, (int, np.integer)):
             self.reference_index = np.argwhere(indices == reference_dem)[0][0]
         elif isinstance(reference_dem, gu.Raster):
-            self.reference_index = [i for i, dem in enumerate(self.dems) if dem is reference_dem][0]
+            self.reference_index = next(i for i, dem in enumerate(self.dems) if dem is reference_dem)
 
         if outlines is None:
             self.outlines: dict[np.datetime64, gu.Vector] = {}
         elif isinstance(outlines, gu.Vector):
             self.outlines = {self.timestamps[self.reference_index]: outlines}
         elif all(isinstance(value, gu.Vector) for value in outlines.values()):
-            self.outlines = dict(zip(np.array(list(outlines.keys())).astype("datetime64[ns]"), outlines.values()))
+            self.outlines = dict(zip(np.array(list(outlines.keys())).astype("datetime64[ns]"),
+                                     outlines.values(),
+                                     strict=False))
         else:
             raise ValueError(
                 f"Invalid format on 'outlines': {type(outlines)},"
-                " expected one of ['gu.Vector', 'dict[datetime.datetime, gu.Vector']"
+                " expected one of ['gu.Vector', 'dict[datetime.datetime, gu.Vector']",
             )
 
     @property
@@ -101,8 +102,7 @@ class DEMCollection:
         return self.timestamps[self.reference_index]
 
     def subtract_dems(self, resampling_method: str = "cubic_spline") -> list[xdem.dDEM]:
-        """
-        Generate dDEMs by subtracting all DEMs to the reference.
+        """Generate dDEMs by subtracting all DEMs to the reference.
 
         :param resampling_method: The resampling method to use if reprojection is needed.
 
@@ -135,8 +135,7 @@ class DEMCollection:
         return self.ddems
 
     def interpolate_ddems(self, method: str = "linear") -> list[NDArrayf]:
-        """
-        Interpolate all the dDEMs in the DEMCollection object using the chosen interpolation method.
+        """Interpolate all the dDEMs in the DEMCollection object using the chosen interpolation method.
 
         :param method: The chosen interpolation method.
         """
@@ -147,8 +146,7 @@ class DEMCollection:
         return [ddem.filled_data for ddem in self.ddems]
 
     def get_ddem_mask(self, ddem: xdem.dDEM, outlines_filter: str | None = None) -> NDArrayf:
-        """
-        Get a fitting dDEM mask for a provided dDEM.
+        """Get a fitting dDEM mask for a provided dDEM.
 
         The mask is created by evaluating these factors, in order:
 
@@ -183,17 +181,16 @@ class DEMCollection:
             mask = outlines[ddem.start_time].create_mask(ddem, as_array=True)
         # If only one outlines file exist, use that as a mask.
         elif len(outlines) == 1:
-            mask = list(outlines.values())[0].create_mask(ddem, as_array=True)
+            mask = next(iter(outlines.values())).create_mask(ddem, as_array=True)
         # If no fitting outlines were found, make a full true boolean mask in its stead.
         else:
             mask = np.ones(shape=ddem.data.shape, dtype=bool)
         return mask.reshape(ddem.data.shape)
 
     def get_dh_series(
-        self, outlines_filter: str | None = None, mask: NDArrayf | None = None, nans_ok: bool = False
+        self, outlines_filter: str | None = None, mask: NDArrayf | None = None, nans_ok: bool = False,
     ) -> pd.DataFrame:
-        """
-        Return a dataframe of mean dDEM values and respective areas for every timestamp.
+        """Return a dataframe of mean dDEM values and respective areas for every timestamp.
 
         The values are always compared to the reference DEM timestamp.
 
@@ -228,10 +225,9 @@ class DEMCollection:
         return dh_values
 
     def get_dv_series(
-        self, outlines_filter: str | None = None, mask: NDArrayf | None = None, nans_ok: bool = False
+        self, outlines_filter: str | None = None, mask: NDArrayf | None = None, nans_ok: bool = False,
     ) -> pd.Series:
-        """
-        Return a series of mean volume change (dV) for every timestamp.
+        """Return a series of mean volume change (dV) for every timestamp.
 
         The values are always compared to the reference DEM timestamp.
 
@@ -252,8 +248,7 @@ class DEMCollection:
         mask: NDArrayf | None = None,
         nans_ok: bool = False,
     ) -> pd.Series:
-        """
-        Get the cumulative dH (elevation) or dV (volume) since the first timestamp.
+        """Get the cumulative dH (elevation) or dV (volume) since the first timestamp.
 
         :param kind: The kind of series. Can be dh or dv.
         :param outlines_filter: A query to filter the outline vectors. Example: "name_column == 'specific glacier'".
@@ -274,12 +269,12 @@ class DEMCollection:
         # Simplify the index to just "year" (implicitly still the same as above)
         cumulative_dh = pd.Series(dtype=d_series.dtype)
         cumulative_dh[self.reference_timestamp] = 0.0
-        for i, value in zip(d_series.index, d_series.values):
-            non_reference_year = [date for date in [i.left, i.right] if date != self.reference_timestamp][0]
+        for i, value in zip(d_series.index, d_series.values, strict=False):
+            non_reference_year = next(date for date in [i.left, i.right] if date != self.reference_timestamp)
             cumulative_dh.loc[non_reference_year] = -value
 
         # Sort the dates (just to be sure. It should already be sorted)
-        cumulative_dh.sort_index(inplace=True)
+        cumulative_dh = cumulative_dh.sort_index()
         # Subtract the entire series by the first value to
         cumulative_dh -= cumulative_dh.iloc[0]
 

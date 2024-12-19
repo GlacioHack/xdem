@@ -23,6 +23,7 @@ import http.client
 import os
 import pathlib
 import warnings
+from pathlib import Path
 from typing import Literal, TypedDict
 
 import pyproj
@@ -58,32 +59,25 @@ vcrs_dem_products = {
 
 
 def _parse_vcrs_name_from_product(product: str) -> str | None:
-    """
-    Parse vertical CRS name from DEM product name.
+    """Parse vertical CRS name from DEM product name.
 
     :param product: Product name (typically from satimg.parse_metadata_from_fn).
 
     :return: vcrs_name: Vertical CRS name.
     """
-
-    if product in vcrs_dem_products.keys():
-        vcrs_name = vcrs_dem_products[product]
-    else:
-        vcrs_name = None
+    vcrs_name = vcrs_dem_products.get(product)
 
     return vcrs_name
 
 
 def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
-    """
-    Build a compound CRS from a horizontal CRS and a vertical CRS.
+    """Build a compound CRS from a horizontal CRS and a vertical CRS.
 
     :param crs: Horizontal CRS.
     :param vcrs: Vertical CRS.
 
     :return: Compound CRS (horizontal + vertical).
     """
-
     # If a vertical CRS was passed, build a compound CRS with horizontal + vertical
     # This requires transforming the horizontal CRS to 2D in case it was 3D
     # Using CRS() because rasterio.CRS does not allow to call .name otherwise...
@@ -105,14 +99,13 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
                 raise NotImplementedError(
                     "pyproj >= 3.5.1 is required to demote a 3D CRS to 2D and be able to compound "
                     "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
-                    "manually."
+                    "manually.",
                 )
             # If 2D
-            else:
-                ccrs = CompoundCRS(
-                    name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
-                    components=[crs_from, vcrs],
-                )
+            ccrs = CompoundCRS(
+                name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
+                components=[crs_from, vcrs],
+            )
 
     # Else if "Ellipsoid" was passed, there is no vertical reference
     # We still have to return the CRS in 3D
@@ -125,20 +118,18 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
 
 
 def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
-    """
-    Build a compound CRS from a vertical CRS grid path.
+    """Build a compound CRS from a vertical CRS grid path.
 
     :param grid: Path to grid for vertical reference.
     :param old_way: Whether to use the new or old way of building the compound CRS with pyproj (for testing purposes).
 
     :return: Compound CRS (horizontal + vertical).
     """
-
-    if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
+    if not Path(os.path.join(pyproj.datadir.get_data_dir(), grid)).exists():
         warnings.warn(
             "Grid not found in "
             + str(pyproj.datadir.get_data_dir())
-            + ". Attempting to download from https://cdn.proj.org/..."
+            + ". Attempting to download from https://cdn.proj.org/...",
         )
         from pyproj.sync import _download_resource_file
 
@@ -151,8 +142,8 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
             )
         except http.client.InvalidURL:
             raise ValueError(
-                "The provided grid '{}' does not exist at https://cdn.proj.org/. "
-                "Provide an existing grid.".format(grid)
+                f"The provided grid '{grid}' does not exist at https://cdn.proj.org/. "
+                "Provide an existing grid.",
             )
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
@@ -166,7 +157,7 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
     else:
         # First, we build a bounds CRS (the vertical CRS relative to geographic)
         vertical_crs = VerticalCRS(
-            name="unknown using geoidgrids=" + grid, datum='VDATUM["unknown using geoidgrids=' + grid + '"]'
+            name="unknown using geoidgrids=" + grid, datum='VDATUM["unknown using geoidgrids=' + grid + '"]',
         )
         geographic3d_crs = GeographicCRS(
             name="WGS 84",
@@ -187,7 +178,7 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
                         "name": "Geoid (height correction) model file",
                         "value": grid,
                         "id": {"authority": "EPSG", "code": 8666},
-                    }
+                    },
                 ],
             },
         )
@@ -209,14 +200,13 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
 
 def _vcrs_from_crs(crs: CRS) -> CRS:
     """Get the vertical CRS from a CRS."""
-
     # Check if CRS is 3D
     if len(crs.axis_info) > 2:
 
         # Check if CRS has a vertical compound
         if any(subcrs.is_vertical for subcrs in crs.sub_crs_list):
             # Then we get the first vertical CRS (should be only one anyway)
-            vcrs = [subcrs for subcrs in crs.sub_crs_list if subcrs.is_vertical][0]
+            vcrs = next(subcrs for subcrs in crs.sub_crs_list if subcrs.is_vertical)
         # Otherwise, it's a 3D CRS based on an ellipsoid
         else:
             vcrs = "Ellipsoid"
@@ -228,17 +218,15 @@ def _vcrs_from_crs(crs: CRS) -> CRS:
 
 
 def _vcrs_from_user_input(
-    vcrs_input: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | CRS | int,
+    vcrs_input: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | CRS | int,
 ) -> VerticalCRS | BoundCRS | Literal["Ellipsoid"]:
-    """
-    Parse vertical CRS from user input.
+    """Parse vertical CRS from user input.
 
     :param vcrs_input: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
         an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
 
     :return: Vertical CRS.
     """
-
     # Raise errors if input type is wrong (allow CRS instead of VerticalCRS for broader error messages below)
     if not isinstance(vcrs_input, (str, pathlib.Path, CRS, int)):
         raise TypeError(f"New vertical CRS must be a string, path or VerticalCRS, received {type(vcrs_input)}.")
@@ -261,29 +249,28 @@ def _vcrs_from_user_input(
         # Raise errors if the CRS constructed is not vertical or has other components
         if isinstance(vcrs, CRS) and not vcrs.is_vertical:
             raise ValueError(
-                "New vertical CRS must have a vertical axis, '{}' does not "
-                "(check with `CRS.is_vertical`).".format(vcrs.name)
+                f"New vertical CRS must have a vertical axis, '{vcrs.name}' does not "
+                "(check with `CRS.is_vertical`).",
             )
-        elif isinstance(vcrs, CRS) and vcrs.is_vertical and len(vcrs.axis_info) > 2:
+        if isinstance(vcrs, CRS) and vcrs.is_vertical and len(vcrs.axis_info) > 2:
             warnings.warn(
                 "New vertical CRS has a vertical dimension but also other components, "
-                "extracting the vertical reference only."
+                "extracting the vertical reference only.",
             )
             vcrs = _vcrs_from_crs(vcrs)
 
     # If a string was passed
+    # If a name is passed, define CRS based on dict
+    elif isinstance(vcrs_input, str) and vcrs_input.upper() in _vcrs_meta:
+        vcrs_meta = _vcrs_meta[vcrs_input]
+        vcrs = CRS.from_epsg(vcrs_meta["epsg"])
+    # Otherwise, attempt to read a grid from the string
     else:
-        # If a name is passed, define CRS based on dict
-        if isinstance(vcrs_input, str) and vcrs_input.upper() in _vcrs_meta.keys():
-            vcrs_meta = _vcrs_meta[vcrs_input]
-            vcrs = CRS.from_epsg(vcrs_meta["epsg"])
-        # Otherwise, attempt to read a grid from the string
+        if isinstance(vcrs_input, pathlib.Path):
+            grid = vcrs_input.name
         else:
-            if isinstance(vcrs_input, pathlib.Path):
-                grid = vcrs_input.name
-            else:
-                grid = vcrs_input
-            vcrs = _build_vcrs_from_grid(grid=grid)
+            grid = vcrs_input
+        vcrs = _build_vcrs_from_grid(grid=grid)
 
     return vcrs
 
@@ -293,7 +280,7 @@ def _grid_from_user_input(vcrs_input: str | pathlib.Path | int | CRS) -> str | N
     # If a grid or name was passed, get grid name
     if isinstance(vcrs_input, (str, pathlib.Path)):
         # If the string is within the supported names
-        if isinstance(vcrs_input, str) and vcrs_input in _vcrs_meta.keys():
+        if isinstance(vcrs_input, str) and vcrs_input in _vcrs_meta:
             grid = _vcrs_meta[vcrs_input]["grid"]
         # If it's a pathlib path
         elif isinstance(vcrs_input, pathlib.Path):
@@ -312,10 +299,9 @@ def _grid_from_user_input(vcrs_input: str | pathlib.Path | int | CRS) -> str | N
 
 
 def _transform_zz(
-    crs_from: CRS, crs_to: CRS, xx: NDArrayf, yy: NDArrayf, zz: MArrayf | NDArrayf | int | float
+    crs_from: CRS, crs_to: CRS, xx: NDArrayf, yy: NDArrayf, zz: MArrayf | NDArrayf | int | float,
 ) -> MArrayf | NDArrayf | int | float:
-    """
-    Transform elevation to a new 3D CRS.
+    """Transform elevation to a new 3D CRS.
 
     :param crs_from: Source CRS.
     :param crs_to: Destination CRS.
@@ -325,7 +311,6 @@ def _transform_zz(
 
     :return: Transformed Z coordinates.
     """
-
     # Find all possible transforms
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "Best transformation is not available")

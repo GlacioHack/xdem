@@ -1,5 +1,4 @@
-"""
-Iterative closest point coregistration
+"""Iterative closest point coregistration
 ======================================
 
 Iterative closest point (ICP) is a registration method accounting for both rotations and translations.
@@ -32,7 +31,8 @@ xdem.terrain.hillshade(dem).plot(cmap="gray")
 # %%
 # To try the effects of rotation, we can artificially rotate the DEM using a transformation matrix.
 # Here, a rotation of just one degree is attempted.
-# But keep in mind: the window is 6 km wide; 1 degree of rotation at the center equals to a 52 m vertical difference at the edges!
+# But keep in mind: the window is 6 km wide; 1 degree of rotation at the center equals
+# to a 52 m vertical difference at the edges!
 
 rotation = np.deg2rad(1)
 rotation_matrix = np.array(
@@ -41,7 +41,7 @@ rotation_matrix = np.array(
         [0, 1, 0, 0],
         [-np.sin(rotation), 0, np.cos(rotation), 0],
         [0, 0, 0, 1],
-    ]
+    ],
 )
 centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2, np.nanmean(dem)]
 # This will apply the matrix along the center of the DEM
@@ -90,7 +90,8 @@ plt.show()
 # %%
 # The results show what we expected:
 #
-# - **ICP** alone handled the rotational offset, but left a horizontal offset as it is not sub-pixel accurate (in this case, the resolution is 20x20m).
+# - **ICP** alone handled the rotational offset, but left a horizontal offset as it is not sub-pixel accurate
+# (in this case, the resolution is 20x20m).
 # - **Nuth and Kääb** barely helped at all, since the offset is purely rotational.
 # - **ICP + Nuth and Kääb** first handled the rotation, then fit the reference with sub-pixel accuracy.
 #

@@ -1,8 +1,8 @@
-"""
-Estimation and modelling of spatial variograms
+"""Estimation and modelling of spatial variograms
 ==============================================
 
-Digital elevation models have errors that are often `correlated in space <https://en.wikipedia.org/wiki/Spatial_analysis#Spatial_auto-correlation>`_.
+Digital elevation models have errors that are often
+`correlated in space <https://en.wikipedia.org/wiki/Spatial_analysis#Spatial_auto-correlation>`_.
 While many DEM studies used solely short-range `variograms <https://en.wikipedia.org/wiki/Variogram>`_ to
 estimate the correlation of elevation measurement errors, recent studies show that variograms of multiple ranges
 provide larger, more reliable estimates of spatial correlation for DEMs.
@@ -12,13 +12,15 @@ impact on the standard error of the mean of elevation differences in an area. We
 by :func:`~xdem.spatialstats.infer_spatial_correlation_from_stable` exemplified in
 # :ref:`sphx_glr_basic_examples_plot_infer_spatial_correlation.py`.
 
-We first estimate an empirical variogram with :func:`~xdem.spatialstats.sample_empirical_variogram` based on routines of `SciKit-GStat
+We first estimate an empirical variogram with :func:
+`~xdem.spatialstats.sample_empirical_variogram` based on routines of `SciKit-GStat
 <https://mmaelicke.github.io/scikit-gstat/index.html>`_. We then fit the empirical variogram with a sum of variogram
 models using :func:`~xdem.spatialstats.fit_sum_model_variogram`. Finally, we perform spatial propagation for a range of
 averaging area using :func:`~xdem.spatialstats.number_effective_samples`, and empirically validate the improved
 robustness of our results using :func:`~xdem.spatialstats.patches_method`, an intensive Monte-Carlo sampling approach.
 
-**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_,
+ `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
 
 import geoutils as gu
@@ -49,7 +51,8 @@ print(f"STD: {np.nanstd(dh.data):.2f} meters.")
 print(f"NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.")
 
 # %%
-# The two measures of dispersion are quite similar showing that, on average, there is a small influence of outliers on the
+# The two measures of dispersion are quite similar showing that,
+# on average, there is a small influence of outliers on the
 # elevation differences. The per-pixel precision is about :math:`\pm` 2.5 meters.
 # **Does this mean that every pixel has an independent measurement error of** :math:`\pm` **2.5 meters?**
 # Let's plot the elevation differences to visually check the quality of the data.
@@ -62,7 +65,8 @@ dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 
 # %%
 # Additionally, we notice that the elevation differences are still polluted by unrealistically large elevation
-# differences near glaciers, probably because the glacier inventory is more recent than the data, hence with too small outlines.
+# differences near glaciers, probably because the glacier inventory is more recent than the data,
+# hence with too small outlines.
 # To remedy this, we filter large elevation differences outside 4 NMAD.
 dh.set_mask(np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data))
 
@@ -80,16 +84,17 @@ dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 # conveniently by :func:`~xdem.spatialstats.sample_empirical_variogram`. # Dowd's variogram is used for
 # robustness in conjunction with the NMAD (see :ref:`robuststats-corr`).
 
-df = xdem.spatialstats.sample_empirical_variogram(
-    values=dh, subsample=500, n_variograms=5, estimator="dowd", random_state=42
+df_vgm = xdem.spatialstats.sample_empirical_variogram(
+    values=dh, subsample=500, n_variograms=5, estimator="dowd", random_state=42,
 )
 
 # %%
-# .. note:: In this example, we add a ``random_state`` argument to yield a reproducible random sampling of pixels within the grid.
+# .. note:: In this example, we add a ``random_state``
+# argument to yield a reproducible random sampling of pixels within the grid.
 
 # %%
 # We plot the empirical variogram:
-xdem.spatialstats.plot_variogram(df)
+xdem.spatialstats.plot_variogram(df_vgm)
 
 # %%
 # With this plot, it is hard to conclude anything! Properly visualizing the empirical variogram is one of the most
@@ -102,31 +107,36 @@ xdem.spatialstats.plot_variogram(df)
 
 # %%
 # **Log scale:**
-xdem.spatialstats.plot_variogram(df, xscale="log")
+xdem.spatialstats.plot_variogram(df_vgm, xscale="log")
 
 # %%
 # **Subpanels with linear scale:**
-xdem.spatialstats.plot_variogram(df, xscale_range_split=[100, 1000, 10000])
+xdem.spatialstats.plot_variogram(df_vgm, xscale_range_split=[100, 1000, 10000])
 
 # %%
 # We identify:
-#   - a short-range (i.e., correlation length) correlation, likely due to effects of resolution. It has a large partial sill (correlated variance), meaning that the elevation measurement errors are strongly correlated until a range of ~100 m.
-#   - a longer range correlation, with a smaller partial sill, meaning the part of the elevation measurement errors remain correlated over a longer distance.
+#   - a short-range (i.e., correlation length) correlation, likely due to effects of resolution.
+#   It has a large partial sill (correlated variance), meaning that the elevation
+#   measurement errors are strongly correlated until a range of ~100 m.
+#   - a longer range correlation, with a smaller partial sill, meaning the part of
+#   the elevation measurement errors remain correlated over a longer distance.
 #
-# In order to show the difference between accounting only for the most noticeable, short-range correlation, or adding the
-# long-range correlation, we fit this empirical variogram with two different models: a single spherical model, and
-# the sum of two spherical models (two ranges). For this, we use :func:`xdem.spatialstats.fit_sum_model_variogram`, which
-# is based on `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
+# In order to show the difference between accounting only for the most noticeable,
+# short-range correlation, or adding the long-range correlation,
+# we fit this empirical variogram with two different models: a single spherical model,
+# and the sum of two spherical models (two ranges).
+# For this, we use :func:`xdem.spatialstats.fit_sum_model_variogram`, which is based on
+# `scipy.optimize.curve_fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html>`_:
 func_sum_vgm1, params_vgm1 = xdem.spatialstats.fit_sum_model_variogram(
-    list_models=["Spherical"], empirical_variogram=df
+    list_models=["Spherical"], empirical_variogram=df_vgm,
 )
 
 func_sum_vgm2, params_vgm2 = xdem.spatialstats.fit_sum_model_variogram(
-    list_models=["Spherical", "Spherical"], empirical_variogram=df
+    list_models=["Spherical", "Spherical"], empirical_variogram=df_vgm,
 )
 
 xdem.spatialstats.plot_variogram(
-    df,
+    df_vgm,
     list_fit_fun=[func_sum_vgm1, func_sum_vgm2],
     list_fit_fun_label=["Single-range model", "Double-range model"],
     xscale_range_split=[100, 1000, 10000],
@@ -138,9 +148,10 @@ xdem.spatialstats.plot_variogram(
 #
 # **So one could wonder: is it really important to account for this small additional "bump" in the variogram?**
 #
-# To answer this, we compute the precision of the DEM integrated over a certain surface area based on spatial integration of the
-# variogram models using :func:`xdem.spatialstats.neff_circ`, with areas varying from pixel size to grid size.
-# Numerical and exact integration of variogram is fast, allowing us to estimate errors for a wide range of areas rapidly.
+# To answer this, we compute the precision of the DEM integrated over a
+# certain surface area based on spatial integration of the variogram models using :func:`xdem.spatialstats.neff_circ`,
+# with areas varying from pixel size to grid size. Numerical and exact integration of variogram is fast,
+# allowing us to estimate errors for a wide range of areas rapidly.
 
 areas = np.linspace(20, 10000, 50) ** 2
 
@@ -162,7 +173,8 @@ for area in areas:
 # %%
 # We add an empirical error based on intensive Monte-Carlo sampling ("patches" method) to validate our results.
 # This method is implemented in :func:`xdem.spatialstats.patches_method`. Here, we sample fewer areas to avoid for the
-# patches method to run over long processing times, increasing from areas of 5 pixels to areas of 10000 pixels exponentially.
+# patches method to run over long processing times,
+# increasing from areas of 5 pixels to areas of 10000 pixels exponentially.
 
 areas_emp = [4000 * 2 ** (i) for i in range(10)]
 df_patches = xdem.spatialstats.patches_method(dh, gsd=dh.res[0], areas=areas_emp, n_patches=200)
@@ -251,5 +263,8 @@ plt.show()
 # Our final estimation is now very close to the empirical error estimate.
 #
 # Some take-home points:
-#   1. Long-range correlations are very important to reliably estimate measurement errors integrated in space, even if they have a small partial sill i.e. correlated variance,
-#   2. Ideally, the grid must only contain correlation patterns significantly smaller than the grid size to verify second-order stationarity. Otherwise, be wary of small biases of central tendency, i.e. fully correlated measurement errors!
+#   1. Long-range correlations are very important to reliably estimate measurement errors integrated in space,
+#   even if they have a small partial sill i.e. correlated variance,
+#   2. Ideally, the grid must only contain correlation patterns significantly smaller than the grid size to verify
+#   second-order stationarity. Otherwise, be wary of small biases of central tendency,
+#   i.e. fully correlated measurement errors!

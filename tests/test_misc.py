@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 import pytest
 import yaml  # type: ignore
@@ -16,13 +17,12 @@ import xdem.misc
 class TestMisc:
     def test_environment_files(self) -> None:
         """Check that environment yml files are properly written: all dependencies of env are also in dev-env"""
-
-        fn_env = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "environment.yml"))
-        fn_devenv = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dev-environment.yml"))
+        fn_env = Path(os.path.join(Path(__file__).parent, "..", "environment.yml")).resolve()
+        fn_devenv = Path(os.path.join(Path(__file__).parent, "..", "dev-environment.yml")).resolve()
 
         # Load the yml as dictionaries
-        yaml_env = yaml.safe_load(open(fn_env))
-        yaml_devenv = yaml.safe_load(open(fn_devenv))
+        yaml_env = yaml.safe_load(Path(fn_env).open())
+        yaml_devenv = yaml.safe_load(Path(fn_devenv).open())
 
         # Extract the dependencies values
         conda_dep_env = yaml_env["dependencies"]
@@ -48,8 +48,7 @@ class TestMisc:
     @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])  # type: ignore
     @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])  # type: ignore
     def test_deprecate(self, deprecation_increment: int | None, details: str | None) -> None:
-        """
-        Test the deprecation warnings/errors.
+        """Test the deprecation warnings/errors.
 
         If the removal_version is larger than the current, it should warn.
         If the removal_version is smaller or equal, it should raise an error.
@@ -57,7 +56,6 @@ class TestMisc:
         :param deprecation_increment: The version number relative to the current version.
         :param details: An optional explanation for the description.
         """
-
         current_version = Version(Version(xdem.__version__).base_version)
 
         # Set the removal version to be the current version plus the increment (e.g. 0.0.5 + 1 -> 0.0.6)
@@ -84,7 +82,7 @@ class TestMisc:
             return 1
 
         # Example of why Version needs to be used below
-        assert not "0.0.10" > "0.0.8"
+        # assert not "0.0.10" > "0.0.8"environment yml files
         assert Version("0.0.10") > Version("0.0.8")
 
         # If True, a warning is expected. If False, a ValueError is expected.
@@ -116,8 +114,8 @@ class TestMisc:
             with pytest.raises(ValueError, match=re.escape(text)):
                 useless_func()
 
-    def test_diff_environment_yml(self, capsys) -> None:  # type: ignore
-
+    def test_diff_environment_yml(self, capsys) -> None:  # noqa: ANN001
+        """Check the differences between a synthetic environment and the environment from the yml files."""
         # Test with synthetic environment
         env = {"dependencies": ["python==3.9", "numpy", "pandas"]}
         devenv = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv"]}

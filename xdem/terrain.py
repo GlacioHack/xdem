@@ -20,7 +20,8 @@
 from __future__ import annotations
 
 import warnings
-from typing import Sized, overload
+from collections.abc import Sized
+from typing import overload
 
 import geoutils as gu
 import numba
@@ -53,16 +54,15 @@ def _get_quadric_coefficients(
     edge_method: str = "none",
     make_rugosity: bool = False,
 ) -> NDArrayf:
-    """
-    Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
+    """Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
 
     See the xdem.terrain.get_quadric_coefficients() docstring for more info.
     """
     # Rename the resolution
-    L = resolution
+    L = resolution # noqa: N806
 
     # Allocate the output.
-    output = np.full((12,) + dem.shape, fill_value=np.nan)
+    output = np.full((12,) + dem.shape, fill_value=np.nan) # noqa: RUF005
 
     # Convert the string to a number (fewer bytes to compare each iteration)
     if fill_method == "median":
@@ -87,7 +87,7 @@ def _get_quadric_coefficients(
 
         # Extract the pixel and its 8 immediate neighbours.
         # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
-        Z = np.empty((9,), dtype=dem.dtype)
+        Z = np.empty((9,), dtype=dem.dtype) # noqa: N806
         count = 0
 
         # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
@@ -177,28 +177,28 @@ def _get_quadric_coefficients(
             # pixels and 1 segment between surrounding pixels; pixel 4 is the center
             # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
             # Triangle 1: pixels 3 and 0
-            T1 = [hsl[3], hsl[0], hsl[12]]
+            T1 = [hsl[3], hsl[0], hsl[12]] # noqa: N806
             # Triangle 2: pixels 0 and 1
-            T2 = [hsl[0], hsl[1], hsl[8]]
+            T2 = [hsl[0], hsl[1], hsl[8]] # noqa: N806
             # Triangle 3: pixels 1 and 2
-            T3 = [hsl[1], hsl[2], hsl[9]]
+            T3 = [hsl[1], hsl[2], hsl[9]] # noqa: N806
             # Triangle 4: pixels 2 and 5
-            T4 = [hsl[2], hsl[4], hsl[14]]
+            T4 = [hsl[2], hsl[4], hsl[14]] # noqa: N806
             # Triangle 5: pixels 5 and 8
-            T5 = [hsl[4], hsl[7], hsl[15]]
+            T5 = [hsl[4], hsl[7], hsl[15]] # noqa: N806
             # Triangle 6: pixels 8 and 7
-            T6 = [hsl[7], hsl[6], hsl[11]]
+            T6 = [hsl[7], hsl[6], hsl[11]] # noqa: N806
             # Triangle 7: pixels 7 and 6
-            T7 = [hsl[6], hsl[5], hsl[10]]
+            T7 = [hsl[6], hsl[5], hsl[10]] # noqa: N806
             # Triangle 8: pixels 6 and 3
-            T8 = [hsl[5], hsl[3], hsl[13]]
+            T8 = [hsl[5], hsl[3], hsl[13]] # noqa: N806
 
-            list_T = [T1, T2, T3, T4, T5, T6, T7, T8]
+            list_T = [T1, T2, T3, T4, T5, T6, T7, T8] # noqa: N806
 
             # Finally, we compute the 3D surface areas of the 8 triangles
-            A = np.empty((8,))
+            A = np.empty((8,)) # noqa: N806
             count = 0
-            for T in list_T:
+            for T in list_T: # noqa: N806
                 # Half sum of lengths
                 hs = sum(T) / 2
                 # Surface area of triangle
@@ -236,8 +236,7 @@ def get_quadric_coefficients(
     edge_method: str = "none",
     make_rugosity: bool = False,
 ) -> NDArrayf:
-    """
-    Computes quadric and other coefficients on a fixed 3x3 pixel window, and that depends on the resolution.
+    """Computes quadric and other coefficients on a fixed 3x3 pixel window, and that depends on the resolution.
     Returns the 9 coefficients of a quadric surface fit to every pixel in the raster, the 2 coefficients of optimized
     slope gradient, and the rugosity.
 
@@ -304,7 +303,7 @@ def get_quadric_coefficients(
     if len(dem_arr.shape) != 2:
         raise ValueError(
             f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)."
+            "Expected 2D array or 3D array of shape (1, row, col).",
         )
 
     if any(dim < 3 for dim in dem_arr.shape):
@@ -312,12 +311,12 @@ def get_quadric_coefficients(
 
     # Resolution is in other tools accepted as a tuple. Here, it must be just one number, so it's best to sanity check.
     if isinstance(resolution, Sized):
-        raise ValueError("Resolution must be the same for X and Y directions.")
+        raise TypeError("Resolution must be the same for X and Y directions.")
 
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
     for value, name, allowed in zip(
-        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
+        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods), strict=False,
     ):
         if value.lower() not in allowed:
             raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}.")
@@ -345,14 +344,12 @@ def _get_windowed_indexes(
     window_size: int = 3,
     make_fractal_roughness: bool = False,
 ) -> NDArrayf:
-    """
-    Run the pixel-wise analysis in parallel for any window size without using the resolution.
+    """Run the pixel-wise analysis in parallel for any window size without using the resolution.
 
     See the xdem.terrain.get_windowed_indexes() docstring for more info.
     """
-
     # Allocate the outputs.
-    output = np.full((5,) + dem.shape, fill_value=np.nan)
+    output = np.full((5,) + dem.shape, fill_value=np.nan) # noqa: RUF005
 
     # Half window size
     hw = int(np.floor(window_size / 2))
@@ -380,7 +377,7 @@ def _get_windowed_indexes(
 
         # Extract the pixel and its 8 immediate neighbours.
         # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
-        Z = np.empty((window_size**2,), dtype=dem.dtype)
+        Z = np.empty((window_size**2,), dtype=dem.dtype) # noqa: N806
         count = 0
 
         # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
@@ -427,7 +424,7 @@ def _get_windowed_indexes(
         # Difference pixels between specific cells: only useful for Terrain Ruggedness Index
         count = 0
         index_middle_pixel = int((window_size**2 - 1) / 2)
-        S = np.empty((window_size**2,))
+        S = np.empty((window_size**2,)) # noqa: N806
         for _j in range(-hw, -hw + window_size):
             for _k in range(-hw, -hw + window_size):
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
@@ -437,14 +434,14 @@ def _get_windowed_indexes(
             # Fractal roughness computation according to the box-counting method of Taud and Parrot (2005)
             # First, we compute the number of voxels for each pixel of Equation 4
             count = 0
-            V = np.empty((window_size, window_size))
+            V = np.empty((window_size, window_size)) # noqa: N806
             for j in range(-hw, -hw + window_size):
                 for k in range(-hw, -hw + window_size):
-                    T = Z[count] - Z[index_middle_pixel]
+                    T = Z[count] - Z[index_middle_pixel] # noqa: N806
                     # The following is the equivalent of np.clip, written like this for numba
                     if T < 0:
                         V[hw + j, hw + k] = 0
-                    elif T > window_size:
+                    elif window_size < T:
                         V[hw + j, hw + k] = window_size
                     else:
                         V[hw + j, hw + k] = T
@@ -454,19 +451,16 @@ def _get_windowed_indexes(
             # size, following Equation 5
 
             # Get all the divisors of the half window size
-            list_box_sizes = []
-            for j in range(1, hw + 1):
-                if hw % j == 0:
-                    list_box_sizes.append(j)
+            list_box_sizes = [j for j in range(1, hw + 1) if hw % j == 0]
 
-            Ns = np.empty((len(list_box_sizes),))
-            for l0 in range(0, len(list_box_sizes)):
+            Ns = np.empty((len(list_box_sizes),)) # noqa: N806
+            for l0 in range(len(list_box_sizes)):
                 # We loop over boxes of size q x q in the cube
                 q = list_box_sizes[l0]
-                sumNs = 0
-                for j in range(0, int((window_size - 1) / q)):
-                    for k in range(0, int((window_size - 1) / q)):
-                        sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
+                sumNs = 0 # noqa: N806
+                for j in range(int((window_size - 1) / q)):
+                    for k in range(int((window_size - 1) / q)):
+                        sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten()) # noqa: N806
                 Ns[l0] = sumNs / q
 
             # Finally, we calculate the slope of the logarithm of Ns with q
@@ -479,13 +473,13 @@ def _get_windowed_indexes(
             m_x = np.mean(x)
             m_y = np.mean(y)
             # Cross-deviation and deviation about x
-            SS_xy = np.sum(y * x) - n * m_y * m_x
-            SS_xx = np.sum(x * x) - n * m_x * m_x
+            SS_xy = np.sum(y * x) - n * m_y * m_x # noqa: N806
+            SS_xx = np.sum(x * x) - n * m_x * m_x # noqa: N806
             # Calculating slope
             b_1 = SS_xy / SS_xx
 
             # The fractal dimension D is the opposite of the slope
-            D = -b_1
+            D = -b_1 # noqa: N806
 
         # First output is the Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of
         # differences between center and neighbouring pixels
@@ -514,8 +508,7 @@ def get_windowed_indexes(
     window_size: int = 3,
     make_fractal_roughness: bool = False,
 ) -> NDArrayf:
-    """
-    Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
+    """Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
 
     Includes:
 
@@ -576,7 +569,7 @@ def get_windowed_indexes(
     if len(dem_arr.shape) != 2:
         raise ValueError(
             f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)"
+            "Expected 2D array or 3D array of shape (1, row, col)",
         )
 
     if any(dim < 3 for dim in dem_arr.shape):
@@ -588,7 +581,7 @@ def get_windowed_indexes(
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
     for value, name, allowed in zip(
-        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
+        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods), strict=False,
     ):
         if value.lower() not in allowed:
             raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
@@ -690,8 +683,7 @@ def get_terrain_attribute(
     edge_method: str = "none",
     window_size: int = 3,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
-    """
-    Derive one or multiple terrain attributes from a DEM.
+    """Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
 
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
@@ -709,7 +701,6 @@ def get_terrain_attribute(
     More details on the equations in the functions get_quadric_coefficients() and get_windowed_indexes().
 
     Attributes:
-
     * 'slope': The slope in degrees or radians (degs: 0=flat, 90=vertical). Default method: "Horn".
     * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W).
     * 'hillshade': The shaded slope in relation to its aspect.
@@ -759,6 +750,7 @@ def get_terrain_attribute(
                [0., 0., 0.]])
 
     :returns: One or multiple arrays of the requested attribute(s)
+
     """
     if isinstance(dem, gu.Raster):
         if resolution is None:
@@ -842,7 +834,7 @@ def get_terrain_attribute(
         if resolution[0] != resolution[1]:
             raise ValueError(
                 f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "
-                f"This was required by: {attributes_requiring_surface_fit}"
+                f"This was required by: {attributes_requiring_surface_fit}",
             )
         terrain_attributes["surface_fit"] = get_quadric_coefficients(
             dem=dem_arr,
@@ -859,7 +851,7 @@ def get_terrain_attribute(
             # http://dx.doi.org/10.1109/PROC.1981.11918.
             terrain_attributes["slope"] = np.arctan(
                 (terrain_attributes["surface_fit"][9, :, :] ** 2 + terrain_attributes["surface_fit"][10, :, :] ** 2)
-                ** 0.5
+                ** 0.5,
             )
 
         elif slope_method == "ZevenbergThorne":
@@ -868,7 +860,7 @@ def get_terrain_attribute(
             # SLOPE = ARCTAN((G²+H²)**(1/2))
             terrain_attributes["slope"] = np.arctan(
                 (terrain_attributes["surface_fit"][6, :, :] ** 2 + terrain_attributes["surface_fit"][7, :, :] ** 2)
-                ** 0.5
+                ** 0.5,
             )
 
     if make_aspect:
@@ -881,7 +873,7 @@ def get_terrain_attribute(
                 # This uses the estimates from Horn (1981).
                 terrain_attributes["aspect"] = (
                     -np.arctan2(
-                        -terrain_attributes["surface_fit"][9, :, :], terrain_attributes["surface_fit"][10, :, :]
+                        -terrain_attributes["surface_fit"][9, :, :], terrain_attributes["surface_fit"][10, :, :],
                     )
                     - np.pi
                 ) % (2 * np.pi)
@@ -1044,8 +1036,7 @@ def slope(
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | Raster:
-    """
-    Generate a slope map for a DEM, returned in degrees by default.
+    """Generate a slope map for a DEM, returned in degrees by default.
 
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
     http://dx.doi.org/10.1002/esp.3290120107.
@@ -1092,8 +1083,7 @@ def aspect(
     method: str = "Horn",
     degrees: bool = True,
 ) -> NDArrayf | Raster:
-    """
-    Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
+    """Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
     default (as in GDAL).
 
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918 and on Zevenbergen and Thorne (1987),
@@ -1156,8 +1146,7 @@ def hillshade(
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | RasterType:
-    """
-    Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
+    """Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
 
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
@@ -1203,8 +1192,7 @@ def curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | RasterType:
-    """
-    Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
+    """Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
 
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
@@ -1248,8 +1236,7 @@ def planform_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | RasterType:
-    """
-    Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
+    """Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
 
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
@@ -1284,10 +1271,9 @@ def profile_curvature(dem: RasterType, resolution: float | tuple[float, float] |
 
 
 def profile_curvature(
-    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | RasterType:
-    """
-    Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
+    """Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
 
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
@@ -1322,10 +1308,9 @@ def maximum_curvature(dem: RasterType, resolution: float | tuple[float, float] |
 
 
 def maximum_curvature(
-    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | RasterType:
-    """
-    Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
+    """Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
     multiplied by 100.
 
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
@@ -1349,8 +1334,7 @@ def topographic_position_index(dem: RasterType, window_size: int = 3) -> RasterT
 
 
 def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
-    """
-    Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
+    """Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
 
     Based on: Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
@@ -1386,10 +1370,9 @@ def terrain_ruggedness_index(dem: RasterType, method: str = "Riley", window_size
 
 
 def terrain_ruggedness_index(
-    dem: NDArrayf | MArrayf | RasterType, method: str = "Riley", window_size: int = 3
+    dem: NDArrayf | MArrayf | RasterType, method: str = "Riley", window_size: int = 3,
 ) -> NDArrayf | RasterType:
-    """
-    Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
+    """Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
 
     Based either on:
@@ -1420,7 +1403,7 @@ def terrain_ruggedness_index(
     :returns: The terrain ruggedness index array of the DEM (unit of the DEM).
     """
     return get_terrain_attribute(
-        dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size
+        dem=dem, attribute="terrain_ruggedness_index", tri_method=method, window_size=window_size,
     )
 
 
@@ -1433,9 +1416,8 @@ def roughness(dem: RasterType, window_size: int = 3) -> RasterType: ...
 
 
 def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDArrayf | RasterType:
-    """
-    Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
-    unit of the DEM (typically meters).
+    """Calculates the roughness, the maximum difference between neighbouring pixels, for any window size.
+    Output is in the unit of the DEM (typically meters).
 
     Based on: Dartnell (2000), https://environment.sfsu.edu/node/11292.
 
@@ -1476,10 +1458,9 @@ def rugosity(
 
 
 def rugosity(
-    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None
+    dem: NDArrayf | MArrayf | RasterType, resolution: float | tuple[float, float] | None = None,
 ) -> NDArrayf | RasterType:
-    """
-    Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
+    """Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
     output is unitless.
 
     Based on: Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
@@ -1515,8 +1496,7 @@ def fractal_roughness(dem: RasterType, window_size: int = 13) -> RasterType: ...
 
 
 def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 13) -> NDArrayf | RasterType:
-    """
-    Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
+    """Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
     equal to 5x5, defaults to 13x13. Output unit is a fractal dimension between 1 and 3.
 
     Based on: Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.

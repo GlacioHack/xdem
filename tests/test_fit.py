@@ -1,6 +1,4 @@
-"""
-Functions to test the fitting tools.
-"""
+"""Functions to test the fitting tools."""
 
 import platform
 import warnings
@@ -24,7 +22,7 @@ class TestRobustFitting:
         ],
     )  # type: ignore
     def test_robust_norder_polynomial_fit(self, pkg_estimator: str) -> None:
-
+        """Test the robustness of the polynomial fitted."""
         # Define x vector
         x = np.linspace(-50, 50, 10000)
         # Define exact polynomial
@@ -45,13 +43,13 @@ class TestRobustFitting:
             )
 
         # Check coefficients are constrained
-        assert deg == 3 or deg == 4
+        assert deg in {3, 4}
         error_margins = [100, 5, 2, 1]
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
     def test_robust_norder_polynomial_fit_noise_and_outliers(self) -> None:
-
+        """Test the robustness of the polynomial fitted after adding noise and outliers."""
         # Ignore sklearn convergence warnings
         warnings.filterwarnings("ignore", category=UserWarning, message="lbfgs failed to converge")
 
@@ -70,7 +68,7 @@ class TestRobustFitting:
 
         # Run with the "Linear" estimator
         coefs, deg = xdem.fit.robust_norder_polynomial_fit(
-            x, y, estimator_name="Linear", linear_pkg="scipy", loss="soft_l1", method="trf", f_scale=0.5
+            x, y, estimator_name="Linear", linear_pkg="scipy", loss="soft_l1", method="trf", f_scale=0.5,
         )
 
         # TODO: understand why this is not robust since moving from least_squares() to curve_fit(), while the
@@ -86,13 +84,13 @@ class TestRobustFitting:
 
         # The sklearn Linear solution with MSE cost function will not be robust
         coefs2, deg2 = xdem.fit.robust_norder_polynomial_fit(
-            x, y, estimator_name="Linear", linear_pkg="sklearn", cost_func=mean_squared_error, margin_improvement=50
+            x, y, estimator_name="Linear", linear_pkg="sklearn", cost_func=mean_squared_error, margin_improvement=50,
         )
         # It won't find the right degree because of the outliers and noise
         assert deg2 != 3
         # Using the median absolute error should improve the fit
         coefs3, deg3 = xdem.fit.robust_norder_polynomial_fit(
-            x, y, estimator_name="Linear", linear_pkg="sklearn", cost_func=median_absolute_error, margin_improvement=50
+            x, y, estimator_name="Linear", linear_pkg="sklearn", cost_func=median_absolute_error, margin_improvement=50,
         )
         # Will find the right degree, but won't find the right coefficients because of the outliers and noise
         assert deg3 == 3
@@ -119,7 +117,7 @@ class TestRobustFitting:
             assert coefs6[i + 1] == pytest.approx(true_coefs[i + 1], abs=1)
 
     def test_robust_nfreq_sumsin_fit(self) -> None:
-
+        """Test the robustness of the estimated sum of sinusoid fitted."""
         # Define X vector
         x = np.linspace(0, 10, 1000)
         # Define exact sum of sinusoid signal
@@ -146,11 +144,11 @@ class TestRobustFitting:
         # Check that using custom arguments does not trigger an error
         bounds = [(1, 7), (1, 10), (0, 2 * np.pi), (1, 7), (0.1, 4), (0, 2 * np.pi)]
         coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(
-            x, y, bounds_amp_wave_phase=bounds, max_nb_frequency=2, hop_length=0.01, random_state=42, niter=1
+            x, y, bounds_amp_wave_phase=bounds, max_nb_frequency=2, hop_length=0.01, random_state=42, niter=1,
         )
 
     def test_robust_nfreq_simsin_fit_noise_and_outliers(self) -> None:
-
+        """Test the robustness of the estimated sum of sinusoid fitted after adding noise and outliers."""
         # Check robustness to outliers
         rng = np.random.default_rng(42)
         # Define X vector
