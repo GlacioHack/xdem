@@ -474,7 +474,7 @@ def _postprocess_coreg_apply_rst(
     if isinstance(elev, gu.Raster):
         nodata = elev.nodata
     else:
-        nodata = raster.default_nodata(elev.dtype)
+        nodata = raster._default_nodata(elev.dtype) # noqa: SLF001
 
     # Resample the array on the original grid
     if resample:
@@ -2664,13 +2664,13 @@ class CoregPipeline(Coreg):
     def _parse_bias_vars(self, step: int, bias_vars: dict[str, NDArrayf] | None) -> dict[str, NDArrayf]:
         """Parse bias variables for a pipeline step requiring them."""
         # Get number of non-affine coregistration requiring bias variables to be passed
-        nb_needs_vars = sum(c.needs_vars for c in self.pipeline)
+        nb_needs_vars = sum(c._needs_vars for c in self.pipeline) # noqa: SLF001
 
         # Get step object
         coreg = self.pipeline[step]
 
         # Check that all variable names of this were passed
-        var_names = coreg.meta["inputs"]["fitorbin"]["bias_var_names"]
+        var_names = coreg._meta["inputs"]["fitorbin"]["bias_var_names"] # noqa: SLF001
 
         # Raise error if bias_vars is None
         if bias_vars is None:
@@ -2766,7 +2766,7 @@ class CoregPipeline(Coreg):
             main_args_apply = {"elev": tba_dem_mod, "transform": out_transform, "crs": crs, "z_name": z_name}
 
             # If non-affine method that expects a bias_vars argument
-            if coreg.needs_vars:
+            if coreg._needs_vars: # noqa: SLF001
                 step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
 
                 main_args_fit.update({"bias_vars": step_bias_vars})
@@ -2862,7 +2862,7 @@ class CoregPipeline(Coreg):
             }
 
             # If non-affine method that expects a bias_vars argument
-            if coreg.needs_vars:
+            if coreg._needs_vars: # noqa: SLF001
                 step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
                 main_args_apply.update({"bias_vars": step_bias_vars})
 
@@ -2992,7 +2992,7 @@ class BlockwiseCoreg(Coreg):
         else:
             steps = list(self.procstep.pipeline)
         argspec = [inspect.getfullargspec(s.__class__) for s in steps]
-        sub_meta = [s.meta["inputs"]["random"]["subsample"] for s in steps]
+        sub_meta = [s._meta["inputs"]["random"]["subsample"] for s in steps] # noqa: SLF001
         sub_is_default = [
             argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
             for i in range(len(argspec))
@@ -3162,10 +3162,10 @@ class BlockwiseCoreg(Coreg):
                 warnings.warn(str(exception))
 
         # Set the _fit_called parameters (only identical copies of self.coreg have actually been called)
-        self.procstep.fit_called = True
+        self.procstep._fit_called = True # noqa: SLF001
         if isinstance(self.procstep, CoregPipeline):
             for step in self.procstep.pipeline:
-                step.fit_called = True
+                step._fit_called = True # noqa: SLF001
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -3177,11 +3177,11 @@ class BlockwiseCoreg(Coreg):
 
         :param meta: A metadata file to update self._meta
         """
-        self.procstep.meta.update(meta)
+        self.procstep._meta.update(meta) # noqa: SLF001
 
         if isinstance(self.procstep, CoregPipeline) and "pipeline" in meta:
             for i, step in enumerate(self.procstep.pipeline):
-                step.meta.update(meta["pipeline"][i])
+                step._meta.update(meta["pipeline"][i]) # noqa: SLF001
 
     def to_points(self) -> NDArrayf:
         """Convert the blockwise coregistration matrices to 3D (source -> destination) points.

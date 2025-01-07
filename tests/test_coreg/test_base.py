@@ -132,7 +132,7 @@ class TestCoregClass:
         corr_copy = corr.copy()
 
         # Assign some attributes and .metadata after copying, respecting the CoregDict type class
-        corr.meta["outputs"]["affine"] = {"shift_z": 30}
+        corr._meta["outputs"]["affine"] = {"shift_z": 30} # noqa: SLF001
         # Make sure these don't appear in the copy
         assert corr_copy.meta != corr.meta
 
@@ -171,7 +171,7 @@ class TestCoregClass:
 
         # Define a class with a subsample and random_state in the .metadata
         coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
-        subsample_mask = coreg.get_subsample_on_valid_mask(valid_mask=valid_mask)
+        subsample_mask = coreg._get_subsample_on_valid_mask(valid_mask=valid_mask) # noqa: SLF001
 
         # Check that it returns a same-shaped array that is boolean
         assert np.shape(valid_mask) == np.shape(subsample_mask)
@@ -626,15 +626,15 @@ class TestCoregPipeline:
         """Test the pipeline copy."""
         # Create a pipeline, add some .metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0].meta["outputs"]["affine"] = {"shift_z": 1}
+        pipeline.pipeline[0]._meta["outputs"]["affine"] = {"shift_z": 1} # noqa: SLF001
 
         pipeline_copy = pipeline.copy()
 
         # Add some more .metadata after copying (this should not be transferred)
-        pipeline_copy.pipeline[0].meta["outputs"]["affine"].update({"shift_y": 0.5 * 30})
+        pipeline_copy.pipeline[0]._meta["outputs"]["affine"].update({"shift_y": 0.5 * 30}) # noqa: SLF001
 
         assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
-        assert pipeline_copy.pipeline[0].meta["outputs"]["affine"]["shift_z"]
+        assert pipeline_copy.pipeline[0]._meta["outputs"]["affine"]["shift_z"] # noqa: SLF001
 
     def test_pipeline(self) -> None:
         """Test the pipeline from two vertical shift correction approaches."""

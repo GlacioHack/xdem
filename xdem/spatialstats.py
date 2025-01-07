@@ -822,7 +822,7 @@ def infer_heteroscedasticity_from_stable(
 
     # Get the arrays for proxy values and explanatory variables
     list_all_arr, gsd = _preprocess_values_with_mask_to_array(
-        values=[dvalues, list_var], include_mask=stable_mask, exclude_mask=unstable_mask, preserve_shape=False,
+        values=[dvalues] + list_var, include_mask=stable_mask, exclude_mask=unstable_mask, preserve_shape=False, # noqa: RUF005
     )
     dvalues_stable_arr = list_all_arr[0]
     list_var_stable_arr = list_all_arr[1:]
@@ -988,7 +988,7 @@ def _aggregate_pdist_empirical_variogram(
         # Define subsampling parameters
         list_inside_radius = []
         list_outside_radius: list[float | None] = []
-        binned_ranges = [0.0, pdist_multi_ranges]
+        binned_ranges = [0.0] + pdist_multi_ranges # noqa: RUF005
         for i in range(len(binned_ranges) - 1):
 
             # Radiuses need to be passed as pixel sizes, dividing by ground sampling distance
@@ -3027,7 +3027,7 @@ def plot_variogram(
                 first_xmin = np.min(df.lags) / 2
             else:
                 first_xmin = 0
-            xscale_range_split = [first_xmin, xscale_range_split]
+            xscale_range_split = [first_xmin] + xscale_range_split # noqa: RUF005
         # Add maximum distance if not in input
         if xscale_range_split[-1] != np.max(df.lags):
             xscale_range_split.append(np.max(df.lags))
@@ -3058,7 +3058,7 @@ def plot_variogram(
         ax0.set_xticks([])
 
         # Plot the histogram manually with fill_between
-        interval_var = [0, list(df.lags)]
+        interval_var = [0] + list(df.lags) # noqa: RUF005
         for i in range(len(df)):
             count = df["count"].values[i]
             ax0.fill_between(
@@ -3083,7 +3083,7 @@ def plot_variogram(
         ax1 = ax.inset_axes(grid[3:, xgridmin[k] : xgridmax[k]].get_position(fig).bounds)
 
         # Get the lags bin centers
-        bins_center = np.subtract(df.lags, np.diff([0, df.lags.tolist()]) / 2)
+        bins_center = np.subtract(df.lags, np.diff([0] + df.lags.tolist()) / 2) # noqa: RUF005
 
         # If all the estimated errors are all NaN (single run), simply plot the empirical variogram
         if np.all(np.isnan(df.err_exp)):

@@ -73,10 +73,10 @@ class TestBiasCorr:
         )
         assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] is None
 
-        # Check that the is_affine attribute is set correctly
-        assert not bcorr.is_affine
+        # Check that the _is_affine attribute is set correctly
+        assert not bcorr._is_affine # noqa: SLF001
         assert bcorr.meta["inputs"]["fitorbin"]["fit_or_bin"] == "fit"
-        assert bcorr.needs_vars is True
+        assert bcorr._needs_vars is True # noqa: SLF001
 
         # Or with default bin arguments
         bcorr2 = biascorr.BiasCorr(fit_or_bin="bin")
@@ -416,7 +416,7 @@ class TestBiasCorr:
             dirbias.meta["inputs"]["fitorbin"]["fit_optimizer"] == biascorr.fit_workflows["nfreq_sumsin"]["optimizer"]
         )
         assert dirbias.meta["inputs"]["specific"]["angle"] == 45
-        assert dirbias.needs_vars is False
+        assert dirbias._needs_vars is False # noqa: SLF001
 
         # Check that variable names are defined during instantiation
         assert dirbias.meta["inputs"]["fitorbin"]["bias_var_names"] == ["angle"]
@@ -503,7 +503,7 @@ class TestBiasCorr:
         assert deramp.meta["inputs"]["fitorbin"]["fit_func"] == polynomial_2d
         assert deramp.meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit
         assert deramp.meta["inputs"]["specific"]["poly_order"] == 2
-        assert deramp.needs_vars is False
+        assert deramp._needs_vars is False # noqa: SLF001
 
         # Check that variable names are defined during instantiation
         assert deramp.meta["inputs"]["fitorbin"]["bias_var_names"] == ["xx", "yy"]
@@ -558,7 +558,7 @@ class TestBiasCorr:
         assert tb.meta["inputs"]["fitorbin"]["bin_sizes"] == 100
         assert tb.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
         assert tb.meta["inputs"]["specific"]["terrain_attribute"] == "maximum_curvature"
-        assert tb.needs_vars is False
+        assert tb._needs_vars is False # noqa: SLF001
 
         assert tb.meta["inputs"]["fitorbin"]["bias_var_names"] == ["maximum_curvature"]
 

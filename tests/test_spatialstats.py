@@ -351,7 +351,7 @@ class TestBinning:
         df_binning = df_binning[df_binning.nd == 3]
         # Convert the intervals from string due to saving to file
         for var in ["slope", "elevation", "aspect"]:
-            df_binning[var] = [xdem.spatialstats.pandas_str_to_interval(x) for x in df_binning[var]]
+            df_binning[var] = [xdem.spatialstats._pandas_str_to_interval(x) for x in df_binning[var]] # noqa: SLF001
 
         # Take 1000 random points in the array
         rng = np.random.default_rng(42)
@@ -438,7 +438,7 @@ class TestBinning:
             dvalues=self.diff, list_var=[self.slope, self.maximum_curv], unstable_mask=self.outlines,
         )
 
-        df_binning_2, err_fun_2 = xdem.spatialstats.estimate_model_heteroscedasticity(
+        df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity( # noqa: SLF001
             dvalues=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             list_var_names=["var1", "var2"],
@@ -455,7 +455,7 @@ class TestBinning:
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
-        errors_1.save(os.path.join(examples.EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors_1.save(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif")) # noqa: SLF001
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
@@ -580,7 +580,7 @@ class TestVariogram:
         shape = values.shape
 
         keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape}
-        runs, samples, ratio_subsample = xdem.spatialstats.choose_cdist_equidistant_sampling_parameters(
+        runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters( # noqa: SLF001
             **keyword_arguments,
         )
 
@@ -714,7 +714,7 @@ class TestVariogram:
 
         # Run the function
         keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape}
-        runs, samples, ratio_subsample = xdem.spatialstats.choose_cdist_equidistant_sampling_parameters(
+        runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters( # noqa: SLF001
             **keyword_arguments,
         )
 
@@ -740,7 +740,7 @@ class TestVariogram:
         keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10)}
 
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
-            xdem.spatialstats.choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
+            xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments) # noqa: SLF001
 
     def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
@@ -781,7 +781,7 @@ class TestVariogram:
             ValueError,
             match='The dataframe with variogram parameters must contain the columns "model", "range" and "psill".',
         ):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["spherical"], "range": [100]}),
             )
 
@@ -793,31 +793,31 @@ class TestVariogram:
             + ", ".join(list_supported_models)
             + ".",
         ):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["Supraluminal"], "range": [100], "psill": [1]}),
             )
 
         # Check with wrong range format
         with pytest.raises(ValueError, match="The variogram ranges must be float or integer."):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["spherical"], "range": ["a"], "psill": [1]}),
             )
 
         # Check with negative range
         with pytest.raises(ValueError, match="The variogram ranges must have non-zero, positive values."):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["spherical"], "range": [-1], "psill": [1]}),
             )
 
         # Check with wrong partial sill format
         with pytest.raises(ValueError, match="The variogram partial sills must be float or integer."):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["spherical"], "range": [100], "psill": ["a"]}),
             )
 
         # Check with negative partial sill
         with pytest.raises(ValueError, match="The variogram partial sills must have non-zero, positive values."):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["spherical"], "range": [100], "psill": [-1]}),
             )
 
@@ -827,19 +827,19 @@ class TestVariogram:
             match='The dataframe with variogram parameters must contain the column "smooth" '
             "for the smoothness factor when using Matern or Stable models.",
         ):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["stable"], "range": [100], "psill": [1]}),
             )
 
         # Check with wrong smoothness format
         with pytest.raises(ValueError, match="The variogram smoothness parameter must be float or integer."):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["stable"], "range": [100], "psill": [1], "smooth": ["a"]}),
             )
 
         # Check with negative smoothness
         with pytest.raises(ValueError, match="The variogram smoothness parameter must have non-zero, positive values."):
-            xdem.spatialstats.check_validity_params_variogram(
+            xdem.spatialstats._check_validity_params_variogram( # noqa: SLF001
                 pd.DataFrame(data={"model": ["stable"], "range": [100], "psill": [1], "smooth": [-1]}),
             )
 
@@ -852,13 +852,13 @@ class TestVariogram:
         diff_on_stable.set_mask(self.mask)
 
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples.EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif")) # noqa: SLF001
 
         # Standardize the differences
         zscores = diff_on_stable / errors
 
         # Run wrapper estimate and model function
-        emp_vgm_1, params_model_vgm_1, _ = xdem.spatialstats.estimate_model_spatial_correlation(
+        emp_vgm_1, params_model_vgm_1, _ = xdem.spatialstats._estimate_model_spatial_correlation( # noqa: SLF001
             dvalues=zscores, list_models=["Gau", "Sph"], subsample=10, random_state=42,
         )
 
@@ -903,7 +903,7 @@ class TestVariogram:
         )
         # Save the modelled variogram for later used in TestNeffEstimation
         params_model_vgm_5.to_csv(
-            os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False,
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False, # noqa: SLF001
         )
 
         # Check that errors are raised with wrong input
@@ -1179,11 +1179,11 @@ class TestNeffEstimation:
     def test_spatial_error_propagation(self) -> None:
         """Test that the spatial error propagation wrapper function runs properly"""
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples.EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif")) # noqa: SLF001
 
         # Load the spatial correlation from TestVariogram
         params_variogram_model = pd.read_csv(
-            os.path.join(examples.EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None,
+            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None, # noqa: SLF001
         )
 
         # Run the function with vector areas
@@ -1216,8 +1216,8 @@ class TestSubSampling:
     def test_circular_masking(self) -> None:
         """Test that the circular masking works as intended"""
         # using default (center should be [2,2], radius 2)
-        circ = xdem.spatialstats.create_circular_mask((5, 5))
-        circ2 = xdem.spatialstats.create_circular_mask((5, 5), center=(2, 2), radius=2)
+        circ = xdem.spatialstats._create_circular_mask((5, 5)) # noqa: SLF001
+        circ2 = xdem.spatialstats._create_circular_mask((5, 5), center=(2, 2), radius=2) # noqa: SLF001
 
         # check default center and radius are derived properly
         assert np.array_equal(circ, circ2)
@@ -1230,29 +1230,29 @@ class TestSubSampling:
 
         # check distance is not a multiple of pixels (more accurate subsampling)
         # will create a 1-pixel mask around the center
-        circ3 = xdem.spatialstats.create_circular_mask((5, 5), center=(1, 1), radius=1)
+        circ3 = xdem.spatialstats._create_circular_mask((5, 5), center=(1, 1), radius=1) # noqa: SLF001
 
         eq_circ3 = np.zeros((5, 5), dtype=bool)
         eq_circ3[1, 1] = True
         assert np.array_equal(circ3, eq_circ3)
 
         # will create a square mask (<1.5 pixel) around the center
-        circ4 = xdem.spatialstats.create_circular_mask((5, 5), center=(1, 1), radius=1.5)
+        circ4 = xdem.spatialstats._create_circular_mask((5, 5), center=(1, 1), radius=1.5) # noqa: SLF001
         # should not be the same as radius = 1
         assert not np.array_equal(circ3, circ4)
 
     def test_ring_masking(self) -> None:
         """Test that the ring masking works as intended"""
         # by default, the mask is only an outside circle (ring of size 0)
-        ring1 = xdem.spatialstats.create_ring_mask((5, 5))
-        circ1 = xdem.spatialstats.create_circular_mask((5, 5))
+        ring1 = xdem.spatialstats._create_ring_mask((5, 5)) # noqa: SLF001
+        circ1 = xdem.spatialstats._create_circular_mask((5, 5)) # noqa: SLF001
 
         assert np.array_equal(ring1, circ1)
 
         # test rings with different inner radius
-        ring2 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=1, out_radius=2)
-        ring3 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=0, out_radius=2)
-        ring4 = xdem.spatialstats.create_ring_mask((5, 5), in_radius=1.5, out_radius=2)
+        ring2 = xdem.spatialstats._create_ring_mask((5, 5), in_radius=1, out_radius=2) # noqa: SLF001
+        ring3 = xdem.spatialstats._create_ring_mask((5, 5), in_radius=0, out_radius=2) # noqa: SLF001
+        ring4 = xdem.spatialstats._create_ring_mask((5, 5), in_radius=1.5, out_radius=2) # noqa: SLF001
 
         assert np.logical_and(~np.array_equal(ring2, ring3), ~np.array_equal(ring3, ring4))
 

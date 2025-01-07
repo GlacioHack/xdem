@@ -30,58 +30,39 @@ repos:
           hooks:
                 - id: absolufy-imports
 
-        # Format the code aggressively using black
-        - repo: https://github.com/psf/black
-          rev: 24.10.0
+        # Ruff linter and code formatter
+        - repo: https://github.com/astral-sh/ruff-pre-commit
+          # Ruff version.
+          rev: v0.8.6
           hooks:
-                  - id: black
-                    args: [--line-length=120]
+            # Run the linter.
+            - id: ruff
+            # Run the formatter.
+            - id: ruff-format
 
-        # Lint the code using flake8
-        - repo: https://github.com/pycqa/flake8
-          rev: 7.1.1
+        # Enable lint fixes with ruff
+        - repo: https://github.com/astral-sh/ruff-pre-commit
+          # Ruff version.
+          rev: v0.8.6
           hooks:
-                - id: flake8
-                  # More than one argument in the second list, so need to pass arguments as below (and -- to finish)
-                  args: [
-                          '--max-line-length', '120',  # we can write dicts however we want
-                          '--extend-ignore', 'E203,C408,B028', # flake8 disagrees with black, so this should be ignored.
-                          '--'
-                  ]
-                  additional_dependencies:
-                          - flake8-comprehensions
-                          - flake8-bugbear
-                  files: ^(xdem|tests)
+            # Run the linter.
+            - id: ruff
+              args: [ --fix ]
+            # Run the formatter.
+            - id: ruff-format
 
-        # Lint the code using mypy
-        - repo: https://github.com/pre-commit/mirrors-mypy
-          rev: v1.13.0
+        # To run ruff over Jupyter Notebooks
+        - repo: https://github.com/astral-sh/ruff-pre-commit
+          # Ruff version.
+          rev: v0.8.6
           hooks:
-                - id: mypy
-                  args: [
-                        --config-file=mypy.ini,
-                        --strict,
-                        --implicit-optional,
-                        --ignore-missing-imports,  # Don't warn about stubs since pre-commit runs in a limited env
-                        --allow-untyped-calls,  # Dynamic function/method calls are okay. Untyped function definitions are not okay.
-                        --show-error-codes,
-                        --no-warn-unused-ignores,  # Ignore 'type: ignore' comments that are not used.
-                        --disable-error-code=attr-defined,  # "Module has no attribute 'XXX'" occurs because of the pre-commit env.
-                        --disable-error-code=name-defined,  # "Name 'XXX' is not defined" occurs because of the pre-commit env.
-                        --disable-error-code=var-annotated,
-                        --disable-error-code=no-any-return
-
-                  ]
-                  additional_dependencies: [tokenize-rt==3.2.0, numpy==1.26]
-                  files: ^(xdem|tests|doc/code)
-
-
-        # Sort imports using isort
-        - repo: https://github.com/PyCQA/isort
-          rev: 5.13.2
-          hooks:
-                  - id: isort
-                    args: ["--profile", "black"]
+            # Run the linter.
+            - id: ruff
+              types_or: [ python, pyi, jupyter ]
+              args: [ --fix ]
+            # Run the formatter.
+            - id: ruff-format
+              types_or: [ python, pyi, jupyter ]
 
         # Automatically upgrade syntax to a minimum version
         - repo: https://github.com/asottile/pyupgrade

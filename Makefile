@@ -5,7 +5,6 @@
 ############### GLOBAL VARIABLES ######################
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
-PATH :=.
 
 # Virtualenv directory name (can be overridden)
 ifndef VENV
@@ -101,7 +100,7 @@ ruff: ## Apply ruff.
 	@echo "Applying ruff..."
 	@echo "================"
 	@echo
-	@ruff --fix $(path)
+	@ruff --fix $(PATH)
 
 ## Clean section
 

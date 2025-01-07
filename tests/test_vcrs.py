@@ -20,10 +20,10 @@ class TestVCRS:
         """Test parsing of vertical CRS name from DEM product name."""
         # Check that the value for the key is returned by the function
         for product in xdem.vcrs.vcrs_dem_products:
-            assert xdem.vcrs.parse_vcrs_name_from_product(product) == xdem.vcrs.vcrs_dem_products[product]
+            assert xdem.vcrs._parse_vcrs_name_from_product(product) == xdem.vcrs.vcrs_dem_products[product] # noqa: SLF001
 
         # And that, otherwise, it's a None
-        assert xdem.vcrs.parse_vcrs_name_from_product("BESTDEM") is None
+        assert xdem.vcrs._parse_vcrs_name_from_product("BESTDEM") is None # noqa: SLF001
 
     # Expect outputs for the inputs
     @pytest.mark.parametrize(
@@ -38,11 +38,11 @@ class TestVCRS:
     )  # type: ignore
     def test_vcrs_from_crs(self, input_output: tuple[CRS, CRS]) -> None:
         """Test the extraction of a vertical CRS from a CRS."""
-        input_ = input_output[0]
+        input = input_output[0] # noqa: A001
         output = input_output[1]
 
         # Extract vertical CRS from CRS
-        vcrs = xdem.vcrs.vcrs_from_crs(crs=input_)
+        vcrs = xdem.vcrs._vcrs_from_crs(crs=input) # noqa: SLF001
 
         # Check that the result is as expected
         if isinstance(output, CRS):
@@ -69,7 +69,7 @@ class TestVCRS:
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
         # Get user input
-        vcrs = xdem.dem.vcrs_from_user_input(vcrs_input)
+        vcrs = xdem.dem._vcrs_from_user_input(vcrs_input) # noqa: SLF001
 
         # Check output type
         assert isinstance(vcrs, CRS)
@@ -81,7 +81,7 @@ class TestVCRS:
     def test_vcrs_from_user_input__ellipsoid(self, vcrs_input: str | int) -> None:
         """Tests the function _vcrs_from_user_input for inputs where it returns "Ellipsoid"."""
         # Get user input
-        vcrs = xdem.vcrs.vcrs_from_user_input(vcrs_input)
+        vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input) # noqa: SLF001
 
         # Check output type
         assert vcrs == "Ellipsoid"
@@ -90,7 +90,7 @@ class TestVCRS:
         """Tests errors of vcrs_from_user_input."""
         # Check that an error is raised when the type is wrong
         with pytest.raises(TypeError, match="New vertical CRS must be a string, path or VerticalCRS, received.*"):
-            xdem.vcrs.vcrs_from_user_input(np.zeros(1))  # type: ignore
+            xdem.vcrs._vcrs_from_user_input(np.zeros(1))  # noqa: SLF001
 
         # Check that an error is raised if the CRS is not vertical
         with pytest.raises(
@@ -100,7 +100,7 @@ class TestVCRS:
                 "zone 1N' does not (check with `CRS.is_vertical`).",
             ),
         ):
-            xdem.vcrs.vcrs_from_user_input(32601)
+            xdem.vcrs._vcrs_from_user_input(32601) # noqa: SLF001
 
         # Check that a warning is raised if the CRS has other dimensions than vertical
         with pytest.warns(
@@ -108,7 +108,7 @@ class TestVCRS:
             match="New vertical CRS has a vertical dimension but also other components, "
             "extracting the vertical reference only.",
         ):
-            xdem.vcrs.vcrs_from_user_input(CRS("EPSG:4326+5773"))
+            xdem.vcrs._vcrs_from_user_input(CRS("EPSG:4326+5773")) # noqa: SLF001
 
     @pytest.mark.parametrize(
         "grid", ["us_noaa_geoid06_ak.tif", "is_lmi_Icegeoid_ISN93.tif", "us_nga_egm08_25.tif", "us_nga_egm96_15.tif"],
@@ -119,11 +119,11 @@ class TestVCRS:
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
         # Build vertical CRS
-        vcrs = xdem.vcrs.build_vcrs_from_grid(grid=grid)
+        vcrs = xdem.vcrs._build_vcrs_from_grid(grid=grid) # noqa: SLF001
         assert vcrs.is_vertical
 
         # Check that the explicit construction yields the same CRS as "the old init way" (see function description)
-        vcrs_oldway = xdem.vcrs.build_vcrs_from_grid(grid=grid, old_way=True)
+        vcrs_oldway = xdem.vcrs._build_vcrs_from_grid(grid=grid, old_way=True) # noqa: SLF001
         assert vcrs.equals(vcrs_oldway)
 
     # Test for WGS84 in 2D and 3D, UTM, CompoundCRS, everything should work
@@ -137,7 +137,7 @@ class TestVCRS:
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
 
         # Get the vertical CRS from user input
-        vcrs = xdem.vcrs.vcrs_from_user_input(vcrs_input=vcrs_input)
+        vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs_input) # noqa: SLF001
 
         # Build the compound CRS
 
@@ -148,7 +148,7 @@ class TestVCRS:
 
             # If the version is higher than 3.5.0, it should pass
             if Version(pyproj.__version__) > Version("3.5.0"):
-                ccrs = xdem.vcrs.build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+                ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs) # noqa: SLF001
             # Otherwise, it should raise an error
             else:
                 with pytest.raises(
@@ -157,11 +157,11 @@ class TestVCRS:
                     "with a new vertical CRS. Update your dependencies or pass the 2D source CRS "
                     "manually.",
                 ):
-                    xdem.vcrs.build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+                    xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs) # noqa: SLF001
                 return
         # If the CRS is 2D, it should pass
         else:
-            ccrs = xdem.vcrs.build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
+            ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs) # noqa: SLF001
 
         assert isinstance(ccrs, CRS)
         assert ccrs.is_vertical
@@ -171,7 +171,7 @@ class TestVCRS:
         with pytest.raises(
             ValueError, match="Invalid vcrs given. Must be a vertical CRS or the literal string 'Ellipsoid'.",
         ):
-            xdem.vcrs.build_ccrs_from_crs_and_vcrs(crs=CRS("EPSG:4326"), vcrs="NotAVerticalCRS")  # type: ignore
+            xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=CRS("EPSG:4326"), vcrs="NotAVerticalCRS")  # noqa: SLF001
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile: ClassVar[dict] = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
@@ -190,14 +190,14 @@ class TestVCRS:
         xx = grid_shifts["lon"]
         yy = grid_shifts["lat"]
         crs_from = CRS.from_epsg(4326)
-        ccrs_from = xdem.vcrs.build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs="Ellipsoid")
+        ccrs_from = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs="Ellipsoid") # noqa: SLF001
 
         # Build the compound CRS
-        vcrs_to = xdem.vcrs.vcrs_from_user_input(vcrs_input=grid_shifts["grid"])
-        ccrs_to = xdem.vcrs.build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs=vcrs_to)
+        vcrs_to = xdem.vcrs._vcrs_from_user_input(vcrs_input=grid_shifts["grid"]) # noqa: SLF001
+        ccrs_to = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs=vcrs_to) # noqa: SLF001
 
         # Apply the transformation
-        zz_trans = xdem.vcrs.transform_zz(crs_from=ccrs_from, crs_to=ccrs_to, xx=xx, yy=yy, zz=zz)
+        zz_trans = xdem.vcrs._transform_zz(crs_from=ccrs_from, crs_to=ccrs_to, xx=xx, yy=yy, zz=zz) # noqa: SLF001
 
         # Compare the elevation difference
         z_diff = 100 - zz_trans

@@ -76,7 +76,7 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
     return mask_array
 
 
-class Ddem(Raster):  # type: ignore
+class dDem(Raster):  # noqa: N801
     """A difference-DEM object."""
 
     def __init__(
@@ -86,14 +86,14 @@ class Ddem(Raster):  # type: ignore
         end_time: np.datetime64,
         error: Any | None = None,
     ) -> None:
-        """Create a Ddem object from a Raster.
+        """Create a dDem object from a Raster.
 
         :param raster: A georeferenced Raster object.
-        :param start_time: The starting time of the Ddem.
-        :param end_time: The end time of the Ddem.
-        :param error: An error measure for the Ddem (UNUSED).
+        :param start_time: The starting time of the dDem.
+        :param end_time: The end time of the dDem.
+        :param error: An error measure for the dDem (UNUSED).
 
-        :returns: A new Ddem instance.
+        :returns: A new dDem instance.
         """
         # super().__init__(raster)
 
@@ -105,15 +105,15 @@ class Ddem(Raster):  # type: ignore
         self._fill_method = ""
 
     def __str__(self) -> str:
-        """Return a summary of the Ddem."""
-        return f"Ddem from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
+        """Return a summary of the dDem."""
+        return f"dDem from {self.start_time} to {self.end_time}.\n\n{super().__str__()}"
 
-    def copy(self, new_array: NDArrayf = None) -> Ddem:
+    def copy(self, new_array: NDArrayf = None) -> dDem:
         """Return a copy of the DEM."""
         if new_array is None:
             new_array = self.data.copy()
 
-        new_ddem = Ddem.from_array(new_array, self.transform, self.crs, self.start_time, self.end_time)
+        new_ddem = dDem.from_array(new_array, self.transform, self.crs, self.start_time, self.end_time)
         return new_ddem
 
     @property
@@ -160,18 +160,18 @@ class Ddem(Raster):  # type: ignore
         end_time: np.datetime64,
         nodata: int | float | None = None,
         error: float | None = None,
-    ) -> Ddem:  # type: ignore
-        """Create a new Ddem object from an array.
+    ) -> dDem:  # type: ignore
+        """Create a new dDem object from an array.
 
-        :param data: The Ddem data array.
+        :param data: The dDem data array.
         :param transform: A geometric transform.
-        :param crs: The coordinate reference system of the Ddem.
-        :param start_time: The starting time of the Ddem.
-        :param end_time: The end time of the Ddem.
-        :param error: An error measure for the Ddem.
+        :param crs: The coordinate reference system of the dDem.
+        :param start_time: The starting time of the dDem.
+        :param end_time: The end time of the dDem.
+        :param error: An error measure for the dDem.
         :param nodata: The nodata value.
 
-        :returns: A new Ddem instance.
+        :returns: A new dDem instance.
         """
         return cls(
             gu.Raster.from_array(data=data, transform=transform, crs=crs, nodata=nodata),
@@ -186,7 +186,7 @@ class Ddem(Raster):  # type: ignore
         reference_elevation: NDArrayf | np.ma.masked_array[Any, np.dtype[np.floating[Any]]] | xdem.DEM = None,
         mask: NDArrayf | xdem.DEM | gu.Vector = None,
     ) -> NDArrayf | None:
-        """Interpolate the Ddem using the given method.
+        """Interpolate the dDem using the given method.
 
         :param method: The method to use for interpolation.
         :param reference_elevation: Reference DEM. Only required for hypsometric approaches.
@@ -243,7 +243,7 @@ class Ddem(Raster):  # type: ignore
                 ddem_mask[feature_mask] = False
 
                 # All values that were nan in the start and are without the updated validity mask should now be nan
-                # The above interpolates values outside of the Ddem, so this is necessary.
+                # The above interpolates values outside of the dDem, so this is necessary.
                 interpolated_ddem[ddem_mask] = np.nan
 
             diff = abs(np.nanmean(interpolated_ddem - self.data))

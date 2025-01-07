@@ -1179,15 +1179,10 @@ class ICP(AffineCoreg):
 
         points["point"] = point_elev[["E", "N", z_name, "nx", "ny", "nz"]].values
 
-        #for key in points:
-        #    points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
-        #    points[key][:, 0] -= resolution[0] / 2
-        #    points[key][:, 1] -= resolution[1] / 2
-
-        for value in points.values():
-            value = value[~np.any(np.isnan(value), axis=1)].astype("float32") # noqa: PLW2901
-            value[:, 0] -= resolution[0] / 2
-            value[:, 1] -= resolution[1] / 2
+        for key in points: # noqa: PLC0206
+            points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
+            points[key][:, 0] -= resolution[0] / 2
+            points[key][:, 1] -= resolution[1] / 2
 
         # Extract parameters and pass them to method
         max_it = self._meta["inputs"]["iterative"]["max_iterations"]

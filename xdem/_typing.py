@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 
 # Only for Python >= 3.9
-if sys.version_info.minor >= (3, 9):
+if sys.version_info.minor >= 9: # noqa
 
     from numpy.typing import NDArray  # this syntax works starting on Python 3.9
 
