@@ -136,6 +136,38 @@ slope.plot(cmap="Reds", cbar_title="Slope (°)")
 For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 ```
 
+## Statistics
+The `get_stats()` method allows to extract key statistical information from a raster in a dictionary.
+Supported statistics are : mean, median, max, mean, sum, sum of squares, 90th percentile, nmad, rmse, std.
+Callable functions are supported as well.
+
+- Get all statistics in a dict:
+```{code-cell} ipython3
+dem.get_stats()
+```
+
+- Get a single statistic (e.g., 'mean') as a float:
+```{code-cell} ipython3
+dem.get_stats("mean")
+```
+
+- Get multiple statistics in a dict:
+```{code-cell} ipython3
+dem.get_stats(["mean", "max", "rmse"])
+```
+
+- Using a custom callable statistic:
+```{code-cell} ipython3
+def custom_stat(data):
+    return np.nansum(data > 100)  # Count the number of pixels above 100
+dem.get_stats(custom_stat)
+```
+
+Note : as `get_stats()` is a raster method, it can also be used for terrain attributes:
+```{code-cell} ipython3
+slope.get_stats()
+```
+
 ## Coregistration
 
 3D coregistration is performed with {func}`~xdem.DEM.coregister_3d`, which aligns the
