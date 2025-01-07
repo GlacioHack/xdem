@@ -163,7 +163,7 @@ def custom_stat(data):
 dem.get_stats(custom_stat)
 ```
 
-Note : as `get_stats()` is a raster method, it can also be used for terrain attributes:
+Note: as `get_stats()` is a raster method, it can also be used for terrain attributes:
 ```{code-cell} ipython3
 slope.get_stats()
 ```
@@ -213,4 +213,19 @@ print("Elevation errors at a distance of 1 km are correlated at {:.2f} %.".forma
 We use `random_state` to ensure a fixed randomized output. It is **only necessary if you need your results to be exactly reproductible**.
 
 For more details on quantifying random and structured errors, see the {ref}`uncertainty` page.
+```
+
+## Region of interest (ROI)
+To limit DEM comparison to a Region Of Interest (ROI) one can set a bounding box in terrain geometry or part of the DEM with image coordinates:
+
+The `roi` can be specified in two formats:
+- **Pixel-based ROI:** Defined by the pixel coordinates with the following keys: `x`, `y`, `w`, and `h`, where (`x`, `y`) top-left corner coordinates and (`w`, `h`) the dimensions (width, height) in pixels.
+- **Georeferenced ROI:** Defined by geographical coordinates with the following keys: `left`, `bottom`, `right`, `top` and optional `crs` (Coordinate Reference System, defaults to EPSG:4326 if not provided).
+
+```{code-cell} ipython3
+# Initialize a DEM with a pixel-based ROI
+dem = xdem.DEM(filename_dem, roi={'x': 50, 'y': 100, 'w': 400, 'h': 300})
+
+# Initialize a DEM with a georeferenced ROI
+dem = xdem.DEM(filename_dem, roi={'left': 503810, 'bottom': 8666030, 'top': 8672030, 'right': 511810, 'crs': 'EPSG:25833'})
 ```
