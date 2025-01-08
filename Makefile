@@ -45,19 +45,6 @@ venv: ## Create a virtual environment in 'venv' directory if it doesn't exist
 	@touch ${VENV}/bin/activate
 	@${VENV}/bin/python -m pip install --upgrade wheel setuptools pip
 
-.PHONY: install-gdal
-install-gdal: ## Install GDAL version matching the system's GDAL via pip
-	@if command -v gdalinfo >/dev/null 2>&1; then \
-		GDAL_VERSION=$$(gdalinfo --version | awk '{print $$2}'); \
-		echo "System GDAL version: $$GDAL_VERSION"; \
-		${VENV}/bin/pip install gdal==$$GDAL_VERSION; \
-	else \
-		echo "Warning: GDAL not found on the system. Proceeding without GDAL."; \
-		echo "Try installing GDAL by running the following commands depending on your system:"; \
-		echo "Debian/Ubuntu: sudo apt-get install -y gdal-bin libgdal-dev"; \
-		echo "Red Hat/CentOS: sudo yum install -y gdal gdal-devel"; \
-		echo "Then run 'make install-gdal' to proceed with GDAL installation."; \
-	fi
 
 .PHONY: install
 install: venv ## Install xDEM for development (depends on venv)
@@ -66,8 +53,6 @@ install: venv ## Install xDEM for development (depends on venv)
 	@test -f .git/hooks/pre-commit || echo "Installing pre-commit hooks"
 	@test -f .git/hooks/pre-commit || ${VENV}/bin/pre-commit install -t pre-commit
 	@test -f .git/hooks/pre-push || ${VENV}/bin/pre-commit install -t pre-push
-	@echo "Attempting to install GDAL..."
-	@make install-gdal
 	@echo "xdem installed in development mode in virtualenv ${VENV}"
 	@echo "To use: source ${VENV}/bin/activate; xdem -h"
 
