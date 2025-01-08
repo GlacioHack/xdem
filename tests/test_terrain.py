@@ -126,7 +126,7 @@ class TestTerrainAttribute:
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
     )  # type: ignore
-    def test_attribute_functions_against_richdem(self, attribute: str, get_terrain_attribute_richdem) -> None:
+    def test_attribute_functions_against_richdem(self, attribute: str, get_test_data_path) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
 
@@ -144,23 +144,25 @@ class TestTerrainAttribute:
         }
 
         # Functions for RichDEM wrapper methods
-        functions_richdem = {
-            "slope_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="slope", degrees=True),
-            "aspect_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="aspect", degrees=True),
-            "hillshade_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="hillshade"),
-            "curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="curvature"),
-            "profile_curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="profile_curvature"),
-            "planform_curvature": lambda dem: get_terrain_attribute_richdem(
-                dem, attribute="planform_curvature", degrees=True
-            ),
-        }
+        # functions_richdem = {
+        #     "slope_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="slope", degrees=True),
+        #     "aspect_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="aspect", degrees=True),
+        #     "hillshade_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="hillshade"),
+        #     "curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="curvature"),
+        #     "profile_curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="profile_curvature"),
+        #     "planform_curvature": lambda dem: get_terrain_attribute_richdem(
+        #         dem, attribute="planform_curvature", degrees=True
+        #     ),
+        # }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
         # Derive the attribute using both RichDEM and xdem
         attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
-        attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
+        attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
+        attr_richdem = gu.raster.get_array_and_mask(attr_richdem_rst)[0].squeeze()
+        # attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem
@@ -203,13 +205,13 @@ class TestTerrainAttribute:
             raise exception
 
         # Introduce some nans
-        rng = np.random.default_rng(42)
-        dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
+        # rng = np.random.default_rng(42)
+        # dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+        # dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
-        output = functions_richdem[attribute](dem)
-        assert np.all(dem.data.mask == output.data.mask)
+        # output = functions_richdem[attribute](dem)
+        # assert np.all(dem.data.mask == output.data.mask)
 
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""

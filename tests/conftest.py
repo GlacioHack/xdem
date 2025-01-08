@@ -15,9 +15,9 @@ from xdem._typing import NDArrayf
 
 _TESTDATA_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "test_data"))
 
-# Define a URL to the xdem-data repository's test data (replace with the correct commit hash)
+# Define a URL to the xdem-data repository's test data
 _TESTDATA_REPO_URL = "https://github.com/vschaffn/xdem-data/tarball/2-richdem_gdal"
-_COMMIT_HASH = "a88ba9222524f827ff2ad48248058a654adcb64a"  # Adjust this to match the version you want to use
+_COMMIT_HASH = "b171df2fb3d6158acd26146a0a3f155ea7ccd6c9"
 
 
 def download_test_data(overwrite: bool = False) -> None:
@@ -67,12 +67,15 @@ def download_test_data(overwrite: bool = False) -> None:
 
 @pytest.fixture(scope="session")  # type: ignore
 def get_test_data_path() -> Callable[[str], str]:
-    def _get_test_data_path(filename: str) -> str:
-        download_test_data()  # Ensure the test data is downloaded
+    def _get_test_data_path(filename: str, overwrite: bool = False) -> str:
+        """Get file from test_data"""
+        download_test_data(overwrite=overwrite)  # Ensure the test data is downloaded
         file_path = os.path.join(_TESTDATA_DIRECTORY, filename)
 
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"The file {filename} was not found in the test_data directory.")
+            if overwrite:
+                raise FileNotFoundError(f"The file {filename} was not found in the test_data directory.")
+            file_path = _get_test_data_path(filename, overwrite=True)
 
         return file_path
 
