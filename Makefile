@@ -11,17 +11,18 @@ ifndef VENV
 	VENV = "venv"
 endif
 
-# Python version requirement
-PYTHON_VERSION_REQUIRED = 3.10
-
+# Python global variables definition
+PYTHON_VERSION_MIN = 3.10
+# Set PYTHON if not defined in command line
+# Example: PYTHON="python3.10" make venv to use python 3.10 for the venv
+# By default the default python3 of the system.
 ifndef PYTHON
-	# Try to find python version required
-	PYTHON = "python$(PYTHON_VERSION_REQUIRED)"
+	PYTHON = "python3"
 endif
 PYTHON_CMD=$(shell command -v $(PYTHON))
 
-PYTHON_VERSION_CUR=$(shell $(PYTHON_CMD) -c 'import sys; print("%d.%d" % sys.version_info[0:2])')
-PYTHON_VERSION_OK=$(shell $(PYTHON_CMD) -c 'import sys; req_ver = tuple(map(int, "$(PYTHON_VERSION_REQUIRED)".split("."))); cur_ver = sys.version_info[0:2]; print(int(cur_ver == req_ver))')
+PYTHON_VERSION_CUR=$(shell $(PYTHON_CMD) -c 'import sys; print("%d.%d"% sys.version_info[0:2])')
+PYTHON_VERSION_OK=$(shell $(PYTHON_CMD) -c 'import sys; cur_ver = sys.version_info[0:2]; min_ver = tuple(map(int, "$(PYTHON_VERSION_MIN)".split("."))); print(int(cur_ver >= min_ver))')
 
 ############### Check python version supported ############
 
@@ -30,7 +31,7 @@ ifeq (, $(PYTHON_CMD))
 endif
 
 ifeq ($(PYTHON_VERSION_OK), 0)
-    $(error "Requires Python version == $(PYTHON_VERSION_REQUIRED). Current version is $(PYTHON_VERSION_CUR)")
+    $(error "Requires Python version >= $(PYTHON_VERSION_MIN). Current version is $(PYTHON_VERSION_CUR)")
 endif
 
 ################ MAKE Targets ######################

@@ -28,13 +28,11 @@ dependencies:
   - scikit-learn
 
   # Test dependencies
-  - gdal  # To test against GDAL
   - pytest
   - pytest-xdist
   - pyyaml
   - flake8
   - pylint
-  - richdem # To test against richdem
 
   # Doc dependencies
   - sphinx
