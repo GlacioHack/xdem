@@ -143,18 +143,6 @@ class TestTerrainAttribute:
             "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, resolution=dem.res),
         }
 
-        # Functions for RichDEM wrapper methods
-        # functions_richdem = {
-        #     "slope_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="slope", degrees=True),
-        #     "aspect_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="aspect", degrees=True),
-        #     "hillshade_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="hillshade"),
-        #     "curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="curvature"),
-        #     "profile_curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="profile_curvature"),
-        #     "planform_curvature": lambda dem: get_terrain_attribute_richdem(
-        #         dem, attribute="planform_curvature", degrees=True
-        #     ),
-        # }
-
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
@@ -162,7 +150,6 @@ class TestTerrainAttribute:
         attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
         attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
         attr_richdem = gu.raster.get_array_and_mask(attr_richdem_rst)[0].squeeze()
-        # attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem

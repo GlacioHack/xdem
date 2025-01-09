@@ -11,7 +11,7 @@ _TESTDATA_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 
 # Define a URL to the xdem-data repository's test data
 _TESTDATA_REPO_URL = "https://github.com/vschaffn/xdem-data/tarball/2-richdem_gdal"
-_COMMIT_HASH = "ca9d7e34294cf57c00cea4adbf4ee634a63e20d7"
+_COMMIT_HASH = "31a7159c982cec4b352f0de82bd4e0be61db3afe"
 
 
 def download_test_data(overwrite: bool = False) -> None:
