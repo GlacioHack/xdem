@@ -18,6 +18,7 @@
 
 """Utility functions to download and find example data."""
 import os
+import shutil
 import tarfile
 import tempfile
 import urllib.request
@@ -26,6 +27,10 @@ from distutils.dir_util import copy_tree
 import geoutils as gu
 
 import xdem
+
+_DATA_REPO_URL = "https://github.com/vschaffn/xdem-data/tarball/2-richdem_gdal"
+_COMMIT_HASH = "31a7159c982cec4b352f0de82bd4e0be61db3afe"
+
 
 _EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples", "data"))
 # Absolute filepaths to the example files.
@@ -48,55 +53,61 @@ _FILEPATHS_PROCESSED = {
 available = list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys())
 
 
+def download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = False) -> None:
+    """
+    Helper function to download and extract a tarball from a given URL.
+
+    :param dir: the directory to import.
+    :param target_dir: The directory to extract the files into.
+    :param overwrite: Whether to overwrite existing files.
+    """
+
+    # Exit code if files already exist
+    if not overwrite and os.path.exists(target_dir) and os.listdir(target_dir):
+        return
+
+    if overwrite and os.path.exists(target_dir):
+        # Clear existing files
+        shutil.rmtree(target_dir)
+
+    # Create a temporary directory to download the tarball
+    temp_dir = tempfile.TemporaryDirectory()
+    tar_path = os.path.join(temp_dir.name, "data.tar.gz")
+
+    # Construct the URL with the commit hash
+    url = f"{_DATA_REPO_URL}#commit={_COMMIT_HASH}"
+
+    # Download the tarball
+    response = urllib.request.urlopen(url)
+    if response.getcode() == 200:
+        with open(tar_path, "wb") as outfile:
+            outfile.write(response.read())
+    else:
+        raise ValueError(f"Failed to download data: {response.status_code}")
+
+    # Extract the tarball
+    with tarfile.open(tar_path) as tar:
+        tar.extractall(temp_dir.name)
+
+    # Find the first directory inside the extracted tarball
+    extracted_dir = os.path.join(
+        temp_dir.name,
+        [dirname for dirname in os.listdir(temp_dir.name) if os.path.isdir(os.path.join(temp_dir.name, dirname))][0],
+        dir,
+    )
+
+    # Copy the extracted data to the target directory
+    copy_tree(extracted_dir, target_dir)
+
+
 def download_longyearbyen_examples(overwrite: bool = False) -> None:
     """
     Fetch the Longyearbyen example files.
 
     :param overwrite: Do not download the files again if they already exist.
     """
-    if not overwrite and all(map(os.path.isfile, list(_FILEPATHS_DATA.values()))):
-        # print("Datasets exist")
-        return
-
-    # If we ask for overwrite, also remove the processed test data
-    if overwrite:
-        for fn in list(_FILEPATHS_PROCESSED.values()):
-            if os.path.exists(fn):
-                os.remove(fn)
-
-    # Static commit hash to be bumped every time it needs to be.
-    commit = "ff5ede952fc422ebd2a3c6340041a118850bc905"
-    # The URL from which to download the repository
-    url = f"https://github.com/GlacioHack/xdem-data/tarball/main#commit={commit}"
-    # To test new data from a user-branch before merging in xdem-data
-    # url = f"https://github.com/ameliefroessl/xdem-data/tarball/cog-files#commit={commit}"
-
-    # Create a temporary directory to extract the tarball in.
-    temp_dir = tempfile.TemporaryDirectory()
-    tar_path = os.path.join(temp_dir.name, "data.tar.gz")
-
-    response = urllib.request.urlopen(url)
-    # If the response was right, download the tarball to the temporary directory
-    if response.getcode() == 200:
-        with open(tar_path, "wb") as outfile:
-            outfile.write(response.read())
-    else:
-        raise ValueError(f"Longyearbyen data fetch gave non-200 response: {response.status_code}.")
-
-    # Extract the tarball
-    with tarfile.open(tar_path) as tar:
-        tar.extractall(temp_dir.name)
-
-    # Find the first directory in the temp_dir (should only be one) and construct the Longyearbyen data dir path.
-    dir_name = os.path.join(
-        temp_dir.name,
-        [dirname for dirname in os.listdir(temp_dir.name) if os.path.isdir(os.path.join(temp_dir.name, dirname))][0],
-        "data",
-        "Longyearbyen",
-    )
-
-    # Copy the data to the examples directory.
-    copy_tree(dir_name, os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data"))
+    target_dir = os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data")
+    download_and_extract_tarball(dir="data/Longyearbyen", target_dir=target_dir, overwrite=overwrite)
 
 
 def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
