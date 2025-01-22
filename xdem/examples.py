@@ -28,9 +28,8 @@ import geoutils as gu
 
 import xdem
 
-_DATA_REPO_URL = "https://github.com/vschaffn/xdem-data/tarball/2-richdem_gdal"
-_COMMIT_HASH = "31a7159c982cec4b352f0de82bd4e0be61db3afe"
-
+_DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
+_COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
 
 _EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples", "data"))
 # Absolute filepaths to the example files.
