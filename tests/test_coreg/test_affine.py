@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os.path
 import warnings
 
 import geopandas as gpd
@@ -11,7 +12,6 @@ import pytest
 import pytransform3d
 import rasterio as rio
 from geoutils import Raster, Vector
-from geoutils._typing import NDArrayNum
 from geoutils.raster import RasterType
 from geoutils.raster.geotransformations import _translate
 from scipy.ndimage import binary_dilation
@@ -40,53 +40,6 @@ def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
         to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
 
     return reference_dem, to_be_aligned_dem, glacier_mask
-
-
-def gdal_reproject_horizontal_shift_samecrs(filepath_example: str, xoff: float, yoff: float) -> NDArrayNum:
-    """
-    Reproject horizontal shift in same CRS with GDAL for testing purposes.
-
-    :param filepath_example: Path to raster file.
-    :param xoff: X shift in georeferenced unit.
-    :param yoff: Y shift in georeferenced unit.
-
-    :return: Reprojected shift array in the same CRS.
-    """
-
-    from osgeo import gdal, gdalconst
-
-    # Open source raster from file
-    src = gdal.Open(filepath_example, gdalconst.GA_ReadOnly)
-
-    # Create output raster in memory
-    driver = "MEM"
-    method = gdal.GRA_Bilinear
-    drv = gdal.GetDriverByName(driver)
-    dest = drv.Create("", src.RasterXSize, src.RasterYSize, 1, gdal.GDT_Float32)
-    proj = src.GetProjection()
-    ndv = src.GetRasterBand(1).GetNoDataValue()
-    dest.SetProjection(proj)
-
-    # Shift the horizontally shifted geotransform
-    gt = src.GetGeoTransform()
-    gtl = list(gt)
-    gtl[0] += xoff
-    gtl[3] += yoff
-    dest.SetGeoTransform(tuple(gtl))
-
-    # Copy the raster metadata of the source to dest
-    dest.SetMetadata(src.GetMetadata())
-    dest.GetRasterBand(1).SetNoDataValue(ndv)
-    dest.GetRasterBand(1).Fill(ndv)
-
-    # Reproject with resampling
-    gdal.ReprojectImage(src, dest, proj, proj, method)
-
-    # Extract reprojected array
-    array = dest.GetRasterBand(1).ReadAsArray().astype("float32")
-    array[array == ndv] = np.nan
-
-    return array
 
 
 class TestAffineCoreg:
@@ -121,7 +74,7 @@ class TestAffineCoreg:
         "xoff_yoff",
         [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
     )  # type: ignore
-    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float]) -> None:
+    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float], get_test_data_path) -> None:
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
         is accurate by comparing to GDAL."""
 
@@ -135,7 +88,8 @@ class TestAffineCoreg:
         )
 
         # Reproject with GDAL
-        output2 = gdal_reproject_horizontal_shift_samecrs(filepath_example=ref.filename, xoff=xoff, yoff=yoff)
+        path_output2 = get_test_data_path(os.path.join("gdal", f"shifted_reprojected_xoff{xoff}_yoff{yoff}.tif"))
+        output2 = Raster(path_output2).data.data
 
         # Reproject and NaN propagation is exactly the same for shifts that are a multiple of pixel resolution
         if xoff % ref.res[0] == 0 and yoff % ref.res[1] == 0:

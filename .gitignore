@@ -146,6 +146,7 @@ xdem/_version.py
 
 # Example data downloaded/produced during tests
 examples/data/
+tests/test_data/
 
 doc/source/basic_examples/
 doc/source/advanced_examples/

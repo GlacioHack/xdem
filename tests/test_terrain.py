@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
+import os.path
 import re
-import tempfile
 import warnings
 
 import geoutils as gu
@@ -10,48 +9,10 @@ import numpy as np
 import pytest
 
 import xdem
-from xdem._typing import MArrayf
 
 xdem.examples.download_longyearbyen_examples()
 
 PLOT = True
-
-
-def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> MArrayf:
-    """Run GDAL's DEMProcessing and return the read numpy array."""
-    # Rasterio strongly recommends against importing gdal along rio, so this is done here instead.
-    from osgeo import gdal
-
-    gdal.UseExceptions()
-
-    # Converting string into gdal processing options here to avoid import gdal outside this function:
-    # Riley or Wilson for Terrain Ruggedness, and Zevenberg or Horn for slope, aspect and hillshade
-    gdal_option_conversion = {
-        "Riley": gdal.DEMProcessingOptions(alg="Riley"),
-        "Wilson": gdal.DEMProcessingOptions(alg="Wilson"),
-        "Zevenberg": gdal.DEMProcessingOptions(alg="ZevenbergenThorne"),
-        "Horn": gdal.DEMProcessingOptions(alg="Horn"),
-        "hillshade_Zevenberg": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="ZevenbergenThorne"),
-        "hillshade_Horn": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="Horn"),
-    }
-
-    if options is None:
-        gdal_option = gdal.DEMProcessingOptions(options=None)
-    else:
-        gdal_option = gdal_option_conversion[options]
-
-    temp_dir = tempfile.TemporaryDirectory()
-    temp_path = os.path.join(temp_dir.name, "output.tif")
-    gdal.DEMProcessing(
-        destName=temp_path,
-        srcDS=filepath,
-        processing=processing,
-        options=gdal_option,
-    )
-
-    data = gu.Raster(temp_path).data
-    temp_dir.cleanup()
-    return data
 
 
 class TestTerrainAttribute:
@@ -76,7 +37,7 @@ class TestTerrainAttribute:
             "roughness",
         ],
     )  # type: ignore
-    def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
+    def test_attribute_functions_against_gdaldem(self, attribute: str, get_test_data_path) -> None:
         """
         Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
 
@@ -100,30 +61,12 @@ class TestTerrainAttribute:
             "roughness": lambda dem: xdem.terrain.roughness(dem.data),
         }
 
-        # Writing dictionary options here to avoid importing gdal outside the dedicated function
-        gdal_processing_attr_option = {
-            "slope_Horn": ("slope", "Horn"),
-            "aspect_Horn": ("aspect", "Horn"),
-            "hillshade_Horn": ("hillshade", "hillshade_Horn"),
-            "slope_Zevenberg": ("slope", "Zevenberg"),
-            "aspect_Zevenberg": ("aspect", "Zevenberg"),
-            "hillshade_Zevenberg": ("hillshade", "hillshade_Zevenberg"),
-            "tri_Riley": ("TRI", "Riley"),
-            "tri_Wilson": ("TRI", "Wilson"),
-            "tpi": ("TPI", None),
-            "roughness": ("Roughness", None),
-        }
-
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
         # Derive the attribute using both GDAL and xdem
         attr_xdem = functions[attribute](dem).squeeze()
-        attr_gdal = run_gdaldem(
-            self.filepath,
-            processing=gdal_processing_attr_option[attribute][0],
-            options=gdal_processing_attr_option[attribute][1],
-        )
+        attr_gdal = gu.Raster(get_test_data_path(os.path.join("gdal", f"{attribute}.tif"))).data
 
         # For hillshade, we round into an integer to match GDAL's output
         if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
@@ -183,7 +126,7 @@ class TestTerrainAttribute:
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
     )  # type: ignore
-    def test_attribute_functions_against_richdem(self, attribute: str, get_terrain_attribute_richdem) -> None:
+    def test_attribute_functions_against_richdem(self, attribute: str, get_test_data_path) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
 
@@ -200,24 +143,13 @@ class TestTerrainAttribute:
             "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, resolution=dem.res),
         }
 
-        # Functions for RichDEM wrapper methods
-        functions_richdem = {
-            "slope_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="slope", degrees=True),
-            "aspect_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="aspect", degrees=True),
-            "hillshade_Horn": lambda dem: get_terrain_attribute_richdem(dem, attribute="hillshade"),
-            "curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="curvature"),
-            "profile_curvature": lambda dem: get_terrain_attribute_richdem(dem, attribute="profile_curvature"),
-            "planform_curvature": lambda dem: get_terrain_attribute_richdem(
-                dem, attribute="planform_curvature", degrees=True
-            ),
-        }
-
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
         # Derive the attribute using both RichDEM and xdem
         attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
-        attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
+        attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
+        attr_richdem = gu.raster.get_array_and_mask(attr_richdem_rst)[0].squeeze()
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem
@@ -260,13 +192,13 @@ class TestTerrainAttribute:
             raise exception
 
         # Introduce some nans
-        rng = np.random.default_rng(42)
-        dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
+        # rng = np.random.default_rng(42)
+        # dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+        # dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
-        output = functions_richdem[attribute](dem)
-        assert np.all(dem.data.mask == output.data.mask)
+        # output = functions_richdem[attribute](dem)
+        # assert np.all(dem.data.mask == output.data.mask)
 
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""
