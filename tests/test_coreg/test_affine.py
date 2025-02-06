@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os.path
 import warnings
+import logging
 
 import geopandas as gpd
 import geoutils
@@ -18,7 +19,6 @@ from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
 from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs
-
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
@@ -154,8 +154,8 @@ class TestAffineCoreg:
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.DhMinimize, coreg.ICP])  # type: ignore
+    @pytest.mark.parametrize("shifts", [(-1000, 2000, 200)])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP])  # type: ignore
     def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:
         """
         Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,

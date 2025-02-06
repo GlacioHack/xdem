@@ -21,3 +21,6 @@ testpaths = [
 	"tests",
 	"xdem"
 ]
+log_cli = "True"
+log_cli_level = "INFO"
+
