@@ -54,19 +54,13 @@ install: venv ## Install xDEM for development (depends on venv)
 	@test -f .git/hooks/pre-commit || echo "Installing pre-commit hooks"
 	@test -f .git/hooks/pre-commit || ${VENV}/bin/pre-commit install -t pre-commit
 	@test -f .git/hooks/pre-push || ${VENV}/bin/pre-commit install -t pre-push
-	@echo "xdem installed in development mode in virtualenv ${VENV}"
+	@echo "xDEM installed in development mode in virtualenv ${VENV}"
 	@echo "To use: source ${VENV}/bin/activate; xdem -h"
 
 
-.PHONY: test
-test: ## run tests
-	@if ! ${VENV}/bin/python -m pip show gdal >/dev/null 2>&1; then \
-		echo "Error: GDAL is not installed in the virtual environment. Tests require GDAL to run."; \
-		echo "Please ensure GDAL is installed by running 'make install-gdal'."; \
-		exit 1; \
-	else \
-		${VENV}/bin/pytest; \
-	fi
+.PHONY: tests
+tests: ## run tests
+	@${VENV}/bin/pytest
 
 ## Clean section
 
