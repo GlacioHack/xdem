@@ -92,7 +92,6 @@ class DEM(Raster):  # type: ignore
         silent: bool = True,
         downsample: int = 1,
         nodata: int | float | None = None,
-        roi: dict[str, float | int] | None = None,
     ) -> None:
         """
         Instantiate a digital elevation model.
@@ -110,8 +109,6 @@ class DEM(Raster):  # type: ignore
         :param silent: Whether to display vertical reference parsing.
         :param downsample: Downsample the array once loaded by a round factor. Default is no downsampling.
         :param nodata: Nodata value to be used (overwrites the metadata). Default reads from metadata.
-        :param roi: Optional region of interest. Can be pixel-based (dict with keys: 'x', 'y', 'w', 'h')
-            or georeferenced (dict with keys: left', 'bottom', 'right', 'top', optional 'crs').
         """
 
         self.data: NDArrayf
@@ -135,7 +132,6 @@ class DEM(Raster):  # type: ignore
                     silent=silent,
                     downsample=downsample,
                     nodata=nodata,
-                    roi=roi,
                 )
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
@@ -196,7 +192,6 @@ class DEM(Raster):  # type: ignore
         area_or_point: Literal["Area", "Point"] | None = None,
         tags: dict[str, Any] = None,
         cast_nodata: bool = True,
-        roi: dict[str, float | int] = None,
         vcrs: (
             Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
         ) = None,
@@ -212,8 +207,6 @@ class DEM(Raster):  # type: ignore
         :param tags: Metadata stored in a dictionary.
         :param cast_nodata: Automatically cast nodata value to the default nodata for the new array type if not
             compatible. If False, will raise an error when incompatible.
-        :param roi: Optional region of interest. Can be pixel-based (dict with keys: 'x', 'y', 'w', 'h')
-            or georeferenced (dict with keys: left', 'bottom', 'right', 'top', optional 'crs').
         :param vcrs: Vertical coordinate reference system.
 
 
@@ -228,7 +221,6 @@ class DEM(Raster):  # type: ignore
             area_or_point=area_or_point,
             tags=tags,
             cast_nodata=cast_nodata,
-            roi=roi,
         )
         # Then add the vcrs to the class call (that builds on top of the parent class)
         return cls(filename_or_dataset=rast, vcrs=vcrs)
