@@ -25,14 +25,13 @@ import warnings
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import affine
-
 import geopandas as gpd
 import numpy as np
 import rasterio as rio
 import scipy.optimize
 from geoutils.interface.interpolate import _interp_points
 import scipy.spatial
-from geoutils.raster.georeferencing import _bounds, _coords, _res
+from geoutils.raster.georeferencing import _coords, _res
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
@@ -65,6 +64,11 @@ try:
 except ImportError:
     _HAS_NOISYOPT = False
 
+try:
+    from pycpd import RigidRegistration
+    _HAS_PYCPD = True
+except ImportError:
+    _HAS_PYCPD = False
 
 ######################################
 # Generic functions for affine methods
@@ -535,13 +539,19 @@ def nuth_kaab(
         )
 
     # First, derive auxiliary variables of Nuth and Kääb (slope tangent, and aspect) for any point-raster input
+    import time
+    t0 = time.time()
+    logging.info(f"Starting slope tangent and aspect estimation.")
     slope_tan, aspect = _nuth_kaab_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev)
+    logging.info(f"Finished slope tangent and aspect estimation: {time.time() - t0} s.")
 
     # Add slope tangents near zero to outliers, to avoid infinite values from later division by slope tangent, and to
     # subsample the right number of subsample points straight ahead
     mask_zero_slope_tan = np.isclose(slope_tan, 0)
     slope_tan[mask_zero_slope_tan] = np.nan
 
+    logging.info(f"Starting subsampling and interpolator creation.")
+    t1 = time.time()
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     aux_vars = {"slope_tan": slope_tan, "aspect": aspect}  # Wrap auxiliary data in dictionary to use generic function
     sub_dh_interpolator, sub_aux_vars, subsample_final = _preprocess_pts_rst_subsample_interpolator(
@@ -554,8 +564,10 @@ def nuth_kaab(
         area_or_point=area_or_point,
         z_name=z_name,
     )
+    logging.info(f"Finished subsampling and interpolator creation: {time.time() - t1} s.")
 
     logging.info("Iteratively estimating horizontal shift:")
+    t2 = time.time()
     # Initialise east, north and vertical offset variables (these will be incremented up and down)
     initial_offset = (0.0, 0.0, 0.0)
     # Resolution
@@ -570,6 +582,7 @@ def nuth_kaab(
         tolerance=tolerance,
         max_iterations=max_iterations,
     )
+    logging.info(f"Finished iterative shift estimation: {time.time() - t2} s.")
 
     return final_offsets, subsample_final
 
@@ -770,7 +783,7 @@ def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf | None], t1: float,
     matrix = _matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3)
 
     # Apply affine transformation
-    trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix)
+    trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix, invert=True)
 
     # Define residuals depending on type of ICP method
     # Point-to-point is simply the difference, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
@@ -780,15 +793,60 @@ def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf | None], t1: float,
     # A priori, this method is faster based on Rusinkiewicz and Levoy (2001), https://doi.org/10.1109/IM.2001.924423
     elif method == "point-to-plane":
         diffs = (trans_tba - ref) * norm
-
     else:
         raise ValueError("ICP method must be 'point-to-point' or 'point-to-plane'.")
 
     # Sum residuals for any dimension
-    res = np.sum(diffs**2, axis=1)
+    res = np.sum(diffs**2, axis=0)
 
     return res
 
+def _icp_fit_approx_lsq(ref: NDArrayf, tba: NDArrayf, norms: NDArrayf, weights=None, method="point-to-point"):
+    """
+    Linear approximation of the rigid transformation.
+    https://www.comp.nus.edu.sg/~lowkl/publications/lowk_point-to-plane_icp_techrep.pdf
+    """
+
+    # fin = np.logical_and.reduce((np.any(np.isfinite(ref), axis=0), np.any(np.isfinite(tba), axis=0), np.any(np.isfinite(norms), axis=0)))
+    # ref = ref[:, fin]
+    # tba = tba[:, fin]
+    # norms = norms[:, fin]
+
+    # Linear approximation of ICP least-squares
+
+    # Point-to-plane
+    if method == "point-to-plane":
+        B = np.expand_dims(np.sum(ref * norms, axis=1) - np.sum(tba * norms, axis=1), axis=1)
+        A = np.hstack((np.cross(tba, norms), norms))
+
+        # Weighted or not
+        if weights is not None:
+            x = np.linalg.inv(A.T @ weights @ A) @ A.T @ weights @ B
+        else:
+            x = np.linalg.inv(A.T @ A) @ A.T @ B
+        x = x.squeeze()
+
+        x[0:3] = 0
+
+        # Convert back to affine matrix
+        matrix = _matrix_from_translations_rotations(alpha1=x[0], alpha2=x[1], alpha3=x[2], t1=x[3], t2=x[4], t3=x[5])
+
+    # Point-to-point
+    else:
+
+        # TODO: Homogenize with point-to-plane formulation?
+        centroid_ref = np.mean(ref, axis=0)
+        centroid_tba = np.mean(tba, axis=0)
+        H = np.dot((ref - centroid_ref).T, tba - centroid_tba)
+        U, S, Vt = np.linalg.svd(H)
+        R = np.dot(Vt.T, U.T)
+        t = centroid_tba.T - np.dot(R, centroid_ref.T)
+
+        matrix = np.eye(4)
+        matrix[:3, :3] = R
+        matrix[:3, 3] = t
+
+    return matrix
 
 def _icp_fit(ref: NDArrayf, tba: NDArrayf, norms: NDArrayf, method: Literal["point-to-point", "point-to-plane"],
              params_fit_or_bin: InFitOrBinDict, **kwargs: Any) -> NDArrayf:
@@ -802,62 +860,32 @@ def _icp_fit(ref: NDArrayf, tba: NDArrayf, norms: NDArrayf, method: Literal["poi
     #
     # params_fit_or_bin["fit_func"] = _icp_fit_func
 
-    # Define partial function
-    loss_func = params_fit_or_bin["fit_loss_func"]
+    # If we use the linear approximation
+    if params_fit_or_bin["fit_minimizer"] == "lsq_approx":
 
-    def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
-        return _icp_fit_func(inputs=inputs, t1=offsets[0], t2=offsets[1], t3=offsets[2],
-                             alpha1=offsets[3], alpha2=offsets[4], alpha3=offsets[5], method=method)
+        matrix = _icp_fit_approx_lsq(ref.T, tba.T, norms.T, method=method)
 
-    # Initial offset near zero
-    init_offsets = (0., 0., 0., 0., 0., 0.)
+    # Or we solve using any optimizer and loss function
+    else:
+        # Define loss function
+        loss_func = params_fit_or_bin["fit_loss_func"]
 
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func)
+        def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
+            return _icp_fit_func(inputs=inputs, t1=offsets[0], t2=offsets[1], t3=offsets[2],
+                                 alpha1=offsets[3], alpha2=offsets[4], alpha3=offsets[5], method=method)
 
-    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
-    assert results is not None
-    # Build matrix out of optimized parameters
-    matrix = _matrix_from_translations_rotations(*results.x)
+        # Initial offset near zero
+        init_offsets = (0., 0., 0., 0., 0., 0.)
+        x_scale = [10, 10, 1, 10e-6, 10e-6, 10e-6]
 
-    # Linear approx with least-squares
+        results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func, x_scale=x_scale, method="lm")
 
-    # b1 = np.sum(ref * norms, axis=1)
-    # b2 = np.sum(tba * norms, axis=1)
-    # b = np.expand_dims(b1 - b2, axis=1)
-    # A1 = np.cross(tba, norms)
-    # A2 = norms
-    # A = np.hstack((A1, A2))
-    #
-    # # if self.config["ICP_ROBUST"]:
-    # #     x = np.linalg.inv(A.T @ weights @ A) @ A.T @ weights @ b
-    # x = np.linalg.inv(A.T @ A) @ A.T @ b
-    #
-    # R = np.eye(3)
-    # T = np.zeros(3)
-    # R[0, 0] = np.cos(x[2]) * np.cos(x[1])
-    # R[0, 1] = -np.sin(x[2]) * np.cos(x[0]) + np.cos(x[2]) * np.sin(x[1]) * np.sin(
-    #     x[0]
-    # )
-    # R[0, 2] = np.sin(x[2]) * np.sin(x[0]) + np.cos(x[2]) * np.sin(x[1]) * np.cos(
-    #     x[0]
-    # )
-    # R[1, 0] = np.sin(x[2]) * np.cos(x[1])
-    # R[1, 1] = np.cos(x[2]) * np.cos(x[0]) + np.sin(x[2]) * np.sin(x[1]) * np.sin(
-    #     x[0]
-    # )
-    # R[1, 2] = -np.cos(x[2]) * np.sin(x[0]) + np.sin(x[2]) * np.sin(x[1]) * np.cos(
-    #     x[0]
-    # )
-    # R[2, 0] = -np.sin(x[1])
-    # R[2, 1] = np.cos(x[1]) * np.sin(x[0])
-    # R[2, 2] = np.cos(x[1]) * np.cos(x[0])
-    # T[0] = x[3]
-    # T[1] = x[4]
-    # T[2] = x[5]
-    #
-    # matrix = np.eye(4)
-    # matrix[:3, :3] = R
-    # matrix[:3, 3] = T
+        # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+        assert results is not None
+        # Build matrix out of optimized parameters
+        matrix = _matrix_from_translations_rotations(*results.x)
+
+        # print(results.x)
 
     return matrix
 
@@ -885,7 +913,10 @@ def _icp_iteration_step(matrix, ref_epc, tba_epc, norms, ref_epc_nearest_tree, p
     # Compute statistic on offset to know if it reached tolerance
     translations = step_matrix[:3, 3]
     rotations = step_matrix[:3, :3]
-    print(translations)
+
+    print(f"Translation during iteration: {translations}")
+    # print(f"Rotation during iteration: {rotations}")
+
     tolerance_translation = np.sqrt(np.sum(translations)**2)
     tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
@@ -922,7 +953,6 @@ def icp(ref_elev: NDArrayf | gpd.GeoDataFrame,
         ) -> tuple[NDArrayf, tuple[float, float, float], int]:
     """
     Main function for ICP method.
-
     The function assumes we have a DEM and an elevation point cloud in the same CRS.
     The normals (for point-to-plane) are computed on the DEM for speed.
     """
@@ -977,6 +1007,14 @@ def icp(ref_elev: NDArrayf | gpd.GeoDataFrame,
     ref_epc = ref_epc - centroid[:, None]
     tba_epc = tba_epc - centroid[:, None]
 
+    # Re-scale to avoid too large numbers
+    scaling = np.mean([np.nanpercentile(ref_epc[0, :], 95) - np.nanpercentile(ref_epc[0, :], 5),
+                       np.nanpercentile(ref_epc[1, :], 95) - np.nanpercentile(ref_epc[1, :], 5)]) / 2
+
+    ref_epc = ref_epc / scaling
+    tba_epc = tba_epc / scaling
+    print(f"Scaling: {scaling}")
+
     # Define search tree outside of loop for performance
     ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc)
 
@@ -991,10 +1029,103 @@ def icp(ref_elev: NDArrayf | gpd.GeoDataFrame,
         max_iterations=max_iterations,
     )
 
+    final_matrix[:3, 3] *= scaling
+
+    print(final_matrix)
+
     # Get subsample size
     subsample_final = len(sub_ref)
 
     return final_matrix, centroid, subsample_final
+
+
+#########################
+# 5/ Coherent Point Drift
+#########################
+
+def cpd(ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weight_cpd: float,
+        params_random: InRandomDict,
+        max_iterations: int,
+        tolerance: float,
+        ) -> tuple[NDArrayf, tuple[float, float, float], int]:
+    """
+    Main function for CPD method.
+
+    The function assumes we have a DEM and an elevation point cloud in the same CRS.
+    """
+
+    # Pre-process point-raster inputs to the same subsampled points
+    sub_ref, sub_tba, sub_aux_vars, sub_coords = _preprocess_pts_rst_subsample(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        crs=crs,
+        area_or_point=area_or_point,
+        z_name=z_name,
+        return_coords=True,
+    )
+
+    # TODO: Enforce that _preprocess function returns no NaNs
+    # (Temporary)
+    ind_valid = np.logical_and(np.isfinite(sub_ref), np.isfinite(sub_tba))
+    sub_ref = sub_ref[ind_valid]
+    sub_tba = sub_tba[ind_valid]
+    sub_coords = (sub_coords[0][ind_valid], sub_coords[1][ind_valid])
+    if sub_aux_vars is not None:
+        sub_aux_vars["nx"] = sub_aux_vars["nx"][ind_valid]
+        sub_aux_vars["ny"] = sub_aux_vars["ny"][ind_valid]
+        sub_aux_vars["nz"] = sub_aux_vars["nz"][ind_valid]
+
+    # Convert point clouds to Nx3 arrays for efficient calculations below
+    ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
+    tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
+
+    # Remove centroid
+    # centroid = [0, 0, 0]
+    centroid = np.median(ref_epc, axis=1)
+    ref_epc = ref_epc - centroid[:, None]
+    tba_epc = tba_epc - centroid[:, None]
+
+    scaling_h = np.mean([np.nanpercentile(ref_epc[0, :], 95) - np.nanpercentile(ref_epc[0, :], 5),
+                       np.nanpercentile(ref_epc[1, :], 95) - np.nanpercentile(ref_epc[1, :], 5)])/2
+    scaling_v = (np.nanpercentile(ref_epc[2, :], 95) - np.nanpercentile(ref_epc[2, :], 5))/2
+
+    ref_epc[:2, :] = ref_epc[:2, :] / scaling_h
+    ref_epc[2, :] = ref_epc[2, :] / scaling_v
+    #
+    tba_epc[:2, :] = tba_epc[:2, :] / scaling_h
+    tba_epc[2, :] = tba_epc[2, :] / scaling_v
+
+    # ref_epc = ref_epc / scaling
+    # tba_epc = tba_epc / scaling
+
+    # Run rigid CPD registration
+    reg = RigidRegistration(X=ref_epc.T, Y=tba_epc.T, max_iterations=max_iterations, tolerance=tolerance,
+                            w=weight_cpd, scale=False, rotation=False, t=np.array([10, 10, 10]).reshape(1, 3))
+    _, (s_reg, R_reg, t_reg) = reg.register()
+    print(s_reg)
+    print(reg.iteration)
+    print(reg.diff)
+    print(R_reg)
+
+    # Convert output to affine matrix
+    matrix = np.diag(np.ones(4, dtype=float))
+    matrix[:3, :3] = R_reg
+    matrix[:3, 3] = t_reg * np.array([scaling_h, scaling_h, scaling_v])
+
+    # Get subsample size
+    subsample_final = len(sub_ref)
+
+    return matrix, centroid, subsample_final
 
 ##################################
 # Affine coregistration subclasses
@@ -1321,11 +1452,11 @@ class ICP(AffineCoreg):
 
     def __init__(
         self,
-        icp_method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
-        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
+        icp_method: Literal["point-to-point", "point-to-plane"] = "point-to-point",
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"] = "lsq_approx",
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = "linear",
         max_iterations: int = 20,
-        tolerance: float = 0.05,
+        tolerance: float = 0.001,
         subsample: float | int = 5e5,
     ) -> None:
         """
@@ -1404,6 +1535,111 @@ class ICP(AffineCoreg):
             z_name=z_name,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
+        )
+
+        # Write output to class
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            centroid=centroid,
+            matrix=matrix,
+            shift_x=matrix[0, 3],
+            shift_y=matrix[1, 3],
+            shift_z=matrix[2, 3],
+        )
+        self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
+
+
+
+class CPD(AffineCoreg):
+    """
+    Coherent Point Drift coregistration, based on Myronenko and Song (2010), https://doi.org/10.1109/TPAMI.2010.46.
+
+    Estimate translations and rotations.
+
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
+    """
+
+    if not _HAS_PYCPD:
+        raise ValueError("Optional dependency needed. Install 'pycpd'.")
+
+    def __init__(
+            self,
+            max_iterations: int = 100,
+            tolerance: float = 0.00001,
+            weight_cpd: float = 0,
+            subsample: int | float = 5e3,
+    ):
+        """
+        Instantiate a CPD coregistration object.
+        """
+
+        meta_cpd = {"max_iterations": max_iterations, "tolerance": tolerance, "weight_cpd": weight_cpd}
+
+        super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
+
+    def _fit_rst_rst(
+            self,
+            ref_elev: NDArrayf,
+            tba_elev: NDArrayf,
+            inlier_mask: NDArrayb,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            area_or_point: Literal["Area", "Point"] | None,
+            z_name: str,
+            weights: NDArrayf | None = None,
+            bias_vars: dict[str, NDArrayf] | None = None,
+            **kwargs: Any,
+    ) -> None:
+        """Estimate the rigid transform from tba_dem to ref_dem."""
+
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+    def _fit_rst_pts(
+            self,
+            ref_elev: NDArrayf | gpd.GeoDataFrame,
+            tba_elev: NDArrayf | gpd.GeoDataFrame,
+            inlier_mask: NDArrayb,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            area_or_point: Literal["Area", "Point"] | None,
+            z_name: str,
+            weights: NDArrayf | None = None,
+            bias_vars: dict[str, NDArrayf] | None = None,
+            **kwargs: Any,
+    ) -> None:
+
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+
+        # Call method
+        matrix, centroid, subsample_final = cpd(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            params_random=params_random,
+            weight_cpd=self._meta["inputs"]["specific"]["weight_cpd"],
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
             tolerance=self._meta["inputs"]["iterative"]["tolerance"],
         )

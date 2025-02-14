@@ -122,7 +122,8 @@ dict_key_to_str = {
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
-    "icp_method": "Type of ICP method"
+    "icp_method": "Type of ICP method",
+    "weight_cpd": "Weights of CPD",
 }
 #####################################
 # Generic functions for preprocessing
@@ -289,6 +290,8 @@ def _preprocess_coreg_fit_raster_point(
 ) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
 
+    import time
+    t0 = time.time()
     # TODO: Convert to point cloud once class is done
     # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
     if isinstance(raster_elev, gu.Raster):
@@ -301,6 +304,7 @@ def _preprocess_coreg_fit_raster_point(
         crs = crs
         transform = transform
         area_or_point = area_or_point
+    logging.info(f"Loading data: {time.time() - t0} s")
 
     if transform is None:
         raise ValueError("'transform' must be given if both DEMs are array-like.")
@@ -308,6 +312,7 @@ def _preprocess_coreg_fit_raster_point(
     if crs is None:
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
+    t1 = time.time()
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
         if isinstance(inlier_mask, Mask):
@@ -321,9 +326,13 @@ def _preprocess_coreg_fit_raster_point(
     else:
         inlier_mask = np.ones(np.shape(rst_elev), dtype=bool)
 
+    logging.info(f"Inlier mask: {time.time() - t1} s")
+
     # TODO: Convert to point cloud?
+    t2 = time.time()
     # Convert geodataframe to vector
     point_elev = point_elev.to_crs(crs=crs)
+    logging.info(f"Point cloud reprojection: {time.time() - t2} s")
 
     return rst_elev, point_elev, inlier_mask, transform, crs, area_or_point
 
@@ -1009,6 +1018,8 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
 
+        # return np.linalg.inv(matrix)
+
         checked_matrix = pytransform3d.transformations.check_transform(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
@@ -1251,6 +1262,10 @@ def _get_rotations_from_matrix(matrix: NDArrayf) -> tuple[float, float, float]:
 
     :return: Euler extrinsic rotation angles along X, Y and Z (degrees).
     """
+
+    # Extract rotation in case there is scaling
+    # from scipy.linalg import polar
+    # matrix, _ = polar(matrix)
 
     # The rotation matrix is composed of the first 3 rows/columns
     rot_matrix = matrix[0:3, 0:3]
@@ -1601,6 +1616,9 @@ class InSpecificDict(TypedDict, total=False):
     poly_order: int
     # (Using ICP) Method type
     icp_method: Literal["point-to-point", "point-to-plane"]
+
+    # (Using CPD)
+    weight_cpd: float
 
 class OutSpecificDict(TypedDict, total=False):
     """Keys and types of outputs associated with specific methods."""
@@ -2022,6 +2040,9 @@ class Coreg:
         if self._meta["inputs"]["random"]["subsample"] != 1:
             self._meta["inputs"]["random"]["random_state"] = random_state
 
+        import time
+        logging.info(f"Starting input preprocessing.")
+        t0 = time.time()
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
@@ -2031,6 +2052,7 @@ class Coreg:
             crs=crs,
             area_or_point=area_or_point,
         )
+        logging.info(f"Preprocessing done: {time.time() - t0} seconds.")
 
         main_args = {
             "ref_elev": ref_elev,

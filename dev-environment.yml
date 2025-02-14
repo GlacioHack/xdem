@@ -48,8 +48,10 @@ dependencies:
   - numpydoc
 
   - pip:
-    # Optional dependency
     - -e ./
+
+    # Optional dependency
+    - pycpd
 
     # To run CI against latest GeoUtils
 #    - git+https://github.com/rhugonnet/geoutils.git

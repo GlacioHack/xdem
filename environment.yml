@@ -21,5 +21,6 @@ dependencies:
   - shapely
 
    # To run CI against latest GeoUtils
-#  - pip:
+  - pip:
+     - pycpd
 #    - git+https://github.com/rhugonnet/geoutils.git
