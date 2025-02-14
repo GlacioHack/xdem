@@ -11,34 +11,43 @@ contributions are subject to the project's copyright under the terms of the
 
 This file keeps track of authors contributions.
 
+## Maintainers / Steering Comittee
+
+---
+
+- **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
+- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
+- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
+- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
+- **Valentine Bellet** [@Valentine-Bellet](https://github.com/valentine-bellet) <valentine.bellet@cnes.fr>
+- **Alice de Bardonnèche-Richard** [@adebardo](https://github.com/adebardo) <alice.de-bardonneche-richard@cs-soprasteria.com>
+
+
 ## Development Lead
 
 ---
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
-- **Amaury Dehecq** [@adehecq](https://github/adehecq) <amaury.dehecq@univ-grenoble-alpes.fr>
-- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github/erikmannerfelt)
+- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
+- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
+
 
 ## Contributors
 
 ---
 
-- **Friedrich Knuth** [@friedrichknuth](https://github/friedrichknuth)
-- **Andrew Tedstone** [@atedstone](https://github/atedstone)
-- **Zhihao LIU** [@liuh886](https://github/liuh886)
-- **Diego Cusicanqui** [@cusicand](https://github/cusicand)
-- **Alessandro Gentilini** [@alessandro-gentilini](https://github/alessandro-gentilini)
-- **Ferdinand Schenck** [@fnands](https://github/fnands)
-- **Johannes Landmann** [@jlandmann](https://github/jlandmann)
-- **Valentin Schaffner** [@vschaffn](https://github/vschaffn) <valentin.schaffner@cs-soprasteria.com>
-- **Alice De Bardonnèche-Richard** [@adebardo](https://github/adebardo) <alice.de-bardonneche-richard@cs-soprasteria.com>
-- **Emmanuel Dubois** [@duboise-cnes](https://github/duboise-cnes) <emmanuel.dubois@cnes.fr>
-- **Bob McNabb** [@iamdonovan](https://github/iamdonovan)
+- **Friedrich Knuth** [@friedrichknuth](https://github.com/friedrichknuth)
+- **Andrew Tedstone** [@atedstone](https://github.com/atedstone)
+- **Zhihao LIU** [@liuh886](https://github.com/liuh886)
+- **Diego Cusicanqui** [@cusicand](https://github.com/cusicand)
+- **Alessandro Gentilini** [@alessandro-gentilini](https://github.com/alessandro-gentilini)
+- **Ferdinand Schenck** [@fnands](https://github.com/fnands)
+- **Johannes Landmann** [@jlandmann](https://github.com/jlandmann)
+- **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn) <valentin.schaffner@cs-soprasteria.com>
+- **Bob McNabb** [@iamdonovan](https://github.com/iamdonovan)
 - **Enrico Mattea** [@MatteaE](https://github.com/MatteaE)
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
-
-Update here with new contributors.
 
 
 ## Original Developers/Designers/Supporters
@@ -46,5 +55,5 @@ Update here with new contributors.
 ---
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
-- **Amaury Dehecq** [@adehecq](https://github/adehecq) <amaury.dehecq@univ-grenoble-alpes.fr>
-- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github/erikmannerfelt)
+- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
+- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
