@@ -34,6 +34,7 @@ jobs:
         miniforge-version: latest
         auto-update-conda: true
         use-mamba: true
+        mamba-version: "2.0.5"
         channel-priority: strict
         activate-environment: xdem-dev
         python-version:
@@ -127,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Upload to Coveralls finished
-      uses: coverallsapp/github-action@master
+      uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.github_token }}
         parallel-finished: true
