@@ -137,35 +137,18 @@ For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 ```
 
 ## Statistics
-The `get_stats()` method allows to extract key statistical information from a raster in a dictionary.
-Supported statistics are : mean, median, max, mean, sum, sum of squares, 90th percentile, nmad, rmse, std, valid points,
-percentage valid points, valid points all data, percentage valid points all data.
-The RMSE is only relevant when the raster represents a difference of two objects.
-Callable functions are supported as well.
+The [`get_stats()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.get_stats.html) method allows to extract key statistical information from a raster in a dictionary.
 
 - Get all statistics in a dict:
 ```{code-cell} ipython3
 dem.get_stats()
 ```
 
-- Get a single statistic (e.g., 'mean') as a float:
-```{code-cell} ipython3
-dem.get_stats("mean")
-```
+The DEM statistics functionalities in `xdem` are based on those in `geoutils`.
+For more information on computing statistics, please refer to the [`geoutils` documentation](https://geoutils.readthedocs.io/en/latest/raster_class.html#obtain-statistics).
 
-- Get multiple statistics in a dict:
-```{code-cell} ipython3
-dem.get_stats(["mean", "max", "rmse"])
-```
 
-- Using a custom callable statistic:
-```{code-cell} ipython3
-def custom_stat(data):
-    return np.nansum(data > 100)  # Count the number of pixels above 100
-dem.get_stats(custom_stat)
-```
-
-Note: as `get_stats()` is a raster method, it can also be used for terrain attributes:
+Note: as [`get_stats()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.get_stats.html) is a raster method, it can also be used for terrain attributes:
 ```{code-cell} ipython3
 slope.get_stats()
 ```
@@ -219,5 +202,5 @@ For more details on quantifying random and structured errors, see the {ref}`unce
 
 ## Cropping a DEM
 
-The DEM cropping functionalities in `xdem` are based on those in `geoutils`.
+The DEM cropping functionalities in `xdem` are based on those in `geoutils` ([`crop()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.crop.html#geoutils.Raster.crop), [`icrop()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.icrop.html#geoutils.Raster.icrop)).
 For more information on using cropping functions, please refer to the [`geoutils` documentation](https://geoutils.readthedocs.io/en/latest/raster_class.html#crop).
