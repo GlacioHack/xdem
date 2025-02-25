@@ -454,7 +454,6 @@ def _nuth_kaab_iteration_step(
     aspect: NDArrayf,
     res: tuple[int, int],
     params_fit_bin: InFitOrBinDict,
-    apply_vertical_shift: bool = True,
 ) -> tuple[tuple[float, float, float], float]:
     """
     Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
@@ -467,7 +466,6 @@ def _nuth_kaab_iteration_step(
     :param slope_tan: Array of slope tangent.
     :param aspect: Array of aspect.
     :param res: Resolution of DEM.
-    :param apply_vertical_shift: Whether to apply the vertical shift or not (default is True).
     """
 
     # Calculate the elevation difference with offsets
@@ -499,7 +497,7 @@ def _nuth_kaab_iteration_step(
     new_coords_offsets = (
         coords_offsets[0] + easting_offset * res[0],
         coords_offsets[1] + northing_offset * res[1],
-        float(vshift) if apply_vertical_shift else 0,
+        float(vshift),
     )
 
     # Compute statistic on offset to know if it reached tolerance
@@ -522,7 +520,6 @@ def nuth_kaab(
     params_random: InRandomDict,
     z_name: str,
     weights: NDArrayf | None = None,
-    apply_vertical_shift: bool = True,
     **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int]:
     """
@@ -568,14 +565,7 @@ def nuth_kaab(
     res = _res(transform)
     # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
     assert sub_aux_vars is not None  # Mypy: dictionary cannot be None here
-    constant_inputs = (
-        sub_dh_interpolator,
-        sub_aux_vars["slope_tan"],
-        sub_aux_vars["aspect"],
-        res,
-        params_fit_or_bin,
-        apply_vertical_shift,
-    )
+    constant_inputs = (sub_dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
     final_offsets = _iterate_method(
         method=_nuth_kaab_iteration_step,
         iterating_input=initial_offset,
@@ -1297,7 +1287,7 @@ class NuthKaab(AffineCoreg):
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
-        apply_vertical_shift: bool = True,
+        vertical_shift: bool = True,
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
@@ -1310,10 +1300,10 @@ class NuthKaab(AffineCoreg):
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        :param apply_vertical_shift: Whether to apply the vertical shift or not (default is True).
+        :param vertical_shift: Whether to apply the vertical shift or not (default is True).
         """
 
-        self.apply_vertical_shift = apply_vertical_shift
+        self.vertical_shift = vertical_shift
 
         # Input checks
         _check_inputs_bin_before_fit(
@@ -1324,7 +1314,7 @@ class NuthKaab(AffineCoreg):
         meta_input_iterative = {
             "max_iterations": max_iterations,
             "tolerance": offset_threshold,
-            "apply_vshift": apply_vertical_shift,
+            "apply_vshift": vertical_shift,
         }
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
@@ -1408,12 +1398,13 @@ class NuthKaab(AffineCoreg):
             params_fit_or_bin=params_fit_or_bin,
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
             tolerance=self._meta["inputs"]["iterative"]["tolerance"],
-            apply_vertical_shift=self.apply_vertical_shift,
         )
 
         # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
-        output_affine = OutAffineDict(shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset)
+        output_affine = OutAffineDict(
+            shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset * self.vertical_shift
+        )
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 

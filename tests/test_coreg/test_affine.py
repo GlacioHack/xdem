@@ -449,8 +449,8 @@ class TestAffineCoreg:
         ref, tba = load_examples(crop=False)[0:2]
 
         # Compare Nuth and Kaab method with and without applying vertical shift
-        coreg_method1 = NuthKaab(apply_vertical_shift=True)
-        coreg_method2 = NuthKaab(apply_vertical_shift=False)
+        coreg_method1 = NuthKaab(vertical_shift=True)
+        coreg_method2 = NuthKaab(vertical_shift=False)
 
         coreg_method1.fit(ref, tba, random_state=42)
         coreg_method2.fit(ref, tba, random_state=42)
