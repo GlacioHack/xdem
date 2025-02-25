@@ -116,6 +116,7 @@ dict_key_to_str = {
     "best_poly_order": "Best polynomial order",
     "best_nb_sin_freq": "Best number of sinusoid frequencies",
     "vshift_reduc_func": "Reduction function used to remove vertical shift",
+    "apply_vshift": "Vertical shift activated",
     "centroid": "Centroid found for affine rotation",
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
@@ -1578,6 +1579,8 @@ class InAffineDict(TypedDict, total=False):
 
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+    # Vertical shift activated
+    apply_vshift: bool
 
 
 class OutAffineDict(TypedDict, total=False):

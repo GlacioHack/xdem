@@ -1320,8 +1320,12 @@ class NuthKaab(AffineCoreg):
             bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
         )
 
-        # Define iterative parameters
-        meta_input_iterative = {"max_iterations": max_iterations, "tolerance": offset_threshold}
+        # Define iterative parameters and vertical shift
+        meta_input_iterative = {
+            "max_iterations": max_iterations,
+            "tolerance": offset_threshold,
+            "apply_vshift": apply_vertical_shift,
+        }
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
