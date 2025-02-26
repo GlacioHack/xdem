@@ -17,7 +17,7 @@ from geoutils.raster.geotransformations import _translate
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
-from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs
+from xdem.coreg.affine import AffineCoreg, NuthKaab, _reproject_horizontal_shift_samecrs
 
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
@@ -444,3 +444,24 @@ class TestAffineCoreg:
         fit_shifts_rotations = tuple(np.concatenate((fit_shifts, fit_rotations)))
 
         assert fit_shifts_rotations == pytest.approx(expected_shifts_rots, abs=10e-6)
+
+    def test_nuthkaab_no_vertical_shift(self) -> None:
+        ref, tba = load_examples(crop=False)[0:2]
+
+        # Compare Nuth and Kaab method with and without applying vertical shift
+        coreg_method1 = NuthKaab(vertical_shift=True)
+        coreg_method2 = NuthKaab(vertical_shift=False)
+
+        coreg_method1.fit(ref, tba, random_state=42)
+        coreg_method2.fit(ref, tba, random_state=42)
+
+        # Recover the shifts computed by coregistration in matrix form
+        matrix1 = coreg_method1.to_matrix()
+        matrix2 = coreg_method2.to_matrix()
+
+        # Assert vertical shift is 0 for the 2nd coreg method
+        assert matrix2[2, 3] == 0
+
+        # Assert horizontal shifts are the same
+        matrix2[2, 3] = matrix1[2, 3]
+        assert np.array_equal(matrix1, matrix2)

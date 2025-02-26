@@ -1287,6 +1287,7 @@ class NuthKaab(AffineCoreg):
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
+        vertical_shift: bool = True,
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
@@ -1299,15 +1300,22 @@ class NuthKaab(AffineCoreg):
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param vertical_shift: Whether to apply the vertical shift or not (default is True).
         """
+
+        self.vertical_shift = vertical_shift
 
         # Input checks
         _check_inputs_bin_before_fit(
             bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
         )
 
-        # Define iterative parameters
-        meta_input_iterative = {"max_iterations": max_iterations, "tolerance": offset_threshold}
+        # Define iterative parameters and vertical shift
+        meta_input_iterative = {
+            "max_iterations": max_iterations,
+            "tolerance": offset_threshold,
+            "apply_vshift": vertical_shift,
+        }
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
@@ -1394,7 +1402,9 @@ class NuthKaab(AffineCoreg):
 
         # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
-        output_affine = OutAffineDict(shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset)
+        output_affine = OutAffineDict(
+            shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset * self.vertical_shift
+        )
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
