@@ -209,6 +209,7 @@ class DEM(Raster):  # type: ignore
             compatible. If False, will raise an error when incompatible.
         :param vcrs: Vertical coordinate reference system.
 
+
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
