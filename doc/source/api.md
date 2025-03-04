@@ -207,7 +207,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 
     coreg.Coreg
     coreg.CoregPipeline
-    coreg.BlockwiseCoreg
+    coreg.blockwise.BlockwiseCoreg
 ```
 
 #### Fitting and applying transforms
