@@ -496,18 +496,18 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 
 ## Dividing coregistration in blocks
 
-### The {class}`~xdem.coreg.BlockwiseCoreg` object
+### The {class}`~xdem.coreg.blockwise.BlockwiseCoreg` object
 
 ```{caution}
-The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental: it might not support all coregistration
+The {class}`~xdem.coreg.blockwise.BlockwiseCoreg` feature is still experimental: it might not support all coregistration
 methods, and create edge artefacts.
 ```
 
 Sometimes, we want to split a coregistration across different spatial subsets of an elevation dataset, running that
-method independently in each subset. A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
+method independently in each subset. A {class}`~xdem.coreg.blockwise.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=16)
+blockwise = xdem.coreg.blockwise.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=16)
 ```
 
 The subdivision corresponds to an equal-length block division across the extent of the elevation dataset. It needs
