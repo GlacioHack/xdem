@@ -27,12 +27,7 @@ from xdem.coreg.affine import (  # noqa
     NuthKaab,
     VerticalShift,
 )
-from xdem.coreg.base import (  # noqa
-    BlockwiseCoreg,
-    Coreg,
-    CoregPipeline,
-    apply_matrix,
-    invert_matrix,
-)
+from xdem.coreg.base import Coreg, CoregPipeline, apply_matrix, invert_matrix  # noqa
 from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
+from xdem.coreg.blockwise import BlockwiseCoreg  # noqa
 from xdem.coreg.workflows import dem_coregistration  # noqa
