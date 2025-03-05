@@ -108,7 +108,7 @@ to {func}`~xdem.coreg.Coreg.fit` and  {func}`~xdem.coreg.Coreg.apply`. See {ref}
 
 Each bias-correction method in xDEM inherits their interface from the {class}`~xdem.coreg.Coreg` class (see {ref}`coreg_object`).
 This implies that bias-correction methods can be combined in a {class}`~xdem.coreg.CoregPipeline` with any other methods, or
-applied in a block-wise manner through {class}`~xdem.coreg.BlockwiseCoreg`.
+applied in a block-wise manner through {class}`~xdem.coreg.blockwise.BlockwiseCoreg`.
 
 **Inheritance diagram of co-registration and bias corrections:**
 

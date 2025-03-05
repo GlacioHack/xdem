@@ -5,7 +5,7 @@ Blockwise coregistration
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
 In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
-One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
+One solution is :class:`xdem.coreg.blockwise.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
 
 The ``BlockwiseCoreg`` class runs in five steps:
 
@@ -56,7 +56,7 @@ plt.show()
 # Horizontal and vertical shifts can be estimated using :class:`xdem.coreg.NuthKaab`.
 # Let's prepare a coregistration class that calculates 64 offsets, evenly spread over the DEM.
 
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=64)
+blockwise = xdem.coreg.blockwise.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=64)
 
 
 # %%
@@ -76,7 +76,7 @@ aligned_dem = blockwise.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_m
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
 # This shows the estimated shifts that would be applied in elevation; additional horizontal shifts will also be applied if the method supports it.
-# The :func:`xdem.coreg.BlockwiseCoreg.stats` method can be used to annotate each block with its associated Z shift.
+# The :func:`xdem.coreg.blockwise.BlockwiseCoreg.stats` method can be used to annotate each block with its associated Z shift.
 
 z_correction = blockwise.apply(
     np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs
