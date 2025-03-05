@@ -184,7 +184,7 @@ def test_warp_dem() -> None:
     dest_coords = source_coords.copy()
     dest_coords[0, 0] = -1e-5
 
-    warped_dem = coreg.base.warp_dem(
+    warped_dem = coreg.blockwise.warp_dem(
         dem=small_dem,
         transform=small_transform,
         source_coords=source_coords,
@@ -196,7 +196,7 @@ def test_warp_dem() -> None:
 
     elev_shift = 5.0
     dest_coords[1, 2] = elev_shift
-    warped_dem = coreg.base.warp_dem(
+    warped_dem = coreg.blockwise.warp_dem(
         dem=small_dem,
         transform=small_transform,
         source_coords=source_coords,
@@ -243,12 +243,12 @@ def test_warp_dem() -> None:
     dem = misc.generate_random_field(shape, 100) * 200 + misc.generate_random_field(shape, 10) * 50
 
     # Warp the DEM using the source-destination coordinates.
-    transformed_dem = coreg.base.warp_dem(
+    transformed_dem = coreg.blockwise.warp_dem(
         dem=dem, transform=transform, source_coords=source_coords, destination_coords=dest_coords, resampling="linear"
     )
 
     # Try to undo the warp by reversing the source-destination coordinates.
-    untransformed_dem = coreg.base.warp_dem(
+    untransformed_dem = coreg.blockwise.warp_dem(
         dem=transformed_dem,
         transform=transform,
         source_coords=dest_coords,
@@ -260,7 +260,7 @@ def test_warp_dem() -> None:
     assert spatialstats.nmad(dem - untransformed_dem) < 0.5
 
     # Test with Z-correction disabled
-    transformed_dem_no_z = coreg.base.warp_dem(
+    transformed_dem_no_z = coreg.blockwise.warp_dem(
         dem=dem,
         transform=transform,
         source_coords=source_coords,
@@ -270,7 +270,7 @@ def test_warp_dem() -> None:
     )
 
     # Try to undo the warp by reversing the source-destination coordinates with Z-correction disabled
-    untransformed_dem_no_z = coreg.base.warp_dem(
+    untransformed_dem_no_z = coreg.blockwise.warp_dem(
         dem=transformed_dem_no_z,
         transform=transform,
         source_coords=dest_coords,
