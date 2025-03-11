@@ -22,7 +22,7 @@ import xdem
 from xdem import coreg, examples, misc, spatialstats
 from xdem._typing import NDArrayf
 from xdem.coreg import BlockwiseCoreg
-from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
+from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str, _apply_matrix_pts_mat
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -1042,6 +1042,13 @@ class TestAffineManipulation:
         # Transform point cloud back to array
         trans_numpy = np.array([trans_epc.geometry.x.values, trans_epc.geometry.y.values, trans_epc["z"].values]).T
         assert np.allclose(trans_numpy, trans_cv2_arr)
+
+        # Test the same operation matricially
+        epc_arr = np.array([epc.geometry.x.values, epc.geometry.y.values, epc["z"].values])
+        trans_epc_arr = _apply_matrix_pts_mat(mat=epc_arr, matrix=matrix, centroid=None)
+
+        assert np.allclose(trans_numpy.T, trans_epc_arr)
+
 
     @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])  # type: ignore
     @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore

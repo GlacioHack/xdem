@@ -783,7 +783,7 @@ def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf | None], t1: float,
     matrix = _matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3)
 
     # Apply affine transformation
-    trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix, invert=True)
+    trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix)
 
     # Define residuals depending on type of ICP method
     # Point-to-point is simply the difference, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
@@ -797,14 +797,14 @@ def _icp_fit_func(inputs: tuple[NDArrayf, NDArrayf, NDArrayf | None], t1: float,
         raise ValueError("ICP method must be 'point-to-point' or 'point-to-plane'.")
 
     # Sum residuals for any dimension
-    res = np.sum(diffs**2, axis=0)
+    res = np.sum(diffs, axis=0)
 
     return res
 
 def _icp_fit_approx_lsq(ref: NDArrayf, tba: NDArrayf, norms: NDArrayf, weights=None, method="point-to-point"):
     """
     Linear approximation of the rigid transformation.
-    https://www.comp.nus.edu.sg/~lowkl/publications/lowk_point-to-plane_icp_techrep.pdf
+    Reference: Low (2004), https://www.comp.nus.edu.sg/~lowkl/publications/lowk_point-to-plane_icp_techrep.pdf
     """
 
     # fin = np.logical_and.reduce((np.any(np.isfinite(ref), axis=0), np.any(np.isfinite(tba), axis=0), np.any(np.isfinite(norms), axis=0)))
@@ -816,17 +816,17 @@ def _icp_fit_approx_lsq(ref: NDArrayf, tba: NDArrayf, norms: NDArrayf, weights=N
 
     # Point-to-plane
     if method == "point-to-plane":
+
+        # Define A and B as in Low (2004)
         B = np.expand_dims(np.sum(ref * norms, axis=1) - np.sum(tba * norms, axis=1), axis=1)
         A = np.hstack((np.cross(tba, norms), norms))
 
-        # Weighted or not
+        # Choose if using weights or not
         if weights is not None:
             x = np.linalg.inv(A.T @ weights @ A) @ A.T @ weights @ B
         else:
             x = np.linalg.inv(A.T @ A) @ A.T @ B
         x = x.squeeze()
-
-        x[0:3] = 0
 
         # Convert back to affine matrix
         matrix = _matrix_from_translations_rotations(alpha1=x[0], alpha2=x[1], alpha3=x[2], t1=x[3], t2=x[4], t3=x[5])
@@ -875,10 +875,9 @@ def _icp_fit(ref: NDArrayf, tba: NDArrayf, norms: NDArrayf, method: Literal["poi
                                  alpha1=offsets[3], alpha2=offsets[4], alpha3=offsets[5], method=method)
 
         # Initial offset near zero
-        init_offsets = (0., 0., 0., 0., 0., 0.)
-        x_scale = [10, 10, 1, 10e-6, 10e-6, 10e-6]
+        init_offsets = np.zeros(6)
 
-        results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func, x_scale=x_scale, method="lm")
+        results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func)
 
         # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
         assert results is not None
@@ -895,17 +894,30 @@ def _icp_iteration_step(matrix, ref_epc, tba_epc, norms, ref_epc_nearest_tree, p
     trans_tba_epc = _apply_matrix_pts_mat(tba_epc, matrix=matrix)
 
     # Create nearest neighbour tree from reference elevations, and query for transformed point cloud
-    _, ind = ref_epc_nearest_tree.query(trans_tba_epc, k=1)
+    dists, ind = ref_epc_nearest_tree.query(trans_tba_epc.T, k=1)
+
+    # Picky ICP: Remove duplicates of transformed points with the same closest reference points
+    # We keep only the one with minimum distance
+    # print(ind)
+    # print(dists)
+    # import pandas as pd
+    # df = pd.DataFrame(data={"ind": ind, "dists": dists})
+    # ind_min_dist = df.groupby(["ind"]).idxmin()["dists"].values
+    # ind = ind[ind_min_dist]
+    #
+    # print(f"Remove duplicates: {len(ind)} to {len(ind_min_dist)}")
 
     # Index points to get nearest
     ind_ref = ind[ind < ref_epc.shape[1]]
-    step_ref = ref_epc[ind_ref]
-    step_normals = norms[ind_ref]
     ind_tba = ind < ref_epc.shape[1]
-    step_trans_tba = trans_tba_epc[ind_tba]
+
+    step_ref = ref_epc[:, ind_ref]
+    step_normals = norms[:, ind_ref]
+    step_trans_tba = trans_tba_epc[:, ind_tba]
 
     # Fit to get new step transform
-    step_matrix = _icp_fit(step_ref, step_normals, step_trans_tba, params_fit_or_bin=params_fit_or_bin, method=method)
+    step_matrix = _icp_fit(ref=step_ref, tba=step_trans_tba, norms=step_normals,
+                           params_fit_or_bin=params_fit_or_bin, method=method)
 
     # Increment transformation matrix by step
     new_matrix = step_matrix @ matrix
@@ -1008,15 +1020,15 @@ def icp(ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_epc = tba_epc - centroid[:, None]
 
     # Re-scale to avoid too large numbers
-    scaling = np.mean([np.nanpercentile(ref_epc[0, :], 95) - np.nanpercentile(ref_epc[0, :], 5),
-                       np.nanpercentile(ref_epc[1, :], 95) - np.nanpercentile(ref_epc[1, :], 5)]) / 2
-
-    ref_epc = ref_epc / scaling
-    tba_epc = tba_epc / scaling
-    print(f"Scaling: {scaling}")
+    # scaling = np.mean([np.nanpercentile(ref_epc[0, :], 95) - np.nanpercentile(ref_epc[0, :], 5),
+    #                    np.nanpercentile(ref_epc[1, :], 95) - np.nanpercentile(ref_epc[1, :], 5)]) / 2
+    #
+    # ref_epc = ref_epc / scaling
+    # tba_epc = tba_epc / scaling
+    # print(f"Scaling: {scaling}")
 
     # Define search tree outside of loop for performance
-    ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc)
+    ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
 
     # Iterate through method until tolerance or max number of iterations is reached
     init_matrix = np.eye(4)  # Initial matrix is the identity transform
@@ -1029,9 +1041,7 @@ def icp(ref_elev: NDArrayf | gpd.GeoDataFrame,
         max_iterations=max_iterations,
     )
 
-    final_matrix[:3, 3] *= scaling
-
-    print(final_matrix)
+    # final_matrix[:3, 3] *= scaling
 
     # Get subsample size
     subsample_final = len(sub_ref)
@@ -1110,7 +1120,7 @@ def cpd(ref_elev: NDArrayf | gpd.GeoDataFrame,
 
     # Run rigid CPD registration
     reg = RigidRegistration(X=ref_epc.T, Y=tba_epc.T, max_iterations=max_iterations, tolerance=tolerance,
-                            w=weight_cpd, scale=False, rotation=False, t=np.array([10, 10, 10]).reshape(1, 3))
+                            w=weight_cpd, scale=False, rotation=False, t=np.array([1, 1, 1]).reshape(1, 3))
     _, (s_reg, R_reg, t_reg) = reg.register()
     print(s_reg)
     print(reg.iteration)
@@ -1452,11 +1462,11 @@ class ICP(AffineCoreg):
 
     def __init__(
         self,
-        icp_method: Literal["point-to-point", "point-to-plane"] = "point-to-point",
+        icp_method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"] = "lsq_approx",
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = "linear",
         max_iterations: int = 20,
-        tolerance: float = 0.001,
+        tolerance: float = 0.01,
         subsample: float | int = 5e5,
     ) -> None:
         """

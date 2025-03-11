@@ -154,8 +154,8 @@ class TestAffineCoreg:
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    # @pytest.mark.parametrize("shifts", [(300, 300, 300), (20, 5, 2), (-50, 100, 2)])  # type: ignore
-    @pytest.mark.parametrize("shifts", [(300, 300, 20)])  # type: ignore
+    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-50, 100, 2)])  # type: ignore
+    # @pytest.mark.parametrize("shifts", [(300, 300, 300)])  # type: ignore
     @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.DhMinimize, coreg.ICP, coreg.CPD])  # type: ignore
     def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:
         """
@@ -187,7 +187,8 @@ class TestAffineCoreg:
         elev_fit_args["to_be_aligned_elev"] = ref_shifted
 
         # Run coregistration
-        coreg_elev = horizontal_coreg.fit_and_apply(**elev_fit_args, subsample=500, random_state=42)
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        coreg_elev = horizontal_coreg.fit_and_apply(**elev_fit_args, subsample=subsample_size, random_state=42)
 
         # Check all fit parameters are the opposite of those used above, within a relative 1% (10% for ICP)
         fit_shifts = [-horizontal_coreg.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
@@ -226,7 +227,7 @@ class TestAffineCoreg:
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
             (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
-            (coreg.ICP, (8.73833, 1.584255, -1.943957)),
+            (coreg.ICP, (5.4509249, 1.1345858, -2.032635)),
             (coreg.CPD, (0., 0., 0.))
         ],
     )  # type: ignore
@@ -244,7 +245,8 @@ class TestAffineCoreg:
         # Get the coregistration method and expected shifts from the inputs
         coreg_method, expected_shifts = coreg_method__shift
 
-        c = coreg_method(subsample=50000)
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c = coreg_method(subsample=subsample_size)
         c.fit(ref, tba, inlier_mask=inlier_mask, random_state=42)
 
         # Check the output translations match the exact values
@@ -377,7 +379,8 @@ class TestAffineCoreg:
         elev_fit_args["to_be_aligned_elev"] = ref_shifted_rotated
 
         # Run coregistration
-        coreg_elev = horizontal_coreg.fit_and_apply(**elev_fit_args, subsample=5000, random_state=42)
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        coreg_elev = horizontal_coreg.fit_and_apply(**elev_fit_args, subsample=subsample_size, random_state=42)
 
         # Check that fit matrix is the invert of those used above, within a relative 10% for rotations, and within
         # a large 100% margin for shifts, as ICP has relative difficulty resolving shifts with large rotations
@@ -436,7 +439,8 @@ class TestAffineCoreg:
         coreg_method, expected_shifts_rots = coreg_method__shifts_rotations
 
         # Run co-registration
-        c = coreg_method(subsample=50000)
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c = coreg_method(subsample=subsample_size)
         c.fit(ref, tba, inlier_mask=inlier_mask, random_state=42)
 
         # Check the output translations and rotations match the exact values
