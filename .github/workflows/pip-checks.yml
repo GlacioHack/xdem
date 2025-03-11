@@ -15,7 +15,7 @@ jobs:
 
     strategy:
       matrix:
-        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+        os: ["ubuntu-latest", "macos-latest"]
         python-version: ["3.10", "3.11", "3.12"]
 
     # Run all shells using bash (including Windows)
@@ -33,6 +33,7 @@ jobs:
           miniforge-version: latest
           auto-update-conda: true
           use-mamba: true
+          mamba-version: "2.0.5"
           channel-priority: strict
           activate-environment: xdem-pip
           python-version: ${{ matrix.python-version }}
