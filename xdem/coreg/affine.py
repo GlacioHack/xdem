@@ -739,6 +739,182 @@ def vertical_shift(
 
     return vshift, subsample_final
 
+############################
+# 6/ Rosenholm and Torlegard
+############################
+
+def _rosenholm_torlegard_aux_vars(
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+) -> tuple[NDArrayf, NDArrayf]:
+    """
+    Deriving gradient in X/Y expected by the Rosenholm and Torlegård (1988) algorithm.
+
+    :return: Gradient in X/Y.
+    """
+
+    # If inputs are both point clouds, raise an error
+    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
+
+        raise TypeError(
+            "The Nuth and Kääb (2011) coregistration does not support two point clouds, one elevation "
+            "dataset in the pair must be a DEM."
+        )
+
+    # If inputs are both rasters, derive terrain attributes from ref and get 2D dh interpolator
+    elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
+
+        # Derive slope and aspect from the reference as default
+        gradient_y, gradient_x = np.gradient(ref_elev)
+
+    # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
+    else:
+
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            rst_elev = tba_elev
+        else:
+            rst_elev = ref_elev
+
+        # Derive slope and aspect from the raster dataset
+        gradient_y, gradient_x = np.gradient(rst_elev)
+
+    return gradient_x, gradient_y
+
+def _rosenholm_torlegard_fit_func(inputs, t1, t2, t3, alpha1, alpha2, alpha3, scale=0):
+    """
+    Fit function of Rosenholm and Torlegård (1988), linearized for small rotations and utilizing dZ as a
+    differential function of the plane coordinates (Equation 6).
+
+    Will solve for the 7 parameters of a scaled rigid transform.
+    """
+
+    # Get constant inputs
+    x, y, z, dh, gradx, grady = inputs
+
+    # We compute lambda from estimated parameters (Equation 6)
+    lda = t3 - x * alpha2 + y * alpha3 + z * scale \
+          - gradx * (t1 + x * scale - y * alpha1 + z * alpha2) \
+          - grady * (t2 + x * alpha1 + y * scale - z * alpha3)
+
+    # We return the residuals compared to dh
+    return lda - dh
+
+def _rosenholm_torlegard_fit(x, y, z, dh, gradx, grady, params_fit_or_bin, **kwargs):
+    """Optimization of fit function in Rosenholm and Torlegård (1988)."""
+
+    inputs = (x, y, z, dh, gradx, grady)
+
+    # Define loss function
+    loss_func = params_fit_or_bin["fit_loss_func"]
+
+    def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
+        return _rosenholm_torlegard_fit_func(inputs=inputs, t1=offsets[0], t2=offsets[1], t3=offsets[2],
+                                             alpha1=offsets[3], alpha2=offsets[4], alpha3=offsets[5])
+
+    # Initial offset near zero
+    init_offsets = np.zeros(6)
+
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func)
+
+    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+    assert results is not None
+    # Build matrix out of optimized parameters
+    matrix = _matrix_from_translations_rotations(*results.x)
+
+    return matrix
+
+
+def _rosenholm_torlegard_iteration_step(matrix, tba_epc, sub_dh_interpolator, sub_gradx, sub_grady, params_fit_or_bin):
+    """
+    Iteration step of Rosenholm and Torlegård (1988).
+    """
+
+    # Apply transform matrix from previous steps
+    trans_tba_epc = _apply_matrix(tba_epc, matrix=matrix)
+    x = trans_tba_epc[0, :]
+    y = trans_tba_epc[1, :]
+    z = trans_tba_epc[2, :]
+    dh = z - ref_z(x, y)
+    gradx = sub_gradx(x, y)
+    grady = sub_grady(x, y)
+
+    # Fit to get new step transform
+    step_matrix = _rosenholm_torlegard_fit(x=x, y=y, z=z, dh=dh, gradx=gradx, grady=grady,
+                                           params_fit_or_bin=params_fit_or_bin)
+
+    # Increment transformation matrix by step
+    new_matrix = step_matrix @ matrix
+
+    # Compute statistic on offset to know if it reached tolerance
+    translations = step_matrix[:3, 3]
+    rotations = step_matrix[:3, :3]
+
+    print(f"Translation during iteration: {translations}")
+    # print(f"Rotation during iteration: {rotations}")
+
+    tolerance_translation = np.sqrt(np.sum(translations) ** 2)
+    tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+
+    return new_matrix, tolerance_translation
+
+def rosenholm_torlegard(
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        max_iterations: int,
+        tolerance: float,
+        params_random: InRandomDict,
+        params_fit_or_bin: InFitOrBinDict,
+        ) -> tuple[NDArrayf, tuple[float, float, float], int]:
+    """
+    Rosenholm and Torlegård (1988) coregistration.
+
+    The function assumes we have a DEM and an elevation point cloud in the same CRS.
+    """
+
+    logging.info("Running Rosenholm and Torlegård (1988) coregistration")
+
+    # Check that DEM CRS is projected, otherwise slope is not correctly calculated
+    if not crs.is_projected:
+        raise NotImplementedError(
+            f"RosenholmTorlegard coregistration only works with a projected CRS, current CRS is {crs}. Reproject "
+            f"your DEMs with DEM.reproject() in a local projected CRS such as UTM, that you can find "
+            f"using DEM.get_metric_crs()."
+        )
+
+    # First, derive auxiliary variables of Nuth and Kääb (slope tangent, and aspect) for any point-raster input
+    gradx, grady = _rosenholm_torlegard_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev)
+
+    # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
+    aux_vars = {"gradx": gradx, "grady": grady}  # Wrap auxiliary data in dictionary to use generic function
+    sub_dh_interpolator, sub_aux_vars, subsample_final = _preprocess_pts_rst_subsample_interpolator(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        aux_vars=aux_vars,
+        transform=transform,
+        area_or_point=area_or_point,
+        z_name=z_name,
+    )
+
+    logging.info("Iteratively estimating rigid transformation:")
+    # Iterate through method until tolerance or max number of iterations is reached
+    init_matrix = np.eye(4)  # Initial matrix is the identity transform
+    constant_inputs = (sub_dh_interpolator, sub_aux_vars["gradx"], sub_aux_vars["grady"], params_fit_or_bin)
+    final_matrix = _iterate_method(
+        method=_rosenholm_torlegard_iteration_step,
+        iterating_input=init_matrix,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+
+    return final_matrix, subsample_final
 
 ##################################
 # Affine coregistration subclasses
@@ -1419,6 +1595,108 @@ class NuthKaab(AffineCoreg):
 
         return matrix
 
+class RosenholmTorlegard(AffineCoreg):
+    """
+    Rosenholm and Torlegård (1988) coregistration,
+
+    Estimates a rigid transform (rotation + translation) between two elevation datasets.
+
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
+    """
+
+    def __init__(
+        self,
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = "linear",
+        max_iterations: int = 20,
+        tolerance: float = 0.01,
+        subsample: float | int = 5e5,
+    ):
+        meta = {
+            "fit_minimizer": fit_minimizer,
+            "fit_loss_func": fit_loss_func,
+            "max_iterations": max_iterations,
+            "tolerance": tolerance,
+        }
+        super().__init__(subsample=subsample, meta=meta)
+
+    def _fit_rst_rst(
+            self,
+            ref_elev: NDArrayf,
+            tba_elev: NDArrayf,
+            inlier_mask: NDArrayb,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            area_or_point: Literal["Area", "Point"] | None,
+            z_name: str,
+            weights: NDArrayf | None = None,
+            bias_vars: dict[str, NDArrayf] | None = None,
+            **kwargs: Any,
+    ) -> None:
+        """Estimate the rigid transform from tba_dem to ref_dem."""
+
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+
+    def _fit_rst_pts(
+            self,
+            ref_elev: NDArrayf | gpd.GeoDataFrame,
+            tba_elev: NDArrayf | gpd.GeoDataFrame,
+            inlier_mask: NDArrayb,
+            transform: rio.transform.Affine,
+            crs: rio.crs.CRS,
+            area_or_point: Literal["Area", "Point"] | None,
+            z_name: str,
+            weights: NDArrayf | None = None,
+            bias_vars: dict[str, NDArrayf] | None = None,
+            **kwargs: Any,
+    ) -> None:
+
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
+
+        # Call method
+        matrix, centroid, subsample_final = rosenholm_torlegard(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            params_random=params_random,
+            params_fit_or_bin=params_fit_or_bin,
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
+        )
+
+        # Write output to class
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            centroid=centroid,
+            matrix=matrix,
+            shift_x=matrix[0, 3],
+            shift_y=matrix[1, 3],
+            shift_z=matrix[2, 3],
+        )
+        self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
 class DhMinimize(AffineCoreg):
     """
