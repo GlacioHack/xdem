@@ -26,6 +26,7 @@ from xdem.coreg.affine import (  # noqa
     AffineCoreg,
     DhMinimize,
     NuthKaab,
+    LZD,
     VerticalShift,
 )
 from xdem.coreg.base import (  # noqa

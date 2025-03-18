@@ -291,8 +291,6 @@ def _preprocess_coreg_fit_raster_point(
 ) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
 
-    import time
-    t0 = time.time()
     # TODO: Convert to point cloud once class is done
     # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
     if isinstance(raster_elev, gu.Raster):
@@ -305,7 +303,6 @@ def _preprocess_coreg_fit_raster_point(
         crs = crs
         transform = transform
         area_or_point = area_or_point
-    logging.info(f"Loading data: {time.time() - t0} s")
 
     if transform is None:
         raise ValueError("'transform' must be given if both DEMs are array-like.")
@@ -313,7 +310,6 @@ def _preprocess_coreg_fit_raster_point(
     if crs is None:
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
-    t1 = time.time()
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
         if isinstance(inlier_mask, Mask):
@@ -327,13 +323,9 @@ def _preprocess_coreg_fit_raster_point(
     else:
         inlier_mask = np.ones(np.shape(rst_elev), dtype=bool)
 
-    logging.info(f"Inlier mask: {time.time() - t1} s")
-
     # TODO: Convert to point cloud?
-    t2 = time.time()
     # Convert geodataframe to vector
     point_elev = point_elev.to_crs(crs=crs)
-    logging.info(f"Point cloud reprojection: {time.time() - t2} s")
 
     return rst_elev, point_elev, inlier_mask, transform, crs, area_or_point
 
@@ -2043,9 +2035,6 @@ class Coreg:
         if self._meta["inputs"]["random"]["subsample"] != 1:
             self._meta["inputs"]["random"]["random_state"] = random_state
 
-        import time
-        logging.info(f"Starting input preprocessing.")
-        t0 = time.time()
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
@@ -2055,7 +2044,6 @@ class Coreg:
             crs=crs,
             area_or_point=area_or_point,
         )
-        logging.info(f"Preprocessing done: {time.time() - t0} seconds.")
 
         main_args = {
             "ref_elev": ref_elev,
