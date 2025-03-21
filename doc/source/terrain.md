@@ -411,6 +411,14 @@ Often, one may seek more terrain attributes than one, e.g. both the slope and th
 Since both are dependent on the gradient of the DEM, calculating them separately is computationally repetitive.
 Multiple terrain attributes can be calculated from the same gradient using the {func}`xdem.DEM.get_terrain_attribute` function.
 
+## Generating attributes using multiprocessing
+
+For large DEM datasets, you can use the {func}`xdem.DEM.get_terrain_attribute_multiproc` function, which supports
+multiprocessing and processes DEMs stored on disk without loading the entire dataset into memory. By tiling the DEM,
+the function efficiently computes terrain attributes in chunks, making it well-suited for large-scale analyses with
+memory constraints. Multiprocessing enhances performance by distributing the computational load across multiple
+processors.
+
 ```{eval-rst}
 .. minigallery:: xdem.terrain.get_terrain_attribute
 ```
