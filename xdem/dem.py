@@ -33,7 +33,7 @@ from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
 
-from xdem import coreg, terrain
+from xdem import coreg, multiproc, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
@@ -452,6 +452,12 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
+
+    @copy_doc(multiproc, remove_dem_res_params=True)
+    def get_terrain_attribute_multiproc(
+        self, attribute: str | list[str], **kwargs: Any
+    ) -> RasterType | list[RasterType]:
+        return multiproc.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
     def coregister_3d(
         self,
