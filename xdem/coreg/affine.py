@@ -49,7 +49,7 @@ from xdem.coreg.base import (
     _reproject_horizontal_shift_samecrs,
     invert_matrix,
     matrix_from_translations_rotations,
-    translations_rotations_from_matrix
+    translations_rotations_from_matrix,
 )
 from xdem.spatialstats import nmad
 
@@ -121,7 +121,7 @@ def _iterate_method(
     """
     Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches a tolerance or maximum number of iterations.
 
-    :param method: Method that needs to be iterated to derive a transformation. Take argument "inputs" as its input,
+    :param method: Method that needs to be iterated to derive a transformation. Takes argument "inputs" as its input,
         and outputs three terms: a "statistic" to compare to tolerance, "updated inputs" with this transformation, and
         the parameters of the transformation.
     :param iterating_input: Iterating input to method, should be first argument.
@@ -814,7 +814,7 @@ def _icp_fit_func(
 def _icp_fit_approx_lsq(
     ref: NDArrayf,
     tba: NDArrayf,
-    norms: NDArrayf,
+    norms: NDArrayf | None,
     weights: NDArrayf | None = None,
     method: Literal["point-to-point", "point-to-plane"] = "point-to-point",
 ) -> NDArrayf:
@@ -840,6 +840,8 @@ def _icp_fit_approx_lsq(
     # Point-to-plane
     if method == "point-to-plane":
 
+        assert norms is not None
+
         # Define A and B as in Low (2004)
         B = np.expand_dims(np.sum(ref * norms, axis=1) - np.sum(tba * norms, axis=1), axis=1)
         A = np.hstack((np.cross(tba, norms), norms))
@@ -852,8 +854,9 @@ def _icp_fit_approx_lsq(
         x = x.squeeze()
 
         # Convert back to affine matrix
-        matrix = matrix_from_translations_rotations(alpha1=x[0], alpha2=x[1], alpha3=x[2], t1=x[3], t2=x[4], t3=x[5],
-                                                    use_degrees=False)
+        matrix = matrix_from_translations_rotations(
+            alpha1=x[0], alpha2=x[1], alpha3=x[2], t1=x[3], t2=x[4], t3=x[5], use_degrees=False
+        )
 
     else:
         raise ValueError("Fit optimizer 'lst_approx' of ICP is only available for point-to-plane method.")
@@ -864,7 +867,7 @@ def _icp_fit_approx_lsq(
 def _icp_fit(
     ref: NDArrayf,
     tba: NDArrayf,
-    norms: NDArrayf,
+    norms: NDArrayf | None,
     method: Literal["point-to-point", "point-to-plane"],
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
@@ -900,6 +903,8 @@ def _icp_fit(
     # If we use the linear approximation
     if isinstance(params_fit_or_bin["fit_minimizer"], str) and params_fit_or_bin["fit_minimizer"] == "lsq_approx":
 
+        assert norms is not None
+
         matrix = _icp_fit_approx_lsq(ref.T, tba.T, norms.T, method=method)
 
     # Or we solve using any optimizer and loss function
@@ -909,6 +914,7 @@ def _icp_fit(
 
         # With rotation
         if not only_translation:
+
             def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
                 return _icp_fit_func(
                     inputs=inputs,
@@ -926,15 +932,16 @@ def _icp_fit(
 
         # Without rotation
         else:
+
             def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
                 return _icp_fit_func(
                     inputs=inputs,
                     t1=offsets[0],
                     t2=offsets[1],
                     t3=offsets[2],
-                    alpha1=0.,
-                    alpha2=0.,
-                    alpha3=0.,
+                    alpha1=0.0,
+                    alpha2=0.0,
+                    alpha3=0.0,
                     method=method,
                 )
 
@@ -946,7 +953,7 @@ def _icp_fit(
         # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
         assert results is not None
         # Build matrix out of optimized parameters
-        matrix = matrix_from_translations_rotations(*results.x, use_degrees=False)
+        matrix = matrix_from_translations_rotations(*results.x, use_degrees=False)  # type: ignore
 
     return matrix
 
@@ -1118,7 +1125,7 @@ def icp(
 
     # TODO: Enforce that _preprocess function returns no NaNs
     # (Temporary)
-    if aux_vars is not None:
+    if sub_aux_vars is not None:
         ind_valid = np.logical_and.reduce(
             (
                 np.isfinite(sub_ref),
@@ -1169,7 +1176,16 @@ def icp(
 
     # Iterate through method until tolerance or max number of iterations is reached
     init_matrix = np.eye(4)  # Initial matrix is the identity transform
-    constant_inputs = (ref_epc, tba_epc, norms, ref_epc_nearest_tree, params_fit_or_bin, method, picky, only_translation)
+    constant_inputs = (
+        ref_epc,
+        tba_epc,
+        norms,
+        ref_epc_nearest_tree,
+        params_fit_or_bin,
+        method,
+        picky,
+        only_translation,
+    )
     final_matrix = _iterate_method(
         method=_icp_iteration_step,
         iterating_input=init_matrix,
@@ -1577,6 +1593,7 @@ def _lzd_fit(
 
     # For translation + rotation
     if not only_translation:
+
         def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
             return _lzd_fit_func(
                 inputs=inputs,
@@ -1593,15 +1610,16 @@ def _lzd_fit(
 
     # For only translation
     else:
+
         def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
             return _lzd_fit_func(
                 inputs=inputs,
                 t1=offsets[0],
                 t2=offsets[1],
                 t3=offsets[2],
-                alpha1=0.,
-                alpha2=0.,
-                alpha3=0.,
+                alpha1=0.0,
+                alpha2=0.0,
+                alpha3=0.0,
             )
 
         # Initial offset near zero
@@ -1613,7 +1631,7 @@ def _lzd_fit(
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
     # Build matrix out of optimized parameters
-    matrix = matrix_from_translations_rotations(*results.x, use_degrees=True)
+    matrix = matrix_from_translations_rotations(*results.x, use_degrees=True)  # type: ignore
 
     return matrix
 
@@ -1683,8 +1701,16 @@ def _lzd_iteration_step(
     grady = grady[valids]
 
     # Fit to get new step transform
-    step_matrix = _lzd_fit(x=x, y=y, z=z, dh=dh, gradx=gradx, grady=grady, params_fit_or_bin=params_fit_or_bin,
-                           only_translation=only_translation)
+    step_matrix = _lzd_fit(
+        x=x,
+        y=y,
+        z=z,
+        dh=dh,
+        gradx=gradx,
+        grady=grady,
+        params_fit_or_bin=params_fit_or_bin,
+        only_translation=only_translation,
+    )
 
     # Increment transformation matrix by step
     new_matrix = step_matrix @ matrix
@@ -1774,7 +1800,16 @@ def lzd(
     logging.info("Iteratively estimating rigid transformation:")
     # Iterate through method until tolerance or max number of iterations is reached
     init_matrix = np.eye(4)  # Initial matrix is the identity transform
-    constant_inputs = (sub_rst, sub_pts, sub_coords, centroid, sub_gradx, sub_grady, params_fit_or_bin, only_translation)
+    constant_inputs = (
+        sub_rst,
+        sub_pts,
+        sub_coords,
+        centroid,
+        sub_gradx,
+        sub_grady,
+        params_fit_or_bin,
+        only_translation,
+    )
     final_matrix = _iterate_method(
         method=_lzd_iteration_step,
         iterating_input=init_matrix,
@@ -1787,7 +1822,7 @@ def lzd(
     if ref == "pts":
         final_matrix = invert_matrix(final_matrix)
 
-    subsample_final = len(sub_coords)
+    subsample_final = len(sub_pts)
 
     return final_matrix, centroid, subsample_final
 
@@ -1959,12 +1994,14 @@ class AffineCoreg(Coreg):
 
         :returns: An instantiated generic Coreg class.
         """
-        matrix = matrix_from_translations_rotations(t1=x_off, t2=y_off, t3=z_off, alpha1=0., alpha2=0., alpha3=0.)
+        matrix = matrix_from_translations_rotations(t1=x_off, t2=y_off, t3=z_off, alpha1=0.0, alpha2=0.0, alpha3=0.0)
 
         return cls.from_matrix(matrix)
 
     @classmethod
-    def from_rotations(cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0, use_degrees: bool = True) -> AffineCoreg:
+    def from_rotations(
+        cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0, use_degrees: bool = True
+    ) -> AffineCoreg:
         """
         Instantiate a generic Coreg class from a X/Y/Z rotation.
 
@@ -1978,8 +2015,9 @@ class AffineCoreg(Coreg):
         :returns: An instantiated generic Coreg class.
         """
 
-        matrix = matrix_from_translations_rotations(t1=0., t2=0., t3=0., alpha1=x_rot, alpha2=y_rot, alpha3=z_rot,
-                                                     use_degrees=use_degrees)
+        matrix = matrix_from_translations_rotations(
+            t1=0.0, t2=0.0, t3=0.0, alpha1=x_rot, alpha2=y_rot, alpha3=z_rot, use_degrees=use_degrees
+        )
 
         return cls.from_matrix(matrix)
 
@@ -2129,7 +2167,7 @@ class ICP(AffineCoreg):
         picky: bool = False,
         only_translation: bool = False,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"] = scipy.optimize.least_squares,
-        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = "linear",
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 20,
         tolerance: float = 0.01,
         subsample: float | int = 5e5,
@@ -2270,10 +2308,12 @@ class CPD(AffineCoreg):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
 
-        meta_cpd = {"max_iterations": max_iterations,
-                    "tolerance": tolerance,
-                    "cpd_weight": weight,
-                    "only_translation": only_translation}
+        meta_cpd = {
+            "max_iterations": max_iterations,
+            "tolerance": tolerance,
+            "cpd_weight": weight,
+            "only_translation": only_translation,
+        }
 
         super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
 
@@ -2524,7 +2564,7 @@ class LZD(AffineCoreg):
         self,
         only_translation: bool = False,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
-        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = "linear",
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 200,
         tolerance: float = 0.01,
         subsample: float | int = 5e5,

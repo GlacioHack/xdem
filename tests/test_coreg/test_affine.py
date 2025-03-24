@@ -6,20 +6,24 @@ import os.path
 import warnings
 
 import geopandas as gpd
-import scipy.optimize
-
 import geoutils
 import numpy as np
 import pytest
 import rasterio as rio
+import scipy.optimize
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
 from geoutils.raster.geotransformations import _translate
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
-from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs, matrix_from_translations_rotations, \
-    translations_rotations_from_matrix, invert_matrix
+from xdem.coreg.affine import (
+    AffineCoreg,
+    _reproject_horizontal_shift_samecrs,
+    invert_matrix,
+    matrix_from_translations_rotations,
+    translations_rotations_from_matrix,
+)
 
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
@@ -449,14 +453,18 @@ class TestAffineCoreg:
         fit_shifts_rotations = translations_rotations_from_matrix(fit_matrix)
         assert fit_shifts_rotations == pytest.approx(expected_shifts_rots, abs=10e-6)
 
-    @pytest.mark.parametrize("rigid_coreg",
-                             [coreg.ICP(method="point-to-point", max_iterations=20),
-                              coreg.ICP(method="point-to-plane"),
-                              coreg.ICP(fit_minimizer="lsq_approx"),
-                              coreg.ICP(fit_minimizer=scipy.optimize.least_squares),
-                              coreg.ICP(picky=True),
-                              coreg.ICP(picky=False),
-                              coreg.CPD(weight=0.5)])  # type: ignore
+    @pytest.mark.parametrize(
+        "rigid_coreg",
+        [
+            coreg.ICP(method="point-to-point", max_iterations=20),
+            coreg.ICP(method="point-to-plane"),
+            coreg.ICP(fit_minimizer="lsq_approx"),
+            coreg.ICP(fit_minimizer=scipy.optimize.least_squares),
+            coreg.ICP(picky=True),
+            coreg.ICP(picky=False),
+            coreg.CPD(weight=0.5),
+        ],
+    )  # type: ignore
     def test_coreg_rigid__specific_args(self, rigid_coreg) -> None:
         """
         Check that all specific arguments (non-fitting and binning, subsampling, iterative) of rigid coregistrations
@@ -514,7 +522,6 @@ class TestAffineCoreg:
         # Check that translations are not far from expected values
         assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
 
-
     def test_nuthkaab_no_vertical_shift(self) -> None:
         ref, tba = load_examples(crop=False)[0:2]
 
@@ -535,6 +542,3 @@ class TestAffineCoreg:
         # Assert horizontal shifts are the same
         matrix2[2, 3] = matrix1[2, 3]
         assert np.array_equal(matrix1, matrix2)
-
-
-

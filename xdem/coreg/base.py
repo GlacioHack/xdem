@@ -1007,7 +1007,13 @@ def _bin_or_and_fit_nd(
 
 
 def matrix_from_translations_rotations(
-    t1: float = 0., t2: float = 0., t3: float = 0., alpha1: float = 0., alpha2: float = 0., alpha3: float = 0., use_degrees: bool = True,
+    t1: float = 0.0,
+    t2: float = 0.0,
+    t3: float = 0.0,
+    alpha1: float = 0.0,
+    alpha2: float = 0.0,
+    alpha3: float = 0.0,
+    use_degrees: bool = True,
 ) -> NDArrayf:
     """
     Build rigid affine matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees or radians).
@@ -1042,7 +1048,10 @@ def matrix_from_translations_rotations(
 
     return matrix
 
-def translations_rotations_from_matrix(matrix: NDArrayf, return_degrees: bool = True) -> tuple[float, float, float, float, float, float]:
+
+def translations_rotations_from_matrix(
+    matrix: NDArrayf, return_degrees: bool = True
+) -> tuple[float, float, float, float, float, float]:
     """
     Extract 3 translations (unit of coordinates) and 3 rotations (degrees or radians) from rigid affine matrix.
 
