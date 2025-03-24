@@ -21,12 +21,12 @@ DEM coregistration classes and functions, including affine methods, bias correct
 """
 
 from xdem.coreg.affine import (  # noqa
-    ICP,
     CPD,
+    ICP,
+    LZD,
     AffineCoreg,
     DhMinimize,
     NuthKaab,
-    LZD,
     VerticalShift,
 )
 from xdem.coreg.base import (  # noqa
@@ -35,6 +35,8 @@ from xdem.coreg.base import (  # noqa
     CoregPipeline,
     apply_matrix,
     invert_matrix,
+    matrix_from_translations_rotations,
+    translations_rotations_from_matrix,
 )
 from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
 from xdem.coreg.workflows import dem_coregistration  # noqa

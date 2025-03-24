@@ -69,6 +69,7 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
 
         return gauss
 
+
 def distance_filter(array: NDArrayf, radius: float, outlier_threshold: float) -> NDArrayf:
     """
     Filter out pixels whose value is distant more than a set threshold from the average value of all neighbor \

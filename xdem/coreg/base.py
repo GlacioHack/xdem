@@ -82,7 +82,6 @@ except ImportError:
     _HAS_P3D = False
 
 
-
 # Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
@@ -123,8 +122,10 @@ dict_key_to_str = {
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
+    "only_translation": "Only translations are considered",
     "icp_method": "Type of ICP method",
-    "weight_cpd": "Weights of CPD",
+    "icp_picky": "Picky closest pair selection",
+    "cpd_weight": "Weight of CPD outlier removal",
 }
 #####################################
 # Generic functions for preprocessing
@@ -1005,8 +1006,76 @@ def _bin_or_and_fit_nd(
 ###############################################
 
 
+def matrix_from_translations_rotations(
+    t1: float = 0., t2: float = 0., t3: float = 0., alpha1: float = 0., alpha2: float = 0., alpha3: float = 0., use_degrees: bool = True,
+) -> NDArrayf:
+    """
+    Build rigid affine matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees or radians).
+
+    The euler rotations use the extrinsic convention.
+
+    :param t1: Translation in the X (west-east) direction (unit of coordinates).
+    :param t2: Translation in the Y (south-north) direction (unit of coordinates).
+    :param t3: Translation in the Z (vertical) direction (unit of DEM).
+    :param alpha1: Rotation around the X (west-east) direction.
+    :param alpha2: Rotation around the Y (south-north) direction.
+    :param alpha3: Rotation around the Z (vertical) direction.
+    :param use_degrees: Whether to use degrees for input rotations, otherwise radians.
+
+    :raises ValueError: If the given translation or rotations contained invalid values.
+
+    :return: Rigid affine matrix of transformation.
+    """
+
+    # Initialize diagonal matrix
+    matrix = np.eye(4)
+    # Convert euler angles to rotation matrix
+    e = np.array([alpha1, alpha2, alpha3])
+    # If angles were given in degrees
+    if use_degrees:
+        e = np.deg2rad(e)
+    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+
+    # Add rotation matrix, and translations
+    matrix[0:3, 0:3] = rot_matrix
+    matrix[:3, 3] = [t1, t2, t3]
+
+    return matrix
+
+def translations_rotations_from_matrix(matrix: NDArrayf, return_degrees: bool = True) -> tuple[float, float, float, float, float, float]:
+    """
+    Extract 3 translations (unit of coordinates) and 3 rotations (degrees or radians) from rigid affine matrix.
+
+    The extracted euler rotations use the extrinsic convention.
+
+    :param matrix: Rigid affine matrix of transformation.
+    :param return_degrees: Whether to return rotations in degrees, otherwise radians.
+
+    :return: Translations in the X, Y and Z direction and rotations around the X, Y and Z directions.
+    """
+
+    # Extract translations
+    t1, t2, t3 = matrix[:3, 3]
+
+    # Get rotations from affine matrix
+    rots = pytransform3d.rotations.euler_from_matrix(matrix[:3, :3], i=0, j=1, k=2, extrinsic=True, strict_check=True)
+    if return_degrees:
+        rots = np.rad2deg(np.array(rots))
+
+    # Extract rotations
+    alpha1, alpha2, alpha3 = rots
+
+    return t1, t2, t3, alpha1, alpha2, alpha3
+
+
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
-    """Invert a transformation matrix."""
+    """
+    Invert a transformation matrix.
+
+    :param matrix: Affine transformation matrix.
+
+    :return: Inverted transformation matrix.
+    """
     with warnings.catch_warnings():
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
@@ -1019,10 +1088,11 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
 
 
 def _apply_matrix_pts_mat(
-        mat: NDArrayf,
-        matrix: NDArrayf,
-        centroid: tuple[float, float, float] | None = None,
-        invert: bool = False,) -> NDArrayf:
+    mat: NDArrayf,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    invert: bool = False,
+) -> NDArrayf:
 
     # Invert matrix if required
     if invert:
@@ -1043,6 +1113,7 @@ def _apply_matrix_pts_mat(
         transformed_points += np.array(centroid)[:, None]
 
     return transformed_points
+
 
 def _apply_matrix_pts_arr(
     x: NDArrayf,
@@ -1247,25 +1318,6 @@ def _iterate_affine_regrid_small_rotations(
     return transformed_dem.data.filled(np.nan), transform
 
 
-def _get_rotations_from_matrix(matrix: NDArrayf) -> tuple[float, float, float]:
-    """
-    Get rotation angles along each axis from the 4x4 affine matrix, derived as Euler extrinsic angles in degrees.
-
-    :param matrix: Affine matrix.
-
-    :return: Euler extrinsic rotation angles along X, Y and Z (degrees).
-    """
-
-    # Extract rotation in case there is scaling
-    # from scipy.linalg import polar
-    # matrix, _ = polar(matrix)
-
-    # The rotation matrix is composed of the first 3 rows/columns
-    rot_matrix = matrix[0:3, 0:3]
-    angles = pytransform3d.rotations.euler_from_matrix(R=rot_matrix, i=0, j=1, k=2, extrinsic=True)
-    return np.rad2deg(angles)
-
-
 def _apply_matrix_rst(
     dem: NDArrayf,
     transform: rio.transform.Affine,
@@ -1317,7 +1369,7 @@ def _apply_matrix_rst(
         return dem + matrix[2, 3], new_transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
-    rotations = _get_rotations_from_matrix(matrix)
+    rotations = translations_rotations_from_matrix(matrix)[3:]
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
         new_dem, transform = _iterate_affine_regrid_small_rotations(
             dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling
@@ -1607,11 +1659,14 @@ class InSpecificDict(TypedDict, total=False):
     angle: float
     # (Using Deramp) Polynomial order selected for deramping
     poly_order: int
-    # (Using ICP) Method type
+    # (Using ICP) Method type to compute 3D distances
     icp_method: Literal["point-to-point", "point-to-plane"]
+    # (Using ICP) Picky selection of closest pairs
+    icp_picky: bool
 
-    # (Using CPD)
-    weight_cpd: float
+    # (Using CPD) Weight for outlier removal
+    cpd_weight: float
+
 
 class OutSpecificDict(TypedDict, total=False):
     """Keys and types of outputs associated with specific methods."""
@@ -1629,6 +1684,8 @@ class InAffineDict(TypedDict, total=False):
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
     apply_vshift: bool
+    # Apply coregistration method only for translations
+    only_translation: bool
 
 
 class OutAffineDict(TypedDict, total=False):

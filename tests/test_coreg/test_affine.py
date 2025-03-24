@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import os.path
 import warnings
-import logging
 
 import geopandas as gpd
+import scipy.optimize
+
 import geoutils
 import numpy as np
 import pytest
-import pytransform3d
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
@@ -18,7 +18,9 @@ from geoutils.raster.geotransformations import _translate
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
-from xdem.coreg.affine import AffineCoreg, NuthKaab, _reproject_horizontal_shift_samecrs
+from xdem.coreg.affine import AffineCoreg, _reproject_horizontal_shift_samecrs, matrix_from_translations_rotations, \
+    translations_rotations_from_matrix, invert_matrix
+
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
@@ -199,7 +201,7 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                    ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values)) - ref_shifted["z"]
+                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values)) - ref_shifted["z"]
             )
             dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values)) - coreg_elev["z"]
         else:
@@ -331,11 +333,11 @@ class TestAffineCoreg:
         vshift = c.meta["outputs"]["affine"]["shift_z"]
         assert vshift == pytest.approx(expected_vshift)
 
-    # @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("fit_args", [fit_args_rst_rst])  # type: ignore
-    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)])  # type: ignore
-    # @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.CPD])  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize(
+        "shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)]
+    )  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])  # type: ignore
     def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:
         """
         Test the rigid coregistrations with synthetic misaligned (shifted and rotated) data.
@@ -358,15 +360,7 @@ class TestAffineCoreg:
         ref = self.ref
 
         # Create synthetic rigid transformation (translation and rotation) from the reference DEM
-        sr = np.array(shifts_rotations)
-        shifts = sr[:3]
-        rotations = sr[3:6]
-        e = np.deg2rad(rotations)
-        # Derive a 3x3 rotation matrix
-        rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
-        matrix = np.diag(np.ones(4, float))
-        matrix[:3, :3] = rot_matrix
-        matrix[:3, 3] = shifts
+        matrix = matrix_from_translations_rotations(*shifts_rotations)
 
         # Pass a centroid
         centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
@@ -385,20 +379,16 @@ class TestAffineCoreg:
 
         # Check that fit matrix is the invert of those used above, within a relative % for rotations
         fit_matrix = horizontal_coreg.meta["outputs"]["affine"]["matrix"]
-        invert_fit_matrix = coreg.invert_matrix(fit_matrix)
-        invert_fit_shifts = invert_fit_matrix[:3, 3]
-        invert_fit_rotations = pytransform3d.rotations.euler_from_matrix(
-            invert_fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True
-        )
-        invert_fit_rotations = np.rad2deg(invert_fit_rotations)
+        invert_fit_matrix = invert_matrix(fit_matrix)
+        invert_fit_shifts_rotations = translations_rotations_from_matrix(invert_fit_matrix)
 
         # Check that shifts are not unreasonable within 100%, except for CPD that has trouble
         if coreg_method != coreg.CPD:
-            assert np.allclose(shifts, invert_fit_shifts, rtol=1)
+            assert np.allclose(shifts_rotations[0:3], invert_fit_shifts_rotations[:3], rtol=1)
 
         # Specify rotation precision: LZD is usually more precise than ICP
         atol = 10e-3 if coreg_method == coreg.LZD else 2 * 10e-2
-        assert np.allclose(rotations, invert_fit_rotations, atol=atol)
+        assert np.allclose(shifts_rotations[3:], invert_fit_shifts_rotations[3:], atol=atol)
 
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
@@ -429,9 +419,11 @@ class TestAffineCoreg:
 
     @pytest.mark.parametrize(
         "coreg_method__shifts_rotations",
-        [(coreg.ICP, (5.450924, 1.134585, -2.032635, 0.007124, -0.007524, -0.0047392)),
-         (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245,  -0.00766, -0.008174)),
-         (coreg.CPD, (0.005405, 0.005163, -2.047066, 0.0070245,  -0.00755, -0.0000405))]
+        [
+            (coreg.ICP, (5.450924, 1.134585, -2.032635, 0.007124, -0.007524, -0.0047392)),
+            (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245, -0.00766, -0.008174)),
+            (coreg.CPD, (0.005405, 0.005163, -2.047066, 0.0070245, -0.00755, -0.0000405)),
+        ],
     )  # type: ignore
     def test_coreg_rigid__example(
         self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
@@ -454,19 +446,81 @@ class TestAffineCoreg:
 
         # Check the output translations and rotations match the exact values
         fit_matrix = c.meta["outputs"]["affine"]["matrix"]
-        fit_shifts = fit_matrix[:3, 3]
-        fit_rotations = pytransform3d.rotations.euler_from_matrix(fit_matrix[0:3, 0:3], i=0, j=1, k=2, extrinsic=True)
-        fit_rotations = np.rad2deg(fit_rotations)
-        fit_shifts_rotations = tuple(np.concatenate((fit_shifts, fit_rotations)))
-
+        fit_shifts_rotations = translations_rotations_from_matrix(fit_matrix)
         assert fit_shifts_rotations == pytest.approx(expected_shifts_rots, abs=10e-6)
+
+    @pytest.mark.parametrize("rigid_coreg",
+                             [coreg.ICP(method="point-to-point", max_iterations=20),
+                              coreg.ICP(method="point-to-plane"),
+                              coreg.ICP(fit_minimizer="lsq_approx"),
+                              coreg.ICP(fit_minimizer=scipy.optimize.least_squares),
+                              coreg.ICP(picky=True),
+                              coreg.ICP(picky=False),
+                              coreg.CPD(weight=0.5)])  # type: ignore
+    def test_coreg_rigid__specific_args(self, rigid_coreg) -> None:
+        """
+        Check that all specific arguments (non-fitting and binning, subsampling, iterative) of rigid coregistrations
+        run correctly and yield with a reasonable output by comparing back after a synthetic transformation.
+        """
+
+        # Get reference elevation
+        ref = self.ref
+
+        # Add artificial shift and rotations
+        shifts_rotations = (300, 150, 75, 1, 0.5, 0.2)
+        matrix = matrix_from_translations_rotations(*shifts_rotations)
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
+        ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+
+        # Coregister
+        rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=5000)
+
+        # Check that fit matrix is the invert of those used above, within a relative % for rotations
+        fit_matrix = rigid_coreg.meta["outputs"]["affine"]["matrix"]
+        invert_fit_matrix = invert_matrix(fit_matrix)
+        invert_fit_shifts_rotations = translations_rotations_from_matrix(invert_fit_matrix)
+
+        # Not so precise for shifts
+        assert np.allclose(invert_fit_shifts_rotations[:3], shifts_rotations[:3], rtol=1)
+        # Precise for rotations
+        assert np.allclose(invert_fit_shifts_rotations[3:], shifts_rotations[3:], rtol=10e-1, atol=2 * 10e-2)
+
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD, coreg.LZD])  # type: ignore
+    def test_coreg_rigid__only_translation(self, coreg_method) -> None:
+
+        # Get reference elevation
+        ref = self.ref
+
+        # Add artificial shift and rotations
+        # (Define small rotations on purpose, so that the "translation only" coregistration is not affected)
+        shifts_rotations = (300, 150, 75, 0.01, 0.01, 0.01)
+        matrix = matrix_from_translations_rotations(*shifts_rotations)
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
+        ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+
+        # Run co-registration
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c = coreg_method(subsample=subsample_size, only_translation=True)
+        c.fit(ref, ref_shifted_rotated, random_state=42)
+
+        # Get invert of resulting matrix
+        fit_matrix = c.meta["outputs"]["affine"]["matrix"]
+        invert_fit_matrix = invert_matrix(fit_matrix)
+        invert_fit_shifts_translations = translations_rotations_from_matrix(invert_fit_matrix)
+
+        # Check that rotations are not solved for
+        assert np.allclose(invert_fit_shifts_translations[3:], 0)
+
+        # Check that translations are not far from expected values
+        assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
+
 
     def test_nuthkaab_no_vertical_shift(self) -> None:
         ref, tba = load_examples(crop=False)[0:2]
 
         # Compare Nuth and Kaab method with and without applying vertical shift
-        coreg_method1 = NuthKaab(vertical_shift=True)
-        coreg_method2 = NuthKaab(vertical_shift=False)
+        coreg_method1 = coreg.NuthKaab(vertical_shift=True)
+        coreg_method2 = coreg.NuthKaab(vertical_shift=False)
 
         coreg_method1.fit(ref, tba, random_state=42)
         coreg_method2.fit(ref, tba, random_state=42)
@@ -481,3 +535,6 @@ class TestAffineCoreg:
         # Assert horizontal shifts are the same
         matrix2[2, 3] = matrix1[2, 3]
         assert np.array_equal(matrix1, matrix2)
+
+
+
