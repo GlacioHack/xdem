@@ -1070,9 +1070,6 @@ def _icp_iteration_step(
     # Compute statistic on offset to know if it reached tolerance
     translations = step_matrix[:3, 3]
 
-    print(f"Translation during iteration: {translations}")
-    # print(f"Rotation during iteration: {rotations}")
-
     tolerance_translation = np.sqrt(np.sum(translations) ** 2)
     # TODO: If we allow multiple tolerances in the future, here's the rotation tolerance
     # rotations = step_matrix[:3, :3]
@@ -1432,7 +1429,7 @@ def cpd(
 
 
 #######################
-# 6/ Least-Z difference
+# 6/ Least Z-difference
 #######################
 
 
@@ -1442,7 +1439,7 @@ def _lzd_aux_vars(
     transform: affine.Affine,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
-    Deriving gradient in X/Y expected by the Least-Z difference coregistration.
+    Deriving gradient in X/Y expected by the Least Z-difference coregistration.
 
     :return: Gradient in X/Y, scaled based on the DEM resolution.
     """
@@ -1491,7 +1488,7 @@ def _lzd_fit_func(
     scale: float = 0.0,
 ) -> NDArrayf:
     """
-    Fit function of Least-Z difference coregistration, Rosenholm and Torlegård (1988).
+    Fit function of Least Z-difference coregistration, Rosenholm and Torlegård (1988).
 
     Linearizes a rigid transformation for small rotations and utilizes dZ as a differential function of the plane
     coordinates (Equation 6).
@@ -1542,7 +1539,7 @@ def _lzd_fit(
     **kwargs: Any,
 ) -> NDArrayf:
     """
-    Optimization of fit function for Least-Z difference coregistration.
+    Optimization of fit function for Least Z-difference coregistration.
 
     :param x: X coordinate as 1D array.
     :param y: Y coordinate as 1D array.
@@ -1620,7 +1617,7 @@ def _lzd_iteration_step(
     only_translation: bool,
 ) -> tuple[NDArrayf, float]:
     """
-    Iteration step of Least-Z difference coregistration from Rosenholm and Torlegård (1988).
+    Iteration step of Least Z-difference coregistration from Rosenholm and Torlegård (1988).
 
     The function uses 2D array interpolators of the DEM input and its gradient, computed only once outside iteration
     loops, to optimize computing time.
@@ -1690,9 +1687,6 @@ def _lzd_iteration_step(
     # Compute statistic on offset to know if it reached tolerance
     translations = step_matrix[:3, 3]
 
-    print(f"Translation during iteration: {translations}")
-    # print(f"Rotation during iteration: {rotations}")
-
     tolerance_translation = np.sqrt(np.sum(translations) ** 2)
     # TODO: If we allow multiple tolerances in the future, here's the rotation tolerance
     # rotations = step_matrix[:3, :3]
@@ -1716,7 +1710,7 @@ def lzd(
     only_translation: bool,
 ) -> tuple[NDArrayf, tuple[float, float, float], int]:
     """
-    Least-Z differences coregistration.
+    Least Z-differences coregistration.
     See Rosenholm and Torlegård (1988),
     https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf.
 
@@ -2531,7 +2525,7 @@ class NuthKaab(AffineCoreg):
 
 class LZD(AffineCoreg):
     """
-    Least-Z difference coregistration.
+    Least Z-difference coregistration.
 
     See Rosenholm and Torlegård (1988),
     https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf.

@@ -111,19 +111,19 @@ Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to iso
      - Description
      - Reference
    * - {ref}`nuthkaab`
-     - Horizontal and vertical translations
+     - Translations
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
    * - {ref}`dh-minimize`
-     - Horizontal and vertical translations
+     - Translations
      - N/A
    * - {ref}`lzd`
-     - Translation and rotations
+     - Translations and rotations
      - [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf)
    * - {ref}`icp`
-     - Translation and rotations
+     - Translations and rotations
      - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955), [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C)
    * - {ref}`cpd`
-     - Translation and rotations
+     - Translations and rotations
      - [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46)
    * - {ref}`vshift`
      - Vertical translation
