@@ -243,7 +243,7 @@ def test_warp_dem() -> None:
     shape = (500, 550)
     xx, yy = _coords(transform=transform, shape=shape, area_or_point=None)
     # Make it a 2D polynomial gaussian-filtered
-    dem = xdem.fit.polynomial_2d((xx, yy), 1, 1, 1, 1)
+    dem = xdem.fit.polynomial_2d((xx, yy), 1, 1, 1, 1)  # type: ignore
     dem = xdem.filters.gaussian_filter_scipy(dem, sigma=10)
 
     # Warp the DEM using the source-destination coordinates.
