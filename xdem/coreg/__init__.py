@@ -30,7 +30,6 @@ from xdem.coreg.affine import (  # noqa
     VerticalShift,
 )
 from xdem.coreg.base import (  # noqa
-    BlockwiseCoreg,
     Coreg,
     CoregPipeline,
     apply_matrix,
@@ -39,4 +38,5 @@ from xdem.coreg.base import (  # noqa
     translations_rotations_from_matrix,
 )
 from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
+from xdem.coreg.blockwise import BlockwiseCoreg  # noqa
 from xdem.coreg.workflows import dem_coregistration  # noqa
