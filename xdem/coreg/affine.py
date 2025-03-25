@@ -303,7 +303,9 @@ def _preprocess_pts_rst_subsample_interpolator(
     return sub_dh_interpolator, sub_bias_vars, subsample_final
 
 
-def _standardize_epc(ref_epc: NDArrayf, tba_epc: NDArrayf, scale_std: bool = True) -> tuple[NDArrayf, NDArrayf, NDArrayf, float]:
+def _standardize_epc(
+    ref_epc: NDArrayf, tba_epc: NDArrayf, scale_std: bool = True
+) -> tuple[NDArrayf, NDArrayf, tuple[float, float, float], float]:
     """
     Standardize elevation point clouds by getting centroid and standardization factor using median statistics.
 
@@ -320,6 +322,8 @@ def _standardize_epc(ref_epc: NDArrayf, tba_epc: NDArrayf, scale_std: bool = Tru
     # Subtract centroid from point clouds
     ref_epc = ref_epc - centroid[:, None]
     tba_epc = tba_epc - centroid[:, None]
+
+    centroid = (centroid[0], centroid[1], centroid[2])
 
     if scale_std:
         # Get mean standardization factor for all axes
@@ -1065,13 +1069,14 @@ def _icp_iteration_step(
 
     # Compute statistic on offset to know if it reached tolerance
     translations = step_matrix[:3, 3]
-    rotations = step_matrix[:3, :3]
 
     print(f"Translation during iteration: {translations}")
     # print(f"Rotation during iteration: {rotations}")
 
     tolerance_translation = np.sqrt(np.sum(translations) ** 2)
-    tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+    # TODO: If we allow multiple tolerances in the future, here's the rotation tolerance
+    # rotations = step_matrix[:3, :3]
+    # tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
     return new_matrix, tolerance_translation
 
@@ -1343,11 +1348,13 @@ def _cpd_iteration_step(
     )
 
     # Compute statistic on offset to know if it reached tolerance
-    translations = new_matrix[:3, 3]
-    rotations = new_matrix[:3, :3]
     tolerance_q = np.abs(q - new_q)
-    tolerance_translation = np.sqrt(np.sum(translations) ** 2)
-    tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+
+    # TODO: If we allow multiple tolerances in the future, here are the translation and rotation tolerances
+    # translations = new_matrix[:3, 3]
+    # rotations = new_matrix[:3, :3]
+    # tolerance_translation = np.sqrt(np.sum(translations) ** 2)
+    # tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
     return (new_matrix, new_sigma2, new_q), tolerance_q
 
@@ -1682,13 +1689,14 @@ def _lzd_iteration_step(
 
     # Compute statistic on offset to know if it reached tolerance
     translations = step_matrix[:3, 3]
-    rotations = step_matrix[:3, :3]
 
     print(f"Translation during iteration: {translations}")
     # print(f"Rotation during iteration: {rotations}")
 
     tolerance_translation = np.sqrt(np.sum(translations) ** 2)
-    tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+    # TODO: If we allow multiple tolerances in the future, here's the rotation tolerance
+    # rotations = step_matrix[:3, :3]
+    # tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
     return new_matrix, tolerance_translation
 

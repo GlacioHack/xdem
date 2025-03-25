@@ -559,8 +559,10 @@ class TestAffineCoreg:
 
         # For CPD, without standardization, the numerics fail
         if coreg_method == coreg.CPD:
-            with pytest.raises(ValueError, match=re.escape("CPD coregistration numerics during np.linalg.svd(), "
-                                                           "try setting standardize=True.")):
+            with pytest.raises(
+                ValueError,
+                match=re.escape("CPD coregistration numerics during np.linalg.svd(), " "try setting standardize=True."),
+            ):
                 c_nonstd.fit(ref, ref_shifted_rotated, random_state=42)
             return
         # For ICP, the numerics pass
@@ -573,7 +575,6 @@ class TestAffineCoreg:
         # Check results are worse for non-standardized
         assert np.allclose(invert_fit_shifts_translations_nonstd[:3], shifts_rotations[:3], rtol=1)
         assert np.allclose(invert_fit_shifts_translations_nonstd[3:], shifts_rotations[3:], rtol=10e-1, atol=2 * 10e-2)
-
 
     def test_nuthkaab_no_vertical_shift(self) -> None:
         ref, tba = load_examples(crop=False)[0:2]

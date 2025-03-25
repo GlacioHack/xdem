@@ -698,7 +698,6 @@ def _get_subsample_mask_pts_rst(
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
         sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
 
-
     return sub_mask
 
 
@@ -784,6 +783,38 @@ def _subsample_on_mask(
             sub_coords = None
 
     return sub_ref, sub_tba, sub_bias_vars, sub_coords
+
+
+@overload
+def _preprocess_pts_rst_subsample(
+    params_random: InRandomDict,
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    aux_vars: None | dict[str, NDArrayf] = None,
+    *,
+    return_coords: Literal[False] = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None]: ...
+
+
+@overload
+def _preprocess_pts_rst_subsample(
+    params_random: InRandomDict,
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    aux_vars: None | dict[str, NDArrayf] = None,
+    *,
+    return_coords: Literal[True],
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], tuple[NDArrayf, NDArrayf]]: ...
 
 
 def _preprocess_pts_rst_subsample(

@@ -374,7 +374,7 @@ plt.tight_layout()
 - **Pros:** Efficient at estimating rotation and shifts simultaneously.
 - **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
 
-Iterative closest point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) (point-to-point) or [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C) (point-to-plane). 
+Iterative closest point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) (point-to-point) or [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C) (point-to-plane).
 It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. For point-to-point, the 3D distance is used for the minimization while, for point-to-plane, the 3D distance projected on the plane normals is used instead. If DEMs are used as inputs, they are converted to point clouds.
 As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
 
@@ -412,7 +412,7 @@ plt.tight_layout()
 - **Pros:** Needs fewer samples to work efficiently.
 - **Cons:** Has trouble solving for horizontal translations if X/Y scale differs from Z scale, as GMM variance is the same in all dimensions.
 
-Coherent point drift (CPD) coregistration is an iterative point cloud registration method from [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46). 
+Coherent point drift (CPD) coregistration is an iterative point cloud registration method from [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46).
 It is a probabilistic approach, iteratively fitting Gaussian mixture model (GMM) centroids for the reference point cloud on the target point cloud by maximizing the likelihood of the probability density estimation problem.
 
 
