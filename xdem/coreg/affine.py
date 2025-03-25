@@ -281,6 +281,7 @@ def _preprocess_pts_rst_subsample_interpolator(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
+        z_name=z_name,
         aux_vars=aux_vars,
     )
 
@@ -300,6 +301,37 @@ def _preprocess_pts_rst_subsample_interpolator(
 
     # Return 1D arrays of subsampled points at the same location
     return sub_dh_interpolator, sub_bias_vars, subsample_final
+
+
+def _standardize_epc(ref_epc: NDArrayf, tba_epc: NDArrayf, scale_std: bool = True) -> tuple[NDArrayf, NDArrayf, NDArrayf, float]:
+    """
+    Standardize elevation point clouds by getting centroid and standardization factor using median statistics.
+
+    :param ref_epc: Reference point cloud.
+    :param tba_epc: To-be-aligned point cloud.
+    :param scale_std: Whether to scale all axes by a factor.
+
+    :return: Standardized point clouds, Centroid of standardization, Scale factor of standardization.
+    """
+
+    # Get centroid
+    centroid = np.median(ref_epc, axis=1)
+
+    # Subtract centroid from point clouds
+    ref_epc = ref_epc - centroid[:, None]
+    tba_epc = tba_epc - centroid[:, None]
+
+    if scale_std:
+        # Get mean standardization factor for all axes
+        std_fac = np.mean([nmad(ref_epc[0, :]), nmad(ref_epc[1, :]), nmad(ref_epc[2, :])])
+
+        # Standardize point clouds
+        ref_epc = ref_epc / std_fac
+        tba_epc = tba_epc / std_fac
+    else:
+        std_fac = 1
+
+    return ref_epc, tba_epc, centroid, std_fac
 
 
 ################################
@@ -1081,6 +1113,7 @@ def icp(
     method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
     picky: bool = False,
     only_translation: bool = False,
+    standardize: bool = True,
 ) -> tuple[NDArrayf, tuple[float, float, float], int]:
     """
     Main function for Iterative Closest Point coregistration.
@@ -1123,33 +1156,6 @@ def icp(
         return_coords=True,
     )
 
-    # TODO: Enforce that _preprocess function returns no NaNs
-    # (Temporary)
-    if sub_aux_vars is not None:
-        ind_valid = np.logical_and.reduce(
-            (
-                np.isfinite(sub_ref),
-                np.isfinite(sub_tba),
-                np.isfinite(sub_aux_vars["nx"]),
-                np.isfinite(sub_aux_vars["ny"]),
-                np.isfinite(sub_aux_vars["nz"]),
-            )
-        )
-    else:
-        ind_valid = np.logical_and.reduce(
-            (
-                np.isfinite(sub_ref),
-                np.isfinite(sub_tba),
-            )
-        )
-    sub_ref = sub_ref[ind_valid]
-    sub_tba = sub_tba[ind_valid]
-    sub_coords = (sub_coords[0][ind_valid], sub_coords[1][ind_valid])
-    if sub_aux_vars is not None:
-        sub_aux_vars["nx"] = sub_aux_vars["nx"][ind_valid]
-        sub_aux_vars["ny"] = sub_aux_vars["ny"][ind_valid]
-        sub_aux_vars["nz"] = sub_aux_vars["nz"][ind_valid]
-
     # Convert point clouds to Nx3 arrays for efficient calculations below
     ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
     tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
@@ -1158,18 +1164,9 @@ def icp(
     else:
         norms = None
 
-    # Remove centroid
-    centroid = np.mean(ref_epc, axis=1)
-    ref_epc = ref_epc - centroid[:, None]
-    tba_epc = tba_epc - centroid[:, None]
-
-    # Re-scale to avoid too large numbers
-    # scaling = np.mean([np.nanpercentile(ref_epc[0, :], 95) - np.nanpercentile(ref_epc[0, :], 5),
-    #                    np.nanpercentile(ref_epc[1, :], 95) - np.nanpercentile(ref_epc[1, :], 5)]) / 2
-    #
-    # ref_epc = ref_epc / scaling
-    # tba_epc = tba_epc / scaling
-    # print(f"Scaling: {scaling}")
+    # Remove centroid and standardize to facilitate numerical convergence
+    ref_epc, tba_epc, centroid, std_fac = _standardize_epc(ref_epc, tba_epc, scale_std=standardize)
+    tolerance /= std_fac
 
     # Define search tree outside of loop for performance
     ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
@@ -1193,6 +1190,8 @@ def icp(
         tolerance=tolerance,
         max_iterations=max_iterations,
     )
+    # De-standardize
+    final_matrix[:3, 3] *= std_fac
 
     # Get subsample size
     subsample_final = len(sub_ref)
@@ -1270,7 +1269,10 @@ def _cpd_fit(
 
     # Singular value decomposition as per lemma 1
     if not only_translation:
-        U, _, V = np.linalg.svd(A, full_matrices=True)
+        try:
+            U, _, V = np.linalg.svd(A, full_matrices=True)
+        except np.linalg.LinAlgError:
+            raise ValueError("CPD coregistration numerics during np.linalg.svd(), try setting standardize=True.")
         C = np.ones((D,))
         C[D - 1] = np.linalg.det(np.dot(U, V))
 
@@ -1363,6 +1365,7 @@ def cpd(
     max_iterations: int,
     tolerance: float,
     only_translation: bool = False,
+    standardize: bool = True,
 ) -> tuple[NDArrayf, tuple[float, float, float], int]:
     """
     Main function for Coherent Point Drift coregistration.
@@ -1387,53 +1390,15 @@ def cpd(
         return_coords=True,
     )
 
-    # TODO: Enforce that _preprocess function returns no NaNs
-    # (Temporary)
-    ind_valid = np.logical_and(np.isfinite(sub_ref), np.isfinite(sub_tba))
-    sub_ref = sub_ref[ind_valid]
-    sub_tba = sub_tba[ind_valid]
-    sub_coords = (sub_coords[0][ind_valid], sub_coords[1][ind_valid])
-
     # Convert point clouds to Nx3 arrays for efficient calculations below
     ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
     tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
 
-    # Derive centroid and remove
-    centroid = np.median(ref_epc, axis=1)
-    ref_epc = ref_epc - centroid[:, None]
-    tba_epc = tba_epc - centroid[:, None]
-
-    scaling = (
-        np.mean(
-            [
-                np.nanpercentile(ref_epc[0, :], 95) - np.nanpercentile(ref_epc[0, :], 5),
-                np.nanpercentile(ref_epc[1, :], 95) - np.nanpercentile(ref_epc[1, :], 5),
-            ]
-        )
-        / 2
-    )
-    # scaling_v = (np.nanpercentile(ref_epc[2, :], 95) - np.nanpercentile(ref_epc[2, :], 5))/2
-    #
-    # ref_epc[:2, :] = ref_epc[:2, :] / scaling_h
-    # ref_epc[2, :] = ref_epc[2, :] / scaling_v
-    # #
-    # tba_epc[:2, :] = tba_epc[:2, :] / scaling_h
-    # tba_epc[2, :] = tba_epc[2, :] / scaling_v
-
-    ref_epc = ref_epc / scaling
-    tba_epc = tba_epc / scaling
+    # Remove centroid and standardize to facilitate numerical convergence
+    ref_epc, tba_epc, centroid, std_fac = _standardize_epc(ref_epc=ref_epc, tba_epc=tba_epc, scale_std=standardize)
+    tolerance /= std_fac
 
     # Run rigid CPD registration
-
-    # Using pycpd
-    # reg = RigidRegistration(X=ref_epc.T, Y=tba_epc.T, max_iterations=max_iterations, tolerance=tolerance,
-    #                         w=weight_cpd, scale=False)
-    # _, (s_reg, R_reg, t_reg) = reg.register()
-    # final_matrix = np.eye(4)
-    # final_matrix[:3, :3] = R_reg
-    # final_matrix[:3, 3] = - t_reg * scaling
-    # final_matrix = invert_matrix(final_matrix)
-
     # Iterate through method until tolerance or max number of iterations is reached
     init_matrix = np.eye(4)  # Initial matrix is the identity transform
     init_q = np.inf
@@ -1450,8 +1415,8 @@ def cpd(
     )
     final_matrix = invert_matrix(final_matrix)
 
-    # Re-scale
-    final_matrix[:3, 3] *= scaling
+    # De-standardize
+    final_matrix[:3, 3] *= std_fac
 
     # Get subsample size
     subsample_final = len(sub_ref)
@@ -1631,7 +1596,7 @@ def _lzd_fit(
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
     # Build matrix out of optimized parameters
-    matrix = matrix_from_translations_rotations(*results.x, use_degrees=True)  # type: ignore
+    matrix = matrix_from_translations_rotations(*results.x, use_degrees=False)  # type: ignore
 
     return matrix
 
@@ -1942,6 +1907,7 @@ class AffineCoreg(Coreg):
             inlier_mask=inlier_mask,
             transform=transform,
             area_or_point=area_or_point,
+            z_name=z_name,
             aux_vars=aux_vars,
         )
 
@@ -2164,12 +2130,13 @@ class ICP(AffineCoreg):
     def __init__(
         self,
         method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
-        picky: bool = False,
+        picky: bool = True,
         only_translation: bool = False,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"] = scipy.optimize.least_squares,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 20,
         tolerance: float = 0.01,
+        standardize: bool = True,
         subsample: float | int = 5e5,
     ) -> None:
         """
@@ -2185,6 +2152,8 @@ class ICP(AffineCoreg):
         :param fit_loss_func: Loss function for the minimization of residuals (if minimizer is not "lsq_approx").
         :param max_iterations: Maximum allowed iterations before stopping.
         :param tolerance: Residual change threshold after which to stop the iterations.
+        :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
+            (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
 
@@ -2196,6 +2165,7 @@ class ICP(AffineCoreg):
             "max_iterations": max_iterations,
             "tolerance": tolerance,
             "only_translation": only_translation,
+            "standardize": standardize,
         }
         super().__init__(subsample=subsample, meta=meta)
 
@@ -2262,6 +2232,7 @@ class ICP(AffineCoreg):
             method=self._meta["inputs"]["specific"]["icp_method"],
             picky=self._meta["inputs"]["specific"]["icp_picky"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            standardize=self._meta["inputs"]["affine"]["standardize"],
         )
 
         # Write output to class
@@ -2294,7 +2265,8 @@ class CPD(AffineCoreg):
         weight: float = 0,
         only_translation: bool = False,
         max_iterations: int = 100,
-        tolerance: float = 0.00001,
+        tolerance: float = 0.01,
+        standardize: bool = True,
         subsample: int | float = 5e3,
     ):
         """
@@ -2305,6 +2277,8 @@ class CPD(AffineCoreg):
         :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
         :param max_iterations: Maximum allowed iterations before stopping.
         :param tolerance: Residual change threshold after which to stop the iterations.
+        :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
+            (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
 
@@ -2313,6 +2287,7 @@ class CPD(AffineCoreg):
             "tolerance": tolerance,
             "cpd_weight": weight,
             "only_translation": only_translation,
+            "standardize": standardize,
         }
 
         super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
@@ -2377,6 +2352,7 @@ class CPD(AffineCoreg):
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
             tolerance=self._meta["inputs"]["iterative"]["tolerance"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            standardize=self._meta["inputs"]["affine"]["standardize"],
         )
 
         # Write output to class

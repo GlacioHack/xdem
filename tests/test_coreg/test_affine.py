@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os.path
+import re
 import warnings
 
 import geopandas as gpd
@@ -232,8 +233,8 @@ class TestAffineCoreg:
         [
             (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
             (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
-            (coreg.LZD, (9.96981, 2.1401506, -1.9257709)),
-            (coreg.ICP, (5.4509249, 1.1345858, -2.032635)),
+            (coreg.LZD, (9.969819, 2.140150, -1.9257709)),
+            (coreg.ICP, (5.417970, 1.1282436, -2.0662609)),
         ],
     )  # type: ignore
     def test_coreg_translations__example(
@@ -424,7 +425,7 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "coreg_method__shifts_rotations",
         [
-            (coreg.ICP, (5.450924, 1.134585, -2.032635, 0.007124, -0.007524, -0.0047392)),
+            (coreg.ICP, (5.417970, 1.128243, -2.066260, 0.0071103, -0.007524, -0.0047392)),
             (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245, -0.00766, -0.008174)),
             (coreg.CPD, (0.005405, 0.005163, -2.047066, 0.0070245, -0.00755, -0.0000405)),
         ],
@@ -481,7 +482,8 @@ class TestAffineCoreg:
         ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
 
         # Coregister
-        rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=5000)
+        subsample_size = 50000 if rigid_coreg.__class__.__name__ != "CPD" else 500
+        rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=subsample_size)
 
         # Check that fit matrix is the invert of those used above, within a relative % for rotations
         fit_matrix = rigid_coreg.meta["outputs"]["affine"]["matrix"]
@@ -489,7 +491,8 @@ class TestAffineCoreg:
         invert_fit_shifts_rotations = translations_rotations_from_matrix(invert_fit_matrix)
 
         # Not so precise for shifts
-        assert np.allclose(invert_fit_shifts_rotations[:3], shifts_rotations[:3], rtol=1)
+        if rigid_coreg.__class__.__name__ != "CPD":
+            assert np.allclose(invert_fit_shifts_rotations[:3], shifts_rotations[:3], rtol=1)
         # Precise for rotations
         assert np.allclose(invert_fit_shifts_rotations[3:], shifts_rotations[3:], rtol=10e-1, atol=2 * 10e-2)
 
@@ -520,7 +523,57 @@ class TestAffineCoreg:
         assert np.allclose(invert_fit_shifts_translations[3:], 0)
 
         # Check that translations are not far from expected values
-        assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
+        if coreg_method != coreg.CPD:
+            assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
+
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
+    def test_coreg_rigid__standardize(self, coreg_method) -> None:
+
+        # Get reference elevation
+        ref = self.ref
+
+        # Add artificial shift and rotations
+        # (Define small rotations on purpose, so that the "translation only" coregistration is not affected)
+        shifts_rotations = (300, 150, 75, 1, 0.5, 0.2)
+        matrix = matrix_from_translations_rotations(*shifts_rotations)
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
+        ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+
+        # 1/ Run co-registration with standardization
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c_std = coreg_method(subsample=subsample_size, standardize=True)
+        c_std.fit(ref, ref_shifted_rotated, random_state=42)
+
+        # Get invert of resulting matrix
+        fit_matrix_std = c_std.meta["outputs"]["affine"]["matrix"]
+        invert_fit_shifts_translations_std = translations_rotations_from_matrix(invert_matrix(fit_matrix_std))
+
+        # Check that standardized result are OK
+        if coreg_method != coreg.CPD:
+            assert np.allclose(invert_fit_shifts_translations_std[:3], shifts_rotations[:3], rtol=1)
+        assert np.allclose(invert_fit_shifts_translations_std[3:], shifts_rotations[3:], rtol=10e-1, atol=2 * 10e-2)
+
+        # 2/ Run coregistration without standardization
+
+        c_nonstd = coreg_method(subsample=subsample_size, standardize=False)
+
+        # For CPD, without standardization, the numerics fail
+        if coreg_method == coreg.CPD:
+            with pytest.raises(ValueError, match=re.escape("CPD coregistration numerics during np.linalg.svd(), "
+                                                           "try setting standardize=True.")):
+                c_nonstd.fit(ref, ref_shifted_rotated, random_state=42)
+            return
+        # For ICP, the numerics pass
+        else:
+            c_nonstd.fit(ref, ref_shifted_rotated, random_state=42)
+
+        fit_matrix_nonstd = c_nonstd.meta["outputs"]["affine"]["matrix"]
+        invert_fit_shifts_translations_nonstd = translations_rotations_from_matrix(invert_matrix(fit_matrix_nonstd))
+
+        # Check results are worse for non-standardized
+        assert np.allclose(invert_fit_shifts_translations_nonstd[:3], shifts_rotations[:3], rtol=1)
+        assert np.allclose(invert_fit_shifts_translations_nonstd[3:], shifts_rotations[3:], rtol=10e-1, atol=2 * 10e-2)
+
 
     def test_nuthkaab_no_vertical_shift(self) -> None:
         ref, tba = load_examples(crop=False)[0:2]

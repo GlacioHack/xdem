@@ -123,6 +123,7 @@ dict_key_to_str = {
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
     "only_translation": "Only translations are considered",
+    "standardize": "Input data was standardized",
     "icp_method": "Type of ICP method",
     "icp_picky": "Picky closest pair selection",
     "cpd_weight": "Weight of CPD outlier removal",
@@ -621,6 +622,7 @@ def _get_subsample_mask_pts_rst(
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+    z_name: str,
     area_or_point: Literal["Area", "Point"] | None,
     aux_vars: None | dict[str, NDArrayf] = None,
 ) -> NDArrayb:
@@ -668,10 +670,13 @@ def _get_subsample_mask_pts_rst(
         pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
+        # Remove non-finite values from point dataset
+        pts_elev = pts_elev[np.isfinite(pts_elev[z_name].values)]
+
         # Get coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
 
-        # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
+        # Get valid mask ahead of subsampling to have the exact number of requested subsamples
         if aux_vars is not None:
             valid_mask = np.logical_and.reduce(
                 (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in aux_vars.values()))
@@ -682,15 +687,17 @@ def _get_subsample_mask_pts_rst(
         # Convert inlier mask to points to be able to determine subsample later
         # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
         # Interpolates boolean mask as integers
-        # TODO: Pass area_or_point all the way to here
-        valid_mask = np.floor(
+        # TODO: Create a function in GeoUtils that can compute the valid boolean mask of an interpolation without
+        #  having to convert data to float32
+        valid_mask = valid_mask.astype(np.float32)
+        valid_mask[valid_mask == 0] = np.nan
+        valid_mask = np.isfinite(
             _interp_points(array=valid_mask, transform=transform, points=pts, area_or_point=area_or_point)
-        ).astype(bool)
+        )
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
         sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
 
-    # TODO: Move check to Coreg.fit()?
 
     return sub_mask
 
@@ -739,6 +746,9 @@ def _subsample_on_mask(
         # Identify which dataset is point or raster
         pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+
+        # Remove invalid points
+        pts_elev = pts_elev[np.isfinite(pts_elev[z_name].values)]
 
         # Subsample point coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
@@ -804,6 +814,7 @@ def _preprocess_pts_rst_subsample(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
+        z_name=z_name,
         aux_vars=aux_vars,
     )
 
@@ -1695,6 +1706,8 @@ class InAffineDict(TypedDict, total=False):
     apply_vshift: bool
     # Apply coregistration method only for translations
     only_translation: bool
+    # Standardize input data for numerics
+    standardize: bool
 
 
 class OutAffineDict(TypedDict, total=False):
@@ -2025,6 +2038,7 @@ class Coreg:
             inlier_mask=inlier_mask,
             transform=transform,
             area_or_point=area_or_point,
+            z_name=z_name,
             aux_vars=aux_vars,
         )
 

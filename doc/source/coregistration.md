@@ -116,9 +116,15 @@ Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to iso
    * - {ref}`dh-minimize`
      - Horizontal and vertical translations
      - N/A
+   * - {ref}`lzd`
+     - Translation and rotations
+     - [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf)
    * - {ref}`icp`
      - Translation and rotations
-     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955)
+     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955), [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C)
+   * - {ref}`cpd`
+     - Translation and rotations
+     - [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46)
    * - {ref}`vshift`
      - Vertical translation
      - N/A
@@ -305,6 +311,59 @@ _ = ax[1].set_yticklabels([])
 plt.tight_layout()
 ```
 
+(lzd)=
+### Least-Z difference
+
+{class}`xdem.coreg.LZD`
+
+- **Performs:** Rigid transform transformation (3D translation + 3D rotation).
+- **Does not support weights.**
+- **Pros:** Good at solving sub-pixels shifts by harnessing gridded nature of DEM.
+- **Cons:** Sensitive to elevation outliers.
+
+Least-Z difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
+
+```{code-cell} ipython3
+:tags: [hide-cell]
+:mystnb:
+:  code_prompt_show: "Show the code for adding a shift and rotation"
+:  code_prompt_hide: "Hide the code for adding a shift and rotation"
+
+# Apply a rotation of 0.2 degrees in X, 0.1 in Y and 0 in Z
+rotations = np.array([0.2, 0.1, 0])
+# Add X/Y/Z shifts in meters
+shifts = np.array([10, 20, 5])
+# Affine matrix for 3D transformation
+matrix = coreg.matrix_from_translations_rotations(*shifts, *rotations)
+
+# We create misaligned elevation data
+centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem)]
+tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix, centroid=centroid)
+```
+
+```{code-cell} ipython3
+# Define a coregistration based on LZD
+lzd = xdem.coreg.LZD()
+# Fit to data and apply
+aligned_dem = lzd.fit_and_apply(ref_dem, tba_dem_shifted_rotated)
+```
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before LZD")
+(tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After LZD")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+plt.tight_layout()
+```
+
 (icp)=
 ### Iterative closest point
 
@@ -315,30 +374,10 @@ plt.tight_layout()
 - **Pros:** Efficient at estimating rotation and shifts simultaneously.
 - **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
 
-Iterative Closest Point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955). It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. If DEMs are used as inputs, they are converted to point clouds.
+Iterative closest point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) (point-to-point) or [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C) (point-to-plane). 
+It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. For point-to-point, the 3D distance is used for the minimization while, for point-to-plane, the 3D distance projected on the plane normals is used instead. If DEMs are used as inputs, they are converted to point clouds.
 As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
 
-```{code-cell} ipython3
-:tags: [hide-cell]
-:mystnb:
-:  code_prompt_show: "Show the code for adding a shift and rotation"
-:  code_prompt_hide: "Hide the code for adding a shift and rotation"
-
-# Apply a rotation of 0.2 degrees in X, 0.1 in Y and 0 in Z
-e = np.deg2rad([0.2, 0.1, 0])
-# Add X/Y/Z shifts in meters
-shifts = np.array([10, 20, 5])
-# Affine matrix for 3D transformation
-import pytransform3d
-matrix_rot = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
-matrix = np.diag(np.ones(4, dtype=float))
-matrix[:3, :3] = matrix_rot
-matrix[:3, 3] = shifts
-
-centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem)]
-# We create misaligned elevation data
-tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix, centroid=centroid)
-```
 
 ```{code-cell} ipython3
 # Define a coregistration based on ICP
@@ -358,6 +397,43 @@ f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before ICP")
 (tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
 ax[1].set_title("After ICP")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+plt.tight_layout()
+```
+
+(cpd)=
+### Coherent point drift
+
+{class}`xdem.coreg.CPD`
+
+- **Performs:** Rigid transform transformation (3D translation + 3D rotation).
+- **Does not support weights.**
+- **Pros:** Needs fewer samples to work efficiently.
+- **Cons:** Has trouble solving for horizontal translations if X/Y scale differs from Z scale, as GMM variance is the same in all dimensions.
+
+Coherent point drift (CPD) coregistration is an iterative point cloud registration method from [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46). 
+It is a probabilistic approach, iteratively fitting Gaussian mixture model (GMM) centroids for the reference point cloud on the target point cloud by maximizing the likelihood of the probability density estimation problem.
+
+
+```{code-cell} ipython3
+# Define a coregistration based on CPD
+cpd = xdem.coreg.CPD()
+# Fit to data and apply
+aligned_dem = cpd.fit_and_apply(ref_dem, tba_dem_shifted_rotated)
+```
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before CPD")
+(tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After CPD")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 plt.tight_layout()
@@ -474,6 +550,8 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 **4. Affine metadata (common to all affine methods)**:
 
+- An input `only_translation` to define if a coregistration should solve only for translations,
+- An input `standardize` to define if the input data should be standardized to the unit sphere before coregistration,
 - An output `matrix` that stores the estimated affine matrix,
 - An output `centroid` that stores the centroid coordinates with which to apply the affine transformation,
 - Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.

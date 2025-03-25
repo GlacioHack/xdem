@@ -109,13 +109,10 @@ class TestCoregClass:
         # Assert all keys exist in the mapping key to str dictionary used for info
         list_info_keys = list(dict_key_to_str.keys())
 
-        # TODO: Remove ICP keys here once generic optimizer is used
-        # Temporary exceptions: pipeline/blockwise + gradientdescending/icp
+        # Temporary exceptions: pipeline/blockwise
         list_exceptions = [
             "step_meta",
             "pipeline",
-            "rejection_scale",
-            "num_levels",
         ]
 
         # Compare the two lists
