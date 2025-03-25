@@ -51,8 +51,12 @@ More details are available on each feature page!
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
    * - Dh minimization
      - N/A
+   * - Least Z-difference
+     - [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf)
    * - Iterative closest point
-     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955)
+     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955), [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C)
+   * - Coherent point drift
+     - [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46)
    * - Vertical shift
      - N/A
 ```

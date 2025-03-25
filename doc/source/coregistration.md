@@ -312,7 +312,7 @@ plt.tight_layout()
 ```
 
 (lzd)=
-### Least-Z difference
+### Least Z-difference
 
 {class}`xdem.coreg.LZD`
 
@@ -321,7 +321,7 @@ plt.tight_layout()
 - **Pros:** Good at solving sub-pixels shifts by harnessing gridded nature of DEM.
 - **Cons:** Sensitive to elevation outliers.
 
-Least-Z difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
+Least Z-difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
