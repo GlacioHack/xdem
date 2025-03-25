@@ -16,7 +16,7 @@ More details are available on each feature page!
 ### Terrain attributes
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -41,7 +41,7 @@ More details are available on each feature page!
 ### Coregistration
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -64,7 +64,7 @@ More details are available on each feature page!
 ### Bias-correction
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -72,16 +72,12 @@ More details are available on each feature page!
      - Reference
    * - Deramp
      - N/A
-   * - Directional bias (sum of sinuoids)
+   * - Directional bias (sinusoids)
      - [Girod et al. (2017)](https://doi.org/10.3390/rs9070704)
-   * - Directional bias (other)
-     - N/A
-   * - Terrain bias (maximum curvature)
+   * - Terrain bias (curvature)
      - [Gardelle et al. (2012)](https://doi.org/10.3189/2012JoG11J175)
    * - Terrain bias (elevation)
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
-   * - Terrain bias (other)
-     - N/A
    * - Vertical shift
      - N/A
 ```
@@ -89,7 +85,7 @@ More details are available on each feature page!
 ### Gap-filling
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -105,14 +101,14 @@ More details are available on each feature page!
 ### Uncertainty analysis
 
 ```{list-table}
-   :widths: 2 1
+   :widths: 1 1
    :header-rows: 1
    :stub-columns: 1
 
    * - Method
      - Reference
-   * - R2009 (multiple correlation ranges, circular approximation)
+   * - R2009 (nested ranges, circular approx.)
      - [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950)
-   * - H2022 (heteroscedasticity, multiple correlation ranges, spatial propagation approximation)
+   * - H2022 (heterosc., nested ranges, spatial propag.)
      - [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922)
 ```
