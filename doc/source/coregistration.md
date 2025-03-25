@@ -334,7 +334,7 @@ rotations = np.array([0.2, 0.1, 0])
 # Add X/Y/Z shifts in meters
 shifts = np.array([10, 20, 5])
 # Affine matrix for 3D transformation
-matrix = coreg.matrix_from_translations_rotations(*shifts, *rotations)
+matrix = xdem.coreg.matrix_from_translations_rotations(*shifts, *rotations)
 
 # We create misaligned elevation data
 centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem)]

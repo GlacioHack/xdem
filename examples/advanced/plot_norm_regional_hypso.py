@@ -105,7 +105,7 @@ plt.show()
 # %%
 # We can plot the difference between the actual and the interpolated values, to validate the method.
 
-difference = (ddem_filled - ddem)[random_nans]
+difference = (ddem_filled - ddem)[mask_nans.data]
 median = np.ma.median(difference)
 nmad = xdem.spatialstats.nmad(difference)
 
