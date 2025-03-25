@@ -237,10 +237,10 @@ def test_warp_dem() -> None:
     test_shift = 6  # This shift will be validated below
     dest_coords[4, 2] += test_shift
 
-    # Generate a semi-random DEM
-    transform = rio.transform.from_origin(0, 500, 1, 1)
-    shape = (500, 550)
-    dem = misc.generate_random_field(shape, 100) * 200 + misc.generate_random_field(shape, 10) * 50
+    # Use test DEM data
+    dem = load_examples()[0]
+    dem_arr = dem.get_nanarray()
+    transform = dem.transform
 
     # Warp the DEM using the source-destination coordinates.
     transformed_dem = coreg.blockwise.warp_dem(

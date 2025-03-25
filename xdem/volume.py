@@ -36,13 +36,6 @@ from geoutils.raster.array import (
 )
 from tqdm import tqdm
 
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
-
 import xdem
 from xdem._typing import MArrayf, NDArrayf
 
@@ -321,8 +314,6 @@ to interpolate from. The default is 10.
 
     :returns: A filled array with no NaNs
     """
-    if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     # Create a mask for where nans exist
     nan_mask = get_mask_from_array(array)
@@ -334,9 +325,8 @@ to interpolate from. The default is 10.
     # Remove extrapolated values: gaps up to the size of max_search_distance are kept,
     # but surfaces that artificially grow on the edges are removed
     if not extrapolate:
-        interp_mask = cv2.morphologyEx(
-            (~nan_mask).squeeze().astype("uint8"), cv2.MORPH_CLOSE, kernel=np.ones((max_search_distance - 1,) * 2)
-        ).astype("bool")
+        interp_mask = scipy.ndimage.binary_closing((~nan_mask).squeeze().astype("uint8"),
+                                                   structure=np.ones((max_search_distance - 1,) * 2)).astype("bool")
         if np.ndim(array) == 3:
             interpolated_array[:, ~interp_mask] = np.nan
         else:
