@@ -8,7 +8,6 @@ import warnings
 from typing import Any, Callable, Iterable, Mapping
 
 import geopandas as gpd
-from geopandas.testing import assert_geodataframe_equal
 import geoutils as gu
 import numpy as np
 import pandas as pd
@@ -22,7 +21,7 @@ from scipy.ndimage import binary_dilation
 import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, _apply_matrix_pts_mat, apply_matrix, dict_key_to_str
+from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:

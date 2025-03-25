@@ -325,8 +325,9 @@ to interpolate from. The default is 10.
     # Remove extrapolated values: gaps up to the size of max_search_distance are kept,
     # but surfaces that artificially grow on the edges are removed
     if not extrapolate:
-        interp_mask = scipy.ndimage.binary_closing((~nan_mask).squeeze().astype("uint8"),
-                                                   structure=np.ones((max_search_distance - 1,) * 2)).astype("bool")
+        interp_mask = scipy.ndimage.binary_closing(
+            (~nan_mask).squeeze().astype("uint8"), structure=np.ones((max_search_distance - 1,) * 2)
+        ).astype("bool")
         if np.ndim(array) == 3:
             interpolated_array[:, ~interp_mask] = np.nan
         else:

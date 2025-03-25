@@ -10,7 +10,7 @@ from geoutils import Raster, Vector
 from geoutils.raster import RasterType
 
 import xdem
-from xdem import coreg, examples, misc, spatialstats
+from xdem import coreg, examples, spatialstats
 from xdem.coreg import BlockwiseCoreg
 from xdem.coreg.base import Coreg
 
@@ -238,9 +238,9 @@ def test_warp_dem() -> None:
     dest_coords[4, 2] += test_shift
 
     # Use test DEM data
-    dem = load_examples()[0]
-    dem_arr = dem.get_nanarray()
-    transform = dem.transform
+    dem_rst = load_examples()[0]
+    dem = dem_rst.get_nanarray()
+    transform = dem_rst.transform
 
     # Warp the DEM using the source-destination coordinates.
     transformed_dem = coreg.blockwise.warp_dem(

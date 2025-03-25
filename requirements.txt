@@ -17,4 +17,3 @@ affine
 pandas
 pyogrio
 shapely
-pycpd

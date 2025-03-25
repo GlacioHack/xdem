@@ -35,6 +35,7 @@ except ImportError:
 
 import xdem
 
+
 def deprecate(removal_version: Version = None, details: str = None) -> Callable[[Any], Any]:
     """
     Trigger a DeprecationWarning for the decorated function.
