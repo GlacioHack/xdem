@@ -29,11 +29,12 @@ import rasterio as rio
 from affine import Affine
 from geoutils import Raster
 from geoutils.raster import Mask, RasterType
+from geoutils.raster.distributed_computing import MultiprocConfig
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
 
-from xdem import coreg, multiproc, terrain
+from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
@@ -385,79 +386,94 @@ class DEM(Raster):  # type: ignore
             )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees)
+    def slope(
+        self, multiproc_config: MultiprocConfig | None, method: str = "Horn", degrees: bool = True
+    ) -> RasterType | None:
+        return terrain.slope(self, multiproc_config=multiproc_config, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
+        multiproc_config: MultiprocConfig | None,
         method: str = "Horn",
         degrees: bool = True,
-    ) -> RasterType:
+    ) -> RasterType | None:
 
-        return terrain.aspect(self, method=method, degrees=degrees)
+        return terrain.aspect(self, multiproc_config=multiproc_config, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
-        self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
-    ) -> RasterType:
+        self,
+        multiproc_config: MultiprocConfig | None,
+        method: str = "Horn",
+        azimuth: float = 315.0,
+        altitude: float = 45.0,
+        z_factor: float = 1.0,
+    ) -> RasterType | None:
 
-        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self) -> RasterType:
-
-        return terrain.curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self) -> RasterType:
-
-        return terrain.planform_curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self) -> RasterType:
-
-        return terrain.profile_curvature(self)
+        return terrain.hillshade(
+            self,
+            multiproc_config=multiproc_config,
+            method=method,
+            azimuth=azimuth,
+            altitude=altitude,
+            z_factor=z_factor,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self) -> RasterType:
+    def curvature(self, multiproc_config: MultiprocConfig | None) -> RasterType | None:
 
-        return terrain.maximum_curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def topographic_position_index(self, window_size: int = 3) -> RasterType:
-
-        return terrain.topographic_position_index(self, window_size=window_size)
+        return terrain.curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
+    def planform_curvature(self, multiproc_config: MultiprocConfig | None) -> RasterType | None:
 
-        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def roughness(self, window_size: int = 3) -> RasterType:
-
-        return terrain.roughness(self, window_size=window_size)
+        return terrain.planform_curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def rugosity(self) -> RasterType:
+    def profile_curvature(self, multiproc_config: MultiprocConfig | None) -> RasterType | None:
 
-        return terrain.rugosity(self)
+        return terrain.profile_curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(self, window_size: int = 13) -> RasterType:
+    def maximum_curvature(self, multiproc_config: MultiprocConfig | None) -> RasterType | None:
 
-        return terrain.fractal_roughness(self, window_size=window_size)
+        return terrain.maximum_curvature(self, multiproc_config=multiproc_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def topographic_position_index(
+        self, multiproc_config: MultiprocConfig | None, window_size: int = 3
+    ) -> RasterType | None:
+
+        return terrain.topographic_position_index(self, multiproc_config=multiproc_config, window_size=window_size)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def terrain_ruggedness_index(
+        self, multiproc_config: MultiprocConfig | None, method: str = "Riley", window_size: int = 3
+    ) -> RasterType | None:
+
+        return terrain.terrain_ruggedness_index(
+            self, multiproc_config=multiproc_config, method=method, window_size=window_size
+        )
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def roughness(self, multiproc_config: MultiprocConfig | None, window_size: int = 3) -> RasterType | None:
+
+        return terrain.roughness(self, multiproc_config=multiproc_config, window_size=window_size)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def rugosity(self, multiproc_config: MultiprocConfig | None) -> RasterType | None:
+
+        return terrain.rugosity(self, multiproc_config=multiproc_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def fractal_roughness(self, multiproc_config: MultiprocConfig | None, window_size: int = 13) -> RasterType | None:
+
+        return terrain.fractal_roughness(self, multiproc_config=multiproc_config, window_size=window_size)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
-
-    @copy_doc(multiproc, remove_dem_res_params=True)
-    def get_terrain_attribute_multiproc(
-        self, attribute: str | list[str], **kwargs: Any
-    ) -> RasterType | list[RasterType]:
-        return multiproc.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
     def coregister_3d(
         self,
