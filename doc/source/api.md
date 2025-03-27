@@ -164,6 +164,7 @@ Or to get multiple related terrain attributes at once (for performance):
     :toctree: gen_modules/
 
     DEM.get_terrain_attribute
+    DEM.get_terrain_attribute_multiproc
 ```
 
 ### Coregistration and bias corrections
