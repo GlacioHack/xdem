@@ -7,6 +7,7 @@ import warnings
 import geoutils as gu
 import numpy as np
 import pytest
+from geoutils.raster.distributed_computing import ClusterGenerator, MultiprocConfig
 
 import xdem
 
@@ -284,6 +285,53 @@ class TestTerrainAttribute:
         # A slope map with a lower resolution (higher value) should have gentler slopes.
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
+
+    def test_get_terrain_attribute_multiproc(self) -> None:
+        """Test the get_terrain attribute function in multiprocessing."""
+        outfile = "mp_output.tif"
+        outfile_multi = ["mp_output_slope.tif", "mp_output_aspect.tif", "mp_output_hillshade.tif"]
+
+        mp_config = MultiprocConfig(
+            chunk_size=200,
+            outfile=outfile,
+            cluster=ClusterGenerator("mp", nb_workers=4),
+        )
+
+        # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
+        xdem.terrain.get_terrain_attribute(self.dem, "slope", multiproc_config=mp_config, resolution=self.dem.res)
+        assert os.path.exists(outfile)
+        slope = gu.Raster(outfile, load_data=True)
+        assert isinstance(slope, gu.Raster)
+        os.remove(outfile)
+
+        # Create three products at the same time
+        xdem.terrain.get_terrain_attribute(
+            self.dem, ["slope", "aspect", "hillshade"], multiproc_config=mp_config, resolution=self.dem.res
+        )
+        for file in outfile_multi:
+            assert os.path.exists(file)
+        slope2 = gu.Raster(outfile_multi[0], load_data=True)
+        hillshade = gu.Raster(outfile_multi[2], load_data=True)
+        for file in outfile_multi:
+            os.remove(file)
+
+        # Create a hillshade using its own function
+        xdem.terrain.hillshade(self.dem, multiproc_config=mp_config, resolution=self.dem.res)
+        assert os.path.exists(outfile)
+        hillshade2 = gu.Raster(outfile, load_data=True)
+        os.remove(outfile)
+
+        # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
+        assert hillshade.raster_equal(hillshade2)
+        assert slope.raster_equal(slope2)
+
+        # A slope map with a lower resolution (higher value) should have gentler slopes.
+        xdem.terrain.get_terrain_attribute(
+            self.dem, "slope", multiproc_config=mp_config, resolution=self.dem.res[0] * 2
+        )
+        slope_lowres = gu.Raster(outfile, load_data=True)
+        os.remove(outfile)
+        assert slope.get_stats("mean") > slope_lowres.get_stats("mean")
 
     def test_get_terrain_attribute_errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
