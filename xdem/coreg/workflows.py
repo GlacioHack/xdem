@@ -163,7 +163,7 @@ def dem_coregistration(
     plot: bool = False,
     out_fig: str = None,
     estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
-    save_cog: bool = False,
+    driver: str = "GTiff",
 ) -> tuple[DEM, Coreg | CoregPipeline, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
@@ -194,7 +194,7 @@ be excluded.
     :param out_fig: Path to the output figure. If None will display to screen.
     :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
 the coregistration process begins.
-    :param save_cog: If set to True, will save the output Raster in COG format.
+    :param driver: Set the driver for saving file ("GTiff", "COG", etc.). By default, the driver is set to "GTiff".
 
     :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
@@ -364,10 +364,7 @@ coregistration and 4) the inlier_mask used.
 
     # Save coregistered DEM
     if out_dem_path is not None:
-        if save_cog:
-            dem_coreg.save(out_dem_path, tiled=True, driver="COG")
-        else:
-            dem_coreg.save(out_dem_path, tiled=True)
+        dem_coreg.save(out_dem_path, tiled=True, driver=driver)
 
     # Save stats to DataFrame
     out_stats = pd.DataFrame(
