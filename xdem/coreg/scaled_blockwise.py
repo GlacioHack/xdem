@@ -21,7 +21,7 @@
 
 """"""
 import copy
-import csv
+import itertools
 import math
 from typing import Any, List, Literal, Tuple
 
@@ -30,15 +30,17 @@ import pyransac3d as pyrsc
 import rasterio as rio
 import resample as cresample
 from geoutils.raster import Mask, RasterType
-from geoutils.raster.distributed_computing import cluster
+from geoutils.raster.distributed_computing import (
+    MultiprocConfig,
+    load_raster_tile,
+    map_overlap_multiproc,
+)
 from geoutils.raster.tiling import compute_tiling
-from rasterio.io import MemoryFile
 from rasterio.windows import Window
 
 import xdem
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg, CoregType
-from xdem.dem import DEM
 
 
 class ScaledBlockwiseCoreg(Coreg):
@@ -47,7 +49,13 @@ class ScaledBlockwiseCoreg(Coreg):
     Nuth and Kaab by saving on disk the tiles.
     """
 
-    def __init__(self, tile_size: int, reference_dem: RasterType, to_be_aligned_dem: RasterType, output_directory: str):
+    def __init__(
+        self,
+        tile_size: int,
+        reference_dem: RasterType,
+        to_be_aligned_dem: RasterType,
+        output_directory: str,
+    ):
         """
         Instantiate a scaled-blockwise processing object.
 
@@ -56,13 +64,16 @@ class ScaledBlockwiseCoreg(Coreg):
         :param to_be_aligned_dem: to_be_aligned_dem DEM object
         :param output_directory: path for saving results
         """
-        self.tile_size = tile_size
+        # self.tile_size = tile_size
         self.reference_dem = reference_dem
         self.to_be_aligned_dem = to_be_aligned_dem
         self.output_directory = output_directory
         super().__init__()
 
-        self.tiling_grid = compute_tiling(self.tile_size, self.reference_dem.shape, self.to_be_aligned_dem.shape)
+        # Define config for multiprocessing:
+        self.config_multiproc = MultiprocConfig(chunk_size=tile_size, outfile=output_directory)
+
+        self.tiling_grid = compute_tiling(tile_size, self.reference_dem.shape, self.to_be_aligned_dem.shape)
         self.res_coreg = None
         # TODO : save coreg results as meta
         self.stats_diff_before = {}
@@ -87,32 +98,29 @@ class ScaledBlockwiseCoreg(Coreg):
         **kwargs: Any,
     ) -> CoregType:
 
-        coreg_cluster = cluster.ClusterGenerator("basic")
-        res = to_be_aligned_elev.res
+        resultats = map_overlap_multiproc(
+            self.coreg_wrapper,
+            reference_elev,
+            self.config_multiproc,
+            self.to_be_aligned_dem,
+            return_tiles=True,
+        )
+        rows_cols = list(itertools.product(range(self.tiling_grid.shape[0]), range(self.tiling_grid.shape[1])))
 
-        in_progress = []
-
+        resolution = reference_elev.res
         shape_correg = (self.tiling_grid.shape[0], self.tiling_grid.shape[1], 3)
         shape_positions = (self.tiling_grid.shape[0], self.tiling_grid.shape[1], 2)
         res_correg = np.empty(shape_correg)
         res_positions = np.empty(shape_positions)
-        for row in range(self.tiling_grid.shape[0]):
-            for col in range(self.tiling_grid.shape[1]):
-                in_progress.append(
-                    coreg_cluster.launch_task(
-                        self.coreg_wrapper,
-                        args=[
-                            self.tiling_grid[row, col, :],
-                            [row, col],
-                        ],
-                    )
-                )
 
-        for in_prog in in_progress:
-            coreg_res, position, row_col = coreg_cluster.get_res(in_prog)
-            row, col = row_col
-            res_correg[row, col, :] = np.array([coreg_res[0] / res[0], coreg_res[1] / res[1], coreg_res[2]])
-            res_positions[row, col, :] = position
+        for idx, res in enumerate(resultats):
+            coreg_res, tile = res
+            center_position = (tile[0] + tile[1]) / 2, (tile[2] + tile[3]) / 2
+            row, col = rows_cols[idx]
+            res_correg[row, col, :] = np.array(
+                [coreg_res[0] / resolution[0], coreg_res[1] / resolution[1], coreg_res[2]]
+            )
+            res_positions[row, col, :] = center_position
 
         self.res_coreg = {"positions": res_positions, "coreg": res_correg}
 
@@ -121,43 +129,18 @@ class ScaledBlockwiseCoreg(Coreg):
 
         return self
 
-    def coreg_wrapper(self, tile, row_col):
-        """
-        Perform coregistration on a specified tile of DEM data.
-
-        This method aligns a tile from the `to_be_aligned_dem` to the corresponding tile in the `reference_dem`
-        using the Nuth-Kaab coregistration algorithm. It computes the shift in x, y, and z dimensions.
-
-        :param tile: A tuple representing the window or tile coordinates (min_row, max_row, min_col, max_col)
-        :param row_col: The row and column indices of the tile in the larger DEM grid
-
-        :return: A tuple containing:
-            - x_y_z: A list of shifts in the x, y, and z dimensions
-            - center_position: The center position of the tile
-            - row_col: The row and column indices of the tile
-        """
-
-        ref = copy.copy(self.reference_dem)
-        tba = copy.copy(self.to_be_aligned_dem)
-        dem_ref_tile = load_dem_from_window(ref, tile)
-        dem_sec_tile = load_dem_from_window(tba, tile)
-
+    @staticmethod
+    def coreg_wrapper(ref_tile, sec_raster):
+        sec_tile = sec_raster.crop(ref_tile)
         try:
             nuth_kaab = xdem.coreg.NuthKaab()
-            nuth_kaab.fit(dem_ref_tile, dem_sec_tile)
+            nuth_kaab.fit(ref_tile, sec_tile)
             shift = nuth_kaab.meta["outputs"]["affine"]
             x_y_z = [shift["shift_x"], shift["shift_y"], shift["shift_z"]]
         except ValueError:
             x_y_z = [np.nan, np.nan, np.nan]
 
-        # Position of tile center
-        center_position = (tile[0] + tile[1]) / 2, (tile[2] + tile[3]) / 2
-
-        del dem_ref_tile
-        del dem_sec_tile
-        del nuth_kaab
-
-        return x_y_z, center_position, row_col
+        return x_y_z
 
     def apply(
         self,
@@ -171,13 +154,12 @@ class ScaledBlockwiseCoreg(Coreg):
         **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]:
         ...
-        # ici grille de zeros un deux (step de 1 + offset de 0.5 ou 1)
+
         correction_grid = self.generate_correction_grid(self.res_coreg, 30, self.to_be_aligned_dem.shape)
 
         meta = self.reference_dem.profile
         meta.update(dtype=rio.float32, count=1, compress="lzw")
 
-        # resample and save tiles
         with rio.open(self.output_directory + "/aligned_dem.tif", "w", **meta) as dst:
             for row in range(self.tiling_grid.shape[0]):
                 for col in range(self.tiling_grid.shape[1]):
@@ -191,19 +173,7 @@ class ScaledBlockwiseCoreg(Coreg):
                         int(col_max),
                     )
 
-                    dem_ref = load_dem_from_window(self.reference_dem, tile)
-                    dem_sec = load_dem_from_window(self.to_be_aligned_dem, tile)
-
-                    diff = dem_ref - dem_sec
-
-                    name_tile = str(row) + "_" + str(col)
-                    self.stats_diff_before[name_tile] = {
-                        "coords": [row, col],
-                        "center": self.res_coreg["positions"][row, col],
-                        "stats": diff.get_stats(),
-                    }
-
-                    dem_sec_aligned = copy.copy(dem_sec)
+                    dem_sec_aligned = load_raster_tile(self.to_be_aligned_dem, tile)
 
                     arr_sec = self.resample_dem(
                         int(tile[0]),
@@ -217,58 +187,7 @@ class ScaledBlockwiseCoreg(Coreg):
 
                     window = Window(col_min, row_min, col_max - col_min, row_max - row_min)
                     dst.write(arr_sec, 1, window=window)
-
-                    # Compute stats
-                    diff = dem_ref - dem_sec_aligned
-
-                    self.stats_diff_after[name_tile] = {
-                        "coords": [row, col],
-                        "center": self.res_coreg["positions"][row, col],
-                        "stats": diff.get_stats(),
-                    }
-
-                    # Free memory
-                    del dem_ref
-                    del dem_sec_aligned
-                    del arr_sec
-                    del diff
-
-        self.write_csv(self.stats_diff_before, self.output_directory + "/stats_diff_before.csv")
-        self.write_csv(self.stats_diff_after, self.output_directory + "/stats_diff_after.csv")
-
         return 0
-
-    @staticmethod
-    def write_csv(dict_stat, csv_filename) -> None:
-        """
-        Write statistical data to a CSV file.
-
-        This function takes a dictionary of statistical data and writes it to a specified CSV file.
-        Each entry in the dictionary is written as a row in the CSV, with headers derived from the keys
-        of the statistical data.
-
-        :param dict_stat: A dictionary containing statistical data. Each key corresponds to an ID,
-                          and each value is a dictionary with 'coords', 'center', and 'stats' keys.
-        :param csv_filename: The name of the CSV file to write the data to
-        """
-
-        first_key = next(iter(dict_stat))
-        stats_keys = list(dict_stat[first_key]["stats"].keys())
-
-        headers = ["ID", "Coord row tile", "Coord col tile", "Center row", "Center col"] + stats_keys
-
-        def round_value(value, decimals=2):
-            if isinstance(value, (int, float)):
-                return round(value, decimals)
-            return value
-
-        with open(csv_filename, mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(headers)
-            for key, value in dict_stat.items():
-                row = [key, value["coords"][0], value["coords"][1], value["center"][0], value["center"][1]]
-                row += [round_value(value["stats"][stat]) for stat in stats_keys]
-                writer.writerow(row)
 
     @staticmethod
     def filter_ransac(coreg, positions, thresh=0.05, minPoints=10, maxIteration=100) -> Tuple[np.ndarray, List[float]]:
@@ -494,39 +413,3 @@ class ScaledBlockwiseCoreg(Coreg):
             ]
 
         return block_resamp
-
-
-# WAITING FOR ICROP
-
-
-def load_dem_from_window(dem, tile_min_max) -> RasterType:
-
-    row_off = tile_min_max[0]
-    col_off = tile_min_max[2]
-    row_size = abs(tile_min_max[1] - tile_min_max[0])
-    col_size = abs(tile_min_max[3] - tile_min_max[2])
-
-    # Create transform corresponding to window
-    transform_window = None
-
-    with rio.open(dem.filename) as desc:
-        window = Window(col_off, row_off, col_size, row_size)
-        transform_window = desc.window_transform(window)
-
-        data = desc.read(window=window)
-        profile = desc.profile
-        new_profile = copy.copy(profile)
-
-    new_profile.update(transform=transform_window)
-    new_profile["width"] = data.shape[2]
-    new_profile["height"] = data.shape[1]
-
-    # Generate memory file
-    memfile = MemoryFile()
-    with memfile.open(**new_profile) as dataset:
-        _ = dataset.write(data)
-
-    # Generate dem
-    dem = DEM(memfile)
-
-    return dem
