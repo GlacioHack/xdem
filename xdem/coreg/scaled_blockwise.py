@@ -124,6 +124,10 @@ class ScaledBlockwiseCoreg(Coreg):
 
         self.res_coreg = {"positions": res_positions, "coreg": res_correg}
 
+        np.savetxt(self.output_directory + "/res_coreg.csv",
+                   res_correg.reshape(-1, 3),
+                   delimiter=",",
+                   header="X,Y,Z")
         # Flag that the fitting function has been called.
         self._fit_called = True
 
