@@ -26,7 +26,10 @@ import geoutils as gu
 import numba
 import numpy as np
 from geoutils.raster import Raster, RasterType
-from geoutils.raster.distributed_computing import MultiprocConfig, map_overlap_multiproc
+from geoutils.raster.distributed_computing import (
+    MultiprocConfig,
+    map_overlap_multiproc_save,
+)
 
 from xdem._typing import DTypeLike, MArrayf, NDArrayf
 
@@ -829,7 +832,6 @@ def get_terrain_attribute(
         if not isinstance(dem, Raster):
             raise TypeError("The DEM must be a Raster")
         mp_config = multiproc_config.copy()
-        mp_config.depth = 1
         if isinstance(attribute, str):
             attribute = [attribute]
         for attr in attribute:
@@ -838,7 +840,7 @@ def get_terrain_attribute(
             elif mp_config.outfile is None:
                 # If outfile is None, the attr will be saved next to the DEM under the name "dem_path_attr.tif"
                 mp_config.outfile = dem.filename.split(".") + attr + ".tif"
-            map_overlap_multiproc(
+            map_overlap_multiproc_save(
                 _get_terrain_attribute,
                 dem,
                 mp_config,
@@ -853,6 +855,7 @@ def get_terrain_attribute(
                 fill_method,
                 edge_method,
                 window_size,
+                depth=1,
             )
         return None
     else:

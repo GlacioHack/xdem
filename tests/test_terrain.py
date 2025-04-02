@@ -7,7 +7,7 @@ import warnings
 import geoutils as gu
 import numpy as np
 import pytest
-from geoutils.raster.distributed_computing import ClusterGenerator, MultiprocConfig
+from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
 
@@ -294,7 +294,6 @@ class TestTerrainAttribute:
         mp_config = MultiprocConfig(
             chunk_size=200,
             outfile=outfile,
-            cluster=ClusterGenerator("mp", nb_workers=4),
         )
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
@@ -324,6 +323,12 @@ class TestTerrainAttribute:
         # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
         assert hillshade.raster_equal(hillshade2)
         assert slope.raster_equal(slope2)
+
+        # Compare with classic terrain attribute calculation
+        slope_classic = self.dem.slope()
+        hillshade_classic = self.dem.hillshade()
+        assert np.allclose(slope.data, slope_classic.data, rtol=1e-7)
+        assert np.allclose(hillshade.data, hillshade_classic.data, rtol=1e-7)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
         xdem.terrain.get_terrain_attribute(
