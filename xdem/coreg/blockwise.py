@@ -26,7 +26,7 @@ import inspect
 import logging
 import warnings
 from typing import Any, Literal
-
+from xdem.coreg import NuthKaab
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -39,8 +39,14 @@ import skimage
 from geoutils.raster import Mask, RasterType, subdivide_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _bounds, _res
+from geoutils.raster.tiling import compute_tiling
 from tqdm import tqdm
-
+from geoutils.raster.distributed_computing.multiproc import load_raster_tile
+from geoutils.raster.distributed_computing import (
+    MultiprocConfig,
+    map_multiproc_collect,
+    map_overlap_multiproc_save,
+)
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
@@ -49,35 +55,27 @@ from xdem.coreg.base import (
     CoregType,
     _preprocess_coreg_fit,
 )
+import itertools
 
 
 class BlockwiseCoreg(Coreg):
     """
-    A processing class of choice is run on an arbitrary subdivision of the raster. When later applying the step
+    A processing class of choice is run on a subdivision of the raster. When later applying the step
     the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
-
-    For instance: a subdivision of 4 triggers a division of the DEM in four equally sized parts. These parts are then
-    processed separately, with 4 .fit() results. If the subdivision is not divisible by the raster shape,
-    subdivision is made as good as possible to have approximately equal pixel counts.
     """
 
     def __init__(
         self,
         step: Coreg | CoregPipeline,
-        subdivision: int,
-        success_threshold: float = 0.8,
-        n_threads: int | None = None,
-        warn_failures: bool = False,
+        tile_size: int = 300,
         apply_z_correction: bool = True,
+        output_path: str = None
     ) -> None:
         """
         Instantiate a blockwise processing object.
 
         :param step: An instantiated co-registration step object to fit in the subdivided DEMs.
-        :param subdivision: The number of chunks to divide the DEMs in. E.g. 4 means four different transforms.
-        :param success_threshold: Raise an error if fewer chunks than the fraction failed for any reason.
-        :param n_threads: The maximum amount of threads to use. Default=auto
-        :param warn_failures: Trigger or ignore warnings for each exception/warning in each block.
+        :param tile_size: Size of chunks in pixels.
         :param apply_z_correction: Boolean to toggle whether the Z-offset correction is applied or not (default True).
         """
         if isinstance(step, type):
@@ -85,16 +83,25 @@ class BlockwiseCoreg(Coreg):
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
         self.procstep = step
-        self.subdivision = subdivision
-        self.success_threshold = success_threshold
-        self.n_threads = n_threads
-        self.warn_failures = warn_failures
+        self.tile_size = tile_size
         self.apply_z_correction = apply_z_correction
+        self.output_path = output_path
 
         super().__init__()
 
-        self._meta: CoregDict = {"step_meta": []}
-        self._groups: NDArrayf = np.array([])
+    @staticmethod
+    def coreg_wrapper(ref_tile, sec_raster, inlier_mask = None):
+        # TODO : commentaire explicatif ici
+        sec_tile = sec_raster.crop(ref_tile)
+        try:
+            nuth_kaab = NuthKaab()
+            nuth_kaab.fit(ref_tile, sec_tile, inlier_mask=inlier_mask)
+            shift = nuth_kaab.meta["outputs"]["affine"]
+            x_y_z = [shift["shift_x"], shift["shift_y"], shift["shift_z"]]
+        except ValueError:
+            x_y_z = [np.nan, np.nan, np.nan]
+
+        return x_y_z
 
     def fit(
         self: CoregType,
@@ -115,331 +122,197 @@ class BlockwiseCoreg(Coreg):
         if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(to_be_aligned_elev, gpd.GeoDataFrame):
             raise NotImplementedError("Blockwise coregistration does not yet support two elevation point cloud inputs.")
 
-        # Check if subsample arguments are different from their default value for any of the coreg steps:
-        # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
-        if not isinstance(self.procstep, CoregPipeline):
-            steps = [self.procstep]
-        else:
-            steps = list(self.procstep.pipeline)
-        argspec = [inspect.getfullargspec(s.__class__) for s in steps]
-        sub_meta = [s._meta["inputs"]["random"]["subsample"] for s in steps]
-        sub_is_default = [
-            argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
-            for i in range(len(argspec))
-        ]
-        if subsample is not None and not all(sub_is_default):
-            warnings.warn(
-                "Subsample argument passed to fit() will override non-default subsample values defined in the"
-                " step within the blockwise method. To silence this warning: only define 'subsample' in "
-                "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
-            )
 
-        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
+        # # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
+        # ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
+        #     reference_elev=reference_elev,
+        #     to_be_aligned_elev=to_be_aligned_elev,
+        #     inlier_mask=inlier_mask,
+        #     transform=transform,
+        #     crs=crs,
+        #     area_or_point=area_or_point,
+        # )
+        #
+        # # Define inlier mask if None, before indexing subdivided array in process function below
+        # if inlier_mask is None:
+        #     mask = np.ones(tba_dem.shape, dtype=bool)
+        # else:
+        #     mask = inlier_mask
+
+        tiling_grid = compute_tiling(self.tile_size, reference_elev.shape, to_be_aligned_elev.shape)
+        shape_tiling_grid = tiling_grid.shape
+
+        config_multiproc = MultiprocConfig(chunk_size=self.tile_size, outfile=self.output_path + "aligned_DEM.tif")
+        res_multiproc = map_multiproc_collect(
+            self.coreg_wrapper,
+            reference_elev.filename,
+            config_multiproc,
+            to_be_aligned_elev,
+            return_tile = True
         )
 
-        # Define inlier mask if None, before indexing subdivided array in process function below
-        if inlier_mask is None:
-            mask = np.ones(tba_dem.shape, dtype=bool)
-        else:
-            mask = inlier_mask
+        self.res_coreg = [element[0] for element in res_multiproc]
+        tiles_coords = [element[1] for element in res_multiproc]
 
-        self._groups = self.subdivide_array(tba_dem.shape if isinstance(tba_dem, np.ndarray) else ref_dem.shape)
+        rows_cols = list(itertools.product(range(shape_tiling_grid[0]), range(shape_tiling_grid[1])))
+        resolution = reference_elev.res
+        res_correg = np.empty((shape_tiling_grid[0], shape_tiling_grid[1], 3))
+        res_positions = np.empty((shape_tiling_grid[0], shape_tiling_grid[1], 2))
 
-        indices = np.unique(self._groups)
+        self.new_meta = {}
 
-        progress_bar = tqdm(
-            total=indices.size, desc="Processing chunks", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
-        )
+        for idx, (coreg_res, tile, (row, col)) in enumerate(zip(self.res_coreg, tiles_coords, rows_cols)):
+            center_position = ((tile[0] + tile[1]) / 2, (tile[2] + tile[3]) / 2)
+            res_correg[row, col] = np.array([coreg_res[0] / resolution[0], coreg_res[1] / resolution[1], coreg_res[2]])
+            res_positions[row, col] = center_position
+            self.new_meta[str((row, col))] = {"shift_x": coreg_res[0], "shift_y": coreg_res[1], "shift_z": coreg_res[2]}
 
-        def process(i: int) -> dict[str, Any] | BaseException | None:
-            """
-            Process a chunk in a thread-safe way.
-
-            :returns:
-                * If it succeeds: A dictionary of the fitting metadata.
-                * If it fails: The associated exception.
-                * If the block is empty: None
-            """
-            group_mask = self._groups == i
-
-            # Find the corresponding slice of the inlier_mask to subset the data
-            rows, cols = np.where(group_mask)
-            arrayslice = np.s_[rows.min() : rows.max() + 1, cols.min() : cols.max() + 1]
-
-            # Copy a subset of the two DEMs, the mask, the coreg instance, and make a new subset transform
-            ref_subset = ref_dem[arrayslice].copy()
-            tba_subset = tba_dem[arrayslice].copy()
-
-            if any(np.all(~np.isfinite(dem)) for dem in (ref_subset, tba_subset)):
-                return None
-            mask_subset = mask[arrayslice].copy()
-            west, top = rio.transform.xy(transform, min(rows), min(cols), offset="ul")
-            transform_subset = rio.transform.from_origin(west, top, transform.a, -transform.e)  # type: ignore
-            procstep = self.procstep.copy()
-
-            # Try to run the coregistration. If it fails for any reason, skip it and save the exception.
-            try:
-                procstep.fit(
-                    reference_elev=ref_subset,
-                    to_be_aligned_elev=tba_subset,
-                    transform=transform_subset,
-                    inlier_mask=mask_subset,
-                    bias_vars=bias_vars,
-                    weights=weights,
-                    crs=crs,
-                    area_or_point=area_or_point,
-                    z_name=z_name,
-                    subsample=subsample,
-                    random_state=random_state,
-                )
-                nmad, median = procstep.error(
-                    reference_elev=ref_subset,
-                    to_be_aligned_elev=tba_subset,
-                    error_type=["nmad", "median"],
-                    inlier_mask=mask_subset,
-                    transform=transform_subset,
-                    crs=crs,
-                )
-            except Exception as exception:
-                return exception
-
-            meta: dict[str, Any] = {
-                "i": i,
-                "transform": transform_subset,
-                "inlier_count": np.count_nonzero(mask_subset & np.isfinite(ref_subset) & np.isfinite(tba_subset)),
-                "nmad": nmad,
-                "median": median,
-            }
-            # Find the center of the inliers.
-            inlier_positions = np.argwhere(mask_subset)
-            mid_row = np.mean(inlier_positions[:, 0]).astype(int)
-            mid_col = np.mean(inlier_positions[:, 1]).astype(int)
-
-            # Find the indices of all finites within the mask
-            finites = np.argwhere(np.isfinite(tba_subset) & mask_subset)
-            # Calculate the distance between the approximate center and all finite indices
-            distances = np.linalg.norm(finites - np.array([mid_row, mid_col]), axis=1)
-            # Find the index representing the closest finite value to the center.
-            closest = np.argwhere(distances == distances.min())
-
-            # Assign the closest finite value as the representative point
-            representative_row, representative_col = finites[closest][0][0]
-            meta["representative_x"], meta["representative_y"] = rio.transform.xy(
-                transform_subset, representative_row, representative_col
-            )
-
-            repr_val = ref_subset[representative_row, representative_col]
-            if ~np.isfinite(repr_val):
-                repr_val = 0
-            meta["representative_val"] = repr_val
-
-            # If the coreg is a pipeline, copy its metadatas to the output meta
-            if hasattr(procstep, "pipeline"):
-                meta["pipeline"] = [step.meta.copy() for step in procstep.pipeline]
-
-            # Copy all current metadata (except for the already existing keys like "i", "min_row", etc, and the
-            # "coreg_meta" key)
-            # This can then be iteratively restored when the apply function should be called.
-            meta.update(
-                {key: value for key, value in procstep.meta.items() if key not in ["step_meta"] + list(meta.keys())}
-            )
-
-            progress_bar.update()
-
-            return meta.copy()
-
-        # Catch warnings; only show them if
-        exceptions: list[BaseException | warnings.WarningMessage] = []
-        with warnings.catch_warnings(record=True) as caught_warnings:
-            warnings.simplefilter("default")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-                results = executor.map(process, indices)
-
-            exceptions += list(caught_warnings)
-
-        empty_blocks = 0
-        for result in results:
-            if isinstance(result, BaseException):
-                exceptions.append(result)
-            elif result is None:
-                empty_blocks += 1
-                continue
-            else:
-                self._meta["step_meta"].append(result)
-
-        progress_bar.close()
-
-        # Stop if the success rate was below the threshold
-        if ((len(self._meta["step_meta"]) + empty_blocks) / self.subdivision) <= self.success_threshold:
-            raise ValueError(
-                f"Fitting failed for {len(exceptions)} chunks:\n"
-                + "\n".join(map(str, exceptions[:5]))
-                + f"\n... and {len(exceptions) - 5} more"
-                if len(exceptions) > 5
-                else ""
-            )
-
-        if self.warn_failures:
-            for exception in exceptions:
-                warnings.warn(str(exception))
-
-        # Set the _fit_called parameters (only identical copies of self.coreg have actually been called)
-        self.procstep._fit_called = True
-        if isinstance(self.procstep, CoregPipeline):
-            for step in self.procstep.pipeline:
-                step._fit_called = True
+        self.res_coreg_for_apply = {"positions": res_positions, "coreg": res_correg}
 
         # Flag that the fitting function has been called.
         self._fit_called = True
 
         return self
 
-    def _restore_metadata(self, meta: CoregDict) -> None:
-        """
-        Given some metadata, set it in the right place.
+  #  def _restore_metadata(self, meta: CoregDict) -> None:
+   #     """
+   #     Given some metadata, set it in the right place.
 
-        :param meta: A metadata file to update self._meta
-        """
-        self.procstep._meta.update(meta)
+   #     :param meta: A metadata file to update self._meta
+   #     """
+   #     self.procstep._meta.update(meta)
 
-        if isinstance(self.procstep, CoregPipeline) and "pipeline" in meta:
-            for i, step in enumerate(self.procstep.pipeline):
-                step._meta.update(meta["pipeline"][i])
+  #      if isinstance(self.procstep, CoregPipeline) and "pipeline" in meta:
+  #          for i, step in enumerate(self.procstep.pipeline):
+   #             step._meta.update(meta["pipeline"][i])
 
-    def to_points(self) -> NDArrayf:
-        """
-        Convert the blockwise coregistration matrices to 3D (source -> destination) points.
+    # def to_points(self) -> NDArrayf:
+    #     """
+    #     Convert the blockwise coregistration matrices to 3D (source -> destination) points.
+    #
+    #     The returned shape is (N, 3, 2) where the dimensions represent:
+    #         0. The point index where N is equal to the amount of subdivisions.
+    #         1. The X/Y/Z coordinate of the point.
+    #         2. The old/new position of the point.
+    #
+    #     To acquire the first point's original position: points[0, :, 0]
+    #     To acquire the first point's new position: points[0, :, 1]
+    #     To acquire the first point's Z difference: points[0, 2, 1] - points[0, 2, 0]
+    #
+    #     :returns: An array of 3D source -> destination points.
+    #     """
+    #     if len(self._meta["step_meta"]) == 0:
+    #         raise AssertionError("No coreg results exist. Has '.fit()' been called?")
+    #     points = np.empty(shape=(0, 3, 2))
+    #
+    #     for i in range(self.subdivision):
+    #         # Try to restore the metadata for this chunk (if it succeeded)
+    #         chunk_meta = next((meta for meta in self._meta["step_meta"] if meta["i"] == i), None)
+    #
+    #         if chunk_meta is not None:
+    #             # Successful chunk: Retrieve the representative X, Y, Z coordinates
+    #             self._restore_metadata(chunk_meta)
+    #             x_coord, y_coord = chunk_meta["representative_x"], chunk_meta["representative_y"]
+    #             repr_val = chunk_meta["representative_val"]
+    #         else:
+    #             # Failed chunk: Calculate the approximate center using the group's bounds
+    #             rows, cols = np.where(self._groups == i)
+    #             center_row = (rows.min() + rows.max()) // 2
+    #             center_col = (cols.min() + cols.max()) // 2
+    #
+    #             transform = self._meta["step_meta"][0]["transform"]  # Assuming all chunks share a transform
+    #             x_coord, y_coord = rio.transform.xy(transform, center_row, center_col)
+    #             repr_val = np.nan  # No valid Z value for failed chunks
+    #
+    #         # Old position based on the calculated or retrieved coordinates
+    #         old_pos_arr = np.reshape([x_coord, y_coord, repr_val], (1, 3))
+    #         old_position = gpd.GeoDataFrame(
+    #             geometry=gpd.points_from_xy(x=old_pos_arr[:, 0], y=old_pos_arr[:, 1], crs=None),
+    #             data={"z": old_pos_arr[:, 2]},
+    #         )
+    #
+    #         if chunk_meta is not None:
+    #             # Successful chunk: Apply the transformation
+    #             new_position = self.procstep.apply(old_position)
+    #             new_pos_arr = np.reshape(
+    #                 [new_position.geometry.x.values, new_position.geometry.y.values, new_position["z"].values], (1, 3)
+    #             )
+    #         else:
+    #             # Failed chunk: Keep the new position the same as the old position (no transformation)
+    #             new_pos_arr = old_pos_arr.copy()
+    #
+    #         # Append the result
+    #         points = np.append(points, np.dstack((old_pos_arr, new_pos_arr)), axis=0)
+    #
+    #     return points
 
-        The returned shape is (N, 3, 2) where the dimensions represent:
-            0. The point index where N is equal to the amount of subdivisions.
-            1. The X/Y/Z coordinate of the point.
-            2. The old/new position of the point.
+    # def stats(self) -> pd.DataFrame:
+    #     """
+    #     Return statistics for each chunk in the blockwise coregistration.
+    #
+    #         * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
+    #         * {x,y,z}_off: The calculated offset in georeferenced units.
+    #         * inlier_count: The number of pixels that were inliers in the chunk.
+    #         * nmad: The NMAD of elevation differences (robust dispersion) after coregistration.
+    #         * median: The median of elevation differences (vertical shift) after coregistration.
+    #
+    #     :raises ValueError: If no coregistration results exist yet.
+    #
+    #     :returns: A dataframe of statistics for each chunk.
+    #     If a chunk fails (not present in `chunk_meta`), the statistics will be returned as `NaN`.
+    #     """
+    #     points = self.to_points()
+    #
+    #     chunk_meta = {meta["i"]: meta for meta in self.meta["step_meta"]}
+    #
+    #     statistics: list[dict[str, Any]] = []
+    #     for i in range(points.shape[0]):
+    #         if i not in chunk_meta:
+    #             # For missing chunks, return NaN for all stats
+    #             statistics.append(
+    #                 {
+    #                     "center_x": points[i, 0, 0],
+    #                     "center_y": points[i, 1, 0],
+    #                     "center_z": points[i, 2, 0],
+    #                     "x_off": np.nan,
+    #                     "y_off": np.nan,
+    #                     "z_off": np.nan,
+    #                     "inlier_count": np.nan,
+    #                     "nmad": np.nan,
+    #                     "median": np.nan,
+    #                 }
+    #             )
+    #         else:
+    #             statistics.append(
+    #                 {
+    #                     "center_x": points[i, 0, 0],
+    #                     "center_y": points[i, 1, 0],
+    #                     "center_z": points[i, 2, 0],
+    #                     "x_off": points[i, 0, 1] - points[i, 0, 0],
+    #                     "y_off": points[i, 1, 1] - points[i, 1, 0],
+    #                     "z_off": points[i, 2, 1] - points[i, 2, 0],
+    #                     "inlier_count": chunk_meta[i]["inlier_count"],
+    #                     "nmad": chunk_meta[i]["nmad"],
+    #                     "median": chunk_meta[i]["median"],
+    #                 }
+    #             )
+    #
+    #     stats_df = pd.DataFrame(statistics)
+    #     stats_df.index.name = "chunk"
+    #
+    #     return stats_df
 
-        To acquire the first point's original position: points[0, :, 0]
-        To acquire the first point's new position: points[0, :, 1]
-        To acquire the first point's Z difference: points[0, 2, 1] - points[0, 2, 0]
-
-        :returns: An array of 3D source -> destination points.
-        """
-        if len(self._meta["step_meta"]) == 0:
-            raise AssertionError("No coreg results exist. Has '.fit()' been called?")
-        points = np.empty(shape=(0, 3, 2))
-
-        for i in range(self.subdivision):
-            # Try to restore the metadata for this chunk (if it succeeded)
-            chunk_meta = next((meta for meta in self._meta["step_meta"] if meta["i"] == i), None)
-
-            if chunk_meta is not None:
-                # Successful chunk: Retrieve the representative X, Y, Z coordinates
-                self._restore_metadata(chunk_meta)
-                x_coord, y_coord = chunk_meta["representative_x"], chunk_meta["representative_y"]
-                repr_val = chunk_meta["representative_val"]
-            else:
-                # Failed chunk: Calculate the approximate center using the group's bounds
-                rows, cols = np.where(self._groups == i)
-                center_row = (rows.min() + rows.max()) // 2
-                center_col = (cols.min() + cols.max()) // 2
-
-                transform = self._meta["step_meta"][0]["transform"]  # Assuming all chunks share a transform
-                x_coord, y_coord = rio.transform.xy(transform, center_row, center_col)
-                repr_val = np.nan  # No valid Z value for failed chunks
-
-            # Old position based on the calculated or retrieved coordinates
-            old_pos_arr = np.reshape([x_coord, y_coord, repr_val], (1, 3))
-            old_position = gpd.GeoDataFrame(
-                geometry=gpd.points_from_xy(x=old_pos_arr[:, 0], y=old_pos_arr[:, 1], crs=None),
-                data={"z": old_pos_arr[:, 2]},
-            )
-
-            if chunk_meta is not None:
-                # Successful chunk: Apply the transformation
-                new_position = self.procstep.apply(old_position)
-                new_pos_arr = np.reshape(
-                    [new_position.geometry.x.values, new_position.geometry.y.values, new_position["z"].values], (1, 3)
-                )
-            else:
-                # Failed chunk: Keep the new position the same as the old position (no transformation)
-                new_pos_arr = old_pos_arr.copy()
-
-            # Append the result
-            points = np.append(points, np.dstack((old_pos_arr, new_pos_arr)), axis=0)
-
-        return points
-
-    def stats(self) -> pd.DataFrame:
-        """
-        Return statistics for each chunk in the blockwise coregistration.
-
-            * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
-            * {x,y,z}_off: The calculated offset in georeferenced units.
-            * inlier_count: The number of pixels that were inliers in the chunk.
-            * nmad: The NMAD of elevation differences (robust dispersion) after coregistration.
-            * median: The median of elevation differences (vertical shift) after coregistration.
-
-        :raises ValueError: If no coregistration results exist yet.
-
-        :returns: A dataframe of statistics for each chunk.
-        If a chunk fails (not present in `chunk_meta`), the statistics will be returned as `NaN`.
-        """
-        points = self.to_points()
-
-        chunk_meta = {meta["i"]: meta for meta in self.meta["step_meta"]}
-
-        statistics: list[dict[str, Any]] = []
-        for i in range(points.shape[0]):
-            if i not in chunk_meta:
-                # For missing chunks, return NaN for all stats
-                statistics.append(
-                    {
-                        "center_x": points[i, 0, 0],
-                        "center_y": points[i, 1, 0],
-                        "center_z": points[i, 2, 0],
-                        "x_off": np.nan,
-                        "y_off": np.nan,
-                        "z_off": np.nan,
-                        "inlier_count": np.nan,
-                        "nmad": np.nan,
-                        "median": np.nan,
-                    }
-                )
-            else:
-                statistics.append(
-                    {
-                        "center_x": points[i, 0, 0],
-                        "center_y": points[i, 1, 0],
-                        "center_z": points[i, 2, 0],
-                        "x_off": points[i, 0, 1] - points[i, 0, 0],
-                        "y_off": points[i, 1, 1] - points[i, 1, 0],
-                        "z_off": points[i, 2, 1] - points[i, 2, 0],
-                        "inlier_count": chunk_meta[i]["inlier_count"],
-                        "nmad": chunk_meta[i]["nmad"],
-                        "median": chunk_meta[i]["median"],
-                    }
-                )
-
-        stats_df = pd.DataFrame(statistics)
-        stats_df.index.name = "chunk"
-
-        return stats_df
-
-    def subdivide_array(self, shape: tuple[int, ...]) -> NDArrayf:
-        """
-        Return the grid subdivision for a given DEM shape.
-
-        :param shape: The shape of the input DEM.
-
-        :returns: An array of shape 'shape' with 'self.subdivision' unique indices.
-        """
-        if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
-            shape = (shape[1], shape[2])
-        return subdivide_array(shape, count=self.subdivision)
+    # def subdivide_array(self, shape: tuple[int, ...]) -> NDArrayf:
+    #     """
+    #     Return the grid subdivision for a given DEM shape.
+    #
+    #     :param shape: The shape of the input DEM.
+    #
+    #     :returns: An array of shape 'shape' with 'self.subdivision' unique indices.
+    #     """
+    #     if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
+    #         shape = (shape[1], shape[2])
+    #     return subdivide_array(shape, count=self.subdivision)
 
     def _apply_rst(
         self,
