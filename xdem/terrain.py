@@ -62,7 +62,7 @@ def _get_quadric_coefficients(
     L = resolution
 
     # Allocate the output.
-    output = np.full((12,) + dem.shape, fill_value=np.nan)
+    output = np.full((12,) + dem.shape, fill_value=np.nan, dtype=np.float32)
 
     # Convert the string to a number (fewer bytes to compare each iteration)
     if fill_method == "median":
@@ -290,11 +290,11 @@ def get_quadric_coefficients(
         >>> coeffs.shape
         (12, 3, 3)
         >>> coeffs[:9, 1, 1]
-        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.])
+        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.], dtype=float32)
         >>> coeffs[9:11, 1, 1]
-        array([0., 0.])
+        array([0., 0.], dtype=float32)
         >>> coeffs[11, 1, 1]
-        1.4142135623730954
+        1.4142135
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
@@ -750,13 +750,13 @@ def get_terrain_attribute(
                [2, 2, 2]])
         >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1, edge_method='nearest')
         >>> slope  # Note the flattening edge effect; see 'get_quadric_coefficients()' for more.
-        array([[26.56505118, 26.56505118, 26.56505118],
-               [45.        , 45.        , 45.        ],
-               [26.56505118, 26.56505118, 26.56505118]])
+        array([[26.56505, 26.56505, 26.56505],
+               [45.     , 45.     , 45.     ],
+               [26.56505, 26.56505, 26.56505]], dtype=float32)
         >>> aspect
         array([[0., 0., 0.],
                [0., 0., 0.],
-               [0., 0., 0.]])
+               [0., 0., 0.]], dtype=float32)
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
@@ -1494,7 +1494,7 @@ def rugosity(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> rugosity(dem, resolution=1.)[1, 1]
-        1.4142135623730954
+        1.4142135
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
