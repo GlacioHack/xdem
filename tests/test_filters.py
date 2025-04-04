@@ -65,6 +65,131 @@ class TestFilters:
         pytest.raises(ValueError, xdem.filters.gaussian_filter_scipy, data, sigma=5)
         pytest.raises(ValueError, xdem.filters.gaussian_filter_cv, data, sigma=5)
 
+    def test_median_filter(self) -> None:
+        """Test applying median filter on DEMs with/without NaNs"""
+
+        # Test applying scipy's median filter
+        # smoothing should not yield values below.above original DEM
+        dem_array = self.dem_1990.data
+        dem_filtered = xdem.filters.median_filter_scipy(dem_array, kernel_size=5)
+        assert np.min(dem_array) < np.min(dem_filtered)
+        assert np.max(dem_array) > np.max(dem_filtered)
+        assert dem_array.shape == dem_filtered.shape
+
+        # Test that it works with NaNs too
+        nan_count = 1000
+        rng = np.random.default_rng(42)
+        cols = rng.integers(0, high=self.dem_1990.width - 1, size=nan_count, dtype=int)
+        rows = rng.integers(0, high=self.dem_1990.height - 1, size=nan_count, dtype=int)
+        dem_with_nans = np.copy(self.dem_1990.data).squeeze()
+        dem_with_nans[rows, cols] = np.nan
+
+        dem_with_nans_filtered = xdem.filters.median_filter_scipy(dem_with_nans, kernel_size=5)
+        assert np.nanmin(dem_with_nans) < np.nanmin(dem_with_nans_filtered)
+        assert np.nanmax(dem_with_nans) > np.nanmax(dem_with_nans_filtered)
+        assert np.min(dem_filtered) == np.nanmin(dem_with_nans_filtered)
+        assert np.max(dem_filtered) == np.nanmax(dem_with_nans_filtered)
+
+        # Test that it works with 3D arrays
+        array_3d = np.vstack((dem_array[np.newaxis, :], dem_array[np.newaxis, :]))
+        dem_filtered = xdem.filters.median_filter_scipy(array_3d, kernel_size=5)
+        assert array_3d.shape == dem_filtered.shape
+
+        # Tests that it fails with 1D arrays with appropriate error
+        data = dem_array[:, 0]
+        pytest.raises(ValueError, xdem.filters.median_filter_scipy, data, kernel_size=5)
+
+    def test_mean_filter(self) -> None:
+        """Test applying mean filter on DEMs with/without NaNs"""
+
+        # Test applying mean filter
+        # smoothing should not yield values below.above original DEM
+        dem_array = self.dem_1990.data
+        dem_filtered = xdem.filters.mean_filter(dem_array, kernel_size=5)
+        assert np.min(dem_array) < np.min(dem_filtered)
+        assert np.max(dem_array) > np.max(dem_filtered)
+        assert dem_array.shape == dem_filtered.shape
+
+        # Test that it works with NaNs too
+        nan_count = 1000
+        rng = np.random.default_rng(42)
+        cols = rng.integers(0, high=self.dem_1990.width - 1, size=nan_count, dtype=int)
+        rows = rng.integers(0, high=self.dem_1990.height - 1, size=nan_count, dtype=int)
+        dem_with_nans = np.copy(self.dem_1990.data).squeeze()
+        dem_with_nans[rows, cols] = np.nan
+
+        dem_with_nans_filtered = xdem.filters.mean_filter(dem_with_nans, kernel_size=5)
+        assert np.nanmin(dem_with_nans) < np.nanmin(dem_with_nans_filtered)
+        assert np.nanmax(dem_with_nans) > np.nanmax(dem_with_nans_filtered)
+        assert np.min(dem_filtered) == np.nanmin(dem_with_nans_filtered)
+        assert np.max(dem_filtered) == np.nanmax(dem_with_nans_filtered)
+
+    def test_min_filter(self) -> None:
+        """Test applying minimum filter on DEMs with/without NaNs"""
+
+        # Test applying scipy's minimum filter
+        # smoothing should not yield values below.above original DEM
+        dem_array = self.dem_1990.data
+        dem_filtered = xdem.filters.min_filter_scipy(dem_array, kernel_size=5)
+        assert np.min(dem_array) == np.min(dem_filtered)
+        assert np.max(dem_array) >= np.max(dem_filtered)
+        assert dem_array.shape == dem_filtered.shape
+
+        # Test that it works with NaNs too
+        nan_count = 1000
+        rng = np.random.default_rng(42)
+        cols = rng.integers(0, high=self.dem_1990.width - 1, size=nan_count, dtype=int)
+        rows = rng.integers(0, high=self.dem_1990.height - 1, size=nan_count, dtype=int)
+        dem_with_nans = np.copy(self.dem_1990.data).squeeze()
+        dem_with_nans[rows, cols] = np.nan
+
+        dem_with_nans_filtered = xdem.filters.min_filter_scipy(dem_with_nans, kernel_size=5)
+        assert np.nanmin(dem_with_nans) == np.nanmin(dem_with_nans_filtered)
+        assert np.min(dem_filtered) == np.nanmin(dem_with_nans_filtered)
+        assert np.nanmax(dem_with_nans) > np.nanmax(dem_with_nans_filtered)
+
+        # Test that it works with 3D arrays
+        array_3d = np.vstack((dem_array[np.newaxis, :], dem_array[np.newaxis, :]))
+        dem_filtered = xdem.filters.min_filter_scipy(array_3d, kernel_size=5)
+        assert array_3d.shape == dem_filtered.shape
+
+        # Tests that it fails with 1D arrays with appropriate error
+        data = dem_array[:, 0]
+        pytest.raises(ValueError, xdem.filters.min_filter_scipy, data, kernel_size=5)
+
+    def test_max_filter(self) -> None:
+        """Test applying maximum filter on DEMs with/without NaNs"""
+
+        # Test applying scipy's minimum filter
+        # smoothing should not yield values below.above original DEM
+        dem_array = self.dem_1990.data
+        dem_filtered = xdem.filters.max_filter_scipy(dem_array, kernel_size=5)
+        assert np.min(dem_array) <= np.min(dem_filtered)
+        assert np.max(dem_array) == np.max(dem_filtered)
+        assert dem_array.shape == dem_filtered.shape
+
+        # Test that it works with NaNs too
+        nan_count = 1000
+        rng = np.random.default_rng(42)
+        cols = rng.integers(0, high=self.dem_1990.width - 1, size=nan_count, dtype=int)
+        rows = rng.integers(0, high=self.dem_1990.height - 1, size=nan_count, dtype=int)
+        dem_with_nans = np.copy(self.dem_1990.data).squeeze()
+        dem_with_nans[rows, cols] = np.nan
+
+        dem_with_nans_filtered = xdem.filters.max_filter_scipy(dem_with_nans, kernel_size=5)
+        assert np.nanmin(dem_with_nans) < np.nanmin(dem_with_nans_filtered)
+        assert np.nanmax(dem_with_nans) == np.nanmax(dem_with_nans_filtered)
+        assert np.max(dem_filtered) == np.nanmax(dem_with_nans_filtered)
+
+        # Test that it works with 3D arrays
+        array_3d = np.vstack((dem_array[np.newaxis, :], dem_array[np.newaxis, :]))
+        dem_filtered = xdem.filters.max_filter_scipy(array_3d, kernel_size=5)
+        assert array_3d.shape == dem_filtered.shape
+
+        # Tests that it fails with 1D arrays with appropriate error
+        data = dem_array[:, 0]
+        pytest.raises(ValueError, xdem.filters.max_filter_scipy, data, kernel_size=5)
+
     def test_dist_filter(self) -> None:
         """Test that distance_filter works"""
 
