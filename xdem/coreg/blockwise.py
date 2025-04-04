@@ -20,7 +20,7 @@
 """ Block-wise co-registration processing class to run a step in segmented parts of the grid."""
 
 from __future__ import annotations
-
+import pyransac3d as pyrsc
 import concurrent.futures
 import inspect
 import logging
@@ -41,11 +41,14 @@ from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _bounds, _res
 from geoutils.raster.tiling import compute_tiling
 from tqdm import tqdm
-from geoutils.raster.distributed_computing.multiproc import load_raster_tile
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,
     map_multiproc_collect,
     map_overlap_multiproc_save,
+)
+from geoutils.raster.geotransformations import (
+    _get_target_georeferenced_grid,
+    _user_input_reproject,
 )
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.base import (
@@ -54,9 +57,11 @@ from xdem.coreg.base import (
     CoregPipeline,
     CoregType,
     _preprocess_coreg_fit,
+    _apply_matrix_pts,
+    _grid_pointcloud
 )
 import itertools
-
+import geoutils as gu
 
 class BlockwiseCoreg(Coreg):
     """
@@ -69,7 +74,7 @@ class BlockwiseCoreg(Coreg):
         step: Coreg | CoregPipeline,
         tile_size: int = 300,
         apply_z_correction: bool = True,
-        output_path: str = None
+        output_path: str = None,
     ) -> None:
         """
         Instantiate a blockwise processing object.
@@ -90,7 +95,7 @@ class BlockwiseCoreg(Coreg):
         super().__init__()
 
     @staticmethod
-    def coreg_wrapper(ref_tile, sec_raster, inlier_mask = None):
+    def coreg_wrapper(ref_tile, sec_raster, inlier_mask=None):
         # TODO : commentaire explicatif ici
         sec_tile = sec_raster.crop(ref_tile)
         try:
@@ -122,7 +127,6 @@ class BlockwiseCoreg(Coreg):
         if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(to_be_aligned_elev, gpd.GeoDataFrame):
             raise NotImplementedError("Blockwise coregistration does not yet support two elevation point cloud inputs.")
 
-
         # # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
         # ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
         #     reference_elev=reference_elev,
@@ -139,16 +143,14 @@ class BlockwiseCoreg(Coreg):
         # else:
         #     mask = inlier_mask
 
+        self.dem_to_be_aligned = to_be_aligned_elev
+
         tiling_grid = compute_tiling(self.tile_size, reference_elev.shape, to_be_aligned_elev.shape)
         shape_tiling_grid = tiling_grid.shape
 
-        config_multiproc = MultiprocConfig(chunk_size=self.tile_size, outfile=self.output_path + "aligned_DEM.tif")
+        config_multiproc = MultiprocConfig(chunk_size=self.tile_size)
         res_multiproc = map_multiproc_collect(
-            self.coreg_wrapper,
-            reference_elev.filename,
-            config_multiproc,
-            to_be_aligned_elev,
-            return_tile = True
+            self.coreg_wrapper, reference_elev.filename, config_multiproc, to_be_aligned_elev, return_tile=True
         )
 
         self.res_coreg = [element[0] for element in res_multiproc]
@@ -163,7 +165,8 @@ class BlockwiseCoreg(Coreg):
 
         for idx, (coreg_res, tile, (row, col)) in enumerate(zip(self.res_coreg, tiles_coords, rows_cols)):
             center_position = ((tile[0] + tile[1]) / 2, (tile[2] + tile[3]) / 2)
-            res_correg[row, col] = np.array([coreg_res[0] / resolution[0], coreg_res[1] / resolution[1], coreg_res[2]])
+            # res_correg[row, col] = np.array([coreg_res[0] / resolution[0], coreg_res[1] / resolution[1], coreg_res[2]])
+            res_correg[row, col] = np.array([coreg_res[0], coreg_res[1], coreg_res[2]])
             res_positions[row, col] = center_position
             self.new_meta[str((row, col))] = {"shift_x": coreg_res[0], "shift_y": coreg_res[1], "shift_z": coreg_res[2]}
 
@@ -174,145 +177,53 @@ class BlockwiseCoreg(Coreg):
 
         return self
 
-  #  def _restore_metadata(self, meta: CoregDict) -> None:
-   #     """
-   #     Given some metadata, set it in the right place.
+    def apply_ransac_shift(self, dem_array, transform, positions):
+        """
+        Applique un décalage basé sur les résultats RANSAC à chaque pixel du MNT.
+        """
+        # Appliquer le modèle RANSAC pour les décalages en X et Y
+        thresh_x = (np.nanpercentile(dem_array[:, :, 0], 90) - np.nanpercentile(dem_array[:, :, 0], 10)) / 3
+        thresh_y = (np.nanpercentile(dem_array[:, :, 1], 90) - np.nanpercentile(dem_array[:, :, 1], 10)) / 3
 
-   #     :param meta: A metadata file to update self._meta
-   #     """
-   #     self.procstep._meta.update(meta)
+        x_2d_ransac, coef_ransac_x = self.filter_ransac(dem_array[:, :, 0], positions, thresh=thresh_x)
+        y_2d_ransac, coef_ransac_y = self.filter_ransac(dem_array[:, :, 1], positions, thresh=thresh_y)
 
-  #      if isinstance(self.procstep, CoregPipeline) and "pipeline" in meta:
-  #          for i, step in enumerate(self.procstep.pipeline):
-   #             step._meta.update(meta["pipeline"][i])
+        # Générer les nouvelles grilles de décalage
+        row_grid, row_gridvalues, col_gridvalues = self.generate_grids_from_ransac(dem_array.shape, coef_ransac_x)
+        col_grid, _, _ = self.generate_grids_from_ransac(dem_array.shape, coef_ransac_y)
 
-    # def to_points(self) -> NDArrayf:
-    #     """
-    #     Convert the blockwise coregistration matrices to 3D (source -> destination) points.
-    #
-    #     The returned shape is (N, 3, 2) where the dimensions represent:
-    #         0. The point index where N is equal to the amount of subdivisions.
-    #         1. The X/Y/Z coordinate of the point.
-    #         2. The old/new position of the point.
-    #
-    #     To acquire the first point's original position: points[0, :, 0]
-    #     To acquire the first point's new position: points[0, :, 1]
-    #     To acquire the first point's Z difference: points[0, 2, 1] - points[0, 2, 0]
-    #
-    #     :returns: An array of 3D source -> destination points.
-    #     """
-    #     if len(self._meta["step_meta"]) == 0:
-    #         raise AssertionError("No coreg results exist. Has '.fit()' been called?")
-    #     points = np.empty(shape=(0, 3, 2))
-    #
-    #     for i in range(self.subdivision):
-    #         # Try to restore the metadata for this chunk (if it succeeded)
-    #         chunk_meta = next((meta for meta in self._meta["step_meta"] if meta["i"] == i), None)
-    #
-    #         if chunk_meta is not None:
-    #             # Successful chunk: Retrieve the representative X, Y, Z coordinates
-    #             self._restore_metadata(chunk_meta)
-    #             x_coord, y_coord = chunk_meta["representative_x"], chunk_meta["representative_y"]
-    #             repr_val = chunk_meta["representative_val"]
-    #         else:
-    #             # Failed chunk: Calculate the approximate center using the group's bounds
-    #             rows, cols = np.where(self._groups == i)
-    #             center_row = (rows.min() + rows.max()) // 2
-    #             center_col = (cols.min() + cols.max()) // 2
-    #
-    #             transform = self._meta["step_meta"][0]["transform"]  # Assuming all chunks share a transform
-    #             x_coord, y_coord = rio.transform.xy(transform, center_row, center_col)
-    #             repr_val = np.nan  # No valid Z value for failed chunks
-    #
-    #         # Old position based on the calculated or retrieved coordinates
-    #         old_pos_arr = np.reshape([x_coord, y_coord, repr_val], (1, 3))
-    #         old_position = gpd.GeoDataFrame(
-    #             geometry=gpd.points_from_xy(x=old_pos_arr[:, 0], y=old_pos_arr[:, 1], crs=None),
-    #             data={"z": old_pos_arr[:, 2]},
-    #         )
-    #
-    #         if chunk_meta is not None:
-    #             # Successful chunk: Apply the transformation
-    #             new_position = self.procstep.apply(old_position)
-    #             new_pos_arr = np.reshape(
-    #                 [new_position.geometry.x.values, new_position.geometry.y.values, new_position["z"].values], (1, 3)
-    #             )
-    #         else:
-    #             # Failed chunk: Keep the new position the same as the old position (no transformation)
-    #             new_pos_arr = old_pos_arr.copy()
-    #
-    #         # Append the result
-    #         points = np.append(points, np.dstack((old_pos_arr, new_pos_arr)), axis=0)
-    #
-    #     return points
+        row_grid += row_gridvalues
+        col_grid += col_gridvalues
 
-    # def stats(self) -> pd.DataFrame:
-    #     """
-    #     Return statistics for each chunk in the blockwise coregistration.
-    #
-    #         * center_{x,y,z}: The center coordinate of the chunk in georeferenced units.
-    #         * {x,y,z}_off: The calculated offset in georeferenced units.
-    #         * inlier_count: The number of pixels that were inliers in the chunk.
-    #         * nmad: The NMAD of elevation differences (robust dispersion) after coregistration.
-    #         * median: The median of elevation differences (vertical shift) after coregistration.
-    #
-    #     :raises ValueError: If no coregistration results exist yet.
-    #
-    #     :returns: A dataframe of statistics for each chunk.
-    #     If a chunk fails (not present in `chunk_meta`), the statistics will be returned as `NaN`.
-    #     """
-    #     points = self.to_points()
-    #
-    #     chunk_meta = {meta["i"]: meta for meta in self.meta["step_meta"]}
-    #
-    #     statistics: list[dict[str, Any]] = []
-    #     for i in range(points.shape[0]):
-    #         if i not in chunk_meta:
-    #             # For missing chunks, return NaN for all stats
-    #             statistics.append(
-    #                 {
-    #                     "center_x": points[i, 0, 0],
-    #                     "center_y": points[i, 1, 0],
-    #                     "center_z": points[i, 2, 0],
-    #                     "x_off": np.nan,
-    #                     "y_off": np.nan,
-    #                     "z_off": np.nan,
-    #                     "inlier_count": np.nan,
-    #                     "nmad": np.nan,
-    #                     "median": np.nan,
-    #                 }
-    #             )
-    #         else:
-    #             statistics.append(
-    #                 {
-    #                     "center_x": points[i, 0, 0],
-    #                     "center_y": points[i, 1, 0],
-    #                     "center_z": points[i, 2, 0],
-    #                     "x_off": points[i, 0, 1] - points[i, 0, 0],
-    #                     "y_off": points[i, 1, 1] - points[i, 1, 0],
-    #                     "z_off": points[i, 2, 1] - points[i, 2, 0],
-    #                     "inlier_count": chunk_meta[i]["inlier_count"],
-    #                     "nmad": chunk_meta[i]["nmad"],
-    #                     "median": chunk_meta[i]["median"],
-    #                 }
-    #             )
-    #
-    #     stats_df = pd.DataFrame(statistics)
-    #     stats_df.index.name = "chunk"
-    #
-    #     return stats_df
+        return row_grid, col_grid
 
-    # def subdivide_array(self, shape: tuple[int, ...]) -> NDArrayf:
-    #     """
-    #     Return the grid subdivision for a given DEM shape.
-    #
-    #     :param shape: The shape of the input DEM.
-    #
-    #     :returns: An array of shape 'shape' with 'self.subdivision' unique indices.
-    #     """
-    #     if len(shape) == 3 and shape[0] == 1:  # Account for (1, row, col) shapes
-    #         shape = (shape[1], shape[2])
-    #     return subdivide_array(shape, count=self.subdivision)
+    def resample_wrapper(self, tile_dem, coeff_x_grid, coeff_y_grid, dst_raster, resampling="linear"):
+        """
+
+        """
+        dst_raster = dst_raster.crop(tile_dem)
+        # Converts the array to point cloud, removing the NaNs
+        epc = tile_dem.to_pointcloud(data_column_name="z", skip_nodata=True).ds
+        # Get shifts for each point
+        x = epc.geometry.x.values
+        y = epc.geometry.y.values
+        A1, B1, C1 = coeff_x_grid
+        A2, B2, C2 = coeff_y_grid
+        x_shifts = A1 * x + B1 ** y + C1
+        y_shifts = A2 * x + B2 ** y + C2
+
+        # Transform X/Y with X/Y shifts in-place
+        epc.geometry = gpd.points_from_xy(x=x + x_shifts, y=y + y_shifts)
+        # Grid point cloud back to a DEM
+        new_tile_dem = _grid_pointcloud(
+            epc, grid_coords=dst_raster.coords(grid=False), data_column_name="z", resampling=resampling
+        )
+
+        rast = gu.Raster.from_array(
+            data=new_tile_dem, transform=dst_raster.transform, crs=dst_raster.crs, nodata=dst_raster.nodata
+        )
+
+        return rast
 
     def _apply_rst(
         self,
@@ -323,212 +234,375 @@ class BlockwiseCoreg(Coreg):
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
 
-        if np.count_nonzero(np.isfinite(elev)) == 0:
-            return elev, transform
+        coeff_x_grid, coeff_y_grid = self.generate_correction_grid(self.res_coreg_for_apply, 30, self.dem_to_be_aligned.shape)
 
-        # Other option than resample=True is not implemented for this case
-        if "resample" in kwargs and kwargs["resample"] is not True:
-            raise NotImplementedError("Option `resample=False` not supported for coreg method BlockwiseCoreg.")
 
-        points = self.to_points()
-        # Check for NaN values across both the old and new positions for each point
-        mask = ~np.isnan(points).any(axis=(1, 2))
-
-        # Filter out points where there are no NaN values
-        points = points[mask]
-
-        bounds = _bounds(transform=transform, shape=elev.shape)
-        resolution = _res(transform)
-
-        representative_height = np.nanmean(elev)
-        edges_source_arr = np.array(
-            [
-                [bounds.left + resolution[0] / 2, bounds.top - resolution[1] / 2, representative_height],
-                [bounds.right - resolution[0] / 2, bounds.top - resolution[1] / 2, representative_height],
-                [bounds.left + resolution[0] / 2, bounds.bottom + resolution[1] / 2, representative_height],
-                [bounds.right - resolution[0] / 2, bounds.bottom + resolution[1] / 2, representative_height],
-            ]
+        # Retrieve transform and grid_size
+        transform, grid_size = _get_target_georeferenced_grid(
+            self.dem_to_be_aligned, crs=crs, res=self.dem_to_be_aligned.res
         )
-        edges_source = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(x=edges_source_arr[:, 0], y=edges_source_arr[:, 1], crs=None),
-            data={"z": edges_source_arr[:, 2]},
-        )
+        width, height = grid_size
 
-        edges_dest = self.apply(edges_source)
-        edges_dest_arr = np.array(
-            [edges_dest.geometry.x.values, edges_dest.geometry.y.values, edges_dest["z"].values]
-        ).T
-        edges = np.dstack((edges_source_arr, edges_dest_arr))
+        dst_raster = gu.Raster(self.output_path+"aligned_DEM.tif")
 
-        all_points = np.append(points, edges, axis=0)
+        # Open file on disk to write tile by tile
+        with rio.open(
+                self.output_path+"aligned_DEM.tif",
+                "w",
+                driver="GTiff",
+                height=height,
+                width=width,
+                count=self.dem_to_be_aligned.count,
+                dtype=self.dem_to_be_aligned.dtype,
+                crs=crs,
+                transform=transform,
+                nodata=self.dem_to_be_aligned.nodata,
+        ):
+            pass
 
-        warped_dem = warp_dem(
-            dem=elev,
-            transform=transform,
-            source_coords=all_points[:, :, 1],
-            destination_coords=all_points[:, :, 0],
-            resampling="linear",
-            apply_z_correction=self.apply_z_correction,
+        config_multiproc = MultiprocConfig(chunk_size=self.tile_size, outfile=self.output_path + "aligned_DEM.tif")
+        map_overlap_multiproc_save(
+            self.resample_wrapper, self.dem_to_be_aligned.filename, config_multiproc, coeff_x_grid, coeff_y_grid, dst_raster
         )
 
-        return warped_dem, transform
+        print("toto")
 
-    def _apply_pts(
-        self, elev: gpd.GeoDataFrame, z_name: str = "z", bias_vars: dict[str, NDArrayf] | None = None, **kwargs: Any
-    ) -> gpd.GeoDataFrame:
-        """Apply the scaling model to a set of points."""
-        points = self.to_points()
 
-        # Check for NaN values across both the old and new positions for each point
-        mask = ~np.isnan(points).any(axis=(1, 2))
+        # if np.count_nonzero(np.isfinite(elev)) == 0:
+        #     return elev, transform
+        #
+        # # Other option than resample=True is not implemented for this case
+        # if "resample" in kwargs and kwargs["resample"] is not True:
+        #     raise NotImplementedError("Option `resample=False` not supported for coreg method BlockwiseCoreg.")
+        #
+        # points = self.to_points()
+        # # Check for NaN values across both the old and new positions for each point
+        # mask = ~np.isnan(points).any(axis=(1, 2))
+        #
+        # # Filter out points where there are no NaN values
+        # points = points[mask]
+        #
+        # bounds = _bounds(transform=transform, shape=elev.shape)
+        # resolution = _res(transform)
+        #
+        # representative_height = np.nanmean(elev)
+        # edges_source_arr = np.array(
+        #     [
+        #         [bounds.left + resolution[0] / 2, bounds.top - resolution[1] / 2, representative_height],
+        #         [bounds.right - resolution[0] / 2, bounds.top - resolution[1] / 2, representative_height],
+        #         [bounds.left + resolution[0] / 2, bounds.bottom + resolution[1] / 2, representative_height],
+        #         [bounds.right - resolution[0] / 2, bounds.bottom + resolution[1] / 2, representative_height],
+        #     ]
+        # )
+        # edges_source = gpd.GeoDataFrame(
+        #     geometry=gpd.points_from_xy(x=edges_source_arr[:, 0], y=edges_source_arr[:, 1], crs=None),
+        #     data={"z": edges_source_arr[:, 2]},
+        # )
+        #
+        # edges_dest = self.apply(edges_source)
+        # edges_dest_arr = np.array(
+        #     [edges_dest.geometry.x.values, edges_dest.geometry.y.values, edges_dest["z"].values]
+        # ).T
+        # edges = np.dstack((edges_source_arr, edges_dest_arr))
+        #
+        # all_points = np.append(points, edges, axis=0)
+        #
+        # warped_dem = warp_dem(
+        #     dem=elev,
+        #     transform=transform,
+        #     source_coords=all_points[:, :, 1],
+        #     destination_coords=all_points[:, :, 0],
+        #     resampling="linear",
+        #     apply_z_correction=self.apply_z_correction,
+        # )
+        #
+        # return warped_dem, transform
 
-        # Filter out points where there are no NaN values
-        points = points[mask]
+#     def _apply_pts(
+#         self, elev: gpd.GeoDataFrame, z_name: str = "z", bias_vars: dict[str, NDArrayf] | None = None, **kwargs: Any
+#     ) -> gpd.GeoDataFrame:
+#         """Apply the scaling model to a set of points."""
+#         points = self.to_points()
+#
+#         # Check for NaN values across both the old and new positions for each point
+#         mask = ~np.isnan(points).any(axis=(1, 2))
+#
+#         # Filter out points where there are no NaN values
+#         points = points[mask]
+#
+#         new_coords = np.array([elev.geometry.x.values, elev.geometry.y.values, elev["z"].values]).T
+#
+#         for dim in range(0, 3):
+#             with warnings.catch_warnings():
+#                 # ZeroDivisionErrors may happen when the transformation is empty (which is fine)
+#                 warnings.filterwarnings("ignore", message="ZeroDivisionError")
+#                 model = scipy.interpolate.Rbf(
+#                     points[:, 0, 0],
+#                     points[:, 1, 0],
+#                     points[:, dim, 1] - points[:, dim, 0],
+#                     function="linear",
+#                 )
+#
+#             new_coords[:, dim] += model(elev.geometry.x.values, elev.geometry.y.values)
+#
+#         gdf_new_coords = gpd.GeoDataFrame(
+#             geometry=gpd.points_from_xy(x=new_coords[:, 0], y=new_coords[:, 1], crs=None), data={"z": new_coords[:, 2]}
+#         )
+#
+#         return gdf_new_coords
+#
+#
+# def warp_dem(
+#     dem: NDArrayf,
+#     transform: rio.transform.Affine,
+#     source_coords: NDArrayf,
+#     destination_coords: NDArrayf,
+#     resampling: str = "cubic",
+#     trim_border: bool = True,
+#     dilate_mask: bool = True,
+#     apply_z_correction: bool = True,
+# ) -> NDArrayf:
+#     """
+#     (22/08/24: Method currently used only for blockwise coregistration)
+#     Warp a DEM using a set of source-destination 2D or 3D coordinates.
+#
+#     :param dem: The DEM to warp. Allowed shapes are (1, row, col) or (row, col)
+#     :param transform: The Affine transform of the DEM.
+#     :param source_coords: The source 2D or 3D points. must be X/Y/(Z) coords of shape (N, 2) or (N, 3).
+#     :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords'
+#     :param resampling: The resampling order to use. Choices: ['nearest', 'linear', 'cubic'].
+#     :param trim_border: Remove values outside of the interpolation regime (True) or leave them unmodified (False).
+#     :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
+#     :param apply_z_correction: Boolean to toggle whether the Z-offset correction is applied or not (default True).
+#
+#     :raises ValueError: If the inputs are poorly formatted.
+#     :raises AssertionError: For unexpected outputs.
+#
+#     :returns: A warped DEM with the same shape as the input.
+#     """
+#     if source_coords.shape != destination_coords.shape:
+#         raise ValueError(
+#             f"Incompatible shapes: source_coords '({source_coords.shape})' and "
+#             f"destination_coords '({destination_coords.shape})' shapes must be the same"
+#         )
+#     if (len(source_coords.shape) > 2) or (source_coords.shape[1] < 2) or (source_coords.shape[1] > 3):
+#         raise ValueError(
+#             "Invalid coordinate shape. Expected 2D or 3D coordinates of shape (N, 2) or (N, 3). "
+#             f"Got '{source_coords.shape}'"
+#         )
+#     allowed_resampling_strs = ["nearest", "linear", "cubic"]
+#     if resampling not in allowed_resampling_strs:
+#         raise ValueError(f"Resampling type '{resampling}' not understood. Choices: {allowed_resampling_strs}")
+#
+#     dem_arr, dem_mask = get_array_and_mask(dem)
+#
+#     bounds = _bounds(transform=transform, shape=dem_arr.shape)
+#
+#     no_horizontal = np.sum(np.linalg.norm(destination_coords[:, :2] - source_coords[:, :2], axis=1)) < 1e-6
+#     no_vertical = source_coords.shape[1] > 2 and np.sum(np.abs(destination_coords[:, 2] - source_coords[:, 2])) < 1e-6
+#
+#     if no_horizontal and no_vertical:
+#         warnings.warn("No difference between source and destination coordinates. Returning self.")
+#         return dem
+#
+#     source_coords_scaled = source_coords.copy()
+#     destination_coords_scaled = destination_coords.copy()
+#     # Scale the coordinates to index-space
+#     for coords in (source_coords_scaled, destination_coords_scaled):
+#         coords[:, 0] = dem_arr.shape[1] * (coords[:, 0] - bounds.left) / (bounds.right - bounds.left)
+#         coords[:, 1] = dem_arr.shape[0] * (1 - (coords[:, 1] - bounds.bottom) / (bounds.top - bounds.bottom))
+#
+#     # Generate a grid of x and y index coordinates.
+#     grid_y, grid_x = np.mgrid[0 : dem_arr.shape[0], 0 : dem_arr.shape[1]]
+#
+#     if no_horizontal:
+#         warped = dem_arr.copy()
+#     else:
+#         # Interpolate the sparse source-destination points to a grid.
+#         # (row, col, 0) represents the destination y-coordinates of the pixels.
+#         # (row, col, 1) represents the destination x-coordinates of the pixels.
+#         new_indices = scipy.interpolate.griddata(
+#             source_coords_scaled[:, [1, 0]],
+#             destination_coords_scaled[:, [1, 0]],  # Coordinates should be in y/x (not x/y) for some reason..
+#             (grid_y, grid_x),
+#             method="linear",
+#         )
+#
+#         # If the border should not be trimmed, just assign the original indices to the missing values.
+#         if not trim_border:
+#             missing_ys = np.isnan(new_indices[:, :, 0])
+#             missing_xs = np.isnan(new_indices[:, :, 1])
+#             new_indices[:, :, 0][missing_ys] = grid_y[missing_ys]
+#             new_indices[:, :, 1][missing_xs] = grid_x[missing_xs]
+#
+#         order = {"nearest": 0, "linear": 1, "cubic": 3}
+#
+#         with warnings.catch_warnings():
+#             # A skimage warning that will hopefully be fixed soon. (2021-06-08)
+#             warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
+#             warped = skimage.transform.warp(
+#                 image=np.where(dem_mask, np.nan, dem_arr),
+#                 inverse_map=np.moveaxis(new_indices, 2, 0),
+#                 output_shape=dem_arr.shape,
+#                 preserve_range=True,
+#                 order=order[resampling],
+#                 cval=np.nan,
+#             )
+#             new_mask = (
+#                 skimage.transform.warp(
+#                     image=dem_mask, inverse_map=np.moveaxis(new_indices, 2, 0), output_shape=dem_arr.shape, cval=False
+#                 )
+#                 > 0
+#             )
+#
+#         if dilate_mask:
+#             new_mask = scipy.ndimage.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
+#
+#         warped[new_mask] = np.nan
+#
+#     # Apply the Z-correction if apply_z_correction is True and if the coordinates are 3D (N, 3)
+#     if not no_vertical and apply_z_correction:
+#         grid_offsets = scipy.interpolate.griddata(
+#             points=destination_coords_scaled[:, :2],
+#             values=source_coords_scaled[:, 2] - destination_coords_scaled[:, 2],
+#             xi=(grid_x, grid_y),
+#             method=resampling,
+#             fill_value=np.nan,
+#         )
+#         if not trim_border:
+#             grid_offsets[np.isnan(grid_offsets)] = np.nanmean(grid_offsets)
+#
+#         warped += grid_offsets
+#
+#     assert not np.all(np.isnan(warped)), "All-NaN output."
+#
+#     return warped.reshape(dem.shape)
 
-        new_coords = np.array([elev.geometry.x.values, elev.geometry.y.values, elev["z"].values]).T
+    @staticmethod
+    def filter_ransac(coreg, positions, thresh=0.05, minPoints=10, maxIteration=100) -> Tuple[np.ndarray, List[float]]:
+        """
+        Apply RANSAC filtering to coregistration data to fit a plane model.
 
-        for dim in range(0, 3):
-            with warnings.catch_warnings():
-                # ZeroDivisionErrors may happen when the transformation is empty (which is fine)
-                warnings.filterwarnings("ignore", message="ZeroDivisionError")
-                model = scipy.interpolate.Rbf(
-                    points[:, 0, 0],
-                    points[:, 1, 0],
-                    points[:, dim, 1] - points[:, dim, 0],
-                    function="linear",
-                )
+        This function uses the RANSAC algorithm to fit a plane to the coregistration data,
+        identifying inliers and outliers based on the specified threshold. It returns the
+        fitted plane parameters and the adjusted coregistration array.
 
-            new_coords[:, dim] += model(elev.geometry.x.values, elev.geometry.y.values)
+        :param coreg: A 2D array of coregistration values
+        :param positions: A 3D array where the first two dimensions represent row and column indices
+        :param thresh: Threshold distance for a point to be considered an inlier, defaults to 0.05
+        :param minPoints: Minimum number of points required to fit a plane, defaults to 10
+        :param maxIteration: Maximum number of iterations for the RANSAC algorithm, defaults to 100
 
-        gdf_new_coords = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(x=new_coords[:, 0], y=new_coords[:, 1], crs=None), data={"z": new_coords[:, 2]}
+        :return: A tuple containing:
+                 - new_arr: The adjusted coregistration array based on the fitted plane
+                 - [A, B, C]: The coefficients of the fitted plane equation Ax + By + C = z
+        """
+        in_shape = coreg.shape
+        rows, cols = positions[:, :, 0], positions[:, :, 1]
+        rows, cols, arr = rows.flatten(), cols.flatten(), coreg.flatten()
+
+        points = np.squeeze(np.dstack([rows, cols, arr]))
+        points = points[~np.isnan(points).any(axis=1), :]
+
+        plane = pyrsc.Plane()
+        best_eq, best_inliers = plane.fit(points, thresh=thresh, minPoints=minPoints, maxIteration=maxIteration)
+        A = -best_eq[0] / best_eq[2]
+        B = -best_eq[1] / best_eq[2]
+        C = -best_eq[3] / best_eq[2]
+
+        new_arr = rows * A + cols * B + C
+
+        new_arr = np.reshape(new_arr, in_shape)
+        return new_arr, [A, B, C]
+
+    @staticmethod
+    def generate_grids_from_ransac(raster_shape, ransac_coefs, step=30):
+        """
+        Generate position grids based on RANSAC coefficients.
+
+        This function creates a grid of values using the RANSAC coefficients, which represent
+        the parameters of a fitted plane. The grid is generated over the specified raster shape
+        with a given step size.
+
+        :param raster_shape: A tuple representing the shape of the raster (rows, columns)
+        :param ransac_coefs: A list of coefficients [A, B, C] representing the plane equation Ax + By + C = z
+        :param step: The step size for generating the grid, defaults to 30
+
+        :return: A tuple containing:
+                 - grid: The generated grid of values based on the RANSAC coefficients
+                 - row_gridvalues: The grid values for the row indices
+                 - col_gridvalues: The grid values for the column indices
+        """
+
+        row_min = 0
+        row_max = raster_shape[0]
+        col_min = 0
+        col_max = raster_shape[1]
+
+        row_range = np.arange(start=row_min, stop=row_max + step, step=step)
+        col_range = np.arange(start=col_min, stop=col_max + step, step=step)
+
+        (
+            col_gridvalues,
+            row_gridvalues,
+        ) = np.meshgrid(
+            col_range,
+            row_range,
         )
 
-        return gdf_new_coords
+        grid = ransac_coefs[0] * row_gridvalues + ransac_coefs[1] * col_gridvalues + ransac_coefs[2]
 
+        return grid, row_gridvalues, col_gridvalues
 
-def warp_dem(
-    dem: NDArrayf,
-    transform: rio.transform.Affine,
-    source_coords: NDArrayf,
-    destination_coords: NDArrayf,
-    resampling: str = "cubic",
-    trim_border: bool = True,
-    dilate_mask: bool = True,
-    apply_z_correction: bool = True,
-) -> NDArrayf:
-    """
-    (22/08/24: Method currently used only for blockwise coregistration)
-    Warp a DEM using a set of source-destination 2D or 3D coordinates.
+    def generate_correction_grid(self, correg, step, dem_shape):
+        """
+        Generate a correction grid for coregistration data.
 
-    :param dem: The DEM to warp. Allowed shapes are (1, row, col) or (row, col)
-    :param transform: The Affine transform of the DEM.
-    :param source_coords: The source 2D or 3D points. must be X/Y/(Z) coords of shape (N, 2) or (N, 3).
-    :param destination_coords: The destination 2D or 3D points. Must have the exact same shape as 'source_coords'
-    :param resampling: The resampling order to use. Choices: ['nearest', 'linear', 'cubic'].
-    :param trim_border: Remove values outside of the interpolation regime (True) or leave them unmodified (False).
-    :param dilate_mask: Dilate the nan mask to exclude edge pixels that could be wrong.
-    :param apply_z_correction: Boolean to toggle whether the Z-offset correction is applied or not (default True).
+        This method generates a correction grid for the coregistration data using RANSAC filtering
+        to fit plane models to the x and y shifts. The grid is generated over the specified DEM shape
+        with a given step size.
 
-    :raises ValueError: If the inputs are poorly formatted.
-    :raises AssertionError: For unexpected outputs.
+        :param correg: A dictionary containing coregistration data with keys 'coreg' and 'positions'
+        :param step: The step size for generating the grid
+        :param dem_shape: A tuple representing the shape of the DEM (rows, columns)
 
-    :returns: A warped DEM with the same shape as the input.
-    """
-    if source_coords.shape != destination_coords.shape:
-        raise ValueError(
-            f"Incompatible shapes: source_coords '({source_coords.shape})' and "
-            f"destination_coords '({destination_coords.shape})' shapes must be the same"
+        :return: A dictionary containing:
+                 - grid: A stacked grid of row and column corrections
+                 - step: The step size used for generating the grid
+        """
+
+        correg_shift = correg["coreg"]
+        positions = correg["positions"]
+
+        percent_not_nan = np.sum(~np.isnan(np.array(correg_shift))) / np.size(np.array(correg_shift))
+
+        nb_points_min = int((correg_shift.shape[0] * correg_shift.shape[1]) * 0.85 * percent_not_nan)
+        max_iter = 2000
+
+        thresh_x = (np.nanpercentile(correg_shift[:, :, 0], 90) - np.nanpercentile(correg_shift[:, :, 0], 10)) / 3
+        thresh_y = (np.nanpercentile(correg_shift[:, :, 1], 90) - np.nanpercentile(correg_shift[:, :, 1], 10)) / 3
+
+        x_2d_ransac, coef_ransac_x = self.filter_ransac(
+            correg_shift[:, :, 0],
+            positions,
+            thresh=thresh_x,
+            minPoints=nb_points_min,
+            maxIteration=max_iter,
         )
-    if (len(source_coords.shape) > 2) or (source_coords.shape[1] < 2) or (source_coords.shape[1] > 3):
-        raise ValueError(
-            "Invalid coordinate shape. Expected 2D or 3D coordinates of shape (N, 2) or (N, 3). "
-            f"Got '{source_coords.shape}'"
-        )
-    allowed_resampling_strs = ["nearest", "linear", "cubic"]
-    if resampling not in allowed_resampling_strs:
-        raise ValueError(f"Resampling type '{resampling}' not understood. Choices: {allowed_resampling_strs}")
-
-    dem_arr, dem_mask = get_array_and_mask(dem)
-
-    bounds = _bounds(transform=transform, shape=dem_arr.shape)
-
-    no_horizontal = np.sum(np.linalg.norm(destination_coords[:, :2] - source_coords[:, :2], axis=1)) < 1e-6
-    no_vertical = source_coords.shape[1] > 2 and np.sum(np.abs(destination_coords[:, 2] - source_coords[:, 2])) < 1e-6
-
-    if no_horizontal and no_vertical:
-        warnings.warn("No difference between source and destination coordinates. Returning self.")
-        return dem
-
-    source_coords_scaled = source_coords.copy()
-    destination_coords_scaled = destination_coords.copy()
-    # Scale the coordinates to index-space
-    for coords in (source_coords_scaled, destination_coords_scaled):
-        coords[:, 0] = dem_arr.shape[1] * (coords[:, 0] - bounds.left) / (bounds.right - bounds.left)
-        coords[:, 1] = dem_arr.shape[0] * (1 - (coords[:, 1] - bounds.bottom) / (bounds.top - bounds.bottom))
-
-    # Generate a grid of x and y index coordinates.
-    grid_y, grid_x = np.mgrid[0 : dem_arr.shape[0], 0 : dem_arr.shape[1]]
-
-    if no_horizontal:
-        warped = dem_arr.copy()
-    else:
-        # Interpolate the sparse source-destination points to a grid.
-        # (row, col, 0) represents the destination y-coordinates of the pixels.
-        # (row, col, 1) represents the destination x-coordinates of the pixels.
-        new_indices = scipy.interpolate.griddata(
-            source_coords_scaled[:, [1, 0]],
-            destination_coords_scaled[:, [1, 0]],  # Coordinates should be in y/x (not x/y) for some reason..
-            (grid_y, grid_x),
-            method="linear",
+        y_2d_ransac, coef_ransac_y = self.filter_ransac(
+            correg_shift[:, :, 1],
+            positions,
+            thresh=thresh_y,
+            minPoints=nb_points_min,
+            maxIteration=max_iter,
         )
 
-        # If the border should not be trimmed, just assign the original indices to the missing values.
-        if not trim_border:
-            missing_ys = np.isnan(new_indices[:, :, 0])
-            missing_xs = np.isnan(new_indices[:, :, 1])
-            new_indices[:, :, 0][missing_ys] = grid_y[missing_ys]
-            new_indices[:, :, 1][missing_xs] = grid_x[missing_xs]
+        # row_grid, row_gridvalues, col_gridvalues = self.generate_grids_from_ransac(dem_shape, coef_ransac_x, step=step)
+        # col_grid, _, _ = self.generate_grids_from_ransac(dem_shape, coef_ransac_y, step=step)
+        #
+        # row_grid += row_gridvalues
+        # col_grid += col_gridvalues
+        #
+        # position_grid = {"grid": np.stack([row_grid, col_grid], axis=0), "step": step}
 
-        order = {"nearest": 0, "linear": 1, "cubic": 3}
-
-        with warnings.catch_warnings():
-            # A skimage warning that will hopefully be fixed soon. (2021-06-08)
-            warnings.filterwarnings("ignore", message="Passing `np.nan` to mean no clipping in np.clip")
-            warped = skimage.transform.warp(
-                image=np.where(dem_mask, np.nan, dem_arr),
-                inverse_map=np.moveaxis(new_indices, 2, 0),
-                output_shape=dem_arr.shape,
-                preserve_range=True,
-                order=order[resampling],
-                cval=np.nan,
-            )
-            new_mask = (
-                skimage.transform.warp(
-                    image=dem_mask, inverse_map=np.moveaxis(new_indices, 2, 0), output_shape=dem_arr.shape, cval=False
-                )
-                > 0
-            )
-
-        if dilate_mask:
-            new_mask = scipy.ndimage.binary_dilation(new_mask, iterations=order[resampling]).astype(new_mask.dtype)
-
-        warped[new_mask] = np.nan
-
-    # Apply the Z-correction if apply_z_correction is True and if the coordinates are 3D (N, 3)
-    if not no_vertical and apply_z_correction:
-        grid_offsets = scipy.interpolate.griddata(
-            points=destination_coords_scaled[:, :2],
-            values=source_coords_scaled[:, 2] - destination_coords_scaled[:, 2],
-            xi=(grid_x, grid_y),
-            method=resampling,
-            fill_value=np.nan,
-        )
-        if not trim_border:
-            grid_offsets[np.isnan(grid_offsets)] = np.nanmean(grid_offsets)
-
-        warped += grid_offsets
-
-    assert not np.all(np.isnan(warped)), "All-NaN output."
-
-    return warped.reshape(dem.shape)
+        return coef_ransac_x, coef_ransac_y
