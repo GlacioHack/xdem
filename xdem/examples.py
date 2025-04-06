@@ -22,7 +22,6 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
-import shutil
 
 import geoutils as gu
 
