@@ -14,6 +14,8 @@ xdem.examples.download_longyearbyen_examples()
 
 PLOT = True
 
+# Disable JIT to get test coverage on numba-decorated functions
+os.environ["NUMBA_DISABLE_JIT"] = "1"
 
 class TestTerrainAttribute:
     filepath = xdem.examples.get_path("longyearbyen_ref_dem")
