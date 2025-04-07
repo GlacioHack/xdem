@@ -743,20 +743,20 @@ def get_terrain_attribute(
     :raises ValueError: If the inputs are poorly formatted or are invalid.
 
     :examples:
-        >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
+        >>> dem = np.repeat(np.arange(3), 3)[::-1].reshape(3, 3)
         >>> dem
-        array([[0, 0, 0],
+        array([[2, 2, 2],
                [1, 1, 1],
-               [2, 2, 2]])
+               [0, 0, 0]])
         >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1, edge_method='nearest')
         >>> slope  # Note the flattening edge effect; see 'get_quadric_coefficients()' for more.
         array([[26.56505, 26.56505, 26.56505],
                [45.     , 45.     , 45.     ],
                [26.56505, 26.56505, 26.56505]], dtype=float32)
         >>> aspect
-        array([[0., 0., 0.],
-               [0., 0., 0.],
-               [0., 0., 0.]], dtype=float32)
+        array([[180., 180., 180.],
+               [180., 180., 180.],
+               [180., 180., 180.]], dtype=float32)
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
@@ -1108,19 +1108,20 @@ def aspect(
     :param degrees: Whether to use degrees or radians (False means radians).
 
     :examples:
-        >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
+        >>> dem = np.tile(np.arange(3), (3,1))
         >>> dem
-        array([[0, 0, 0],
-               [1, 1, 1],
-               [2, 2, 2]])
-        >>> aspect(dem, degrees=True)[1, 1]
-        0.0
-        >>> dem.T
         array([[0, 1, 2],
                [0, 1, 2],
                [0, 1, 2]])
-        >>> aspect(dem.T, degrees=True)[1, 1]
+        >>> aspect(dem, degrees=True)[1, 1]
         270.0
+        >>> dem2 = np.repeat(np.arange(3), 3)[::-1].reshape(3, 3)
+        >>> dem2
+        array([[2, 2, 2],
+               [1, 1, 1],
+               [0, 0, 0]])
+        >>> aspect(dem2, degrees=True)[1, 1]
+        180.0
 
     """
     return get_terrain_attribute(dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees)
