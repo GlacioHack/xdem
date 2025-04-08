@@ -26,7 +26,7 @@ import geoutils as gu
 import numba
 import numpy as np
 from geoutils.raster import Raster, RasterType
-from geoutils.raster.distributed_computing import (
+from geoutils.raster.distributed_computing.multiproc import (
     MultiprocConfig,
     map_overlap_multiproc_save,
 )
