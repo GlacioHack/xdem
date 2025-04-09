@@ -36,6 +36,7 @@ import numpy as np
 import pandas as pd
 from geoutils.raster import Mask, Raster, RasterType, subsample_array
 from geoutils.raster.array import get_array_and_mask
+from geoutils.stats import nmad
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from scipy import integrate
@@ -51,27 +52,6 @@ from xdem._typing import NDArrayf
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
-
-
-def nmad(data: NDArrayf | RasterType, nfact: float = 1.4826) -> np.floating[Any]:
-    """
-    Calculate the normalized median absolute deviation (NMAD) of an array.
-    Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
-    distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
-    e.g. Höhle and Höhle (2009), http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
-
-    :param data: Input array or raster
-    :param nfact: Normalization factor for the data
-
-    :returns nmad: (normalized) median absolute deviation of data.
-    """
-    if isinstance(data, np.ma.masked_array):
-        data_arr = get_array_and_mask(data, check_shape=False)[0]
-    elif isinstance(data, Raster):
-        data_arr = data
-    else:
-        data_arr = np.asarray(data)
-    return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
 
 
 def nd_binning(
