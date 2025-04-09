@@ -26,9 +26,9 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 6
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.stats import nmad
 
 import xdem
-from xdem.spatialstats import nmad
 
 # %%
 # We load example files.
