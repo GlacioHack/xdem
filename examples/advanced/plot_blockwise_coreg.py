@@ -98,5 +98,5 @@ plt.show()
 # We can compare the NMAD to validate numerically that there was an improvement:
 
 
-print(f"Error before: {xdem.spatialstats.nmad(diff_before[inlier_mask]):.2f} m")
-print(f"Error after: {xdem.spatialstats.nmad(diff_after[inlier_mask]):.2f} m")
+print(f"Error before: {gu.stats.nmad(diff_before[inlier_mask]):.2f} m")
+print(f"Error after: {gu.stats.nmad(diff_after[inlier_mask]):.2f} m")

@@ -38,6 +38,7 @@ import rasterio as rio
 import scipy.optimize
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _bounds, _coords, _res
+from geoutils.stats import nmad
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
@@ -52,7 +53,6 @@ from xdem.coreg.base import (
     _preprocess_pts_rst_subsample,
     _reproject_horizontal_shift_samecrs,
 )
-from xdem.spatialstats import nmad
 
 try:
     import pytransform3d.rotations

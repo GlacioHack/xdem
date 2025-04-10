@@ -8,9 +8,10 @@ import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+from geoutils.stats import nmad
 
 import xdem
-from xdem import coreg, examples, misc, spatialstats
+from xdem import coreg, examples, misc
 from xdem.coreg import BlockwiseCoreg
 from xdem.coreg.base import Coreg
 
@@ -257,7 +258,7 @@ def test_warp_dem() -> None:
     )
     # Validate that the DEM is now more or less the same as the original.
     # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
-    assert spatialstats.nmad(dem - untransformed_dem) < 0.5
+    assert nmad(dem - untransformed_dem) < 0.5
 
     # Test with Z-correction disabled
     transformed_dem_no_z = coreg.blockwise.warp_dem(
@@ -281,7 +282,7 @@ def test_warp_dem() -> None:
 
     # Validate that the DEM is now more or less the same as the original, with Z-correction disabled.
     # The result should be similar to the original, but with no Z-shift applied.
-    assert spatialstats.nmad(dem - untransformed_dem_no_z) < 0.5
+    assert nmad(dem - untransformed_dem_no_z) < 0.5
 
     # The difference between the two DEMs should be the vertical shift.
     # We expect the difference to be approximately equal to the average vertical shift.

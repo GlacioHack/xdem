@@ -54,6 +54,7 @@ from geoutils.raster import Mask, RasterType, raster
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _resampling_method_from_str, _translate
+from geoutils.stats import nmad
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
@@ -62,7 +63,7 @@ from xdem.fit import (
     robust_norder_polynomial_fit,
     sumsin_1d,
 )
-from xdem.spatialstats import nd_binning, nmad
+from xdem.spatialstats import nd_binning
 
 try:
     import pytransform3d.rotations
