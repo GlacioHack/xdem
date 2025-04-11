@@ -712,24 +712,6 @@ def get_terrain_attribute(
 ) -> RasterType: ...
 
 
-@overload
-def get_terrain_attribute(
-    dem: RasterType,
-    attribute: str | list[str],
-    multiproc_config: MultiprocConfig,
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    slope_method: str = "Horn",
-    tri_method: str = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
-    window_size: int = 3,
-) -> None: ...
-
-
 def get_terrain_attribute(
     dem: NDArrayf | MArrayf | RasterType,
     attribute: str | list[str],
@@ -747,6 +729,7 @@ def get_terrain_attribute(
     out_dtype: DTypeLike | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType] | None:
+) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
@@ -834,30 +817,33 @@ def get_terrain_attribute(
         mp_config = multiproc_config.copy()
         if isinstance(attribute, str):
             attribute = [attribute]
+
+        list_raster = []
         for attr in attribute:
             if mp_config.outfile is not None and len(attribute) > 1:
                 mp_config.outfile = multiproc_config.outfile.split(".")[0] + "_" + attr + ".tif"
-            elif mp_config.outfile is None:
-                # If outfile is None, the attr will be saved next to the DEM under the name "dem_path_attr.tif"
-                mp_config.outfile = dem.filename.split(".") + attr + ".tif"
-            map_overlap_multiproc_save(
-                _get_terrain_attribute,
-                dem,
-                mp_config,
-                attr,
-                resolution,
-                degrees,
-                hillshade_altitude,
-                hillshade_azimuth,
-                hillshade_z_factor,
-                slope_method,
-                tri_method,
-                fill_method,
-                edge_method,
-                window_size,
-                depth=1,
+            list_raster.append(
+                map_overlap_multiproc_save(
+                    _get_terrain_attribute,
+                    dem,
+                    mp_config,
+                    attr,
+                    resolution,
+                    degrees,
+                    hillshade_altitude,
+                    hillshade_azimuth,
+                    hillshade_z_factor,
+                    slope_method,
+                    tri_method,
+                    fill_method,
+                    edge_method,
+                    window_size,
+                    depth=1,
+                )
             )
-        return None
+        if len(list_raster) == 1:
+            return list_raster[0]
+        return list_raster
     else:
         return _get_terrain_attribute(
             dem,
@@ -1249,23 +1235,13 @@ def slope(
 ) -> Raster: ...
 
 
-@overload
-def slope(
-    dem: RasterType,
-    multiproc_config: MultiprocConfig,
-    method: str = "Horn",
-    degrees: bool = True,
-    resolution: float | tuple[float, float] | None = None,
-) -> None: ...
-
-
 def slope(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     method: str = "Horn",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | Raster | None:
+) -> NDArrayf | Raster:
     """
     Generate a slope map for a DEM, returned in degrees by default.
 
@@ -1319,21 +1295,12 @@ def aspect(
 ) -> RasterType: ...
 
 
-@overload
-def aspect(
-    dem: RasterType,
-    multiproc_config: MultiprocConfig,
-    method: str = "Horn",
-    degrees: bool = True,
-) -> None: ...
-
-
 def aspect(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     method: str = "Horn",
     degrees: bool = True,
-) -> NDArrayf | Raster | None:
+) -> NDArrayf | Raster:
     """
     Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
     default (as in GDAL).
@@ -1396,18 +1363,6 @@ def hillshade(
 ) -> RasterType: ...
 
 
-@overload
-def hillshade(
-    dem: RasterType,
-    multiproc_config: MultiprocConfig,
-    method: str = "Horn",
-    azimuth: float = 315.0,
-    altitude: float = 45.0,
-    z_factor: float = 1.0,
-    resolution: float | tuple[float, float] | None = None,
-) -> None: ...
-
-
 def hillshade(
     dem: NDArrayf | MArrayf,
     multiproc_config: MultiprocConfig | None = None,
@@ -1416,7 +1371,7 @@ def hillshade(
     altitude: float = 45.0,
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
 
@@ -1464,19 +1419,11 @@ def curvature(
 ) -> RasterType: ...
 
 
-@overload
-def curvature(
-    dem: RasterType,
-    multiproc_config: MultiprocConfig,
-    resolution: float | tuple[float, float] | None = None,
-) -> None: ...
-
-
 def curvature(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
 
@@ -1491,6 +1438,7 @@ def curvature(
                See xdem.terrain.get_quadric_coefficients() for more information.
 
     :param dem: The DEM to calculate the curvature from.
+    :param multiproc_config: Multiprocessing configuration, run the function in multiprocessing if not None.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
 
     :raises ValueError: If the inputs are poorly formatted.
@@ -1523,19 +1471,11 @@ def planform_curvature(
 ) -> RasterType: ...
 
 
-@overload
-def planform_curvature(
-    dem: RasterType,
-    multiproc_config: MultiprocConfig,
-    resolution: float | tuple[float, float] | None = None,
-) -> None: ...
-
-
 def planform_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
 
@@ -1578,17 +1518,11 @@ def profile_curvature(
 ) -> RasterType: ...
 
 
-@overload
-def profile_curvature(
-    dem: RasterType, multiproc_config: MultiprocConfig, resolution: float | tuple[float, float] | None = None
-) -> None: ...
-
-
 def profile_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
 
@@ -1631,17 +1565,11 @@ def maximum_curvature(
 ) -> RasterType: ...
 
 
-@overload
-def maximum_curvature(
-    dem: RasterType, multiproc_config: MultiprocConfig, resolution: float | tuple[float, float] | None = None
-) -> None: ...
-
-
 def maximum_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
     multiplied by 100.
@@ -1671,13 +1599,9 @@ def topographic_position_index(
 def topographic_position_index(dem: RasterType, multiproc_config: None = None, window_size: int = 3) -> RasterType: ...
 
 
-@overload
-def topographic_position_index(dem: RasterType, multiproc_config: MultiprocConfig, window_size: int = 3) -> None: ...
-
-
 def topographic_position_index(
     dem: NDArrayf | MArrayf | RasterType, multiproc_config: MultiprocConfig | None = None, window_size: int = 3
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1721,18 +1645,12 @@ def terrain_ruggedness_index(
 ) -> RasterType: ...
 
 
-@overload
-def terrain_ruggedness_index(
-    dem: RasterType, multiproc_config: MultiprocConfig, method: str = "Riley", window_size: int = 3
-) -> None: ...
-
-
 def terrain_ruggedness_index(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     method: str = "Riley",
     window_size: int = 3,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1782,13 +1700,9 @@ def roughness(dem: NDArrayf | MArrayf, multiproc_config: None = None, window_siz
 def roughness(dem: RasterType, multiproc_config: None = None, window_size: int = 3) -> RasterType: ...
 
 
-@overload
-def roughness(dem: RasterType, multiproc_config: MultiprocConfig, window_size: int = 3) -> None: ...
-
-
 def roughness(
     dem: NDArrayf | MArrayf | RasterType, multiproc_config: MultiprocConfig | None = None, window_size: int = 3
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
     unit of the DEM (typically meters).
@@ -1836,19 +1750,11 @@ def rugosity(
 ) -> RasterType: ...
 
 
-@overload
-def rugosity(
-    dem: RasterType,
-    multiproc_config: MultiprocConfig,
-    resolution: float | tuple[float, float] | None = None,
-) -> None: ...
-
-
 def rugosity(
     dem: NDArrayf | MArrayf | RasterType,
     multiproc_config: MultiprocConfig | None = None,
     resolution: float | tuple[float, float] | None = None,
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
     output is unitless.
@@ -1888,13 +1794,9 @@ def fractal_roughness(dem: NDArrayf | MArrayf, multiproc_config: None = None, wi
 def fractal_roughness(dem: RasterType, multiproc_config: None = None, window_size: int = 13) -> RasterType: ...
 
 
-@overload
-def fractal_roughness(dem: RasterType, multiproc_config: MultiprocConfig, window_size: int = 13) -> None: ...
-
-
 def fractal_roughness(
     dem: NDArrayf | MArrayf | RasterType, multiproc_config: MultiprocConfig | None = None, window_size: int = 13
-) -> NDArrayf | RasterType | None:
+) -> NDArrayf | RasterType:
     """
     Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
     equal to 5x5, defaults to 13x13. Output unit is a fractal dimension between 1 and 3.

@@ -388,7 +388,7 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
         self, multiproc_config: MultiprocConfig | None = None, method: str = "Horn", degrees: bool = True
-    ) -> RasterType | None:
+    ) -> RasterType:
         return terrain.slope(self, multiproc_config=multiproc_config, method=method, degrees=degrees)
 
     @copy_doc(terrain, remove_dem_res_params=True)
@@ -397,7 +397,7 @@ class DEM(Raster):  # type: ignore
         multiproc_config: MultiprocConfig | None = None,
         method: str = "Horn",
         degrees: bool = True,
-    ) -> RasterType | None:
+    ) -> RasterType:
 
         return terrain.aspect(self, multiproc_config=multiproc_config, method=method, degrees=degrees)
 
@@ -409,7 +409,7 @@ class DEM(Raster):  # type: ignore
         azimuth: float = 315.0,
         altitude: float = 45.0,
         z_factor: float = 1.0,
-    ) -> RasterType | None:
+    ) -> RasterType:
 
         return terrain.hillshade(
             self,
@@ -421,55 +421,53 @@ class DEM(Raster):  # type: ignore
         )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType | None:
+    def curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType:
 
         return terrain.curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType | None:
+    def planform_curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType:
 
         return terrain.planform_curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType | None:
+    def profile_curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType:
 
         return terrain.profile_curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType | None:
+    def maximum_curvature(self, multiproc_config: MultiprocConfig | None = None) -> RasterType:
 
         return terrain.maximum_curvature(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(
         self, multiproc_config: MultiprocConfig | None = None, window_size: int = 3
-    ) -> RasterType | None:
+    ) -> RasterType:
 
         return terrain.topographic_position_index(self, multiproc_config=multiproc_config, window_size=window_size)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def terrain_ruggedness_index(
         self, multiproc_config: MultiprocConfig | None = None, method: str = "Riley", window_size: int = 3
-    ) -> RasterType | None:
+    ) -> RasterType:
 
         return terrain.terrain_ruggedness_index(
             self, multiproc_config=multiproc_config, method=method, window_size=window_size
         )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def roughness(self, multiproc_config: MultiprocConfig | None = None, window_size: int = 3) -> RasterType | None:
+    def roughness(self, multiproc_config: MultiprocConfig | None = None, window_size: int = 3) -> RasterType:
 
         return terrain.roughness(self, multiproc_config=multiproc_config, window_size=window_size)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def rugosity(self, multiproc_config: MultiprocConfig | None = None) -> RasterType | None:
+    def rugosity(self, multiproc_config: MultiprocConfig | None = None) -> RasterType:
 
         return terrain.rugosity(self, multiproc_config=multiproc_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(
-        self, multiproc_config: MultiprocConfig | None = None, window_size: int = 13
-    ) -> RasterType | None:
+    def fractal_roughness(self, multiproc_config: MultiprocConfig | None = None, window_size: int = 13) -> RasterType:
 
         return terrain.fractal_roughness(self, multiproc_config=multiproc_config, window_size=window_size)
 
