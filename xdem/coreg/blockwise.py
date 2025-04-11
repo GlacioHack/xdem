@@ -129,11 +129,11 @@ class BlockwiseCoreg(Coreg):
         if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(to_be_aligned_elev, gpd.GeoDataFrame):
             raise NotImplementedError("Blockwise coregistration does not yet support two elevation point cloud inputs.")
 
-        # Define inlier mask if None, before indexing subdivided array in process function below
-        if inlier_mask is None:
-            mask = np.ones(to_be_aligned_elev.shape, dtype=bool)
-        else:
-            mask = inlier_mask
+        # # Define inlier mask if None, before indexing subdivided array in process function below
+        # if inlier_mask is None:
+        #     mask = np.ones(to_be_aligned_elev.shape, dtype=bool)
+        # else:
+        #     mask = inlier_mask
 
         outputs_reproj = self.preprocess(reference_elev, to_be_aligned_elev)
         if outputs_reproj is None:
@@ -147,7 +147,7 @@ class BlockwiseCoreg(Coreg):
 
         config_multiproc = MultiprocConfig(chunk_size=self.tile_size)
         res_multiproc = map_multiproc_collect(
-            self.coreg_wrapper, reference_elev.filename, config_multiproc, to_be_aligned_elev, mask, return_tile=True
+            self.coreg_wrapper, reference_elev.filename, config_multiproc, to_be_aligned_elev, return_tile=True
         )
 
         self.res_coreg = [element[0] for element in res_multiproc]

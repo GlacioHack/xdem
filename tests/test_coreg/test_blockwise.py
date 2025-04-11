@@ -22,17 +22,6 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    # Crop to smaller extents for test speed
-    res = reference_dem.res
-    crop_geom = (
-        reference_dem.bounds.left,
-        reference_dem.bounds.bottom,
-        reference_dem.bounds.left + res[0] * 300,
-        reference_dem.bounds.bottom + res[1] * 300,
-    )
-    reference_dem = reference_dem.crop(crop_geom)
-    to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
-
     return reference_dem, to_be_aligned_dem, glacier_mask
 
 
@@ -42,7 +31,13 @@ class TestBlockwiseCoreg:
 
     def test_blockwise_coreg(self, tmp_path) -> None:
 
-        blockwise = coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), output_path=str(tmp_path))
+        blockwise = coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(vertical_shift=False), output_path=str(tmp_path))
         blockwise.fit(self.ref, self.tba)
         blockwise.apply(self.tba)
 
+        aligned_dem_blockwise = xdem.DEM(tmp_path / "aligned_DEM.tif")
+
+        nuth_kaab = xdem.coreg.NuthKaab()
+        aligned_dem_global = nuth_kaab.fit_and_apply(self.ref, self.tba)
+
+        print("toto")
