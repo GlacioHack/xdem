@@ -19,14 +19,18 @@
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, List, Tuple, Union
 
 import numpy as np
 
 # Only for Python >= 3.9
 if sys.version_info.minor >= 9:
 
-    from numpy.typing import NDArray, DTypeLike, ArrayLike  # this syntax works starting on Python 3.9
+    from numpy.typing import (  # this syntax works starting on Python 3.9
+        ArrayLike,
+        DTypeLike,
+        NDArray,
+    )
 
     # Simply define here if they exist
     DTypeLike = DTypeLike

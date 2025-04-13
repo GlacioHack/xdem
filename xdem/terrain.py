@@ -27,7 +27,7 @@ import numba
 import numpy as np
 from geoutils.raster import Raster, RasterType
 
-from xdem._typing import MArrayf, NDArrayf, DTypeLike
+from xdem._typing import DTypeLike, MArrayf, NDArrayf
 
 available_attributes = [
     "slope",
