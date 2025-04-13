@@ -323,7 +323,7 @@ def get_quadric_coefficients(
         if np.issubdtype(dem.dtype, np.integer):
             out_dtype = np.float32
         else:
-            out_dtype = dem.dtype
+            out_dtype = np.dtype(dem.dtype)
 
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
@@ -606,7 +606,7 @@ def get_windowed_indexes(
         if np.issubdtype(dem.dtype, np.integer):
             out_dtype = np.float32
         else:
-            out_dtype = dem.dtype
+            out_dtype = np.dtype(dem.dtype)
 
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
@@ -804,7 +804,7 @@ def get_terrain_attribute(
         if np.issubdtype(dem.dtype, np.integer):
             out_dtype = np.float32
         else:
-            out_dtype = dem.dtype
+            out_dtype = np.dtype(dem.dtype)
 
     # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
     list_requiring_surface_fit = [
