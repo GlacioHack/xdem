@@ -1062,9 +1062,9 @@ def slope(
                [1, 1, 1],
                [2, 2, 2]])
         >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
-        45.0
+        np.float32(45.0)
         >>> np.round(np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.), 1) # Slope in percentage
-        0.5
+        np.float32(0.5)
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
@@ -1114,14 +1114,14 @@ def aspect(
                [0, 1, 2],
                [0, 1, 2]])
         >>> aspect(dem, degrees=True)[1, 1]
-        270.0
+        np.float32(270.0)
         >>> dem2 = np.repeat(np.arange(3), 3)[::-1].reshape(3, 3)
         >>> dem2
         array([[2, 2, 2],
                [1, 1, 1],
                [0, 0, 0]])
         >>> aspect(dem2, degrees=True)[1, 1]
-        180.0
+        np.float32(180.0)
 
     """
     return get_terrain_attribute(dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees)
@@ -1227,7 +1227,7 @@ def curvature(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> curvature(dem, resolution=1.0)[1, 1] / 100.
-        4.0
+        np.float32(4.0)
 
     :returns: The curvature array of the DEM.
     """
@@ -1264,12 +1264,12 @@ def planform_curvature(
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
         >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        -0.0
+        np.float32(0.0)
         >>> dem = np.array([[1, 4, 8],
         ...                 [1, 2, 4],
         ...                 [1, 4, 8]], dtype="float32")
         >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        -4.0
+        np.float32(-4.0)
 
     :returns: The planform curvature array of the DEM.
     """
@@ -1302,12 +1302,12 @@ def profile_curvature(
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        1.0
+        np.float32(1.0)
         >>> dem = np.array([[1, 2, 3],
         ...                 [1, 2, 3],
         ...                 [1, 2, 3]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        0.0
+        np.float32(0.0)
 
     :returns: The profile curvature array of the DEM.
     """
@@ -1366,12 +1366,12 @@ def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> topographic_position_index(dem)[1, 1]
-        1.0
+        np.float32(1.0)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> topographic_position_index(dem)[1, 1]
-        0.0
+        np.float32(0.0)
 
     :returns: The topographic position index array of the DEM (unit of the DEM).
     """
@@ -1411,12 +1411,12 @@ def terrain_ruggedness_index(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> terrain_ruggedness_index(dem)[1, 1]
-        2.8284271247461903
+        np.float32(2.8284271247461903)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> terrain_ruggedness_index(dem)[1, 1]
-        0.0
+        np.float32(0.0)
 
     :returns: The terrain ruggedness index array of the DEM (unit of the DEM).
     """
@@ -1450,12 +1450,12 @@ def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDA
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> roughness(dem)[1, 1]
-        1.0
+        np.float64(1.0)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> roughness(dem)[1, 1]
-        0.0
+        np.float64(0.0)
 
     :returns: The roughness array of the DEM (unit of the DEM).
     """
@@ -1495,12 +1495,12 @@ def rugosity(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> rugosity(dem, resolution=1.)[1, 1]
-        1.4142135
+        np.float32(1.4142135)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> np.round(rugosity(dem, resolution=1.)[1, 1], 5)
-        1.0
+        np.float32(1.0)
 
     :returns: The rugosity array of the DEM (unitless).
     """
