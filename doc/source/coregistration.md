@@ -501,36 +501,27 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 ```{caution}
 The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental: it might not support all coregistration
 methods, and create edge artefacts.
+:warning: This particular method relies on storing all data entirely on disk.
 ```
 
-Sometimes, we want to split a coregistration across different spatial subsets of an elevation dataset, running that
-method independently in each subset. A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
+Sometimes, we want to split a coregistration across different spatial block of an elevation dataset, running that
+method independently in each subset.
+It can also happen that memory requirements exceed the capacity of the computers.
+In such cases, it may be necessary to process the data in blocks and then aggregate the results afterward.
+
+
+A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=16)
+mp_config = MultiprocConfig(chunk_size=500, outfile="outputs/to/save/example.tif")
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
+blockwise.fit(reference_dem, dem_to_be_aligned)
+blockwise.apply()
 ```
 
-The subdivision corresponds to an equal-length block division across the extent of the elevation dataset. It needs
-to be a number of the form 2{sup}`n` (such as 4 or 256).
-
-It is run the same way as other coregistrations:
+The subdivision corresponds to the chunk_size. The results of each tile coregistration are saved in the meta parameters
+of the "blockwise" class.
 
 ```{code-cell} ipython3
-# Run 16 block coregistrations
-aligned_dem = blockwise.fit_and_apply(ref_dem, tba_dem_shifted)
-```
-
-```{code-cell} ipython3
-:tags: [hide-input]
-:mystnb:
-:  code_prompt_show: "Show plotting code"
-:  code_prompt_hide: "Hide plotting code"
-
-# Plot before and after
-f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before block NK")
-(tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After block NK")
-(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
-_ = ax[1].set_yticklabels([])
+print(blockwise.meta)
 ```
