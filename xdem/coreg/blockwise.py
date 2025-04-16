@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import itertools
 import logging
-from typing import Any, Literal
+import math
+import warnings
+from pathlib import Path
 
 import geopandas as gpd
 import geoutils as gu
@@ -39,12 +41,12 @@ from geoutils.raster.distributed_computing import (
 )
 from geoutils.raster.tiling import compute_tiling
 
-import xdem
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, CoregPipeline, CoregType
+from xdem.coreg.affine import NuthKaab
+from xdem.coreg.base import Coreg, CoregPipeline
 
 
-class BlockwiseCoreg(Coreg):
+class BlockwiseCoreg:
     """
     A processing class of choice is run on a subdivision of the raster. When later applying the step
     the optimal warping is interpolated based on X/Y/Z shifts from the coreg algorithm at the grid points.
@@ -53,85 +55,66 @@ class BlockwiseCoreg(Coreg):
     def __init__(
         self,
         step: Coreg | CoregPipeline,
-        tile_size: int = 300,
-        apply_z_correction: bool = True,
-        output_path: str = "",
+        mp_config: MultiprocConfig,
     ) -> None:
         """
         Instantiate a blockwise processing object.
 
         :param step: An instantiated co-registration step object to fit in the subdivided DEMs.
-        :param tile_size: Size of chunks in pixels.
-        :param apply_z_correction: Boolean to toggle whether the Z-offset correction is applied or not (default True).
+        :param block_size: Size of chunks in pixels.
         """
         if isinstance(step, type):
             raise ValueError(
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
         self.procstep = step
-        self.tile_size = tile_size
-        self.apply_z_correction = apply_z_correction
-        self.output_path = output_path
+        self.block_size = mp_config.chunk_size
+        if isinstance(step, NuthKaab):
+            self.apply_z_correction = step.vertical_shift  # type: ignore
+        self.mp_config = mp_config
 
-        tile_size = 500
-        self.mp_config = MultiprocConfig(tile_size)
+        self.output_path_reproject = Path(mp_config.outfile).parent / "reprojected_dem.tif"
+        self.output_path_aligned = Path(mp_config.outfile).parent / "aligned_dem.tif"
 
-        super().__init__()
+        self.meta = {"inputs": {}, "outputs": {}}
 
-        print("toto")
+        self.reproject_dem = None
 
     @staticmethod
-    def coreg_wrapper(
-        ref_dem_tiled: RasterType, tba_dem: RasterType, coreg_method: Coreg | CoregPipeline, inlier_mask: RasterType
+    def _coreg_wrapper(
+        ref_dem_tiled: RasterType,
+        tba_dem: RasterType,
+        coreg_method: Coreg | CoregPipeline,
+        inlier_mask: RasterType | None = None,
     ) -> Coreg | CoregPipeline:
         """
         Wrapper function to apply Nuth & Kääb coregistration on a tile pair.
         """
         coreg_method = coreg_method.copy()
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
+        if inlier_mask:
+            inlier_mask = inlier_mask.crop(ref_dem_tiled)
         return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
 
-    def preprocess(self, ref: RasterType, sec: RasterType) -> RasterType | None:
-        """
-        Reproject the secondary elevation dataset to match the reference dataset.
-
-        :param ref: Reference elevation data (used as target for reprojection).
-        :param sec: Secondary elevation data to be reprojected.
-        :return: Reprojected secondary elevation dataset.
-        """
-
-        mp_config = MultiprocConfig(chunk_size=self.tile_size, outfile=self.output_path + "SEC_reprojected.tif")
-        reproject_dem = sec.reproject(ref=ref, resampling="cubic", multiproc_config=mp_config, silent=True)
-
-        return reproject_dem
-
     def fit(
-        self: CoregType,
+        self: BlockwiseCoreg,
         reference_elev: NDArrayf | MArrayf | RasterType,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        weights: NDArrayf | None = None,
-        subsample: float | int | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z",
-        random_state: int | np.random.Generator | None = None,
-        **kwargs: Any,
-    ) -> CoregType:
+    ) -> None:
 
-        if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(to_be_aligned_elev, gpd.GeoDataFrame):
-            raise NotImplementedError("Blockwise coregistration does not yet support two elevation point cloud inputs.")
+        self.mp_config.outfile = self.output_path_reproject
 
         self.reproject_dem = to_be_aligned_elev.reproject(  # type: ignore
             ref=reference_elev, multiproc_config=self.mp_config, silent=True
         )
 
-        self.meta["inputs"] = self.procstep.meta["inputs"]
+        logging.warning(f"No reprojected DEM returned, but saved at {self.output_path_reproject}")
+
+        self.meta["inputs"] = self.procstep.meta["inputs"]  # type: ignore
 
         outputs_coreg = map_multiproc_collect(
-            self.coreg_wrapper,
+            self._coreg_wrapper,
             reference_elev,
             self.mp_config,
             self.reproject_dem,
@@ -140,73 +123,70 @@ class BlockwiseCoreg(Coreg):
             return_tile=True,
         )
 
-        shape_tiling_grid = compute_tiling(self.tile_size, reference_elev.shape, to_be_aligned_elev.shape).shape
+        shape_tiling_grid = compute_tiling(self.block_size, reference_elev.shape, to_be_aligned_elev.shape).shape
         rows_cols = list(itertools.product(range(shape_tiling_grid[0]), range(shape_tiling_grid[1])))
 
+        self.x_coords = []
+        self.y_coords = []
+        self.shifts_x = []
+        self.shifts_y = []
+        self.shifts_z = []
+
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-            tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
             try:
                 shift_x = coreg.meta["outputs"]["affine"]["shift_x"]
                 shift_y = coreg.meta["outputs"]["affine"]["shift_y"]
                 shift_z = coreg.meta["outputs"]["affine"]["shift_z"]
-                self.meta["outputs"][tile_str] = {  # type: ignore
-                    "shift_x": shift_x,
-                    "shift_y": shift_y,
-                    "shift_z": shift_z,
-                }
-
-                self.shifts_x.append(shift_x)
-                self.shifts_y.append(shift_y)
-                self.shifts_z.append(shift_z)
 
             except KeyError:
-                self.meta["outputs"][tile_str] = {  # type: ignore
-                    "shift_x": np.nan,
-                    "shift_y": np.nan,
-                    "shift_z": np.nan,
-                }
+                continue
 
             x, y = (
-                tile_coords[2] + self.tile_size / 2,
-                tile_coords[0] + self.tile_size / 2,
+                tile_coords[2] + self.block_size / 2,
+                tile_coords[0] + self.block_size / 2,
             ) * self.reproject_dem.transform
 
             self.x_coords.append(x)
             self.y_coords.append(y)
 
-        self.x_coords, self.y_coords, self.shifts_x, self.shifts_y = map(
-            np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y)
+            self.shifts_x.append(shift_x)
+            self.shifts_y.append(shift_y)
+            self.shifts_z.append(shift_z)
+
+            tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
+            self.meta["outputs"][tile_str] = {  # type: ignore
+                "shift_x": shift_x,
+                "shift_y": shift_y,
+                "shift_z": shift_z,
+            }
+
+        self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z = map(  # type: ignore
+            np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z)
         )
 
-        # Flag that the fitting function has been called.
-        self._fit_called = True
-
-        return self
-
     @staticmethod
-    def ransac(
+    def _ransac(
         x_coords: NDArrayf,
         y_coords: NDArrayf,
         shifts: NDArrayf,
-        threshold: float = 1e-7,
+        threshold: float = 0.01,
         min_inliers: int = 10,
+        max_iterations: int = 2000,
     ) -> tuple[float, float, float]:
+
         # Create 3D point clouds
         points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
         points = points[~np.isnan(points).any(axis=1), :]
 
         plane = pyrsc.Plane()
-        try:
-            (a, b, c, d), _ = plane.fit(points, thresh=threshold, minPoints=min_inliers)
-        except ValueError:
-            raise ValueError("Not enough inliers, please increase the size of your tiles. ")
+        (a, b, c, d), _ = plane.fit(points, thresh=threshold, minPoints=min_inliers, maxIteration=max_iterations)
 
         # Convert plane ax + by + cz + d = 0 to z = f(x, y)
         # z = -(a*x + b*y + d) / c
 
         return -a / c, -b / c, -d / c
 
-    def wrapper_apply_epc(
+    def _wrapper_apply_epc(
         self,
         tba_dem_tile: RasterType,
         coeff_x: tuple[float, float, float],
@@ -251,55 +231,72 @@ class BlockwiseCoreg(Coreg):
             data={"z": z_new if self.apply_z_correction else z},
         )
 
-        # To raster
-        new_dem = _grid_pointcloud(
-            trans_epc,
-            grid_coords=tba_dem_tile.coords(grid=False),
-            data_column_name="z",
-            resampling=resampling,
-        )
+        with warnings.catch_warnings():
+            # CRS mismatch between the CRS of left geometries and the CRS of right geometries.
+            warnings.filterwarnings("ignore", category=UserWarning)
+            # To raster
+            new_dem = _grid_pointcloud(
+                trans_epc,
+                grid_coords=tba_dem_tile.coords(grid=False),
+                data_column_name="z",
+                resampling=resampling,
+            )
+
         applied_dem_tile = gu.Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
         return applied_dem_tile
 
-    def _apply_rst(
+    def apply(
         self,
-        elev: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
+        threshold_ransac: float = 0.01,
+        min_inliers_ransac: int = 10,
+        max_iterations_ransac: int = 2000,
+    ) -> RasterType:
         """
         Apply the coregistration transformation to an elevation array using a ransac filter.
-
-        :param elev: Elevation data as a NumPy array.
-        :param transform: Affine transform associated with the input elevation data.
-        :param crs: Coordinate reference system of the elevation data.
-        :param bias_vars: Optional dictionary of bias variables to apply (not used here).
-        :param kwargs: Additional keyword arguments (ignored in this implementation).
-        :return: Tuple of dummy values (0, 0), as output is saved directly to disk.
         """
 
-        coeff_x = self.ransac(self.x_coords, self.y_coords, self.shifts_x)
-        coeff_y = self.ransac(self.x_coords, self.y_coords, self.shifts_y)
-        coeff_z = self.ransac(self.x_coords, self.y_coords, self.shifts_z)
-
-        apply_config = MultiprocConfig(
-            chunk_size=self.tile_size,
-            outfile=self.output_path + "aligned_dem.tif",
+        coeff_x = self._ransac(
+            self.x_coords,  # type: ignore
+            self.y_coords,  # type: ignore
+            self.shifts_x,  # type: ignore
+            threshold_ransac,
+            min_inliers_ransac,
+            max_iterations_ransac,
+        )
+        coeff_y = self._ransac(
+            self.x_coords,  # type: ignore
+            self.y_coords,  # type: ignore
+            self.shifts_y,  # type: ignore
+            threshold_ransac,
+            min_inliers_ransac,
+            max_iterations_ransac,
         )
 
-        _ = map_overlap_multiproc_save(
-            self.wrapper_apply_epc,
+        if self.apply_z_correction:
+            coeff_z = self._ransac(
+                self.x_coords,  # type: ignore
+                self.y_coords,  # type: ignore
+                self.shifts_z,  # type: ignore
+                threshold_ransac,
+                min_inliers_ransac,
+                max_iterations_ransac,
+            )
+        else:
+            coeff_z = (0, 0, 0)
+
+        self.mp_config.outfile = self.output_path_aligned
+
+        # be careful with depth value if Out of Memory
+        depth = np.max([np.max(self.shifts_x), np.max(self.shifts_y)])
+
+        aligned_dem = map_overlap_multiproc_save(
+            self._wrapper_apply_epc,
             self.reproject_dem,
-            apply_config,
+            self.mp_config,
             coeff_x,
             coeff_y,
             coeff_z,
-            depth=10,
+            depth=math.ceil(depth),
         )
 
-        transform = xdem.DEM(self.output_path + "aligned_dem.tif").transform
-        logging.warning(f"No DEM returned, but saved at {self.output_path}_aligned_dem.tif")
-
-        return np.empty([2, 2]), transform
+        return aligned_dem
