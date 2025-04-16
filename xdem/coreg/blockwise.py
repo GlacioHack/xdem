@@ -38,10 +38,10 @@ from geoutils.raster.distributed_computing import (
     map_overlap_multiproc_save,
 )
 from geoutils.raster.tiling import compute_tiling
-from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.coreg import Coreg, CoregPipeline
-from xdem.coreg.base import Coreg, CoregPipeline, CoregType
+
 import xdem
+from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem.coreg.base import Coreg, CoregPipeline, CoregType
 
 
 class BlockwiseCoreg(Coreg):
@@ -66,27 +66,23 @@ class BlockwiseCoreg(Coreg):
         """
         if isinstance(step, type):
             raise ValueError(
-                "The 'step' argument must be an instantiated Coreg subclass. "
-                "Hint: write e.g. ICP() instead of ICP"
+                "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
         self.procstep = step
         self.tile_size = tile_size
         self.apply_z_correction = apply_z_correction
         self.output_path = output_path
-        self.x_coords = []
-        self.y_coords = []
-        self.shifts_x = []
-        self.shifts_y = []
-        self.shifts_z = []
 
         tile_size = 500
         self.mp_config = MultiprocConfig(tile_size)
 
         super().__init__()
 
+        print("toto")
+
     @staticmethod
     def coreg_wrapper(
-        ref_dem_tiled, tba_dem, coreg_method, inlier_mask
+        ref_dem_tiled: RasterType, tba_dem: RasterType, coreg_method: Coreg | CoregPipeline, inlier_mask: RasterType
     ) -> Coreg | CoregPipeline:
         """
         Wrapper function to apply Nuth & Kääb coregistration on a tile pair.
@@ -104,12 +100,8 @@ class BlockwiseCoreg(Coreg):
         :return: Reprojected secondary elevation dataset.
         """
 
-        mp_config = MultiprocConfig(
-            chunk_size=self.tile_size, outfile=self.output_path + "SEC_reprojected.tif"
-        )
-        reproject_dem = sec.reproject(
-            ref=ref, resampling="cubic", multiproc_config=mp_config, silent=True
-        )
+        mp_config = MultiprocConfig(chunk_size=self.tile_size, outfile=self.output_path + "SEC_reprojected.tif")
+        reproject_dem = sec.reproject(ref=ref, resampling="cubic", multiproc_config=mp_config, silent=True)
 
         return reproject_dem
 
@@ -129,14 +121,10 @@ class BlockwiseCoreg(Coreg):
         **kwargs: Any,
     ) -> CoregType:
 
-        if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(
-            to_be_aligned_elev, gpd.GeoDataFrame
-        ):
-            raise NotImplementedError(
-                "Blockwise coregistration does not yet support two elevation point cloud inputs."
-            )
+        if isinstance(reference_elev, gpd.GeoDataFrame) and isinstance(to_be_aligned_elev, gpd.GeoDataFrame):
+            raise NotImplementedError("Blockwise coregistration does not yet support two elevation point cloud inputs.")
 
-        self.reproject_dem = to_be_aligned_elev.reproject(
+        self.reproject_dem = to_be_aligned_elev.reproject(  # type: ignore
             ref=reference_elev, multiproc_config=self.mp_config, silent=True
         )
 
@@ -152,12 +140,8 @@ class BlockwiseCoreg(Coreg):
             return_tile=True,
         )
 
-        shape_tiling_grid = compute_tiling(
-            self.tile_size, reference_elev.shape, to_be_aligned_elev.shape
-        ).shape
-        rows_cols = list(
-            itertools.product(range(shape_tiling_grid[0]), range(shape_tiling_grid[1]))
-        )
+        shape_tiling_grid = compute_tiling(self.tile_size, reference_elev.shape, to_be_aligned_elev.shape).shape
+        rows_cols = list(itertools.product(range(shape_tiling_grid[0]), range(shape_tiling_grid[1])))
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
             tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
@@ -165,8 +149,8 @@ class BlockwiseCoreg(Coreg):
                 shift_x = coreg.meta["outputs"]["affine"]["shift_x"]
                 shift_y = coreg.meta["outputs"]["affine"]["shift_y"]
                 shift_z = coreg.meta["outputs"]["affine"]["shift_z"]
-                self.meta["outputs"][tile_str] = {
-                    "shift_x": shift_y,
+                self.meta["outputs"][tile_str] = {  # type: ignore
+                    "shift_x": shift_x,
                     "shift_y": shift_y,
                     "shift_z": shift_z,
                 }
@@ -176,7 +160,7 @@ class BlockwiseCoreg(Coreg):
                 self.shifts_z.append(shift_z)
 
             except KeyError:
-                self.meta["outputs"][tile_str] = {
+                self.meta["outputs"][tile_str] = {  # type: ignore
                     "shift_x": np.nan,
                     "shift_y": np.nan,
                     "shift_z": np.nan,
@@ -215,9 +199,7 @@ class BlockwiseCoreg(Coreg):
         try:
             (a, b, c, d), _ = plane.fit(points, thresh=threshold, minPoints=min_inliers)
         except ValueError:
-            raise ValueError(
-                "Not enough inliers, please increase the size of your tiles. "
-            )
+            raise ValueError("Not enough inliers, please increase the size of your tiles. ")
 
         # Convert plane ax + by + cz + d = 0 to z = f(x, y)
         # z = -(a*x + b*y + d) / c
@@ -231,7 +213,17 @@ class BlockwiseCoreg(Coreg):
         coeff_y: tuple[float, float, float],
         coeff_z: tuple[float, float, float],
         resampling: str | rio.warp.Resampling = "linear",
-    ):
+    ) -> RasterType:
+        """
+        Applies a geometric transformation to a raster using specific coefficients for the X, Y, and Z axes.
+
+        :param tba_dem_tile: Input DEM raster to be transformed.
+        :param coeff_x: Transformation coefficients for the X axis in the form (a, b, c).
+        :param coeff_y: Transformation coefficients for the Y axis in the form (a, b, c).
+        :param coeff_z: Transformation coefficients for the Z axis in the form (a, b, c).
+        :param resampling: Resampling method to use during transformation. Default is "linear".
+        :return: Transformed DEM raster with the applied coefficients.
+        """
         # To pointcloud
         epc = tba_dem_tile.to_pointcloud(data_column_name="z").ds
         # Unpack coefficients
@@ -266,9 +258,7 @@ class BlockwiseCoreg(Coreg):
             data_column_name="z",
             resampling=resampling,
         )
-        applied_dem_tile = gu.Raster.from_array(
-            new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata
-        )
+        applied_dem_tile = gu.Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
         return applied_dem_tile
 
     def _apply_rst(
@@ -310,8 +300,6 @@ class BlockwiseCoreg(Coreg):
         )
 
         transform = xdem.DEM(self.output_path + "aligned_dem.tif").transform
-        logging.warning(
-            f"No DEM returned, but saved at {self.output_path}_aligned_dem.tif"
-        )
+        logging.warning(f"No DEM returned, but saved at {self.output_path}_aligned_dem.tif")
 
         return np.empty([2, 2]), transform
