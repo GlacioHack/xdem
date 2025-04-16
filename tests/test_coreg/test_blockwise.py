@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+
 import xdem
 from xdem import examples
 from xdem.coreg.base import Coreg
@@ -21,19 +24,28 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     return reference_dem, to_be_aligned_dem, glacier_mask
 
 
-def coreg_object(path):
+def coreg_object(path: Path) -> Coreg:
+    """
+    Fixture to create a coregistration object
+    """
     step = xdem.coreg.NuthKaab(vertical_shift=False)
-    coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, tile_size=500, apply_z_correction=True,
-                                          output_path=str(path))
+    coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, tile_size=500, apply_z_correction=True, output_path=str(path))
 
     return coreg_obj
 
 
-class TestBlockwiseCoreg():
+class TestBlockwiseCoreg:
+    """
+    Class for testing Blockwise coregistration
+    """
+
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
-    def test_init_with_valid_parameters(self, tmp_path):
+    def test_init_with_valid_parameters(self, tmp_path: Path) -> None:
+        """
+        Test initialisation of CoregBlockwise class
+        """
 
         coreg_obj = coreg_object(tmp_path)
 
@@ -46,14 +58,19 @@ class TestBlockwiseCoreg():
         assert coreg_obj.shifts_x == []
         assert coreg_obj.shifts_y == []
 
-    def test_init_with_invalid_step(self, tmp_path):
+    def test_init_with_invalid_step(self, tmp_path: Path) -> None:
 
         with pytest.raises(ValueError) as e:
-            xdem.coreg.BlockwiseCoreg(step=Coreg, tile_size=300, apply_z_correction=True, output_path=str(tmp_path))
+            xdem.coreg.BlockwiseCoreg(
+                step="ICP", tile_size=300, apply_z_correction=True, output_path=str(tmp_path)  # type: ignore
+            )
 
-        assert str(e.value) == "The 'step' argument must be an instantiated Coreg subclass. Hint: write e.g. ICP() instead of ICP"
+        assert (
+            str(e.value)
+            == "The 'step' argument must be an instantiated Coreg subclass. Hint: write e.g. ICP() instead of ICP"
+        )
 
-    def test_ransac_with_large_data(self, tmp_path):
+    def test_ransac_with_large_data(self, tmp_path: Path) -> None:
 
         coreg_obj = coreg_object(tmp_path)
 
@@ -69,7 +86,10 @@ class TestBlockwiseCoreg():
         assert np.isclose(b, 3.0, atol=0.2)
         assert np.isclose(c, 5.0, atol=0.2)
 
-    def test_ransac_with_insufficient_points(self, tmp_path):
+    def test_ransac_with_insufficient_points(self, tmp_path: Path) -> None:
+        """
+        Test ransac function failure and user warning
+        """
 
         coreg_obj = coreg_object(tmp_path)
 
@@ -77,13 +97,14 @@ class TestBlockwiseCoreg():
         y_coords = np.array([1, 2, 3, 4, 5])
         shifts = np.array([2, 4, 6, 8, 10])
 
-        # Appeler la fonction ransac et vérifier qu'elle lève une exception
         with pytest.raises(ValueError):
             coreg_obj.ransac(x_coords, y_coords, shifts)
 
-    def test_blockwise_corep(self, tmp_path):
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(vertical_shift=False),
-                                              output_path=str(tmp_path))
+    def test_blockwise_corep(self, tmp_path: Path) -> None:
+        """
+        test blockwise pipeline with Nuth and Kaab coregistration
+        """
+        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(vertical_shift=False), output_path=str(tmp_path))
 
         reference_dem, to_be_aligned_dem, inlier_mask = load_examples()
 

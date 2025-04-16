@@ -294,7 +294,7 @@ class TestCoregClass:
             pipe.fit(**self.fit_params, subsample=1000)
 
         # Same for a blockwise co-registration
-        block = coreg.BlockwiseCoreg(coreg.VerticalShift(subsample=200), subdivision=4)
+        block = coreg.BlockwiseCoreg(coreg.VerticalShift(subsample=200))
         with pytest.warns(
             UserWarning,
             match=re.escape(
@@ -372,7 +372,7 @@ class TestCoregClass:
             [xdem.coreg.VerticalShift(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
             [xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(), True, "approx"],
-            [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
+            [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab()), False, ""],
             [xdem.coreg.ICP(), False, ""],
         ],
     )  # type: ignore
