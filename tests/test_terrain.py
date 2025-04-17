@@ -394,3 +394,21 @@ class TestTerrainAttribute:
         # When using edge wrapping, all coefficients should be finite.
         coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
         assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+
+    def test_get_terrain_attribute__out_dtype(self) -> None:
+
+        # Get one attribute using quadratic coeff, and one using windowed indexes
+        slope, tpi = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "topographic_position_index"])
+
+        assert slope.dtype == self.dem.dtype
+        assert tpi.dtype == self.dem.dtype
+
+        # Using a different output dtype
+        out_dtype = np.float64
+        slope, tpi = xdem.terrain.get_terrain_attribute(
+            self.dem, attribute=["slope", "topographic_position_index"], out_dtype=out_dtype
+        )
+
+        assert self.dem.dtype != out_dtype
+        assert np.dtype(slope.dtype) == out_dtype
+        assert np.dtype(tpi.dtype) == out_dtype

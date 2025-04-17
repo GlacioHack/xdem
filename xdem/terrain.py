@@ -27,7 +27,7 @@ import numba
 import numpy as np
 from geoutils.raster import Raster, RasterType
 
-from xdem._typing import MArrayf, NDArrayf
+from xdem._typing import DTypeLike, MArrayf, NDArrayf
 
 available_attributes = [
     "slope",
@@ -49,6 +49,7 @@ available_attributes = [
 def _get_quadric_coefficients(
     dem: NDArrayf,
     resolution: float,
+    out_dtype: DTypeLike,
     fill_method: str = "none",
     edge_method: str = "none",
     make_rugosity: bool = False,
@@ -62,7 +63,7 @@ def _get_quadric_coefficients(
     L = resolution
 
     # Allocate the output.
-    output = np.full((12,) + dem.shape, fill_value=np.nan, dtype=np.float32)
+    output = np.full((12,) + dem.shape, fill_value=np.nan, dtype=out_dtype)
 
     # Convert the string to a number (fewer bytes to compare each iteration)
     if fill_method == "median":
@@ -87,7 +88,7 @@ def _get_quadric_coefficients(
 
         # Extract the pixel and its 8 immediate neighbours.
         # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
-        Z = np.empty((9,), dtype=dem.dtype)
+        Z = np.empty((9,), dtype=out_dtype)
         count = 0
 
         # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
@@ -136,8 +137,8 @@ def _get_quadric_coefficients(
             # Rugosity is computed on a 3x3 window like the quadratic coefficients, see Jenness (2004) for details
 
             # For this, we need elevation differences and horizontal length of 16 segments
-            dzs = np.zeros((16,))
-            dls = np.zeros((16,))
+            dzs = np.zeros((16,), dtype=out_dtype)
+            dls = np.zeros((16,), dtype=out_dtype)
 
             count_without_center = 0
             count_all = 0
@@ -232,6 +233,7 @@ def _get_quadric_coefficients(
 def get_quadric_coefficients(
     dem: NDArrayf,
     resolution: float,
+    out_dtype: DTypeLike = None,
     fill_method: str = "none",
     edge_method: str = "none",
     make_rugosity: bool = False,
@@ -275,6 +277,8 @@ def get_quadric_coefficients(
 
     :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported)
     :param resolution: The X/Y resolution of the DEM.
+    :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
+        input DEM if floating type or to float32 if integer type.
     :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
     :param edge_method: The method to use near the array edge.
     :param make_rugosity: Whether to compute coefficients for rugosity.
@@ -294,7 +298,7 @@ def get_quadric_coefficients(
         >>> coeffs[9:11, 1, 1]
         array([0., 0.], dtype=float32)
         >>> coeffs[11, 1, 1]
-        1.4142135
+        np.float32(1.4142135)
 
     :returns: An array of coefficients for each pixel of shape (9, row, col).
     """
@@ -314,6 +318,13 @@ def get_quadric_coefficients(
     if isinstance(resolution, Sized):
         raise ValueError("Resolution must be the same for X and Y directions.")
 
+    # If output dtype is None, used that of input DEM
+    if out_dtype is None:
+        if np.issubdtype(dem.dtype, np.integer):
+            out_dtype = np.float32
+        else:
+            out_dtype = np.dtype(dem.dtype)
+
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
     for value, name, allowed in zip(
@@ -330,6 +341,7 @@ def get_quadric_coefficients(
             fill_method=fill_method.lower(),
             edge_method=edge_method.lower(),
             make_rugosity=make_rugosity,
+            out_dtype=out_dtype,
         )
     except Exception as exception:
         raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
@@ -340,6 +352,7 @@ def get_quadric_coefficients(
 @numba.njit(parallel=True)  # type: ignore
 def _get_windowed_indexes(
     dem: NDArrayf,
+    out_dtype: DTypeLike,
     fill_method: str = "median",
     edge_method: str = "nearest",
     window_size: int = 3,
@@ -352,7 +365,7 @@ def _get_windowed_indexes(
     """
 
     # Allocate the outputs.
-    output = np.full((5,) + dem.shape, fill_value=np.nan)
+    output = np.full((5,) + dem.shape, fill_value=np.nan, dtype=out_dtype)
 
     # Half window size
     hw = int(np.floor(window_size / 2))
@@ -380,7 +393,7 @@ def _get_windowed_indexes(
 
         # Extract the pixel and its 8 immediate neighbours.
         # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
-        Z = np.empty((window_size**2,), dtype=dem.dtype)
+        Z = np.empty((window_size**2,), dtype=out_dtype)
         count = 0
 
         # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
@@ -427,7 +440,7 @@ def _get_windowed_indexes(
         # Difference pixels between specific cells: only useful for Terrain Ruggedness Index
         count = 0
         index_middle_pixel = int((window_size**2 - 1) / 2)
-        S = np.empty((window_size**2,))
+        S = np.empty((window_size**2,), dtype=out_dtype)
         for _j in range(-hw, -hw + window_size):
             for _k in range(-hw, -hw + window_size):
                 S[count] = np.abs(Z[count] - Z[index_middle_pixel])
@@ -437,7 +450,7 @@ def _get_windowed_indexes(
             # Fractal roughness computation according to the box-counting method of Taud and Parrot (2005)
             # First, we compute the number of voxels for each pixel of Equation 4
             count = 0
-            V = np.empty((window_size, window_size))
+            V = np.empty((window_size, window_size), dtype=out_dtype)
             for j in range(-hw, -hw + window_size):
                 for k in range(-hw, -hw + window_size):
                     T = Z[count] - Z[index_middle_pixel]
@@ -459,7 +472,7 @@ def _get_windowed_indexes(
                 if hw % j == 0:
                     list_box_sizes.append(j)
 
-            Ns = np.empty((len(list_box_sizes),))
+            Ns = np.empty((len(list_box_sizes),), dtype=out_dtype)
             for l0 in range(0, len(list_box_sizes)):
                 # We loop over boxes of size q x q in the cube
                 q = list_box_sizes[l0]
@@ -509,6 +522,7 @@ def _get_windowed_indexes(
 
 def get_windowed_indexes(
     dem: NDArrayf,
+    out_dtype: DTypeLike = None,
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
@@ -550,6 +564,8 @@ def get_windowed_indexes(
         * The X and Y resolution needs to be the same. It does not work if they differ.
 
     :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported).
+    :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
+        input DEM if floating type or to float32 if integer type.
     :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
     :param edge_method: The method to use near the array edge.
     :param window_size: The size of the window.
@@ -566,7 +582,7 @@ def get_windowed_indexes(
         >>> indexes.shape
         (5, 3, 3)
         >>> indexes[:4, 1, 1]
-        array([2.82842712, 1.        , 1.        , 1.        ])
+        array([2.828427, 1.      , 1.      , 1.      ], dtype=float32)
 
     :returns: An array of coefficients for each pixel of shape (5, row, col).
     """
@@ -585,6 +601,13 @@ def get_windowed_indexes(
     if not isinstance(window_size, (int, np.integer)) or window_size % 2 != 1:
         raise ValueError("Window size must be an odd integer.")
 
+    # If output dtype is None, used that of input DEM
+    if out_dtype is None:
+        if np.issubdtype(dem.dtype, np.integer):
+            out_dtype = np.float32
+        else:
+            out_dtype = np.dtype(dem.dtype)
+
     allowed_fill_methods = ["median", "mean", "none"]
     allowed_edge_methods = ["nearest", "wrap", "none"]
     for value, name, allowed in zip(
@@ -597,6 +620,7 @@ def get_windowed_indexes(
     try:
         indexes = _get_windowed_indexes(
             dem_arr,
+            out_dtype=out_dtype,
             fill_method=fill_method.lower(),
             edge_method=edge_method.lower(),
             window_size=window_size,
@@ -622,6 +646,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
+    out_dtype: DTypeLike | None = None,
 ) -> NDArrayf: ...
 
 
@@ -639,6 +664,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
+    out_dtype: DTypeLike | None = None,
 ) -> list[NDArrayf]: ...
 
 
@@ -656,6 +682,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
+    out_dtype: DTypeLike | None = None,
 ) -> list[RasterType]: ...
 
 
@@ -673,6 +700,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
+    out_dtype: DTypeLike | None = None,
 ) -> RasterType: ...
 
 
@@ -689,6 +717,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
+    out_dtype: DTypeLike | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
     Derive one or multiple terrain attributes from a DEM.
@@ -727,18 +756,20 @@ def get_terrain_attribute(
     * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
     * 'fractal_roughness': The roughness based on a volume box-counting estimate of the fractal dimension.
 
-    :param dem: The DEM to analyze.
-    :param attribute: The terrain attribute(s) to calculate.
-    :param resolution: The X/Y or (X, Y) resolution of the DEM.
-    :param degrees: Convert radians to degrees?
-    :param hillshade_altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
-    :param hillshade_azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
+    :param dem: Input DEM.
+    :param attribute: Terrain attribute(s) to calculate.
+    :param resolution: Resolution of the DEM.
+    :param degrees: Whether to convert radians to degrees.
+    :param hillshade_altitude: Shading altitude in degrees (0-90°). 90° is straight from above.
+    :param hillshade_azimuth: Shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param hillshade_z_factor: Vertical exaggeration factor.
     :param slope_method: Method to calculate the slope, aspect and hillshade: "Horn" or "ZevenbergThorne".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param fill_method: See the 'get_quadric_coefficients()' docstring for information.
     :param edge_method: See the 'get_quadric_coefficients()' docstring for information.
-    :param window_size: The window size for windowed ruggedness and roughness indexes.
+    :param window_size: Window size for windowed ruggedness and roughness indexes.
+    :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
+        input DEM if floating type or to float32 if integer type.
 
     :raises ValueError: If the inputs are poorly formatted or are invalid.
 
@@ -767,6 +798,13 @@ def get_terrain_attribute(
     # Validate and format the inputs
     if isinstance(attribute, str):
         attribute = [attribute]
+
+    # If output dtype is None, used that of input DEM
+    if out_dtype is None:
+        if np.issubdtype(dem.dtype, np.integer):
+            out_dtype = np.float32
+        else:
+            out_dtype = np.dtype(dem.dtype)
 
     # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
     list_requiring_surface_fit = [
@@ -847,6 +885,7 @@ def get_terrain_attribute(
         terrain_attributes["surface_fit"] = get_quadric_coefficients(
             dem=dem_arr,
             resolution=resolution[0],
+            out_dtype=out_dtype,
             fill_method=fill_method,
             edge_method=edge_method,
             make_rugosity=make_rugosity,
@@ -914,7 +953,7 @@ def get_terrain_attribute(
             ),
             0,
             255,
-        ).astype("float32")
+        )
 
     if make_curvature:
         # Curvature is the second derivative of the surface fit equation.
@@ -976,6 +1015,7 @@ def get_terrain_attribute(
     if make_windowed_index:
         terrain_attributes["windowed_indexes"] = get_windowed_indexes(
             dem=dem_arr,
+            out_dtype=out_dtype,
             fill_method=fill_method,
             edge_method=edge_method,
             window_size=window_size,
@@ -1062,9 +1102,9 @@ def slope(
                [1, 1, 1],
                [2, 2, 2]])
         >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
-        45.0
+        np.float32(45.0)
         >>> np.round(np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.), 1) # Slope in percentage
-        0.5
+        np.float32(0.5)
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
@@ -1114,14 +1154,14 @@ def aspect(
                [0, 1, 2],
                [0, 1, 2]])
         >>> aspect(dem, degrees=True)[1, 1]
-        270.0
+        np.float32(270.0)
         >>> dem2 = np.repeat(np.arange(3), 3)[::-1].reshape(3, 3)
         >>> dem2
         array([[2, 2, 2],
                [1, 1, 1],
                [0, 0, 0]])
         >>> aspect(dem2, degrees=True)[1, 1]
-        180.0
+        np.float32(180.0)
 
     """
     return get_terrain_attribute(dem, attribute="aspect", slope_method=method, resolution=1.0, degrees=degrees)
@@ -1227,7 +1267,7 @@ def curvature(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> curvature(dem, resolution=1.0)[1, 1] / 100.
-        4.0
+        np.float32(4.0)
 
     :returns: The curvature array of the DEM.
     """
@@ -1264,12 +1304,12 @@ def planform_curvature(
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
         >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        -0.0
+        np.float32(-0.0)
         >>> dem = np.array([[1, 4, 8],
         ...                 [1, 2, 4],
         ...                 [1, 4, 8]], dtype="float32")
         >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        -4.0
+        np.float32(-4.0)
 
     :returns: The planform curvature array of the DEM.
     """
@@ -1302,12 +1342,12 @@ def profile_curvature(
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        1.0
+        np.float32(1.0)
         >>> dem = np.array([[1, 2, 3],
         ...                 [1, 2, 3],
         ...                 [1, 2, 3]], dtype="float32")
         >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        0.0
+        np.float32(0.0)
 
     :returns: The profile curvature array of the DEM.
     """
@@ -1366,12 +1406,12 @@ def topographic_position_index(dem: NDArrayf | MArrayf | RasterType, window_size
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> topographic_position_index(dem)[1, 1]
-        1.0
+        np.float32(1.0)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> topographic_position_index(dem)[1, 1]
-        0.0
+        np.float32(0.0)
 
     :returns: The topographic position index array of the DEM (unit of the DEM).
     """
@@ -1411,12 +1451,12 @@ def terrain_ruggedness_index(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> terrain_ruggedness_index(dem)[1, 1]
-        2.8284271247461903
+        np.float32(2.828427)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> terrain_ruggedness_index(dem)[1, 1]
-        0.0
+        np.float32(0.0)
 
     :returns: The terrain ruggedness index array of the DEM (unit of the DEM).
     """
@@ -1450,12 +1490,12 @@ def roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 3) -> NDA
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> roughness(dem)[1, 1]
-        1.0
+        np.float32(1.0)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> roughness(dem)[1, 1]
-        0.0
+        np.float32(0.0)
 
     :returns: The roughness array of the DEM (unit of the DEM).
     """
@@ -1495,12 +1535,12 @@ def rugosity(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> rugosity(dem, resolution=1.)[1, 1]
-        1.4142135
+        np.float32(1.4142135)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> np.round(rugosity(dem, resolution=1.)[1, 1], 5)
-        1.0
+        np.float32(1.0)
 
     :returns: The rugosity array of the DEM (unitless).
     """
@@ -1531,15 +1571,15 @@ def fractal_roughness(dem: NDArrayf | MArrayf | RasterType, window_size: int = 1
         >>> dem = np.zeros((13, 13), dtype='float32')
         >>> dem[1, 1] = 6.5
         >>> np.round(fractal_roughness(dem)[6, 6], 5) # The fractal dimension of a line is 1
-        1.0
+        np.float32(1.0)
         >>> dem = np.zeros((13, 13), dtype='float32')
         >>> dem[:, 1] = 13
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of plane is 2
-        2.0
+        np.float32(2.0)
         >>> dem = np.zeros((13, 13), dtype='float32')
         >>> dem[:, :6] = 13 # The fractal dimension of a cube is 3
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of cube is 3
-        3.0
+        np.float32(3.0)
 
     :returns: The fractal roughness array of the DEM in fractal dimension (between 1 and 3).
     """
