@@ -8,9 +8,10 @@ import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+from geoutils.raster.georeferencing import _coords
 
 import xdem
-from xdem import coreg, examples, misc, spatialstats
+from xdem import coreg, examples, spatialstats
 from xdem.coreg import BlockwiseCoreg
 from xdem.coreg.base import Coreg
 
@@ -237,10 +238,13 @@ def test_warp_dem() -> None:
     test_shift = 6  # This shift will be validated below
     dest_coords[4, 2] += test_shift
 
-    # Generate a semi-random DEM
+    # Create synthetic DEM data
     transform = rio.transform.from_origin(0, 500, 1, 1)
     shape = (500, 550)
-    dem = misc.generate_random_field(shape, 100) * 200 + misc.generate_random_field(shape, 10) * 50
+    xx, yy = _coords(transform=transform, shape=shape, area_or_point=None)
+    # Make it a 2D polynomial gaussian-filtered
+    dem = xdem.fit.polynomial_2d((xx, yy), 1, 1, 1, 1)  # type: ignore
+    dem = xdem.filters.gaussian_filter_scipy(dem, sigma=10)
 
     # Warp the DEM using the source-destination coordinates.
     transformed_dem = coreg.blockwise.warp_dem(
