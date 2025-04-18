@@ -50,7 +50,6 @@ dependencies:
   - pip:
     # Optional dependency
     - -e ./
-
     - noisyopt
     # "Headless" needed for opencv to install without requiring system dependencies
     - opencv-contrib-python-headless
