@@ -43,6 +43,7 @@ jobs:
         run: |
           mamba install pip
           pip install -e .
+          pip install pyransac3d
 
       # Check import works
       - name: Check import works with base environment
