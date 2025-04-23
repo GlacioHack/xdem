@@ -96,7 +96,7 @@ class TestWorkflows:
         # Test the nmad_factor filter only
         nmad_factor = 3
         ddem = tba - ref
-        inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * nmad(ddem)).filled(False)
+        inlier_mask_comp3 = (np.abs(ddem.data - np.median(ddem)) < nmad_factor * nmad(ddem.data)).filled(False)
         inlier_mask = create_inlier_mask(tba, ref, filtering=True, slope_lim=[0, 90], nmad_factor=nmad_factor)
         assert np.all(inlier_mask == inlier_mask_comp3)
 
