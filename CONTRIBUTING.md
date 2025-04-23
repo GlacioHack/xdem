@@ -20,11 +20,11 @@ The technical steps to contributing to xDEM are:
 
 ## Development environment
 
-xDEM currently supports Python versions of 3.10 to 3.12 (see `dev-environment.yml` for detailed dependencies), which are
+xDEM currently supports Python versions of 3.11 to 3.13 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
 When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
-supported Python versions (3.10, 3.11 and 3.12) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
+supported Python versions (3.11, 3.12 and 3.13) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
 be reported by CoverAlls.
 
 ### Setup
@@ -45,8 +45,6 @@ git clone https://github.com/GlacioHack/xdem.git
 cd xdem
 make install
 ```
-
-Please note: pip installation is currently only possible under python3.10.
 
 ### Tests
 
