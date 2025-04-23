@@ -11,7 +11,7 @@ scipy==1.*
 tqdm
 scikit-image==0.*
 scikit-gstat>=1.0.18,<1.1
-geoutils==0.1.14
+geoutils==0.1.16
 pip
 affine
 pandas
