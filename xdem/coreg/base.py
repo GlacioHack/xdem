@@ -51,9 +51,10 @@ from geoutils._typing import Number
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster import Mask, RasterType, raster
+from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
-from geoutils.raster.geotransformations import _resampling_method_from_str, _translate
+from geoutils.raster.geotransformations import _translate
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
