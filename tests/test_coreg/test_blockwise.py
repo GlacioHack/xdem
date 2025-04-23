@@ -72,7 +72,7 @@ class TestBlockwiseCoreg:
         y_coords = np.random.rand(num_points) * 100
         # add noises
         shifts = 2 * x_coords + 3 * y_coords + 5 + np.random.randn(num_points) * 0.1
-        a, b, c = coreg_obj.ransac(x_coords, y_coords, shifts)
+        a, b, c = coreg_obj._ransac(x_coords, y_coords, shifts)
 
         assert np.isclose(a, 2.0, atol=0.2)
         assert np.isclose(b, 3.0, atol=0.2)
@@ -90,7 +90,7 @@ class TestBlockwiseCoreg:
         shifts = np.array([2, 4, 6, 8, 10])
 
         with pytest.raises(ValueError):
-            coreg_obj.ransac(x_coords, y_coords, shifts)
+            coreg_obj._ransac(x_coords, y_coords, shifts)
 
     def test_wrapper_apply_epc(self, tmp_path: Path) -> None:
         """
@@ -140,7 +140,7 @@ class TestBlockwiseCoreg:
 
         applied_dem_tile_vt = Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
 
-        applied_dem_tile = coreg_obj.wrapper_apply_epc(tba_dem_tile, (1, 1, 1), (1, 1, 1), (1, 1, 1))
+        applied_dem_tile = coreg_obj._wrapper_apply_epc(tba_dem_tile, (1, 1, 1), (1, 1, 1), (1, 1, 1))
 
         assert applied_dem_tile == applied_dem_tile_vt
 
