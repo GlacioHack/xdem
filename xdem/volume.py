@@ -101,13 +101,15 @@ def hypsometric_binning(
     # Generate bins and get bin indices from the mean DEM
     indices = np.digitize(ref_dem, bins=zbins)
 
+    nb_bins = zbins.shape[0] - 1
     # Calculate statistics for each bin.
     # If no values exist, all stats should be nans (except count with should be 0)
     # medians, means, stds, nmads = (np.zeros(shape=bins.shape[0] - 1, dtype=ddem.dtype) * np.nan, ) * 4
-    values = np.full(shape=zbins.shape[0] - 1, fill_value=np.nan, dtype=ddem.dtype)
+    values = np.full(shape=nb_bins, fill_value=np.nan, dtype=ddem.dtype)
     counts = np.zeros_like(values, dtype=int)
-    for i in np.arange(indices.min(), indices.max() + 1):
-        values_in_bin = ddem[indices == i]
+    for i in range(nb_bins):
+
+        values_in_bin = ddem[indices == i + 1]
 
         # Remove possible Nans
         values_in_bin = values_in_bin[np.isfinite(values_in_bin)]
