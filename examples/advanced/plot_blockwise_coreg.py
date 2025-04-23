@@ -22,6 +22,7 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
 
@@ -54,37 +55,56 @@ plt.show()
 
 # %%
 # Horizontal and vertical shifts can be estimated using :class:`xdem.coreg.NuthKaab`.
-# Let's prepare a coregistration class that calculates 64 offsets, evenly spread over the DEM.
+# Let's prepare a coregistration class with a tiling configuration
 
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=64)
-
-
-# %%
-# The grid that will be used can be visualized with a helper function.
-# Coregistration will be performed in each block separately.
-
-plt.title("Subdivision grid")
-plt.imshow(blockwise.subdivide_array(dem_to_be_aligned.shape), cmap="gist_ncar")
-plt.show()
+mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif")
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
 
 # %%
 # Coregistration is performed with the ``.fit()`` method.
-# This runs in multiple threads by default, so more CPU cores are preferable here.
 
-aligned_dem = blockwise.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
+blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask)
+blockwise.apply()
+
+aligned_dem = xdem.DEM("aligned_dem.tif")
+
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
-# This shows the estimated shifts that would be applied in elevation; additional horizontal shifts will also be applied if the method supports it.
-# The :func:`xdem.coreg.BlockwiseCoreg.stats` method can be used to annotate each block with its associated Z shift.
+# This shows the estimated shifts that would be applied in elevation;
+# additional horizontal shifts will also be applied if the method supports it.
 
-z_correction = blockwise.apply(
-    np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs
-)[0]
-plt.title("Vertical correction")
-plt.imshow(z_correction, cmap="RdYlBu", vmin=-10, vmax=10, extent=plt_extent)
-for _, row in blockwise.stats().iterrows():
-    plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha="center")
+rows, cols, _ = blockwise.shape_tiling_grid
+
+matrix_x = np.full((rows, cols), np.nan)
+matrix_y = np.full((rows, cols), np.nan)
+matrix_z = np.full((rows, cols), np.nan)
+
+for key, value in blockwise.meta["outputs"].items():
+    row, col = map(int, key.split("_"))
+    matrix_x[row, col] = value["shift_x"]
+    matrix_y[row, col] = value["shift_y"]
+    matrix_z[row, col] = value["shift_z"]
+
+
+def plot_heatmap(matrix, title, cmap, ax):
+    im = ax.imshow(matrix, cmap=cmap)
+    for (i, j), val in np.ndenumerate(matrix):
+        ax.text(j, i, f"{val:.2f}", ha="center", va="center", color="black")
+    ax.set_title(title)
+    ax.set_xticks(np.arange(cols))
+    ax.set_yticks(np.arange(rows))
+    ax.invert_yaxis()
+    plt.colorbar(im, ax=ax)
+
+
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+plot_heatmap(matrix_x, "shifts in X", "Reds", axes[0])
+plot_heatmap(matrix_y, "shifts in Y", "Greens", axes[1])
+plot_heatmap(matrix_z, "shifts in Z", "Blues", axes[2])
+
+plt.tight_layout()
+plt.show()
 
 # %%
 # Then, the new difference can be plotted to validate that it improved.

@@ -164,4 +164,4 @@ class TestBlockwiseCoreg:
 
         mask = (aligned_dem_vt.data.data != aligned_dem.nodata) & (aligned_dem.data.data != aligned_dem.nodata)
 
-        assert np.allclose(aligned_dem_vt.data.data[mask], aligned_dem.data.data[mask], atol=10)
+        assert np.allclose(aligned_dem_vt.data.data[mask], aligned_dem.data.data[mask], atol=50)

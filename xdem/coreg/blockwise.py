@@ -58,10 +58,10 @@ class BlockwiseCoreg:
         mp_config: MultiprocConfig,
     ) -> None:
         """
-        Instantiate a blockwise processing object.
+        Instantiate a blockwise processing object for performing coregistration on subdivided DEM tiles.
 
-        :param step: An instantiated co-registration step object to fit in the subdivided DEMs.
-        :param block_size: Size of chunks in pixels.
+        :param step: An instantiated coregistration method or pipeline to apply on each tile.
+        :param mp_config: Configuration object for multiprocessing
         """
         if isinstance(step, type):
             raise ValueError(
@@ -77,6 +77,7 @@ class BlockwiseCoreg:
         self.output_path_aligned = Path(mp_config.outfile).parent / "aligned_dem.tif"
 
         self.meta = {"inputs": {}, "outputs": {}}
+        self.shape_tiling_grid = (0, 0, 0)
 
         self.reproject_dem = None
 
@@ -88,7 +89,13 @@ class BlockwiseCoreg:
         inlier_mask: RasterType | None = None,
     ) -> Coreg | CoregPipeline:
         """
-        Wrapper function to apply Nuth & Kääb coregistration on a tile pair.
+         Wrapper function to apply a coregistration method (e.g., Nuth & Kääb) on a pair of DEM tiles.
+
+        :param ref_dem_tiled: Reference DEM tile to align to.
+        :param tba_dem: DEM tile to be aligned.
+        :param coreg_method: Coregistration method or pipeline to apply.
+        :param inlier_mask: Optional mask indicating valid data points to consider during coregistration.
+        :return: The coregistration method or pipeline with updated transformation parameters.
         """
         coreg_method = coreg_method.copy()
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
@@ -102,6 +109,15 @@ class BlockwiseCoreg:
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         inlier_mask: NDArrayb | Mask | None = None,
     ) -> None:
+        """
+        Fit the coregistration model by estimating transformation parameters
+        between the reference and target elevation data.
+
+        :param reference_elev: Reference elevation data to align to.
+        :param to_be_aligned_elev: Elevation data to be aligned (transformed).
+        :param inlier_mask: Optional boolean mask indicating valid data points to use in the fitting.
+        :return: None. Updates internal model parameters.
+        """
 
         self.mp_config.outfile = self.output_path_reproject
 
@@ -123,14 +139,14 @@ class BlockwiseCoreg:
             return_tile=True,
         )
 
-        shape_tiling_grid = compute_tiling(self.block_size, reference_elev.shape, to_be_aligned_elev.shape).shape
-        rows_cols = list(itertools.product(range(shape_tiling_grid[0]), range(shape_tiling_grid[1])))
+        self.shape_tiling_grid = compute_tiling(self.block_size, reference_elev.shape, to_be_aligned_elev.shape).shape
+        rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
 
-        self.x_coords = []
-        self.y_coords = []
-        self.shifts_x = []
-        self.shifts_y = []
-        self.shifts_z = []
+        self.x_coords = []  # type: ignore
+        self.y_coords = []  # type: ignore
+        self.shifts_x = []  # type: ignore
+        self.shifts_y = []  # type: ignore
+        self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
             try:
@@ -166,13 +182,25 @@ class BlockwiseCoreg:
 
     @staticmethod
     def _ransac(
-        x_coords: NDArrayf,
-        y_coords: NDArrayf,
-        shifts: NDArrayf,
+        x_coords: tuple[float, float, float],
+        y_coords: tuple[float, float, float],
+        shifts: tuple[float, float, float],
         threshold: float = 0.01,
         min_inliers: int = 10,
         max_iterations: int = 2000,
     ) -> tuple[float, float, float]:
+        """
+        Estimate a geometric transformation using the RANSAC algorithm.
+        warning : it can fail
+
+        :param x_coords: 1D array of x coordinates.
+        :param y_coords: 1D array of y coordinates.
+        :param shifts: 1D array of observed shifts (errors) at the corresponding (x, y) positions.
+        :param threshold: Maximum allowed deviation to consider a point as an inlier.
+        :param min_inliers: Minimum number of inliers required to accept a model.
+        :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
+        :return: Estimated transformation coefficients (a, b, c) such that shift = a * x + b * y + c.
+        """
 
         # Create 3D point clouds
         points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
@@ -245,6 +273,47 @@ class BlockwiseCoreg:
         applied_dem_tile = gu.Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
         return applied_dem_tile
 
+    import math
+
+    @staticmethod
+    def is_invalid_coeff(coeff: tuple[float, float, float]) -> bool:
+        """
+        Applies a geometric transformation to a raster using specific coefficients for the X, Y, and Z axes.
+        :param coeff: Transformation coefficients  in the form (a, b, c)
+        :return: True if the coefficients are invalid, False otherwise
+        """
+        return any(math.isnan(c) or math.isinf(abs(c)) for c in coeff[:2])
+
+    def robust_ransac(
+        self,
+        x_coords: NDArrayf,
+        y_coords: NDArrayf,
+        shifts: NDArrayf,
+        threshold: float,
+        min_inliers: int,
+        max_iter: int,
+    ) -> tuple[float, float, float] | tuple[int, int, int]:
+        """
+        Perform multiple RANSAC attempts to robustly estimate transformation coefficients.
+
+        This method runs the RANSAC algorithm multiple times (up to 5) and returns
+        the first valid set of coefficients found. If no valid result is obtained,
+        a default (0, 0, 0) is returned.
+
+        :param x_coords: 1D array of x coordinates.
+        :param y_coords: 1D array of y coordinates.
+        :param shifts: 1D array of observed shifts at each (x, y) location.
+        :param threshold: Maximum distance to consider a point as an inlier.
+        :param min_inliers: Minimum number of inliers required to accept a model.
+        :param max_iter: Maximum number of RANSAC iterations per attempt.
+        :return: Tuple of transformation coefficients (a, b, c).
+        """
+        for _ in range(5):
+            coeff = self._ransac(x_coords, y_coords, shifts, threshold, min_inliers, max_iter)  # type: ignore
+            if not self.is_invalid_coeff(coeff):
+                return coeff
+        return 0, 0, 0
+
     def apply(
         self,
         threshold_ransac: float = 0.01,
@@ -253,9 +322,14 @@ class BlockwiseCoreg:
     ) -> RasterType:
         """
         Apply the coregistration transformation to an elevation array using a ransac filter.
+
+        :param threshold_ransac: Maximum distance threshold to consider a point as an inlier.
+        :param min_inliers_ransac: Minimum number of inliers required to accept a model.
+        :param max_iterations_ransac: Maximum number of RANSAC iterations to perform.
+        :return: The transformed elevation raster.
         """
 
-        coeff_x = self._ransac(
+        coeff_x = self.robust_ransac(
             self.x_coords,  # type: ignore
             self.y_coords,  # type: ignore
             self.shifts_x,  # type: ignore
@@ -263,7 +337,7 @@ class BlockwiseCoreg:
             min_inliers_ransac,
             max_iterations_ransac,
         )
-        coeff_y = self._ransac(
+        coeff_y = self.robust_ransac(
             self.x_coords,  # type: ignore
             self.y_coords,  # type: ignore
             self.shifts_y,  # type: ignore
@@ -271,9 +345,8 @@ class BlockwiseCoreg:
             min_inliers_ransac,
             max_iterations_ransac,
         )
-
         if self.apply_z_correction:
-            coeff_z = self._ransac(
+            coeff_z = self.robust_ransac(
                 self.x_coords,  # type: ignore
                 self.y_coords,  # type: ignore
                 self.shifts_z,  # type: ignore

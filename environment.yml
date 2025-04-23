@@ -19,8 +19,8 @@ dependencies:
   - pyogrio
   - shapely
   - pip
-pip:
-  - pyransac3d
+  - pip:
+    - pyransac3d
 
   # To run CI against latest GeoUtils
 #  - pip:

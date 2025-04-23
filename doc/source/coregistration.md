@@ -513,9 +513,10 @@ In such cases, it may be necessary to process the data in blocks and then aggreg
 A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
-mp_config = MultiprocConfig(chunk_size=500, outfile="outputs/to/save/example.tif")
+from geoutils.raster.distributed_computing import MultiprocConfig
+mp_config = MultiprocConfig(chunk_size=500, outfile="example.tif")
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
-blockwise.fit(reference_dem, dem_to_be_aligned)
+blockwise.fit(ref_dem, tba_dem)
 blockwise.apply()
 ```
 
