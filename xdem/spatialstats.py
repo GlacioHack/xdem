@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.raster import Mask, Raster, RasterType, subsample_array
+from geoutils.raster import RasterMask, Raster, RasterType, subsample_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
@@ -616,8 +616,8 @@ def _estimate_model_heteroscedasticity(
 @overload
 def _preprocess_values_with_mask_to_array(  # type: ignore
     values: list[NDArrayf | RasterType],
-    include_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    include_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
 ) -> tuple[list[NDArrayf], float]: ...
@@ -626,8 +626,8 @@ def _preprocess_values_with_mask_to_array(  # type: ignore
 @overload
 def _preprocess_values_with_mask_to_array(
     values: NDArrayf | RasterType,
-    include_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    include_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
 ) -> tuple[NDArrayf, float]: ...
@@ -635,8 +635,8 @@ def _preprocess_values_with_mask_to_array(
 
 def _preprocess_values_with_mask_to_array(
     values: list[NDArrayf | RasterType] | NDArrayf | RasterType,
-    include_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    include_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    exclude_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
 ) -> tuple[list[NDArrayf] | NDArrayf, float]:
@@ -663,9 +663,9 @@ def _preprocess_values_with_mask_to_array(
     ):
         raise ValueError("The values must be a Raster or NumPy array, or a list of those.")
     # Masks need to be an array, Vector or GeoPandas dataframe
-    if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, Mask, gpd.GeoDataFrame)):
+    if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, RasterMask, gpd.GeoDataFrame)):
         raise ValueError("The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array.")
-    if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, Mask, gpd.GeoDataFrame)):
+    if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, RasterMask, gpd.GeoDataFrame)):
         raise ValueError("The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array.")
 
     # Check that input stable mask can only be a georeferenced vector if the proxy values are a Raster to project onto
@@ -715,7 +715,7 @@ def _preprocess_values_with_mask_to_array(
         # Create the mask
         include_mask_arr = stable_vector.create_mask(first_raster, as_array=True)
     # If the mask is a Mask
-    elif isinstance(include_mask, Mask):
+    elif isinstance(include_mask, RasterMask):
         include_mask_arr = include_mask.data.filled(False)
     # If the mask is already an array, just pass it
     else:
@@ -736,7 +736,7 @@ def _preprocess_values_with_mask_to_array(
         exclude_mask_arr = unstable_vector.create_mask(first_raster, as_array=True)
     # If the mask is already an array, just pass it
     # If the mask is a Mask
-    elif isinstance(exclude_mask, Mask):
+    elif isinstance(exclude_mask, RasterMask):
         exclude_mask_arr = exclude_mask.data.filled(False)
     else:
         exclude_mask_arr = exclude_mask
@@ -764,8 +764,8 @@ def _preprocess_values_with_mask_to_array(
 def infer_heteroscedasticity_from_stable(
     dvalues: NDArrayf,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
     spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
@@ -778,8 +778,8 @@ def infer_heteroscedasticity_from_stable(
 def infer_heteroscedasticity_from_stable(
     dvalues: RasterType,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
     spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
@@ -791,8 +791,8 @@ def infer_heteroscedasticity_from_stable(
 def infer_heteroscedasticity_from_stable(
     dvalues: NDArrayf | RasterType,
     list_var: list[NDArrayf | RasterType],
-    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
     spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
@@ -1853,8 +1853,8 @@ def _estimate_model_spatial_correlation(
 def infer_spatial_correlation_from_stable(
     dvalues: NDArrayf | RasterType,
     list_models: list[str | Callable[[NDArrayf, float, float], NDArrayf]],
-    stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
-    unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
+    stable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
+    unstable_mask: NDArrayf | RasterMask | VectorType | gpd.GeoDataFrame = None,
     errors: NDArrayf | RasterType = None,
     estimator: str = "dowd",
     gsd: float = None,
@@ -2373,7 +2373,7 @@ def number_effective_samples(
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(raster=rasterize_resolution, as_array=True).squeeze()
+            mask = V.create_mask(rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
             coords_on_mask = coords[:, mask].T
 

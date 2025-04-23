@@ -28,7 +28,7 @@ import numpy as np
 import rasterio as rio
 from affine import Affine
 from geoutils import Raster
-from geoutils.raster import Mask, RasterType
+from geoutils.raster import RasterMask, RasterType
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
@@ -456,7 +456,7 @@ class DEM(Raster):  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg = None,
-        inlier_mask: Mask | NDArrayb = None,
+        inlier_mask: RasterMask | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         **kwargs: Any,
     ) -> DEM:
@@ -490,7 +490,7 @@ class DEM(Raster):  # type: ignore
     def estimate_uncertainty(
         self,
         other_elev: DEM | gpd.GeoDataFrame,
-        stable_terrain: Mask | NDArrayb = None,
+        stable_terrain: RasterMask | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
