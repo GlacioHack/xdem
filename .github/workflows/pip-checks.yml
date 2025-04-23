@@ -27,7 +27,7 @@ jobs:
 
       # Use pip install
       - name: Install project
-        run: python -m pip install -e .
+        run: python -m pip install . -vv
 
       # Check import works
       - name: Check import works with base environment
