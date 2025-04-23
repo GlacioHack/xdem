@@ -297,7 +297,7 @@ class TestTerrainAttribute:
         )
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
-        xdem.terrain.get_terrain_attribute(self.dem, "slope", multiproc_config=mp_config, resolution=self.dem.res)
+        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res)
         assert os.path.exists(outfile)
         slope = gu.Raster(outfile, load_data=True)
         assert isinstance(slope, gu.Raster)
@@ -305,7 +305,7 @@ class TestTerrainAttribute:
 
         # Create three products at the same time
         xdem.terrain.get_terrain_attribute(
-            self.dem, ["slope", "aspect", "hillshade"], multiproc_config=mp_config, resolution=self.dem.res
+            self.dem, ["slope", "aspect", "hillshade"], mp_config=mp_config, resolution=self.dem.res
         )
         for file in outfile_multi:
             assert os.path.exists(file)
@@ -315,7 +315,7 @@ class TestTerrainAttribute:
             os.remove(file)
 
         # Create a hillshade using its own function
-        xdem.terrain.hillshade(self.dem, multiproc_config=mp_config, resolution=self.dem.res)
+        xdem.terrain.hillshade(self.dem, mp_config=mp_config, resolution=self.dem.res)
         assert os.path.exists(outfile)
         hillshade2 = gu.Raster(outfile, load_data=True)
         os.remove(outfile)
@@ -331,9 +331,7 @@ class TestTerrainAttribute:
         assert np.allclose(hillshade.data, hillshade_classic.data, rtol=1e-7)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
-        xdem.terrain.get_terrain_attribute(
-            self.dem, "slope", multiproc_config=mp_config, resolution=self.dem.res[0] * 2
-        )
+        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res[0] * 2)
         slope_lowres = gu.Raster(outfile, load_data=True)
         os.remove(outfile)
         assert slope.get_stats("mean") > slope_lowres.get_stats("mean")
