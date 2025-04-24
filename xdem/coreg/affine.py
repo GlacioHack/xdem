@@ -1,9 +1,30 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Affine coregistration classes."""
 
 from __future__ import annotations
 
+import logging
 import warnings
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterable, Literal, TypeVar
+
+import xdem.coreg.base
 
 try:
     import cv2
@@ -11,29 +32,30 @@ try:
     _has_cv2 = True
 except ImportError:
     _has_cv2 = False
+import geopandas as gpd
 import numpy as np
-import pandas as pd
 import rasterio as rio
-import scipy
-import scipy.interpolate
-import scipy.ndimage
 import scipy.optimize
-from geoutils.raster import Raster, RasterType, get_array_and_mask
+from geoutils.interface.interpolate import _interp_points
+from geoutils.raster.georeferencing import _bounds, _coords, _res
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
-    _get_x_and_y_coords,
-    _mask_dataframe_by_dem,
-    _residuals_df,
-    _transform_to_bounds_and_res,
-    deramping,
+    InFitOrBinDict,
+    InRandomDict,
+    OutAffineDict,
+    _bin_or_and_fit_nd,
+    _get_subsample_mask_pts_rst,
+    _preprocess_pts_rst_subsample,
+    _reproject_horizontal_shift_samecrs,
 )
 from xdem.spatialstats import nmad
 
 try:
+    import pytransform3d.rotations
     import pytransform3d.transformations
 
     _HAS_P3D = True
@@ -43,156 +65,679 @@ except ImportError:
 try:
     from noisyopt import minimizeCompass
 
-    _has_noisyopt = True
+    _HAS_NOISYOPT = True
 except ImportError:
-    _has_noisyopt = False
+    _HAS_NOISYOPT = False
 
 ######################################
 # Generic functions for affine methods
 ######################################
 
 
-def apply_xy_shift(transform: rio.transform.Affine, dx: float, dy: float) -> rio.transform.Affine:
+def _check_inputs_bin_before_fit(
+    bin_before_fit: bool,
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]],
+    bin_sizes: int | dict[str, int | Iterable[float]],
+    bin_statistic: Callable[[NDArrayf], np.floating[Any]],
+) -> None:
     """
-    Apply horizontal shift to a rasterio Affine transform
-    :param transform: The Affine transform of the raster
-    :param dx: dx shift value
-    :param dy: dy shift value
+    Check input types of fit or bin_and_fit affine functions.
 
-    Returns: Updated transform
+    :param bin_before_fit: Whether to bin data before fitting the coregistration function.
+    :param fit_optimizer: Optimizer to minimize the coregistration function.
+    :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
+    :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
     """
-    transform_shifted = rio.transform.Affine(
-        transform.a, transform.b, transform.c + dx, transform.d, transform.e, transform.f + dy
+
+    if not callable(fit_optimizer):
+        raise TypeError(
+            "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
+        )
+
+    if bin_before_fit:
+
+        # Check input types for "bin" to raise user-friendly errors
+        if not (
+            isinstance(bin_sizes, int)
+            or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, Iterable)) for val in bin_sizes.values()))
+        ):
+            raise TypeError(
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
+                "got {}.".format(type(bin_sizes))
+            )
+
+        if not callable(bin_statistic):
+            raise TypeError(
+                "Argument `bin_statistic` must be a function (callable), " "got {}.".format(type(bin_statistic))
+            )
+
+
+def _iterate_method(
+    method: Callable[..., Any],
+    iterating_input: Any,
+    constant_inputs: tuple[Any, ...],
+    tolerance: float,
+    max_iterations: int,
+) -> Any:
+    """
+    Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches a tolerance or maximum number of iterations.
+
+    :param method: Method that needs to be iterated to derive a transformation. Take argument "inputs" as its input,
+        and outputs three terms: a "statistic" to compare to tolerance, "updated inputs" with this transformation, and
+        the parameters of the transformation.
+    :param iterating_input: Iterating input to method, should be first argument.
+    :param constant_inputs: Constant inputs to method, should be all positional arguments after first.
+    :param tolerance: Tolerance to reach for the method statistic (i.e. maximum value for the statistic).
+    :param max_iterations: Maximum number of iterations for the method.
+
+    :return: Final output of iterated method.
+    """
+
+    # Initiate inputs
+    new_inputs = iterating_input
+
+    # Iteratively run the analysis until the maximum iterations or until the error gets low enough
+    # If logging level <= INFO, will use progressbar and print additional statements
+    pbar = trange(max_iterations, disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress")
+    for i in pbar:
+
+        # Apply method and get new statistic to compare to tolerance, new inputs for next iterations, and
+        # outputs in case this is the final one
+        new_inputs, new_statistic = method(new_inputs, *constant_inputs)
+
+        # Print final results
+        # TODO: Allow to pass a string to _iterate_method on how to print/describe exactly the iterating input
+        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
+            pbar.write(f"      Iteration #{i + 1:d} - Offset: {new_inputs}; Magnitude: {new_statistic}")
+
+        if i > 1 and new_statistic < tolerance:
+            if logging.getLogger().getEffectiveLevel() <= logging.INFO:
+                pbar.write(f"   Last offset was below the residual offset threshold of {tolerance} -> stopping")
+            break
+
+    return new_inputs
+
+
+def _subsample_on_mask_interpolator(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    aux_vars: None | dict[str, NDArrayf],
+    sub_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
+    """
+    Mirrors coreg.base._subsample_on_mask, but returning an interpolator of elevation difference and subsampled
+    coordinates for efficiency in iterative affine methods.
+
+    Perform subsampling on mask for raster-raster or point-raster datasets on valid points of all inputs (including
+    potential auxiliary variables), returning coordinates along with an interpolator.
+    """
+
+    # For two rasters
+    if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
+
+        # Derive coordinates and interpolator
+        coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=area_or_point, grid=True)
+        tba_elev_interpolator = _reproject_horizontal_shift_samecrs(
+            tba_elev, src_transform=transform, return_interpolator=True
+        )
+
+        # Subsample coordinates
+        sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
+
+        def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
+            """Elevation difference interpolator for shifted coordinates of the subsample."""
+
+            # TODO: Align array axes in _reproject_horizontal... ?
+            # Get interpolator of dh for shifted coordinates; Y and X are inverted here due to raster axes
+            return ref_elev[sub_mask] - tba_elev_interpolator((sub_coords[1] + shift_y, sub_coords[0] + shift_x))
+
+        # Subsample auxiliary variables with the mask
+        if aux_vars is not None:
+            sub_bias_vars = {}
+            for var in aux_vars.keys():
+                sub_bias_vars[var] = aux_vars[var][sub_mask]
+        else:
+            sub_bias_vars = None
+
+    # For one raster and one point cloud
+    else:
+
+        # Identify which dataset is point or raster
+        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+        # Check which input is reference, to compute the dh always in the same direction (ref minus tba) further below
+        ref = "point" if isinstance(ref_elev, gpd.GeoDataFrame) else "raster"
+
+        # Subsample point coordinates
+        coords = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
+        sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
+
+        # Interpolate raster array to the subsample point coordinates
+        # Convert ref or tba depending on which is the point dataset
+        rst_elev_interpolator = _interp_points(
+            array=rst_elev,
+            transform=transform,
+            area_or_point=area_or_point,
+            points=sub_coords,
+            return_interpolator=True,
+        )
+
+        def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
+            """Elevation difference interpolator for shifted coordinates of the subsample."""
+
+            # Always return ref minus tba
+            if ref == "point":
+                return pts_elev[z_name][sub_mask].values - rst_elev_interpolator(
+                    (sub_coords[1] + shift_y, sub_coords[0] + shift_x)
+                )
+            # Also invert the shift direction on the raster interpolator, so that the shift is the same relative to
+            # the reference (returns the right shift relative to the reference no matter if it is point or raster)
+            else:
+                return (
+                    rst_elev_interpolator((sub_coords[1] - shift_y, sub_coords[0] - shift_x))
+                    - pts_elev[z_name][sub_mask].values
+                )
+
+        # Interpolate arrays of bias variables to the subsample point coordinates
+        if aux_vars is not None:
+            sub_bias_vars = {}
+            for var in aux_vars.keys():
+                sub_bias_vars[var] = _interp_points(
+                    array=aux_vars[var], transform=transform, points=sub_coords, area_or_point=area_or_point
+                )
+        else:
+            sub_bias_vars = None
+
+    return sub_dh_interpolator, sub_bias_vars
+
+
+def _preprocess_pts_rst_subsample_interpolator(
+    params_random: InRandomDict,
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    aux_vars: None | dict[str, NDArrayf] = None,
+) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf], int]:
+    """
+    Mirrors coreg.base._preprocess_pts_rst_subsample, but returning an interpolator for efficiency in iterative methods.
+
+    Pre-process raster-raster or point-raster datasets into an elevation difference interpolator at the same
+    points, and subsample arrays for auxiliary variables, with subsampled coordinates to evaluate the interpolator.
+
+    Returns dh interpolator, tuple of 1D arrays of subsampled coordinates, and dictionary of 1D arrays of subsampled
+    auxiliary variables.
+    """
+
+    # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
+    sub_mask = _get_subsample_mask_pts_rst(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        area_or_point=area_or_point,
+        aux_vars=aux_vars,
     )
-    return transform_shifted
+
+    # Return interpolator of elevation differences and subsampled auxiliary variables
+    sub_dh_interpolator, sub_bias_vars = _subsample_on_mask_interpolator(
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        aux_vars=aux_vars,
+        sub_mask=sub_mask,
+        transform=transform,
+        area_or_point=area_or_point,
+        z_name=z_name,
+    )
+
+    # Derive subsample size to pass back to class
+    subsample_final = np.count_nonzero(sub_mask)
+
+    # Return 1D arrays of subsampled points at the same location
+    return sub_dh_interpolator, sub_bias_vars, subsample_final
 
 
-######################################
-# Functions for affine coregistrations
-######################################
+################################
+# Affine coregistrations methods
+# ##############################
+
+##################
+# 1/ Nuth and Kääb
+##################
 
 
-def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
+def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> NDArrayf:
     """
-    Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
+    Nuth and Kääb (2011) fitting function.
 
-    :param dem: A numpy array of elevation values.
+    Describes the elevation differences divided by the slope tangente (y) as a 1D function of the aspect.
 
-    :returns:  The tangent of slope and aspect (in radians) of the DEM.
+    y(x) = a * cos(b - x) + c
+
+    where y = dh/tan(slope) and x = aspect.
+
+    :param xx: The aspect in radians.
+    :param params: Parameters a, b and c of above function.
+
+    :returns: Estimated y-values with the same shape as the given x-values
     """
-    # Old implementation
-    # # Calculate the gradient of the slope
-    gradient_y, gradient_x = np.gradient(dem)
-    slope_tan = np.sqrt(gradient_x**2 + gradient_y**2)
-    aspect = np.arctan2(-gradient_x, gradient_y)
-    aspect += np.pi
+    return params[0] * np.cos(params[1] - xx) + params[2]
 
-    # xdem implementation
-    # slope, aspect = xdem.terrain.get_terrain_attribute(
-    #     dem, attribute=["slope", "aspect"], resolution=1, degrees=False
-    # )
-    # slope_tan = np.tan(slope)
-    # aspect = (aspect + np.pi) % (2 * np.pi)
+
+def _nuth_kaab_bin_fit(
+    dh: NDArrayf,
+    slope_tan: NDArrayf,
+    aspect: NDArrayf,
+    params_fit_or_bin: InFitOrBinDict,
+) -> tuple[float, float, float]:
+    """
+    Optimize the Nuth and Kääb (2011) function based on observed values of elevation differences, slope tangent and
+    aspect at the same locations, using either fitting or binning + fitting.
+
+    :param dh: 1D array of elevation differences (in georeferenced unit, typically meters).
+    :param slope_tan: 1D array of slope tangent (unitless).
+    :param aspect: 1D array of aspect (units = radians).
+    :param params_fit_or_bin: Dictionary of parameters for fitting or binning.
+
+    :returns: Optimized parameters of Nuth and Kääb (2011) fit function: easting, northing, and vertical offsets
+        (in georeferenced unit).
+    """
+
+    # Slope tangents near zero were removed beforehand, so errors should never happen here
+    with np.errstate(divide="ignore", invalid="ignore"):
+        y = dh / slope_tan
+
+    # Make an initial guess of the a, b, and c parameters
+    p0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
+
+    # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
+    if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
+        raise ValueError("Nuth and Kääb method only supports 'fit' or 'bin_and_fit'.")
+
+    # Define fit and bin parameters
+    params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func
+    params_fit_or_bin["nd"] = 1
+    params_fit_or_bin["bias_var_names"] = ["aspect"]
+
+    # Run bin and fit, returning dataframe of binning and parameters of fitting
+    _, results = _bin_or_and_fit_nd(
+        fit_or_bin=params_fit_or_bin["fit_or_bin"],
+        params_fit_or_bin=params_fit_or_bin,
+        values=y,
+        bias_vars={"aspect": aspect},
+        p0=p0,
+    )
+    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+    assert results is not None
+    easting_offset = results[0][0] * np.sin(results[0][1])
+    northing_offset = results[0][0] * np.cos(results[0][1])
+    vertical_offset = results[0][2]
+
+    return easting_offset, northing_offset, vertical_offset
+
+
+def _nuth_kaab_aux_vars(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+) -> tuple[NDArrayf, NDArrayf]:
+    """
+    Deriving slope tangent and aspect auxiliary variables expected by the Nuth and Kääb (2011) algorithm.
+
+    :return: Slope tangent and aspect (radians).
+    """
+
+    def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
+        """
+        Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
+
+        For now, this method using the gradient is more efficient than slope/aspect derived in the terrain module.
+
+        :param dem: A numpy array of elevation values.
+
+        :returns:  The tangent of slope and aspect (in radians) of the DEM.
+        """
+
+        # Gradient implementation
+        # # Calculate the gradient of the slope
+        gradient_y, gradient_x = np.gradient(dem)
+        slope_tan = np.sqrt(gradient_x**2 + gradient_y**2)
+        aspect = np.arctan2(-gradient_x, gradient_y)
+        aspect += np.pi
+
+        # Terrain module implementation
+        # slope, aspect = xdem.terrain.get_terrain_attribute(
+        #     dem, attribute=["slope", "aspect"], resolution=1, degrees=False
+        # )
+        # slope_tan = np.tan(slope)
+        # aspect = (aspect + np.pi) % (2 * np.pi)
+
+        return slope_tan, aspect
+
+    # If inputs are both point clouds, raise an error
+    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
+
+        raise TypeError(
+            "The Nuth and Kääb (2011) coregistration does not support two point clouds, one elevation "
+            "dataset in the pair must be a DEM."
+        )
+
+    # If inputs are both rasters, derive terrain attributes from ref and get 2D dh interpolator
+    elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
+
+        # Derive slope and aspect from the reference as default
+        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_elev)
+
+    # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
+    else:
+
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            rst_elev = tba_elev
+        else:
+            rst_elev = ref_elev
+
+        # Derive slope and aspect from the raster dataset
+        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(rst_elev)
 
     return slope_tan, aspect
 
 
-def get_horizontal_shift(
-    elevation_difference: NDArrayf, slope: NDArrayf, aspect: NDArrayf, min_count: int = 20
-) -> tuple[float, float, float]:
+def _nuth_kaab_iteration_step(
+    coords_offsets: tuple[float, float, float],
+    dh_interpolator: Callable[[float, float], NDArrayf],
+    slope_tan: NDArrayf,
+    aspect: NDArrayf,
+    res: tuple[int, int],
+    params_fit_bin: InFitOrBinDict,
+) -> tuple[tuple[float, float, float], float]:
     """
-    Calculate the horizontal shift between two DEMs using the method presented in Nuth and Kääb (2011).
+    Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
 
-    :param elevation_difference: The elevation difference (reference_dem - aligned_dem).
-    :param slope: A slope map with the same shape as elevation_difference (units = pixels?).
-    :param aspect: An aspect map with the same shape as elevation_difference (units = radians).
-    :param min_count: The minimum allowed bin size to consider valid.
+    Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
 
-    :raises ValueError: If very few finite values exist to analyse.
-
-    :returns: The pixel offsets in easting, northing, and the c_parameter (altitude?).
+    :param coords_offsets: Coordinate offsets at this iteration (easting, northing, vertical) in georeferenced unit.
+    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
+        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
+    :param slope_tan: Array of slope tangent.
+    :param aspect: Array of aspect.
+    :param res: Resolution of DEM.
     """
-    input_x_values = aspect
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        input_y_values = elevation_difference / slope
+    # Calculate the elevation difference with offsets
+    dh_step = dh_interpolator(coords_offsets[0], coords_offsets[1])
+    # Tests show that using the median vertical offset significantly speeds up the algorithm compared to
+    # using the vertical offset output of the fit function below
+    vshift = np.nanmedian(dh_step)
+    dh_step -= vshift
 
-    # Remove non-finite values
-    x_values = input_x_values[np.isfinite(input_x_values) & np.isfinite(input_y_values)]
-    y_values = input_y_values[np.isfinite(input_x_values) & np.isfinite(input_y_values)]
+    # Interpolating with an offset creates new invalid values, so the subsample is reduced
+    # TODO: Add an option to re-subsample at every iteration step?
+    mask_valid = np.isfinite(dh_step)
+    if np.count_nonzero(mask_valid) == 0:
+        raise ValueError(
+            "The subsample contains no more valid values. This can happen is the horizontal shift to "
+            "correct is very large, or if the algorithm diverged. To ensure all possible points can "
+            "be used at any iteration step, use subsample=1."
+        )
+    dh_step = dh_step[mask_valid]
+    slope_tan = slope_tan[mask_valid]
+    aspect = aspect[mask_valid]
 
-    assert y_values.shape[0] > 0
-
-    # Remove outliers
-    lower_percentile = np.percentile(y_values, 1)
-    upper_percentile = np.percentile(y_values, 99)
-    valids = np.where((y_values > lower_percentile) & (y_values < upper_percentile) & (np.abs(y_values) < 200))
-    x_values = x_values[valids]
-    y_values = y_values[valids]
-
-    # Slice the dataset into appropriate aspect bins
-    step = np.pi / 36
-    slice_bounds = np.arange(start=0, stop=2 * np.pi, step=step)
-    y_medians = np.zeros([len(slice_bounds)])
-    count = y_medians.copy()
-    for i, bound in enumerate(slice_bounds):
-        y_slice = y_values[(bound < x_values) & (x_values < (bound + step))]
-        if y_slice.shape[0] > 0:
-            y_medians[i] = np.median(y_slice)
-        count[i] = y_slice.shape[0]
-
-    # Filter out bins with counts below threshold
-    y_medians = y_medians[count > min_count]
-    slice_bounds = slice_bounds[count > min_count]
-
-    if slice_bounds.shape[0] < 10:
-        raise ValueError("Less than 10 different cells exist.")
-
-    # Make an initial guess of the a, b, and c parameters
-    initial_guess: tuple[float, float, float] = (3 * np.std(y_medians) / (2**0.5), 0.0, np.mean(y_medians))
-
-    def estimate_ys(x_values: NDArrayf, parameters: tuple[float, float, float]) -> NDArrayf:
-        """
-        Estimate y-values from x-values and the current parameters.
-
-        y(x) = a * cos(b - x) + c
-
-        :param x_values: The x-values to feed the above function.
-        :param parameters: The a, b, and c parameters to feed the above function
-
-        :returns: Estimated y-values with the same shape as the given x-values
-        """
-        return parameters[0] * np.cos(parameters[1] - x_values) + parameters[2]
-
-    def residuals(parameters: tuple[float, float, float], y_values: NDArrayf, x_values: NDArrayf) -> NDArrayf:
-        """
-        Get the residuals between the estimated and measured values using the given parameters.
-
-        err(x, y) = est_y(x) - y
-
-        :param parameters: The a, b, and c parameters to use for the estimation.
-        :param y_values: The measured y-values.
-        :param x_values: The measured x-values
-
-        :returns: An array of residuals with the same shape as the input arrays.
-        """
-        err = estimate_ys(x_values, parameters) - y_values
-        return err
-
-    # Estimate the a, b, and c parameters with least square minimisation
-    results = scipy.optimize.least_squares(
-        fun=residuals, x0=initial_guess, args=(y_medians, slice_bounds), xtol=1e-8, gtol=None, ftol=None
+    # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
+    easting_offset, northing_offset, _ = _nuth_kaab_bin_fit(
+        dh=dh_step, slope_tan=slope_tan, aspect=aspect, params_fit_or_bin=params_fit_bin
     )
 
-    # Round results above the tolerance to get fixed results on different OS
-    a_parameter, b_parameter, c_parameter = results.x
-    c_parameter = np.round(c_parameter, 3)
+    # Increment the offsets by the new offset
+    new_coords_offsets = (
+        coords_offsets[0] + easting_offset * res[0],
+        coords_offsets[1] + northing_offset * res[1],
+        float(vshift),
+    )
 
-    # Calculate the easting and northing offsets from the above parameters
-    east_offset = np.round(a_parameter * np.sin(b_parameter), 3)
-    north_offset = np.round(a_parameter * np.cos(b_parameter), 3)
+    # Compute statistic on offset to know if it reached tolerance
+    # The easting and northing are here in pixels because of the slope/aspect derivation
+    tolerance_statistic = np.sqrt(easting_offset**2 + northing_offset**2)
 
-    return east_offset, north_offset, c_parameter
+    return new_coords_offsets, tolerance_statistic
+
+
+def nuth_kaab(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    tolerance: float,
+    max_iterations: int,
+    params_fit_or_bin: InFitOrBinDict,
+    params_random: InRandomDict,
+    z_name: str,
+    weights: NDArrayf | None = None,
+    **kwargs: Any,
+) -> tuple[tuple[float, float, float], int]:
+    """
+    Nuth and Kääb (2011) iterative coregistration.
+
+    :return: Final estimated offset: east, north, vertical (in georeferenced units).
+    """
+    logging.info("Running Nuth and Kääb (2011) coregistration")
+
+    # Check that DEM CRS is projected, otherwise slope is not correctly calculated
+    if not crs.is_projected:
+        raise NotImplementedError(
+            f"NuthKaab coregistration only works with a projected CRS, current CRS is {crs}. Reproject "
+            f"your DEMs with DEM.reproject() in a local projected CRS such as UTM, that you can find "
+            f"using DEM.get_metric_crs()."
+        )
+
+    # First, derive auxiliary variables of Nuth and Kääb (slope tangent, and aspect) for any point-raster input
+    slope_tan, aspect = _nuth_kaab_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev)
+
+    # Add slope tangents near zero to outliers, to avoid infinite values from later division by slope tangent, and to
+    # subsample the right number of subsample points straight ahead
+    mask_zero_slope_tan = np.isclose(slope_tan, 0)
+    slope_tan[mask_zero_slope_tan] = np.nan
+
+    # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
+    aux_vars = {"slope_tan": slope_tan, "aspect": aspect}  # Wrap auxiliary data in dictionary to use generic function
+    sub_dh_interpolator, sub_aux_vars, subsample_final = _preprocess_pts_rst_subsample_interpolator(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        aux_vars=aux_vars,
+        transform=transform,
+        area_or_point=area_or_point,
+        z_name=z_name,
+    )
+
+    logging.info("Iteratively estimating horizontal shift:")
+    # Initialise east, north and vertical offset variables (these will be incremented up and down)
+    initial_offset = (0.0, 0.0, 0.0)
+    # Resolution
+    res = _res(transform)
+    # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
+    assert sub_aux_vars is not None  # Mypy: dictionary cannot be None here
+    constant_inputs = (sub_dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
+    final_offsets = _iterate_method(
+        method=_nuth_kaab_iteration_step,
+        iterating_input=initial_offset,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+
+    return final_offsets, subsample_final
+
+
+####################
+# 2/ Dh minimization
+####################
+
+
+def _dh_minimize_fit_func(
+    coords_offsets: tuple[float, float],
+    dh_interpolator: Callable[[float, float], NDArrayf],
+) -> NDArrayf:
+    """
+    Fitting function of dh minimization method, returns the NMAD of elevation differences.
+
+    :param coords_offsets: Coordinate offsets at this iteration (easting, northing) in georeferenced unit.
+    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
+        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
+    :returns: NMAD of residuals.
+    """
+
+    # Calculate the elevation difference
+    dh = dh_interpolator(coords_offsets[0], coords_offsets[1]).flatten()
+
+    return dh
+
+
+def _dh_minimize_fit(
+    dh_interpolator: Callable[[float, float], NDArrayf],
+    params_fit_or_bin: InFitOrBinDict,
+    **kwargs: Any,
+) -> tuple[float, float, float]:
+    """
+    Optimize the statistical dispersion of the elevation differences residuals.
+
+    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
+        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
+    :param params_fit_or_bin: Parameters for fitting or binning.
+
+    :return: Optimized offsets (easing, northing, vertical) in georeferenced unit.
+    """
+    # Define partial function
+    loss_func = params_fit_or_bin["fit_loss_func"]
+
+    def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
+        return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
+
+    # Initial offset near zero
+    init_offsets = (0, 0)
+
+    # Default parameters depending on optimizer used
+    if params_fit_or_bin["fit_minimizer"] == scipy.optimize.minimize:
+        if "method" not in kwargs.keys():
+            kwargs.update({"method": "Nelder-Mead"})
+            # This method has trouble when initialized with 0,0, so defaulting to 1,1
+            # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
+            init_offsets = (1, 1)
+
+    elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
+        kwargs.update({"errorcontrol": False})
+        if "deltatol" not in kwargs.keys():
+            kwargs.update({"deltatol": 0.004})
+        if "feps" not in kwargs.keys():
+            kwargs.update({"feps": 10e-5})
+
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
+
+    # Get final offsets with the right sign direction
+    offset_east = -results.x[0]
+    offset_north = -results.x[1]
+    offset_vertical = float(np.nanmedian(dh_interpolator(-offset_east, -offset_north)))
+
+    return offset_east, offset_north, offset_vertical
+
+
+def dh_minimize(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    area_or_point: Literal["Area", "Point"] | None,
+    params_random: InRandomDict,
+    params_fit_or_bin: InFitOrBinDict,
+    z_name: str,
+    weights: NDArrayf | None = None,
+    **kwargs: Any,
+) -> tuple[tuple[float, float, float], int]:
+    """
+    Elevation difference minimization coregistration method, for any point-raster or raster-raster input,
+    including subsampling and interpolation to the same points.
+
+    :return: Final estimated offset: east, north, vertical (in georeferenced units).
+    """
+
+    logging.info("Running dh minimization coregistration.")
+
+    # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
+    dh_interpolator, _, subsample_final = _preprocess_pts_rst_subsample_interpolator(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        area_or_point=area_or_point,
+        z_name=z_name,
+    )
+
+    # Perform fit
+    # TODO: To match original implementation, need to add back weight support for point data
+    final_offsets = _dh_minimize_fit(dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin)
+
+    return final_offsets, subsample_final
+
+
+###################
+# 3/ Vertical shift
+###################
+
+
+def vertical_shift(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    params_random: InRandomDict,
+    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]],
+    z_name: str,
+    weights: NDArrayf | None = None,
+    **kwargs: Any,
+) -> tuple[float, int]:
+    """
+    Vertical shift coregistration, for any point-raster or raster-raster input, including subsampling.
+    """
+
+    logging.info("Running vertical shift coregistration")
+
+    # Pre-process point-raster inputs to the same subsampled points
+    sub_ref, sub_tba, _ = _preprocess_pts_rst_subsample(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        crs=crs,
+        area_or_point=area_or_point,
+        z_name=z_name,
+    )
+    # Get elevation difference
+    dh = sub_ref - sub_tba
+
+    # Get vertical shift on subsa weights if those were provided.
+    vshift = float(vshift_reduc_func(dh) if weights is None else vshift_reduc_func(dh, weights))  # type: ignore
+
+    # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
+    # TODO: once we have the weights implemented
+
+    logging.info("Vertical shift estimated")
+
+    # Get final subsample size
+    subsample_final = len(sub_ref)
+
+    return vshift, subsample_final
 
 
 ##################################
@@ -212,41 +757,123 @@ class AffineCoreg(Coreg):
 
     _fit_called: bool = False  # Flag to check if the .fit() method has been called.
     _is_affine: bool | None = None
+    _is_translation: bool | None = None
 
     def __init__(
         self,
         subsample: float | int = 1.0,
         matrix: NDArrayf | None = None,
-        meta: CoregDict | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
-        super().__init__(meta=meta)
-
+        if meta is None:
+            meta = {}
         # Define subsample size
-        self._meta["subsample"] = subsample
+        meta.update({"subsample": subsample})
+        super().__init__(meta=meta)
 
         if matrix is not None:
             with warnings.catch_warnings():
                 # This error is fixed in the upcoming 1.8
                 warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
                 valid_matrix = pytransform3d.transformations.check_transform(matrix)
-            self._meta["matrix"] = valid_matrix
+            self._meta["outputs"]["affine"] = {"matrix": valid_matrix}
+
         self._is_affine = True
 
     def to_matrix(self) -> NDArrayf:
         """Convert the transform to a 4x4 transformation matrix."""
         return self._to_matrix_func()
 
+    def to_translations(self) -> tuple[float, float, float]:
+        """
+        Extract X/Y/Z translations from the affine transformation matrix.
+
+        :return: Easting, northing and vertical translations (in georeferenced unit).
+        """
+
+        matrix = self.to_matrix()
+        shift_x = matrix[0, 3]
+        shift_y = matrix[1, 3]
+        shift_z = matrix[2, 3]
+
+        return shift_x, shift_y, shift_z
+
+    def to_rotations(self) -> tuple[float, float, float]:
+        """
+        Extract X/Y/Z euler rotations (extrinsic convention) from the affine transformation matrix.
+
+        Warning: This function only works for a rigid transformation (rotation and translation).
+
+        :return: Extrinsinc Euler rotations along easting, northing and vertical directions (degrees).
+        """
+
+        matrix = self.to_matrix()
+        rots = pytransform3d.rotations.euler_from_matrix(matrix, i=0, j=1, k=2, extrinsic=True, strict_check=True)
+        rots = np.rad2deg(np.array(rots))
+        return rots[0], rots[1], rots[2]
+
     def centroid(self) -> tuple[float, float, float] | None:
         """Get the centroid of the coregistration, if defined."""
-        meta_centroid = self._meta.get("centroid")
+        meta_centroid = self._meta["outputs"]["affine"].get("centroid")
 
         if meta_centroid is None:
             return None
 
         # Unpack the centroid in case it is in an unexpected format (an array, list or something else).
         return meta_centroid[0], meta_centroid[1], meta_centroid[2]
+
+    def _preprocess_rst_pts_subsample_interpolator(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        aux_vars: dict[str, NDArrayf] | None = None,
+        weights: NDArrayf | None = None,
+        transform: rio.transform.Affine | None = None,
+        crs: rio.crs.CRS | None = None,
+        area_or_point: Literal["Area", "Point"] | None = None,
+        z_name: str = "z",
+    ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
+        """
+        Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
+        (and interpolated in the case of point-raster input).
+
+        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary
+        variables at subsampled points.
+        """
+
+        # Get random parameters
+        params_random = self._meta["inputs"]["random"]
+
+        # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
+        sub_mask = _get_subsample_mask_pts_rst(
+            params_random=params_random,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            area_or_point=area_or_point,
+            aux_vars=aux_vars,
+        )
+
+        # Return interpolator of elevation differences and subsampled auxiliary variables
+        sub_dh_interpolator, sub_bias_vars = _subsample_on_mask_interpolator(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            aux_vars=aux_vars,
+            sub_mask=sub_mask,
+            transform=transform,
+            area_or_point=area_or_point,
+            z_name=z_name,
+        )
+
+        # Write final subsample to class
+        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
+
+        # Return 1D arrays of subsampled points at the same location
+        return sub_dh_interpolator, sub_bias_vars
 
     @classmethod
     def from_matrix(cls, matrix: NDArrayf) -> AffineCoreg:
@@ -268,7 +895,7 @@ class AffineCoreg(Coreg):
         return cls(matrix=valid_matrix)
 
     @classmethod
-    def from_translation(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> AffineCoreg:
+    def from_translations(cls, x_off: float = 0.0, y_off: float = 0.0, z_off: float = 0.0) -> AffineCoreg:
         """
         Instantiate a generic Coreg class from a X/Y/Z translation.
 
@@ -280,10 +907,36 @@ class AffineCoreg(Coreg):
 
         :returns: An instantiated generic Coreg class.
         """
+        # Initialize a diagonal matrix
         matrix = np.diag(np.ones(4, dtype=float))
+        # Add the three translations (which are in the last column)
         matrix[0, 3] = x_off
         matrix[1, 3] = y_off
         matrix[2, 3] = z_off
+
+        return cls.from_matrix(matrix)
+
+    @classmethod
+    def from_rotations(cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0) -> AffineCoreg:
+        """
+        Instantiate a generic Coreg class from a X/Y/Z rotation.
+
+        :param x_rot: The rotation (degrees) to apply around the X (west-east) direction.
+        :param y_rot: The rotation (degrees) to apply around the Y (south-north) direction.
+        :param z_rot: The rotation (degrees) to apply around the Z (vertical) direction.
+
+        :raises ValueError: If the given rotation contained invalid values.
+
+        :returns: An instantiated generic Coreg class.
+        """
+
+        # Initialize a diagonal matrix
+        matrix = np.diag(np.ones(4, dtype=float))
+        # Convert rotations to radians
+        e = np.deg2rad(np.array([x_rot, y_rot, z_rot]))
+        # Derive 3x3 rotation matrix, and insert in 4x4 affine matrix
+        rot_matrix = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
+        matrix[0:3, 0:3] = rot_matrix
 
         return cls.from_matrix(matrix)
 
@@ -291,141 +944,125 @@ class AffineCoreg(Coreg):
         # FOR DEVELOPERS: This function needs to be implemented if the `self._meta['matrix']` keyword is not None.
 
         # Try to see if a matrix exists.
-        meta_matrix = self._meta.get("matrix")
+        meta_matrix = self._meta["outputs"]["affine"].get("matrix")
         if meta_matrix is not None:
             assert meta_matrix.shape == (4, 4), f"Invalid _meta matrix shape. Expected: (4, 4), got {meta_matrix.shape}"
             return meta_matrix
 
         raise NotImplementedError("This should be implemented by subclassing")
 
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        # FOR DEVELOPERS: This function needs to be implemented.
-        raise NotImplementedError("This step has to be implemented by subclassing.")
-
-    def _apply_func(
-        self,
-        dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
-
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        # FOR DEVELOPERS: This function is only needed for non-rigid transforms.
-        raise NotImplementedError("This should have been implemented by subclassing")
-
 
 class VerticalShift(AffineCoreg):
     """
-    DEM vertical shift correction.
+    Vertical translation alignment.
 
-    Estimates the mean (or median, weighted avg., etc.) vertical offset between two DEMs.
+    Estimates the mean vertical offset between two elevation datasets based on a reductor function (median, mean, or
+    any custom reductor function).
+
+    The estimated vertical shift is stored in the `self.meta["outputs"]["affine"]` key "shift_z" (in unit of the
+    elevation dataset inputs, typically meters).
     """
 
     def __init__(
-        self, vshift_func: Callable[[NDArrayf], np.floating[Any]] = np.average, subsample: float | int = 1.0
+        self, vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median, subsample: float | int = 1.0
     ) -> None:  # pylint:
         # disable=super-init-not-called
         """
-        Instantiate a vertical shift correction object.
+        Instantiate a vertical shift alignment object.
 
-        :param vshift_func: The function to use for calculating the vertical shift. Default: (weighted) average.
+        :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
+            Defaults to the median.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
         self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_func": vshift_func}, subsample=subsample)
+        super().__init__(meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample)
 
-    def _fit_func(
+    def _fit_rst_rst(
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
-        weights: NDArrayf | None,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Estimate the vertical shift using the vshift_func."""
 
-        if verbose:
-            print("Estimating the vertical shift...")
-        diff = ref_dem - tba_dem
-
-        valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(diff)))
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
-
-        diff = diff[subsample_mask]
-
-        if np.count_nonzero(np.isfinite(diff)) == 0:
-            raise ValueError("No finite values in vertical shift comparison.")
-
-        # Use weights if those were provided.
-        vshift = (
-            self._meta["vshift_func"](diff)
-            if weights is None
-            else self._meta["vshift_func"](diff, weights)  # type: ignore
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            **kwargs,
         )
 
-        # TODO: We might need to define the type of bias_func with Callback protocols to get the optional argument,
-        # TODO: once we have the weights implemented
-
-        if verbose:
-            print("Vertical shift estimated")
-
-        self._meta["vshift"] = vshift
-
-    def _apply_func(
+    def _fit_rst_pts(
         self,
-        dem: NDArrayf,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the VerticalShift function to a DEM."""
-        return dem + self._meta["vshift"], transform
+    ) -> None:
+        """Estimate the vertical shift using the vshift_func."""
 
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        """Apply the VerticalShift function to a set of points."""
-        new_coords = coords.copy()
-        new_coords[:, 2] += self._meta["vshift"]
-        return new_coords
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+
+        vshift, subsample_final = vertical_shift(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            params_random=params_random,
+            vshift_reduc_func=self._meta["inputs"]["affine"]["vshift_reduc_func"],
+            z_name=z_name,
+            weights=weights,
+            **kwargs,
+        )
+
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
+        self._meta["outputs"]["affine"] = {"shift_z": vshift}
 
     def _to_matrix_func(self) -> NDArrayf:
         """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["vshift"]
+        empty_matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return empty_matrix
 
 
 class ICP(AffineCoreg):
     """
-    Iterative Closest Point DEM coregistration.
-    Based on 3D registration of Besl and McKay (1992), https://doi.org/10.1117/12.57955.
+    Iterative closest point registration, based on Besl and McKay (1992), https://doi.org/10.1117/12.57955.
 
-    Estimates a rigid transform (rotation + translation) between two DEMs.
+    Estimates a rigid transform (rotation + translation) between two elevation datasets.
 
-    Requires 'opencv'
-    See opencv doc for more info: https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
+
+    Requires 'opencv'. See opencv doc for more info:
+    https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(
@@ -448,24 +1085,25 @@ class ICP(AffineCoreg):
         if not _has_cv2:
             raise ValueError("Optional dependency needed. Install 'opencv'")
 
-        # TODO: Move these to _meta?
-        self.max_iterations = max_iterations
-        self.tolerance = tolerance
-        self.rejection_scale = rejection_scale
-        self.num_levels = num_levels
+        meta = {
+            "max_iterations": max_iterations,
+            "tolerance": tolerance,
+            "rejection_scale": rejection_scale,
+            "num_levels": num_levels,
+        }
+        super().__init__(subsample=subsample, meta=meta)
 
-        super().__init__(subsample=subsample)
-
-    def _fit_func(
+    def _fit_rst_rst(
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
-        weights: NDArrayf | None,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
         """Estimate the rigid transform from tba_dem to ref_dem."""
@@ -473,103 +1111,132 @@ class ICP(AffineCoreg):
         if weights is not None:
             warnings.warn("ICP was given weights, but does not support it.")
 
-        bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        # Generate the x and y coordinates for the reference_dem
-        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
-        gradient_x, gradient_y = np.gradient(ref_dem)
+        resolution = _res(transform)
 
-        normal_east = np.sin(np.arctan(gradient_y / resolution)) * -1
-        normal_north = np.sin(np.arctan(gradient_x / resolution))
+        # Generate the x and y coordinates for the reference_dem
+        x_coords, y_coords = _coords(transform, ref_elev.shape, area_or_point=area_or_point)
+        gradient_x, gradient_y = np.gradient(ref_elev)
+
+        normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
+        normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
         normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
 
         valid_mask = np.logical_and.reduce(
-            (inlier_mask, np.isfinite(ref_dem), np.isfinite(normal_east), np.isfinite(normal_north))
+            (inlier_mask, np.isfinite(ref_elev), np.isfinite(normal_east), np.isfinite(normal_north))
         )
         subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
-        ref_pts = pd.DataFrame(
-            np.dstack(
-                [
-                    x_coords[subsample_mask],
-                    y_coords[subsample_mask],
-                    ref_dem[subsample_mask],
-                    normal_east[subsample_mask],
-                    normal_north[subsample_mask],
-                    normal_up[subsample_mask],
-                ]
-            ).squeeze(),
-            columns=["E", "N", "z", "nx", "ny", "nz"],
+        ref_pts = gpd.GeoDataFrame(
+            geometry=gpd.points_from_xy(x=x_coords[subsample_mask], y=y_coords[subsample_mask], crs=None),
+            data={
+                "z": ref_elev[subsample_mask],
+                "nx": normal_east[subsample_mask],
+                "ny": normal_north[subsample_mask],
+                "nz": normal_up[subsample_mask],
+            },
         )
 
-        self._fit_pts_func(ref_dem=ref_pts, tba_dem=tba_dem, transform=transform, verbose=verbose, z_name="z")
+        self._fit_rst_pts(
+            ref_elev=ref_pts,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name="z",
+        )
 
-    def _fit_pts_func(
+    def _fit_rst_pts(
         self,
-        ref_dem: pd.DataFrame,
-        tba_dem: RasterType | NDArrayf,
-        transform: rio.transform.Affine | None,
-        verbose: bool = False,
-        z_name: str = "z",
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> None:
 
-        if transform is None and hasattr(tba_dem, "transform"):
-            transform = tba_dem.transform  # type: ignore
-        if hasattr(tba_dem, "transform"):
-            tba_dem = tba_dem.data
+        # Check which one is reference
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            point_elev = ref_elev
+            rst_elev = tba_elev
+            ref = "point"
+        else:
+            point_elev = tba_elev
+            rst_elev = ref_elev
+            ref = "raster"
 
-        ref_dem = ref_dem.dropna(how="any", subset=["E", "N", z_name])
-        bounds, resolution = _transform_to_bounds_and_res(tba_dem.shape, transform)
-        points: dict[str, NDArrayf] = {}
+        # Pre-process point data
+        point_elev = point_elev.dropna(how="any", subset=[z_name])
+
+        bounds = _bounds(transform=transform, shape=rst_elev.shape)
+        resolution = _res(transform)
+
         # Generate the x and y coordinates for the TBA DEM
-        x_coords, y_coords = _get_x_and_y_coords(tba_dem.shape, transform)
-        centroid = (np.mean([bounds.left, bounds.right]), np.mean([bounds.bottom, bounds.top]), 0.0)
+        x_coords, y_coords = _coords(transform, rst_elev.shape, area_or_point=area_or_point)
+        centroid = (float(np.mean([bounds.left, bounds.right])), float(np.mean([bounds.bottom, bounds.top])), 0.0)
         # Subtract by the bounding coordinates to avoid float32 rounding errors.
         x_coords -= centroid[0]
         y_coords -= centroid[1]
 
-        gradient_x, gradient_y = np.gradient(tba_dem)
+        gradient_x, gradient_y = np.gradient(rst_elev)
 
         # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
-        dem_kwargs = {"transform": transform, "crs": rio.CRS.from_epsg(32633), "nodata": -9999.0}
-        normal_east = Raster.from_array(np.sin(np.arctan(gradient_y / resolution)) * -1, **dem_kwargs)
-        normal_north = Raster.from_array(np.sin(np.arctan(gradient_x / resolution)), **dem_kwargs)
-        normal_up = Raster.from_array(1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0), **dem_kwargs)
+        normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
+        normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
+        normal_up = 1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0)
 
-        valid_mask = ~np.isnan(tba_dem) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
+        valid_mask = ~np.isnan(rst_elev) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
 
-        points["tba"] = np.dstack(
+        points: dict[str, NDArrayf] = {}
+        points["raster"] = np.dstack(
             [
                 x_coords[valid_mask],
                 y_coords[valid_mask],
-                tba_dem[valid_mask],
-                normal_east.data[valid_mask],
-                normal_north.data[valid_mask],
-                normal_up.data[valid_mask],
+                rst_elev[valid_mask],
+                normal_east[valid_mask],
+                normal_north[valid_mask],
+                normal_up[valid_mask],
             ]
         ).squeeze()
 
-        if any(col not in ref_dem for col in ["nx", "ny", "nz"]):
-            for key, raster in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
-                raster.tags["AREA_OR_POINT"] = "Area"
-                ref_dem[key] = raster.interp_points(
-                    ref_dem[["E", "N"]].values, shift_area_or_point=True, mode="nearest"
+        # TODO: Should be a way to not duplicate this column and just feed it directly
+        point_elev["E"] = point_elev.geometry.x.values
+        point_elev["N"] = point_elev.geometry.y.values
+
+        if any(col not in point_elev for col in ["nx", "ny", "nz"]):
+            for key, arr in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
+                point_elev[key] = _interp_points(
+                    arr,
+                    transform=transform,
+                    area_or_point=area_or_point,
+                    points=(point_elev["E"].values, point_elev["N"].values),
                 )
 
-        ref_dem["E"] -= centroid[0]
-        ref_dem["N"] -= centroid[1]
+        point_elev["E"] -= centroid[0]
+        point_elev["N"] -= centroid[1]
 
-        points["ref"] = ref_dem[["E", "N", z_name, "nx", "ny", "nz"]].values
+        points["point"] = point_elev[["E", "N", z_name, "nx", "ny", "nz"]].values
 
         for key in points:
             points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
-            points[key][:, :2] -= resolution / 2
+            points[key][:, 0] -= resolution[0] / 2
+            points[key][:, 1] -= resolution[1] / 2
 
-        icp = cv2.ppf_match_3d_ICP(self.max_iterations, self.tolerance, self.rejection_scale, self.num_levels)
-        if verbose:
-            print("Running ICP...")
+        # Extract parameters and pass them to method
+        max_it = self._meta["inputs"]["iterative"]["max_iterations"]
+        tol = self._meta["inputs"]["iterative"]["tolerance"]
+        rej = self._meta["inputs"]["specific"]["rejection_scale"]
+        num_lv = self._meta["inputs"]["specific"]["num_levels"]
+        icp = cv2.ppf_match_3d_ICP(max_it, tol, rej, num_lv)
+        logging.info("Running ICP...")
         try:
-            _, residual, matrix = icp.registerModelToScene(points["tba"], points["ref"])
+            # Use points as reference
+            _, residual, matrix = icp.registerModelToScene(points["raster"], points["point"])
         except cv2.error as exception:
             if "(expected: 'n > 0'), where" not in str(exception):
                 raise exception
@@ -580,593 +1247,279 @@ class ICP(AffineCoreg):
                 f"'dem_to_be_aligned' had {points['tba'].size} valid points."
             )
 
-        if verbose:
-            print("ICP finished")
+        # If raster was reference, invert the matrix
+        if ref == "raster":
+            matrix = xdem.coreg.base.invert_matrix(matrix)
+
+        logging.info("ICP finished")
 
         assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
 
-        self._meta["centroid"] = centroid
-        self._meta["matrix"] = matrix
-
-
-class Tilt(AffineCoreg):
-    """
-    DEM tilting.
-
-    Estimates an 2-D plan correction between the difference of two DEMs.
-    """
-
-    def __init__(self, subsample: int | float = 5e5) -> None:
-        """
-        Instantiate a tilt correction object.
-
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-        self.poly_order = 1
-
-        super().__init__(subsample=subsample)
-
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        """Fit the dDEM between the DEMs to a least squares polynomial equation."""
-        ddem = ref_dem - tba_dem
-        ddem[~inlier_mask] = np.nan
-        x_coords, y_coords = _get_x_and_y_coords(ref_dem.shape, transform)
-        fit_ramp, coefs = deramping(
-            ddem, x_coords, y_coords, degree=self.poly_order, subsample=self._meta["subsample"], verbose=verbose
+        # Save outputs
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            centroid=centroid,
+            matrix=matrix,
+            shift_x=matrix[0, 3],
+            shift_y=matrix[1, 3],
+            shift_z=matrix[2, 3],
         )
-
-        self._meta["coefficients"] = coefs[0]
-        self._meta["func"] = fit_ramp
-
-    def _apply_func(
-        self,
-        dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the deramp function to a DEM."""
-        x_coords, y_coords = _get_x_and_y_coords(dem.shape, transform)
-
-        ramp = self._meta["func"](x_coords, y_coords)
-
-        return dem + ramp, transform
-
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        """Apply the deramp function to a set of points."""
-        new_coords = coords.copy()
-
-        new_coords[:, 2] += self._meta["func"](new_coords[:, 0], new_coords[:, 1])
-
-        return new_coords
-
-    def _to_matrix_func(self) -> NDArrayf:
-        """Return a transform matrix if possible."""
-        if self.degree > 1:
-            raise ValueError(
-                "Nonlinear deramping degrees cannot be represented as transformation matrices."
-                f" (max 1, given: {self.poly_order})"
-            )
-        if self.degree == 1:
-            raise NotImplementedError("Vertical shift, rotation and horizontal scaling has to be implemented.")
-
-        # If degree==0, it's just a bias correction
-        empty_matrix = np.diag(np.ones(4, dtype=float))
-
-        empty_matrix[2, 3] += self._meta["coefficients"][0]
-
-        return empty_matrix
+        self._meta["outputs"]["affine"] = output_affine
 
 
 class NuthKaab(AffineCoreg):
     """
-    Nuth and Kääb (2011) DEM coregistration.
+    Nuth and Kääb (2011) coregistration, https://doi.org/10.5194/tc-5-271-2011.
 
-    Implemented after the paper:
-    https://doi.org/10.5194/tc-5-271-2011
-    """
+    Estimate horizontal and vertical translations by iterative slope/aspect alignment.
 
-    def __init__(self, max_iterations: int = 10, offset_threshold: float = 0.05, subsample: int | float = 5e5) -> None:
-        """
-        Instantiate a new Nuth and Kääb (2011) coregistration object.
-
-        :param max_iterations: The maximum allowed iterations before stopping.
-        :param offset_threshold: The residual offset threshold after which to stop the iterations.
-        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-        """
-        self._meta: CoregDict
-        self.max_iterations = max_iterations
-        self.offset_threshold = offset_threshold
-
-        super().__init__(subsample=subsample)
-
-    def _fit_func(
-        self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        weights: NDArrayf | None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the x/y/z offset between two DEMs."""
-        if verbose:
-            print("Running Nuth and Kääb (2011) coregistration")
-
-        bounds, resolution = _transform_to_bounds_and_res(ref_dem.shape, transform)
-        # Make a new DEM which will be modified inplace
-        aligned_dem = tba_dem.copy()
-
-        # Check that DEM CRS is projected, otherwise slope is not correctly calculated
-        if not crs.is_projected:
-            raise NotImplementedError(
-                f"DEMs CRS is {crs}. NuthKaab coregistration only works with \
-projected CRS. First, reproject your DEMs in a local projected CRS, e.g. UTM, and re-run."
-            )
-
-        # Calculate slope and aspect maps from the reference DEM
-        if verbose:
-            print("   Calculate slope and aspect")
-
-        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_dem)
-
-        valid_mask = np.logical_and.reduce(
-            (inlier_mask, np.isfinite(ref_dem), np.isfinite(tba_dem), np.isfinite(slope_tan))
-        )
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
-
-        ref_dem[~subsample_mask] = np.nan
-
-        # Make index grids for the east and north dimensions
-        east_grid = np.arange(ref_dem.shape[1])
-        north_grid = np.arange(ref_dem.shape[0])
-
-        # Make a function to estimate the aligned DEM (used to construct an offset DEM)
-        elevation_function = scipy.interpolate.RectBivariateSpline(
-            x=north_grid, y=east_grid, z=np.where(np.isnan(aligned_dem), -9999, aligned_dem), kx=1, ky=1
-        )
-
-        # Make a function to estimate nodata gaps in the aligned DEM (used to fix the estimated offset DEM)
-        # Use spline degree 1, as higher degrees will create instabilities around 1 and mess up the nodata mask
-        nodata_function = scipy.interpolate.RectBivariateSpline(
-            x=north_grid, y=east_grid, z=np.isnan(aligned_dem), kx=1, ky=1
-        )
-
-        # Initialise east and north pixel offset variables (these will be incremented up and down)
-        offset_east, offset_north = 0.0, 0.0
-
-        # Calculate initial dDEM statistics
-        elevation_difference = ref_dem - aligned_dem
-
-        vshift = np.nanmedian(elevation_difference)
-        nmad_old = nmad(elevation_difference)
-
-        if verbose:
-            print("   Statistics on initial dh:")
-            print(f"      Median = {vshift:.2f} - NMAD = {nmad_old:.2f}")
-
-        # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-        if verbose:
-            print("   Iteratively estimating horizontal shift:")
-
-        # If verbose is True, will use progressbar and print additional statements
-        pbar = trange(self.max_iterations, disable=not verbose, desc="   Progress")
-        for i in pbar:
-
-            # Calculate the elevation difference and the residual (NMAD) between them.
-            elevation_difference = ref_dem - aligned_dem
-            vshift = np.nanmedian(elevation_difference)
-            # Correct potential vertical shifts
-            elevation_difference -= vshift
-
-            # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
-            east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
-                elevation_difference=elevation_difference, slope=slope_tan, aspect=aspect
-            )
-            if verbose:
-                pbar.write(f"      #{i + 1:d} - Offset in pixels : ({east_diff:.2f}, {north_diff:.2f})")
-
-            # Increment the offsets with the overall offset
-            offset_east += east_diff
-            offset_north += north_diff
-
-            # Calculate new elevations from the offset x- and y-coordinates
-            new_elevation = elevation_function(y=east_grid + offset_east, x=north_grid - offset_north)
-
-            # Set NaNs where NaNs were in the original data
-            new_nans = nodata_function(y=east_grid + offset_east, x=north_grid - offset_north)
-            new_elevation[new_nans > 0] = np.nan
-
-            # Assign the newly calculated elevations to the aligned_dem
-            aligned_dem = new_elevation
-
-            # Update statistics
-            elevation_difference = ref_dem - aligned_dem
-
-            vshift = np.nanmedian(elevation_difference)
-            nmad_new = nmad(elevation_difference)
-
-            nmad_gain = (nmad_new - nmad_old) / nmad_old * 100
-
-            if verbose:
-                pbar.write(f"      Median = {vshift:.2f} - NMAD = {nmad_new:.2f}  ==>  Gain = {nmad_gain:.2f}%")
-
-            # Stop if the NMAD is low and a few iterations have been made
-            assert ~np.isnan(nmad_new), (offset_east, offset_north)
-
-            offset = np.sqrt(east_diff**2 + north_diff**2)
-            if i > 1 and offset < self.offset_threshold:
-                if verbose:
-                    pbar.write(
-                        f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping"
-                    )
-                break
-
-            nmad_old = nmad_new
-
-        # Print final results
-        if verbose:
-            print(f"\n   Final offset in pixels (east, north) : ({offset_east:f}, {offset_north:f})")
-            print("   Statistics on coregistered dh:")
-            print(f"      Median = {vshift:.2f} - NMAD = {nmad_new:.2f}")
-
-        self._meta["offset_east_px"] = offset_east
-        self._meta["offset_north_px"] = offset_north
-        self._meta["vshift"] = vshift
-        self._meta["resolution"] = resolution
-
-    def _fit_pts_func(
-        self,
-        ref_dem: pd.DataFrame,
-        tba_dem: RasterType,
-        transform: rio.transform.Affine | None,
-        weights: NDArrayf | None,
-        verbose: bool = False,
-        order: int = 1,
-        z_name: str = "z",
-    ) -> None:
-        """
-        Estimate the x/y/z offset between a DEM and points cloud.
-        1. deleted elevation_function and nodata_function, shifting dataframe (points) instead of DEM.
-        2. do not support latitude and longitude as inputs.
-
-        :param z_name: the column name of dataframe used for elevation differencing
-
-        """
-
-        if verbose:
-            print("Running Nuth and Kääb (2011) coregistration. Shift pts instead of shifting dem")
-
-        tba_arr, _ = get_array_and_mask(tba_dem)
-
-        resolution = tba_dem.res[0]
-        x_coords, y_coords = (ref_dem["E"].values, ref_dem["N"].values)
-
-        # Assume that the coordinates represent the center of a theoretical pixel.
-        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
-        x_coords -= resolution / 2
-        y_coords += resolution / 2
-
-        pts = np.array((x_coords, y_coords)).T
-        # This needs to be consistent, so it's cardcoded here
-        area_or_point = "Area"
-        # Make a new DEM which will be modified inplace
-        aligned_dem = tba_dem.copy()
-        aligned_dem.tags["AREA_OR_POINT"] = area_or_point
-
-        # Calculate slope and aspect maps from the reference DEM
-        if verbose:
-            print("   Calculate slope and aspect")
-        slope, aspect = _calculate_slope_and_aspect_nuthkaab(tba_arr)
-
-        slope_r = tba_dem.copy(new_array=np.ma.masked_array(slope[None, :, :], mask=~np.isfinite(slope[None, :, :])))
-        slope_r.tags["AREA_OR_POINT"] = area_or_point
-        aspect_r = tba_dem.copy(new_array=np.ma.masked_array(aspect[None, :, :], mask=~np.isfinite(aspect[None, :, :])))
-        aspect_r.tags["AREA_OR_POINT"] = area_or_point
-
-        # Initialise east and north pixel offset variables (these will be incremented up and down)
-        offset_east, offset_north, vshift = 0.0, 0.0, 0.0
-
-        # Calculate initial DEM statistics
-        slope_pts = slope_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
-        aspect_pts = aspect_r.interp_points(pts, mode="nearest", shift_area_or_point=True)
-        tba_pts = aligned_dem.interp_points(pts, mode="nearest", shift_area_or_point=True)
-
-        # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
-        new_pts = pts.copy()
-
-        elevation_difference = ref_dem[z_name].values - tba_pts
-        vshift = float(np.nanmedian(elevation_difference))
-        nmad_old = nmad(elevation_difference)
-
-        if verbose:
-            print("   Statistics on initial dh:")
-            print(f"      Median = {vshift:.3f} - NMAD = {nmad_old:.3f}")
-
-        # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-        if verbose:
-            print("   Iteratively estimating horizontal shit:")
-
-        # If verbose is True, will use progressbar and print additional statements
-        pbar = trange(self.max_iterations, disable=not verbose, desc="   Progress")
-        for i in pbar:
-
-            # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
-            east_diff, north_diff, _ = get_horizontal_shift(  # type: ignore
-                elevation_difference=elevation_difference, slope=slope_pts, aspect=aspect_pts
-            )
-            if verbose:
-                pbar.write(f"      #{i + 1:d} - Offset in pixels : ({east_diff:.3f}, {north_diff:.3f})")
-
-            # Increment the offsets with the overall offset
-            offset_east += east_diff
-            offset_north += north_diff
-
-            # Assign offset to the coordinates of the pts
-            # Treat new_pts as a window, every time we shift it a little bit to fit the correct view
-            new_pts += [east_diff * resolution, north_diff * resolution]
-
-            # Get new values
-            tba_pts = aligned_dem.interp_points(new_pts, mode="nearest", shift_area_or_point=True)
-            elevation_difference = ref_dem[z_name].values - tba_pts
-
-            # Mask out no data by dem's mask
-            pts_, mask_ = _mask_dataframe_by_dem(new_pts, tba_dem)
-
-            # Update values relataed to shifted pts
-            elevation_difference = elevation_difference[mask_]
-            slope_pts = slope_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
-            aspect_pts = aspect_r.interp_points(pts_, mode="nearest", shift_area_or_point=True)
-            vshift = float(np.nanmedian(elevation_difference))
-
-            # Update statistics
-            elevation_difference -= vshift
-            nmad_new = nmad(elevation_difference)
-            nmad_gain = (nmad_new - nmad_old) / nmad_old * 100
-
-            if verbose:
-                pbar.write(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}  ==>  Gain = {nmad_gain:.3f}%")
-
-            # Stop if the NMAD is low and a few iterations have been made
-            assert ~np.isnan(nmad_new), (offset_east, offset_north)
-
-            offset = np.sqrt(east_diff**2 + north_diff**2)
-            if i > 1 and offset < self.offset_threshold:
-                if verbose:
-                    pbar.write(
-                        f"   Last offset was below the residual offset threshold of {self.offset_threshold} -> stopping"
-                    )
-                break
-
-            nmad_old = nmad_new
-
-        # Print final results
-        if verbose:
-            print(
-                "\n   Final offset in pixels (east, north, bais) : ({:f}, {:f},{:f})".format(
-                    offset_east, offset_north, vshift
-                )
-            )
-            print("   Statistics on coregistered dh:")
-            print(f"      Median = {vshift:.3f} - NMAD = {nmad_new:.3f}")
-
-        self._meta["offset_east_px"] = offset_east
-        self._meta["offset_north_px"] = offset_north
-        self._meta["vshift"] = vshift
-        self._meta["resolution"] = resolution
-        self._meta["nmad"] = nmad_new
-
-    def _to_matrix_func(self) -> NDArrayf:
-        """Return a transformation matrix from the estimated offsets."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
-
-        matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += offset_east
-        matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["vshift"]
-
-        return matrix
-
-    def _apply_func(
-        self,
-        dem: NDArrayf,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]:
-        """Apply the Nuth & Kaab shift to a DEM."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
-
-        updated_transform = apply_xy_shift(transform, -offset_east, -offset_north)
-        vshift = self._meta["vshift"]
-        return dem + vshift, updated_transform
-
-    def _apply_pts_func(self, coords: NDArrayf) -> NDArrayf:
-        """Apply the Nuth & Kaab shift to a set of points."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
-
-        new_coords = coords.copy()
-        new_coords[:, 0] += offset_east
-        new_coords[:, 1] += offset_north
-        new_coords[:, 2] += self._meta["vshift"]
-
-        return new_coords
-
-
-class GradientDescending(AffineCoreg):
-    """
-    Gradient Descending coregistration by Zhihao
+    The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
+    "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
+    vertical shift), as well as in the "matrix" transform.
     """
 
     def __init__(
         self,
-        x0: tuple[float, float] = (0, 0),
-        bounds: tuple[float, float] = (-3, 3),
-        deltainit: int = 2,
-        deltatol: float = 0.004,
-        feps: float = 0.0001,
-        subsample: int | float = 6000,
+        max_iterations: int = 10,
+        offset_threshold: float = 0.001,
+        bin_before_fit: bool = True,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        bin_sizes: int | dict[str, int | Iterable[float]] = 72,
+        bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+        subsample: int | float = 5e5,
+        vertical_shift: bool = True,
     ) -> None:
         """
-        Instantiate gradient descending coregistration object.
+        Instantiate a new Nuth and Kääb (2011) coregistration object.
 
-        :param x0: The initial point of gradient descending iteration.
-        :param bounds: The boundary of the maximum shift.
-        :param deltainit: Initial pattern size.
-        :param deltatol: Target pattern size, or the precision you want achieve.
-        :param feps: Parameters for algorithm. Smallest difference in function value to resolve.
+        :param max_iterations: The maximum allowed iterations before stopping.
+        :param offset_threshold: The residual offset threshold after which to stop the iterations (in pixels).
+        :param bin_before_fit: Whether to bin data before fitting the coregistration function. For the Nuth and Kääb
+            (2011) algorithm, this corresponds to bins of aspect to compute statistics on dh/tan(slope).
+        :param fit_optimizer: Optimizer to minimize the coregistration function.
+        :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
+        :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
-
-        The algorithm terminates when the iteration is locally optimal at the target pattern size 'deltatol',
-        or when the function value differs by less than the tolerance 'feps' along all directions.
-
+        :param vertical_shift: Whether to apply the vertical shift or not (default is True).
         """
-        self._meta: CoregDict
-        self.bounds = bounds
-        self.x0 = x0
-        self.deltainit = deltainit
-        self.deltatol = deltatol
-        self.feps = feps
 
-        super().__init__(subsample=subsample)
+        self.vertical_shift = vertical_shift
 
-    def _fit_pts_func(
-        self,
-        ref_dem: pd.DataFrame,
-        tba_dem: RasterType,
-        verbose: bool = False,
-        z_name: str = "z",
-        weights: str | None = None,
-        random_state: int = 42,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the x/y/z offset between two DEMs.
-        :param ref_dem: the dataframe used as ref
-        :param tba_dem: the dem to be aligned
-        :param z_name: the column name of dataframe used for elevation differencing
-        :param weights: the column name of dataframe used for weight, should have the same length with z_name columns
-        :param random_state: The random state of the subsampling.
-        """
-        if not _has_noisyopt:
-            raise ValueError("Optional dependency needed. Install 'noisyopt'")
-
-        # Perform downsampling if subsample != None
-        if self._meta["subsample"] and len(ref_dem) > self._meta["subsample"]:
-            ref_dem = ref_dem.sample(frac=self._meta["subsample"] / len(ref_dem), random_state=random_state).copy()
-        else:
-            ref_dem = ref_dem.copy()
-
-        resolution = tba_dem.res[0]
-        # Assume that the coordinates represent the center of a theoretical pixel.
-        # The raster sampling is done in the upper left corner, meaning all point have to be respectively shifted
-        ref_dem["E"] -= resolution / 2
-        ref_dem["N"] += resolution / 2
-        area_or_point = "Area"
-
-        old_aop = tba_dem.tags.get("AREA_OR_POINT", None)
-        tba_dem.tags["AREA_OR_POINT"] = area_or_point
-
-        if verbose:
-            print("Running Gradient Descending Coreg - Zhihao (in preparation) ")
-            if self._meta["subsample"]:
-                print("Running on downsampling. The length of the gdf:", len(ref_dem))
-
-            elevation_difference = _residuals_df(tba_dem, ref_dem, (0, 0), 0, z_name=z_name)
-            nmad_old = nmad(elevation_difference)
-            vshift = np.nanmedian(elevation_difference)
-            print("   Statistics on initial dh:")
-            print(f"      Median = {vshift:.4f} - NMAD = {nmad_old:.4f}")
-
-        # start iteration, find the best shifting px
-        def func_cost(x: tuple[float, float]) -> np.floating[Any]:
-            return nmad(_residuals_df(tba_dem, ref_dem, x, 0, z_name=z_name, weight=weights))
-
-        res = minimizeCompass(
-            func_cost,
-            x0=self.x0,
-            deltainit=self.deltainit,
-            deltatol=self.deltatol,
-            feps=self.feps,
-            bounds=(self.bounds, self.bounds),
-            disp=verbose,
-            errorcontrol=False,
+        # Input checks
+        _check_inputs_bin_before_fit(
+            bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
         )
 
-        # Send the best solution to find all results
-        elevation_difference = _residuals_df(tba_dem, ref_dem, (res.x[0], res.x[1]), 0, z_name=z_name)
+        # Define iterative parameters and vertical shift
+        meta_input_iterative = {
+            "max_iterations": max_iterations,
+            "tolerance": offset_threshold,
+            "apply_vshift": vertical_shift,
+        }
 
-        if old_aop is None:
-            del tba_dem.tags["AREA_OR_POINT"]
+        # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
+        # boolean, no bin apply option, and fit_func is predefined
+        if not bin_before_fit:
+            meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
+            meta_fit.update(meta_input_iterative)
+            super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
         else:
-            tba_dem.tags["AREA_OR_POINT"] = old_aop
+            meta_bin_and_fit = {
+                "fit_or_bin": "bin_and_fit",
+                "fit_func": _nuth_kaab_fit_func,
+                "fit_optimizer": fit_optimizer,
+                "bin_sizes": bin_sizes,
+                "bin_statistic": bin_statistic,
+            }
+            meta_bin_and_fit.update(meta_input_iterative)
+            super().__init__(subsample=subsample, meta=meta_bin_and_fit)  # type: ignore
 
-        # results statistics
-        vshift = np.nanmedian(elevation_difference)
-        nmad_new = nmad(elevation_difference)
-
-        # Print final results
-        if verbose:
-
-            print(f"\n   Final offset in pixels (east, north) : ({res.x[0]:f}, {res.x[1]:f})")
-            print("   Statistics on coregistered dh:")
-            print(f"      Median = {vshift:.4f} - NMAD = {nmad_new:.4f}")
-
-        self._meta["offset_east_px"] = res.x[0]
-        self._meta["offset_north_px"] = res.x[1]
-        self._meta["vshift"] = vshift
-        self._meta["resolution"] = resolution
-
-    def _fit_func(
+    def _fit_rst_rst(
         self,
-        ref_dem: NDArrayf,
-        tba_dem: NDArrayf,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
         transform: rio.transform.Affine,
         crs: rio.crs.CRS,
-        weights: NDArrayf | None,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        verbose: bool = False,
         **kwargs: Any,
     ) -> None:
+        """Estimate the x/y/z offset between two DEMs."""
 
-        ref_dem = (
-            Raster.from_array(ref_dem, transform=transform, crs=crs, nodata=-9999.0)
-            .to_points(as_array=False, pixel_offset="center")
-            .ds
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
         )
-        ref_dem["E"] = ref_dem.geometry.x
-        ref_dem["N"] = ref_dem.geometry.y
-        ref_dem.rename(columns={"b1": "z"}, inplace=True)
-        tba_dem = Raster.from_array(tba_dem, transform=transform, crs=crs, nodata=-9999.0)
-        self._fit_pts_func(ref_dem=ref_dem, tba_dem=tba_dem, transform=transform, **kwargs)
+
+    def _fit_rst_pts(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Estimate the x/y/z offset between a DEM and points cloud.
+        """
+
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
+
+        # Call method
+        (easting_offset, northing_offset, vertical_offset), subsample_final = nuth_kaab(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            params_random=params_random,
+            params_fit_or_bin=params_fit_or_bin,
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
+        )
+
+        # Write output to class
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            shift_x=-easting_offset, shift_y=-northing_offset, shift_z=vertical_offset * self.vertical_shift
+        )
+        self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""
-        offset_east = self._meta["offset_east_px"] * self._meta["resolution"]
-        offset_north = self._meta["offset_north_px"] * self._meta["resolution"]
+
+        # We add a translation, on the last column
+        matrix = np.diag(np.ones(4, dtype=float))
+        matrix[0, 3] += self._meta["outputs"]["affine"]["shift_x"]
+        matrix[1, 3] += self._meta["outputs"]["affine"]["shift_y"]
+        matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
+
+        return matrix
+
+
+class DhMinimize(AffineCoreg):
+    """
+    Elevation difference minimization coregistration.
+
+    Estimates vertical and horizontal translations.
+
+    The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
+    "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
+    vertical shift), as well as in the "matrix" transform.
+    """
+
+    def __init__(
+        self,
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.minimize,
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        subsample: int | float = 5e5,
+    ) -> None:
+        """
+        Instantiate dh minimization object.
+
+        :param fit_minimizer: Minimizer for the coregistration function.
+        :param fit_loss_func: Loss function for the minimization of residuals.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        """
+
+        meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
+        super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
+
+    def _fit_rst_rst(
+        self,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+    def _fit_rst_pts(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
+
+        # Call method
+        (easting_offset, northing_offset, vertical_offset), subsample_final = dh_minimize(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            params_random=params_random,
+            params_fit_or_bin=params_fit_or_bin,
+            **kwargs,
+        )
+
+        # Write output to class
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
+        self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
+
+    def _to_matrix_func(self) -> NDArrayf:
+        """Return a transformation matrix from the estimated offsets."""
 
         matrix = np.diag(np.ones(4, dtype=float))
-        matrix[0, 3] += offset_east
-        matrix[1, 3] += offset_north
-        matrix[2, 3] += self._meta["vshift"]
+        matrix[0, 3] += self._meta["outputs"]["affine"]["shift_x"]
+        matrix[1, 3] += self._meta["outputs"]["affine"]["shift_y"]
+        matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return matrix

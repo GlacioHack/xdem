@@ -20,15 +20,16 @@ The technical steps to contributing to xDEM are:
 
 ## Development environment
 
-xDEM currently supports Python versions of 3.9 to 3.11 (see `dev-environment.yml` for detailed dependencies), which are
+xDEM currently supports Python versions of 3.10 to 3.12 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
 When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
-supported Python versions (3.9, 3.10 and 3.11) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
+supported Python versions (3.10, 3.11 and 3.12) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
 be reported by CoverAlls.
 
 ### Setup
 
+#### With `mamba`
 Clone the git repo and create a `mamba` environment (see how to install `mamba` in the [mamba documentation](https://mamba.readthedocs.io/en/latest/)):
 
 ```bash
@@ -37,6 +38,15 @@ cd xdem
 mamba env create -f dev-environment.yml  # Add '-n custom_name' if you want.
 mamba activate xdem-dev  # Or any other name specified above
 ```
+
+#### With `pip`
+```bash
+git clone https://github.com/GlacioHack/xdem.git
+cd xdem
+make install
+```
+
+Please note: pip installation is currently only possible under python3.10.
 
 ### Tests
 
@@ -49,6 +59,8 @@ pytest
 ```
 
 Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) used to run all tests.
+
+RichDEM should only be used for testing purposes within the xDEM project. The functionality of xDEM must not depend on RichDEM.
 
 ### Documentation
 

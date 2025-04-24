@@ -1,12 +1,9 @@
 """Functions to test the difference of DEMs tools."""
-import warnings
 
 import geoutils as gu
 import numpy as np
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import xdem
+import xdem
 
 
 class TestdDEM:
@@ -47,7 +44,7 @@ class TestdDEM:
 
         assert ddem2.filled_data is None
 
-        ddem2.interpolate(method="linear")
+        ddem2.interpolate(method="idw")
 
         assert ddem2.fill_method is not None
 
@@ -55,7 +52,8 @@ class TestdDEM:
         """Test the regional hypsometric approach."""
         ddem = self.ddem.copy()
         ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)
-        ddem.data.mask.ravel()[np.random.choice(ddem.data.size, 50000, replace=False)] = True
+        rng = np.random.default_rng(42)
+        ddem.data.mask.ravel()[rng.choice(ddem.data.size, 50000, replace=False)] = True
         assert np.count_nonzero(ddem.data.mask) > 0
 
         assert ddem.filled_data is None
@@ -74,7 +72,8 @@ class TestdDEM:
         ddem = self.ddem.copy()
         scott_1990 = self.outlines_1990.query("NAME == 'Scott Turnerbreen'")
         ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)
-        ddem.data.mask.ravel()[np.random.choice(ddem.data.size, 50000, replace=False)] = True
+        rng = np.random.default_rng(42)
+        ddem.data.mask.ravel()[rng.choice(ddem.data.size, 50000, replace=False)] = True
         assert np.count_nonzero(ddem.data.mask) > 0
 
         assert ddem.filled_data is None

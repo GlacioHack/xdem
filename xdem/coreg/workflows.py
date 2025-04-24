@@ -1,6 +1,26 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Coregistration pipelines pre-defined with convenient user inputs and parameters."""
 
 from __future__ import annotations
+
+import logging
 
 import geoutils as gu
 import matplotlib.pyplot as plt
@@ -11,6 +31,7 @@ from geoutils._typing import Number
 from geoutils.raster import RasterType
 
 from xdem._typing import NDArrayf
+from xdem.coreg import AffineCoreg, CoregPipeline
 from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.coreg.base import Coreg
 from xdem.dem import DEM
@@ -55,14 +76,14 @@ be excluded.
     # - Sanity check on inputs - #
     # Check correct input type of shp_list
     if not isinstance(shp_list, (list, tuple)):
-        raise ValueError("`shp_list` must be a list/tuple")
+        raise ValueError("Argument `shp_list` must be a list/tuple.")
     for el in shp_list:
         if not isinstance(el, (str, gu.Vector)):
-            raise ValueError("`shp_list` must be a list/tuple of strings or geoutils.Vector instance")
+            raise ValueError("Argument `shp_list` must be a list/tuple of strings or geoutils.Vector instance.")
 
     # Check correct input type of inout
     if not isinstance(inout, (list, tuple)):
-        raise ValueError("`inout` must be a list/tuple")
+        raise ValueError("Argument `inout` must be a list/tuple.")
 
     if len(shp_list) > 0:
         if len(inout) == 0:
@@ -72,18 +93,18 @@ be excluded.
             # Check that inout contains only 1 and -1
             not_valid = [el for el in np.unique(inout) if ((el != 1) & (el != -1))]
             if len(not_valid) > 0:
-                raise ValueError("`inout` must contain only 1 and -1")
+                raise ValueError("Argument `inout` must contain only 1 and -1.")
         else:
-            raise ValueError("`inout` must be of same length as shp")
+            raise ValueError("Argument `inout` must be of same length as shp.")
 
     # Check slope_lim type
     if not isinstance(slope_lim, (list, tuple)):
-        raise ValueError("`slope_lim` must be a list/tuple")
+        raise ValueError("Argument `slope_lim` must be a list/tuple.")
     if len(slope_lim) != 2:
-        raise ValueError("`slope_lim` must contain 2 elements")
+        raise ValueError("Argument `slope_lim` must contain 2 elements.")
     for el in slope_lim:
         if (not isinstance(el, (int, float, np.integer, np.floating))) or (el < 0) or (el > 90):
-            raise ValueError("`slope_lim` must be a tuple/list of 2 elements in the range [0-90]")
+            raise ValueError("Argument `slope_lim` must be a tuple/list of 2 elements in the range [0-90].")
 
     # Initialize inlier_mask with no masked pixel
     inlier_mask = np.ones(src_dem.data.shape, dtype="bool")
@@ -128,7 +149,7 @@ def dem_coregistration(
     src_dem_path: str | RasterType,
     ref_dem_path: str | RasterType,
     out_dem_path: str | None = None,
-    coreg_method: Coreg | None = NuthKaab() + VerticalShift(),
+    coreg_method: Coreg | CoregPipeline | None = None,
     grid: str = "ref",
     resample: bool = False,
     resampling: rio.warp.Resampling | None = rio.warp.Resampling.bilinear,
@@ -138,10 +159,13 @@ def dem_coregistration(
     dh_max: Number = None,
     nmad_factor: Number = 5,
     slope_lim: list[Number] | tuple[Number, Number] = (0.1, 40),
+    random_state: int | np.random.Generator | None = None,
     plot: bool = False,
     out_fig: str = None,
-    verbose: bool = False,
-) -> tuple[DEM, Coreg, pd.DataFrame, NDArrayf]:
+    estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
+    driver: str = "GTiff",
+    compression: str = "LZW",
+) -> tuple[DEM, Coreg | CoregPipeline, pd.DataFrame, NDArrayf]:
     """
     A one-line function to coregister a selected DEM to a reference DEM.
 
@@ -153,7 +177,7 @@ outliers, run the coregistration, returns the coregistered DEM and some statisti
     :param src_dem_path: Path to the input DEM to be coregistered
     :param ref_dem_path: Path to the reference DEM
     :param out_dem_path: Path where to save the coregistered DEM. If set to None (default), will not save to file.
-    :param coreg_method: The xdem coregistration method, or pipeline.
+    :param coreg_method: Coregistration method, or pipeline.
     :param grid: The grid to be used during coregistration, set either to "ref" or "src".
     :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
 the array/transform will be updated (if possible) and no resampling is done. Useful to avoid spreading data gaps.
@@ -166,52 +190,91 @@ to mask inside (resp. outside) of the polygons. Defaults to masking inside polyg
     :param nmad_factor: Remove pixels where abs(src - ref) differ by nmad_factor * NMAD from the median.
     :param slope_lim: A list/tuple of min and max slope values, in degrees. Pixels outside this slope range will \
 be excluded.
+    :param random_state: Random state or seed number to use for subsampling and optimizer.
     :param plot: Set to True to plot a figure of elevation diff before/after coregistration.
     :param out_fig: Path to the output figure. If None will display to screen.
-    :param verbose: Set to True to print details on screen during coregistration.
+    :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
+the coregistration process begins.
+    :param driver: Set the driver for saving file ("GTiff" or "COG"). By default, the driver is set to "GTiff".
+    :param compression: Set the compression type ("LZW" or "DEFLATE"). By default, the compression is set to "LZW".
 
     :returns: A tuple containing 1) coregistered DEM as an xdem.DEM instance 2) the coregistration method \
 3) DataFrame of coregistration statistics (count of obs, median and NMAD over stable terrain) before and after \
 coregistration and 4) the inlier_mask used.
     """
+
+    # Define default Coreg if None is passed
+    if coreg_method is None:
+        coreg_method = NuthKaab() + VerticalShift()
+
     # Check inputs
     if not isinstance(coreg_method, Coreg):
-        raise ValueError("`coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())")
+        raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
     if isinstance(ref_dem_path, str):
         if not isinstance(src_dem_path, str):
             raise ValueError(
-                f"`ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
+                f"Argument `ref_dem_path` is string but `src_dem_path` has type {type(src_dem_path)}."
                 "Both must have same type."
             )
     elif isinstance(ref_dem_path, gu.Raster):
         if not isinstance(src_dem_path, gu.Raster):
             raise ValueError(
-                f"`ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
+                f"Argument `ref_dem_path` is of Raster type but `src_dem_path` has type {type(src_dem_path)}."
                 "Both must have same type."
             )
     else:
-        raise ValueError("`ref_dem_path` must be either a string or a Raster")
+        raise ValueError("Argument `ref_dem_path` must be either a string or a Raster.")
 
     if grid not in ["ref", "src"]:
-        raise ValueError(f"`grid` must be either 'ref' or 'src' - currently set to {grid}")
+        raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
+
+    # Ensure that if an initial shift is provided, at least one coregistration method is affine.
+    if estimated_initial_shift:
+        if not (
+            isinstance(estimated_initial_shift, (list, tuple))
+            and len(estimated_initial_shift) == 2
+            and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+        ):
+            raise ValueError(
+                "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+            )
+        if isinstance(coreg_method, CoregPipeline):
+            if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
+                raise TypeError(
+                    "An initial shift has been provided, but none of the coregistration methods in the pipeline "
+                    "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
+                )
+        elif not isinstance(coreg_method, AffineCoreg):
+            raise TypeError(
+                "An initial shift has been provided, but the coregistration method is not affine. "
+                "An affine coregistration method (e.g., AffineCoreg) is required."
+            )
 
     # Load both DEMs
-    if verbose:
-        print("Loading and reprojecting input data")
+    logging.info("Loading and reprojecting input data")
 
     if isinstance(ref_dem_path, str):
-        if grid == "ref":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=0)
-        elif grid == "src":
-            ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path], ref_grid=1)
-    else:
+        ref_dem, src_dem = gu.raster.load_multiple_rasters([ref_dem_path, src_dem_path])
+
+    elif isinstance(src_dem_path, gu.Raster):
         ref_dem = ref_dem_path
-        src_dem = src_dem_path
-        if grid == "ref":
-            src_dem = src_dem.reproject(ref_dem, silent=True)
-        elif grid == "src":
-            ref_dem = ref_dem.reproject(src_dem, silent=True)
+        src_dem = src_dem_path.copy()
+
+    # If an initial shift is provided, apply it before coregistration
+    if estimated_initial_shift:
+
+        # convert shift
+        shift_x = estimated_initial_shift[0] * src_dem.res[0]
+        shift_y = estimated_initial_shift[1] * src_dem.res[1]
+
+        # Apply the shift to the source dem
+        src_dem.translate(shift_x, shift_y, inplace=True)
+
+    if grid == "ref":
+        src_dem = src_dem.reproject(ref_dem, silent=True)
+    elif grid == "src":
+        ref_dem = ref_dem.reproject(src_dem, silent=True)
 
     # Convert to DEM instance with Float32 dtype
     # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
@@ -219,8 +282,7 @@ coregistration and 4) the inlier_mask used.
     src_dem = DEM(src_dem.astype(np.float32))
 
     # Create raster mask
-    if verbose:
-        print("Creating mask of inlier pixels")
+    logging.info("Creating mask of inlier pixels")
 
     inlier_mask = create_inlier_mask(
         src_dem,
@@ -242,8 +304,29 @@ coregistration and 4) the inlier_mask used.
     med_orig, nmad_orig = np.median(inlier_data), nmad(inlier_data)
 
     # Coregister to reference - Note: this will spread NaN
-    coreg_method.fit(ref_dem, src_dem, inlier_mask, verbose=verbose)
+    coreg_method.fit(ref_dem, src_dem, inlier_mask, random_state=random_state)
     dem_coreg = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
+
+    # Add the initial shift to the calculated shift
+    if estimated_initial_shift:
+
+        def update_shift(
+            coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+        ) -> None:
+            if isinstance(coreg_method, CoregPipeline):
+                for step in coreg_method.pipeline:
+                    update_shift(step)
+            else:
+                # check if the keys exists
+                if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                    if "shift_x" in coreg_method.meta["outputs"]["affine"]:
+                        coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
+                        logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
+                    if "shift_y" in coreg_method.meta["outputs"]["affine"]:
+                        coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
+                        logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+
+        update_shift(coreg_method)
 
     # Calculate coregistered ddem (might need resampling if resample set to False), needed for stats and plot only
     ddem_coreg = dem_coreg.reproject(ref_dem, silent=True) - ref_dem
@@ -283,7 +366,7 @@ coregistration and 4) the inlier_mask used.
 
     # Save coregistered DEM
     if out_dem_path is not None:
-        dem_coreg.save(out_dem_path, tiled=True)
+        dem_coreg.save(out_dem_path, tiled=True, driver=driver, compress=compression)
 
     # Save stats to DataFrame
     out_stats = pd.DataFrame(

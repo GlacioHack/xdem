@@ -20,28 +20,27 @@ documentation.
 
 ```{important}
 A {class}`~xdem.DEM` inherits all raster methods and attributes from the {class}`~geoutils.Raster` object of GeoUtils.
-Below, we only repeat the core attributes and methods of GeoUtils, see
+Below, we only repeat some core attributes and methods of GeoUtils, see
 [the Raster API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster) for the full list.
 ```
 
-### Opening or saving a DEM
+### Opening or saving
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
     DEM
-    DEM.info
     DEM.save
 ```
 
-### Plotting a DEM
+### Plotting or summarize info
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    DEM
+    DEM.info
     DEM.plot
 ```
 
@@ -68,6 +67,7 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
     DEM.crs
     DEM.transform
     DEM.nodata
+    DEM.area_or_point
 ```
 
 #### Specific to {class}`~xdem.DEM`
@@ -79,6 +79,23 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
     DEM.vcrs
 ```
 
+### Other attributes
+
+#### Inherited from {class}`~geoutils.Raster`
+
+See the full list in [the Raster API of GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#raster).
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.res
+    DEM.bounds
+    DEM.width
+    DEM.height
+    DEM.shape
+```
+
 ### Georeferencing
 
 #### Inherited from {class}`~geoutils.Raster`
@@ -87,6 +104,9 @@ Below, we only repeat the core attributes and methods of GeoUtils, see
 .. autosummary::
     :toctree: gen_modules/
 
+    DEM.set_nodata
+    DEM.set_area_or_point
+    DEM.info
     DEM.reproject
     DEM.crop
 ```
@@ -113,19 +133,8 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
 
     DEM.polygonize
     DEM.proximity
-```
-
-### Coregistration
-
-```{tip}
-To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
-```
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    DEM.coregister_3d
+    DEM.to_pointcloud
+    DEM.interp_points
 ```
 
 ### Terrain attributes
@@ -148,24 +157,35 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     DEM.fractal_roughness
 ```
 
-## dDEM
+Or to get multiple related terrain attributes at once (for performance):
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    dDEM
+    DEM.get_terrain_attribute
 ```
 
-## DEMCollection
+### Coregistration and bias corrections
 
-## dDEM
+```{tip}
+To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
+```
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    DEMCollection
+    DEM.coregister_3d
+```
+
+### Uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.estimate_uncertainty
 ```
 
 (api-geo-handle)=
@@ -175,8 +195,8 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 **Overview of co-registration class structure**:
 
 ```{eval-rst}
-.. inheritance-diagram:: xdem.coreg.base xdem.coreg.affine xdem.coreg.biascorr
-        :top-classes: xdem.Coreg
+.. inheritance-diagram:: xdem.coreg.base.Coreg xdem.coreg.affine xdem.coreg.biascorr
+        :top-classes: xdem.coreg.Coreg
 ```
 
 ### Coregistration, pipeline and blockwise
@@ -185,9 +205,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg
-    xdem.coreg.CoregPipeline
-    xdem.coreg.BlockwiseCoreg
+    coreg.Coreg
+    coreg.CoregPipeline
+    coreg.BlockwiseCoreg
 ```
 
 #### Fitting and applying transforms
@@ -196,117 +216,193 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg.fit
-    xdem.coreg.Coreg.apply
+    coreg.Coreg.fit_and_apply
+    coreg.Coreg.fit
+    coreg.Coreg.apply
 ```
 
-#### Other functionalities
+#### Extracting metadata
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Coreg.residuals
+    coreg.Coreg.info
+    coreg.Coreg.meta
 ```
 
-### Affine coregistration methods
+#### Quick coregistration
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
 
+    coreg.workflows.dem_coregistration
+```
 
-**Generic parent class:**
+### Affine coregistration
+
+#### Parent object (to define custom methods)
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.AffineCoreg
+    coreg.AffineCoreg
 ```
 
-**Convenience classes for specific coregistrations:**
+#### Coregistration methods
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.VerticalShift
-    xdem.coreg.NuthKaab
-    xdem.coreg.ICP
-    xdem.coreg.Tilt
+    coreg.VerticalShift
+    coreg.NuthKaab
+    coreg.DhMinimize
+    coreg.ICP
 ```
 
-### Bias-correction (including non-affine coregistration) methods
-
-**Generic parent class:**
+#### Manipulating affine transforms
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.BiasCorr
+    coreg.AffineCoreg.from_matrix
+    coreg.AffineCoreg.to_matrix
+    coreg.AffineCoreg.from_translations
+    coreg.AffineCoreg.to_translations
+    coreg.AffineCoreg.from_rotations
+    coreg.AffineCoreg.to_rotations
+
+    coreg.apply_matrix
+    coreg.invert_matrix
 ```
 
-**Classes for any 1-, 2- and N-D biases:**
+### Bias-correction
+
+#### Parent object (to define custom methods)
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.BiasCorr1D
-    xdem.coreg.BiasCorr2D
-    xdem.coreg.BiasCorrND
+    coreg.BiasCorr
 ```
 
-**Convenience classes for specific corrections:**
+#### Bias-correction methods
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.coreg.Deramp
-    xdem.coreg.DirectionalBias
-    xdem.coreg.TerrainBias
+    coreg.Deramp
+    coreg.DirectionalBias
+    coreg.TerrainBias
 ```
 
-## Terrain attributes
+## Uncertainty analysis
+
+```{important}
+Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics
+(e.g., fitting a sum of variogram models, pairwise subsampling for grid data). This will allow to simplify several
+function inputs and outputs, by relying on a single {func}`~skgstat.Variogram` object.
+
+This will trigger API changes in future package versions.
+```
+
+### Core routines for heteroscedasticity, spatial correlations, error propagation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.terrain
+    spatialstats.infer_heteroscedasticity_from_stable
+    spatialstats.infer_spatial_correlation_from_stable
+    spatialstats.spatial_error_propagation
 ```
 
-## Volume integration methods
+### Sub-routines for heteroscedasticity
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.volume
+    spatialstats.nd_binning
+    spatialstats.interp_nd_binning
+    spatialstats.two_step_standardization
 ```
 
-## Fitting methods
+### Sub-routines for spatial correlations
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.fit
+    spatialstats.sample_empirical_variogram
+    spatialstats.fit_sum_model_variogram
+    spatialstats.correlation_from_variogram
 ```
 
-## Filtering methods
+### Sub-routines for error propagation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.filters
+    spatialstats.number_effective_samples
 ```
 
-## Spatial statistics methods
+### Empirical validation
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    xdem.spatialstats
+    spatialstats.patches_method
+```
+
+### Plotting for uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    spatialstats.plot_variogram
+    spatialstats.plot_1d_binning
+    spatialstats.plot_2d_binning
+```
+
+## Stand-alone functions (moved)
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    spatialstats.nmad
+```
+
+
+## Development classes (removal or re-factoring)
+
+```{caution}
+The {class}`xdem.dDEM` and {class}`xdem.DEMCollection` classes will be removed or re-factored in the near future.
+```
+
+### dDEM
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    dDEM
+```
+
+### DEMCollection
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEMCollection
 ```

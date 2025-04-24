@@ -7,9 +7,9 @@ requires computing the pairwise correlations between all points of an area of in
 other operation), which is computationally intensive. Here, we rely on published formulations to perform
 computationally-efficient spatial propagation for the mean of elevation (or elevation differences) in an area.
 
-**References**: `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_, Figure S16, Equations 17–19 and
-`Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, Equation 8.
+**References:** `Rolstad et al. (2009) <http://dx.doi.org/10.3189/002214309789470950>`_, `Hugonnet et al. (2022) <https://doi.org/10.1109/jstars.2022.3188922>`_.
 """
+
 import geoutils as gu
 import matplotlib.pyplot as plt
 
@@ -32,8 +32,8 @@ errors, df_binning, error_function = xdem.spatialstats.infer_heteroscedasticity_
 )
 
 # %%
-# We use the error map to standardize the elevation differences before variogram estimation, following Equation 12 of
-# Hugonnet et al. (2022), which is more robust as it removes the variance variability due to heteroscedasticity.
+# We use the error map to standardize the elevation differences before variogram estimation, which is more robust
+# as it removes the variance variability due to heteroscedasticity.
 zscores = dh / errors
 emp_variogram, params_variogram_model, spatial_corr_function = xdem.spatialstats.infer_spatial_correlation_from_stable(
     dvalues=zscores, list_models=["Gaussian", "Spherical"], unstable_mask=glacier_outlines, random_state=42
@@ -42,7 +42,7 @@ emp_variogram, params_variogram_model, spatial_corr_function = xdem.spatialstats
 # %%
 # With our estimated heteroscedasticity and spatial correlation, we can now perform the spatial propagation of errors.
 # We select two glaciers intersecting this elevation change map in Svalbard. The best estimation of their standard error
-# is done by directly providing the shapefile, which relies on Equation 18 of Hugonnet et al. (2022).
+# is done by directly providing the shapefile (Equation 18, Hugonnet et al., 2022).
 areas = [
     glacier_outlines.ds[glacier_outlines.ds["NAME"] == "Brombreen"],
     glacier_outlines.ds[glacier_outlines.ds["NAME"] == "Medalsbreen"],
@@ -55,8 +55,8 @@ for glacier_name, stderr_gla in [("Brombreen", stderr_glaciers[0]), ("Medalsbree
     print(f"The error (1-sigma) in mean elevation change for {glacier_name} is {stderr_gla:.2f} meters.")
 
 # %%
-# When passing a numerical area value, we compute an approximation with disk shape from Equation 8 of Rolstad et al.
-# (2009). This approximation is practical to visualize changes in elevation error when averaging over different area
+# When passing a numerical area value, we compute an approximation with disk shape (Equation 8, Rolstad et al., 2009).
+# This approximation is practical to visualize changes in elevation error when averaging over different area
 # sizes, but is less accurate to estimate the standard error of a certain area shape.
 areas = 10 ** np.linspace(1, 12)
 stderrs = xdem.spatialstats.spatial_error_propagation(

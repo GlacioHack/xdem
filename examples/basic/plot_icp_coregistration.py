@@ -1,15 +1,16 @@
 """
-Iterative Closest Point coregistration
+Iterative closest point coregistration
 ======================================
-Some DEMs may for one or more reason be erroneously rotated in the X, Y or Z directions.
-Established coregistration approaches like :ref:`coregistration-nuthkaab` work great for X, Y and Z *translations*, but rotation is not accounted for at all.
 
-Iterative Closest Point (ICP) is one method that takes both rotation and translation into account.
-It is however not as good as :ref:`coregistration-nuthkaab` when it comes to sub-pixel accuracy.
-Fortunately, ``xdem`` provides the best of two worlds by allowing a combination of the two.
+Iterative closest point (ICP) is a registration method accounting for both rotations and translations.
 
-**Reference**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
+It is used primarily to correct rotations, as it generally performs worse than :ref:`nuthkaab` for sub-pixel shifts.
+Fortunately, xDEM provides the best of two worlds by allowing a combination of the two methods in a pipeline,
+demonstrated below!
+
+**References**: `Besl and McKay (1992) <https://doi.org/10.1117/12.57955>`_.
 """
+
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +18,7 @@ import numpy as np
 import xdem
 
 # %%
-# Let's load a DEM and crop it to a single mountain on Svalbard, called Battfjellet.
+# We load a DEM and crop it to a single mountain on Svalbard, called Battfjellet.
 # Its aspects vary in every direction, and is therefore a good candidate for coregistration exercises.
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 
@@ -42,16 +43,15 @@ rotation_matrix = np.array(
         [0, 0, 0, 1],
     ]
 )
-
+centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2, np.nanmean(dem)]
 # This will apply the matrix along the center of the DEM
-rotated_dem_data = xdem.coreg.apply_matrix(dem.data.squeeze(), transform=dem.transform, matrix=rotation_matrix)
-rotated_dem = xdem.DEM.from_array(rotated_dem_data, transform=dem.transform, crs=dem.crs, nodata=-9999)
+rotated_dem = xdem.coreg.apply_matrix(dem, matrix=rotation_matrix, centroid=centroid)
 
 # %%
 # We can plot the difference between the original and rotated DEM.
 # It is now artificially tilting from east down to the west.
 diff_before = dem - rotated_dem
-diff_before.plot(cmap="coolwarm_r", vmin=-20, vmax=20)
+diff_before.plot(cmap="RdYlBu", vmin=-20, vmax=20, cbar_title="Elevation differences (m)")
 plt.show()
 
 # %%
@@ -72,18 +72,16 @@ approaches = [
 plt.figure(figsize=(6, 12))
 
 for i, (approach, name) in enumerate(approaches):
-    approach.fit(
-        reference_dem=dem,
-        dem_to_be_aligned=rotated_dem,
+    corrected_dem = approach.fit_and_apply(
+        reference_elev=dem,
+        to_be_aligned_elev=rotated_dem,
     )
-
-    corrected_dem = approach.apply(dem=rotated_dem)
 
     diff = dem - corrected_dem
 
     ax = plt.subplot(3, 1, i + 1)
     plt.title(name)
-    diff.plot(cmap="coolwarm_r", vmin=-20, vmax=20, ax=ax)
+    diff.plot(cmap="RdYlBu", vmin=-20, vmax=20, ax=ax, cbar_title="Elevation differences (m)")
 
 plt.tight_layout()
 plt.show()
@@ -92,8 +90,8 @@ plt.show()
 # %%
 # The results show what we expected:
 #
-# * ``ICP`` alone handled the rotational offset, but left a horizontal offset as it is not sub-pixel accurate (in this case, the resolution is 20x20m).
-# * ``NuthKaab`` barely helped at all, since the offset is purely rotational.
-# * ``ICP + NuthKaab`` first handled the rotation, then fit the reference with sub-pixel accuracy.
+# - **ICP** alone handled the rotational offset, but left a horizontal offset as it is not sub-pixel accurate (in this case, the resolution is 20x20m).
+# - **Nuth and Kääb** barely helped at all, since the offset is purely rotational.
+# - **ICP + Nuth and Kääb** first handled the rotation, then fit the reference with sub-pixel accuracy.
 #
 # The last result is an almost identical raster that was offset but then corrected back to its original position!

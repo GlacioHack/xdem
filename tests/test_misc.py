@@ -1,9 +1,9 @@
 """Test the xdem.misc functions."""
+
 from __future__ import annotations
 
 import os
 import re
-import warnings
 
 import pytest
 import yaml  # type: ignore
@@ -57,8 +57,6 @@ class TestMisc:
         :param deprecation_increment: The version number relative to the current version.
         :param details: An optional explanation for the description.
         """
-
-        warnings.simplefilter("error")
 
         current_version = Version(Version(xdem.__version__).base_version)
 
@@ -121,8 +119,8 @@ class TestMisc:
     def test_diff_environment_yml(self, capsys) -> None:  # type: ignore
 
         # Test with synthetic environment
-        env = {"dependencies": ["python==3.9", "numpy", "fiona"]}
-        devenv = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv"]}
+        env = {"dependencies": ["python==3.9", "numpy", "pandas"]}
+        devenv = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv"]}
 
         # This should print the difference between the two
         xdem.misc.diff_environment_yml(env, devenv, input_dict=True, print_dep="conda")
@@ -137,8 +135,8 @@ class TestMisc:
         captured = capsys.readouterr().out
         assert captured == "opencv\nNone\n"
 
-        env2 = {"dependencies": ["python==3.9", "numpy", "fiona"]}
-        devenv2 = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv", {"pip": ["geoutils", "-e ./"]}]}
+        env2 = {"dependencies": ["python==3.9", "numpy", "pandas"]}
+        devenv2 = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv", {"pip": ["geoutils", "-e ./"]}]}
 
         # The diff function should not account for -e ./ that is the local install for developers
         xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="both")
@@ -158,13 +156,13 @@ class TestMisc:
 
         # When the dependencies are not defined in dev-env but in env, it should raise an error
         # For normal dependencies
-        env3 = {"dependencies": ["python==3.9", "numpy", "fiona", "lol"]}
-        devenv3 = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv", {"pip": ["geoutils"]}]}
+        env3 = {"dependencies": ["python==3.9", "numpy", "pandas", "lol"]}
+        devenv3 = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv", {"pip": ["geoutils"]}]}
         with pytest.raises(ValueError, match="The following dependencies are listed in env but not dev-env: lol"):
             xdem.misc.diff_environment_yml(env3, devenv3, input_dict=True, print_dep="pip")
 
         # For pip dependencies
-        env4 = {"dependencies": ["python==3.9", "numpy", "fiona", {"pip": ["lol"]}]}
-        devenv4 = {"dependencies": ["python==3.9", "numpy", "fiona", "opencv", {"pip": ["geoutils"]}]}
+        env4 = {"dependencies": ["python==3.9", "numpy", "pandas", {"pip": ["lol"]}]}
+        devenv4 = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv", {"pip": ["geoutils"]}]}
         with pytest.raises(ValueError, match="The following pip dependencies are listed in env but not dev-env: lol"):
             xdem.misc.diff_environment_yml(env4, devenv4, input_dict=True, print_dep="pip")

@@ -16,8 +16,8 @@ jobs:
 
     strategy:
       matrix:
-        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
-        python-version: ["3.9", "3.10", "3.11"]
+        os: ["ubuntu-latest", "macos-latest"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     # Run all shells using bash (including Windows)
     defaults:
@@ -31,10 +31,10 @@ jobs:
     - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v3
       with:
-        miniforge-variant: Mambaforge
         miniforge-version: latest
         auto-update-conda: true
         use-mamba: true
+        mamba-version: "2.0.5"
         channel-priority: strict
         activate-environment: xdem-dev
         python-version:
@@ -61,7 +61,7 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,opencv,pytransform3d" "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,pytransform3d" "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
     - name: Install project
@@ -97,7 +97,12 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Setup pip dependencies
-      run: pip install pytest-cov coveralls coveragepy-lcov
+      run: pip install pytest-cov coveralls coveragepy-lcov 'coverage<7'
+
+    - name: Print conda environment (for debugging)
+      run: |
+        conda info
+        conda list
 
     - name: Test with pytest
       run: |
@@ -111,10 +116,10 @@ jobs:
       run: coveragepy-lcov --data_file_path .coverage --output_file_path coverage.info
 
     - name: Upload coverage to Coveralls
-      uses: coverallsapp/github-action@master
+      uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.github_token }}
-        flag-name: run-${{ matrix.test_number }}
+        flag-name: run-${{ join(matrix.*, '-') }}
         path-to-lcov: coverage.info
         parallel: true
 
@@ -123,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Upload to Coveralls finished
-      uses: coverallsapp/github-action@master
+      uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.github_token }}
         parallel-finished: true

@@ -1,4 +1,5 @@
 """Code example for spatial statistics"""
+
 import geoutils as gu
 import numpy as np
 
@@ -26,4 +27,4 @@ df_ns = xdem.spatialstats.nd_binning(
     list_var_bins=30,
 )
 
-xdem.spatialstats.plot_1d_binning(df_ns, "slope", "nmad", "Slope (degrees)", "Elevation error ($1\\sigma$, m)")
+xdem.spatialstats.plot_1d_binning(df_ns, "slope", "nmad", "Slope (degrees)", "Random elevation error\n($1\\sigma$, m)")

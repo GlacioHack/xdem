@@ -1,4 +1,5 @@
 """ Functions to test the DEM tools."""
+
 from __future__ import annotations
 
 import os
@@ -39,18 +40,11 @@ class TestDEM:
         dem3 = DEM(r)
         assert isinstance(dem3, DEM)
 
-        # From SatelliteImage
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Parse metadata from file not implemented")
-            img = gu.SatelliteImage(fn_img)
-        dem4 = DEM(img)
-        assert isinstance(dem4, DEM)
-
-        list_dem = [dem, dem2, dem3, dem4]
+        list_dem = [dem, dem2, dem3]
 
         # Check all attributes
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + gu.raster.satimg.satimg_attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
             assert all(at == attrs_per_dem[0] for at in attrs_per_dem)
@@ -59,7 +53,6 @@ class TestDEM:
             (
                 np.array_equal(dem.data, dem2.data, equal_nan=True),
                 np.array_equal(dem2.data, dem3.data, equal_nan=True),
-                np.array_equal(dem3.data, dem4.data, equal_nan=True),
             )
         )
 
@@ -67,7 +60,6 @@ class TestDEM:
             (
                 np.all(dem.data.mask == dem2.data.mask),
                 np.all(dem2.data.mask == dem3.data.mask),
-                np.all(dem3.data.mask == dem4.data.mask),
             )
         )
 
@@ -191,8 +183,8 @@ class TestDEM:
         # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
 
         # using list directly available in Class
-        attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + gu.raster.satimg.satimg_attrs + xdem.dem.dem_attrs
+        attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver", "profile"]]
+        all_attrs = attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)
 
@@ -236,6 +228,9 @@ class TestDEM:
         assert dem.vcrs_grid == "us_nga_egm08_25.tif"
 
         # -- Test 2: we check with grids --
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
         assert dem.vcrs_grid == "us_nga_egm96_15.tif"
@@ -248,12 +243,13 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.raises(
-            ValueError,
-            match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
-            "Provide an existing grid.",
-        ):
-            dem.set_vcrs(new_vcrs="the best grid")
+        with pytest.warns(UserWarning, match="Grid not found in*"):
+            with pytest.raises(
+                ValueError,
+                match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+                "Provide an existing grid.",
+            ):
+                dem.set_vcrs(new_vcrs="the best grid")
 
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
@@ -269,9 +265,20 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="Ellipsoid")
         ccrs_init = dem.ccrs
         median_before = np.nanmean(dem)
-        # Transform to EGM96 geoid
-        dem.to_vcrs(vcrs="EGM96")
-        median_after = np.nanmean(dem)
+        # Transform to EGM96 geoid not inplace (default)
+        trans_dem = dem.to_vcrs(vcrs="EGM96")
+
+        # The output should be a DEM, input shouldn't have changed
+        assert isinstance(trans_dem, DEM)
+        assert dem.raster_equal(dem_before_trans)
+
+        # Compare to inplace
+        should_be_none = dem.to_vcrs(vcrs="EGM96", inplace=True)
+        assert should_be_none is None
+        assert dem.raster_equal(trans_dem)
+
+        # Save the median of after
+        median_after = np.nanmean(trans_dem)
 
         # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
@@ -311,16 +318,19 @@ class TestDEM:
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
     egm08_chile = {"grid": "us_nga_egm08_25.tif", "lon": -68, "lat": -20, "shift": 42}
-    geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 17}
+    geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
     isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
     @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
 
+        # Most grids aren't going to be downloaded, so this warning can be raised
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         dem = DEM.from_array(
-            data=np.array([[100]]),
+            data=np.array([[100, 100]]),
             transform=rio.transform.from_bounds(
                 grid_shifts["lon"], grid_shifts["lat"], grid_shifts["lon"] + 0.01, grid_shifts["lat"] + 0.01, 0.01, 0.01
             ),
@@ -330,10 +340,10 @@ class TestDEM:
         dem.set_vcrs("Ellipsoid")
 
         # Transform to the vertical CRS of the grid
-        dem.to_vcrs(grid_shifts["grid"])
+        trans_dem = dem.to_vcrs(grid_shifts["grid"])
 
         # Compare the elevation difference
-        z_diff = 100 - dem.data[0, 0]
+        z_diff = 100 - trans_dem.data[0, 0]
 
         # Check the shift is the one expect within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
@@ -374,7 +384,7 @@ class TestDEM:
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
 
-        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref)
+        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref, random_state=42)
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)

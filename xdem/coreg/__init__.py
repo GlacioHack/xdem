@@ -1,3 +1,21 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 DEM coregistration classes and functions, including affine methods, bias corrections (i.e. non-affine) and filters.
 """
@@ -5,19 +23,11 @@ DEM coregistration classes and functions, including affine methods, bias correct
 from xdem.coreg.affine import (  # noqa
     ICP,
     AffineCoreg,
-    GradientDescending,
+    DhMinimize,
     NuthKaab,
-    Tilt,
     VerticalShift,
 )
-from xdem.coreg.base import BlockwiseCoreg, Coreg, CoregPipeline, apply_matrix  # noqa
-from xdem.coreg.biascorr import (  # noqa
-    BiasCorr,
-    BiasCorr1D,
-    BiasCorr2D,
-    BiasCorrND,
-    Deramp,
-    DirectionalBias,
-    TerrainBias,
-)
+from xdem.coreg.base import Coreg, CoregPipeline, apply_matrix, invert_matrix  # noqa
+from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
+from xdem.coreg.blockwise import BlockwiseCoreg  # noqa
 from xdem.coreg.workflows import dem_coregistration  # noqa

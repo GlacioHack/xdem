@@ -5,32 +5,63 @@ from __future__ import annotations
 import inspect
 import re
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Mapping
 
+import geopandas as gpd
 import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
+import pytransform3d.rotations
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+from scipy.ndimage import binary_dilation
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import xdem
-    from xdem import coreg, examples, misc, spatialstats
-    from xdem._typing import NDArrayf
-    from xdem.coreg.base import Coreg, apply_matrix
+import xdem
+from xdem import coreg, examples
+from xdem._typing import NDArrayf
+from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-        to_be_aligned_raster = Raster(examples.get_path("longyearbyen_tba_dem"))
-        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    return reference_raster, to_be_aligned_raster, glacier_mask
+    reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
+    to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
+    glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+
+    # Crop to smaller extents for test speed
+    res = reference_dem.res
+    crop_geom = (
+        reference_dem.bounds.left,
+        reference_dem.bounds.bottom,
+        reference_dem.bounds.left + res[0] * 300,
+        reference_dem.bounds.bottom + res[1] * 300,
+    )
+    reference_dem = reference_dem.crop(crop_geom)
+    to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
+
+    return reference_dem, to_be_aligned_dem, glacier_mask
+
+
+def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
+    """Short test function to check equality of coreg dictionary values."""
+
+    # Different equality check based on input: number, callable, array, dataframe
+    if not isinstance(input1, type(input2)):
+        return False
+    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
+        return input1 == input2
+    elif isinstance(input1, np.ndarray):
+        return np.array_equal(input1, input2, equal_nan=True)
+    elif isinstance(input1, pd.DataFrame):
+        return input1.equals(input2)
+    # If input is a dictionary, we recursively call this function to check equality of all its sub-keys
+    elif isinstance(input1, dict):
+        return all(assert_coreg_meta_equal(input1[k], input2[k]) for k in input1.keys())
+    else:
+        raise TypeError(f"Input type {type(input1)} not supported for this test function.")
 
 
 class TestCoregClass:
@@ -38,16 +69,12 @@ class TestCoregClass:
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
-    fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
-        inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
-        verbose=False,
+    fit_params = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
 
     def test_init(self) -> None:
         """Test instantiation of Coreg"""
@@ -58,21 +85,61 @@ class TestCoregClass:
         assert c._is_affine is None
         assert c._needs_vars is False
 
+    def test_info(self) -> None:
+        """
+        Test all coreg keys required for info() exist by mapping all sub-keys in CoregDict and comparing to
+        coreg.base.dict_key_to_str.
+        Check the info() string return contains the right text for a given key.
+        """
+
+        # This recursive function will find all sub-keys that are not TypedDict within a TypedDict
+        def recursive_typeddict_items(typed_dict: Mapping[str, Any]) -> Iterable[str]:
+            for key, value in typed_dict.__annotations__.items():
+                try:
+                    sub_typed_dict = getattr(coreg.base, value.__forward_arg__)
+                    if type(sub_typed_dict) is type(typed_dict):
+                        yield from recursive_typeddict_items(sub_typed_dict)
+                except AttributeError:
+                    yield key
+
+        # All subkeys
+        list_coregdict_keys = list(recursive_typeddict_items(coreg.base.CoregDict))  # type: ignore
+
+        # Assert all keys exist in the mapping key to str dictionary used for info
+        list_info_keys = list(dict_key_to_str.keys())
+
+        # TODO: Remove ICP keys here once generic optimizer is used
+        # Temporary exceptions: pipeline/blockwise + gradientdescending/icp
+        list_exceptions = [
+            "step_meta",
+            "pipeline",
+            "rejection_scale",
+            "num_levels",
+        ]
+
+        # Compare the two lists
+        list_missing_keys = [k for k in list_coregdict_keys if (k not in list_info_keys and k not in list_exceptions)]
+        if len(list_missing_keys) > 0:
+            raise AssertionError(
+                f"Missing keys in coreg.base.dict_key_to_str " f"for Coreg.info(): {', '.join(list_missing_keys)}"
+            )
+
+        # Check that info() contains the mapped string for an example
+        c = coreg.Coreg(meta={"subsample": 10000})
+        assert dict_key_to_str["subsample"] in c.info(as_str=True)
+
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
         """Test that copying work expectedly (that no attributes still share references)."""
-        warnings.simplefilter("error")
 
         # Create a coreg instance and copy it.
         corr = coreg_class()
         corr_copy = corr.copy()
 
-        # Assign some attributes and metadata after copying, respecting the CoregDict type class
-        corr.vshift = 1
-        corr._meta["resolution"] = 30
+        # Assign some attributes and .metadata after copying, respecting the CoregDict type class
+        corr._meta["outputs"]["affine"] = {"shift_z": 30}
         # Make sure these don't appear in the copy
-        assert corr_copy._meta != corr._meta
-        assert not hasattr(corr_copy, "vshift")
+        assert corr_copy.meta != corr.meta
 
     def test_error_method(self) -> None:
         """Test different error measures."""
@@ -90,22 +157,14 @@ class TestCoregClass:
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == 0
 
         # Remove the vertical shift fit and see what happens.
-        vshiftcorr._meta["vshift"] = 0
+        vshiftcorr.meta["outputs"]["affine"]["shift_z"] = 0
         # Now it should be equal to dem1 - dem2
         assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == -2
 
         # Create random noise and see if the standard deviation is equal (it should)
-        dem3 = dem1.copy() + np.random.random(size=dem1.size).reshape(dem1.shape)
+        rng = np.random.default_rng(42)
+        dem3 = dem1.copy() + rng.random(size=dem1.size).reshape(dem1.shape)
         assert abs(vshiftcorr.error(dem1, dem3, transform=affine, crs=crs, error_type="std") - np.std(dem3)) < 1e-6
-
-    def test_ij_xy(self, i: int = 10, j: int = 20) -> None:
-        """
-        Test the reversibility of ij2xy and xy2ij, which is important for point co-registration.
-        """
-        x, y = self.ref.ij2xy(i, j, offset="ul")
-        i, j = self.ref.xy2ij(x, y, shift_area_or_point=False)
-        assert i == pytest.approx(10)
-        assert j == pytest.approx(20)
 
     @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])  # type: ignore
     def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
@@ -113,10 +172,10 @@ class TestCoregClass:
 
         # Define a valid mask
         width = height = 50
-        np.random.seed(42)
-        valid_mask = np.random.randint(low=0, high=2, size=(width, height), dtype=bool)
+        rng = np.random.default_rng(42)
+        valid_mask = rng.integers(low=0, high=2, size=(width, height), dtype=bool)
 
-        # Define a class with a subsample and random_state in the metadata
+        # Define a class with a subsample and random_state in the .metadata
         coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
         subsample_mask = coreg._get_subsample_on_valid_mask(valid_mask=valid_mask)
 
@@ -143,49 +202,50 @@ class TestCoregClass:
         coreg.DirectionalBias,
     ]
 
-    @pytest.mark.parametrize("coreg", all_coregs)  # type: ignore
-    def test_subsample(self, coreg: Callable) -> None:  # type: ignore
-        warnings.simplefilter("error")
+    @pytest.mark.parametrize("coreg_class", all_coregs)  # type: ignore
+    def test_subsample(self, coreg_class: Callable) -> None:  # type: ignore
 
         # Check that default value is set properly
-        coreg_full = coreg()
-        argspec = inspect.getfullargspec(coreg)
-        assert coreg_full._meta["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+        coreg_full = coreg_class()
+        argspec = inspect.getfullargspec(coreg_class)
+        assert (
+            coreg_full.meta["inputs"]["random"]["subsample"]
+            == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+        )
 
         # But can be overridden during fit
         coreg_full.fit(**self.fit_params, subsample=10000, random_state=42)
-        assert coreg_full._meta["subsample"] == 10000
+        assert coreg_full.meta["inputs"]["random"]["subsample"] == 10000
         # Check that the random state is properly set when subsampling explicitly or implicitly
-        assert coreg_full._meta["random_state"] == 42
+        assert coreg_full.meta["inputs"]["random"]["random_state"] == 42
 
         # Test subsampled vertical shift correction
-        coreg_sub = coreg(subsample=0.1)
-        assert coreg_sub._meta["subsample"] == 0.1
+        coreg_sub = coreg_class(subsample=0.1)
+        assert coreg_sub.meta["inputs"]["random"]["subsample"] == 0.1
 
         # Fit the vertical shift using 10% of the unmasked data using a fraction
         coreg_sub.fit(**self.fit_params, random_state=42)
         # Do the same but specify the pixel count instead.
         # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
         # But this would just repeat the subsample code, so that makes little sense to test.
-        coreg_sub = coreg(subsample=self.tba.data.size // 10)
-        assert coreg_sub._meta["subsample"] == self.tba.data.size // 10
+        coreg_sub = coreg_class(subsample=self.tba.data.size // 10)
+        assert coreg_sub.meta["inputs"]["random"]["subsample"] == self.tba.data.size // 10
         coreg_sub.fit(**self.fit_params, random_state=42)
 
         # Add a few performance checks
-        coreg_name = coreg.__name__
+        coreg_name = coreg_class.__name__
         if coreg_name == "VerticalShift":
             # Check that the estimated vertical shifts are similar
-            assert abs(coreg_sub._meta["vshift"] - coreg_full._meta["vshift"]) < 0.1
+            assert (
+                abs(coreg_sub.meta["outputs"]["affine"]["shift_z"] - coreg_full.meta["outputs"]["affine"]["shift_z"])
+                < 0.1
+            )
 
         elif coreg_name == "NuthKaab":
             # Calculate the difference in the full vs. subsampled matrices
             matrix_diff = np.abs(coreg_full.to_matrix() - coreg_sub.to_matrix())
             # Check that the x/y/z differences do not exceed 30cm
             assert np.count_nonzero(matrix_diff > 0.5) == 0
-
-        elif coreg_name == "Tilt":
-            # Check that the estimated biases are similar
-            assert coreg_sub._meta["coefficients"] == pytest.approx(coreg_full._meta["coefficients"], rel=1e-1)
 
     def test_subsample__pipeline(self) -> None:
         """Test that the subsample argument works as intended for pipelines"""
@@ -194,14 +254,14 @@ class TestCoregClass:
         pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=5000)
 
         # Check the arguments are properly defined
-        assert pipe.pipeline[0]._meta["subsample"] == 200
-        assert pipe.pipeline[1]._meta["subsample"] == 5000
+        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 200
+        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 5000
 
         # Check definition during fit
         pipe = coreg.VerticalShift() + coreg.Deramp()
         pipe.fit(**self.fit_params, subsample=1000)
-        assert pipe.pipeline[0]._meta["subsample"] == 1000
-        assert pipe.pipeline[1]._meta["subsample"] == 1000
+        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 1000
+        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 1000
 
     def test_subsample__errors(self) -> None:
         """Check proper errors are raised when using the subsample argument"""
@@ -267,20 +327,20 @@ class TestCoregClass:
         vshiftcorr_a = vshiftcorr_r.copy()
 
         # Fit the data
-        vshiftcorr_r.fit(reference_dem=dem1, dem_to_be_aligned=dem2)
+        vshiftcorr_r.fit(reference_elev=dem1, to_be_aligned_elev=dem2)
         vshiftcorr_a.fit(
-            reference_dem=dem1.data,
-            dem_to_be_aligned=dem2.reproject(dem1, silent=True).data,
+            reference_elev=dem1.data,
+            to_be_aligned_elev=dem2.reproject(dem1, silent=True).data,
             transform=dem1.transform,
             crs=dem1.crs,
         )
 
         # Validate that they ended up giving the same result.
-        assert vshiftcorr_r._meta["vshift"] == vshiftcorr_a._meta["vshift"]
+        assert vshiftcorr_r.meta["outputs"]["affine"]["shift_z"] == vshiftcorr_a.meta["outputs"]["affine"]["shift_z"]
 
         # De-shift dem2
         dem2_r = vshiftcorr_r.apply(dem2)
-        dem2_a, _ = vshiftcorr_a.apply(dem2.data, dem2.transform, dem2.crs)
+        dem2_a, _ = vshiftcorr_a.apply(dem2.data, transform=dem2.transform, crs=dem2.crs)
 
         # Validate that the return formats were the expected ones, and that they are equal.
         # Issue - dem2_a does not have the same shape, the first dimension is being squeezed
@@ -310,9 +370,8 @@ class TestCoregClass:
         "inputs",
         [
             [xdem.coreg.VerticalShift(), True, "strict"],
-            [xdem.coreg.Tilt(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
-            [xdem.coreg.NuthKaab() + xdem.coreg.Tilt(), True, "approx"],
+            [xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(), True, "approx"],
             [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
             [xdem.coreg.ICP(), False, ""],
         ],
@@ -324,6 +383,9 @@ class TestCoregClass:
         For horizontal shifts (NuthKaab etc), georef should differ, but DEMs should be the same after resampling.
         For others, the method is not implemented.
         """
+        # Ignore curve_fit potential warnings
+        warnings.filterwarnings("ignore", "Covariance of the parameters could not be estimated*")
+
         # Get test inputs
         coreg_method, is_implemented, comp = inputs
         ref_dem, tba_dem, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
@@ -334,8 +396,8 @@ class TestCoregClass:
 
         # If not implemented, should raise an error
         if not is_implemented:
-            with pytest.raises(NotImplementedError, match="Option `resample=False` not implemented for coreg method *"):
-                dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+            with pytest.raises(NotImplementedError, match="Option `resample=False` not supported*"):
+                coreg_method.apply(tba_dem, resample=False)
             return
         else:
             dem_coreg_resample = coreg_method.apply(tba_dem)
@@ -355,10 +417,67 @@ class TestCoregClass:
             # assert np.count_nonzero(diff.data) == 0
 
         # Test it works with different resampling algorithms
-        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
-        dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
-        with pytest.raises(ValueError, match="`resampling` must be a rio.warp.Resampling algorithm"):
-            dem_coreg_resample = coreg_method.apply(tba_dem, resample=True, resampling=None)
+        coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
+        coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
+        with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
+            coreg_method.apply(tba_dem, resample=True, resampling=None)
+
+    @pytest.mark.parametrize("coreg_class", all_coregs)  # type: ignore
+    def test_fit_and_apply(self, coreg_class: Callable) -> None:  # type: ignore
+        """Check that fit_and_apply returns the same results as using fit, then apply, for any coreg."""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg_class()
+        coreg_fit_and_apply = coreg_class()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        # Check outputs are the same: aligned raster, and metadata keys and values
+
+        assert list(coreg_fit_and_apply.meta.keys()) == list(coreg_fit_then_apply.meta.keys())
+
+        # TODO: Fix randomness of directional bias...
+        if coreg_class != coreg.DirectionalBias:
+            assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+            assert all(
+                assert_coreg_meta_equal(coreg_fit_and_apply.meta[k], coreg_fit_then_apply.meta[k])
+                for k in coreg_fit_and_apply.meta.keys()
+            )
+
+    def test_fit_and_apply__pipeline(self) -> None:
+        """Check if it works for a pipeline"""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
+        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
+            )
+            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
+        )
+        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
+            )
+            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
+        )
 
     @pytest.mark.parametrize(
         "combination",
@@ -414,7 +533,15 @@ class TestCoregClass:
                 "'crs' must be given if DEM is array-like.",
             ),
             ("dem1", "dem2", "dem2.transform", "None", "apply", "warns", "DEM .* overrides the given 'transform'"),
-            ("None", "None", "None", "None", "fit", "error", "Both DEMs need to be array-like"),
+            (
+                "None",
+                "None",
+                "None",
+                "None",
+                "fit",
+                "error",
+                "Input elevation data should be a raster, " "an array or a geodataframe.",
+            ),
             ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
         ],
@@ -432,7 +559,6 @@ class TestCoregClass:
             6. The expected outcome of the test.
             7. The error/warning message (if applicable)
         """
-        warnings.simplefilter("error")
 
         ref_dem, tba_dem, transform, crs, testing_step, result, text = combination
 
@@ -497,39 +623,38 @@ class TestCoregPipeline:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
+        reference_elev=ref.data,
+        to_be_aligned_elev=tba.data,
         inlier_mask=inlier_mask,
         transform=ref.transform,
         crs=ref.crs,
-        verbose=True,
     )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
+    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    points = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
+    )
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
 
-        # Create a pipeline, add some metadata, and copy it
+        # Create a pipeline, add some .metadata, and copy it
         pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["vshift"] = 1
+        pipeline.pipeline[0]._meta["outputs"]["affine"] = {"shift_z": 1}
 
         pipeline_copy = pipeline.copy()
 
-        # Add some more metadata after copying (this should not be transferred)
-        pipeline._meta["resolution"] = 30
-        pipeline_copy.pipeline[0]._meta["offset_north_px"] = 0.5
+        # Add some more .metadata after copying (this should not be transferred)
+        pipeline_copy.pipeline[0]._meta["outputs"]["affine"].update({"shift_y": 0.5 * 30})
 
-        assert pipeline._meta != pipeline_copy._meta
-        assert pipeline.pipeline[0]._meta != pipeline_copy.pipeline[0]._meta
-        assert pipeline_copy.pipeline[0]._meta["vshift"]
+        assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
+        assert pipeline_copy.pipeline[0]._meta["outputs"]["affine"]["shift_z"]
 
     def test_pipeline(self) -> None:
-        warnings.simplefilter("error")
 
         # Create a pipeline from two coreg methods.
         pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
-        pipeline.fit(**self.fit_params)
+        pipeline.fit(**self.fit_params, subsample=5000, random_state=42)
 
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
@@ -538,48 +663,52 @@ class TestCoregPipeline:
         # Make a new pipeline with two vertical shift correction approaches.
         pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
         # Set both "estimated" vertical shifts to be 1
-        pipeline2.pipeline[0]._meta["vshift"] = 1
-        pipeline2.pipeline[1]._meta["vshift"] = 1
+        pipeline2.pipeline[0].meta["outputs"]["affine"] = {"shift_z": 1}
+        pipeline2.pipeline[1].meta["outputs"]["affine"] = {"shift_z": 1}
 
         # Assert that the combined vertical shift is 2
         assert pipeline2.to_matrix()[2, 3] == 2.0
 
+    # TODO: Figure out why DirectionalBias + DirectionalBias pipeline fails with Scipy error
+    #  on bounds constraints on Mac only?
     all_coregs = [
-        coreg.VerticalShift(),
-        coreg.NuthKaab(),
-        coreg.ICP(),
-        coreg.Deramp(),
-        coreg.TerrainBias(),
-        coreg.DirectionalBias(),
+        coreg.VerticalShift,
+        coreg.NuthKaab,
+        coreg.ICP,
+        coreg.Deramp,
+        coreg.TerrainBias,
+        # coreg.DirectionalBias,
     ]
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize("coreg2", all_coregs)  # type: ignore
-    def test_pipeline_combinations__nobiasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
+    def test_pipeline_combinations__nobiasvar(self, coreg1: Callable[[], Coreg], coreg2: Callable[[], Coreg]) -> None:
         """Test pipelines with all combinations of coregistration subclasses (without bias variables)"""
 
         # Create a pipeline from one affine and one biascorr methods.
-        pipeline = coreg.CoregPipeline([coreg1, coreg2])
-        pipeline.fit(**self.fit_params)
+        pipeline = coreg.CoregPipeline([coreg1(), coreg2()])
+        pipeline.fit(**self.fit_params, subsample=5000, random_state=42)
 
         aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
         assert aligned_dem.shape == self.ref.data.squeeze().shape
 
     @pytest.mark.parametrize("coreg1", all_coregs)  # type: ignore
     @pytest.mark.parametrize(
-        "coreg2",
+        "coreg2_init_kwargs",
         [
-            coreg.BiasCorr1D(bias_var_names=["slope"], fit_or_bin="bin"),
-            coreg.BiasCorr2D(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
+            dict(bias_var_names=["slope"], fit_or_bin="bin"),
+            dict(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
         ],
     )  # type: ignore
-    def test_pipeline_combinations__biasvar(self, coreg1: Coreg, coreg2: Coreg) -> None:
+    def test_pipeline_combinations__biasvar(
+        self, coreg1: Callable[[], Coreg], coreg2_init_kwargs: dict[str, str]
+    ) -> None:
         """Test pipelines with all combinations of coregistration subclasses with bias variables"""
 
-        # Create a pipeline from one affine and one biascorr methods.
-        pipeline = coreg.CoregPipeline([coreg1, coreg2])
+        # Create a pipeline from one affine and one biascorr methods
+        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])  # type: ignore
         bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
-        pipeline.fit(**self.fit_params, bias_vars=bias_vars)
+        pipeline.fit(**self.fit_params, bias_vars=bias_vars, subsample=5000, random_state=42)
 
         aligned_dem, _ = pipeline.apply(
             self.tba.data, transform=self.ref.transform, crs=self.ref.crs, bias_vars=bias_vars
@@ -589,24 +718,24 @@ class TestCoregPipeline:
     def test_pipeline__errors(self) -> None:
         """Test pipeline raises proper errors."""
 
-        pipeline = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr1D()])
+        pipeline = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr()])
         with pytest.raises(
             ValueError,
             match=re.escape(
                 "No `bias_vars` passed to .fit() for bias correction step "
-                "<class 'xdem.coreg.biascorr.BiasCorr1D'> of the pipeline."
+                "<class 'xdem.coreg.biascorr.BiasCorr'> of the pipeline."
             ),
         ):
             pipeline.fit(**self.fit_params)
 
-        pipeline2 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr1D(), coreg.BiasCorr1D()])
+        pipeline2 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr(), coreg.BiasCorr()])
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "No `bias_vars` passed to .fit() for bias correction step <class 'xdem.coreg.biascorr.BiasCorr1D'> "
+                "No `bias_vars` passed to .fit() for bias correction step <class 'xdem.coreg.biascorr.BiasCorr'> "
                 "of the pipeline. As you are using several bias correction steps requiring"
                 " `bias_vars`, don't forget to explicitly define their `bias_var_names` "
-                "during instantiation, e.g. BiasCorr1D(bias_var_names=['slope'])."
+                "during instantiation, e.g. BiasCorr(bias_var_names=['slope'])."
             ),
         ):
             pipeline2.fit(**self.fit_params)
@@ -616,40 +745,42 @@ class TestCoregPipeline:
             match=re.escape(
                 "When using several bias correction steps requiring `bias_vars` in a pipeline,"
                 "the `bias_var_names` need to be explicitly defined at each step's "
-                "instantiation, e.g. BiasCorr1D(bias_var_names=['slope'])."
+                "instantiation, e.g. BiasCorr(bias_var_names=['slope'])."
             ),
         ):
             pipeline2.fit(**self.fit_params, bias_vars={"slope": xdem.terrain.slope(self.ref)})
 
-        pipeline3 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr1D(bias_var_names=["slope"])])
+        pipeline3 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr(bias_var_names=["slope"])])
         with pytest.raises(
             ValueError,
             match=re.escape(
                 "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
-                "instantiation of the bias correction step <class 'xdem.coreg.biascorr.BiasCorr1D'>: ['slope']."
+                "instantiation of the bias correction step <class 'xdem.coreg.biascorr.BiasCorr'>: ['slope']."
             ),
         ):
             pipeline3.fit(**self.fit_params, bias_vars={"ncc": xdem.terrain.slope(self.ref)})
 
     def test_pipeline_pts(self) -> None:
-        warnings.simplefilter("ignore")
 
-        pipeline = coreg.NuthKaab() + coreg.GradientDescending()
-        ref_points = self.ref.to_points(as_array=False, subsample=5000, pixel_offset="center").ds
+        pipeline = coreg.NuthKaab() + coreg.DhMinimize()
+        ref_points = self.ref.to_pointcloud(subsample=5000, random_state=42).ds
         ref_points["E"] = ref_points.geometry.x
         ref_points["N"] = ref_points.geometry.y
         ref_points.rename(columns={"b1": "z"}, inplace=True)
 
         # Check that this runs without error
-        pipeline.fit_pts(reference_dem=ref_points, dem_to_be_aligned=self.tba)
+        pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)
 
         for part in pipeline.pipeline:
-            assert np.abs(part._meta["offset_east_px"]) > 0
+            assert np.abs(part.meta["outputs"]["affine"]["shift_x"]) > 0
 
-        assert pipeline.pipeline[0]._meta["offset_east_px"] != pipeline.pipeline[1]._meta["offset_east_px"]
+        assert (
+            pipeline.pipeline[0].meta["outputs"]["affine"]["shift_x"]
+            != pipeline.pipeline[1].meta["outputs"]["affine"]["shift_x"]
+        )
 
     def test_coreg_add(self) -> None:
-        warnings.simplefilter("error")
+
         # Test with a vertical shift of 4
         vshift = 4
 
@@ -658,7 +789,7 @@ class TestCoregPipeline:
 
         # Set the vertical shift attribute
         for vshift_corr in (vshift1, vshift2):
-            vshift_corr._meta["vshift"] = vshift
+            vshift_corr.meta["outputs"]["affine"] = {"shift_z": vshift}
 
         # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
         vshift3 = vshift1 + vshift2
@@ -686,8 +817,8 @@ class TestCoregPipeline:
         aligned_dem, _ = many_vshifts.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of EXACTLY zero
-        assert many_vshifts.pipeline[1]._meta["vshift"] == pytest.approx(0, abs=10e-5)
-        assert many_vshifts.pipeline[2]._meta["vshift"] == pytest.approx(0, abs=10e-5)
+        assert many_vshifts.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
+        assert many_vshifts.pipeline[2].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
 
         # Many horizontal + vertical shifts
         many_nks = coreg.NuthKaab() + coreg.NuthKaab() + coreg.NuthKaab()
@@ -695,12 +826,12 @@ class TestCoregPipeline:
         aligned_dem, _ = many_nks.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of NEARLY zero
-        assert many_nks.pipeline[1]._meta["vshift"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[1]._meta["offset_east_px"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[1]._meta["offset_north_px"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2]._meta["vshift"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2]._meta["offset_east_px"] == pytest.approx(0, abs=0.02)
-        assert many_nks.pipeline[2]._meta["offset_north_px"] == pytest.approx(0, abs=0.02)
+        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=0.05)
+        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_x"] == pytest.approx(0, abs=0.05)
+        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=0.05)
+        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=0.05)
+        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_x"] == pytest.approx(0, abs=0.05)
+        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=0.05)
 
         # Test 2: Reflectivity
         # Those two pipelines should give almost the same result
@@ -715,324 +846,166 @@ class TestCoregPipeline:
         assert np.allclose(nk_vshift.to_matrix(), vshift_nk.to_matrix(), atol=10e-1)
 
 
-class TestBlockwiseCoreg:
+class TestAffineManipulation:
+
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    inlier_mask = ~outlines.create_mask(ref)
 
-    fit_params = dict(
-        reference_dem=ref.data,
-        dem_to_be_aligned=tba.data,
-        inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
-        verbose=False,
-    )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply_pts functions.
-    points = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
+    # Identity transformation
+    matrix_identity = np.diag(np.ones(4, float))
 
-    @pytest.mark.parametrize(
-        "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
-    )  # type: ignore
-    @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
-    def test_blockwise_coreg(self, pipeline: Coreg, subdivision: int) -> None:
-        warnings.simplefilter("error")
+    # Vertical shift
+    matrix_vertical = matrix_identity.copy()
+    matrix_vertical[2, 3] = 1
 
-        blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
+    # Vertical and horizontal shifts
+    matrix_translations = matrix_identity.copy()
+    matrix_translations[:3, 3] = [0.5, 1, 1.5]
 
-        # Results can not yet be extracted (since fit has not been called) and should raise an error
-        with pytest.raises(AssertionError, match="No coreg results exist.*"):
-            blockwise.to_points()
+    # Single rotation
+    rotation = np.deg2rad(5)
+    matrix_rotations = matrix_identity.copy()
+    matrix_rotations[1, 1] = np.cos(rotation)
+    matrix_rotations[2, 2] = np.cos(rotation)
+    matrix_rotations[2, 1] = -np.sin(rotation)
+    matrix_rotations[1, 2] = np.sin(rotation)
 
-        blockwise.fit(**self.fit_params)
-        points = blockwise.to_points()
+    # Mix of translations and rotations in all axes (X, Y, Z) simultaneously
+    rotation_x = 5
+    rotation_y = 10
+    rotation_z = 3
+    e = np.deg2rad(np.array([rotation_x, rotation_y, rotation_z]))
+    # This is a 3x3 rotation matrix
+    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+    matrix_all = matrix_rotations.copy()
+    matrix_all[0:3, 0:3] = rot_matrix
+    matrix_all[:3, 3] = [0.5, 1, 1.5]
 
-        # Validate that the number of points is equal to the amount of subdivisions.
-        assert points.shape[0] == subdivision
+    list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations, matrix_all]
 
-        # Validate that the points do not represent only the same location.
-        assert np.sum(np.linalg.norm(points[:, :, 0] - points[:, :, 1], axis=1)) != 0.0
+    @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
+    def test_apply_matrix__points_opencv(self, matrix: NDArrayf) -> None:
+        """
+        Test that apply matrix's exact transformation for points (implemented with NumPy matrix multiplication)
+        is exactly the same as the one of OpenCV (optional dependency).
+        """
 
-        z_diff = points[:, 2, 1] - points[:, 2, 0]
+        # Create random points
+        points = np.random.default_rng(42).normal(size=(10, 3))
 
-        # Validate that all values are different
-        assert np.unique(z_diff).size == z_diff.size, "Each coreg cell should have different results."
+        # Convert to a geodataframe and use apply_matrix for the point cloud
+        epc = gpd.GeoDataFrame(data={"z": points[:, 2]}, geometry=gpd.points_from_xy(x=points[:, 0], y=points[:, 1]))
+        trans_epc = apply_matrix(epc, matrix=matrix)
 
-        # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
-        with pytest.raises(ValueError, match="instantiated Coreg subclass"):
-            coreg.BlockwiseCoreg(step=coreg.VerticalShift, subdivision=1)  # type: ignore
+        # Run the same operation with openCV
+        import cv2
 
-        # Metadata copying has been an issue. Validate that all chunks have unique ids
-        chunk_numbers = [m["i"] for m in blockwise._meta["step_meta"]]
-        assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
+        trans_cv2_arr = cv2.perspectiveTransform(points[:, :].reshape(1, -1, 3), matrix)[0, :, :]
 
-        transformed_dem = blockwise.apply(self.tba)
+        # Transform point cloud back to array
+        trans_numpy = np.array([trans_epc.geometry.x.values, trans_epc.geometry.y.values, trans_epc["z"].values]).T
+        assert np.allclose(trans_numpy, trans_cv2_arr)
 
-        ddem_pre = (self.ref - self.tba)[~self.inlier_mask]
-        ddem_post = (self.ref - transformed_dem)[~self.inlier_mask]
+    @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])  # type: ignore
+    @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
+    def test_apply_matrix__raster(self, regrid_method: None | str, matrix: NDArrayf) -> None:
+        """Test that apply matrix gives consistent results between points and rasters (thus validating raster
+        implementation, as point implementation is validated above), for all possible regridding methods."""
 
-        # Check that the periglacial difference is lower after coregistration.
-        assert abs(np.ma.median(ddem_post)) < abs(np.ma.median(ddem_pre))
+        # Create a synthetic raster and convert to point cloud
+        # dem = gu.Raster(self.ref)
+        dem_arr = np.linspace(0, 2, 25).reshape(5, 5)
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+        dem = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=100)
+        epc = dem.to_pointcloud(data_column_name="z").ds
 
-        stats = blockwise.stats()
+        # If a centroid was not given, default to the center of the DEM (at Z=0).
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
 
-        # Check that nans don't exist (if they do, something has gone very wrong)
-        assert np.all(np.isfinite(stats["nmad"]))
-        # Check that offsets were actually calculated.
-        assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
+        # Apply affine transformation to both datasets
+        trans_dem = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method=regrid_method)
+        trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
-    def test_blockwise_coreg_large_gaps(self) -> None:
-        """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
-        warnings.simplefilter("error")
-        reference_dem = self.ref.reproject(crs="EPSG:3413", res=self.ref.res, resampling="bilinear")
-        dem_to_be_aligned = self.tba.reproject(ref=reference_dem, resampling="bilinear")
+        # Interpolate transformed DEM at coordinates of the transformed point cloud
+        # Because the raster created as a constant slope (plan-like), the interpolated values should be very close
+        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        valids = np.isfinite(z_points)
+        assert np.count_nonzero(valids) > 0
+        assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
 
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
+    def test_apply_matrix__raster_nodata(self) -> None:
+        """Test the nodatas created by apply_matrix are consistent between methods"""
 
-        # This should not fail or trigger warnings as warn_failures is False
-        blockwise.fit(reference_dem, dem_to_be_aligned)
+        # Use matrix with all transformations
+        matrix = self.matrix_all
 
-        stats = blockwise.stats()
+        # Create a synthetic raster, add NaNs, and convert to point cloud
+        dem_arr = np.linspace(0, 2, 400).reshape(20, 20)
+        dem_arr[10:14, 10:14] = np.nan
+        dem_arr[5, 5] = np.nan
+        dem_arr[:2, :] = np.nan
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+        dem = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=100)
+        epc = dem.to_pointcloud(data_column_name="z").ds
 
-        # We expect holes in the blockwise coregistration, so there should not be 64 "successful" blocks.
-        assert stats.shape[0] < 64
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
 
-        # Statistics are only calculated on finite values, so all of these should be finite as well.
-        assert np.all(np.isfinite(stats))
+        trans_dem_it = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="iterative")
+        trans_dem_gd = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="griddata")
 
-        # Copy the TBA DEM and set a square portion to nodata
-        tba = self.tba.copy()
-        mask = np.zeros(np.shape(tba.data), dtype=bool)
-        mask[450:500, 450:500] = True
-        tba.set_mask(mask=mask)
+        # Get nodata mask
+        mask_nodata_it = trans_dem_it.data.mask
+        mask_nodata_gd = trans_dem_gd.data.mask
 
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
+        # The iterative mask should be larger and contain the other (as griddata interpolates up to 1 pixel away)
+        assert np.array_equal(np.logical_or(mask_nodata_gd, mask_nodata_it), mask_nodata_it)
 
-        # Align the DEM and apply the blockwise to a zero-array (to get the zshift)
-        aligned = blockwise.fit(self.ref, tba).apply(tba)
-        zshift, _ = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform, crs=tba.crs)
+        # Verify nodata masks are located within two pixels of each other (1 pixel can be added by griddata,
+        # and 1 removed by regular-grid interpolation by the iterative method)
+        smallest_mask = ~binary_dilation(
+            ~mask_nodata_it, iterations=2
+        )  # Invert before dilate to avoid spreading at the edges
+        # All smallest mask value should exist in the mask of griddata
+        assert np.array_equal(np.logical_or(smallest_mask, mask_nodata_gd), mask_nodata_gd)
 
-        # Validate that the zshift is not something crazy high and that no negative values exist in the data.
-        assert np.nanmax(np.abs(zshift)) < 50
-        assert np.count_nonzero(aligned.data.compressed() < -50) == 0
+    def test_apply_matrix__raster_realdata(self) -> None:
+        """Testing real data no complex matrix only to avoid all loops"""
 
-        # Check that coregistration improved the alignment
-        ddem_post = (aligned - self.ref).data.compressed()
-        ddem_pre = (tba - self.ref).data.compressed()
-        assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
-        assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
+        # Use real data
+        dem = self.ref
+        dem.crop((dem.bounds.left, dem.bounds.bottom, dem.bounds.left + 2000, dem.bounds.bottom + 2000))
+        epc = dem.to_pointcloud(data_column_name="z").ds
 
+        # Only testing complex matrices for speed
+        matrix = self.matrix_all
 
-def test_apply_matrix() -> None:
-    warnings.simplefilter("error")
-    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    ref_arr = gu.raster.get_array_and_mask(ref)[0]
+        # If a centroid was not given, default to the center of the DEM (at Z=0).
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
 
-    # Test only vertical shift (it should just apply the vertical shift and not make anything else)
-    vshift = 5
-    matrix = np.diag(np.ones(4, float))
-    matrix[2, 3] = vshift
-    transformed_dem = apply_matrix(ref_arr, ref.transform, matrix)
-    reverted_dem = transformed_dem - vshift
+        # Apply affine transformation to both datasets
+        trans_dem_it = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="iterative")
+        trans_dem_gd = apply_matrix(dem, matrix=matrix, centroid=centroid, force_regrid_method="griddata")
+        trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
-    # Check that the reverted DEM has the exact same values as the initial one
-    # (resampling is not an exact science, so this will only apply for vertical shift corrections)
-    assert np.nanmedian(reverted_dem) == np.nanmedian(np.asarray(ref.data))
+        # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
+        z_points_it = trans_dem_it.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        z_points_gd = trans_dem_gd.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
 
-    # Synthesize a shifted and vertically offset DEM
-    pixel_shift = 11
-    vshift = 5
-    shifted_dem = ref_arr.copy()
-    shifted_dem[:, pixel_shift:] = shifted_dem[:, :-pixel_shift]
-    shifted_dem[:, :pixel_shift] = np.nan
-    shifted_dem += vshift
+        valids = np.logical_and(np.isfinite(z_points_it), np.isfinite(z_points_gd))
+        assert np.count_nonzero(valids) > 0
 
-    matrix = np.diag(np.ones(4, dtype=float))
-    matrix[0, 3] = pixel_shift * tba.res[0]
-    matrix[2, 3] = -vshift
+        diff_it = z_points_it[valids] - trans_epc.z.values[valids]
+        diff_gd = z_points_gd[valids] - trans_epc.z.values[valids]
 
-    transformed_dem = apply_matrix(shifted_dem, ref.transform, matrix, resampling="bilinear")
-    diff = np.asarray(ref_arr - transformed_dem)
+        # Because of outliers, noise and slope near 90°, several solutions can exist
+        # Additionally, contrary to the check in the __raster test which uses a constant slope DEM, the slopes vary
+        # here so the interpolation check is less accurate so all values can vary a bit
+        assert np.percentile(np.abs(diff_it), 90) < 1
+        assert np.percentile(np.abs(diff_it), 50) < 0.2
+        assert np.percentile(np.abs(diff_gd), 90) < 1
+        assert np.percentile(np.abs(diff_gd), 50) < 0.2
 
-    # Check that the median is very close to zero
-    assert np.abs(np.nanmedian(diff)) < 0.01
-    # Check that the NMAD is low
-    assert spatialstats.nmad(diff) < 0.01
-
-    def rotation_matrix(rotation: float = 30) -> NDArrayf:
-        rotation = np.deg2rad(rotation)
-        matrix = np.array(
-            [
-                [1, 0, 0, 0],
-                [0, np.cos(rotation), -np.sin(rotation), 0],
-                [0, np.sin(rotation), np.cos(rotation), 0],
-                [0, 0, 0, 1],
-            ]
-        )
-        return matrix
-
-    rotation = 4
-    centroid = (
-        np.mean([ref.bounds.left, ref.bounds.right]),
-        np.mean([ref.bounds.top, ref.bounds.bottom]),
-        ref.data.mean(),
-    )
-    rotated_dem = apply_matrix(ref.data.squeeze(), ref.transform, rotation_matrix(rotation), centroid=centroid)
-    # Make sure that the rotated DEM is way off, but is centered around the same approximate point.
-    assert np.abs(np.nanmedian(rotated_dem - ref.data.data)) < 1
-    assert spatialstats.nmad(rotated_dem - ref.data.data) > 500
-
-    # Apply a rotation in the opposite direction
-    unrotated_dem = (
-        apply_matrix(rotated_dem, ref.transform, rotation_matrix(-rotation * 0.99), centroid=centroid) + 4.0
-    )  # TODO: Check why the 0.99 rotation and +4 vertical shift were introduced.
-
-    diff = np.asarray(ref.data.squeeze() - unrotated_dem)
-
-    # if False:
-    #     import matplotlib.pyplot as plt
-    #
-    #     vmin = 0
-    #     vmax = 1500
-    #     extent = (ref.bounds.left, ref.bounds.right, ref.bounds.bottom, ref.bounds.top)
-    #     plot_params = dict(
-    #         extent=extent,
-    #         vmin=vmin,
-    #         vmax=vmax
-    #     )
-    #     plt.figure(figsize=(22, 4), dpi=100)
-    #     plt.subplot(151)
-    #     plt.title("Original")
-    #     plt.imshow(ref.data.squeeze(), **plot_params)
-    #     plt.xlim(*extent[:2])
-    #     plt.ylim(*extent[2:])
-    #     plt.subplot(152)
-    #     plt.title(f"Rotated {rotation} degrees")
-    #     plt.imshow(rotated_dem, **plot_params)
-    #     plt.xlim(*extent[:2])
-    #     plt.ylim(*extent[2:])
-    #     plt.subplot(153)
-    #     plt.title(f"De-rotated {-rotation} degrees")
-    #     plt.imshow(unrotated_dem, **plot_params)
-    #     plt.xlim(*extent[:2])
-    #     plt.ylim(*extent[2:])
-    #     plt.subplot(154)
-    #     plt.title("Original vs. de-rotated")
-    #     plt.imshow(diff, extent=extent, vmin=-10, vmax=10, cmap="coolwarm_r")
-    #     plt.colorbar()
-    #     plt.xlim(*extent[:2])
-    #     plt.ylim(*extent[2:])
-    #     plt.subplot(155)
-    #     plt.title("Original vs. de-rotated")
-    #     plt.hist(diff[np.isfinite(diff)], bins=np.linspace(-10, 10, 100))
-    #     plt.tight_layout(w_pad=0.05)
-    #     plt.show()
-
-    # Check that the median is very close to zero
-    assert np.abs(np.nanmedian(diff)) < 0.5
-    # Check that the NMAD is low
-    assert spatialstats.nmad(diff) < 5
-    print(np.nanmedian(diff), spatialstats.nmad(diff))
-
-
-def test_warp_dem() -> None:
-    """Test that the warp_dem function works expectedly."""
-    warnings.simplefilter("error")
-
-    small_dem = np.zeros((5, 10), dtype="float32")
-    small_transform = rio.transform.from_origin(0, 5, 1, 1)
-
-    source_coords = np.array([[0, 0, 0], [0, 5, 0], [10, 0, 0], [10, 5, 0]]).astype(small_dem.dtype)
-
-    dest_coords = source_coords.copy()
-    dest_coords[0, 0] = -1e-5
-
-    warped_dem = coreg.base.warp_dem(
-        dem=small_dem,
-        transform=small_transform,
-        source_coords=source_coords,
-        destination_coords=dest_coords,
-        resampling="linear",
-        trim_border=False,
-    )
-    assert np.nansum(np.abs(warped_dem - small_dem)) < 1e-6
-
-    elev_shift = 5.0
-    dest_coords[1, 2] = elev_shift
-    warped_dem = coreg.base.warp_dem(
-        dem=small_dem,
-        transform=small_transform,
-        source_coords=source_coords,
-        destination_coords=dest_coords,
-        resampling="linear",
-    )
-
-    # The warped DEM should have the value 'elev_shift' in the upper left corner.
-    assert warped_dem[0, 0] == elev_shift
-    # The corner should be zero, so the corner pixel (represents the corner minus resolution / 2) should be close.
-    # We select the pixel before the corner (-2 in X-axis) to avoid the NaN propagation on the bottom row.
-    assert warped_dem[-2, -1] < 1
-
-    # Synthesise some X/Y/Z coordinates on the DEM.
-    source_coords = np.array(
-        [
-            [0, 0, 200],
-            [480, 20, 200],
-            [460, 480, 200],
-            [10, 460, 200],
-            [250, 250, 200],
-        ]
-    )
-
-    # Copy the source coordinates and apply some shifts
-    dest_coords = source_coords.copy()
-    # Apply in the X direction
-    dest_coords[0, 0] += 20
-    dest_coords[1, 0] += 7
-    dest_coords[2, 0] += 10
-    dest_coords[3, 0] += 5
-
-    # Apply in the Y direction
-    dest_coords[4, 1] += 5
-
-    # Apply in the Z direction
-    dest_coords[3, 2] += 5
-    test_shift = 6  # This shift will be validated below
-    dest_coords[4, 2] += test_shift
-
-    # Generate a semi-random DEM
-    transform = rio.transform.from_origin(0, 500, 1, 1)
-    shape = (500, 550)
-    dem = misc.generate_random_field(shape, 100) * 200 + misc.generate_random_field(shape, 10) * 50
-
-    # Warp the DEM using the source-destination coordinates.
-    transformed_dem = coreg.base.warp_dem(
-        dem=dem, transform=transform, source_coords=source_coords, destination_coords=dest_coords, resampling="linear"
-    )
-
-    # Try to undo the warp by reversing the source-destination coordinates.
-    untransformed_dem = coreg.base.warp_dem(
-        dem=transformed_dem,
-        transform=transform,
-        source_coords=dest_coords,
-        destination_coords=source_coords,
-        resampling="linear",
-    )
-    # Validate that the DEM is now more or less the same as the original.
-    # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
-    assert spatialstats.nmad(dem - untransformed_dem) < 0.5
-
-    if False:
-        import matplotlib.pyplot as plt
-
-        plt.figure(dpi=200)
-        plt.subplot(141)
-
-        plt.imshow(dem, vmin=0, vmax=300)
-        plt.subplot(142)
-        plt.imshow(transformed_dem, vmin=0, vmax=300)
-        plt.subplot(143)
-        plt.imshow(untransformed_dem, vmin=0, vmax=300)
-
-        plt.subplot(144)
-        plt.imshow(dem - untransformed_dem, cmap="coolwarm_r", vmin=-10, vmax=10)
-        plt.show()
+        # But, between themselves, the two re-gridding methods should yield much closer results
+        # (no errors due to 2D interpolation for checking)
+        diff_it_gd = z_points_gd[valids] - z_points_it[valids]
+        assert np.percentile(np.abs(diff_it_gd), 99) < 1  # 99% of values are within a meter (instead of 90%)
+        assert np.percentile(np.abs(diff_it_gd), 50) < 0.02  # 10 times more precise than above

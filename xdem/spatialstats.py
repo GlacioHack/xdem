@@ -1,8 +1,27 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Spatial statistical tools to estimate uncertainties related to DEMs"""
 from __future__ import annotations
 
 import inspect
 import itertools
+import logging
 import math as m
 import multiprocessing as mp
 import warnings
@@ -15,20 +34,15 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
-from geoutils.raster import (
-    Mask,
-    Raster,
-    RasterType,
-    get_array_and_mask,
-    subsample_array,
-)
-from geoutils.vector import Vector, VectorType
+from geoutils.raster import Mask, Raster, RasterType, subsample_array
+from geoutils.raster.array import get_array_and_mask
+from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
-from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from skimage.draw import disk
 
@@ -542,7 +556,7 @@ def two_step_standardization(
     return zscores, error_fun
 
 
-def estimate_model_heteroscedasticity(
+def _estimate_model_heteroscedasticity(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
     list_var_names: list[str],
@@ -606,8 +620,7 @@ def _preprocess_values_with_mask_to_array(  # type: ignore
     exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
-) -> tuple[list[NDArrayf], float]:
-    ...
+) -> tuple[list[NDArrayf], float]: ...
 
 
 @overload
@@ -617,8 +630,7 @@ def _preprocess_values_with_mask_to_array(
     exclude_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     gsd: float | None = None,
     preserve_shape: bool = True,
-) -> tuple[NDArrayf, float]:
-    ...
+) -> tuple[NDArrayf, float]: ...
 
 
 def _preprocess_values_with_mask_to_array(
@@ -743,7 +755,7 @@ def _preprocess_values_with_mask_to_array(
 
     # If input was a list, give a list. If it was a single array, give a single array.
     if return_unlist:
-        values_stable_arr = values_stable_arr[0]
+        values_stable_arr = values_stable_arr[0]  # type: ignore
 
     return values_stable_arr, gsd
 
@@ -759,8 +771,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
-) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]:
-    ...
+) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
 @overload
@@ -774,8 +785,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
-) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]:
-    ...
+) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
 def infer_heteroscedasticity_from_stable(
@@ -829,7 +839,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_stable_arr = list_all_arr[1:]
 
     # Estimate and model the heteroscedasticity using only stable terrain
-    df, fun = estimate_model_heteroscedasticity(
+    df, fun = _estimate_model_heteroscedasticity(
         dvalues=dvalues_stable_arr,
         list_var=list_var_stable_arr,
         list_var_names=list_var_names,
@@ -917,25 +927,6 @@ def _create_ring_mask(
     return mask_ring
 
 
-def _random_state_definition(
-    random_state: None | np.random.RandomState | int = None,
-) -> np.random.RandomState | np.random.Generator:
-    """
-    Define random state based on input
-    :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
-    :return:
-    """
-
-    if random_state is None:
-        rnd: np.random.RandomState | np.random.Generator = np.random.default_rng()
-    elif isinstance(random_state, np.random.RandomState):
-        rnd = random_state
-    else:
-        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
-
-    return rnd
-
-
 def _subsample_wrapper(
     values: NDArrayf,
     coords: NDArrayf,
@@ -944,7 +935,7 @@ def _subsample_wrapper(
     subsample_method: str = "pdist_ring",
     inside_radius: float = 0,
     outside_radius: float = None,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
     (Not used by default)
@@ -952,13 +943,13 @@ def _subsample_wrapper(
     """
     nx, ny = shape
 
-    rnd = _random_state_definition(random_state=random_state)
+    rng = np.random.default_rng(random_state)
 
     # Subsample spatially for disk/ring methods
     if subsample_method in ["pdist_disk", "pdist_ring"]:
         # Select random center coordinates
-        center_x = rnd.choice(nx, 1)[0]
-        center_y = rnd.choice(ny, 1)[0]
+        center_x = rng.choice(nx, 1)[0]
+        center_y = rng.choice(ny, 1)[0]
         if subsample_method == "pdist_ring":
             subindex = _create_ring_mask(
                 (nx, ny), center=(center_x, center_y), in_radius=inside_radius, out_radius=outside_radius
@@ -974,7 +965,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=rnd)
+    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -1165,15 +1156,17 @@ def _choose_cdist_equidistant_sampling_parameters(**kwargs: Any) -> tuple[int, i
     # And the number of total pairwise comparison
     total_pairwise_comparison = runs * subsample_per_disk_per_run**2 * nb_rings
 
-    if kwargs["verbose"]:
-        print(
-            "Equidistant circular sampling will be performed for {} runs (random center points) with pairwise "
-            "comparison between {} samples (points) of the central disk and again {} samples times {} independent "
-            "rings centered on the same center point. This results in approximately {} pairwise comparisons (duplicate"
-            " pairwise points randomly selected will be removed).".format(
-                runs, subsample_per_disk_per_run, subsample_per_disk_per_run, nb_rings, total_pairwise_comparison
-            )
-        )
+    logging.info(
+        "Equidistant circular sampling will be performed for %d runs (random center points) with pairwise "
+        "comparison between %d samples (points) of the central disk and again %d samples times %d independent "
+        "rings centered on the same center point. This results in approximately %d pairwise comparisons (duplicate "
+        "pairwise points randomly selected will be removed).",
+        runs,
+        subsample_per_disk_per_run,
+        subsample_per_disk_per_run,
+        nb_rings,
+        total_pairwise_comparison,
+    )
 
     return runs, subsample_per_disk_per_run, ratio_subsample
 
@@ -1191,16 +1184,17 @@ def _get_cdist_empirical_variogram(
 
     """
 
-    if subsample_method == "cdist_equidistant" and "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
+    if subsample_method == "cdist_equidistant":
 
-        # We define subparameters for the equidistant technique to match the number of pairwise comparison
-        # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
-        runs, samples, ratio_subsample = _choose_cdist_equidistant_sampling_parameters(**kwargs)
+        if "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
+            # We define subparameters for the equidistant technique to match the number of pairwise comparison
+            # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
+            runs, samples, ratio_subsample = _choose_cdist_equidistant_sampling_parameters(**kwargs)
+            kwargs["ratio_subsample"] = ratio_subsample
+            kwargs["runs"] = runs
+            # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
+            kwargs["samples"] = samples
 
-        kwargs["runs"] = runs
-        # The "samples" argument is used by skgstat Metric subclasses (and not "subsample")
-        kwargs["samples"] = samples
-        kwargs["ratio_subsample"] = ratio_subsample
         kwargs.pop("subsample")
 
     elif subsample_method == "cdist_point":
@@ -1208,7 +1202,7 @@ def _get_cdist_empirical_variogram(
         # We set the samples to match the subsample argument if the method is random points
         kwargs["samples"] = kwargs.pop("subsample")
 
-    # Rename the "random_state" argument into "rnd", also used by skgstat Metric subclasses
+    # Rename the "random_state" argument into "rng", also used by skgstat Metric subclasses
     kwargs["rnd"] = kwargs.pop("random_state")
 
     # Define MetricSpace function to be used, fetch possible keywords arguments
@@ -1261,8 +1255,7 @@ def _wrapper_get_empirical_variogram(argdict: dict[str, Any]) -> pd.DataFrame:
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
-    if argdict["verbose"]:
-        print("Working on run " + str(argdict["i"]) + " out of " + str(argdict["imax"]))
+    logging.debug("Working on run " + str(argdict["i"]) + " out of " + str(argdict["imax"]))
     argdict.pop("i")
     argdict.pop("imax")
 
@@ -1293,8 +1286,7 @@ def sample_empirical_variogram(
     subsample_method: str = "cdist_equidistant",
     n_variograms: int = 1,
     n_jobs: int = 1,
-    verbose: bool = False,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
     # **kwargs: **EmpiricalVariogramKArgs, # This will work in Python 3.12, fails in the meantime, we'll be able to
     # remove some type ignores from this function in the future
     **kwargs: int | list[float] | float | str | Any,
@@ -1349,7 +1341,6 @@ def sample_empirical_variogram(
     :param subsample_method: Spatial subsampling method
     :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
-    :param verbose: Print statements during processing
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
 
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
@@ -1446,7 +1437,6 @@ def sample_empirical_variogram(
         "coords": coords,
         "subsample_method": subsample_method,
         "subsample": subsample,
-        "verbose": verbose,
     }
     if subsample_method in ["cdist_equidistant", "pdist_ring", "pdist_disk", "pdist_point"]:
         # The shape is needed for those three methods
@@ -1461,20 +1451,12 @@ def sample_empirical_variogram(
     # provide exactly the same sampling and results
     if random_state is not None:
         # Define the random state if only a seed is provided
-        if isinstance(random_state, np.random.RandomState):
-            rnd = random_state
-        elif isinstance(random_state, np.random.Generator):
-            rnd = np.random.RandomState(random_state)
-        else:
-            rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(random_state)))
+        rng = np.random.default_rng(random_state)
 
-        # Create a list of child random states
-        if n_variograms == 1:
-            # No issue if there is only one variogram run
-            list_random_state: list[None | np.random.RandomState] = [rnd]
-        else:
-            # Otherwise, pass a list of seeds
-            list_random_state = list(rnd.choice(n_variograms, n_variograms, replace=False))
+        # Create a list of child random states per number of variograms
+        list_random_state: list[None | np.random.Generator] = list(
+            rng.choice(n_variograms, n_variograms, replace=False)
+        )
     else:
         list_random_state = [None for i in range(n_variograms)]
 
@@ -1482,8 +1464,7 @@ def sample_empirical_variogram(
     # Differentiate between 1 core and several cores for multiple runs
     # All variogram runs have random sampling inherent to their subfunctions, so we provide the same input arguments
     if n_jobs == 1:
-        if verbose:
-            print("Using 1 core...")
+        logging.info("Using 1 core...")
 
         list_df_run = []
         for i in range(n_variograms):
@@ -1499,8 +1480,7 @@ def sample_empirical_variogram(
 
             list_df_run.append(df_run)
     else:
-        if verbose:
-            print("Using " + str(n_jobs) + " cores...")
+        logging.info("Using " + str(n_jobs) + " cores...")
 
         pool = mp.Pool(n_jobs, maxtasksperchild=1)
         list_argdict = [
@@ -1801,7 +1781,7 @@ def fit_sum_model_variogram(
     return variogram_sum_fit, df_params
 
 
-def estimate_model_spatial_correlation(
+def _estimate_model_spatial_correlation(
     dvalues: NDArrayf | RasterType,
     list_models: list[str | Callable[[NDArrayf, float, float], NDArrayf]],
     estimator: str = "dowd",
@@ -1811,13 +1791,11 @@ def estimate_model_spatial_correlation(
     subsample_method: str = "cdist_equidistant",
     n_variograms: int = 1,
     n_jobs: int = 1,
-    verbose: bool = False,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[NDArrayf], NDArrayf]]:
-
     """
     Estimate and model the spatial correlation of the input variable by empirical variogram sampling and fitting of a
     sum of variogram model.
@@ -1841,7 +1819,6 @@ def estimate_model_spatial_correlation(
     :param subsample_method: Spatial subsampling method
     :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
-    :param verbose: Print statements during processing
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper,
         sill lower, sill upper).
@@ -1860,7 +1837,6 @@ def estimate_model_spatial_correlation(
         subsample_method=subsample_method,
         n_variograms=n_variograms,
         n_jobs=n_jobs,
-        verbose=verbose,
         random_state=random_state,
         **kwargs,
     )
@@ -1887,10 +1863,9 @@ def infer_spatial_correlation_from_stable(
     subsample_method: str = "cdist_equidistant",
     n_variograms: int = 1,
     n_jobs: int = 1,
-    verbose: bool = False,
     bounds: list[tuple[float, float]] = None,
     p0: list[float] = None,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Callable[[NDArrayf], NDArrayf]]:
     """
@@ -1923,7 +1898,6 @@ def infer_spatial_correlation_from_stable(
     :param subsample_method: Spatial subsampling method
     :param n_variograms: Number of independent empirical variogram estimations (to estimate empirical variogram spread)
     :param n_jobs: Number of processing cores
-    :param verbose: Print statements during processing
     :param bounds: Bounds of range and sill parameters for each model (shape K x 4 = K x range lower, range upper,
         sill lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
@@ -1948,7 +1922,7 @@ def infer_spatial_correlation_from_stable(
         dvalues_stable_arr /= errors_arr
 
     # Estimate and model spatial correlations
-    empirical_variogram, params_variogram_model, spatial_correlation_func = estimate_model_spatial_correlation(
+    empirical_variogram, params_variogram_model, spatial_correlation_func = _estimate_model_spatial_correlation(
         dvalues=dvalues_stable_arr,
         list_models=list_models,
         estimator=estimator,
@@ -1958,7 +1932,6 @@ def infer_spatial_correlation_from_stable(
         subsample_method=subsample_method,
         n_variograms=n_variograms,
         n_jobs=n_jobs,
-        verbose=verbose,
         random_state=random_state,
         bounds=bounds,
         p0=p0,
@@ -2088,9 +2061,7 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
     def cubic_exact_integral(a1: float, c1: float, L: float) -> float:
         if l_equiv <= a1:
             squared_se = (
-                c1
-                * (6 * a1**7 - 21 * a1**5 * L**2 + 21 * a1**4 * L**3 - 6 * a1**2 * L**5 + L**7)
-                / (6 * a1**7)
+                c1 * (6 * a1**7 - 21 * a1**5 * L**2 + 21 * a1**4 * L**3 - 6 * a1**2 * L**5 + L**7) / (6 * a1**7)
             )
         else:
             squared_se = 1 / 6 * c1 * a1**2 / L**2
@@ -2237,7 +2208,7 @@ def neff_exact(
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / n**2
-    neff = np.mean(errors) ** 2 / squared_se_dsc
+    neff = float(np.mean(errors)) ** 2 / squared_se_dsc
 
     return neff
 
@@ -2248,7 +2219,7 @@ def neff_hugonnet_approx(
     params_variogram_model: pd.DataFrame,
     subsample: int = 1000,
     vectorized: bool = True,
-    random_state: None | np.random.RandomState | int = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> float:
     """
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
@@ -2269,7 +2240,7 @@ def neff_hugonnet_approx(
     """
 
     # Define random state
-    rnd = _random_state_definition(random_state=random_state)
+    rng = np.random.default_rng(random_state)
 
     # Check input dataframe
     _check_validity_params_variogram(params_variogram_model)
@@ -2277,53 +2248,39 @@ def neff_hugonnet_approx(
     # Get spatial correlation function from variogram parameters
     rho = correlation_from_variogram(params_variogram_model)
 
-    # Get number of points and pairwise distance compacted matrix from scipy.pdist
+    # Get number of points and pairwise distance matrix from scipy.cdist
     n = len(coords)
-    pds = pdist(coords)
 
     # At maximum, the number of subsamples has to be equal to number of points
     subsample = min(subsample, n)
 
     # Get random subset of points for one of the sums
-    rand_points = rnd.choice(n, size=subsample, replace=False)
+    rand_points = rng.choice(n, size=subsample, replace=False)
+
+    # Subsample coordinates in 1D before computing pairwise distances
+    sub_coords = coords[rand_points, :]
+    sub_errors = errors[rand_points]
+    pds_matrix = cdist(coords, sub_coords, "euclidean")
 
     # Now we compute the double covariance sum
     # Either using for-loop-version
     if not vectorized:
         var = 0.0
-        for ind_sub in range(subsample):
-            for j in range(n):
-
-                i = rand_points[ind_sub]
-                # For index calculation of the pairwise distance,
-                # see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
-                if i == j:
-                    d = 0
-                elif i < j:
-                    ind = n * i + j - ((i + 2) * (i + 1)) // 2
-                    d = pds[ind]
-                else:
-                    ind = n * j + i - ((j + 2) * (j + 1)) // 2
-                    d = pds[ind]
-
+        for i in range(pds_matrix.shape[0]):
+            for j in range(pds_matrix.shape[1]):
+                d = pds_matrix[i, j]
                 var += rho(d) * errors[i] * errors[j]  # type: ignore
 
     # Or vectorized version
     else:
-        # We subset the points used in one dimension, for errors and pairwise distances computed
-        errors_sub = errors[rand_points]
-        pds_matrix = squareform(pds)
-        pds_matrix_sub = pds_matrix[:, rand_points]
         # Vectorized calculation
         var = np.sum(
-            errors.reshape((-1, 1))
-            @ errors_sub.reshape((1, -1))
-            * rho(pds_matrix_sub.flatten()).reshape(pds_matrix_sub.shape)
+            errors.reshape((-1, 1)) @ sub_errors.reshape((1, -1)) * rho(pds_matrix.flatten()).reshape(pds_matrix.shape)
         )
 
     # The number of effective sample is the fraction of total sill by squared standard error
     squared_se_dsc = var / (n * subsample)
-    neff = np.mean(errors) ** 2 / squared_se_dsc
+    neff = float(np.mean(errors)) ** 2 / squared_se_dsc
 
     return neff
 
@@ -2648,7 +2605,7 @@ def mean_filter_nan(
 
     # Count the number of valid pixels in the kernel with a convolution
     nb_valid_img = convolution(
-        imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),
+        imgs=nodata_img.reshape((1, nodata_img.shape[0], nodata_img.shape[1])),  # type: ignore
         filters=kernel.reshape((1, kernel.shape[0], kernel.shape[1])),
         method=method,
     ).squeeze()
@@ -2672,7 +2629,6 @@ def _patches_convolution(
     patch_shape: str = "circular",
     method: str = "scipy",
     statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
-    verbose: bool = False,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
@@ -2685,7 +2641,6 @@ def _patches_convolution(
     :param method: Method to perform the convolution, "scipy" or "numba"
     :param statistic_between_patches: Statistic to compute between all patches, typically a measure of spread, applied
         to the first in-patch statistic, which is typically the mean
-    :param verbose: Print statement to console
     :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
 
 
@@ -2704,8 +2659,7 @@ def _patches_convolution(
     else:
         raise ValueError('Kernel shape should be "square" or "circular".')
 
-    if verbose:
-        print("Computing the convolution on the entire array...")
+    logging.info("Computing the convolution on the entire array...")
     mean_img, nb_valid_img, nb_pixel_per_kernel = mean_filter_nan(
         img=values, kernel_size=kernel_size, kernel_shape=patch_shape, method=method
     )
@@ -2718,8 +2672,7 @@ def _patches_convolution(
     # kernel size (i.e., the diameter of the circular patch, or side of the square patch) to ensure no dependency
 
     # There are as many combinations for this calculation as the square of the kernel_size
-    if verbose:
-        print("Computing statistic between patches for all independent combinations...")
+    logging.info("Computing statistic between patches for all independent combinations...")
     list_statistic_estimates = []
     list_nb_independent_patches = []
     for i in range(kernel_size):
@@ -2759,8 +2712,7 @@ def _patches_loop_quadrants(
     perc_min_valid: float = 80.0,
     statistics_in_patch: Iterable[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
     statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
-    verbose: bool = False,
-    random_state: None | int | np.random.RandomState = None,
+    random_state: int | np.random.Generator | None = None,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
@@ -2777,7 +2729,6 @@ def _patches_loop_quadrants(
         to the first in-patch statistic, which is typically the mean
     :param patch_shape: Shape of patch, either "circular" or "square".
     :param n_patches: Maximum number of patches to sample
-    :param verbose: Print statement to console
     :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
     :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
 
@@ -2792,7 +2743,7 @@ def _patches_loop_quadrants(
     statistics_name = [f if isinstance(f, str) else f.__name__ for f in list_statistics_in_patch]
 
     # Define random state
-    rnd = _random_state_definition(random_state=random_state)
+    rng = np.random.default_rng(random_state)
 
     # Divide raster in quadrants where we can sample
     nx, ny = np.shape(values)
@@ -2823,12 +2774,11 @@ def _patches_loop_quadrants(
 
         # Draw a random coordinate from the list of quadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
-        list_idx_quadrant = rnd.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
+        list_idx_quadrant = rng.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
 
         for idx_quadrant in list_idx_quadrant:
 
-            if verbose:
-                print("Working on a new quadrant")
+            logging.info("Working on a new quadrant")
 
             # Select center coordinates
             i = list_quadrant[idx_quadrant][0]
@@ -2854,8 +2804,7 @@ def _patches_loop_quadrants(
                 u = u + 1
                 if u > n_patches:
                     break
-                if verbose:
-                    print("Found valid quadrant " + str(u) + " (maximum: " + str(n_patches) + ")")
+                logging.info("Found valid quadrant " + str(u) + " (maximum: " + str(n_patches) + ")")
 
                 df = pd.DataFrame()
                 df = df.assign(tile=[str(i) + "_" + str(j)])
@@ -2908,12 +2857,10 @@ def patches_method(
     vectorized: bool = True,
     convolution_method: str = "scipy",
     n_patches: int = 1000,
-    verbose: bool = False,
     *,
     return_in_patch_statistics: Literal[False] = False,
-    random_state: None | int | np.random.RandomState = None,
-) -> pd.DataFrame:
-    ...
+    random_state: int | np.random.Generator | None = None,
+) -> pd.DataFrame: ...
 
 
 @overload
@@ -2930,12 +2877,10 @@ def patches_method(
     vectorized: bool = True,
     convolution_method: str = "scipy",
     n_patches: int = 1000,
-    verbose: bool = False,
     *,
     return_in_patch_statistics: Literal[True],
-    random_state: None | int | np.random.RandomState = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    ...
+    random_state: int | np.random.Generator | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]: ...
 
 
 def patches_method(
@@ -2951,11 +2896,9 @@ def patches_method(
     vectorized: bool = True,
     convolution_method: str = "scipy",
     n_patches: int = 1000,
-    verbose: bool = False,
     return_in_patch_statistics: bool = False,
-    random_state: None | int | np.random.RandomState = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
-
     """
     Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
     computes a statistic in each patch. Then, another statistic is computed between all patches. Typically, a statistic
@@ -2990,7 +2933,6 @@ def patches_method(
     :param vectorized: Whether to use the vectorized (convolution) method or the for loop in quadrants
     :param convolution_method: Convolution method to use, either "scipy" or "numba" (only for vectorized)
     :param n_patches: Maximum number of patches to sample (only for non-vectorized)
-    :param verbose: Print statement to console
     :param return_in_patch_statistics: Whether to return the dataframe of statistics for all patches and areas
     :param random_state: Random state or seed number to use for calculations (only for non-vectorized, for testing)
 
@@ -3024,7 +2966,6 @@ def patches_method(
                 patch_shape=patch_shape,
                 method=convolution_method,
                 statistic_between_patches=statistic_between_patches,
-                verbose=verbose,
                 return_in_patch_statistics=return_in_patch_statistics,
             )
 
@@ -3039,7 +2980,6 @@ def patches_method(
                 perc_min_valid=perc_min_valid,
                 statistics_in_patch=statistics_in_patch,
                 statistic_between_patches=statistic_between_patches,
-                verbose=verbose,
                 return_in_patch_statistics=return_in_patch_statistics,
                 random_state=random_state,
             )

@@ -1,0 +1,8 @@
+/*  Work around to wrong dark-mode for toggle button: https://github.com/executablebooks/MyST-NB/issues/523 */
+div.cell details.hide > summary {
+    background-color: var(--pst-color-surface);
+}
+
+div.cell details[open].above-input div.cell_input {
+    border-top: None;
+}

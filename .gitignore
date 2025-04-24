@@ -145,10 +145,8 @@ dmypy.json
 xdem/_version.py
 
 # Example data downloaded/produced during tests
-examples/data/Longyearbyen/data/
-examples/data/Longyearbyen/processed/
-examples/data/*.tif
-examples/data/*.csv
+examples/data/
+tests/test_data/
 
 doc/source/basic_examples/
 doc/source/advanced_examples/
@@ -156,5 +154,6 @@ doc/source/gen_modules/
 doc/source/sg_execution_times.rst
 examples/basic/temp.tif
 
-# Directory where myst_nb executes jupyter code
+# Directory where myst_nb executes jupyter code and cache
 doc/jupyter_execute/
+doc/.jupyter_cache/

@@ -36,6 +36,14 @@ The complete list of {class}`~geoutils.Raster` attributes and methods can be fou
 A {class}`~xdem.DEM` is opened by instantiating with either a {class}`str`, a {class}`pathlib.Path`, a {class}`rasterio.io.DatasetReader` or a
 {class}`rasterio.io.MemoryFile`, as for a {class}`~geoutils.Raster`.
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+# To get a good resolution for displayed figures
+from matplotlib import pyplot
+pyplot.rcParams['figure.dpi'] = 400
+pyplot.rcParams['savefig.dpi'] = 400
+```
 
 ```{code-cell} ipython3
 import xdem
@@ -81,9 +89,12 @@ import geoutils as gu
 fn_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
 vect_gla = gu.Vector(fn_glacier_outlines)
 
+# Crop outlines to those intersecting the DEM
+vect_gla = vect_gla.crop(dem)
+
 # Plot the DEM and the vector file
 dem.plot(cmap="terrain", cbar_title="Elevation (m)")
-vect_gla.plot(dem)  # We pass the DEM as reference for the plot CRS/extent
+vect_gla.plot(dem, ec="k", fc="none")  # We pass the DEM as reference for the plot CRS
 ```
 
 ## Vertical referencing
@@ -118,11 +129,28 @@ by calling the function corresponding to the attribute name such as {func}`~xdem
 ```{code-cell} ipython3
 # Derive slope using the Zevenberg and Thorne (1987) method
 slope = dem.slope(method="ZevenbergThorne")
-slope.plot(cmap="Reds", cbar_title="Slope (degrees)")
+slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
 ```{note}
 For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
+```
+
+## Statistics
+The [`get_stats()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.get_stats.html) method allows to extract key statistical information from a raster in a dictionary.
+
+- Get all statistics in a dict:
+```{code-cell} ipython3
+dem.get_stats()
+```
+
+The DEM statistics functionalities in `xdem` are based on those in `geoutils`.
+For more information on computing statistics, please refer to the [`geoutils` documentation](https://geoutils.readthedocs.io/en/latest/raster_class.html#obtain-statistics).
+
+
+Note: as [`get_stats()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.get_stats.html) is a raster method, it can also be used for terrain attributes:
+```{code-cell} ipython3
+slope.get_stats()
 ```
 
 ## Coregistration
@@ -140,7 +168,7 @@ dem_tba = xdem.DEM(filename_tba)
 dem_tba_coreg = dem_tba.coregister_3d(dem)
 
 # Plot the elevation change of the DEM due to coregistration
-dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba)
+dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)
 dh_tba.plot(cmap="Spectral", cbar_title="Elevation change due to coreg (m)")
 ```
 
@@ -157,10 +185,22 @@ stable terrain as a proxy.
 
 ```{code-cell} ipython3
 # Estimate elevation uncertainty assuming both DEMs have similar precision
-sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same")
+sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same", random_state=42)
 
 # The error map variability is estimated from slope and curvature by default
-sig_dem.plot(cmap="Purples", cbar_title=r"Error in elevation (1$\sigma$, m)")
+sig_dem.plot(cmap="Purples", cbar_title=r"Random error in elevation (1$\sigma$, m)")
 
 # The spatial correlation function represents how much errors are correlated at a certain distance
-rho_sig(1000)  # Correlation at 1 km
+print("Elevation errors at a distance of 1 km are correlated at {:.2f} %.".format(rho_sig(1000) * 100))
+```
+
+```{note}
+We use `random_state` to ensure a fixed randomized output. It is **only necessary if you need your results to be exactly reproductible**.
+
+For more details on quantifying random and structured errors, see the {ref}`uncertainty` page.
+```
+
+## Cropping a DEM
+
+The DEM cropping functionalities in `xdem` are based on those in `geoutils` ([`crop()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.crop.html#geoutils.Raster.crop), [`icrop()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.icrop.html#geoutils.Raster.icrop)).
+For more information on using cropping functions, please refer to the [`geoutils` documentation](https://geoutils.readthedocs.io/en/latest/raster_class.html#crop).

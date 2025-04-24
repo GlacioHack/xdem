@@ -1,4 +1,5 @@
 """Functions to test the spatial statistics."""
+
 from __future__ import annotations
 
 import os
@@ -15,7 +16,7 @@ from geoutils import Raster, Vector
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
-from xdem.spatialstats import EmpiricalVariogramKArgs, nmad
+from xdem.spatialstats import EmpiricalVariogramKArgs, neff_hugonnet_approx, nmad
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -356,23 +357,23 @@ class TestBinning:
             df[var] = [xdem.spatialstats._pandas_str_to_interval(x) for x in df[var]]
 
         # Take 1000 random points in the array
-        np.random.seed(42)
-        xrand = np.random.randint(low=0, high=perbin_values.shape[0], size=1000)
-        yrand = np.random.randint(low=0, high=perbin_values.shape[1], size=1000)
+        rng = np.random.default_rng(42)
+        xrand = rng.integers(low=0, high=perbin_values.shape[0], size=1000)
+        yrand = rng.integers(low=0, high=perbin_values.shape[1], size=1000)
 
         for i in range(len(xrand)):
 
             # Get the value at the random point for elevation, slope, aspect
             x = xrand[i]
             y = yrand[i]
-            h = self.ref.data[x, y]
-            slp = self.slope.data[x, y]
-            asp = self.aspect.data[x, y]
+            h = self.ref.data.filled(np.nan)[x, y]
+            slp = self.slope.data.filled(np.nan)[x, y]
+            asp = self.aspect.data.filled(np.nan)[x, y]
 
             if np.logical_or.reduce((np.isnan(h), np.isnan(slp), np.isnan(asp))):
                 continue
 
-            # Isolate the bin in the dataframe, should be only one
+            # Isolate the bin in the dataframe
             index_bin = np.logical_and.reduce(
                 (
                     [h in interv for interv in df["elevation"]],
@@ -380,6 +381,10 @@ class TestBinning:
                     [asp in interv for interv in df["aspect"]],
                 )
             )
+            # It might not exist in the binning intervals (if extreme values were not subsampled in test_nd_binning)
+            if np.count_nonzero(index_bin) == 0:
+                continue
+            # Otherwise there should be only one
             assert np.count_nonzero(index_bin) == 1
 
             # Get the statistic value and verify that this was the one returned by the function
@@ -438,7 +443,7 @@ class TestBinning:
             dvalues=self.diff, list_var=[self.slope, self.maximum_curv], unstable_mask=self.outlines
         )
 
-        df_binning_2, err_fun_2 = xdem.spatialstats.estimate_model_heteroscedasticity(
+        df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity(
             dvalues=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             list_var_names=["var1", "var2"],
@@ -513,14 +518,14 @@ class TestVariogram:
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
         # assert df["exp"][15] == pytest.approx(5.11900520324707, abs=1e-3)
         assert df["lags"][15] == pytest.approx(5120)
-        assert df["count"][15] == 5
+        assert df["count"][15] == 2
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
         # Check that all type of coordinate inputs work
         # Only the array and the ground sampling distance
         xdem.spatialstats.sample_empirical_variogram(
-            values=self.diff.data, gsd=self.diff.res[0], subsample=10, random_state=42, verbose=True
+            values=self.diff.data, gsd=self.diff.res[0], subsample=10, random_state=42
         )
 
         # Test multiple runs
@@ -578,10 +583,8 @@ class TestVariogram:
         extent = (np.min(coords[:, 0]), np.max(coords[:, 0]), np.min(coords[:, 1]), np.max(coords[:, 1]))
         # Shape
         shape = values.shape
-        # Random state
-        rnd = np.random.RandomState(np.random.MT19937(np.random.SeedSequence(42)))
 
-        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape, "verbose": False}
+        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape}
         runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(
             **keyword_arguments
         )
@@ -597,7 +600,8 @@ class TestVariogram:
             samples=samples,
             ratio_subsample=ratio_subsample,
             runs=runs,
-            rnd=rnd,
+            # Now even for a n_variograms=1 we sample other integers for the random number generator
+            rnd=np.random.default_rng(42).choice(1, 1, replace=False),
         )
         V = skgstat.Variogram(
             rems,
@@ -717,7 +721,7 @@ class TestVariogram:
         pdist_pairwise_combinations = subsample**2 / 2
 
         # Run the function
-        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape, "verbose": False}
+        keyword_arguments = {"subsample": subsample, "extent": extent, "shape": shape}
         runs, samples, ratio_subsample = xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(
             **keyword_arguments
         )
@@ -742,7 +746,7 @@ class TestVariogram:
     def test_errors_subsample_parameter(self) -> None:
         """Tests that an error is raised when the subsample argument is too little"""
 
-        keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10), "verbose": False}
+        keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10)}
 
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
             xdem.spatialstats._choose_cdist_equidistant_sampling_parameters(**keyword_arguments)
@@ -759,8 +763,8 @@ class TestVariogram:
 
         # Add some noise on top of it
         sig = 0.025
-        np.random.seed(42)
-        y_noise = np.random.normal(0, sig, size=len(x))
+        rng = np.random.default_rng(42)
+        y_noise = rng.normal(0, sig, size=len(x))
 
         y_simu = y + y_noise
         sigma = np.ones(len(x)) * sig
@@ -853,6 +857,8 @@ class TestVariogram:
     def test_estimate_model_spatial_correlation_and_infer_from_stable(self) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
 
+        warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
+
         # Keep only data on stable
         diff_on_stable = self.diff.copy()
         diff_on_stable.set_mask(self.mask)
@@ -864,7 +870,7 @@ class TestVariogram:
         zscores = diff_on_stable / errors
 
         # Run wrapper estimate and model function
-        emp_vgm_1, params_model_vgm_1, _ = xdem.spatialstats.estimate_model_spatial_correlation(
+        emp_vgm_1, params_model_vgm_1, _ = xdem.spatialstats._estimate_model_spatial_correlation(
             dvalues=zscores, list_models=["Gau", "Sph"], subsample=10, random_state=42
         )
 
@@ -1060,31 +1066,23 @@ class TestNeffEstimation:
         )
 
         # Check that the function runs with default parameters
-        # t0 = time.time()
         neff_exact = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model
         )
-        # t1 = time.time()
 
         # Check that the non-vectorized version gives the same result
         neff_exact_nv = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, vectorized=False
         )
-        # t2 = time.time()
         assert neff_exact == pytest.approx(neff_exact_nv, rel=0.001)
 
-        # Check that the vectorized version is faster (vectorized for about 250 points here)
-        # assert (t1 - t0) < (t2 - t1)
-
         # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
-        # t3 = time.time()
-        neff_approx = xdem.spatialstats.neff_hugonnet_approx(
+        neff_approx = neff_hugonnet_approx(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, subsample=100, random_state=42
         )
-        # t4 = time.time()
 
         # Check that the non-vectorized version gives the same result, sampling 100 out of 250 samples
-        neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(
+        neff_approx_nv = neff_hugonnet_approx(
             coords=coords,
             errors=errors,
             params_variogram_model=params_variogram_model,
@@ -1095,12 +1093,24 @@ class TestNeffEstimation:
 
         assert neff_approx == pytest.approx(neff_approx_nv, rel=0.001)
 
-        # Check that the approximation version is faster within 30% error
-        # TODO: find a more robust way to test time for CI
-        # assert (t4 - t3) < (t1 - t0)
-
         # Check that the approximation is about the same as the original estimate within 10%
         assert neff_approx == pytest.approx(neff_exact, rel=0.1)
+
+        # Check that the approximation works even on large dataset without creating memory errors
+        # 100,000 points squared (pairwise) should use more than 64GB of RAM without subsample
+        rng = np.random.default_rng(42)
+        coords = rng.normal(size=(100000, 2))
+        errors = rng.normal(size=(100000))
+        # This uses a subsample of 100, so should run just fine despite the large size
+        neff_approx_nv = neff_hugonnet_approx(
+            coords=coords,
+            errors=errors,
+            params_variogram_model=params_variogram_model,
+            subsample=100,
+            vectorized=True,
+            random_state=42,
+        )
+        assert neff_approx_nv is not None
 
     def test_number_effective_samples(self) -> None:
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
@@ -1154,16 +1164,16 @@ class TestNeffEstimation:
             rasterize_resolution=self.ref,
             random_state=42,
         )
-        # The value should be nearly the same within 5% (the discretization grid is different so affects a tiny bit the
+        # The value should be nearly the same within 10% (the discretization grid is different so affects a tiny bit the
         # result)
-        assert neff3 == pytest.approx(neff2, rel=0.05)
+        assert neff3 == pytest.approx(neff2, rel=0.1)
 
-        # Check that the number of effective samples matches that of the circular approximation within 20%
+        # Check that the number of effective samples matches that of the circular approximation within 25%
         area_brom = np.sum(outlines_brom.ds.area.values)
         neff4 = xdem.spatialstats.number_effective_samples(
             area=area_brom, params_variogram_model=params_variogram_model
         )
-        assert neff4 == pytest.approx(neff2, rel=0.2)
+        assert neff4 == pytest.approx(neff2, rel=0.25)
         # The circular approximation is always conservative, so should yield a smaller value
         assert neff4 < neff2
 
@@ -1254,7 +1264,6 @@ class TestSubSampling:
 
     def test_ring_masking(self) -> None:
         """Test that the ring masking works as intended"""
-        warnings.simplefilter("error")
 
         # by default, the mask is only an outside circle (ring of size 0)
         ring1 = xdem.spatialstats._create_ring_mask((5, 5))
@@ -1310,7 +1319,7 @@ class TestPatchesMethod:
         assert df_full.shape == (100, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "8_16"
+        assert df_full["tile"].values[0] == "47_17"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))

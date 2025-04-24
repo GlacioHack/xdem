@@ -1,3 +1,21 @@
+# Copyright (c) 2024 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Small functions for testing, examples, and other miscellaneous uses."""
 from __future__ import annotations
 
@@ -28,32 +46,36 @@ import xdem
 from xdem._typing import NDArrayf
 
 
-def generate_random_field(shape: tuple[int, int], corr_size: int) -> NDArrayf:
+def generate_random_field(
+    shape: tuple[int, int], corr_size: int, random_state: int | np.random.Generator | None = None
+) -> NDArrayf:
     """
     Generate a semi-random gaussian field (to simulate a DEM or DEM error)
 
     :param shape: The output shape of the field.
     :param corr_size: The correlation size of the field.
+    :param random_state: Seed for random number generator.
 
     :examples:
-        >>> np.random.seed(1)
-        >>> generate_random_field((4, 5), corr_size=2).round(2)
-        array([[0.47, 0.5 , 0.56, 0.63, 0.65],
-               [0.49, 0.51, 0.56, 0.62, 0.64],
-               [0.56, 0.56, 0.57, 0.59, 0.59],
-               [0.57, 0.57, 0.57, 0.58, 0.58]])
+        >>> generate_random_field((4, 5), corr_size=2, random_state=1).round(2)
+        array([[0.74, 0.74, 0.75, 0.75, 0.75],
+               [0.69, 0.69, 0.7 , 0.71, 0.71],
+               [0.51, 0.51, 0.54, 0.57, 0.58],
+               [0.45, 0.47, 0.5 , 0.53, 0.54]])
 
     :returns: A numpy array of semi-random values from 0 to 1
     """
 
+    rng = np.random.default_rng(random_state)
+
     if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'")
+        raise ValueError("Optional dependency needed. Install 'opencv'.")
 
     field = cv2.resize(
         cv2.GaussianBlur(
             np.repeat(
                 np.repeat(
-                    np.random.randint(0, 255, (shape[0] // corr_size, shape[1] // corr_size), dtype="uint8"),
+                    rng.integers(0, 255, (shape[0] // corr_size, shape[1] // corr_size), dtype="uint8"),
                     corr_size,
                     axis=0,
                 ),
@@ -191,7 +213,7 @@ def diff_environment_yml(
     """
 
     if not _has_yaml:
-        raise ValueError("Test dependency needed. Install 'pyyaml'")
+        raise ValueError("Test dependency needed. Install 'pyyaml'.")
 
     if not input_dict:
         # Load the yml as dictionaries

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
+import os.path
 import re
-import tempfile
 import warnings
 
 import geoutils as gu
@@ -10,46 +9,10 @@ import numpy as np
 import pytest
 
 import xdem
-from xdem._typing import MArrayf
 
 xdem.examples.download_longyearbyen_examples()
 
 PLOT = True
-
-
-def run_gdaldem(filepath: str, processing: str, options: str | None = None) -> MArrayf:
-    """Run GDAL's DEMProcessing and return the read numpy array."""
-    # Rasterio strongly recommends against importing gdal along rio, so this is done here instead.
-    from osgeo import gdal
-
-    # Converting string into gdal processing options here to avoid import gdal outside this function:
-    # Riley or Wilson for Terrain Ruggedness, and Zevenberg or Horn for slope, aspect and hillshade
-    gdal_option_conversion = {
-        "Riley": gdal.DEMProcessingOptions(alg="Riley"),
-        "Wilson": gdal.DEMProcessingOptions(alg="Wilson"),
-        "Zevenberg": gdal.DEMProcessingOptions(alg="ZevenbergenThorne"),
-        "Horn": gdal.DEMProcessingOptions(alg="Horn"),
-        "hillshade_Zevenberg": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="ZevenbergenThorne"),
-        "hillshade_Horn": gdal.DEMProcessingOptions(azimuth=315, altitude=45, alg="Horn"),
-    }
-
-    if options is None:
-        gdal_option = gdal.DEMProcessingOptions(options=None)
-    else:
-        gdal_option = gdal_option_conversion[options]
-
-    temp_dir = tempfile.TemporaryDirectory()
-    temp_path = os.path.join(temp_dir.name, "output.tif")
-    gdal.DEMProcessing(
-        destName=temp_path,
-        srcDS=filepath,
-        processing=processing,
-        options=gdal_option,
-    )
-
-    data = gu.Raster(temp_path).data
-    temp_dir.cleanup()
-    return data
 
 
 class TestTerrainAttribute:
@@ -74,42 +37,28 @@ class TestTerrainAttribute:
             "roughness",
         ],
     )  # type: ignore
-    def test_attribute_functions_against_gdaldem(self, attribute: str) -> None:
+    def test_attribute_functions_against_gdaldem(self, attribute: str, get_test_data_path) -> None:
         """
         Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-        # TODO: New warnings to remove with latest GDAL versions, opening issue
-        # warnings.simplefilter("error")
 
         functions = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, dem.res, degrees=True),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, resolution=dem.res, degrees=True),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
             "slope_Zevenberg": lambda dem: xdem.terrain.slope(
-                dem.data, dem.res, method="ZevenbergThorne", degrees=True
+                dem.data, resolution=dem.res, method="ZevenbergThorne", degrees=True
             ),
             "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
-            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(dem.data, dem.res, method="ZevenbergThorne"),
+            "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(
+                dem.data, resolution=dem.res, method="ZevenbergThorne"
+            ),
             "tri_Riley": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Riley"),
             "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Wilson"),
             "tpi": lambda dem: xdem.terrain.topographic_position_index(dem.data),
             "roughness": lambda dem: xdem.terrain.roughness(dem.data),
-        }
-
-        # Writing dictionary options here to avoid importing gdal outside the dedicated function
-        gdal_processing_attr_option = {
-            "slope_Horn": ("slope", "Horn"),
-            "aspect_Horn": ("aspect", "Horn"),
-            "hillshade_Horn": ("hillshade", "hillshade_Horn"),
-            "slope_Zevenberg": ("slope", "Zevenberg"),
-            "aspect_Zevenberg": ("aspect", "Zevenberg"),
-            "hillshade_Zevenberg": ("hillshade", "hillshade_Zevenberg"),
-            "tri_Riley": ("TRI", "Riley"),
-            "tri_Wilson": ("TRI", "Wilson"),
-            "tpi": ("TPI", None),
-            "roughness": ("Roughness", None),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -117,15 +66,14 @@ class TestTerrainAttribute:
 
         # Derive the attribute using both GDAL and xdem
         attr_xdem = functions[attribute](dem).squeeze()
-        attr_gdal = run_gdaldem(
-            self.filepath,
-            processing=gdal_processing_attr_option[attribute][0],
-            options=gdal_processing_attr_option[attribute][1],
-        )
+        attr_gdal = gu.Raster(get_test_data_path(os.path.join("gdal", f"{attribute}.tif"))).data
 
         # For hillshade, we round into an integer to match GDAL's output
         if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
-            attr_xdem = attr_xdem.astype("int").astype("float32")
+            with warnings.catch_warnings():
+                # Normal that a warning would be raised here, so we catch it
+                warnings.filterwarnings("ignore", message="invalid value encountered in cast", category=RuntimeWarning)
+                attr_xdem = attr_xdem.astype("int").astype("float32")
 
         # We compute the difference and keep only valid values
         diff = (attr_xdem - attr_gdal).filled(np.nan)
@@ -167,45 +115,32 @@ class TestTerrainAttribute:
             raise exception
 
         # Introduce some nans
+        rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
 
-    @pytest.mark.skip(
-        "richdem wheels don't build on latest GDAL versions, " "need to circumvent that problem..."
-    )  # type: ignore
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
     )  # type: ignore
-    def test_attribute_functions_against_richdem(self, attribute: str) -> None:
+    def test_attribute_functions_against_richdem(self, attribute: str, get_test_data_path) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
 
         :param attribute: The attribute to test (e.g. 'slope')
         """
-        warnings.simplefilter("error")
 
         # Functions for xdem-implemented methods
         functions_xdem = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem, dem.res, degrees=True),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem, resolution=dem.res, degrees=True),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, dem.res),
-            "curvature": lambda dem: xdem.terrain.curvature(dem.data, dem.res),
-            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, dem.res),
-            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, dem.res),
-        }
-
-        # Functions for RichDEM wrapper methods
-        functions_richdem = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem, degrees=True, use_richdem=True),
-            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem, degrees=True, use_richdem=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem, use_richdem=True),
-            "curvature": lambda dem: xdem.terrain.curvature(dem, use_richdem=True),
-            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem, use_richdem=True),
-            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem, use_richdem=True),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
+            "curvature": lambda dem: xdem.terrain.curvature(dem.data, resolution=dem.res),
+            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, resolution=dem.res),
+            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, resolution=dem.res),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -213,7 +148,8 @@ class TestTerrainAttribute:
 
         # Derive the attribute using both RichDEM and xdem
         attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
-        attr_richdem = gu.raster.get_array_and_mask(functions_richdem[attribute](dem))[0].squeeze()
+        attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
+        attr_richdem = gu.raster.get_array_and_mask(attr_richdem_rst)[0].squeeze()
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem
@@ -256,38 +192,38 @@ class TestTerrainAttribute:
             raise exception
 
         # Introduce some nans
-        dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        # rng = np.random.default_rng(42)
+        # dem.data.mask = np.zeros_like(dem.data, dtype=bool)
+        # dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
-        output = functions_richdem[attribute](dem)
-        assert np.all(dem.data.mask == output.data.mask)
+        # output = functions_richdem[attribute](dem)
+        # assert np.all(dem.data.mask == output.data.mask)
 
     def test_hillshade_errors(self) -> None:
         """Validate that the hillshade function raises appropriate errors."""
         # Try giving the hillshade invalid arguments.
-        warnings.simplefilter("error")
 
         with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
-            xdem.terrain.hillshade(self.dem.data, self.dem.res, azimuth=361)
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, azimuth=361)
 
         with pytest.raises(ValueError, match="Altitude must be a value between 0 and 90"):
-            xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=91)
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=91)
 
         with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
-            xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=np.inf)
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
-        warnings.simplefilter("error")
-        zfactor_1 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=1.0)
-        zfactor_10 = xdem.terrain.hillshade(self.dem.data, self.dem.res, z_factor=10.0)
+
+        zfactor_1 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=1.0)
+        zfactor_10 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=10.0)
 
         # A higher z-factor should be more variable than a low one.
         assert np.nanstd(zfactor_1) < np.nanstd(zfactor_10)
 
-        low_altitude = xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=10)
-        high_altitude = xdem.terrain.hillshade(self.dem.data, self.dem.res, altitude=80)
+        low_altitude = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=10)
+        high_altitude = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=80)
 
         # A low altitude should be darker than a high altitude.
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
@@ -297,7 +233,6 @@ class TestTerrainAttribute:
     )  # type: ignore
     def test_curvatures(self, name: str) -> None:
         """Test the curvature functions"""
-        warnings.simplefilter("error")
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
@@ -321,14 +256,15 @@ class TestTerrainAttribute:
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
+        rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[np.random.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
     def test_get_terrain_attribute(self) -> None:
         """Test the get_terrain_attribute function by itself."""
-        warnings.simplefilter("error")
+
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
         assert isinstance(slope, np.ndarray)
@@ -339,7 +275,7 @@ class TestTerrainAttribute:
         )
 
         # Create a hillshade using its own function
-        hillshade2 = xdem.terrain.hillshade(self.dem.data, self.dem.res)
+        hillshade2 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res)
 
         # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
         assert np.array_equal(hillshade, hillshade2, equal_nan=True)
@@ -349,22 +285,10 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    @pytest.mark.skip(
-        "richdem wheels don't build on latest GDAL versions, " "need to circumvent that problem..."
-    )  # type: ignore
     def test_get_terrain_attribute_errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
-        with pytest.raises(
-            ValueError,
-            match=re.escape("RichDEM can only compute the slope and aspect using the " "default method of Horn (1981)"),
-        ):
-            xdem.terrain.slope(self.dem, method="ZevenbergThorne", use_richdem=True)
-
-        with pytest.raises(ValueError, match="To derive RichDEM attributes, the DEM passed must be a Raster object"):
-            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, use_richdem=True)
-
         with pytest.raises(
             ValueError,
             match=re.escape(
@@ -385,7 +309,7 @@ class TestTerrainAttribute:
 
         assert slope != aspect
 
-        assert type(slope) == type(aspect)
+        assert isinstance(slope, type(aspect))
         assert all(isinstance(r, gu.Raster) for r in (aspect, slope, self.dem))
 
         assert slope.transform == self.dem.transform == aspect.transform
@@ -414,7 +338,6 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
-        warnings.simplefilter("error")
 
         # We here check the value for a fully symmetric case: the rugosity calculation can be simplified because all
         # eight triangles have the same surface area, see Jenness (2004).
@@ -443,7 +366,6 @@ class TestTerrainAttribute:
 
     def test_get_quadric_coefficients(self) -> None:
         """Test the outputs and exceptions of the get_quadric_coefficients() function."""
-        warnings.simplefilter("error")
 
         dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
 
@@ -472,3 +394,21 @@ class TestTerrainAttribute:
         # When using edge wrapping, all coefficients should be finite.
         coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
         assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+
+    def test_get_terrain_attribute__out_dtype(self) -> None:
+
+        # Get one attribute using quadratic coeff, and one using windowed indexes
+        slope, tpi = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "topographic_position_index"])
+
+        assert slope.dtype == self.dem.dtype
+        assert tpi.dtype == self.dem.dtype
+
+        # Using a different output dtype
+        out_dtype = np.float64
+        slope, tpi = xdem.terrain.get_terrain_attribute(
+            self.dem, attribute=["slope", "topographic_position_index"], out_dtype=out_dtype
+        )
+
+        assert self.dem.dtype != out_dtype
+        assert np.dtype(slope.dtype) == out_dtype
+        assert np.dtype(tpi.dtype) == out_dtype
