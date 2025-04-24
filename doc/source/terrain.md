@@ -405,6 +405,26 @@ fractal_roughness = dem.fractal_roughness()
 fractal_roughness.plot(cmap="Reds", cbar_title="Fractal roughness (dimensions)")
 ```
 
+## Generating attributes in multiprocessing
+Computing terrain attributes over large digital elevation models can be computationally expensive,
+especially for high-resolution datasets. To improve performance and reduce memory usage,
+xDEM supports multiprocessing for out-of-memory attribute calculations using the `mp_config` parameter.
+The resulting attribute is saved directly to disk under the filename specified in `mp_config`.
+
+### Example
+```{code-cell} ipython3
+from geoutils.raster.distributed_computing import MultiprocConfig
+
+mp_config = MultiprocConfig(chunk_size=200, outfile="hillshade.tif")
+hillshade = dem.hillshade(mp_config=mp_config)
+hillshade
+```
+```{code-cell} ipython3
+:tags: [remove-cell]
+import os
+os.remove("hillshade.tif")
+```
+
 ## Generating multiple attributes at once
 
 Often, one may seek more terrain attributes than one, e.g. both the slope and the aspect.

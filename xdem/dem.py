@@ -29,6 +29,7 @@ import rasterio as rio
 from affine import Affine
 from geoutils import Raster
 from geoutils.raster import Mask, RasterType
+from geoutils.raster.distributed_computing.multiproc import MultiprocConfig
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
@@ -385,69 +386,96 @@ class DEM(Raster):  # type: ignore
             )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees)
+    def slope(
+        self,
+        method: str = "Horn",
+        degrees: bool = True,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+        return terrain.slope(self, method=method, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
         method: str = "Horn",
         degrees: bool = True,
+        mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees)
+        return terrain.aspect(self, method=method, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
-        self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
+        self,
+        method: str = "Horn",
+        azimuth: float = 315.0,
+        altitude: float = 45.0,
+        z_factor: float = 1.0,
+        mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
+        return terrain.hillshade(
+            self,
+            method=method,
+            azimuth=azimuth,
+            altitude=altitude,
+            z_factor=z_factor,
+            mp_config=mp_config,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self) -> RasterType:
+    def curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self) -> RasterType:
-
-        return terrain.planform_curvature(self)
+        return terrain.curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self) -> RasterType:
+    def planform_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.profile_curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self) -> RasterType:
-
-        return terrain.maximum_curvature(self)
+        return terrain.planform_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def topographic_position_index(self, window_size: int = 3) -> RasterType:
+    def profile_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.topographic_position_index(self, window_size=window_size)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
-
-        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
+        return terrain.profile_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def roughness(self, window_size: int = 3) -> RasterType:
+    def maximum_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.roughness(self, window_size=window_size)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def rugosity(self) -> RasterType:
-
-        return terrain.rugosity(self)
+        return terrain.maximum_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(self, window_size: int = 13) -> RasterType:
+    def topographic_position_index(
+        self,
+        window_size: int = 3,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        return terrain.fractal_roughness(self, window_size=window_size)
+        return terrain.topographic_position_index(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def terrain_ruggedness_index(
+        self,
+        method: str = "Riley",
+        window_size: int = 3,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def roughness(self, window_size: int = 3, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.roughness(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def rugosity(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.rugosity(self, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def fractal_roughness(self, window_size: int = 13, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.fractal_roughness(self, window_size=window_size, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
