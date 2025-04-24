@@ -28,6 +28,7 @@ import warnings
 from typing import Any, Callable, Iterable, Literal, TypedDict, overload
 
 import geopandas as gpd
+import geoutils as gu
 import matplotlib
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
@@ -38,6 +39,7 @@ from geoutils.raster import Mask, Raster, RasterType, subsample_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
+from packaging.version import Version
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
@@ -47,13 +49,17 @@ from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_
 from skimage.draw import disk
 
 from xdem._typing import NDArrayf
+from xdem.misc import deprecate
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
 
 
-def nmad(data: NDArrayf | RasterType, nfact: float = 1.4826) -> np.floating[Any]:
+@deprecate(
+    removal_version=Version("0.4"), details="xdem.spatialstats.nmad is being deprecated in favor of geoutils.stats.nmad"
+)
+def nmad(data: NDArrayf, nfact: float = 1.4826) -> np.floating[Any]:
     """
     Calculate the normalized median absolute deviation (NMAD) of an array.
     Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
@@ -65,13 +71,7 @@ def nmad(data: NDArrayf | RasterType, nfact: float = 1.4826) -> np.floating[Any]
 
     :returns nmad: (normalized) median absolute deviation of data.
     """
-    if isinstance(data, np.ma.masked_array):
-        data_arr = get_array_and_mask(data, check_shape=False)[0]
-    elif isinstance(data, Raster):
-        data_arr = data
-    else:
-        data_arr = np.asarray(data)
-    return nfact * np.nanmedian(np.abs(data_arr - np.nanmedian(data_arr)))
+    return gu.stats.nmad(data, nfact)
 
 
 def nd_binning(

@@ -29,7 +29,8 @@ import rasterio as rio
 from affine import Affine
 from geoutils import Raster
 from geoutils.raster import Mask, RasterType
-from geoutils.raster.distributed_computing.multiproc import MultiprocConfig
+from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.stats import nmad
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
@@ -40,7 +41,6 @@ from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
-    nmad,
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,

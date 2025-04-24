@@ -46,10 +46,10 @@ diff_after.plot(cmap="RdYlBu", vmin=-10, vmax=10, cbar_title="Elevation differen
 # %%
 # We compare the median and NMAD to validate numerically that there was an improvement (see :ref:`robuststats-meanstd`):
 inliers_before = diff_before[inlier_mask]
-med_before, nmad_before = np.ma.median(inliers_before), xdem.spatialstats.nmad(inliers_before)
+med_before, nmad_before = np.ma.median(inliers_before), gu.stats.nmad(inliers_before)
 
 inliers_after = diff_after[inlier_mask]
-med_after, nmad_after = np.ma.median(inliers_after), xdem.spatialstats.nmad(inliers_after)
+med_after, nmad_after = np.ma.median(inliers_after), gu.stats.nmad(inliers_after)
 
 print(f"Error before: median = {med_before:.2f} - NMAD = {nmad_before:.2f} m")
 print(f"Error after: median = {med_after:.2f} - NMAD = {nmad_after:.2f} m")
