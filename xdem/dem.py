@@ -29,8 +29,8 @@ import rasterio as rio
 from affine import Affine
 from geoutils import Raster
 from geoutils.raster import Mask, RasterType
+from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
-from geoutils.raster.distributed_computing.multiproc import MultiprocConfig
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 from skgstat import Variogram
