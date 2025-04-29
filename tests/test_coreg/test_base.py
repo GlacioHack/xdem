@@ -293,19 +293,6 @@ class TestCoregClass:
         ):
             pipe.fit(**self.fit_params, subsample=1000)
 
-        # Same for a blockwise co-registration
-        block = coreg.BlockwiseCoreg(coreg.VerticalShift(subsample=200), subdivision=4)
-        with pytest.warns(
-            UserWarning,
-            match=re.escape(
-                "Subsample argument passed to fit() will override non-default subsample "
-                "values defined in the step within the blockwise method. To silence this "
-                "warning: only define 'subsample' in either fit(subsample=...) or "
-                "instantiation e.g., VerticalShift(subsample=...)."
-            ),
-        ):
-            block.fit(**self.fit_params, subsample=1000)
-
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
         # Create a small sample-DEM
@@ -372,7 +359,6 @@ class TestCoregClass:
             [xdem.coreg.VerticalShift(), True, "strict"],
             [xdem.coreg.NuthKaab(), True, "approx"],
             [xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(), True, "approx"],
-            [xdem.coreg.BlockwiseCoreg(step=xdem.coreg.NuthKaab(), subdivision=16), False, ""],
             [xdem.coreg.ICP(), False, ""],
         ],
     )  # type: ignore
