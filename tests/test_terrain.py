@@ -395,6 +395,24 @@ class TestTerrainAttribute:
         coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
         assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
 
+    def test_get_quadric_coefficients_convolution(self) -> None:
+        """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
+
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(5, 7))
+
+        attrs_scipy = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=["slope"], backend="scipy")
+        attrs_numba = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=["slope"], backend="numba")
+
+        # Some coefficients don't result in NaN after convolve, because their convolution kernel doesn't use edge pixels
+        # Let's replace them everywhere to do a fair comparison
+        # invalid = np.isnan(coefs_scipy_cv[0, :, :])
+        # coefs_scipy_cv[:, invalid] = np.nan
+
+        assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
+        # assert np.allclose(coefs_numba, coefs_numba_cv, equal_nan=True)
+
+
     def test_get_terrain_attribute__out_dtype(self) -> None:
 
         # Get one attribute using quadratic coeff, and one using windowed indexes

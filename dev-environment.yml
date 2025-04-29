@@ -18,6 +18,8 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - cupy
+  - cudatoolkit
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
