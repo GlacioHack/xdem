@@ -1,5 +1,6 @@
-"""Functions to test the coregistration blockwise classes."""
+"""Tests for the BlockwiseCoreg class."""
 
+# mypy: disable-error-code=no-untyped-def
 from __future__ import annotations
 
 import warnings
@@ -14,154 +15,139 @@ from geoutils.raster import RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
-from xdem import examples
+from xdem.coreg import BlockwiseCoreg, Coreg
 
 
-def load_examples() -> tuple[RasterType, RasterType, Vector]:
-    """Load example files to try coregistration methods with."""
-
-    reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
-    glacier_outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
-
-    # Create a stable ground mask (not glacierized) to mark "inlier data"
-    inlier_mask = ~glacier_outlines.create_mask(reference_dem)
-
-    return reference_dem, to_be_aligned_dem, inlier_mask
+@pytest.fixture(scope="module")  # type: ignore
+def example_data() -> tuple[RasterType, RasterType, Vector]:
+    """Load example DEMs and glacier outlines with inlier mask."""
+    ref_dem = Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    tba_dem = Raster(xdem.examples.get_path("longyearbyen_tba_dem"))
+    outlines = Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    inlier_mask = ~outlines.create_mask(ref_dem)
+    return ref_dem, tba_dem, inlier_mask
 
 
-def coreg_object(path: Path) -> xdem.coreg.BlockwiseCoreg:
-    """
-    Fixture to create a coregistration object
-    """
+@pytest.fixture  # type: ignore
+def step() -> Coreg:
+    return xdem.coreg.NuthKaab(vertical_shift=False)
 
-    mp_config = MultiprocConfig(chunk_size=500, outfile=path / "test.tif")
-    step = xdem.coreg.NuthKaab(vertical_shift=False)
-    coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
 
-    return coreg_obj
+@pytest.fixture  # type: ignore
+def mp_config(tmp_path: Path) -> MultiprocConfig:
+    return MultiprocConfig(chunk_size=500, outfile=tmp_path / "test.tif")
+
+
+@pytest.fixture  # type: ignore
+def blockwise_coreg(step, mp_config) -> BlockwiseCoreg:
+    return xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
 
 
 class TestBlockwiseCoreg:
-    """
-    Class for testing Blockwise coregistration
-    """
+    """Tests for the xdem.coreg.BlockwiseCoreg class."""
 
-    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-
-    def test_init_with_valid_parameters(self, tmp_path: Path) -> None:
-        """
-        Test initialisation of CoregBlockwise class
-        """
-
-        coreg_obj = coreg_object(tmp_path)
-
+    def test_init_with_valid_parameters(self, mp_config, step, tmp_path) -> None:
+        """Test initialization with valid multiprocessing config only."""
+        coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
         assert coreg_obj.block_size == 500
         assert coreg_obj.apply_z_correction is False
         assert coreg_obj.output_path_reproject == tmp_path / "reprojected_dem.tif"
         assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
         assert coreg_obj.meta == {"inputs": {}, "outputs": {}}
 
-    def test_ransac_with_large_data(self, tmp_path: Path) -> None:
+    def test_init_raises_if_both_mp_config_and_parent_path_are_provided(self, mp_config, step, tmp_path) -> None:
+        """Test error is raised when both 'mp_config' and 'parent_path' are set."""
+        with pytest.raises(
+            ValueError, match="Only one of the parameters 'mp_config' or 'parent_path' may be specified."
+        ):
+            xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, parent_path=tmp_path)
 
-        coreg_obj = coreg_object(tmp_path)
+    def test_init_raises_if_neither_mp_config_nor_parent_path_are_provided(self, step) -> None:
+        """Test error is raised when neither 'mp_config' nor 'parent_path' are set."""
+        with pytest.raises(
+            ValueError, match="Exactly one of the parameters 'mp_config' or 'parent_path' must be provided."
+        ):
+            xdem.coreg.BlockwiseCoreg(step=step, mp_config=None, parent_path=None)
 
+    def test_init_success_with_only_mp_config(self, step, mp_config, tmp_path) -> None:
+        """Test successful initialization with only 'mp_config' set."""
+        obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, parent_path=None)
+        assert isinstance(obj, xdem.coreg.BlockwiseCoreg)
+        assert obj.mp_config == mp_config
+        assert obj.parent_path == tmp_path
+
+    def test_init_success_with_only_parent_path(self, step, tmp_path) -> None:
+        """Test successful initialization with only 'parent_path' set."""
+        obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=None, parent_path=tmp_path)
+        assert isinstance(obj, xdem.coreg.BlockwiseCoreg)
+        assert obj.parent_path == tmp_path
+
+    def test_ransac_with_large_data(self, blockwise_coreg) -> None:
+        """Test RANSAC estimates with synthetic data and known coefficients."""
         np.random.seed(0)
-        num_points = 1000
-        x_coords = np.random.rand(num_points) * 100
-        y_coords = np.random.rand(num_points) * 100
-        # add noises
-        shifts = 2 * x_coords + 3 * y_coords + 5 + np.random.randn(num_points) * 0.1
-        a, b, c = coreg_obj._ransac(x_coords, y_coords, shifts)
+        x = np.random.rand(1000) * 100
+        y = np.random.rand(1000) * 100
+        z = 2 * x + 3 * y + 5 + np.random.randn(1000) * 0.1
+
+        a, b, c = blockwise_coreg._ransac(x, y, z)
 
         assert np.isclose(a, 2.0, atol=0.2)
         assert np.isclose(b, 3.0, atol=0.2)
         assert np.isclose(c, 5.0, atol=0.2)
 
-    def test_ransac_with_insufficient_points(self, tmp_path: Path) -> None:
-        """
-        Test ransac function failure and user warning
-        """
-
-        coreg_obj = coreg_object(tmp_path)
-
-        x_coords = np.array([1, 2, 3, 4, 5])
-        y_coords = np.array([1, 2, 3, 4, 5])
-        shifts = np.array([2, 4, 6, 8, 10])
+    def test_ransac_with_insufficient_points(self, blockwise_coreg) -> None:
+        """Test RANSAC raises error when too few points are provided."""
+        x = np.array([1, 2, 3, 4, 5])
+        y = np.array([1, 2, 3, 4, 5])
+        z = np.array([2, 4, 6, 8, 10])
 
         with pytest.raises(ValueError):
-            coreg_obj._ransac(x_coords, y_coords, shifts)
+            blockwise_coreg._ransac(x, y, z)
 
-    def test_wrapper_apply_epc(self, tmp_path: Path) -> None:
-        """
-        test wrapper_apply_epc function
-        """
+    def test_wrapper_apply_epc(self, blockwise_coreg, example_data) -> None:
+        """Test point cloud coefficient application via _wrapper_apply_epc."""
+        _, tba_dem, _ = example_data
+        epc = tba_dem.to_pointcloud(data_column_name="z").ds
+        x, y, z = epc.geometry.x.values, epc.geometry.y.values, epc["z"].values
 
-        coreg_obj = coreg_object(tmp_path)
+        shift_x = x + y + 1
+        shift_y = x + y + 1
+        shift_z = x + y + 1
 
-        _, tba_dem_tile, _ = load_examples()
-
-        # To pointcloud
-        epc = tba_dem_tile.to_pointcloud(data_column_name="z").ds
-        # Unpack coefficients
-        a_x, b_x, d_x = [1, 1, 1]
-        a_y, b_y, d_y = [1, 1, 1]
-        a_z, b_z, d_z = [1, 1, 1]
-
-        # Extract x, y, z from the point cloud
-        x = epc.geometry.x.values
-        y = epc.geometry.y.values
-        z = epc["z"].values
-
-        # Compute modeled shift fields
-        shift_x = a_x * x + b_x * y + d_x
-        shift_y = a_y * x + b_y * y + d_y
-        shift_z = a_z * x + b_z * y + d_z
-
-        # Apply shifts to the coordinates
         x_new = x + shift_x
         y_new = y + shift_y
         z_new = z + shift_z
 
         trans_epc = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(x_new, y_new, crs=epc.crs),
-            data={"z": z_new if True else z},
+            data={"z": z_new},
         )
 
         with warnings.catch_warnings():
-            # CRS mismatch between the CRS of left geometries and the CRS of right geometries.
             warnings.filterwarnings("ignore", category=UserWarning)
-            # To raster
             new_dem = _grid_pointcloud(
                 trans_epc,
-                grid_coords=tba_dem_tile.coords(grid=False),
+                grid_coords=tba_dem.coords(grid=False),
                 data_column_name="z",
             )
 
-        applied_dem_tile_vt = Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
+        expected = Raster.from_array(new_dem, tba_dem.transform, tba_dem.crs, tba_dem.nodata)
+        actual = blockwise_coreg._wrapper_apply_epc(tba_dem, (1, 1, 1), (1, 1, 1), (1, 1, 1))
 
-        applied_dem_tile = coreg_obj._wrapper_apply_epc(tba_dem_tile, (1, 1, 1), (1, 1, 1), (1, 1, 1))
+        assert actual == expected
 
-        assert applied_dem_tile == applied_dem_tile_vt
+    def test_blockwise_coreg_pipeline(self, blockwise_coreg, example_data, tmp_path) -> None:
+        """Test end-to-end blockwise coregistration and validate output."""
+        ref, tba, mask = example_data
 
-    def test_blockwise_coreg(self, tmp_path: Path) -> None:
-        """
-        test blockwise pipeline with Nuth and Kaab coregistration
-        """
-        mp_config = MultiprocConfig(chunk_size=500, outfile=tmp_path / "test.tif")
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(vertical_shift=False), mp_config=mp_config)
+        blockwise_coreg.fit(ref, tba, mask)
+        blockwise_coreg.apply()
 
-        reference_dem, to_be_aligned_dem, inlier_mask = load_examples()
+        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
 
-        blockwise.fit(reference_dem, to_be_aligned_dem, inlier_mask)
-        blockwise.apply()
-
-        aligned_dem = xdem.DEM(tmp_path / "aligned_dem.tif")
-
-        # Ground truth is global coregistration
+        # Ground truth comparison with full image coregistration
         nuth_kaab = xdem.coreg.NuthKaab()
-        aligned_dem_vt = nuth_kaab.fit_and_apply(reference_dem, to_be_aligned_dem, inlier_mask)
+        expected = nuth_kaab.fit_and_apply(ref, tba, mask)
 
-        mask = (aligned_dem_vt.data.data != aligned_dem.nodata) & (aligned_dem.data.data != aligned_dem.nodata)
-
-        assert np.allclose(aligned_dem_vt.data.data[mask], aligned_dem.data.data[mask], atol=50)
+        valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
+        assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=50)

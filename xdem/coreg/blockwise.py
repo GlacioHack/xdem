@@ -55,26 +55,45 @@ class BlockwiseCoreg:
     def __init__(
         self,
         step: Coreg | CoregPipeline,
-        mp_config: MultiprocConfig,
+        mp_config: MultiprocConfig | None,
+        block_size: int = 500,
+        parent_path: str = None,
     ) -> None:
         """
         Instantiate a blockwise processing object for performing coregistration on subdivided DEM tiles.
 
         :param step: An instantiated coregistration method or pipeline to apply on each tile.
         :param mp_config: Configuration object for multiprocessing
+        :param block_size: Size of tiles to process per coregistration step.
+        :param parent_path: Parent path for output files.
         """
+
+        if (mp_config is not None) and (parent_path is not None):
+            raise ValueError("Only one of the parameters 'mp_config' or 'parent_path' may be specified.")
+        if (mp_config is None) and (parent_path is None):
+            raise ValueError("Exactly one of the parameters 'mp_config' or 'parent_path' must be provided.")
+
         if isinstance(step, type):
             raise ValueError(
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
+
         self.procstep = step
-        self.block_size = mp_config.chunk_size
+        self.block_size = block_size
+
         if isinstance(step, NuthKaab):
             self.apply_z_correction = step.vertical_shift  # type: ignore
-        self.mp_config = mp_config
 
-        self.output_path_reproject = Path(mp_config.outfile).parent / "reprojected_dem.tif"
-        self.output_path_aligned = Path(mp_config.outfile).parent / "aligned_dem.tif"
+        if mp_config is not None:
+            self.mp_config = mp_config
+            self.mp_config.chunk_size = block_size
+            self.parent_path = Path(mp_config.outfile).parent
+        else:
+            self.mp_config = MultiprocConfig(chunk_size=self.block_size, outfile="aligned_dem.tif")
+            self.parent_path = Path(parent_path)  # type: ignore
+
+        self.output_path_reproject = self.parent_path / "reprojected_dem.tif"
+        self.output_path_aligned = self.parent_path / "aligned_dem.tif"
 
         self.meta = {"inputs": {}, "outputs": {}}
         self.shape_tiling_grid = (0, 0, 0)
