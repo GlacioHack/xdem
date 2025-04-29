@@ -55,7 +55,7 @@ class BlockwiseCoreg:
     def __init__(
         self,
         step: Coreg | CoregPipeline,
-        mp_config: MultiprocConfig | None,
+        mp_config: MultiprocConfig | None = None,
         block_size: int = 500,
         parent_path: str = None,
     ) -> None:
@@ -295,7 +295,7 @@ class BlockwiseCoreg:
     import math
 
     @staticmethod
-    def is_invalid_coeff(coeff: tuple[float, float, float]) -> bool:
+    def _is_invalid_coeff(coeff: tuple[float, float, float]) -> bool:
         """
         Applies a geometric transformation to a raster using specific coefficients for the X, Y, and Z axes.
         :param coeff: Transformation coefficients  in the form (a, b, c)
@@ -303,7 +303,7 @@ class BlockwiseCoreg:
         """
         return any(math.isnan(c) or math.isinf(abs(c)) for c in coeff[:2])
 
-    def robust_ransac(
+    def _robust_ransac(
         self,
         x_coords: NDArrayf,
         y_coords: NDArrayf,
@@ -329,7 +329,7 @@ class BlockwiseCoreg:
         """
         for _ in range(5):
             coeff = self._ransac(x_coords, y_coords, shifts, threshold, min_inliers, max_iter)  # type: ignore
-            if not self.is_invalid_coeff(coeff):
+            if not self._is_invalid_coeff(coeff):
                 return coeff
         return 0, 0, 0
 
@@ -348,7 +348,7 @@ class BlockwiseCoreg:
         :return: The transformed elevation raster.
         """
 
-        coeff_x = self.robust_ransac(
+        coeff_x = self._robust_ransac(
             self.x_coords,  # type: ignore
             self.y_coords,  # type: ignore
             self.shifts_x,  # type: ignore
@@ -356,7 +356,7 @@ class BlockwiseCoreg:
             min_inliers_ransac,
             max_iterations_ransac,
         )
-        coeff_y = self.robust_ransac(
+        coeff_y = self._robust_ransac(
             self.x_coords,  # type: ignore
             self.y_coords,  # type: ignore
             self.shifts_y,  # type: ignore
@@ -365,7 +365,7 @@ class BlockwiseCoreg:
             max_iterations_ransac,
         )
         if self.apply_z_correction:
-            coeff_z = self.robust_ransac(
+            coeff_z = self._robust_ransac(
                 self.x_coords,  # type: ignore
                 self.y_coords,  # type: ignore
                 self.shifts_z,  # type: ignore
