@@ -379,7 +379,7 @@ class BlockwiseCoreg:
         self.mp_config.outfile = self.output_path_aligned
 
         # be careful with depth value if Out of Memory
-        depth = np.max([np.max(self.shifts_x), np.max(self.shifts_y)])
+        depth = np.max([np.max(abs(self.shifts_x)), np.max(abs(self.shifts_y))])  # type: ignore
 
         aligned_dem = map_overlap_multiproc_save(
             self._wrapper_apply_epc,
