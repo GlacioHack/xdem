@@ -531,8 +531,10 @@ The subdivision corresponds to the chunk_size. The results of each tile coregist
 of the "blockwise" class.
 
 ```{code-cell} ipython3
-print(blockwise.meta)
+blockwise.meta
+```
 
+```{code-cell} ipython3
 # Plot before and after
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before block NK")

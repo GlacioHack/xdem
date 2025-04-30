@@ -24,6 +24,7 @@ from __future__ import annotations
 import itertools
 import logging
 import math
+import os
 import warnings
 from pathlib import Path
 
@@ -91,6 +92,8 @@ class BlockwiseCoreg:
         else:
             self.mp_config = MultiprocConfig(chunk_size=self.block_size, outfile="aligned_dem.tif")
             self.parent_path = Path(parent_path)  # type: ignore
+
+        os.makedirs(self.parent_path, exist_ok=True)
 
         self.output_path_reproject = self.parent_path / "reprojected_dem.tif"
         self.output_path_aligned = self.parent_path / "aligned_dem.tif"
@@ -379,7 +382,7 @@ class BlockwiseCoreg:
         self.mp_config.outfile = self.output_path_aligned
 
         # be careful with depth value if Out of Memory
-        depth = np.max([np.max(abs(self.shifts_x)), np.max(abs(self.shifts_y))])  # type: ignore
+        depth = np.max([np.max(np.abs(self.shifts_x)), np.max(np.abs(self.shifts_y))])
 
         aligned_dem = map_overlap_multiproc_save(
             self._wrapper_apply_epc,
