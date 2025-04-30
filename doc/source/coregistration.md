@@ -513,16 +513,33 @@ In such cases, it may be necessary to process the data in blocks and then aggreg
 A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
-from geoutils.raster.distributed_computing import MultiprocConfig
-mp_config = MultiprocConfig(chunk_size=500, outfile="example.tif")
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
-blockwise.fit(ref_dem, tba_dem)
-blockwise.apply()
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
+                                      block_size=500,
+                                      parent_path="")
+
+blockwise.fit(ref_dem, tba_dem_shifted)
+aligned_dem = blockwise.apply()
+aligned_dem.load()
+```
+```{code-cell} ipython3
+:tags: [remove-cell]
+import os
+os.remove("aligned_dem.tif")
 ```
 
 The subdivision corresponds to the chunk_size. The results of each tile coregistration are saved in the meta parameters
 of the "blockwise" class.
 
 ```{code-cell} ipython3
-print(blockwise.meta)
+blockwise.meta
+```
+
+```{code-cell} ipython3
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before block NK")
+(tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After block NK")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
 ```
