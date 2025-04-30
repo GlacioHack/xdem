@@ -147,7 +147,7 @@ class BlockwiseCoreg:
             ref=reference_elev, multiproc_config=self.mp_config, silent=True
         )
 
-        logging.warning(f"No reprojected DEM returned, but saved at {self.output_path_reproject}")
+        logging.info(f"No reprojected DEM returned, but saved at {self.output_path_reproject}")
 
         self.meta["inputs"] = self.procstep.meta["inputs"]  # type: ignore
 
