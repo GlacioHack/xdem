@@ -146,9 +146,6 @@ def setup(app):
     app.registry.source_suffix.pop(".ipynb", None)
 
 
-# To avoid warning in doc about standard error
-suppress_warnings = ["mystnb.stderr"]
-
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
