@@ -40,7 +40,11 @@ from geoutils.raster.distributed_computing import (
     map_overlap_multiproc_save,
 )
 from geoutils.raster.tiling import compute_tiling
-from sklearn.linear_model import LinearRegression, RANSACRegressor
+
+try:
+    from sklearn.linear_model import LinearRegression, RANSACRegressor
+except ImportError:
+    raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
