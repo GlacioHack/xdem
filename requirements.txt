@@ -17,4 +17,3 @@ pandas
 pyogrio
 shapely
 pip
-pyransac3d

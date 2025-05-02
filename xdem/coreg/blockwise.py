@@ -31,7 +31,6 @@ from pathlib import Path
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import pyransac3d as pyrsc
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import Mask, RasterType
@@ -41,6 +40,7 @@ from geoutils.raster.distributed_computing import (
     map_overlap_multiproc_save,
 )
 from geoutils.raster.tiling import compute_tiling
+from sklearn.linear_model import LinearRegression, RANSACRegressor
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
@@ -208,7 +208,7 @@ class BlockwiseCoreg:
         y_coords: tuple[float, float, float],
         shifts: tuple[float, float, float],
         threshold: float = 0.01,
-        min_inliers: int = 10,
+        min_inliers: int = 5,
         max_iterations: int = 2000,
     ) -> tuple[float, float, float]:
         """
@@ -221,20 +221,26 @@ class BlockwiseCoreg:
         :param threshold: Maximum allowed deviation to consider a point as an inlier.
         :param min_inliers: Minimum number of inliers required to accept a model.
         :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
-        :return: Estimated transformation coefficients (a, b, c) such that shift = a * x + b * y + c.
+        :return: Estimated transformation coefficients (a, b, c) such as shift = a * x + b * y + c.
         """
 
-        # Create 3D point clouds
+        # Assemble input data
         points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
-        points = points[~np.isnan(points).any(axis=1), :]
+        points = points[~np.isnan(points).any(axis=1)]
 
-        plane = pyrsc.Plane()
-        (a, b, c, d), _ = plane.fit(points, thresh=threshold, minPoints=min_inliers, maxIteration=max_iterations)
+        if len(points) < min_inliers:
+            raise ValueError(f"Not enough valid points in RANSAC: got {len(points)}, need at least {min_inliers}")
 
-        # Convert plane ax + by + cz + d = 0 to z = f(x, y)
-        # z = -(a*x + b*y + d) / c
+        X = points[:, :2]  # x and y
+        y = points[:, 2]  # shifts
 
-        return -a / c, -b / c, -d / c
+        ransac = RANSACRegressor(estimator=LinearRegression(), residual_threshold=threshold, max_trials=max_iterations)
+        ransac.fit(X, y)
+
+        a, b = ransac.estimator_.coef_
+        c = ransac.estimator_.intercept_
+
+        return a, b, c
 
     def _wrapper_apply_epc(
         self,
@@ -295,51 +301,10 @@ class BlockwiseCoreg:
         applied_dem_tile = gu.Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
         return applied_dem_tile
 
-    import math
-
-    @staticmethod
-    def _is_invalid_coeff(coeff: tuple[float, float, float]) -> bool:
-        """
-        Applies a geometric transformation to a raster using specific coefficients for the X, Y, and Z axes.
-        :param coeff: Transformation coefficients  in the form (a, b, c)
-        :return: True if the coefficients are invalid, False otherwise
-        """
-        return any(math.isnan(c) or math.isinf(abs(c)) for c in coeff[:2])
-
-    def _robust_ransac(
-        self,
-        x_coords: NDArrayf,
-        y_coords: NDArrayf,
-        shifts: NDArrayf,
-        threshold: float,
-        min_inliers: int,
-        max_iter: int,
-    ) -> tuple[float, float, float] | tuple[int, int, int]:
-        """
-        Perform multiple RANSAC attempts to robustly estimate transformation coefficients.
-
-        This method runs the RANSAC algorithm multiple times (up to 5) and returns
-        the first valid set of coefficients found. If no valid result is obtained,
-        a default (0, 0, 0) is returned.
-
-        :param x_coords: 1D array of x coordinates.
-        :param y_coords: 1D array of y coordinates.
-        :param shifts: 1D array of observed shifts at each (x, y) location.
-        :param threshold: Maximum distance to consider a point as an inlier.
-        :param min_inliers: Minimum number of inliers required to accept a model.
-        :param max_iter: Maximum number of RANSAC iterations per attempt.
-        :return: Tuple of transformation coefficients (a, b, c).
-        """
-        for _ in range(5):
-            coeff = self._ransac(x_coords, y_coords, shifts, threshold, min_inliers, max_iter)  # type: ignore
-            if not self._is_invalid_coeff(coeff):
-                return coeff
-        return 0, 0, 0
-
     def apply(
         self,
         threshold_ransac: float = 0.01,
-        min_inliers_ransac: int = 10,
+        min_inliers_ransac: int = 5,
         max_iterations_ransac: int = 2000,
     ) -> RasterType:
         """
@@ -351,7 +316,7 @@ class BlockwiseCoreg:
         :return: The transformed elevation raster.
         """
 
-        coeff_x = self._robust_ransac(
+        coeff_x = self._ransac(
             self.x_coords,  # type: ignore
             self.y_coords,  # type: ignore
             self.shifts_x,  # type: ignore
@@ -359,7 +324,7 @@ class BlockwiseCoreg:
             min_inliers_ransac,
             max_iterations_ransac,
         )
-        coeff_y = self._robust_ransac(
+        coeff_y = self._ransac(
             self.x_coords,  # type: ignore
             self.y_coords,  # type: ignore
             self.shifts_y,  # type: ignore
@@ -368,7 +333,7 @@ class BlockwiseCoreg:
             max_iterations_ransac,
         )
         if self.apply_z_correction:
-            coeff_z = self._robust_ransac(
+            coeff_z = self._ransac(
                 self.x_coords,  # type: ignore
                 self.y_coords,  # type: ignore
                 self.shifts_z,  # type: ignore
@@ -382,7 +347,7 @@ class BlockwiseCoreg:
         self.mp_config.outfile = self.output_path_aligned
 
         # be careful with depth value if Out of Memory
-        depth = np.max([np.max(np.abs(self.shifts_x)), np.max(np.abs(self.shifts_y))])
+        depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
 
         aligned_dem = map_overlap_multiproc_save(
             self._wrapper_apply_epc,
