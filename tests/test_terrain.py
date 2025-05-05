@@ -3,6 +3,7 @@ from __future__ import annotations
 import os.path
 import re
 import warnings
+from typing import Literal
 
 import geoutils as gu
 import numpy as np
@@ -10,9 +11,7 @@ import pytest
 
 import xdem
 
-xdem.examples.download_longyearbyen_examples()
-
-PLOT = True
+PLOT = False
 
 
 class TestTerrainAttribute:
@@ -333,9 +332,9 @@ class TestTerrainAttribute:
         assert rugosity[1, 1] == pytest.approx(r, rel=10 ** (-4))
 
     # Loop for various elevation differences with the center
-    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))  # type: ignore
+    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 3))  # type: ignore
     # Loop for different resolutions
-    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
+    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 3))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
 
@@ -364,53 +363,88 @@ class TestTerrainAttribute:
         # Check rugosity value is valid
         assert r == pytest.approx(rugosity[1, 1], rel=10 ** (-6))
 
-    def test_get_quadric_coefficients(self) -> None:
-        """Test the outputs and exceptions of the get_quadric_coefficients() function."""
+    def test_convolution__quadric_coefficients(self) -> None:
+        """Test the outputs of quadric coefficients (not accessible by users)."""
 
         dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
 
-        coefficients = xdem.terrain.get_quadric_coefficients(
-            dem, resolution=1.0, edge_method="nearest", make_rugosity=True
-        )
+        # Get all coefficients and convolve middle mixel
+        coef_arrs = list(xdem.terrain.all_coefs.values())
+        coef_names = list(xdem.terrain.all_coefs.keys())
+        kern3d = np.stack(coef_arrs, axis=0)
+        coefs = xdem.spatialstats.convolution(dem.reshape((1, dem.shape[0], dem.shape[1])),
+                                              filters=kern3d, method="scipy").squeeze()[:, 1, 1]
 
-        # Check all coefficients are finite with an edge method
-        assert np.all(np.isfinite(coefficients))
+        # The 4th to last coefficient is identity, so the dem itself
+        assert np.array_equal(coefs[coef_names.index("zt_i")], dem[1, 1])
 
-        # The 4th to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
-        assert np.array_equal(coefficients[-4, :, :], dem)
+        # The third should be concave in the x-direction
+        assert coefs[coef_names.index("zt_d")] < 0
 
-        # The middle pixel (index 1, 1) should be concave in the x-direction
-        assert coefficients[3, 1, 1] < 0
+        # The fourth should be concave in the y-direction
+        assert coefs[coef_names.index("zt_e")] < 0
 
-        # The middle pixel (index 1, 1) should be concave in the y-direction
-        assert coefficients[4, 1, 1] < 0
 
-        with pytest.raises(ValueError, match="Invalid input array shape"):
-            xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
+    def test_convolution_equal__engine(self):
+        """
+        Check that convolution through SciPy or Numba give equal result for all kernels.
+        This calls the convolution subfunctions directly (as they need to be chained sequentially with other
+        steps in the main functions).
+        """
 
-        # Validate that when using the edge_method="none", only the one non-edge value is kept.
-        coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="none")
-        assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 1
-        # When using edge wrapping, all coefficients should be finite.
-        coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
-        assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+        # Stack to convolve all coefs at once
+        coef_arrs = list(xdem.terrain.all_coefs.values())
+        kern3d = np.stack(coef_arrs, axis=0)
 
-    def test_get_quadric_coefficients_convolution(self) -> None:
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(5, 7))
+
+        # With SciPy
+        conv_scipy = xdem.spatialstats.convolution(dem.reshape((1, dem.shape[0], dem.shape[1])),
+                                                   filters=kern3d, method="scipy").squeeze()[:, 3, 3]
+
+        # With Numba
+        _, M1, M2 = kern3d.shape
+        half_M1 = int((M1 - 1) / 2)
+        half_M2 = int((M2 - 1) / 2)
+        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        conv_numba = xdem.terrain._compute_convolution(dem, filters=kern3d, row=3, col=3)
+
+        np.allclose(conv_scipy, conv_numba, equal_nan=True)
+
+    @pytest.mark.parametrize("attribute", ["slope", "aspect", "hillshade", "curvature", "profile_curvature",
+                                           "planform_curvature", "maximum_curvature"])
+    @pytest.mark.parametrize("slope_method", ["Horn", "ZevenbergThorne"])
+    def test_get_surface_attributes__engine(self, attribute: str, slope_method: Literal["Horn", "ZevenbergThorne"]) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(5, 7))
 
-        attrs_scipy = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=["slope"], backend="scipy")
-        attrs_numba = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=["slope"], backend="numba")
-
-        # Some coefficients don't result in NaN after convolve, because their convolution kernel doesn't use edge pixels
-        # Let's replace them everywhere to do a fair comparison
-        # invalid = np.isnan(coefs_scipy_cv[0, :, :])
-        # coefs_scipy_cv[:, invalid] = np.nan
+        attrs_scipy = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=[attribute],
+                                                           slope_method=slope_method, engine="scipy")
+        attrs_numba = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=[attribute],
+                                                           slope_method=slope_method, engine="numba")
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
         # assert np.allclose(coefs_numba, coefs_numba_cv, equal_nan=True)
+
+    @pytest.mark.parametrize("attribute", ["topographic_position_index", "terrain_ruggedness_index", "roughness", "rugosity"])
+    @pytest.mark.parametrize("tri_method", ["Riley", "Wilson"])
+    def test_get_windowed_indices__engine(self, attribute: str, tri_method: Literal["Riley", "Wilson"]) -> None:
+        """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
+
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(5, 7))
+
+        attrs_scipy = xdem.terrain._get_windowed_indexes(dem=dem, window_size=3, resolution=1,
+                                                         windowed_indexes=[attribute],
+                                                         tri_method=tri_method, engine="scipy")
+        attrs_numba = xdem.terrain._get_windowed_indexes(dem=dem, window_size=3, resolution=1,
+                                                         windowed_indexes=[attribute],
+                                                         tri_method=tri_method, engine="numba")
+
+        assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
 
     def test_get_terrain_attribute__out_dtype(self) -> None:

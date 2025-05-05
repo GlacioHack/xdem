@@ -22,8 +22,11 @@ from __future__ import annotations
 import warnings
 from typing import Sized, overload, Literal
 
+import scipy.ndimage
+
 import geoutils as gu
 import numba
+from scipy.ndimage import generic_filter
 import numpy as np
 from geoutils.raster import Raster, RasterType
 
@@ -47,7 +50,7 @@ available_attributes = [
 
 
 # Store coefficient of fixed window-size attributes outside functions
-# to allow re-use with several backends (Numba, SciPy, Cuda)
+# to allow re-use with several engines (Numba, SciPy, Cuda)
 
 #############################################################
 # Zevenberg and Thorne (1987) coefficients, Equations 3 to 11
@@ -248,7 +251,7 @@ def _make_attribute_from_coefs(
 
     if make_slope:
 
-        slope_idx = 0
+        slope_idx = idx_attrs[0]
 
         if slope_method_id == 0:
 
@@ -257,7 +260,7 @@ def _make_attribute_from_coefs(
 
             # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
             # http://dx.doi.org/10.1109/PROC.1981.11918.
-            attrs[slope_idx] = np.arctan((C[h1_idx] ** 2 + C[h2_idx] ** 2) ** 0.5)
+            slope = np.arctan((C[h1_idx] ** 2 + C[h2_idx] ** 2) ** 0.5)
 
         elif slope_method_id == 1:
 
@@ -267,7 +270,12 @@ def _make_attribute_from_coefs(
             # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
             # http://dx.doi.org/10.1002/esp.3290120107.
             # SLOPE = ARCTAN((G²+H²)**(1/2))
-            attrs[slope_idx] = np.arctan(C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2) ** 0.5
+            slope = np.arctan(C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2) ** 0.5
+
+        # In case slope is only derived for hillshade
+        if slope_idx != 99:
+            attrs[slope_idx] = slope
+
 
     if make_aspect:
 
@@ -275,15 +283,13 @@ def _make_attribute_from_coefs(
 
         # ASPECT = ARCTAN(-H/-G)  # This did not work
         # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
-        # with warnings.catch_warnings():
-        #     warnings.filterwarnings("ignore", "invalid value encountered in remainder")
         if slope_method_id == 0:
 
             h1_idx = idx_coefs[9]
             h2_idx = idx_coefs[10]
 
             # This uses the estimates from Horn (1981).
-            attrs[aspect_idx] = (-np.arctan2(-C[h1_idx], C[h2_idx]) - np.pi) % (2 * np.pi)
+            aspect = (-np.arctan2(-C[h1_idx], C[h2_idx]) - np.pi) % (2 * np.pi)
 
         elif slope_method_id == 1:
 
@@ -291,41 +297,31 @@ def _make_attribute_from_coefs(
             zt_h_idx = idx_coefs[7]
 
             # This uses the estimate from Zevenbergen and Thorne (1987).
-            attrs[aspect_idx] = (np.arctan2(-C[zt_g_idx], C[zt_h_idx]) + np.pi / 2) % (2 * np.pi)
+            aspect = (np.arctan2(-C[zt_g_idx], C[zt_h_idx]) + np.pi / 2) % (2 * np.pi)
+
+        # In case aspect is only derived for hillshade
+        if aspect_idx != 99:
+            attrs[aspect_idx] = aspect
 
     if make_hillshade:
 
-        slope_idx = idx_attrs[0]
-        aspect_idx = idx_attrs[1]
         hs_idx = idx_attrs[2]
 
         # If a different z-factor was given, slopemap with exaggerated gradients.
         if hillshade_z_factor != 1.0:
-            slopemap = np.arctan(np.tan(attrs[slope_idx]) * hillshade_z_factor)
+            slopemap = np.arctan(np.tan(slope) * hillshade_z_factor)
         else:
-            slopemap = attrs[slope_idx]
+            slopemap = slope
 
         azimuth_rad = np.deg2rad(360 - hillshade_azimuth)
         altitude_rad = np.deg2rad(hillshade_altitude)
 
         # The operation below yielded the closest hillshade to GDAL (multiplying by 255 did not work)
         # As 0 is generally no data for this uint8, we add 1 and then 0.5 for the rounding to occur between 1 and 255
-
-        # output[hs_idx] = np.clip(
-        #     1.5
-        #     + 254
-        #     * (
-        #             np.sin(altitude_rad) * np.cos(slopemap)
-        #             + np.cos(altitude_rad) * np.sin(slopemap) * np.sin(azimuth_rad - output[aspect_idx])
-        #     ),
-        #     0,
-        #     255,
-        # )
-
         attrs[hs_idx] = \
             1.5 + 254 * (
                     np.sin(altitude_rad) * np.cos(slopemap)
-                    + np.cos(altitude_rad) * np.sin(slopemap) * np.sin(azimuth_rad - attrs[aspect_idx])
+                    + np.cos(altitude_rad) * np.sin(slopemap) * np.sin(azimuth_rad - aspect)
             )
 
     if make_curvature:
@@ -340,7 +336,6 @@ def _make_attribute_from_coefs(
         attrs[curv_idx] = (-2.0 * (C[zt_d_idx] + C[zt_e_idx]) * 100)
 
     if make_planform_curvature:
-        # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
 
         plancurv_idx = idx_attrs[4]
         zt_d_idx = idx_coefs[3]
@@ -349,23 +344,26 @@ def _make_attribute_from_coefs(
         zt_g_idx = idx_coefs[6]
         zt_h_idx = idx_coefs[7]
 
-        # with warnings.catch_warnings():
-        #     warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-        plancurv_arr = (
-                -2
-                * (
-                        C[zt_d_idx] * C[zt_h_idx] ** 2
-                        + C[zt_e_idx] * C[zt_g_idx] ** 2
-                        - C[zt_f_idx]
-                        * C[zt_g_idx]
-                        * C[zt_h_idx]
-                )
-                / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
-                * 100
+        # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        plancurv = np.where(
+            C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
+            np.array([0.]),
+            -2
+            * (
+                    C[zt_d_idx] * C[zt_h_idx] ** 2
+                    + C[zt_e_idx] * C[zt_g_idx] ** 2
+                    - C[zt_f_idx]
+                    * C[zt_g_idx]
+                    * C[zt_h_idx]
+            )
+            / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
+            * 100
         )
-        # Completely flat surfaces trigger the warning above. These need to be set to zero
-        # plancurv_arr[C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0] = 0.0
-        attrs[plancurv_idx] = plancurv_arr
+
+        # In case plan curv is only derived for max curv
+        if plancurv_idx != 99:
+            attrs[plancurv_idx] = plancurv
 
     if make_profile_curvature:
 
@@ -377,60 +375,306 @@ def _make_attribute_from_coefs(
         zt_h_idx = idx_coefs[7]
 
         # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
-        # with warnings.catch_warnings():
-        #     warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-        profcurv_arr = (
-                2
-                * (
-                        C[zt_d_idx] * C[zt_g_idx] ** 2
-                        + C[zt_e_idx] * C[zt_h_idx] ** 2
-                        + C[zt_f_idx]
-                        * C[zt_g_idx]
-                        * C[zt_h_idx]
-                )
-                / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
-                * 100
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        profcurv = np.where(
+            C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
+            np.array([0.]),
+            2
+            * (
+                    C[zt_d_idx] * C[zt_g_idx] ** 2
+                    + C[zt_e_idx] * C[zt_h_idx] ** 2
+                    + C[zt_f_idx]
+                    * C[zt_g_idx]
+                    * C[zt_h_idx]
+            )
+            / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
+            * 100
         )
 
-        # Completely flat surfaces trigger the warning above. These need to be set to zero
-        # profcurv_arr[C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0] = 0.0
-        attrs[profcurv_idx] = profcurv_arr
+
+        # In case profile curv is only derived for max curv
+        if profcurv_idx != 99:
+            attrs[profcurv_idx] = profcurv
 
     if make_maximum_curvature:
 
-        profcurv_idx = idx_attrs[5]
-        plancurv_idx = idx_attrs[4]
         maxcurv_idx = idx_attrs[6]
 
-        minc = np.minimum(attrs[plancurv_idx], attrs[profcurv_idx])
-        maxc = np.maximum(attrs[plancurv_idx], attrs[profcurv_idx])
+        minc = np.minimum(plancurv, profcurv)
+        maxc = np.maximum(plancurv, profcurv)
         attrs[maxcurv_idx] = np.where(np.abs(minc) > maxc, minc, maxc)
 
     return attrs
 
 
-@numba.njit
-def _compute_convolution(dem_block: NDArrayf, filters: NDArrayf, out_dtype: DTypeLike = np.float32):
+@numba.njit(inline="always")
+def _compute_convolution(dem: NDArrayf, filters: NDArrayf, row: int,  col: int, out_dtype: DTypeLike = np.float32):
 
-    M1, M2, n_M = filters
+    n_M, M1, M2 = filters.shape
 
-    coefs = np.empty((n_M,), dtype=out_dtype)
-
+    # Compute coefficients from convolution
+    coefs = np.zeros((n_M,), dtype=out_dtype)
     for m1 in range(M1):
         for m2 in range(M2):
             for ff in range(n_M):
-                imgval = dem_block[m1, m2]
-                filterval = filters[ff, m1, m2]
+                imgval = dem[row + m1, col + m2]
+                filterval = filters[ff, -(m1+1), -(m2+1)]
                 coefs[ff] += imgval * filterval
 
     return coefs
 
-@numba.njit
-def _compute_rugosity(dem_block: NDArrayf, resolution: float, out_dtype: DTypeLike):
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
+_make_attribute_from_coefs_numba = numba.njit(inline="always")(_make_attribute_from_coefs)
+
+@numba.njit(parallel=True)  # type: ignore
+def _get_surface_attributes_numba(
+    dem: NDArrayf,
+    filters: NDArrayf,
+    make_attrs: list[bool],
+    idx_coefs: list[int],
+    idx_attrs: list[int],
+    attrs_size: int,
+    out_dtype: DTypeLike,
+    slope_method_id: int = 0,
+) -> NDArrayf:
+    """
+    Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
+
+    See the xdem.terrain.get_quadric_coefficients() docstring for more info.
+    """
+
+    # Get input shapes
+    N1, N2 = dem.shape
+    n_M, M1, M2 = filters.shape
+
+    # Define ranges to loop through given padding
+    row_range = N1 - M1 + 1
+    col_range = N2 - M2 + 1
+
+    # Allocate output array
+    outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
+
+    # Loop over every pixel concurrently by using prange
+    for row in numba.prange(row_range):
+        for col in numba.prange(col_range):
+
+            # Compute coefficients from convolution
+            coefs = np.zeros((n_M,), dtype=out_dtype)
+            for m1 in range(M1):
+                for m2 in range(M2):
+                    for ff in range(n_M):
+                        imgval = dem[row + m1, col + m2]
+                        filterval = filters[ff, -(m1+1), -(m2+1)]
+                        coefs[ff] += imgval * filterval
+
+
+            # Synthesize coefficients into attributes
+            attrs = _make_attribute_from_coefs_numba(coef_arrs=coefs,
+                                                     make_attrs=make_attrs,
+                                                     idx_coefs=idx_coefs,
+                                                     idx_attrs=idx_attrs,
+                                                     out_size=(attrs_size, 1),
+                                                     slope_method_id=slope_method_id,
+                                                     out_dtype=out_dtype)
+
+            # Save output for this pixel
+            outputs[:, row, col] = attrs
+
+    return outputs
+
+def _get_surface_attributes_scipy(dem: NDArrayf, filters: NDArrayf, make_attrs: list[bool], idx_coefs: list[int],
+                                  idx_attrs: list[int], slope_method_id: int, attrs_size: int,
+                                  out_dtype: DTypeLike = np.float32):
+
+    # Perform convolution and squeeze output into 3D array
+    from xdem.spatialstats import convolution
+    coefs = convolution(imgs=dem.reshape((1, dem.shape[0], dem.shape[1])), filters=filters, method="scipy").squeeze()
+
+    # Convert coefficients to attributes
+    out_size = (attrs_size, dem.shape[0], dem.shape[1])
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "invalid value encountered in remainder")
+        attrs = _make_attribute_from_coefs(coef_arrs=coefs, make_attrs=make_attrs, idx_coefs=idx_coefs, idx_attrs=idx_attrs,
+                                           out_size=out_size, slope_method_id=slope_method_id, out_dtype=out_dtype)
+
+    return attrs
+
+
+def _get_surface_attributes(dem: NDArrayf,
+                            resolution: float,
+                            surface_attributes: list[str],
+                            out_dtype: DTypeLike = np.float32,
+                            slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+                            engine: Literal["scipy", "numba"] = "scipy") -> NDArrayf:
+    """
+    Get surface attributes based on fit coefficients (quadric, quintic, etc) using SciPy or Numba convolution and
+    reducer functions.
+
+    Includes:
+
+    - Slope, aspect and hillshade from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918, page 18 bottom left equations
+        computed on a 3x3 window.
+    - Slope, aspect, hillshade and curvatures from Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107 also computed
+        on a 3x3 window.
+
+    :param dem: Input DEM as 2D array.
+    :param resolution: Resolution of the DEM (X and Y length are equal).
+    :param surface_attributes: Names of surface attributes to compute.
+    :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
+        input DEM if floating type or to float32 if integer type.
+    :param slope_method: Method for the slope, aspect and hillshade ("Horn" or "ZevenbergThorne").
+    :param engine: Engine to compute the surface attributes ("scipy" or "numba").
+    """
+
+    # Get list of necessary coefficients depending on method and resolution
+    coef_arrs, idx_coefs, \
+        idx_attrs, make_attrs, attrs_size = _determine_required_surface_coefs(surface_attributes=surface_attributes,
+                                                                              resolution=resolution,
+                                                                              slope_method=slope_method)
+
+    # Stack coefficients into a 3D convolution kernel along the first axis
+    kern3d = np.stack(coef_arrs, axis=0)
+
+    # Map slope method to integer ID to improve efficiency in Numba loop
+    slope_method_id = 0 if slope_method.lower() == "horn" else 1
+
+    # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
+    # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
+    if engine == "scipy":
+        output = _get_surface_attributes_scipy(dem=dem, filters=kern3d, idx_coefs=idx_coefs, idx_attrs=idx_attrs,
+                                               make_attrs=make_attrs, slope_method_id=slope_method_id,
+                                               attrs_size=attrs_size, out_dtype=out_dtype, )
+    elif engine == "numba":
+        _, M1, M2 = kern3d.shape
+        half_M1 = int((M1 - 1) / 2)
+        half_M2 = int((M2 - 1) / 2)
+        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        output = _get_surface_attributes_numba(dem=dem, filters=kern3d, make_attrs=make_attrs, idx_coefs=idx_coefs,
+                                               idx_attrs=idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
+                                               slope_method_id=slope_method_id)
+
+    return output
+
+
+def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int], list[bool], int]:
+    """
+    Determine list of surface coefficients that need to be derived given input attributes, and map ordered indexes
+    to be used to derive them through SciPy or Numba loop efficiently. (to minimize memory and CPU usage)
+
+    Returns list of indexes to map attributes and the size of the output attribute array.
+    """
+
+    # Step 2: Derive ordered indexes for attributes/coefs outside of SciPy/Numba processing for speed
+
+    # Define booleans for generating attributes
+    make_tpi = "topographic_position_index" in windowed_indexes
+    make_tri = "terrain_ruggedness_index" in windowed_indexes
+    make_roughness = "roughness" in windowed_indexes
+    make_rugosity = "rugosity" in windowed_indexes
+    make_fractal_roughness = "fractal_roughness" in windowed_indexes
+
+    make_attrs = [make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness]
+
+    # Map index of attributes and coefficients to defined order
+    order_attrs = ["topographic_position_index", "terrain_ruggedness_index", "roughness", "rugosity", "fractal_roughness"]
+    idx_attrs = [windowed_indexes.index(oa) if oa in windowed_indexes else 99 for oa in order_attrs]
+
+    # Because of the above indexes, we don't store the length of the output attributes anymore
+    attrs_size = len(windowed_indexes)
+
+    return idx_attrs, make_attrs, attrs_size
+
+def _tri_riley_func(arr: NDArrayf) -> float:
+    """
+    Terrain Ruggedness Index from Riley et al. (1999). Squareroot of squared sum of differences between center and
+    neighbouring pixels.
+    """
+    mid_ind = int(arr.shape[0] / 2)
+    diff = np.abs(arr - arr[mid_ind])
+    return np.sqrt(np.sum(diff ** 2))
+
+def _tri_wilson_func(arr: NDArrayf, window_size: int) -> float:
+    """Terrain Ruggedness Index from Wilson et al. (2007): mean difference between center and neighbouring pixels."""
+    mid_ind = int(arr.shape[0] / 2)
+    diff = np.abs(arr - arr[mid_ind])
+    return np.sum(diff) / (window_size ** 2 - 1)
+
+def _tpi_func(arr: NDArrayf, window_size: int) -> float:
+    """Topographic Position Index from Weiss (2001): difference between center and mean of neighbouring pixels."""
+    mid_ind = int(arr.shape[0] / 2)
+    return arr[mid_ind] - (np.sum(arr) - arr[mid_ind]) / (window_size ** 2 - 1)
+
+def _roughness_func(arr: NDArrayf) -> float:
+    """Roughness from Dartnell (2000): difference between maximum and minimum of the window."""
+    return np.max(arr) - np.min(arr)
+
+def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32) -> float:
+    """Fractal roughness according to the box-counting method of Taud and Parrot (2005)."""
+
+    # First, we compute the number of voxels for each pixel of Equation 4
+    mid_ind = int(arr.shape[0] / 2)
+    hw = int(np.floor(window_size / 2))
+    mid_val = arr[mid_ind]
+
+    count = 0
+    V = np.empty((window_size, window_size), dtype=out_dtype)
+    for j in range(window_size):
+        for k in range(window_size):
+            T = arr[window_size*j + k] - mid_val
+            # The following is the equivalent of np.clip, written like this for numba
+            if T < 0:
+                V[j, k] = 0
+            elif T > window_size:
+                V[j, k] = window_size
+            else:
+                V[j, k] = T
+            count += 1
+
+    # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window
+    # size, following Equation 5
+
+    # Get all the divisors of the half window size
+    list_box_sizes = []
+    for j in range(1, hw + 1):
+        if hw % j == 0:
+            list_box_sizes.append(j)
+
+    Ns = np.empty((len(list_box_sizes),), dtype=out_dtype)
+    for l0 in range(0, len(list_box_sizes)):
+        # We loop over boxes of size q x q in the cube
+        q = list_box_sizes[l0]
+        sumNs = 0
+        for j in range(0, int((window_size - 1) / q)):
+            for k in range(0, int((window_size - 1) / q)):
+                sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
+        Ns[l0] = sumNs / q
+
+    # Finally, we calculate the slope of the logarithm of Ns with q
+    # We do the linear regression manually, as np.polyfit is not supported by numba
+    x = np.log(np.array(list_box_sizes))
+    y = np.log(Ns)
+    # The number of observations
+    n = len(x)
+    # Mean of x and y vector
+    m_x = np.mean(x)
+    m_y = np.mean(y)
+    # Cross-deviation and deviation about x
+    SS_xy = np.sum(y * x) - n * m_y * m_x
+    SS_xx = np.sum(x * x) - n * m_x * m_x
+    # Calculating slope
+    b_1 = SS_xy / SS_xx
+
+    # The fractal dimension D is the opposite of the slope
+    D = -b_1
+
+    return D
+
+def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32):
     """Rugosity from Jenness (2004): difference between real surface area and planimetric surface area"""
 
-    # Work only on a 3x3 block
-    Z = dem_block
+    # Works only on a 3x3 block
+    Z = arr
     L = resolution
 
     # Rugosity is computed on a 3x3 window like the quadratic coefficients, see Jenness (2004) for details
@@ -477,26 +721,26 @@ def _compute_rugosity(dem_block: NDArrayf, resolution: float, out_dtype: DTypeLi
     # pixels and 1 segment between surrounding pixels; pixel 4 is the center
     # above 4 the index of center-surrounding segment decrease by 1, as the center pixel was skipped
     # Triangle 1: pixels 3 and 0
-    T1 = [hsl[3], hsl[0], hsl[12]]
+    T1 = (hsl[3], hsl[0], hsl[12])
     # Triangle 2: pixels 0 and 1
-    T2 = [hsl[0], hsl[1], hsl[8]]
+    T2 = (hsl[0], hsl[1], hsl[8])
     # Triangle 3: pixels 1 and 2
-    T3 = [hsl[1], hsl[2], hsl[9]]
+    T3 = (hsl[1], hsl[2], hsl[9])
     # Triangle 4: pixels 2 and 5
-    T4 = [hsl[2], hsl[4], hsl[14]]
+    T4 = (hsl[2], hsl[4], hsl[14])
     # Triangle 5: pixels 5 and 8
-    T5 = [hsl[4], hsl[7], hsl[15]]
+    T5 = (hsl[4], hsl[7], hsl[15])
     # Triangle 6: pixels 8 and 7
-    T6 = [hsl[7], hsl[6], hsl[11]]
+    T6 = (hsl[7], hsl[6], hsl[11])
     # Triangle 7: pixels 7 and 6
-    T7 = [hsl[6], hsl[5], hsl[10]]
+    T7 = (hsl[6], hsl[5], hsl[10])
     # Triangle 8: pixels 6 and 3
-    T8 = [hsl[5], hsl[3], hsl[13]]
+    T8 = (hsl[5], hsl[3], hsl[13])
 
     list_T = [T1, T2, T3, T4, T5, T6, T7, T8]
 
     # Finally, we compute the 3D surface areas of the 8 triangles
-    A = np.empty((8,))
+    A = np.empty((8,), dtype=out_dtype)
     count = 0
     for T in list_T:
         # Half sum of lengths
@@ -509,315 +753,63 @@ def _compute_rugosity(dem_block: NDArrayf, resolution: float, out_dtype: DTypeLi
 
     return rug
 
+_tpi_func_numba = numba.njit(inline="always")(_tpi_func)
+_tri_riley_func_numba = numba.njit(inline="always")(_tri_riley_func)
+_tri_wilson_func_numba = numba.njit(inline="always")(_tri_wilson_func)
+_roughness_func_numba = numba.njit(inline="always")(_roughness_func)
+_rugosity_func_numba = numba.njit(inline="always")(_rugosity_func)
+# _fractal_roughness_func_numba = numba.njit(inline="always")(_fractal_roughness_func)
 
-# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
-# We lose speed-up by a factor of ~5 without it
-_make_attribute_from_coefs_numba = numba.njit(inline="always")(_make_attribute_from_coefs)
+@numba.njit(inline="always")
+def _make_windowed_indexes(dem_window: NDArrayf,  window_size: int, resolution: float, make_attrs, idx_attrs, tri_method_id: int, out_size, out_dtype):
 
-@numba.njit(parallel=True)  # type: ignore
-def _get_surface_attributes_numba(
-    dem: NDArrayf,
-    filters: NDArrayf,
-    make_attrs: list[bool],
-    idx_coefs: list[int],
-    idx_attrs: list[int],
-    attrs_size: int,
-    out_dtype: DTypeLike,
-    fill_method: str = "none",
-    edge_method: str = "none",
-    slope_method_id: int = 0,
-) -> NDArrayf:
-    """
-    Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
+    attrs = np.full(out_size, fill_value=np.nan, dtype=out_dtype)
 
-    See the xdem.terrain.get_quadric_coefficients() docstring for more info.
-    """
+    make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = make_attrs
 
-    # Convert the string to a number (fewer bytes to compare each iteration)
-    # if fill_method == "median":
-    #     fill_method_n = numba.uint8(0)
-    # elif fill_method == "mean":
-    #     fill_method_n = numba.uint8(1)
-    # elif fill_method == "none":
-    #     fill_method_n = numba.uint8(2)
+    # Topographic position index
+    if make_tpi:
+
+        tpi_idx = idx_attrs[0]
+        attrs[tpi_idx] = _tpi_func_numba(dem_window, window_size=window_size)
+
+    if make_tri:
+
+        tri_idx = idx_attrs[1]
+        if tri_method_id == 0:
+            attrs[tri_idx] = _tri_riley_func_numba(dem_window)
+
+        elif tri_method_id == 1:
+            attrs[tri_idx] = _tri_wilson_func_numba(dem_window, window_size=window_size)
+
+    if make_roughness:
+
+        roughness_idx = idx_attrs[2]
+        attrs[roughness_idx] = _roughness_func_numba(dem_window)
+
+    if make_rugosity:
+
+        rugosity_idx = idx_attrs[3]
+        attrs[rugosity_idx] = _rugosity_func_numba(dem_window, resolution=resolution, out_dtype=out_dtype)
+
+    # if make_fractal_roughness:
     #
-    # if edge_method == "nearest":
-    #     edge_method_n = numba.uint8(0)
-    # elif edge_method == "wrap":
-    #     edge_method_n = numba.uint8(1)
-    # elif edge_method == "none":
-    #     edge_method_n = numba.uint8(2)
-
-    # Shapes
-    N1, N2 = dem.shape
-    n_M, M1, M2 = filters.shape
-
-    # Range
-    row_range = N1 - M1 + 1
-    col_range = N2 - M2 + 1
-
-    # Allocate the output.
-    outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
-
-    # Loop over every pixel concurrently by using prange.
-    # for i in numba.prange(row_range * col_range):
-    #
-    #     # Derive its associated row and column index.
-    #     col = i % col_range
-    #     row = int(i / col_range)
-
-    # Extract the pixel and its 8 immediate neighbours.
-    # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
-    # Z = np.empty((9,), dtype=out_dtype)
-    # count = 0
-    #
-    # # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
-    # if edge_method_n == 2:
-    #     if (row < 1) or (row > (dem.shape[0] - 2)) or (col < 1) or (col > (dem.shape[1] - 2)):
-    #         continue
-    #
-    # for j in range(-1, 2):
-    #     for k in range(-1, 2):
-    #         # Here the "nearest" edge_method is performed.
-    #         if edge_method_n == 0:
-    #             row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
-    #             col_indexer = min(max(col + j, 0), dem.shape[1] - 1)
-    #         elif edge_method_n == 1:
-    #             row_indexer = (row + k) % dem.shape[0]
-    #             col_indexer = (col + j) % dem.shape[1]
-    #         else:
-    #             row_indexer = row + k
-    #             col_indexer = col + j
-    #         Z[count] = dem[row_indexer, col_indexer]
-    #         count += 1
-    #
-    # # Get a mask of all invalid (nan or inf) values.
-    # invalids = ~np.isfinite(Z)
-    #
-    # # Skip the pixel if it and all of its neighbours are invalid
-    # if np.all(invalids):
-    #     continue
-    #
-    # if np.count_nonzero(invalids) > 0:
-    #     if fill_method_n == 0:
-    #         # Fill all non-finite values with the most common value.
-    #         Z[invalids] = np.nanmedian(Z)
-    #     elif fill_method_n == 1:
-    #         # Fill all non-finite values with the mean.
-    #         Z[invalids] = np.nanmean(Z)
-    #     elif fill_method_n == 2:
-    #         # Skip the pixel if any of its neighbours are nan.
-    #         continue
-    #     else:
-    #         # This should not occur.
-    #         pass
-
-    for row in numba.prange(row_range):
-        for col in numba.prange(col_range):
-
-            # Compute coefficients from convolution
-            coefs = np.zeros((n_M,), dtype=out_dtype)
-            for m1 in range(M1):
-                for m2 in range(M2):
-                    for ff in range(n_M):
-                        imgval = dem[row + m1, col + m2]
-                        filterval = filters[ff, m1, m2]
-                        coefs[ff] += imgval * filterval
-
-
-            # Synthesize into attributes
-            attrs = _make_attribute_from_coefs_numba(coef_arrs=coefs,
-                                                     make_attrs=make_attrs,
-                                                     idx_coefs=idx_coefs,
-                                                     idx_attrs=idx_attrs,
-                                                     out_size=(attrs_size,),
-                                                     slope_method_id=slope_method_id,
-                                                     out_dtype=out_dtype)
-
-            outputs[:, row, col] = attrs
-
-    return outputs
-
-def _get_surface_attributes_scipy(dem: NDArrayf, filters: NDArrayf, make_attrs: list[bool], idx_coefs: list[int],
-                                  idx_attrs: list[int], slope_method_id: int, attrs_size: int,
-                                  out_dtype: DTypeLike = np.float32):
-
-    # Perform convolution and squeeze output into 3D array
-    from xdem.spatialstats import convolution
-    coefs = convolution(imgs=dem.reshape((1, dem.shape[0], dem.shape[1])), filters=filters, method="scipy").squeeze()
-
-    # Convert coefficients to attributes
-    out_size = (attrs_size, dem.shape[0], dem.shape[1])
-    attrs = _make_attribute_from_coefs(coef_arrs=coefs, make_attrs=make_attrs, idx_coefs=idx_coefs, idx_attrs=idx_attrs,
-                                       out_size=out_size, slope_method_id=slope_method_id, out_dtype=out_dtype)
+    #     frac_roughness_idx = idx_attrs[3]
+    #     attrs[frac_roughness_idx] = _fractal_roughness_func(dem_window, window_size=window_size, out_dtype=out_dtype)
 
     return attrs
 
 
-def _get_surface_attributes(dem: NDArrayf,
-                            resolution: float,
-                            surface_attributes: list[str],
-                            out_dtype: DTypeLike = np.float32,
-                            slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
-                            backend: Literal["scipy", "numba"] = "scipy"):
-    """
-    Get quadratic coefficients using convolution: faster but only applicable with NaN fill or edge method.
-    """
-
-    # Get list of necessary coefficients depending on method and resolution
-    coef_arrs, idx_coefs, \
-        idx_attrs, make_attrs, attrs_size = _determine_required_surface_coefs(surface_attributes=surface_attributes,
-                                                                              resolution=resolution,
-                                                                              slope_method=slope_method)
-
-    # Stack coefficients into a 3D convolution kernel along the first axis
-    kern3d = np.stack(coef_arrs, axis=0)
-
-    # Map slope method to integer ID to improve efficiency in Numba loop
-    slope_method_id = 0 if slope_method.lower() == "horn" else 1
-
-    # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
-    # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
-    if backend == "scipy":
-        output = _get_surface_attributes_scipy(dem=dem, filters=kern3d, idx_coefs=idx_coefs, idx_attrs=idx_attrs,
-                                               make_attrs=make_attrs, slope_method_id=slope_method_id,
-                                               attrs_size=attrs_size, out_dtype=out_dtype, )
-    elif backend == "numba":
-        _, M1, M2 = kern3d.shape
-        half_M1 = int((M1 - 1) / 2)
-        half_M2 = int((M2 - 1) / 2)
-        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
-        output = _get_surface_attributes_numba(dem=dem, filters=kern3d, make_attrs=make_attrs, idx_coefs=idx_coefs,
-                                               idx_attrs=idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
-                                               slope_method_id=slope_method_id)
-
-    return output
-
-
-def get_quadric_coefficients(
-    dem: NDArrayf,
-    resolution: float,
-    out_dtype: DTypeLike = None,
-    fill_method: str = "none",
-    edge_method: str = "none",
-    make_rugosity: bool = False,
-) -> NDArrayf:
-    """
-    Computes quadric and other coefficients on a fixed 3x3 pixel window, and that depends on the resolution.
-    Returns the 9 coefficients of a quadric surface fit to every pixel in the raster, the 2 coefficients of optimized
-    slope gradient, and the rugosity.
-
-    For the quadric surface, based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107, also
-    described in the documentation:
-    https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
-    The function that is solved is:
-    Z = Ax²y² + Bx²y + Cxy² + Dx² + Ey² + Fxy + Gx + Hy + I
-    Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
-
-    For the 2 coefficients of optimized slope, based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918, page 18
-    bottom left equations.
-
-    For the rugosity, based on Jenness (2004), https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2.
-
-    Each pixel's fit can be accessed by coefficients[:, row, col], returning an array of shape 12.
-
-    Fill methods
-        If the 3x3 matrix to fit the quadric function on has NaNs, these need to be handled:
-        * 'median': NaNs are filled with the median value of the matrix.
-        * 'mean': NaNs are filled with the mean value of the matrix.
-        * 'none': If NaNs are encountered, skip the entire cell (default for GDAL and SAGA).
-
-    Edge methods
-        Each iteration requires a 3x3 matrix, so special edge cases have to be made.
-        * 'nearest': Pixels outside the range are filled using the closest pixel value.
-        * 'wrap': The array is wrapped so pixels near the right edge will be sampled from the left, etc.
-        * 'none': Edges will not be analyzed, leaving a 1 pixel edge of NaNs.
-
-    Quirks:
-        * Edges are naively treated by filling the closest value, so that a 3x3 matrix is always calculated.\
-                It may therefore be slightly off in the edges.
-        * NaNs and infs are filled with the median of the finites in the matrix, possibly affecting the fit.
-        * The X and Y resolution needs to be the same. It does not work if they differ.
-
-    :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported)
-    :param resolution: The X/Y resolution of the DEM.
-    :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
-        input DEM if floating type or to float32 if integer type.
-    :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
-    :param edge_method: The method to use near the array edge.
-    :param make_rugosity: Whether to compute coefficients for rugosity.
-
-    :raises ValueError: If the inputs are poorly formatted.
-    :raises RuntimeError: If unexpected backend errors occurred.
-
-    :examples:
-        >>> dem = np.array([[1, 1, 1],
-        ...                 [1, 2, 1],
-        ...                 [1, 1, 1]], dtype="float32")
-        >>> coeffs = get_quadric_coefficients(dem, resolution=1.0, make_rugosity=True)
-        >>> coeffs.shape
-        (12, 3, 3)
-        >>> coeffs[:9, 1, 1]
-        array([ 1.,  0.,  0., -1., -1.,  0.,  0.,  0.,  2.], dtype=float32)
-        >>> coeffs[9:11, 1, 1]
-        array([0., 0.], dtype=float32)
-        >>> coeffs[11, 1, 1]
-        np.float32(1.4142135)
-
-    :returns: An array of coefficients for each pixel of shape (9, row, col).
-    """
-    # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = gu.raster.get_array_and_mask(dem)[0]
-
-    if len(dem_arr.shape) != 2:
-        raise ValueError(
-            f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)."
-        )
-
-    if any(dim < 3 for dim in dem_arr.shape):
-        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3).")
-
-    # Resolution is in other tools accepted as a tuple. Here, it must be just one number, so it's best to sanity check.
-    if isinstance(resolution, Sized):
-        raise ValueError("Resolution must be the same for X and Y directions.")
-
-    # If output dtype is None, used that of input DEM
-    if out_dtype is None:
-        if np.issubdtype(dem.dtype, np.integer):
-            out_dtype = np.float32
-        else:
-            out_dtype = np.dtype(dem.dtype)
-
-    allowed_fill_methods = ["median", "mean", "none"]
-    allowed_edge_methods = ["nearest", "wrap", "none"]
-    for value, name, allowed in zip(
-        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
-    ):
-        if value.lower() not in allowed:
-            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}.")
-
-    # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
-    try:
-        coeffs = _get_surface_attributes(
-            dem_arr,
-            resolution,
-            out_dtype=out_dtype,
-        )
-    except Exception as exception:
-        raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
-
-    return coeffs
-
-
 @numba.njit(parallel=True)  # type: ignore
-def _get_windowed_indexes(
+def _get_windowed_indexes_numba(
     dem: NDArrayf,
+    window_size: int,
+    resolution: float,
     out_dtype: DTypeLike,
-    fill_method: str = "median",
-    edge_method: str = "nearest",
-    window_size: int = 3,
-    make_fractal_roughness: bool = False,
+    attrs_size: int,
+    make_attrs: list[bool],
+    idx_attrs: list[int],
+    tri_method_id: int,
 ) -> NDArrayf:
     """
     Run the pixel-wise analysis in parallel for any window size without using the resolution.
@@ -825,172 +817,71 @@ def _get_windowed_indexes(
     See the xdem.terrain.get_windowed_indexes() docstring for more info.
     """
 
-    # Allocate the outputs.
-    output = np.full((5,) + dem.shape, fill_value=np.nan, dtype=out_dtype)
+    # Get input shapes
+    N1, N2 = dem.shape
 
-    # Half window size
-    hw = int(np.floor(window_size / 2))
+    # Define ranges to loop through given padding
+    row_range = N1 - window_size + 1
+    col_range = N2 - window_size + 1
 
-    # Convert the string to a number (fewer bytes to compare each iteration)
-    if fill_method == "median":
-        fill_method_n = numba.uint8(0)
-    elif fill_method == "mean":
-        fill_method_n = numba.uint8(1)
-    elif fill_method == "none":
-        fill_method_n = numba.uint8(2)
+    # Allocate output array
+    outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
 
-    if edge_method == "nearest":
-        edge_method_n = numba.uint8(0)
-    elif edge_method == "wrap":
-        edge_method_n = numba.uint8(1)
-    elif edge_method == "none":
-        edge_method_n = numba.uint8(2)
+    # Loop over every pixel concurrently by using prange
+    for row in numba.prange(row_range):
+        for col in numba.prange(col_range):
 
-    # Loop over every pixel concurrently.
-    for i in numba.prange(dem.size):
-        # Derive its associated row and column index.
-        col = i % dem.shape[1]
-        row = int(i / dem.shape[1])
+            dem_window = dem[row:row+window_size, col:col+window_size].flatten()
+            out_size = (attrs_size,)
+            attrs = _make_windowed_indexes(dem_window, window_size=window_size, resolution=resolution,
+                                           make_attrs=make_attrs, idx_attrs=idx_attrs,
+                                           tri_method_id=tri_method_id, out_size=out_size, out_dtype=out_dtype)
 
-        # Extract the pixel and its 8 immediate neighbours.
-        # If the border is reached, just duplicate the closest neighbour to obtain 9 values.
-        Z = np.empty((window_size**2,), dtype=out_dtype)
-        count = 0
+            outputs[:, row, col] = attrs
 
-        # If edge_method == "none", validate that it's not near an edge. If so, leave the nans without filling.
-        if edge_method_n == 2:
-            if (row < hw) or (row >= (dem.shape[0] - hw)) or (col < hw) or (col >= (dem.shape[1] - hw)):
-                continue
+    return outputs
 
-        for j in range(-hw, -hw + window_size):
-            for k in range(-hw, -hw + window_size):
-                # Here the "nearest" edge_method is performed.
-                if edge_method_n == 0:
-                    row_indexer = min(max(row + k, 0), dem.shape[0] - 1)
-                    col_indexer = min(max(col + j, 0), dem.shape[1] - 1)
-                elif edge_method_n == 1:
-                    row_indexer = (row + k) % dem.shape[0]
-                    col_indexer = (col + j) % dem.shape[1]
-                else:
-                    row_indexer = row + k
-                    col_indexer = col + j
-                Z[count] = dem[row_indexer, col_indexer]
-                count += 1
+def _get_windowed_indexes_scipy(dem: NDArrayf, window_size: int, resolution: float,
+                                make_attrs: list[bool], idx_attrs: list[int],
+                                tri_method_id: int, attrs_size: int, out_dtype: DTypeLike = np.float32):
 
-        # Get a mask of all invalid (nan or inf) values.
-        invalids = ~np.isfinite(Z)
+    outputs = np.full((attrs_size, dem.shape[0], dem.shape[1]), fill_value=np.nan, dtype=out_dtype)
 
-        # Skip the pixel if it and all of its neighbours are invalid
-        if np.all(invalids):
-            continue
+    make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = make_attrs
 
-        if np.count_nonzero(invalids) > 0:
-            if fill_method_n == 0:
-                # Fill all non-finite values with the most common value.
-                Z[invalids] = np.nanmedian(Z)
-            elif fill_method_n == 1:
-                # Fill all non-finite values with the mean.
-                Z[invalids] = np.nanmean(Z)
-            elif fill_method_n == 2:
-                # Skip the pixel if any of its neighbours are nan.
-                continue
-            else:
-                # This should not occur.
-                pass
+    # Topographic position index
+    if make_tpi:
+        tpi_idx = idx_attrs[0]
+        outputs[tpi_idx] = generic_filter(dem, _tpi_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(window_size,))
 
-        # Difference pixels between specific cells: only useful for Terrain Ruggedness Index
-        count = 0
-        index_middle_pixel = int((window_size**2 - 1) / 2)
-        S = np.empty((window_size**2,), dtype=out_dtype)
-        for _j in range(-hw, -hw + window_size):
-            for _k in range(-hw, -hw + window_size):
-                S[count] = np.abs(Z[count] - Z[index_middle_pixel])
-                count += 1
+    if make_tri:
 
-        if make_fractal_roughness:
-            # Fractal roughness computation according to the box-counting method of Taud and Parrot (2005)
-            # First, we compute the number of voxels for each pixel of Equation 4
-            count = 0
-            V = np.empty((window_size, window_size), dtype=out_dtype)
-            for j in range(-hw, -hw + window_size):
-                for k in range(-hw, -hw + window_size):
-                    T = Z[count] - Z[index_middle_pixel]
-                    # The following is the equivalent of np.clip, written like this for numba
-                    if T < 0:
-                        V[hw + j, hw + k] = 0
-                    elif T > window_size:
-                        V[hw + j, hw + k] = window_size
-                    else:
-                        V[hw + j, hw + k] = T
-                    count += 1
+        tri_idx = idx_attrs[1]
+        if tri_method_id == 0:
+            outputs[tri_idx] = generic_filter(dem, _tri_riley_func, mode="constant", size=window_size, cval=np.nan)
 
-            # Then, we compute the maximum number of voxels for varying box splitting of the cube of side the window
-            # size, following Equation 5
+        elif tri_method_id == 1:
+            outputs[tri_idx] = generic_filter(dem, _tri_wilson_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(window_size,))
 
-            # Get all the divisors of the half window size
-            list_box_sizes = []
-            for j in range(1, hw + 1):
-                if hw % j == 0:
-                    list_box_sizes.append(j)
+    if make_roughness:
+        roughness_idx = idx_attrs[2]
+        outputs[roughness_idx] = generic_filter(dem, _roughness_func, mode="constant", size=window_size, cval=np.nan)
 
-            Ns = np.empty((len(list_box_sizes),), dtype=out_dtype)
-            for l0 in range(0, len(list_box_sizes)):
-                # We loop over boxes of size q x q in the cube
-                q = list_box_sizes[l0]
-                sumNs = 0
-                for j in range(0, int((window_size - 1) / q)):
-                    for k in range(0, int((window_size - 1) / q)):
-                        sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
-                Ns[l0] = sumNs / q
+    if make_rugosity:
+        rugosity_idx = idx_attrs[3]
+        outputs[rugosity_idx] = generic_filter(dem, _rugosity_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(resolution, out_dtype))
 
-            # Finally, we calculate the slope of the logarithm of Ns with q
-            # We do the linear regression manually, as np.polyfit is not supported by numba
-            x = np.log(np.array(list_box_sizes))
-            y = np.log(Ns)
-            # The number of observations
-            n = len(x)
-            # Mean of x and y vector
-            m_x = np.mean(x)
-            m_y = np.mean(y)
-            # Cross-deviation and deviation about x
-            SS_xy = np.sum(y * x) - n * m_y * m_x
-            SS_xx = np.sum(x * x) - n * m_x * m_x
-            # Calculating slope
-            b_1 = SS_xy / SS_xx
+    return outputs
 
-            # The fractal dimension D is the opposite of the slope
-            D = -b_1
-
-        # First output is the Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of
-        # differences between center and neighbouring pixels
-        output[0, row, col] = np.sqrt(np.sum(S**2))
-        # Second output is the Terrain Ruggedness Index from Wilson et al. (2007): mean difference between center
-        # and neighbouring pixels
-        output[1, row, col] = np.sum(S) / (window_size**2 - 1)
-        # Third output is the Topographic Position Index from Weiss (2001): difference between center and mean of
-        # neighbouring pixels
-        output[2, row, col] = Z[index_middle_pixel] - (np.sum(Z) - Z[index_middle_pixel]) / (window_size**2 - 1)
-        # Fourth output is the Roughness from Dartnell (2000): difference between maximum and minimum of the window
-        output[3, row, col] = np.max(Z) - np.min(Z)
-
-        if make_fractal_roughness:
-            # Fifth output is the Fractal Roughness from Taud et Parrot (2005): estimate of the fractal dimension
-            # based on volume box-counting
-            output[4, row, col] = D
-
-    return output
-
-
-def get_windowed_indexes(
-    dem: NDArrayf,
-    out_dtype: DTypeLike = None,
-    fill_method: str = "none",
-    edge_method: str = "none",
-    window_size: int = 3,
-    make_fractal_roughness: bool = False,
-) -> NDArrayf:
+def _get_windowed_indexes(dem: NDArrayf,
+                          window_size: int,
+                          windowed_indexes: list[str],
+                          resolution: float,
+                          out_dtype: DTypeLike = np.float32,
+                          tri_method: Literal["Riley", "Wilson"] = "Riley",
+                          engine: Literal["scipy", "numba"] = "scipy") -> NDArrayf:
     """
-    Return terrain indexes based on a windowed calculation of variable size, independent of the resolution.
+    Derive windowed terrain indexes using SciPy or Numba based on a windowed calculation of variable size.
 
     Includes:
 
@@ -1001,96 +892,39 @@ def get_windowed_indexes(
     - Roughness from Dartnell (2000), thesis referenced in Wilson et al. (2007) above.
     - Fractal roughness from Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
-    Nearly all are also referenced in Wilson et al. (2007).
+    Nearly all methods are also referenced in Wilson et al. (2007).
 
-    Where Z is the elevation, x is the distance from left-right and y is the distance from top-bottom.
-    Each pixel's index can be accessed at [:, row, col], returning an array of shape 4.
-
-    Fill methods
-        If the 3x3 matrix to fit the quadric function on has NaNs, these need to be handled:
-        * 'median': NaNs are filled with the median value of the matrix.
-        * 'mean': NaNs are filled with the mean value of the matrix.
-        * 'none': If NaNs are encountered, skip the entire cell (default for GDAL and SAGA).
-
-    Edge methods
-        Each iteration requires a 3x3 matrix, so special edge cases have to be made.
-        * 'nearest': Pixels outside the range are filled using the closest pixel value.
-        * 'wrap': The array is wrapped so pixels near the right edge will be sampled from the left, etc.
-        * 'none': Edges will not be analyzed, leaving a 1 pixel edge of NaNs.
-
-    Quirks:
-        * Edges are naively treated by filling the closest value, so that a 3x3 matrix is always calculated.\
-                It may therefore be slightly off in the edges.
-        * NaNs and infs are filled with the median of the finites in the matrix, possibly affecting the fit.
-        * The X and Y resolution needs to be the same. It does not work if they differ.
-
-    :param dem: The 2D DEM to be analyzed (3D DEMs of shape (1, row, col) are not supported).
+    :param dem: Input DEM as 2D array.
+    :param window_size: Window size to compute the index.
+    :param windowed_indexes: Names of windowed indexes to compute.
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
         input DEM if floating type or to float32 if integer type.
-    :param fill_method: Fill method to use for NaNs in the 3x3 matrix.
-    :param edge_method: The method to use near the array edge.
-    :param window_size: The size of the window.
-    :param make_fractal_roughness: Whether to compute fractal roughness.
-
-    :raises ValueError: If the inputs are poorly formatted.
-    :raises RuntimeError: If unexpected backend errors occurred.
-
-    :examples:
-        >>> dem = np.array([[1, 1, 1],
-        ...                 [1, 2, 1],
-        ...                 [1, 1, 1]], dtype="float32")
-        >>> indexes = get_windowed_indexes(dem)
-        >>> indexes.shape
-        (5, 3, 3)
-        >>> indexes[:4, 1, 1]
-        array([2.828427, 1.      , 1.      , 1.      ], dtype=float32)
-
-    :returns: An array of coefficients for each pixel of shape (5, row, col).
+    :param tri_method: Method for the terrain ruggedness index ("Riley" or "Wilson").
+    :param engine: Engine to compute the windowed indexes ("scipy" or "numba").
     """
-    # This function only formats and validates the inputs. For the true functionality, see _get_quadric_coefficients()
-    dem_arr = gu.raster.get_array_and_mask(dem)[0]
 
-    if len(dem_arr.shape) != 2:
-        raise ValueError(
-            f"Invalid input array shape: {dem.shape}, parsed into {dem_arr.shape}. "
-            "Expected 2D array or 3D array of shape (1, row, col)"
-        )
+    # Get list of necessary coefficients depending on method and resolution
+    idx_attrs, make_attrs, attrs_size = _preprocess_windowed_indexes(windowed_indexes=windowed_indexes)
 
-    if any(dim < 3 for dim in dem_arr.shape):
-        raise ValueError(f"DEM (shape: {dem.shape}) is too small. Smallest supported shape is (3, 3)")
+    # Map slope method to integer ID to improve efficiency in Numba loop
+    tri_method_id = 0 if tri_method.lower() == "riley" else 1
 
-    if not isinstance(window_size, (int, np.integer)) or window_size % 2 != 1:
-        raise ValueError("Window size must be an odd integer.")
+    # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
+    # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
+    if engine == "scipy":
+        output = _get_windowed_indexes_scipy(dem=dem, window_size=window_size, resolution=resolution,
+                                             idx_attrs=idx_attrs,
+                                             make_attrs=make_attrs, tri_method_id=tri_method_id,
+                                             attrs_size=attrs_size, out_dtype=out_dtype)
+    elif engine == "numba":
+        hw = int((window_size - 1) / 2)
+        dem = np.pad(dem, pad_width=((hw, hw), (hw, hw)), constant_values=np.nan)
+        output = _get_windowed_indexes_numba(dem=dem, window_size=window_size, resolution=resolution,
+                                             make_attrs=make_attrs,
+                                             idx_attrs=idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
+                                             tri_method_id=tri_method_id)
 
-    # If output dtype is None, used that of input DEM
-    if out_dtype is None:
-        if np.issubdtype(dem.dtype, np.integer):
-            out_dtype = np.float32
-        else:
-            out_dtype = np.dtype(dem.dtype)
-
-    allowed_fill_methods = ["median", "mean", "none"]
-    allowed_edge_methods = ["nearest", "wrap", "none"]
-    for value, name, allowed in zip(
-        [fill_method, edge_method], ["fill", "edge"], (allowed_fill_methods, allowed_edge_methods)
-    ):
-        if value.lower() not in allowed:
-            raise ValueError(f"Invalid {name} method: '{value}'. Choices: {allowed}")
-
-    # Try to run the numba JIT code. It should never fail at this point, so if it does, it should be reported!
-    try:
-        indexes = _get_windowed_indexes(
-            dem_arr,
-            out_dtype=out_dtype,
-            fill_method=fill_method.lower(),
-            edge_method=edge_method.lower(),
-            window_size=window_size,
-            make_fractal_roughness=make_fractal_roughness,
-        )
-    except Exception as exception:
-        raise RuntimeError("Unhandled numba exception. Please raise an issue of what happened.") from exception
-
-    return indexes
+    return output
 
 
 @overload
@@ -1107,6 +941,7 @@ def get_terrain_attribute(
     fill_method: str = "none",
     edge_method: str = "none",
     window_size: int = 3,
+    engine: Literal["scipy", "numba"] = "numba",
     out_dtype: DTypeLike | None = None,
 ) -> NDArrayf: ...
 
@@ -1275,15 +1110,13 @@ def get_terrain_attribute(
 
     # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
     list_requiring_surface_fit = [
+        "slope",
+        "aspect",
+        "hillshade",
         "curvature",
         "planform_curvature",
         "profile_curvature",
         "maximum_curvature",
-        "slope",
-        "hillshade",
-        "aspect",
-        "surface_fit",
-        "rugosity",
     ]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
@@ -1291,6 +1124,7 @@ def get_terrain_attribute(
         "terrain_ruggedness_index",
         "topographic_position_index",
         "roughness",
+        "rugosity",
         "fractal_roughness",
     ]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
@@ -1316,85 +1150,65 @@ def get_terrain_attribute(
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
-    # Initialize the terrain_attributes dictionary, which will be filled with the requested values.
-    terrain_attributes: dict[str, NDArrayf] = {}
-
-    # Check which products should be made to optimize the processing
-    make_windowed_index = len(attributes_requiring_windowed_index) > 0
-    make_topographic_position = "topographic_position_index" in attribute
-    make_terrain_ruggedness = "terrain_ruggedness_index" in attribute
-    make_roughness = "roughness" in attribute
-    make_rugosity = "rugosity" in attribute
-    make_fractal_roughness = "fractal_roughness" in attribute
-
     # Get array of DEM
     dem_arr = gu.raster.get_array_and_mask(dem)[0]
 
     # Process surface attributes
-    surface_attributes = _get_surface_attributes(dem=dem_arr, resolution=resolution,
-                                                 surface_attributes=attributes_requiring_surface_fit,
+    if len(attributes_requiring_surface_fit) > 0:
+
+        if not isinstance(resolution, Sized):
+            resolution = (float(resolution), float(resolution))  # type: ignore
+        if resolution[0] != resolution[1]:
+            raise ValueError(
+                f"Surface fit requires the same X and Y resolution ({resolution} was given). "
+                f"This was required by: {attributes_requiring_surface_fit}"
+            )
+
+        surface_attributes = _get_surface_attributes(dem=dem_arr,
+                                                     resolution=resolution[0],
+                                                     surface_attributes=attributes_requiring_surface_fit,
+                                                     out_dtype=out_dtype,
+                                                     slope_method=slope_method,
+                                                     engine=engine)
+
+        # Convert the unit if wanted
+        if degrees:
+            for attr in ["slope", "aspect"]:
+                if attr not in attributes_requiring_surface_fit:
+                    continue
+                idx_attr = attributes_requiring_surface_fit.index(attr)
+                surface_attributes[idx_attr] = np.rad2deg(surface_attributes[idx_attr])
+
+        # Clip values for hillshade
+        if "hillshade" in attributes_requiring_surface_fit:
+            idx_hs = attributes_requiring_surface_fit.index("hillshade")
+            surface_attributes[idx_hs] = np.clip(surface_attributes[idx_hs], 0, 255)
+
+        # Convert to list
+        surface_attributes = [surface_attributes[i] for i in range(surface_attributes.shape[0])]
+    else:
+        surface_attributes = []
+
+    # Process windowed attributes
+    if len(attributes_requiring_windowed_index) > 0:
+
+        windowed_indexes = _get_windowed_indexes(dem=dem_arr,
+                                                 windowed_indexes=attributes_requiring_windowed_index,
+                                                 window_size=window_size,
+                                                 resolution=resolution,
                                                  out_dtype=out_dtype,
-                                                 slope_method=slope_method,
-                                                 backend=engine)
+                                                 tri_method=tri_method,
+                                                 engine=engine)
+        windowed_indexes = [windowed_indexes[i] for i in range(windowed_indexes.shape[0])]
+    else:
+        windowed_indexes = []
 
-    # Convert the unit if wanted
-    if degrees:
-        for attr in ["slope", "aspect"]:
-            if attr not in terrain_attributes:
-                continue
-            idx_attr = attributes_requiring_surface_fit.index(attr)
-            surface_attributes[idx_attr] = np.rad2deg(surface_attributes[idx_attr])
-
-    # if make_surface_fit:
-    #     if not isinstance(resolution, Sized):
-    #         resolution = (float(resolution), float(resolution))  # type: ignore
-    #     if resolution[0] != resolution[1]:
-    #         raise ValueError(
-    #             f"Quadric surface fit requires the same X and Y resolution ({resolution} was given). "
-    #             f"This was required by: {attributes_requiring_surface_fit}"
-    #         )
-    #     terrain_attributes["surface_fit"] = get_quadric_coefficients(
-    #         dem=dem_arr,
-    #         resolution=resolution[0],
-    #         out_dtype=out_dtype,
-    #         fill_method=fill_method,
-    #         edge_method=edge_method,
-    #         make_rugosity=make_rugosity,
-    #     )
-    #
-    #
-    # if make_windowed_index:
-    #     terrain_attributes["windowed_indexes"] = get_windowed_indexes(
-    #         dem=dem_arr,
-    #         out_dtype=out_dtype,
-    #         fill_method=fill_method,
-    #         edge_method=edge_method,
-    #         window_size=window_size,
-    #         make_fractal_roughness=make_fractal_roughness,
-    #     )
-    #
-    # if make_topographic_position:
-    #     terrain_attributes["topographic_position_index"] = terrain_attributes["windowed_indexes"][2, :, :]
-    #
-    # if make_terrain_ruggedness:
-    #
-    #     if tri_method == "Riley":
-    #         terrain_attributes["terrain_ruggedness_index"] = terrain_attributes["windowed_indexes"][0, :, :]
-    #
-    #     elif tri_method == "Wilson":
-    #         terrain_attributes["terrain_ruggedness_index"] = terrain_attributes["windowed_indexes"][1, :, :]
-    #
-    # if make_roughness:
-    #     terrain_attributes["roughness"] = terrain_attributes["windowed_indexes"][3, :, :]
-    #
-    # if make_rugosity:
-    #     terrain_attributes["rugosity"] = terrain_attributes["surface_fit"][11, :, :]
-    #
-    # if make_fractal_roughness:
-    #     terrain_attributes["fractal_roughness"] = terrain_attributes["windowed_indexes"][4, :, :]
 
     # Convert 3D array output to list of 2D arrays
-    output_attributes = [surface_attributes[i] for i in range(surface_attributes.shape[0])]  # + windowed_attributes
+    # TODO: Add re-ordering function
+    output_attributes = surface_attributes + windowed_indexes
+    order_indices = [attribute.index(a) for a in attributes_requiring_surface_fit + attributes_requiring_windowed_index]
+    output_attributes[:] = [output_attributes[idx] for idx in order_indices]
 
     if isinstance(dem, gu.Raster):
         output_attributes = [
