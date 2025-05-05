@@ -550,44 +550,24 @@ def _get_surface_attributes(dem: NDArrayf,
         half_M1 = int((M1 - 1) / 2)
         half_M2 = int((M2 - 1) / 2)
         dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
-        output = _get_surface_attributes_numba(dem=dem, filters=kern3d, make_attrs=make_attrs, idx_coefs=idx_coefs,
-                                               idx_attrs=idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
+        # Now required to declare list typing in latest Numba before deprecation
+        typed_make_attrs, typed_idx_attrs, typed_idx_coefs = numba.typed.List(), numba.typed.List(), numba.typed.List()
+        [typed_make_attrs.append(x) for x in make_attrs]
+        [typed_idx_attrs.append(x) for x in idx_attrs]
+        [typed_idx_coefs.append(x) for x in idx_coefs]
+        output = _get_surface_attributes_numba(dem=dem, filters=kern3d, make_attrs=typed_make_attrs, idx_coefs=typed_idx_coefs,
+                                               idx_attrs=typed_idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
                                                slope_method_id=slope_method_id)
 
     return output
 
-
-def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int], list[bool], int]:
-    """
-    Determine list of surface coefficients that need to be derived given input attributes, and map ordered indexes
-    to be used to derive them through SciPy or Numba loop efficiently. (to minimize memory and CPU usage)
-
-    Returns list of indexes to map attributes and the size of the output attribute array.
-    """
-
-    # Step 2: Derive ordered indexes for attributes/coefs outside of SciPy/Numba processing for speed
-
-    # Define booleans for generating attributes
-    make_tpi = "topographic_position_index" in windowed_indexes
-    make_tri = "terrain_ruggedness_index" in windowed_indexes
-    make_roughness = "roughness" in windowed_indexes
-    make_rugosity = "rugosity" in windowed_indexes
-    make_fractal_roughness = "fractal_roughness" in windowed_indexes
-
-    make_attrs = [make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness]
-
-    # Map index of attributes and coefficients to defined order
-    order_attrs = ["topographic_position_index", "terrain_ruggedness_index", "roughness", "rugosity", "fractal_roughness"]
-    idx_attrs = [windowed_indexes.index(oa) if oa in windowed_indexes else 99 for oa in order_attrs]
-
-    # Because of the above indexes, we don't store the length of the output attributes anymore
-    attrs_size = len(windowed_indexes)
-
-    return idx_attrs, make_attrs, attrs_size
+############################################################################################
+# WINDOWED INDEXES: ATTRIBUTES INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE (=FILTERS)
+############################################################################################
 
 def _tri_riley_func(arr: NDArrayf) -> float:
     """
-    Terrain Ruggedness Index from Riley et al. (1999). Squareroot of squared sum of differences between center and
+    Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of differences between center and
     neighbouring pixels.
     """
     mid_ind = int(arr.shape[0] / 2)
@@ -613,7 +593,7 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     """Fractal roughness according to the box-counting method of Taud and Parrot (2005)."""
 
     # First, we compute the number of voxels for each pixel of Equation 4
-    mid_ind = int(arr.shape[0] / 2)
+    mid_ind = int(np.floor(arr.shape[0] / 2))
     hw = int(np.floor(window_size / 2))
     mid_val = arr[mid_ind]
 
@@ -635,10 +615,10 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     # size, following Equation 5
 
     # Get all the divisors of the half window size
-    list_box_sizes = []
+    list_box_sizes = np.array((), dtype=out_dtype)
     for j in range(1, hw + 1):
         if hw % j == 0:
-            list_box_sizes.append(j)
+            np.append(list_box_sizes, j)
 
     Ns = np.empty((len(list_box_sizes),), dtype=out_dtype)
     for l0 in range(0, len(list_box_sizes)):
@@ -652,7 +632,7 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
 
     # Finally, we calculate the slope of the logarithm of Ns with q
     # We do the linear regression manually, as np.polyfit is not supported by numba
-    x = np.log(np.array(list_box_sizes))
+    x = np.log(list_box_sizes)
     y = np.log(Ns)
     # The number of observations
     n = len(x)
@@ -671,7 +651,11 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     return D
 
 def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32):
-    """Rugosity from Jenness (2004): difference between real surface area and planimetric surface area"""
+    """
+    Rugosity from Jenness (2004): difference between real surface area and planimetric surface area.
+
+    The below computation only works for a 3x3 array, would need more effort to generalize it.
+    """
 
     # Works only on a 3x3 block
     Z = arr
@@ -753,12 +737,43 @@ def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.f
 
     return rug
 
+
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
 _tpi_func_numba = numba.njit(inline="always")(_tpi_func)
 _tri_riley_func_numba = numba.njit(inline="always")(_tri_riley_func)
 _tri_wilson_func_numba = numba.njit(inline="always")(_tri_wilson_func)
 _roughness_func_numba = numba.njit(inline="always")(_roughness_func)
 _rugosity_func_numba = numba.njit(inline="always")(_rugosity_func)
-# _fractal_roughness_func_numba = numba.njit(inline="always")(_fractal_roughness_func)
+_fractal_roughness_func_numba = numba.njit(inline="always")(_fractal_roughness_func)
+
+def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int], list[bool], int]:
+    """
+    Determine list of surface coefficients that need to be derived given input attributes, and map ordered indexes
+    to be used to derive them through SciPy or Numba loop efficiently. (to minimize memory and CPU usage)
+
+    Returns list of indexes to map attributes and the size of the output attribute array.
+    """
+
+    # Step 2: Derive ordered indexes for attributes/coefs outside of SciPy/Numba processing for speed
+
+    # Define booleans for generating attributes
+    make_tpi = "topographic_position_index" in windowed_indexes
+    make_tri = "terrain_ruggedness_index" in windowed_indexes
+    make_roughness = "roughness" in windowed_indexes
+    make_rugosity = "rugosity" in windowed_indexes
+    make_fractal_roughness = "fractal_roughness" in windowed_indexes
+
+    make_attrs = [make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness]
+
+    # Map index of attributes and coefficients to defined order
+    order_attrs = ["topographic_position_index", "terrain_ruggedness_index", "roughness", "rugosity", "fractal_roughness"]
+    idx_attrs = [windowed_indexes.index(oa) if oa in windowed_indexes else 99 for oa in order_attrs]
+
+    # Because of the above indexes, we don't store the length of the output attributes anymore
+    attrs_size = len(windowed_indexes)
+
+    return idx_attrs, make_attrs, attrs_size
 
 @numba.njit(inline="always")
 def _make_windowed_indexes(dem_window: NDArrayf,  window_size: int, resolution: float, make_attrs, idx_attrs, tri_method_id: int, out_size, out_dtype):
@@ -792,10 +807,10 @@ def _make_windowed_indexes(dem_window: NDArrayf,  window_size: int, resolution: 
         rugosity_idx = idx_attrs[3]
         attrs[rugosity_idx] = _rugosity_func_numba(dem_window, resolution=resolution, out_dtype=out_dtype)
 
-    # if make_fractal_roughness:
-    #
-    #     frac_roughness_idx = idx_attrs[3]
-    #     attrs[frac_roughness_idx] = _fractal_roughness_func(dem_window, window_size=window_size, out_dtype=out_dtype)
+    if make_fractal_roughness:
+
+        frac_roughness_idx = idx_attrs[3]
+        attrs[frac_roughness_idx] = _fractal_roughness_func_numba(dem_window, window_size=window_size, out_dtype=out_dtype)
 
     return attrs
 
@@ -871,6 +886,10 @@ def _get_windowed_indexes_scipy(dem: NDArrayf, window_size: int, resolution: flo
         rugosity_idx = idx_attrs[3]
         outputs[rugosity_idx] = generic_filter(dem, _rugosity_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(resolution, out_dtype))
 
+    if make_fractal_roughness:
+        frac_roughness_idx = idx_attrs[4]
+        outputs[frac_roughness_idx] = generic_filter(dem, _fractal_roughness_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(window_size, out_dtype))
+
     return outputs
 
 def _get_windowed_indexes(dem: NDArrayf,
@@ -919,9 +938,13 @@ def _get_windowed_indexes(dem: NDArrayf,
     elif engine == "numba":
         hw = int((window_size - 1) / 2)
         dem = np.pad(dem, pad_width=((hw, hw), (hw, hw)), constant_values=np.nan)
+        # Now required to declare list typing in latest Numba before deprecation
+        typed_make_attrs, typed_idx_attrs = numba.typed.List(), numba.typed.List()
+        [typed_make_attrs.append(x) for x in make_attrs]
+        [typed_idx_attrs.append(x) for x in idx_attrs]
         output = _get_windowed_indexes_numba(dem=dem, window_size=window_size, resolution=resolution,
-                                             make_attrs=make_attrs,
-                                             idx_attrs=idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
+                                             make_attrs=typed_make_attrs,
+                                             idx_attrs=typed_idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
                                              tri_method_id=tri_method_id)
 
     return output
@@ -938,8 +961,6 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
     out_dtype: DTypeLike | None = None,
@@ -957,8 +978,6 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
     out_dtype: DTypeLike | None = None,
@@ -976,8 +995,6 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
     out_dtype: DTypeLike | None = None,
@@ -995,8 +1012,6 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
     out_dtype: DTypeLike | None = None,
@@ -1013,8 +1028,6 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
-    fill_method: str = "none",
-    edge_method: str = "none",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
     out_dtype: DTypeLike | None = None,
@@ -1065,8 +1078,6 @@ def get_terrain_attribute(
     :param hillshade_z_factor: Vertical exaggeration factor.
     :param slope_method: Method to calculate the slope, aspect and hillshade: "Horn" or "ZevenbergThorne".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
-    :param fill_method: See the 'get_quadric_coefficients()' docstring for information.
-    :param edge_method: See the 'get_quadric_coefficients()' docstring for information.
     :param window_size: Window size for windowed ruggedness and roughness indexes.
     :param engine: Engine to use for computing the attributes with convolution or other windowed calculations, currently
         supports "scipy" or "numba".

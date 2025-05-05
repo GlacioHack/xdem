@@ -429,13 +429,21 @@ class TestTerrainAttribute:
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
         # assert np.allclose(coefs_numba, coefs_numba_cv, equal_nan=True)
 
-    @pytest.mark.parametrize("attribute", ["topographic_position_index", "terrain_ruggedness_index", "roughness", "rugosity"])
-    @pytest.mark.parametrize("tri_method", ["Riley", "Wilson"])
-    def test_get_windowed_indices__engine(self, attribute: str, tri_method: Literal["Riley", "Wilson"]) -> None:
+    @pytest.mark.parametrize("attribute", ["topographic_position_index", "terrain_ruggedness_index_Riley",
+                                           "terrain_ruggedness_index_Wilson", "roughness", "rugosity", "fractal_roughness"])
+    def test_get_windowed_indices__engine(self, attribute: str) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(5, 7))
+
+        # Get TRI method if specified
+        if "Wilson" in attribute or "Riley" in attribute:
+            attribute = "terrain_ruggedness_index"
+            tri_method = attribute.split("_")[-1]
+        # Otherwise use any one, doesn't matter
+        else:
+            tri_method = "Wilson"
 
         attrs_scipy = xdem.terrain._get_windowed_indexes(dem=dem, window_size=3, resolution=1,
                                                          windowed_indexes=[attribute],
