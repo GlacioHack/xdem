@@ -685,15 +685,18 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     # size, following Equation 5
 
     # Get all the divisors of the half window size
-    list_box_sizes = np.array((), dtype=out_dtype)
+    list_box_sizes = np.zeros((hw,), dtype=np.uint8)
     for j in range(1, hw + 1):
         if hw % j == 0:
-            np.append(list_box_sizes, j)
+            list_box_sizes[j-1] = j
 
-    Ns = np.empty((len(list_box_sizes),), dtype=out_dtype)
-    for l0 in range(0, len(list_box_sizes)):
+    valids = list_box_sizes != 0
+    sub_list_box_sizes = list_box_sizes[valids]
+
+    Ns = np.empty((len(sub_list_box_sizes),), dtype=out_dtype)
+    for l0 in range(0, len(sub_list_box_sizes)):
         # We loop over boxes of size q x q in the cube
-        q = list_box_sizes[l0]
+        q = sub_list_box_sizes[l0]
         sumNs = 0
         for j in range(0, int((window_size - 1) / q)):
             for k in range(0, int((window_size - 1) / q)):
@@ -702,7 +705,7 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
 
     # Finally, we calculate the slope of the logarithm of Ns with q
     # We do the linear regression manually, as np.polyfit is not supported by numba
-    x = np.log(list_box_sizes)
+    x = np.log(sub_list_box_sizes)
     y = np.log(Ns)
     # The number of observations
     n = len(x)
@@ -900,7 +903,7 @@ def _make_windowed_indexes(
 
     if make_fractal_roughness:
 
-        frac_roughness_idx = idx_attrs[3]
+        frac_roughness_idx = idx_attrs[4]
         attrs[frac_roughness_idx] = _fractal_roughness_func_numba(
             dem_window, window_size=window_size, out_dtype=out_dtype
         )
@@ -939,7 +942,7 @@ def _get_windowed_indexes_numba(
     for row in numba.prange(row_range):
         for col in numba.prange(col_range):
 
-            dem_window = dem[row : row + window_size, col : col + window_size].flatten()
+            dem_window = dem[row:row + window_size, col:col + window_size].flatten()
             out_size = (attrs_size,)
             attrs = _make_windowed_indexes(
                 dem_window,
@@ -1239,15 +1242,11 @@ def get_terrain_attribute(
         array([[2, 2, 2],
                [1, 1, 1],
                [0, 0, 0]])
-        >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1, edge_method='nearest')
-        >>> slope  # Note the flattening edge effect; see 'get_quadric_coefficients()' for more.
-        array([[26.56505, 26.56505, 26.56505],
-               [45.     , 45.     , 45.     ],
-               [26.56505, 26.56505, 26.56505]], dtype=float32)
-        >>> aspect
-        array([[180., 180., 180.],
-               [180., 180., 180.],
-               [180., 180., 180.]], dtype=float32)
+        >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1)
+        >>> slope[1, 1]
+        np.float32(45.0)
+        >>> aspect[1, 1]
+        np.float32(180.0)
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
@@ -1465,6 +1464,9 @@ def _get_terrain_attribute(
 
     # Get array of DEM
     dem_arr = gu.raster.get_array_and_mask(dem)[0]
+    # We need to be able to use NaNs to propagate invalid values in attributes
+    if np.issubdtype(dem_arr.dtype, np.integer):
+        dem_arr = dem_arr.astype(np.float32)
 
     # Process surface attributes
     if len(attributes_requiring_surface_fit) > 0:
@@ -2209,7 +2211,7 @@ def fractal_roughness(
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of plane is 2
         np.float32(2.0)
         >>> dem = np.zeros((13, 13), dtype='float32')
-        >>> dem[:, :6] = 13 # The fractal dimension of a cube is 3
+        >>> dem[:, :6] = 13
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of cube is 3
         np.float32(3.0)
 

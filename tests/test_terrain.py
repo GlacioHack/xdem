@@ -419,6 +419,27 @@ class TestTerrainAttribute:
         # Check rugosity value is valid
         assert r == pytest.approx(rugosity[1, 1], rel=10 ** (-6))
 
+    def test_fractal_roughness(self) -> None:
+        """Test fractal roughness for synthetic cases for which we know the output."""
+
+        # The fractal dimension of a line is 1 (a single pixel with non-zero value)
+        dem = np.zeros((13, 13), dtype='float32')
+        dem[1, 1] = 6.5
+        frac_rough = xdem.terrain.fractal_roughness(dem)
+        assert np.round(frac_rough[6, 6], 5) == np.float32(1.0)
+
+        # The fractal dimension of plane is 2 (a plan of pixels with non-zero values)
+        dem = np.zeros((13, 13), dtype='float32')
+        dem[:, 1] = 13
+        frac_rough = xdem.terrain.fractal_roughness(dem)
+        assert np.round(frac_rough[6, 6]) == np.float32(2.0)
+
+        # The fractal dimension of a cube is 3 (a block of pixels with non-zero values
+        dem = np.zeros((13, 13), dtype='float32')
+        dem[:, :6] = 13
+        frac_rough = xdem.terrain.fractal_roughness(dem)
+        assert np.round(frac_rough[6, 6]) == np.float32(3.0)
+
     def test_convolution__quadric_coefficients(self) -> None:
         """Test the outputs of quadric coefficients (not accessible by users)."""
 
@@ -507,7 +528,7 @@ class TestTerrainAttribute:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
         rnd = np.random.default_rng(42)
-        dem = rnd.normal(size=(5, 7))
+        dem = rnd.normal(size=(15, 15))
 
         # Get TRI method if specified
         if "Wilson" in attribute or "Riley" in attribute:
