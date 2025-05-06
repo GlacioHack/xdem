@@ -33,20 +33,18 @@ import matplotlib
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numba
-from numba import prange, cuda
-import cupy as cp
-from cupyx.scipy.ndimage import convolve
 import numpy as np
 import pandas as pd
+import scipy.ndimage
 from geoutils.raster import Mask, Raster, RasterType, subsample_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.vector.vector import Vector, VectorType
+from numba import prange
 from numpy.typing import ArrayLike
 from packaging.version import Version
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
-import scipy.ndimage
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 from skimage.draw import disk
@@ -2500,25 +2498,10 @@ def _scipy_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
 
     for i_N in np.arange(imgs.shape[0]):
         for i_M in np.arange(filters.shape[0]):
-            output[i_N, i_M, :, :] = scipy.ndimage.convolve(imgs[i_N, :, :], filters[i_M, :, :], mode="constant", cval=np.nan)
+            output[i_N, i_M, :, :] = scipy.ndimage.convolve(
+                imgs[i_N, :, :], filters[i_M, :, :], mode="constant", cval=np.nan
+            )
 
-
-def _cupy_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> None:
-    """
-    Scipy convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
-
-    :param imgs: Input array of size (n_N, N1, N2) with n_N images of size N1 x N2
-    :param filters: Input array of filters of size (n_M, M1, M2) with n_M filters of size M1 x M2
-    :param output: Initialized output array of size (n_N, n_M, N1, N2)
-    """
-
-    for i_N in np.arange(imgs.shape[0]):
-        for i_M in np.arange(filters.shape[0]):
-            out_cp = convolve(cp.asarray(imgs[i_N, :, :]), cp.asarray(filters[i_M, :, :]), mode="constant", cval=np.nan)
-            output[i_N, i_M, :, :] = cp.asnumpy(out_cp)
-
-nd4type = numba.double[:, :, :, :]
-nd3type = numba.double[:, :, :]
 
 @numba.njit(parallel=True)  # type: ignore
 def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> NDArrayf:
@@ -2550,66 +2533,6 @@ def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
     return output
 
 
-# Parallel conv on image with stencil
-fil = np.zeros((3, 3))
-
-@numba.stencil(func_or_mode="constant", cval=np.nan)
-def kernel_conv(a):
-    return (a[0, 0] * fil[0, 0] + a[0, 1] * fil[0, 1] + a[0, 2] * fil[0, 2]
-            + a[1, 0] * fil[1, 0] + a[1, 1] * fil[1, 1] + a[1, 2] * fil[1, 2]
-            + a[2, 0] * fil[2, 0] + a[2, 1] * fil[2, 1] + a[2, 2] * fil[2, 2])
-
-@numba.njit(parallel=True)
-def _numba_stencil_convolution(imgs, filters, output):
-    # Shapes
-    n_N, N1, N2 = imgs.shape
-    n_M, M1, M2 = filters.shape
-
-    for ii in prange(n_N):
-        for ff in prange(n_M):
-            output[ii, ff, :, :] = kernel_conv(imgs[ii, :, :])
-
-    return output
-
-
-@cuda.jit
-def convolve_gpu(x, k, out):
-    i, j = cuda.grid(2)
-    if i < out.shape[0] and j < out.shape[1]:
-        out[i, j] = (x[i, j] * k[0, 0] + x[i, j + 1] * k[0, 1] + x[i, j + 2] * k[0, 2] +
-                     x[i + 1, j] * k[1, 0] + x[i + 1, j + 1] * k[1, 1] + x[i + 1, j + 2] * k[1, 2] +
-                     x[i + 2, j] * k[2, 0] + x[i + 2, j + 1] * k[2, 1] + x[i + 2, j + 2] * k[2, 2])
-
-def _cuda_convolution(imgs, filters, output):
-
-    # Shapes
-    n_N, N1, N2 = imgs.shape
-    n_M, M1, M2 = filters.shape
-
-    for ii in prange(n_N):
-        for ff in prange(n_M):
-
-            # Allocate memory for inputs and outputs
-            filters_gpu = cp.asarray(filters[ff, :, :])
-            imgs_gpu = cp.asarray(imgs[ii, :, :])
-            out_gpu = cp.asarray(np.zeros(imgs.shape, dtype=np.float32))
-
-            # Configure the grid of thread blocks
-            threadsperblock = (32, 32)
-            blockspergrid_x = m.ceil(imgs_gpu.shape[0] / threadsperblock[0])
-            blockspergrid_y = m.ceil(imgs_gpu.shape[1] / threadsperblock[1])
-            blockspergrid = (blockspergrid_x, blockspergrid_y)
-
-            # Execute the convolution kernel
-            convolve_gpu[blockspergrid, threadsperblock](imgs_gpu, filters_gpu, out_gpu)
-
-            # Copy the results back to host and compare results
-            stencil_gpu = cp.asnumpy(out_gpu)
-            output[ii, ff, :, :] = stencil_gpu
-
-    return output
-
-
 def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDArrayf:
     """
     Convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2, using
@@ -2632,25 +2555,14 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif "numba" in method.lower():
-        if "cv" in method.lower():
-            half_M1 = int((M1 - 1) / 2)
-            half_M2 = int((M2 - 1) / 2)
-            imgs_pad = np.pad(imgs, pad_width=((0, 0), (half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
-            output = _numba_convolution(
-                imgs=imgs_pad,
-                filters=filters,
-                output=output,
-            )
-        elif "stencil" in method.lower():
-            output = _numba_stencil_convolution(
-                imgs=imgs,
-                filters=filters,
-                output=output,
-            )
-        elif "cuda" in method.lower():
-            output = _cuda_convolution(imgs=imgs, filters=filters, output=output)
-    elif "cupy" in method.lower():
-        _cupy_convolution(imgs=imgs, filters=filters, output=output)
+        half_M1 = int((M1 - 1) / 2)
+        half_M2 = int((M2 - 1) / 2)
+        imgs_pad = np.pad(imgs, pad_width=((0, 0), (half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        output = _numba_convolution(
+            imgs=imgs_pad,
+            filters=filters,
+            output=output,
+        )
     else:
         raise ValueError('Method must be "scipy" or "numba".')
 

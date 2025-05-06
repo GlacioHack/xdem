@@ -200,7 +200,6 @@ class TestTerrainAttribute:
         # output = functions_richdem[attribute](dem)
         # assert np.all(dem.data.mask == output.data.mask)
 
-
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
 
@@ -251,8 +250,13 @@ class TestTerrainAttribute:
             plt.imshow(curvature.squeeze())
             plt.show()
 
-        with pytest.raises(ValueError, match=re.escape(f"Surface fit and rugosity require the same X and Y resolution "
-                                             f"((1.0, 2.0) was given). This was required by: ['{name}'].")):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"Surface fit and rugosity require the same X and Y resolution "
+                f"((1.0, 2.0) was given). This was required by: ['{name}']."
+            ),
+        ):
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
@@ -345,13 +349,13 @@ class TestTerrainAttribute:
                 "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
             ),
         ):
-            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, method="DoesNotExist")
+            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, method="DoesNotExist")  # type: ignore
 
         with pytest.raises(
             ValueError,
             match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
         ):
-            xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
+            xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")  # type: ignore
 
     def test_get_terrain_attribute__raster_input(self) -> None:
         """Test the get_terrain_attribute function supports raster input/output."""
@@ -424,8 +428,9 @@ class TestTerrainAttribute:
         coef_arrs = list(xdem.terrain.all_coefs.values())
         coef_names = list(xdem.terrain.all_coefs.keys())
         kern3d = np.stack(coef_arrs, axis=0)
-        coefs = xdem.spatialstats.convolution(dem.reshape((1, dem.shape[0], dem.shape[1])),
-                                              filters=kern3d, method="scipy").squeeze()[:, 1, 1]
+        coefs = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 1, 1]
 
         # The 4th to last coefficient is identity, so the dem itself
         assert np.array_equal(coefs[coef_names.index("zt_i")], dem[1, 1])
@@ -436,7 +441,7 @@ class TestTerrainAttribute:
         # The fourth should be concave in the y-direction
         assert coefs[coef_names.index("zt_e")] < 0
 
-    def test_convolution_equal__engine(self):
+    def test_convolution_equal__engine(self) -> None:
         """
         Check that convolution through SciPy or Numba give equal result for all kernels.
         This calls the convolution subfunctions directly (as they need to be chained sequentially with other
@@ -451,37 +456,53 @@ class TestTerrainAttribute:
         dem = rnd.normal(size=(5, 7))
 
         # With SciPy
-        conv_scipy = xdem.spatialstats.convolution(dem.reshape((1, dem.shape[0], dem.shape[1])),
-                                                   filters=kern3d, method="scipy").squeeze()[:, 3, 3]
+        conv_scipy = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 3, 3]
 
         # With Numba
         _, M1, M2 = kern3d.shape
         half_M1 = int((M1 - 1) / 2)
         half_M2 = int((M2 - 1) / 2)
         dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
-        conv_numba = xdem.terrain._compute_convolution(dem, filters=kern3d, row=3, col=3)
+        conv_numba = xdem.terrain._convolution_numba(dem, filters=kern3d, row=3, col=3)
 
         np.allclose(conv_scipy, conv_numba, equal_nan=True)
 
-    @pytest.mark.parametrize("attribute", ["slope", "aspect", "hillshade", "curvature", "profile_curvature",
-                                           "planform_curvature", "maximum_curvature"])
-    @pytest.mark.parametrize("slope_method", ["Horn", "ZevenbergThorne"])
-    def test_get_surface_attributes__engine(self, attribute: str, slope_method: Literal["Horn", "ZevenbergThorne"]) -> None:
+    @pytest.mark.parametrize(
+        "attribute",
+        ["slope", "aspect", "hillshade", "curvature", "profile_curvature", "planform_curvature", "maximum_curvature"],
+    )  # type: ignore
+    @pytest.mark.parametrize("slope_method", ["Horn", "ZevenbergThorne"])  # type: ignore
+    def test_get_surface_attributes__engine(
+        self, attribute: str, slope_method: Literal["Horn", "ZevenbergThorne"]
+    ) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(5, 7))
 
-        attrs_scipy = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=[attribute],
-                                                           slope_method=slope_method, engine="scipy")
-        attrs_numba = xdem.terrain._get_surface_attributes(dem=dem, resolution=2, surface_attributes=[attribute],
-                                                           slope_method=slope_method, engine="numba")
+        attrs_scipy = xdem.terrain._get_surface_attributes(
+            dem=dem, resolution=2, surface_attributes=[attribute], slope_method=slope_method, engine="scipy"
+        )
+        attrs_numba = xdem.terrain._get_surface_attributes(
+            dem=dem, resolution=2, surface_attributes=[attribute], slope_method=slope_method, engine="numba"
+        )
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
         # assert np.allclose(coefs_numba, coefs_numba_cv, equal_nan=True)
 
-    @pytest.mark.parametrize("attribute", ["topographic_position_index", "terrain_ruggedness_index_Riley",
-                                           "terrain_ruggedness_index_Wilson", "roughness", "rugosity", "fractal_roughness"])
+    @pytest.mark.parametrize(
+        "attribute",
+        [
+            "topographic_position_index",
+            "terrain_ruggedness_index_Riley",
+            "terrain_ruggedness_index_Wilson",
+            "roughness",
+            "rugosity",
+            "fractal_roughness",
+        ],
+    )  # type: ignore
     def test_get_windowed_indices__engine(self, attribute: str) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
@@ -491,20 +512,20 @@ class TestTerrainAttribute:
         # Get TRI method if specified
         if "Wilson" in attribute or "Riley" in attribute:
             attribute = "terrain_ruggedness_index"
-            tri_method = attribute.split("_")[-1]
+            tri_method: Literal["Riley", "Wilson"]
+            tri_method = attribute.split("_")[-1]  # type: ignore
         # Otherwise use any one, doesn't matter
         else:
             tri_method = "Wilson"
 
-        attrs_scipy = xdem.terrain._get_windowed_indexes(dem=dem, window_size=3, resolution=1,
-                                                         windowed_indexes=[attribute],
-                                                         tri_method=tri_method, engine="scipy")
-        attrs_numba = xdem.terrain._get_windowed_indexes(dem=dem, window_size=3, resolution=1,
-                                                         windowed_indexes=[attribute],
-                                                         tri_method=tri_method, engine="numba")
+        attrs_scipy = xdem.terrain._get_windowed_indexes(
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy"
+        )
+        attrs_numba = xdem.terrain._get_windowed_indexes(
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="numba"
+        )
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
-
 
     def test_get_terrain_attribute__out_dtype(self) -> None:
 
