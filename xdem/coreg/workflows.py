@@ -29,13 +29,13 @@ import pandas as pd
 import rasterio as rio
 from geoutils._typing import Number
 from geoutils.raster import RasterType
+from geoutils.stats import nmad
 
 from xdem._typing import NDArrayf
 from xdem.coreg import AffineCoreg, CoregPipeline
 from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.coreg.base import Coreg
 from xdem.dem import DEM
-from xdem.spatialstats import nmad
 from xdem.terrain import slope
 
 

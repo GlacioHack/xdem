@@ -19,9 +19,9 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 4
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.stats import nmad
 
 import xdem
-from xdem.spatialstats import nmad
 
 # %%
 # We start by estimating the elevation heteroscedasticity and deriving a terrain-dependent measurement error as a function of both

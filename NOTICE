@@ -125,3 +125,7 @@ noisyopt: Library for optimizing noisy functions in Python.
 Copyright (c) 2016-2017 Andreas Mayer.
 Website: https://pypi.org/project/noisyopt/
 License: MIT.
+
+pyransac3d: Implementation of Random sample consensus (RANSAC) method
+Website: https://pypi.org/project/pyransac3d/
+License: Apache License 2.0
