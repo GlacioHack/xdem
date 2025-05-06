@@ -20,9 +20,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Sized, overload, Literal
-
-import scipy.ndimage
+from typing import Sized, overload, Literal, Any
 
 import geoutils as gu
 import numba
@@ -125,8 +123,7 @@ def _divider_method_coef(l: float, coef: str) -> float:
 
 
 def _determine_required_surface_coefs(surface_attributes: list[str], resolution: float,
-                                      slope_method: Literal["Horn", "ZevenbergThorne"],
-                                      out_dtype: DTypeLike = np.float32) -> tuple[list[NDArrayf], list[int], list[int], list[bool], int]:
+                                      slope_method: Literal["Horn", "ZevenbergThorne"]) -> tuple[list[NDArrayf], list[int], list[int], list[bool], int]:
     """
     Determine list of surface coefficients that need to be derived given input attributes, and map ordered indexes
     to be used to derive them through SciPy or Numba loop efficiently. (to minimize memory and CPU usage)
@@ -160,7 +157,8 @@ def _determine_required_surface_coefs(surface_attributes: list[str], resolution:
 
     coef_names = list(set(c_sah + c_curv + c_pcurv))
 
-    coef_arrs = [all_coefs[cn].astype(out_dtype) for cn in coef_names]
+    # Coefficient arrays take almost no memory, so we want the finest precision
+    coef_arrs = [all_coefs[cn].astype(np.float64) for cn in coef_names]
 
     # Divide coefficients by associated resolution factors
     for i in range(len(coef_names)):
@@ -255,8 +253,8 @@ def _make_attribute_from_coefs(
 
         if slope_method_id == 0:
 
-            h1_idx = 0
-            h2_idx = 1
+            h1_idx = idx_coefs[9]
+            h2_idx = idx_coefs[10]
 
             # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
             # http://dx.doi.org/10.1109/PROC.1981.11918.
@@ -264,13 +262,13 @@ def _make_attribute_from_coefs(
 
         elif slope_method_id == 1:
 
-            zt_g_idx = 0
-            zt_h_idx = 1
+            zt_g_idx = idx_coefs[6]
+            zt_h_idx = idx_coefs[7]
 
             # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
             # http://dx.doi.org/10.1002/esp.3290120107.
             # SLOPE = ARCTAN((G²+H²)**(1/2))
-            slope = np.arctan(C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2) ** 0.5
+            slope = np.arctan((C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2) ** 0.5)
 
         # In case slope is only derived for hillshade
         if slope_idx != 99:
@@ -346,6 +344,8 @@ def _make_attribute_from_coefs(
 
         # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
         # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
         plancurv = np.where(
             C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
             np.array([0.]),
@@ -376,6 +376,8 @@ def _make_attribute_from_coefs(
 
         # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
         # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
         profcurv = np.where(
             C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
             np.array([0.]),
@@ -437,6 +439,9 @@ def _get_surface_attributes_numba(
     attrs_size: int,
     out_dtype: DTypeLike,
     slope_method_id: int = 0,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0
 ) -> NDArrayf:
     """
     Run the pixel-wise analysis in parallel for a 3x3 window using the resolution.
@@ -460,7 +465,7 @@ def _get_surface_attributes_numba(
         for col in numba.prange(col_range):
 
             # Compute coefficients from convolution
-            coefs = np.zeros((n_M,), dtype=out_dtype)
+            coefs = np.zeros((n_M,), dtype=np.float64)
             for m1 in range(M1):
                 for m2 in range(M2):
                     for ff in range(n_M):
@@ -474,18 +479,22 @@ def _get_surface_attributes_numba(
                                                      make_attrs=make_attrs,
                                                      idx_coefs=idx_coefs,
                                                      idx_attrs=idx_attrs,
-                                                     out_size=(attrs_size, 1),
+                                                     out_size=(attrs_size, 1),  # 2-d required for np.where inside func
                                                      slope_method_id=slope_method_id,
-                                                     out_dtype=out_dtype)
+                                                     out_dtype=np.float64,
+                                                     hillshade_azimuth=hillshade_azimuth,
+                                                     hillshade_altitude=hillshade_altitude,
+                                                     hillshade_z_factor=hillshade_z_factor)
 
             # Save output for this pixel
-            outputs[:, row, col] = attrs
+            outputs[:, row, col] = attrs[:, 0]  # Squeeze extra dimension of last axis
 
     return outputs
 
 def _get_surface_attributes_scipy(dem: NDArrayf, filters: NDArrayf, make_attrs: list[bool], idx_coefs: list[int],
                                   idx_attrs: list[int], slope_method_id: int, attrs_size: int,
-                                  out_dtype: DTypeLike = np.float32):
+                                  out_dtype: DTypeLike = np.float32,
+                                  **kwargs: Any):
 
     # Perform convolution and squeeze output into 3D array
     from xdem.spatialstats import convolution
@@ -496,7 +505,7 @@ def _get_surface_attributes_scipy(dem: NDArrayf, filters: NDArrayf, make_attrs: 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "invalid value encountered in remainder")
         attrs = _make_attribute_from_coefs(coef_arrs=coefs, make_attrs=make_attrs, idx_coefs=idx_coefs, idx_attrs=idx_attrs,
-                                           out_size=out_size, slope_method_id=slope_method_id, out_dtype=out_dtype)
+                                           out_size=out_size, slope_method_id=slope_method_id, out_dtype=out_dtype, **kwargs)
 
     return attrs
 
@@ -506,7 +515,8 @@ def _get_surface_attributes(dem: NDArrayf,
                             surface_attributes: list[str],
                             out_dtype: DTypeLike = np.float32,
                             slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
-                            engine: Literal["scipy", "numba"] = "scipy") -> NDArrayf:
+                            engine: Literal["scipy", "numba"] = "scipy",
+                            **kwargs: Any) -> NDArrayf:
     """
     Get surface attributes based on fit coefficients (quadric, quintic, etc) using SciPy or Numba convolution and
     reducer functions.
@@ -544,7 +554,7 @@ def _get_surface_attributes(dem: NDArrayf,
     if engine == "scipy":
         output = _get_surface_attributes_scipy(dem=dem, filters=kern3d, idx_coefs=idx_coefs, idx_attrs=idx_attrs,
                                                make_attrs=make_attrs, slope_method_id=slope_method_id,
-                                               attrs_size=attrs_size, out_dtype=out_dtype, )
+                                               attrs_size=attrs_size, out_dtype=out_dtype, **kwargs)
     elif engine == "numba":
         _, M1, M2 = kern3d.shape
         half_M1 = int((M1 - 1) / 2)
@@ -557,7 +567,7 @@ def _get_surface_attributes(dem: NDArrayf,
         [typed_idx_coefs.append(x) for x in idx_coefs]
         output = _get_surface_attributes_numba(dem=dem, filters=kern3d, make_attrs=typed_make_attrs, idx_coefs=typed_idx_coefs,
                                                idx_attrs=typed_idx_attrs, attrs_size=attrs_size, out_dtype=out_dtype,
-                                               slope_method_id=slope_method_id)
+                                               slope_method_id=slope_method_id, **kwargs)
 
     return output
 
@@ -587,7 +597,10 @@ def _tpi_func(arr: NDArrayf, window_size: int) -> float:
 
 def _roughness_func(arr: NDArrayf) -> float:
     """Roughness from Dartnell (2000): difference between maximum and minimum of the window."""
-    return np.max(arr) - np.min(arr)
+    if np.count_nonzero(np.isnan(arr)) > 0:
+        return np.nan # This is somehow necessary for Numba to not ignore NaNs
+    else:
+        return np.max(arr) - np.min(arr)
 
 def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32) -> float:
     """Fractal roughness according to the box-counting method of Taud and Parrot (2005)."""
@@ -1140,8 +1153,24 @@ def get_terrain_attribute(
     ]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
 
-    if resolution is None and len(attributes_requiring_surface_fit) > 1:
-        raise ValueError(f"'resolution' must be provided as an argument for attributes: {list_requiring_surface_fit}")
+    attributes_requiring_resolution = attributes_requiring_surface_fit + (["rugosity"] if "rugosity" in attribute else [])
+    if len(attributes_requiring_resolution) > 0:
+        if resolution is None:
+            raise ValueError(f"'resolution' must be provided as an argument for attributes: {attributes_requiring_resolution}")
+
+        if not isinstance(resolution, Sized):
+            resolution = (float(resolution), float(resolution))  # type: ignore
+        if resolution[0] != resolution[1]:
+            raise ValueError(
+                f"Surface fit and rugosity require the same X and Y resolution ({resolution} was given). "
+                f"This was required by: {attributes_requiring_resolution}."
+            )
+    # If resolution is still None and there was no error, use a placeholder
+    if resolution is None:
+        resolution = 1
+    # If sized, used the first
+    elif isinstance(resolution, Sized):
+        resolution = resolution[0]
 
     choices = list_requiring_surface_fit + list_requiring_windowed_index
     for attr in attribute:
@@ -1167,20 +1196,18 @@ def get_terrain_attribute(
     # Process surface attributes
     if len(attributes_requiring_surface_fit) > 0:
 
-        if not isinstance(resolution, Sized):
-            resolution = (float(resolution), float(resolution))  # type: ignore
-        if resolution[0] != resolution[1]:
-            raise ValueError(
-                f"Surface fit requires the same X and Y resolution ({resolution} was given). "
-                f"This was required by: {attributes_requiring_surface_fit}"
-            )
+        # Keyword arguments
+        surface_kwargs = {"hillshade_azimuth": hillshade_azimuth, "hillshade_altitude": hillshade_altitude,
+                          "hillshade_z_factor": hillshade_z_factor}
 
+        # Get attributes
         surface_attributes = _get_surface_attributes(dem=dem_arr,
-                                                     resolution=resolution[0],
+                                                     resolution=resolution,
                                                      surface_attributes=attributes_requiring_surface_fit,
                                                      out_dtype=out_dtype,
                                                      slope_method=slope_method,
-                                                     engine=engine)
+                                                     engine=engine,
+                                                     **surface_kwargs)
 
         # Convert the unit if wanted
         if degrees:

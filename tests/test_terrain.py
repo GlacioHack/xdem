@@ -199,18 +199,6 @@ class TestTerrainAttribute:
         # output = functions_richdem[attribute](dem)
         # assert np.all(dem.data.mask == output.data.mask)
 
-    def test_hillshade_errors(self) -> None:
-        """Validate that the hillshade function raises appropriate errors."""
-        # Try giving the hillshade invalid arguments.
-
-        with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
-            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, azimuth=361)
-
-        with pytest.raises(ValueError, match="Altitude must be a value between 0 and 90"):
-            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=91)
-
-        with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
-            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
@@ -227,6 +215,19 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
+    def test_hillshade__errors(self) -> None:
+        """Validate that the hillshade function raises appropriate errors."""
+        # Try giving the hillshade invalid arguments.
+
+        with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, azimuth=361)
+
+        with pytest.raises(ValueError, match="Altitude must be a value between 0 and 90"):
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=91)
+
+        with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
+
     @pytest.mark.parametrize(
         "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
     )  # type: ignore
@@ -237,21 +238,20 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive curvature without any gaps
-        curvature = xdem.terrain.get_terrain_attribute(
-            dem.data, attribute=name, resolution=dem.res, edge_method="nearest"
-        )
+        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
-        # Validate that the array has the same shape as the input and that all values are finite.
+        # Validate that the array has the same shape as the input and that all non-edge values are finite.
         assert curvature.shape == dem.data.shape
         try:
-            assert np.all(np.isfinite(curvature))
+            assert np.all(np.isfinite(curvature[1:-1, 1:-1]))
         except Exception:
             import matplotlib.pyplot as plt
 
             plt.imshow(curvature.squeeze())
             plt.show()
 
-        with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
+        with pytest.raises(ValueError, match=re.escape(f"Surface fit and rugosity require the same X and Y resolution "
+                                             f"((1.0, 2.0) was given). This was required by: ['{name}'].")):
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
@@ -261,7 +261,7 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
-    def test_get_terrain_attribute(self) -> None:
+    def test_get_terrain_attribute__multiple_inputs(self) -> None:
         """Test the get_terrain_attribute function by itself."""
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
@@ -284,7 +284,7 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    def test_get_terrain_attribute_errors(self) -> None:
+    def test_get_terrain_attribute__errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
@@ -294,7 +294,7 @@ class TestTerrainAttribute:
                 "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
             ),
         ):
-            xdem.terrain.slope(self.dem.data, method="DoesNotExist")
+            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, method="DoesNotExist")
 
         with pytest.raises(
             ValueError,
@@ -302,7 +302,8 @@ class TestTerrainAttribute:
         ):
             xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
 
-    def test_raster_argument(self) -> None:
+    def test_get_terrain_attribute__raster_input(self) -> None:
+        """Test the get_terrain_attribute function supports raster input/output."""
 
         slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
 
@@ -383,7 +384,6 @@ class TestTerrainAttribute:
 
         # The fourth should be concave in the y-direction
         assert coefs[coef_names.index("zt_e")] < 0
-
 
     def test_convolution_equal__engine(self):
         """
