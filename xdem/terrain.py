@@ -521,6 +521,7 @@ def _get_surface_attributes_scipy(
 
     # Perform convolution and squeeze output into 3D array
     from xdem.spatialstats import convolution
+
     coefs = convolution(imgs=dem.reshape((1, dem.shape[0], dem.shape[1])), filters=filters, method="scipy").squeeze()
 
     # Convert coefficients to attributes
@@ -963,7 +964,7 @@ def _get_windowed_indexes_numba(
     for row in numba.prange(row_range):
         for col in numba.prange(col_range):
 
-            dem_window = dem[row : row + window_size, col: col + window_size].flatten()
+            dem_window = dem[row : row + window_size, col : col + window_size].flatten()
             out_size = (attrs_size,)
             attrs = _make_windowed_indexes(
                 dem_window,
