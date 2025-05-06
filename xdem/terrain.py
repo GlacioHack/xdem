@@ -402,7 +402,7 @@ def _make_attribute_from_coefs(
     return attrs
 
 
-@numba.njit(inline="always")  # type: ignore
+@numba.njit(inline="always", cache=True)  # type: ignore
 def _convolution_numba(
     dem: NDArrayf, filters: NDArrayf, row: int, col: int, out_dtype: DTypeLike = np.float32
 ) -> NDArrayf:
@@ -424,10 +424,10 @@ def _convolution_numba(
 
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_make_attribute_from_coefs_numba = numba.njit(inline="always")(_make_attribute_from_coefs)
+_make_attribute_from_coefs_numba = numba.njit(inline="always", cache=True)(_make_attribute_from_coefs)
 
 
-@numba.njit(parallel=True)  # type: ignore
+@numba.njit(parallel=True, cache=True)  # type: ignore
 def _get_surface_attributes_numba(
     dem: NDArrayf,
     filters: NDArrayf,
@@ -834,12 +834,12 @@ def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.f
 
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_tpi_func_numba = numba.njit(inline="always")(_tpi_func)
-_tri_riley_func_numba = numba.njit(inline="always")(_tri_riley_func)
-_tri_wilson_func_numba = numba.njit(inline="always")(_tri_wilson_func)
-_roughness_func_numba = numba.njit(inline="always")(_roughness_func)
-_rugosity_func_numba = numba.njit(inline="always")(_rugosity_func)
-_fractal_roughness_func_numba = numba.njit(inline="always")(_fractal_roughness_func)
+_tpi_func_numba = numba.njit(inline="always", cache=True)(_tpi_func)
+_tri_riley_func_numba = numba.njit(inline="always", cache=True)(_tri_riley_func)
+_tri_wilson_func_numba = numba.njit(inline="always", cache=True)(_tri_wilson_func)
+_roughness_func_numba = numba.njit(inline="always", cache=True)(_roughness_func)
+_rugosity_func_numba = numba.njit(inline="always", cache=True)(_rugosity_func)
+_fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(_fractal_roughness_func)
 
 
 def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int], list[bool], int]:
@@ -880,7 +880,7 @@ def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int]
     return idx_attrs, make_attrs, attrs_size
 
 
-@numba.njit(inline="always")  # type: ignore
+@numba.njit(inline="always", cache=True)  # type: ignore
 def _make_windowed_indexes(
     dem_window: NDArrayf,
     window_size: int,
@@ -930,7 +930,7 @@ def _make_windowed_indexes(
     return attrs
 
 
-@numba.njit(parallel=True)  # type: ignore
+@numba.njit(parallel=True, cache=True)  # type: ignore
 def _get_windowed_indexes_numba(
     dem: NDArrayf,
     window_size: int,
