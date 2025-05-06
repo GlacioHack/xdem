@@ -688,7 +688,7 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     list_box_sizes = np.zeros((hw,), dtype=np.uint8)
     for j in range(1, hw + 1):
         if hw % j == 0:
-            list_box_sizes[j-1] = j
+            list_box_sizes[j - 1] = j
 
     valids = list_box_sizes != 0
     sub_list_box_sizes = list_box_sizes[valids]
@@ -942,7 +942,7 @@ def _get_windowed_indexes_numba(
     for row in numba.prange(row_range):
         for col in numba.prange(col_range):
 
-            dem_window = dem[row:row + window_size, col:col + window_size].flatten()
+            dem_window = dem[row : row + window_size, col : col + window_size].flatten()
             out_size = (attrs_size,)
             attrs = _make_windowed_indexes(
                 dem_window,
