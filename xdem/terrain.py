@@ -212,8 +212,20 @@ def _preprocess_surface_fit(
 
 def _make_attribute_from_coefs(
     coef_arrs: NDArrayf,
-    idx_coefs: list[int],
-    idx_attrs: list[int],
+    h1_idx: int,
+    h2_idx: int,
+    zt_d_idx: int,
+    zt_e_idx: int,
+    zt_f_idx: int,
+    zt_g_idx: int,
+    zt_h_idx: int,
+    slope_idx: int,
+    aspect_idx: int,
+    hs_idx: int,
+    curv_idx: int,
+    plancurv_idx: int,
+    profcurv_idx: int,
+    maxcurv_idx: int,
     make_attrs: list[bool],
     out_size: tuple[int, ...],
     slope_method_id: int,
@@ -275,21 +287,13 @@ def _make_attribute_from_coefs(
 
     if make_slope:
 
-        slope_idx = idx_attrs[0]
-
         if slope_method_id == 0:
-
-            h1_idx = idx_coefs[9]
-            h2_idx = idx_coefs[10]
 
             # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
             # http://dx.doi.org/10.1109/PROC.1981.11918.
             slope = np.arctan((C[h1_idx] ** 2 + C[h2_idx] ** 2) ** 0.5)
 
         elif slope_method_id == 1:
-
-            zt_g_idx = idx_coefs[6]
-            zt_h_idx = idx_coefs[7]
 
             # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
             # http://dx.doi.org/10.1002/esp.3290120107.
@@ -302,22 +306,14 @@ def _make_attribute_from_coefs(
 
     if make_aspect:
 
-        aspect_idx = idx_attrs[1]
-
         # ASPECT = ARCTAN(-H/-G)  # This did not work
         # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
         if slope_method_id == 0:
-
-            h1_idx = idx_coefs[9]
-            h2_idx = idx_coefs[10]
 
             # This uses the estimates from Horn (1981).
             aspect = (-np.arctan2(-C[h1_idx], C[h2_idx]) - np.pi) % (2 * np.pi)
 
         elif slope_method_id == 1:
-
-            zt_g_idx = idx_coefs[6]
-            zt_h_idx = idx_coefs[7]
 
             # This uses the estimate from Zevenbergen and Thorne (1987).
             aspect = (np.arctan2(-C[zt_g_idx], C[zt_h_idx]) + np.pi / 2) % (2 * np.pi)
@@ -327,8 +323,6 @@ def _make_attribute_from_coefs(
             attrs[aspect_idx] = aspect
 
     if make_hillshade:
-
-        hs_idx = idx_attrs[2]
 
         # If a different z-factor was given, slopemap with exaggerated gradients.
         if hillshade_z_factor != 1.0:
@@ -348,23 +342,12 @@ def _make_attribute_from_coefs(
 
     if make_curvature:
 
-        curv_idx = idx_attrs[3]
-        zt_d_idx = idx_coefs[3]
-        zt_e_idx = idx_coefs[4]
-
         # Curvature is the second derivative of the surface fit equation.
         # (URL in get_quadric_coefficients() docstring)
         # Curvature = -2(D + E) * 100
         attrs[curv_idx] = -2.0 * (C[zt_d_idx] + C[zt_e_idx]) * 100
 
     if make_planform_curvature:
-
-        plancurv_idx = idx_attrs[4]
-        zt_d_idx = idx_coefs[3]
-        zt_e_idx = idx_coefs[4]
-        zt_f_idx = idx_coefs[5]
-        zt_g_idx = idx_coefs[6]
-        zt_h_idx = idx_coefs[7]
 
         # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
         # Completely flat surfaces need to be set to zero to avoid division by zero
@@ -389,13 +372,6 @@ def _make_attribute_from_coefs(
 
     if make_profile_curvature:
 
-        profcurv_idx = idx_attrs[5]
-        zt_d_idx = idx_coefs[3]
-        zt_e_idx = idx_coefs[4]
-        zt_f_idx = idx_coefs[5]
-        zt_g_idx = idx_coefs[6]
-        zt_h_idx = idx_coefs[7]
-
         # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
         # Completely flat surfaces need to be set to zero to avoid division by zero
         # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
@@ -418,8 +394,6 @@ def _make_attribute_from_coefs(
             attrs[profcurv_idx] = profcurv
 
     if make_maximum_curvature:
-
-        maxcurv_idx = idx_attrs[6]
 
         minc = np.minimum(plancurv, profcurv)
         maxc = np.maximum(plancurv, profcurv)
@@ -477,6 +451,16 @@ def _get_surface_attributes_numba(
     N1, N2 = dem.shape
     n_M, M1, M2 = filters.shape
 
+    # This ugly unpacking outside the loop is required for a Numba speed-up by a factor of 10
+    zt_d_idx = idx_coefs[3]
+    zt_e_idx = idx_coefs[4]
+    zt_f_idx = idx_coefs[5]
+    zt_g_idx = idx_coefs[6]
+    zt_h_idx = idx_coefs[7]
+    h1_idx = idx_coefs[9]
+    h2_idx = idx_coefs[10]
+    slope_idx, aspect_idx, hs_idx, curv_idx, plancurv_idx, profcurv_idx, maxcurv_idx = idx_attrs
+
     # Define ranges to loop through given padding
     row_range = N1 - M1 + 1
     col_range = N2 - M2 + 1
@@ -495,8 +479,20 @@ def _get_surface_attributes_numba(
             attrs = _make_attribute_from_coefs_numba(
                 coef_arrs=coefs,
                 make_attrs=make_attrs,
-                idx_coefs=idx_coefs,
-                idx_attrs=idx_attrs,
+                h1_idx=h1_idx,
+                h2_idx=h2_idx,
+                zt_d_idx=zt_d_idx,
+                zt_e_idx=zt_e_idx,
+                zt_f_idx=zt_f_idx,
+                zt_g_idx=zt_g_idx,
+                zt_h_idx=zt_h_idx,
+                slope_idx=slope_idx,
+                aspect_idx=aspect_idx,
+                hs_idx=hs_idx,
+                curv_idx=curv_idx,
+                plancurv_idx=plancurv_idx,
+                profcurv_idx=profcurv_idx,
+                maxcurv_idx=maxcurv_idx,
                 out_size=(attrs_size, 1),  # 2-d required for np.where inside func
                 slope_method_id=slope_method_id,
                 out_dtype=np.float64,
@@ -525,18 +521,41 @@ def _get_surface_attributes_scipy(
 
     # Perform convolution and squeeze output into 3D array
     from xdem.spatialstats import convolution
-
     coefs = convolution(imgs=dem.reshape((1, dem.shape[0], dem.shape[1])), filters=filters, method="scipy").squeeze()
 
     # Convert coefficients to attributes
     out_size = (attrs_size, dem.shape[0], dem.shape[1])
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "invalid value encountered in remainder")
+
+        # This ugly unpacking outside the function is required for a Numba speed-up by a factor of 10
+        # (and SciPy uses the same function, so requires the arguments as well)
+        zt_d_idx = idx_coefs[3]
+        zt_e_idx = idx_coefs[4]
+        zt_f_idx = idx_coefs[5]
+        zt_g_idx = idx_coefs[6]
+        zt_h_idx = idx_coefs[7]
+        h1_idx = idx_coefs[9]
+        h2_idx = idx_coefs[10]
+        slope_idx, aspect_idx, hs_idx, curv_idx, plancurv_idx, profcurv_idx, maxcurv_idx = idx_attrs
+
         attrs = _make_attribute_from_coefs(
             coef_arrs=coefs,
             make_attrs=make_attrs,
-            idx_coefs=idx_coefs,
-            idx_attrs=idx_attrs,
+            h1_idx=h1_idx,
+            h2_idx=h2_idx,
+            zt_d_idx=zt_d_idx,
+            zt_e_idx=zt_e_idx,
+            zt_f_idx=zt_f_idx,
+            zt_g_idx=zt_g_idx,
+            zt_h_idx=zt_h_idx,
+            slope_idx=slope_idx,
+            aspect_idx=aspect_idx,
+            hs_idx=hs_idx,
+            curv_idx=curv_idx,
+            plancurv_idx=plancurv_idx,
+            profcurv_idx=profcurv_idx,
+            maxcurv_idx=maxcurv_idx,
             out_size=out_size,
             slope_method_id=slope_method_id,
             out_dtype=out_dtype,
@@ -866,7 +885,11 @@ def _make_windowed_indexes(
     window_size: int,
     resolution: float,
     make_attrs: list[bool],
-    idx_attrs: list[int],
+    tpi_idx: int,
+    tri_idx: int,
+    roughness_idx: int,
+    rugosity_idx: int,
+    frac_roughness_idx: int,
     tri_method_id: int,
     out_size: tuple[int, ...],
     out_dtype: DTypeLike,
@@ -879,12 +902,10 @@ def _make_windowed_indexes(
     # Topographic position index
     if make_tpi:
 
-        tpi_idx = idx_attrs[0]
         attrs[tpi_idx] = _tpi_func_numba(dem_window, window_size=window_size)
 
     if make_tri:
 
-        tri_idx = idx_attrs[1]
         if tri_method_id == 0:
             attrs[tri_idx] = _tri_riley_func_numba(dem_window)
 
@@ -893,17 +914,14 @@ def _make_windowed_indexes(
 
     if make_roughness:
 
-        roughness_idx = idx_attrs[2]
         attrs[roughness_idx] = _roughness_func_numba(dem_window)
 
     if make_rugosity:
 
-        rugosity_idx = idx_attrs[3]
         attrs[rugosity_idx] = _rugosity_func_numba(dem_window, resolution=resolution, out_dtype=out_dtype)
 
     if make_fractal_roughness:
 
-        frac_roughness_idx = idx_attrs[4]
         attrs[frac_roughness_idx] = _fractal_roughness_func_numba(
             dem_window, window_size=window_size, out_dtype=out_dtype
         )
@@ -935,6 +953,9 @@ def _get_windowed_indexes_numba(
     row_range = N1 - window_size + 1
     col_range = N2 - window_size + 1
 
+    # Ugly unpacking as integers outside loop required for Numba to speed-up
+    tpi_idx, tri_idx, roughness_idx, rugosity_idx, frac_roughness_idx = idx_attrs
+
     # Allocate output array
     outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
 
@@ -942,14 +963,18 @@ def _get_windowed_indexes_numba(
     for row in numba.prange(row_range):
         for col in numba.prange(col_range):
 
-            dem_window = dem[row : row + window_size, col : col + window_size].flatten()
+            dem_window = dem[row : row + window_size, col: col + window_size].flatten()
             out_size = (attrs_size,)
             attrs = _make_windowed_indexes(
                 dem_window,
                 window_size=window_size,
                 resolution=resolution,
                 make_attrs=make_attrs,
-                idx_attrs=idx_attrs,
+                tpi_idx=tpi_idx,
+                tri_idx=tri_idx,
+                roughness_idx=roughness_idx,
+                rugosity_idx=rugosity_idx,
+                frac_roughness_idx=frac_roughness_idx,
                 tri_method_id=tri_method_id,
                 out_size=out_size,
                 out_dtype=out_dtype,
