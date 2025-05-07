@@ -1,7 +1,6 @@
 """Code example for spatial statistics"""
 
 import geoutils as gu
-import numpy as np
 
 import xdem
 
@@ -23,7 +22,7 @@ df_ns = xdem.spatialstats.nd_binning(
     dh.data.ravel(),
     list_var=[slope.data.ravel()],
     list_var_names=["slope"],
-    statistics=["count", xdem.spatialstats.nmad],
+    statistics=["count", gu.stats.nmad],
     list_var_bins=30,
 )
 

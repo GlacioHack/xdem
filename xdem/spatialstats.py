@@ -39,7 +39,6 @@ from geoutils.raster import Mask, Raster, RasterType, subsample_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
-from packaging.version import Version
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
@@ -49,29 +48,10 @@ from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_
 from skimage.draw import disk
 
 from xdem._typing import NDArrayf
-from xdem.misc import deprecate
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     import skgstat as skg
-
-
-@deprecate(
-    removal_version=Version("0.4"), details="xdem.spatialstats.nmad is being deprecated in favor of geoutils.stats.nmad"
-)
-def nmad(data: NDArrayf, nfact: float = 1.4826) -> np.floating[Any]:
-    """
-    Calculate the normalized median absolute deviation (NMAD) of an array.
-    Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
-    distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
-    e.g. Höhle and Höhle (2009), http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
-
-    :param data: Input array or raster
-    :param nfact: Normalization factor for the data
-
-    :returns nmad: (normalized) median absolute deviation of data.
-    """
-    return gu.stats.nmad(data, nfact)
 
 
 def nd_binning(
@@ -79,7 +59,7 @@ def nd_binning(
     list_var: list[NDArrayf],
     list_var_names: list[str],
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf, ...] | None = None,
-    statistics: Iterable[str | Callable[[NDArrayf], np.floating[Any]]] = ("count", np.nanmedian, nmad),
+    statistics: Iterable[str | Callable[[NDArrayf], np.floating[Any]]] = ("count", np.nanmedian, gu.stats.nmad),
     list_ranges: list[float] | None = None,
 ) -> pd.DataFrame:
     """
@@ -223,7 +203,7 @@ def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
 def interp_nd_binning(
     df: pd.DataFrame,
     list_var_names: str | list[str],
-    statistic: str | Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic: str | Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     interpolate_method: Literal["nearest"] | Literal["linear"] = "linear",
     min_count: int | None = 100,
 ) -> Callable[[tuple[ArrayLike, ...]], NDArrayf]:
@@ -517,7 +497,7 @@ def two_step_standardization(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
     unscaled_error_fun: Callable[[tuple[ArrayLike, ...]], NDArrayf],
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     fac_spread_outliers: float | None = 7,
 ) -> tuple[NDArrayf, Callable[[tuple[ArrayLike, ...]], NDArrayf]]:
     """
@@ -560,7 +540,7 @@ def _estimate_model_heteroscedasticity(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
     list_var_names: list[str],
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -767,7 +747,7 @@ def infer_heteroscedasticity_from_stable(
     stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -781,7 +761,7 @@ def infer_heteroscedasticity_from_stable(
     stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -794,7 +774,7 @@ def infer_heteroscedasticity_from_stable(
     stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -2628,7 +2608,7 @@ def _patches_convolution(
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     method: str = "scipy",
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
@@ -2711,7 +2691,7 @@ def _patches_loop_quadrants(
     n_patches: int = 1000,
     perc_min_valid: float = 80.0,
     statistics_in_patch: Iterable[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     random_state: int | np.random.Generator | None = None,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
@@ -2851,7 +2831,7 @@ def patches_method(
     stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     vectorized: bool = True,
@@ -2871,7 +2851,7 @@ def patches_method(
     stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     vectorized: bool = True,
@@ -2890,7 +2870,7 @@ def patches_method(
     stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     vectorized: bool = True,
@@ -2902,8 +2882,8 @@ def patches_method(
     """
     Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
     computes a statistic in each patch. Then, another statistic is computed between all patches. Typically, a statistic
-    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g., the NMAD) is
-    computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
+    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g.,the gu.stats.nmad)
+    is computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
     standard error of the mean.
 
     The function returns the exact areas of the patches, which might differ from the input due to rasterization of the
