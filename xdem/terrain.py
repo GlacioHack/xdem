@@ -19,7 +19,6 @@
 """Terrain attribute calculations, such as slope, aspect, hillshade, curvature and ruggedness indexes."""
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import Any, Literal, Sized, overload
 
@@ -1491,10 +1490,12 @@ def _get_terrain_attribute(
 
     # Raise warning if CRS is not projected and using a surface fit attribute
     if isinstance(dem, gu.Raster) and not dem.crs.is_projected and len(attributes_requiring_surface_fit) > 0:
-        warnings.warn(category=UserWarning,
-                      message=f"DEM is not in a projected CRS, the following surface fit attributes might be "
-                      f"wrong: {list_requiring_surface_fit}."
-                      f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.")
+        warnings.warn(
+            category=UserWarning,
+            message=f"DEM is not in a projected CRS, the following surface fit attributes might be "
+            f"wrong: {list_requiring_surface_fit}."
+            f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.",
+        )
 
     # Get array of DEM
     dem_arr = gu.raster.get_array_and_mask(dem)[0]

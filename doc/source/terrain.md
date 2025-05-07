@@ -240,7 +240,7 @@ If a surface is convex (like a mountain peak), it will have positive curvature.
 If a surface is concave (like a through or a valley bottom), it will have negative curvature.
 The curvature values in units of m{sup}`-1` are quite small, so they are by convention multiplied by 100.
 
-The curvature $c$ is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) 
+The curvature $c$ is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
 expanded to compute the surface laplacian in [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103).
 
 $$
