@@ -43,8 +43,10 @@ from geoutils.raster.tiling import compute_tiling
 
 try:
     from sklearn.linear_model import LinearRegression, RANSACRegressor
+
+    _has_sklearn = True
 except ImportError:
-    raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
+    _has_sklearn = False
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
@@ -227,6 +229,8 @@ class BlockwiseCoreg:
         :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
         :return: Estimated transformation coefficients (a, b, c) such as shift = a * x + b * y + c.
         """
+        if not _has_sklearn:
+            raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
         # Assemble input data
         points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
