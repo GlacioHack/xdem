@@ -29,7 +29,6 @@ jobs:
       - name: Install project
         run: |
           python -m pip install . -vv
-          pip install pyransac3d
 
       # Check import works
       - name: Check import works with base environment

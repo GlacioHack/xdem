@@ -53,7 +53,6 @@ dependencies:
     - noisyopt
     # "Headless" needed for opencv to install without requiring system dependencies
     - opencv-contrib-python-headless
-    - pyransac3d
 
     # To run CI against latest GeoUtils
 #    - git+https://github.com/rhugonnet/geoutils.git

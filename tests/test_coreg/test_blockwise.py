@@ -101,8 +101,10 @@ class TestBlockwiseCoreg:
         y = np.array([1, 2, 3, 4, 5])
         z = np.array([2, 4, 6, 8, 10])
 
-        with pytest.raises(ValueError):
-            blockwise_coreg._ransac(x, y, z)
+        min_inliers = 10
+
+        with pytest.raises(ValueError, match="Not enough valid points in RANSAC: got 5, need at least 10"):
+            blockwise_coreg._ransac(x, y, z, min_inliers=min_inliers)
 
     def test_wrapper_apply_epc(self, blockwise_coreg, example_data) -> None:
         """Test point cloud coefficient application via _wrapper_apply_epc."""
@@ -150,4 +152,4 @@ class TestBlockwiseCoreg:
         expected = nuth_kaab.fit_and_apply(ref, tba, mask)
 
         valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
-        assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=50)
+        assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=20)
