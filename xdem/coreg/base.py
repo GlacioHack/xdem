@@ -142,7 +142,7 @@ def _calculate_ddem_stats(
 
     Returns: a dictionary containing the statistics
     """
-    # Default stats - Cannot be put in default args due to circular import with xdem.spatialstats.nmad.
+    # Default stats - Cannot be put in default args due to circular import with gu.stats.nmad.
     if (stats_list is None) or (stats_labels is None):
         stats_list = (np.size, np.mean, np.median, nmad, np.std)
         stats_labels = ("count", "mean", "median", "nmad", "std")
