@@ -8,6 +8,8 @@ from typing import Literal
 import geoutils as gu
 import numpy as np
 import pytest
+import rasterio as rio
+from pyproj import CRS
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
@@ -356,6 +358,15 @@ class TestTerrainAttribute:
             match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
         ):
             xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")  # type: ignore
+
+        # Check warning for geographic CRS
+        data = np.ones((5, 5))
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        crs = CRS("EPSG:4326")
+        nodata = -9999
+        dem = xdem.DEM.from_array(data, transform=transform, crs=crs, nodata=nodata)
+        with pytest.warns(match="DEM is not in a projected CRS.*"):
+            xdem.terrain.get_terrain_attribute(dem, "slope")
 
     def test_get_terrain_attribute__raster_input(self) -> None:
         """Test the get_terrain_attribute function supports raster input/output."""

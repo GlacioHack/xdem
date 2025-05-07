@@ -19,6 +19,7 @@
 """Terrain attribute calculations, such as slope, aspect, hillshade, curvature and ruggedness indexes."""
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import Any, Literal, Sized, overload
 
@@ -344,7 +345,7 @@ def _make_attribute_from_coefs(
 
         # Curvature is the second derivative of the surface fit equation.
         # (URL in get_quadric_coefficients() docstring)
-        # Curvature = -2(D + E) * 100
+        # Curvature = -2(D + E) * 100, see Moore et al. (1991) Equation 16 based on Zevenberg and Thorne (1987)
         attrs[curv_idx] = -2.0 * (C[zt_d_idx] + C[zt_e_idx]) * 100
 
     if make_planform_curvature:
@@ -1211,7 +1212,7 @@ def get_terrain_attribute(
 
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
     - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987),
-        http://dx.doi.org/10.1002/esp.3290120107.
+        http://dx.doi.org/10.1002/esp.3290120107, with curvature expanded in Moore et al. (1991),
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Terrain Ruggedness Index (topography) from Riley et al. (1999),
         http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
@@ -1487,6 +1488,13 @@ def _get_terrain_attribute(
         raise ValueError("Altitude must be a value between 0 and 90 degrees (given value: {altitude})")
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
+
+    # Raise warning if CRS is not projected and using a surface fit attribute
+    if isinstance(dem, gu.Raster) and not dem.crs.is_projected and len(attributes_requiring_surface_fit) > 0:
+        warnings.warn(category=UserWarning,
+                      message=f"DEM is not in a projected CRS, the following surface fit attributes might be "
+                      f"wrong: {list_requiring_surface_fit}."
+                      f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.")
 
     # Get array of DEM
     dem_arr = gu.raster.get_array_and_mask(dem)[0]

@@ -82,7 +82,7 @@ We are working on further optimizing the computational performance of certain te
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
    * - {ref}`curv`
      - Meters{sup}`-1` * 100
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) and [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103)
    * - {ref}`plancurv`
      - Meters{sup}`-1` * 100
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
@@ -240,7 +240,8 @@ If a surface is convex (like a mountain peak), it will have positive curvature.
 If a surface is concave (like a through or a valley bottom), it will have negative curvature.
 The curvature values in units of m{sup}`-1` are quite small, so they are by convention multiplied by 100.
 
-The curvature $c$ is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107).
+The curvature $c$ is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) 
+expanded to compute the surface laplacian in [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103).
 
 $$
 
