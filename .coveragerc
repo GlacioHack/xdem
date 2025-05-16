@@ -3,3 +3,7 @@ exclude_lines =
     pragma: not covered
     @overload
     except ImportError
+    @numba.jit
+    @jit
+    @numba.njit
+    @njit
