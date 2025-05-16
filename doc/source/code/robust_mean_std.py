@@ -1,9 +1,8 @@
 """Plot example of NMAD/median as robust estimators for guide page."""
 
+import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
-
-import xdem
 
 # Create example distribution
 dh_inliers = np.random.default_rng(42).normal(loc=-5, scale=3, size=10**6)
@@ -29,14 +28,14 @@ mean_dh = np.nanmean(dh_all)
 median_dh = np.nanmedian(dh_all)
 
 std_dh = np.nanstd(dh_all)
-nmad_dh = xdem.spatialstats.nmad(dh_all)
+nmad_dh = gu.stats.nmad(dh_all)
 
 # Get traditional and robust statistics on inlier data
 mean_dh_in = np.nanmean(dh_inliers)
 median_dh_in = np.nanmedian(dh_inliers)
 
 std_dh_in = np.nanstd(dh_inliers)
-nmad_dh_in = xdem.spatialstats.nmad(dh_inliers)
+nmad_dh_in = gu.stats.nmad(dh_inliers)
 
 # Plot
 fig, ax = plt.subplots()
