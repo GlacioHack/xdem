@@ -1,4 +1,5 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2025 xDEM developers
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -19,6 +20,7 @@
 """This module defines the DEM class."""
 from __future__ import annotations
 
+import logging
 import pathlib
 import warnings
 from typing import Any, Callable, Literal, overload
@@ -27,7 +29,9 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
+from geopandas import GeoDataFrame
 from geoutils import Raster
+from geoutils._typing import Number
 from geoutils.raster import Mask, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
@@ -37,6 +41,8 @@ from skgstat import Variogram
 
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem.coreg import AffineCoreg, Coreg, CoregPipeline
+from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
@@ -485,14 +491,19 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
-    def coregister_3d(
+    def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg = None,
+        grid: str = "ref",
         inlier_mask: Mask | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-        **kwargs: Any,
-    ) -> DEM:
+        estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
+        random_state: int | np.random.Generator | None = None,
+        resample: bool = False,
+        resampling: rio.warp.Resampling = rio.warp.Resampling.bilinear,
+        **kwargs,
+    ) -> tuple[DEM | GeoDataFrame, Coreg | AffineCoreg | CoregPipeline]:
         """
         Coregister DEM to a reference DEM in three dimensions.
 
@@ -501,24 +512,105 @@ class DEM(Raster):  # type: ignore
 
         :param reference_elev: Reference elevation, DEM or elevation point cloud, for the alignment.
         :param coreg_method: Coregistration method or pipeline.
+        :param grid: The grid to be used during coregistration, set either to "ref" or "src".
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
+        :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
+            the coregistration process begins.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
+            the array/transform will be updated (if possible) and no resampling is done. \
+            Useful to avoid spreading data gaps.
+        :param resampling: The resampling algorithm to be used if `resample` is True. Default is bilinear.
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
-        :return: Coregistered DEM.
+        :return: A tuple containing 1) coregistered DEM as a xdem.DEM instance 2) the coregistration method
         """
 
+        # Define default Coreg if None is passed
         if coreg_method is None:
-            coreg_method = coreg.NuthKaab()
+            coreg_method = NuthKaab() + VerticalShift()
+
+        # Check inputs
+        if not isinstance(coreg_method, Coreg):
+            raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
+        if grid not in ["ref", "src"]:
+            raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
+
+        # # Convert to DEM instance with Float32 dtype
+        # # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
+        # reference_elev = DEM(reference_elev.astype(np.float32))
+        # self = DEM(self.astype(np.float32))
+
+        # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
+        if estimated_initial_shift:
+            if not (
+                isinstance(estimated_initial_shift, (list, tuple))
+                and len(estimated_initial_shift) == 2
+                and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+            ):
+                raise ValueError(
+                    "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+                )
+            if isinstance(coreg_method, CoregPipeline):
+                if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
+                    raise TypeError(
+                        "An initial shift has been provided, but none of the coregistration methods in the pipeline "
+                        "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
+                    )
+            elif not isinstance(coreg_method, AffineCoreg):
+                raise TypeError(
+                    "An initial shift has been provided, but the coregistration method is not affine. "
+                    "An affine coregistration method (e.g., AffineCoreg) is required."
+                )
+
+            # convert shift
+            shift_x = estimated_initial_shift[0] * reference_elev.res[0]
+            shift_y = estimated_initial_shift[1] * reference_elev.res[1]
+
+            # Apply the shift to the source dem
+            reference_elev.translate(shift_x, shift_y, inplace=True)
+
+        if grid == "ref":
+            self.reproject(reference_elev, inplace=True, silent=True)
+        elif grid == "src":
+            reference_elev.reproject(self, inplace=True, silent=True)
+
+        # Coregister to reference - Note: this will spread NaN
 
         coreg_method.fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=self,
-            inlier_mask=inlier_mask,
+            reference_elev,
+            self,
+            inlier_mask,
+            random_state=random_state,
             bias_vars=bias_vars,
             **kwargs,
         )
-        return coreg_method.apply(self)  # type: ignore
+
+        aligned_dem = coreg_method.apply(self, resample=resample, resampling=resampling)
+
+        # # Add the initial shift to the calculated shift
+        if estimated_initial_shift:
+
+            def update_shift(
+                coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+            ) -> None:
+                if isinstance(coreg_method, CoregPipeline):
+                    for step in coreg_method.pipeline:
+                        update_shift(step)
+                else:
+                    # check if the keys exist
+                    if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                        if "shift_x" in coreg_method.meta["outputs"]["affine"]:
+                            coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
+                            logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
+                        if "shift_y" in coreg_method.meta["outputs"]["affine"]:
+                            coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
+                            logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+
+            update_shift(coreg_method)
+
+        return aligned_dem, coreg_method
 
     def estimate_uncertainty(
         self,
@@ -534,7 +626,7 @@ class DEM(Raster):  # type: ignore
         random_state: int | np.random.Generator | None = None,
     ) -> tuple[RasterType, Variogram]:
         """
-        Estimate uncertainty of DEM.
+        Estimate the uncertainty of DEM.
 
         Derives either a map of variable errors (based on slope and curvature by default) and a function describing the
         spatial correlation of error (between 0 and 1) with spatial lag (distance between observations).
@@ -558,6 +650,7 @@ class DEM(Raster):  # type: ignore
         :param variogram_estimator: Estimator for empirical variogram, defaults to Dowd for robustness and consistency
             with the NMAD estimator for the spread.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
         :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity). Either rasters
             or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
         :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
