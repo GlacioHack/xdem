@@ -243,7 +243,7 @@ curv_arr = curv[stable_terrain]
 
 # Estimate the variable error by bin of slope and curvature
 df_h = xdem.spatialstats.nd_binning(
-    dh_arr, list_var=[slope_arr, curv_arr], list_var_names=["slope", "curv"], statistics=["count", xdem.spatialstats.nmad], list_var_bins=[np.linspace(0, 60, 10), np.linspace(-10, 10, 10)]
+    dh_arr, list_var=[slope_arr, curv_arr], list_var_names=["slope", "curv"], statistics=["count", gu.stats.nmad], list_var_bins=[np.linspace(0, 60, 10), np.linspace(-10, 10, 10)]
 )
 
 # Plot 2D binning

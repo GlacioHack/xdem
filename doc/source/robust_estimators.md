@@ -64,7 +64,7 @@ The half difference between 84{sup}`th` and 16{sup}`th` percentiles, or the abso
 can also be used as a robust dispersion measure equivalent to the standard deviation.
 When working with weighted data, the difference between the 84{sup}`th` and 16{sup}`th` [weighted percentile](https://en.wikipedia.org/wiki/Percentile#Weighted_percentile), or the absolute 68{sup}`th` weighted percentile can be used as a robust measure of dispersion.
 
-The {func}`xdem.spatialstats.nmad` is used by default in **{ref}`coregistration`, {ref}`biascorr` and {ref}`uncertainty`**.
+The {func}`gu.stats.nmad` is used by default in **{ref}`coregistration`, {ref}`biascorr` and {ref}`uncertainty`**.
 
 (robuststats-corr)=
 
