@@ -2902,7 +2902,7 @@ def patches_method(
     """
     Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
     computes a statistic in each patch. Then, another statistic is computed between all patches. Typically, a statistic
-    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g.,the gu.stats.nmad)
+    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g., the NMAD)
     is computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
     standard error of the mean.
 
