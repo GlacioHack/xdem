@@ -502,6 +502,7 @@ class DEM(Raster):  # type: ignore
         random_state: int | np.random.Generator | None = None,
         resample: bool = False,
         resampling: rio.warp.Resampling = rio.warp.Resampling.bilinear,
+        aligned_reprojected: bool = False,
         **kwargs,
     ) -> tuple[DEM | GeoDataFrame, Coreg | AffineCoreg | CoregPipeline]:
         """
@@ -522,6 +523,7 @@ class DEM(Raster):  # type: ignore
             the array/transform will be updated (if possible) and no resampling is done. \
             Useful to avoid spreading data gaps.
         :param resampling: The resampling algorithm to be used if `resample` is True. Default is bilinear.
+        :param aligned_reprojected: Activate reprojection at the end (for stats and plot)
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
         :return: A tuple containing 1) coregistered DEM as a xdem.DEM instance 2) the coregistration method
@@ -586,8 +588,10 @@ class DEM(Raster):  # type: ignore
         )
 
         aligned_dem = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
-        # Reprojection needed for statistics and plots
-        aligned_dem = aligned_dem.reproject(reference_elev, silent=True)
+
+        if aligned_reprojected:
+            # Reprojection needed for statistics and plots
+            aligned_dem = aligned_dem.reproject(reference_elev, silent=True)
 
         # # Add the initial shift to the calculated shift
         if estimated_initial_shift:
@@ -682,9 +686,9 @@ class DEM(Raster):  # type: ignore
         if precision_of_other == "same":
             dh /= np.sqrt(2)
 
-        # If approach allows heteroscedasticity, derive a map of errors
+        # If the approach allows heteroscedasticity, derive a map of errors
         if approach_dict[approach]["heterosc"]:
-            # Derive terrain attributes of DEM if string are passed in the list of variables
+            # Derive terrain attributes of DEM if string is passed in the list of variables
             list_var_rast = []
             for var in list_vars:
                 if isinstance(var, str):

@@ -74,7 +74,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
-tba_dem_coreg, _ = tba_dem.coregister_3d(ref_dem, inlier_mask=inlier_mask)
+tba_dem_coreg, _ = tba_dem.coregister_3d(ref_dem, inlier_mask=inlier_mask, aligned_reprojected=True)
 ```
 
 ```{code-cell} ipython3
@@ -104,7 +104,7 @@ and thus generally encompass methods described in other studies on the topic (e.
 
 The tables below summarize the characteristics of these methods.
 
-### Estimating and modelling the structure of error
+### Estimating and modeling the structure of error
 
 Frequently, in spatial statistics, a single correlation range is considered ("basic" method below).
 However, elevation data often contains errors with correlation ranges spanning different orders of magnitude.
