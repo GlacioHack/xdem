@@ -74,7 +74,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
-tba_dem_coreg = tba_dem.coregister_3d(ref_dem, inlier_mask=inlier_mask)
+tba_dem_coreg, _ = tba_dem.coregister_3d(ref_dem, inlier_mask=inlier_mask)
 ```
 
 ```{code-cell} ipython3

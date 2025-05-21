@@ -527,6 +527,8 @@ class DEM(Raster):  # type: ignore
         :return: A tuple containing 1) coregistered DEM as a xdem.DEM instance 2) the coregistration method
         """
 
+        src_dem = self.copy()
+
         # Define default Coreg if None is passed
         if coreg_method is None:
             coreg_method = NuthKaab() + VerticalShift()
@@ -536,11 +538,6 @@ class DEM(Raster):  # type: ignore
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
         if grid not in ["ref", "src"]:
             raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
-
-        # # Convert to DEM instance with Float32 dtype
-        # # TODO: Could only convert types int into float, but any other float dtype should yield very similar results
-        # reference_elev = DEM(reference_elev.astype(np.float32))
-        # self = DEM(self.astype(np.float32))
 
         # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
         if estimated_initial_shift:
@@ -569,25 +566,28 @@ class DEM(Raster):  # type: ignore
             shift_y = estimated_initial_shift[1] * reference_elev.res[1]
 
             # Apply the shift to the source dem
-            reference_elev.translate(shift_x, shift_y, inplace=True)
+            reference_elev = reference_elev.translate(shift_x, shift_y)
 
         if grid == "ref":
-            self.reproject(reference_elev, inplace=True, silent=True)
+            src_dem = src_dem.reproject(reference_elev, silent=True)
         elif grid == "src":
-            reference_elev.reproject(self, inplace=True, silent=True)
+            reference_elev = reference_elev.reproject(src_dem, silent=True)
 
-        # Coregister to reference - Note: this will spread NaN
+        reference_elev = DEM(reference_elev.astype(np.float32))
+        src_dem = DEM(src_dem.astype(np.float32))
 
         coreg_method.fit(
             reference_elev,
-            self,
+            src_dem,
             inlier_mask,
             random_state=random_state,
             bias_vars=bias_vars,
             **kwargs,
         )
 
-        aligned_dem = coreg_method.apply(self, resample=resample, resampling=resampling)
+        aligned_dem = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
+        # Reprojection needed for statistics and plots
+        aligned_dem = aligned_dem.reproject(reference_elev, silent=True)
 
         # # Add the initial shift to the calculated shift
         if estimated_initial_shift:
