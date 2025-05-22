@@ -236,7 +236,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    coreg.workflows.dem_coregistration
+    DEM.coregister_3d
 ```
 
 ### Affine coregistration
