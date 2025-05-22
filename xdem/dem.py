@@ -575,9 +575,6 @@ class DEM(Raster):  # type: ignore
         elif grid == "src":
             reference_elev = reference_elev.reproject(src_dem, silent=True)
 
-        reference_elev = DEM(reference_elev.astype(np.float32))
-        src_dem = DEM(src_dem.astype(np.float32))
-
         coreg_method.fit(
             reference_elev,
             src_dem,

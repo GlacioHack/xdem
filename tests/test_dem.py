@@ -429,10 +429,12 @@ class TestDEM:
             assert isinstance(pipeline[i], expected_type)
 
         if coreg_method is None:
+            dem_ref = DEM(fn_ref)
+            dem_tba = DEM(fn_tba)
             nk = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
             nk.fit(dem_ref, dem_tba, random_state=42)
             manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
-            assert dem_aligned.raster_equal(manually_aligned)
+            assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
 
     @pytest.mark.parametrize(  # type: ignore
         "coreg_method, error, expected_match, test_shift_tuple",
