@@ -61,13 +61,6 @@ try:
 except ImportError:
     _HAS_P3D = False
 
-try:
-    from noisyopt import minimizeCompass
-
-    _HAS_NOISYOPT = True
-except ImportError:
-    _HAS_NOISYOPT = False
-
 ######################################
 # Generic functions for affine methods
 ######################################
@@ -673,13 +666,6 @@ def _dh_minimize_fit(
             # This method has trouble when initialized with 0,0, so defaulting to 1,1
             # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
-
-    elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
-        kwargs.update({"errorcontrol": False})
-        if "deltatol" not in kwargs.keys():
-            kwargs.update({"deltatol": 0.004})
-        if "feps" not in kwargs.keys():
-            kwargs.update({"feps": 10e-5})
 
     results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
 
