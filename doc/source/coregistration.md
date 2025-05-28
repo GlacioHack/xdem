@@ -270,7 +270,12 @@ plt.tight_layout()
 
 {class}`xdem.coreg.VerticalShift`
 
-- **Performs:** Vertical shifting using any custom function (mean, median, percentile).
+```{caution}
+Vertical shifting simply serves to refine a vertical translation over the entire DEM for 3D rigid alignment.
+For transforming the 3D CRS, see the **{ref}`vertical-ref` feature page**.
+```
+
+- **Performs:** Vertical translation based on central elevation differences estimated with any custom function (mean, median).
 - **Supports weights:** Planned.
 - **Pros:** Useful to have as independent step to refine vertical alignment precisely as it is the most sensitive to outliers, by refining inliers and the central estimate function.
 - **Cons**: Always needs to be combined with another approach.
@@ -316,7 +321,7 @@ plt.tight_layout()
 
 {class}`xdem.coreg.LZD`
 
-- **Performs:** Rigid transform transformation (3D translation + 3D rotation).
+- **Performs:** Rigid transformation (3D translation + 3D rotation).
 - **Does not support weights.**
 - **Pros:** Good at solving sub-pixels shifts by harnessing gridded nature of DEM.
 - **Cons:** Sensitive to elevation outliers.
@@ -369,7 +374,7 @@ plt.tight_layout()
 
 {class}`xdem.coreg.ICP`
 
-- **Performs:** Rigid transform transformation (3D translation + 3D rotation).
+- **Performs:** Rigid transformation (3D translation + 3D rotation).
 - **Does not support weights.**
 - **Pros:** Efficient at estimating rotation and shifts simultaneously.
 - **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
@@ -407,7 +412,7 @@ plt.tight_layout()
 
 {class}`xdem.coreg.CPD`
 
-- **Performs:** Rigid transform transformation (3D translation + 3D rotation).
+- **Performs:** Rigid transformation (3D translation + 3D rotation).
 - **Does not support weights.**
 - **Pros:** Needs fewer samples to work efficiently.
 - **Cons:** Has trouble solving for horizontal translations if X/Y scale differs from Z scale, as GMM variance is the same in all dimensions.
@@ -550,8 +555,8 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 **4. Affine metadata (common to all affine methods)**:
 
-- An input `only_translation` to define if a coregistration should solve only for translations,
-- An input `standardize` to define if the input data should be standardized to the unit sphere before coregistration,
+- An input `only_translation` to define if a coregistration should solve only for translations instead of a full rigid transformation (translations and rotations),
+- An input `standardize` to define if the input data should be standardized to the unit sphere before coregistration (to improve numerical convergence),
 - An output `matrix` that stores the estimated affine matrix,
 - An output `centroid` that stores the centroid coordinates with which to apply the affine transformation,
 - Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.

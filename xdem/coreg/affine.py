@@ -799,10 +799,10 @@ def _icp_fit_func(
 ) -> NDArrayf:
     """
     Fit function of ICP, a rigid transformation with 6 parameters (3 translations and 3 rotations) between closest
-    points (that are fixed for the optimization, and update at each iterative step).
+    points (that are fixed for this optimization and located at the same indexes, and update at each iterative step).
 
     :param inputs: Constant input for the fit function: three arrays of size 3xN, for the reference point cloud, the
-        to-be-aligned point cloud and the plane normals.
+        to-be-aligned point cloud ordered for its nearest points to the reference, and the plane normals.
     :param t1: Translation in X.
     :param t2: Translation in Y.
     :param t3: Translation in Z.
@@ -825,7 +825,9 @@ def _icp_fit_func(
     # Apply affine transformation
     trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix)
 
-    # Define residuals depending on type of ICP method
+    # Compute residuals between reference points and nearest to-be-aligned points (located at the same indexes)
+    # depending on type of ICP method
+
     # Point-to-point is simply the difference, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
     if method == "point-to-point":
         diffs = (trans_tba - ref) ** 2
@@ -921,7 +923,8 @@ def _icp_fit(
         that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
         projected on normals.
     :param params_fit_or_bin: Dictionary of parameters for fitting or binning.
-    :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+    :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+        rotation as default.
     :param **kwargs: Keyword arguments passed to fit optimizer.
 
     :return: Affine transform matrix.
@@ -929,12 +932,6 @@ def _icp_fit(
 
     # Group inputs into a single array
     inputs = (ref, tba, norms)
-
-    # For this type of method, the procedure can only be fit
-    # if params_fit_or_bin["fit_or_bin"] not in ["fit"]:
-    #     raise ValueError("ICP method only supports 'fit'.")
-    #
-    # params_fit_or_bin["fit_func"] = _icp_fit_func
 
     # If we use the linear approximation
     if isinstance(params_fit_or_bin["fit_minimizer"], str) and params_fit_or_bin["fit_minimizer"] == "lsq_approx":
@@ -1020,7 +1017,8 @@ def _icp_iteration_step(
         that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
         projected on normals.
     :param picky: Whether to use the duplicate removal for pairs of closest points of Zinsser et al. (2003).
-    :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+    :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+        rotation as default.
 
     :return: Affine transform matrix, Tolerance.
     """
@@ -1126,7 +1124,7 @@ def icp(
     Based on Besl and McKay (1992), https://doi.org/10.1117/12.57955 for "point-to-point" and on
     Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C for "point-to-plane".
 
-    The function assumes we have a two DEMs, or DEM and an elevation point cloud, in the same CRS.
+    The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
     The normals for "point-to-plane" are computed on the DEM for speed.
 
     :return: Affine transform matrix, Centroid, Subsample size.
@@ -1219,7 +1217,7 @@ def _cpd_fit(
     """
     Fit step of Coherent Point Drift by expectation-minimization, with variance updating.
 
-    See Fig. 2 of Myronenko and Song (2010), https://arxiv.org/pdf/0905.2635.pdf for equations below.
+    See Fig. 2 of Myronenko and Song (2010), https://doi.org/10.1109/TPAMI.2010.46 for equations below.
 
     Inspired from pycpd implementation: https://github.com/siavashk/pycpd/blob/master/pycpd/rigid_registration.py.
     """
@@ -1373,12 +1371,12 @@ def cpd(
 ) -> tuple[NDArrayf, tuple[float, float, float], int]:
     """
     Main function for Coherent Point Drift coregistration.
-    See Myronenko and Song (2010), http://dx.doi.org/10.1109/TPAMI.2010.46.
+    See Myronenko and Song (2010), https://doi.org/10.1109/TPAMI.2010.46.
 
     This function subsamples input data, then runs CPD iteration steps to optimize its expectation-minimization until
     convergence or a maximum of iterations is reached.
 
-    The function assumes we have a two DEMs, or DEM and an elevation point cloud, in the same CRS.
+    The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
     """
 
     # Pre-process point-raster inputs to the same subsampled points
@@ -1448,7 +1446,7 @@ def _lzd_aux_vars(
     if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
 
         raise TypeError(
-            "The Nuth and Kääb (2011) coregistration does not support two point clouds, one elevation "
+            "The LZD coregistration does not support two point clouds, one elevation "
             "dataset in the pair must be a DEM."
         )
 
@@ -1632,7 +1630,8 @@ def _lzd_iteration_step(
     :param sub_gradx: Interpolator for 2D array of DEM gradient along X axis.
     :param sub_grady: Interpolator for 2D array of DEM gradient along Y axis.
     :param params_fit_or_bin: Dictionary of fitting and binning parameters.
-    :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+    :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+        rotation as default.
 
     :return Affine matrix, Tolerance.
     """
@@ -2148,7 +2147,8 @@ class ICP(AffineCoreg):
             that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
             projected on normals.
         :param picky: Whether to use the duplicate removal for pairs of closest points of Zinsser et al. (2003).
-        :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+        :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+            rotation as default.
         :param fit_minimizer: Minimizer for the coregistration function. Use "lsq_approx" for the linearized
             least-square approximation of Low (2004) (only available for "point-to-plane").
         :param fit_loss_func: Loss function for the minimization of residuals (if minimizer is not "lsq_approx").
@@ -2276,7 +2276,8 @@ class CPD(AffineCoreg):
 
         :param weight: Weight contribution of the uniform distribution to account for outliers, from 0 (inclusive) to
             1 (exclusive).
-        :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+        :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+            rotation as default.
         :param max_iterations: Maximum allowed iterations before stopping.
         :param tolerance: Residual change threshold after which to stop the iterations.
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
@@ -2550,7 +2551,8 @@ class LZD(AffineCoreg):
         """
          Instantiate an LZD coregistration object.
 
-        :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+        :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+            rotation as default.
         :param fit_minimizer: Minimizer for the coregistration function.
         :param fit_loss_func: Loss function for the minimization of residuals.
         :param max_iterations: Maximum allowed iterations before stopping.

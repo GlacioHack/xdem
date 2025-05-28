@@ -1125,8 +1125,6 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
 
-        # return np.linalg.inv(matrix)
-
         checked_matrix = pytransform3d.transformations.check_transform(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
@@ -1138,6 +1136,7 @@ def _apply_matrix_pts_mat(
     centroid: tuple[float, float, float] | None = None,
     invert: bool = False,
 ) -> NDArrayf:
+    """Apply matrix to points as a 3D array with 3D array output (to improve speed in some functions)."""
 
     # Invert matrix if required
     if invert:
