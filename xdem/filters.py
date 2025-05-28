@@ -31,7 +31,6 @@ from xdem._typing import Any, NDArrayf
 def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
-    gaussian_filter_cv is recommended as it is usually faster, but this depends on the value of sigma.
 
     N.B: kernel_size is set automatically based on sigma.
 

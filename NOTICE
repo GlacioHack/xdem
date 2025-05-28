@@ -115,8 +115,3 @@ yaml (PyYAML): Python bindings for YAML, a human-readable data serialization lan
 Copyright (c) 2006-2023, PyYAML contributors.
 Website: https://pyyaml.org/
 License: CC-BY 2.0.
-
-noisyopt: Library for optimizing noisy functions in Python.
-Copyright (c) 2016-2017 Andreas Mayer.
-Website: https://pypi.org/project/noisyopt/
-License: MIT.
