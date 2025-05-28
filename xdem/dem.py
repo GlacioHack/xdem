@@ -196,7 +196,7 @@ class DEM(Raster):  # type: ignore
         vcrs: (
             Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
         ) = None,
-    ) -> DEM:
+    ) -> DEM | Mask:
         """Create a DEM from a numpy array and the georeferencing information.
 
         :param data: Input array.
@@ -210,7 +210,6 @@ class DEM(Raster):  # type: ignore
             compatible. If False, will raise an error when incompatible.
         :param vcrs: Vertical coordinate reference system.
 
-
         :returns: DEM created from the provided array and georeferencing.
         """
         # We first apply the from_array of the parent class
@@ -223,8 +222,13 @@ class DEM(Raster):  # type: ignore
             tags=tags,
             cast_nodata=cast_nodata,
         )
-        # Then add the vcrs to the class call (that builds on top of the parent class)
-        return cls(filename_or_dataset=rast, vcrs=vcrs)
+
+        # This is for casting to Mask to work
+        if not isinstance(rast, Mask):
+            # Then add the vcrs to the class call (that builds on top of the parent class)
+            return cls(filename_or_dataset=rast, vcrs=vcrs)
+        else:
+            return rast
 
     @property
     def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:

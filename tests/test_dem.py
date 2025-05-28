@@ -158,6 +158,15 @@ class TestDEM:
         )
         assert dem.vcrs == CRS("EPSG:5773")
 
+    def test_from_array__cast_mask(self) -> None:
+        """Test that DEMs are cast into mask for a logical operation."""
+
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
+
+        mask_dem = dem > 1
+        assert isinstance(mask_dem, gu.Mask)
+
     def test_copy(self) -> None:
         """
         Test that the copy method works as expected for DEM. In particular
