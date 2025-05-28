@@ -110,7 +110,7 @@ class TestDEM:
             DEM(temp_file, vcrs="EGM08")
 
     def test_from_array(self) -> None:
-        """Test that overridden from_array works as expected."""
+        """Test that from_array through Raster class works as expected by casting to a DEM."""
 
         # Create a 5x5 DEM
         data = np.ones((5, 5))
@@ -128,7 +128,7 @@ class TestDEM:
         assert dem.nodata == nodata
 
     def test_from_array__vcrs(self) -> None:
-        """Test that overridden from_array rightly sets the vertical CRS."""
+        """Test that from_array through Raster class rightly sets the vertical CRS through DEM.__init__."""
 
         # Create a 5x5 DEM with a 2D CRS
         transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
