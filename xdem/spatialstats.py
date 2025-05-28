@@ -46,9 +46,8 @@ from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from skimage.draw import disk
 
-from xdem._typing import NDArrayf
+from xdem._typing import NDArrayb, NDArrayf
 from xdem.misc import deprecate
 
 with warnings.catch_warnings():
@@ -862,7 +861,7 @@ def infer_heteroscedasticity_from_stable(
 
 def _create_circular_mask(
     shape: tuple[int, int], center: tuple[int, int] | None = None, radius: float | None = None
-) -> NDArrayf:
+) -> NDArrayb:
     """
     Create circular mask on a raster, defaults to the center of the array and its half width
 
@@ -879,17 +878,10 @@ def _create_circular_mask(
     if radius is None:  # use the smallest distance between the center and image walls
         radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    # Skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
-    mask = np.zeros(shape, dtype=bool)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-        rr, cc = disk(center=center, radius=radius, shape=shape)
-    mask[rr, cc] = True
-
-    # manual solution
-    # Y, X = np.ogrid[:h, :w]
-    # dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-    # mask = dist_from_center < radius
+    # Manual solution
+    Y, X = np.ogrid[:w, :h]
+    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    mask = dist_from_center < radius
 
     return mask
 
@@ -899,7 +891,7 @@ def _create_ring_mask(
     center: tuple[int, int] | None = None,
     in_radius: float = 0,
     out_radius: float | None = None,
-) -> NDArrayf:
+) -> NDArrayb:
     """
     Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
 
