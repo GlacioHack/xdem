@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import warnings
-
 from collections.abc import Callable
 
 import numpy as np
@@ -70,6 +69,7 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
             gauss = gauss_no_nan / gauss_mask
 
         return gauss
+
 
 def median_filter_scipy(array: NDArrayf, **kwargs: dict[Any, Any]) -> NDArrayf:
     """
@@ -151,6 +151,7 @@ def max_filter_scipy(array: NDArrayf, **kwargs: dict[Any, Any]) -> NDArrayf:
     array_nans_replaced_f = scipy.ndimage.maximum_filter(array_nans_replaced, **kwargs)
     # In the end we want the filtered array without negative infinite values, so we put back NaNs
     return np.where(nans, array, array_nans_replaced_f)
+
 
 def distance_filter(array: NDArrayf, radius: float, outlier_threshold: float) -> NDArrayf:
     """

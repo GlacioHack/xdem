@@ -12,7 +12,6 @@ import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import RasterType
-
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
