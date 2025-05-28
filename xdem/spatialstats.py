@@ -879,7 +879,7 @@ def _create_circular_mask(
         radius = min(center[0], center[1], w - center[0], h - center[1])
 
     # Manual solution
-    Y, X = np.ogrid[:h, :w]
+    Y, X = np.ogrid[:w, :h]
     dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
     mask = dist_from_center < radius
 
