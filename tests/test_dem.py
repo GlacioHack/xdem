@@ -354,7 +354,7 @@ class TestDEM:
         # Compare the elevation difference
         z_diff = 100 - trans_dem.data[0, 0]
 
-        # Check the shift is the one expecting within 10%
+        # Check the shift is the expected one within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
 
     @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)  # type: ignore
@@ -373,12 +373,6 @@ class TestDEM:
     @pytest.mark.parametrize(  # type: ignore
         "coreg_method, initial_shift, expected_pipeline_types",
         [
-            pytest.param(
-                None,
-                None,
-                [xdem.coreg.NuthKaab, xdem.coreg.VerticalShift],
-                id="Default method: NuthKaab + VerticalShift",
-            ),
             pytest.param(xdem.coreg.Deramp(), None, [xdem.coreg.Deramp], id="Custom method: Deramp"),
             pytest.param(
                 xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
@@ -428,7 +422,7 @@ class TestDEM:
         for i, expected_type in enumerate(expected_pipeline_types):
             assert isinstance(pipeline[i], expected_type)
 
-        if coreg_method is None:
+        if coreg_method is xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift():
             dem_ref = DEM(fn_ref)
             dem_tba = DEM(fn_tba)
             nk = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
@@ -441,8 +435,15 @@ class TestDEM:
         [
             pytest.param(xdem.coreg.Deramp(), TypeError, r".*affine.*", (-5, 2)),
             pytest.param(xdem.coreg.Deramp() + xdem.coreg.TerrainBias(), TypeError, r".*affine.*", (-5, 2)),
-            pytest.param(None, ValueError, r".*two numerical values.*", ["2", 2]),
-            pytest.param(None, ValueError, r".*two numerical values.*", [2, 3, 5]),
+            pytest.param(
+                xdem.coreg.AffineCoreg() + xdem.coreg.VerticalShift(), ValueError, r".*two numerical values.*", ["2", 2]
+            ),
+            pytest.param(
+                xdem.coreg.AffineCoreg() + xdem.coreg.VerticalShift(),
+                ValueError,
+                r".*two numerical values.*",
+                [2, 3, 5],
+            ),
         ],
     )
     def test_exceptions_initial_shift(

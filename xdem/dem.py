@@ -42,7 +42,6 @@ from skgstat import Variogram
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import AffineCoreg, Coreg, CoregPipeline
-from xdem.coreg.affine import NuthKaab, VerticalShift
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
@@ -494,15 +493,12 @@ class DEM(Raster):  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
-        coreg_method: coreg.Coreg = None,
-        grid: str = "ref",
+        coreg_method: coreg.Coreg,
         inlier_mask: Mask | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
         random_state: int | np.random.Generator | None = None,
         resample: bool = False,
-        resampling: rio.warp.Resampling = rio.warp.Resampling.bilinear,
-        aligned_reprojected: bool = False,
         **kwargs,
     ) -> tuple[DEM | GeoDataFrame, Coreg | AffineCoreg | CoregPipeline]:
         """
@@ -513,7 +509,6 @@ class DEM(Raster):  # type: ignore
 
         :param reference_elev: Reference elevation, DEM or elevation point cloud, for the alignment.
         :param coreg_method: Coregistration method or pipeline.
-        :param grid: The grid to be used during coregistration, set either to "ref" or "src".
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
         :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
@@ -522,8 +517,6 @@ class DEM(Raster):  # type: ignore
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
             the array/transform will be updated (if possible) and no resampling is done. \
             Useful to avoid spreading data gaps.
-        :param resampling: The resampling algorithm to be used if `resample` is True. Default is bilinear.
-        :param aligned_reprojected: Activate reprojection at the end (for stats and plot)
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
         :return: A tuple containing 1) coregistered DEM as a xdem.DEM instance 2) the coregistration method
@@ -531,15 +524,9 @@ class DEM(Raster):  # type: ignore
 
         src_dem = self.copy()
 
-        # Define default Coreg if None is passed
-        if coreg_method is None:
-            coreg_method = NuthKaab() + VerticalShift()
-
         # Check inputs
         if not isinstance(coreg_method, Coreg):
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
-        if grid not in ["ref", "src"]:
-            raise ValueError(f"Argument `grid` must be either 'ref' or 'src' - currently set to {grid}.")
 
         # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
         if estimated_initial_shift:
@@ -570,25 +557,15 @@ class DEM(Raster):  # type: ignore
             # Apply the shift to the source dem
             reference_elev = reference_elev.translate(shift_x, shift_y)
 
-        if grid == "ref":
-            src_dem = src_dem.reproject(reference_elev, silent=True)
-        elif grid == "src":
-            reference_elev = reference_elev.reproject(src_dem, silent=True)
-
-        coreg_method.fit(
+        aligned_dem = coreg_method.fit_and_apply(
             reference_elev,
             src_dem,
-            inlier_mask,
+            inlier_mask=inlier_mask,
             random_state=random_state,
             bias_vars=bias_vars,
+            resample=resample,
             **kwargs,
         )
-
-        aligned_dem = coreg_method.apply(src_dem, resample=resample, resampling=resampling)
-
-        if aligned_reprojected:
-            # Reprojection needed for statistics and plots
-            aligned_dem = aligned_dem.reproject(reference_elev, silent=True)
 
         # # Add the initial shift to the calculated shift
         if estimated_initial_shift:
