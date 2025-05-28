@@ -26,7 +26,6 @@ from typing import Any, Callable, Literal, overload
 import geopandas as gpd
 import numpy as np
 import rasterio as rio
-from affine import Affine
 from geoutils import Raster
 from geoutils.raster import Mask, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig

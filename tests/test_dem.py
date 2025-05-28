@@ -140,9 +140,7 @@ class TestDEM:
         assert dem.vcrs == "Ellipsoid"
 
         # One with a compound CRS
-        dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None
-        )
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None)
         assert dem.vcrs == CRS("EPSG:5773")
 
     def test_from_array__cast_mask(self) -> None:
