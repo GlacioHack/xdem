@@ -74,11 +74,6 @@ Copyright (c) 2012-2023 Anaconda, Inc.
 Website: https://numba.pydata.org/
 License: BSD 2-Clause.
 
-OpenCV (cv2): Computer vision library.
-Copyright (C) 2015-2023, OpenCV Foundation, all rights reserved.
-Website: https://opencv.org/
-License: Apache License 2.0
-
 scikit-image: Image processing in Python.
 Copyright (c) 2009-2022 the scikit-image team.
 Website: https://scikit-image.org/
@@ -120,8 +115,3 @@ yaml (PyYAML): Python bindings for YAML, a human-readable data serialization lan
 Copyright (c) 2006-2023, PyYAML contributors.
 Website: https://pyyaml.org/
 License: CC-BY 2.0.
-
-noisyopt: Library for optimizing noisy functions in Python.
-Copyright (c) 2016-2017 Andreas Mayer.
-Website: https://pypi.org/project/noisyopt/
-License: MIT.

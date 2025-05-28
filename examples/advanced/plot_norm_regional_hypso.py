@@ -58,13 +58,13 @@ plt_extent = [
 
 
 # %%
-# To test the method, we can generate a semi-random mask to assign nans to glacierized areas.
+# To test the method, we can generate a random mask to assign nans to glacierized areas.
 # Let's remove 30% of the data.
-random_nans = (xdem.misc.generate_random_field(dem_1990.shape, corr_size=5, random_state=42) > 0.7) & (
-    glacier_index_map > 0
-)
+index_nans = dem_2009.subsample(subsample=0.3, return_indices=True)
+mask_nans = dem_2009.copy(new_array=np.ones(dem_2009.shape))
+mask_nans[index_nans] = 0
 
-random_nans.plot()
+mask_nans.plot()
 
 # %%
 # The normalized hypsometric signal shows the tendency for elevation change as a function of elevation.
@@ -74,7 +74,7 @@ random_nans.plot()
 # Generating it first, however, allows us to visualize and validate it.
 
 ddem = dem_2009 - dem_1990
-ddem_voided = np.where(random_nans.data, np.nan, ddem.data)
+ddem_voided = np.where(mask_nans.data, np.nan, ddem.data)
 
 signal = xdem.volume.get_regional_hypsometric_signal(
     ddem=ddem_voided,
@@ -105,7 +105,7 @@ plt.show()
 # %%
 # We can plot the difference between the actual and the interpolated values, to validate the method.
 
-difference = (ddem_filled - ddem)[random_nans]
+difference = (ddem_filled - ddem)[mask_nans.data]
 median = np.ma.median(difference)
 nmad = gu.stats.nmad(difference)
 
