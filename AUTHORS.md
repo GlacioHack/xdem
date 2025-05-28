@@ -48,7 +48,7 @@ This file keeps track of authors contributions.
 - **Enrico Mattea** [@MatteaE](https://github.com/MatteaE)
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
-
+- **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara) <clara.quinto@cs-soprasteria.com>
 
 ## Original Developers/Designers/Supporters
 

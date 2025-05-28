@@ -116,10 +116,10 @@ jobs:
       run: coveragepy-lcov --data_file_path .coverage --output_file_path coverage.info
 
     - name: Upload coverage to Coveralls
-      uses: coverallsapp/github-action@master
+      uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.github_token }}
-        flag-name: run-${{ matrix.test_number }}
+        flag-name: run-${{ join(matrix.*, '-') }}
         path-to-lcov: coverage.info
         parallel: true
 

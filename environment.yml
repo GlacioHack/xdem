@@ -5,7 +5,7 @@ dependencies:
   - python>=3.10,<3.13
   - geopandas>=0.12.0
   - numba=0.*
-  - numpy=1.*
+  - numpy>=1,<3
   - matplotlib=3.*
   - pyproj>=3.4,<4
   - rasterio>=1.3,<2
@@ -13,13 +13,13 @@ dependencies:
   - tqdm
   - scikit-image=0.*
   - scikit-gstat>=1.0.18,<1.1
-  - geoutils=0.1.13
-  - pip
+  - geoutils=0.1.16
   - affine
   - pandas
   - pyogrio
   - shapely
+  - pip
 
-   # To run CI against latest GeoUtils
+  # To run CI against latest GeoUtils
 #  - pip:
 #    - git+https://github.com/rhugonnet/geoutils.git

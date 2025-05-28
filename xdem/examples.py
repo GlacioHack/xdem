@@ -22,7 +22,6 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
-from distutils.dir_util import copy_tree
 
 import geoutils as gu
 
@@ -96,7 +95,7 @@ def download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = Fa
     )
 
     # Copy the extracted data to the target directory
-    copy_tree(extracted_dir, target_dir)
+    shutil.copytree(extracted_dir, target_dir)
 
 
 def download_longyearbyen_examples(overwrite: bool = False) -> None:

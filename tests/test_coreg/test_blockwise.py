@@ -1,311 +1,156 @@
-"""Functions to test the coregistration blockwise classes."""
+"""Tests for the BlockwiseCoreg class."""
 
+# mypy: disable-error-code=no-untyped-def
 from __future__ import annotations
+
+import warnings
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pytest
-import rasterio as rio
 from geoutils import Raster, Vector
+from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import RasterType
-from geoutils.raster.georeferencing import _coords
+
+from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
-from xdem import coreg, examples, spatialstats
-from xdem.coreg import BlockwiseCoreg
-from xdem.coreg.base import Coreg
+from xdem.coreg import BlockwiseCoreg, Coreg
 
 
-def load_examples() -> tuple[RasterType, RasterType, Vector]:
-    """Load example files to try coregistration methods with."""
+@pytest.fixture(scope="module")  # type: ignore
+def example_data() -> tuple[RasterType, RasterType, Vector]:
+    """Load example DEMs and glacier outlines with inlier mask."""
+    ref_dem = Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    tba_dem = Raster(xdem.examples.get_path("longyearbyen_tba_dem"))
+    outlines = Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    inlier_mask = ~outlines.create_mask(ref_dem)
+    return ref_dem, tba_dem, inlier_mask
 
-    reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
-    glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    # Crop to smaller extents for test speed
-    res = reference_dem.res
-    crop_geom = (
-        reference_dem.bounds.left,
-        reference_dem.bounds.bottom,
-        reference_dem.bounds.left + res[0] * 300,
-        reference_dem.bounds.bottom + res[1] * 300,
-    )
-    reference_dem = reference_dem.crop(crop_geom)
-    to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
+@pytest.fixture  # type: ignore
+def step() -> Coreg:
+    return xdem.coreg.NuthKaab(vertical_shift=False)
 
-    return reference_dem, to_be_aligned_dem, glacier_mask
+
+@pytest.fixture  # type: ignore
+def mp_config(tmp_path: Path) -> MultiprocConfig:
+    return MultiprocConfig(chunk_size=500, outfile=tmp_path / "test.tif")
+
+
+@pytest.fixture  # type: ignore
+def blockwise_coreg(step, mp_config) -> BlockwiseCoreg:
+    return xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
 
 
 class TestBlockwiseCoreg:
-    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    inlier_mask = ~outlines.create_mask(ref)
+    """Tests for the xdem.coreg.BlockwiseCoreg class."""
 
-    fit_params = dict(
-        reference_elev=ref.data,
-        to_be_aligned_elev=tba.data,
-        inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
-    )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
-    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
-    )
+    def test_init_with_valid_parameters(self, mp_config, step, tmp_path) -> None:
+        """Test initialization with valid multiprocessing config only."""
+        coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
+        assert coreg_obj.block_size == 500
+        assert coreg_obj.apply_z_correction is False
+        assert coreg_obj.output_path_reproject == tmp_path / "reprojected_dem.tif"
+        assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
+        assert coreg_obj.meta == {"inputs": {}, "outputs": {}}
 
-    @pytest.mark.parametrize(
-        "pipeline", [coreg.VerticalShift(), coreg.VerticalShift() + coreg.NuthKaab()]
-    )  # type: ignore
-    @pytest.mark.parametrize("subdivision", [4, 10])  # type: ignore
-    def test_blockwise_coreg(self, pipeline: Coreg, subdivision: int) -> None:
+    def test_init_raises_if_both_mp_config_and_parent_path_are_provided(self, mp_config, step, tmp_path) -> None:
+        """Test error is raised when both 'mp_config' and 'parent_path' are set."""
+        with pytest.raises(
+            ValueError, match="Only one of the parameters 'mp_config' or 'parent_path' may be specified."
+        ):
+            xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, parent_path=tmp_path)
 
-        blockwise = coreg.BlockwiseCoreg(step=pipeline, subdivision=subdivision)
+    def test_init_raises_if_neither_mp_config_nor_parent_path_are_provided(self, step) -> None:
+        """Test error is raised when neither 'mp_config' nor 'parent_path' are set."""
+        with pytest.raises(
+            ValueError, match="Exactly one of the parameters 'mp_config' or 'parent_path' must be provided."
+        ):
+            xdem.coreg.BlockwiseCoreg(step=step, mp_config=None, parent_path=None)
 
-        # Results can not yet be extracted (since fit has not been called) and should raise an error
-        with pytest.raises(AssertionError, match="No coreg results exist.*"):
-            blockwise.to_points()
+    def test_init_success_with_only_mp_config(self, step, mp_config, tmp_path) -> None:
+        """Test successful initialization with only 'mp_config' set."""
+        obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, parent_path=None)
+        assert isinstance(obj, xdem.coreg.BlockwiseCoreg)
+        assert obj.mp_config == mp_config
+        assert obj.parent_path == tmp_path
 
-        blockwise.fit(**self.fit_params)
-        points = blockwise.to_points()
+    def test_init_success_with_only_parent_path(self, step, tmp_path) -> None:
+        """Test successful initialization with only 'parent_path' set."""
+        obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=None, parent_path=tmp_path)
+        assert isinstance(obj, xdem.coreg.BlockwiseCoreg)
+        assert obj.parent_path == tmp_path
 
-        # Validate that the number of points is equal to the amount of subdivisions.
-        assert points.shape[0] == subdivision
+    def test_ransac_with_large_data(self, blockwise_coreg) -> None:
+        """Test RANSAC estimates with synthetic data and known coefficients."""
+        np.random.seed(0)
+        x = np.random.rand(1000) * 100
+        y = np.random.rand(1000) * 100
+        z = 2 * x + 3 * y + 5 + np.random.randn(1000) * 0.1
 
-        # Validate that the points do not represent only the same location.
-        assert np.sum(np.linalg.norm(points[:, :, 0] - points[:, :, 1], axis=1)) != 0.0
+        a, b, c = blockwise_coreg._ransac(x, y, z)
 
-        z_diff = points[:, 2, 1] - points[:, 2, 0]
+        assert np.isclose(a, 2.0, atol=0.2)
+        assert np.isclose(b, 3.0, atol=0.2)
+        assert np.isclose(c, 5.0, atol=0.2)
 
-        # Validate that all values are different
-        assert np.unique(z_diff).size == z_diff.size, "Each coreg cell should have different results."
+    def test_ransac_with_insufficient_points(self, blockwise_coreg) -> None:
+        """Test RANSAC raises error when too few points are provided."""
+        x = np.array([1, 2, 3, 4, 5])
+        y = np.array([1, 2, 3, 4, 5])
+        z = np.array([2, 4, 6, 8, 10])
 
-        # Validate that the BlockwiseCoreg doesn't accept uninstantiated Coreg classes
-        with pytest.raises(ValueError, match="instantiated Coreg subclass"):
-            coreg.BlockwiseCoreg(step=coreg.VerticalShift, subdivision=1)  # type: ignore
+        min_inliers = 10
 
-        # Metadata copying has been an issue. Validate that all chunks have unique ids
-        chunk_numbers = [m["i"] for m in blockwise.meta["step_meta"]]
-        assert np.unique(chunk_numbers).shape[0] == len(chunk_numbers)
+        with pytest.raises(ValueError, match="Not enough valid points in RANSAC: got 5, need at least 10"):
+            blockwise_coreg._ransac(x, y, z, min_inliers=min_inliers)
 
-        transformed_dem = blockwise.apply(self.tba)
+    def test_wrapper_apply_epc(self, blockwise_coreg, example_data) -> None:
+        """Test point cloud coefficient application via _wrapper_apply_epc."""
+        _, tba_dem, _ = example_data
+        epc = tba_dem.to_pointcloud(data_column_name="z").ds
+        x, y, z = epc.geometry.x.values, epc.geometry.y.values, epc["z"].values
 
-        ddem_pre = (self.ref - self.tba)[~self.inlier_mask]
-        ddem_post = (self.ref - transformed_dem)[~self.inlier_mask]
+        shift_x = x + y + 1
+        shift_y = x + y + 1
+        shift_z = x + y + 1
 
-        # Check that the periglacial difference is lower after coregistration.
-        assert abs(np.ma.median(ddem_post)) < abs(np.ma.median(ddem_pre))
+        x_new = x + shift_x
+        y_new = y + shift_y
+        z_new = z + shift_z
 
-        stats = blockwise.stats()
+        trans_epc = gpd.GeoDataFrame(
+            geometry=gpd.points_from_xy(x_new, y_new, crs=epc.crs),
+            data={"z": z_new},
+        )
 
-        # Check that nans don't exist (if they do, something has gone very wrong)
-        assert np.all(np.isfinite(stats["nmad"]))
-        # Check that offsets were actually calculated.
-        assert np.sum(np.abs(np.linalg.norm(stats[["x_off", "y_off", "z_off"]], axis=0))) > 0
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            new_dem = _grid_pointcloud(
+                trans_epc,
+                grid_coords=tba_dem.coords(grid=False),
+                data_column_name="z",
+            )
 
-    def test_blockwise_coreg_large_gaps(self) -> None:
-        """Test BlockwiseCoreg when large gaps are encountered, e.g. around the frame of a rotated DEM."""
-        reference_dem = self.ref.reproject(crs="EPSG:3413", res=self.ref.res, resampling="bilinear")
-        dem_to_be_aligned = self.tba.reproject(ref=reference_dem, resampling="bilinear")
+        expected = Raster.from_array(new_dem, tba_dem.transform, tba_dem.crs, tba_dem.nodata)
+        actual = blockwise_coreg._wrapper_apply_epc(tba_dem, (1, 1, 1), (1, 1, 1), (1, 1, 1))
 
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 64, warn_failures=False)
+        assert actual == expected
 
-        # This should not fail or trigger warnings as warn_failures is False
-        blockwise.fit(reference_dem, dem_to_be_aligned)
+    def test_blockwise_coreg_pipeline(self, blockwise_coreg, example_data, tmp_path) -> None:
+        """Test end-to-end blockwise coregistration and validate output."""
+        ref, tba, mask = example_data
 
-        stats = blockwise.stats()
+        blockwise_coreg.fit(ref, tba, mask)
+        blockwise_coreg.apply()
 
-        # We expect holes in the blockwise coregistration, but not in stats due to nan padding for failing chunks
-        assert stats.shape[0] == 64
+        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
 
-        # Copy the TBA DEM and set a square portion to nodata
-        tba = self.tba.copy()
-        mask = np.zeros(np.shape(tba.data), dtype=bool)
-        mask[450:500, 450:500] = True
-        tba.set_mask(mask=mask)
+        # Ground truth comparison with full image coregistration
+        nuth_kaab = xdem.coreg.NuthKaab()
+        expected = nuth_kaab.fit_and_apply(ref, tba, mask)
 
-        blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), 8, warn_failures=False)
-
-        # Align the DEM and apply blockwise to a zero-array (to get the z_shift)
-        aligned = blockwise.fit(self.ref, tba).apply(tba)
-        zshift, _ = blockwise.apply(np.zeros_like(tba.data), transform=tba.transform, crs=tba.crs)
-
-        # Validate that the zshift is not something crazy high and that no negative values exist in the data.
-        assert np.nanmax(np.abs(zshift)) < 50
-        assert np.count_nonzero(aligned.data.compressed() < -50) == 0
-
-        # Check that coregistration improved the alignment
-        ddem_post = (aligned - self.ref).data.compressed()
-        ddem_pre = (tba - self.ref).data.compressed()
-        assert abs(np.nanmedian(ddem_pre)) > abs(np.nanmedian(ddem_post))
-        # assert np.nanstd(ddem_pre) > np.nanstd(ddem_post)
-
-    def test_failed_chunks_return_nan(self) -> None:
-        blockwise = BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=4)
-        blockwise.fit(**self.fit_params)
-        # Missing chunk 1 to simulate failure
-        blockwise._meta["step_meta"] = [meta for meta in blockwise._meta["step_meta"] if meta.get("i") != 1]
-
-        result_df = blockwise.stats()
-
-        # Check that chunk 1 (index 1) has NaN values for the statistics
-        assert np.isnan(result_df.loc[1, "inlier_count"])
-        assert np.isnan(result_df.loc[1, "nmad"])
-        assert np.isnan(result_df.loc[1, "median"])
-        assert isinstance(result_df.loc[1, "center_x"], float)
-        assert isinstance(result_df.loc[1, "center_y"], float)
-        assert np.isnan(result_df.loc[1, "center_z"])
-        assert np.isnan(result_df.loc[1, "x_off"])
-        assert np.isnan(result_df.loc[1, "y_off"])
-        assert np.isnan(result_df.loc[1, "z_off"])
-
-    def test_successful_chunks_return_values(self) -> None:
-        blockwise = BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=2)
-        blockwise.fit(**self.fit_params)
-        result_df = blockwise.stats()
-
-        # Check that the correct statistics are returned for successful chunks
-        assert result_df.loc[0, "inlier_count"] == blockwise._meta["step_meta"][0]["inlier_count"]
-        assert result_df.loc[0, "nmad"] == blockwise._meta["step_meta"][0]["nmad"]
-        assert result_df.loc[0, "median"] == blockwise._meta["step_meta"][0]["median"]
-
-        assert result_df.loc[1, "inlier_count"] == blockwise._meta["step_meta"][1]["inlier_count"]
-        assert result_df.loc[1, "nmad"] == blockwise._meta["step_meta"][1]["nmad"]
-        assert result_df.loc[1, "median"] == blockwise._meta["step_meta"][1]["median"]
-
-
-def test_warp_dem() -> None:
-    """Test that the warp_dem function works expectedly."""
-
-    small_dem = np.zeros((5, 10), dtype="float32")
-    small_transform = rio.transform.from_origin(0, 5, 1, 1)
-
-    source_coords = np.array([[0, 0, 0], [0, 5, 0], [10, 0, 0], [10, 5, 0]]).astype(small_dem.dtype)
-
-    dest_coords = source_coords.copy()
-    dest_coords[0, 0] = -1e-5
-
-    warped_dem = coreg.blockwise.warp_dem(
-        dem=small_dem,
-        transform=small_transform,
-        source_coords=source_coords,
-        destination_coords=dest_coords,
-        resampling="linear",
-        trim_border=False,
-    )
-    assert np.nansum(np.abs(warped_dem - small_dem)) < 1e-6
-
-    elev_shift = 5.0
-    dest_coords[1, 2] = elev_shift
-    warped_dem = coreg.blockwise.warp_dem(
-        dem=small_dem,
-        transform=small_transform,
-        source_coords=source_coords,
-        destination_coords=dest_coords,
-        resampling="linear",
-    )
-
-    # The warped DEM should have the value 'elev_shift' in the upper left corner.
-    assert warped_dem[0, 0] == -elev_shift
-    # The corner should be zero, so the corner pixel (represents the corner minus resolution / 2) should be close.
-    # We select the pixel before the corner (-2 in X-axis) to avoid the NaN propagation on the bottom row.
-    assert warped_dem[-2, -1] < 1
-
-    # Synthesise some X/Y/Z coordinates on the DEM.
-    source_coords = np.array(
-        [
-            [0, 0, 200],
-            [480, 20, 200],
-            [460, 480, 200],
-            [10, 460, 200],
-            [250, 250, 200],
-        ]
-    )
-
-    # Copy the source coordinates and apply some shifts
-    dest_coords = source_coords.copy()
-    # Apply in the X direction
-    dest_coords[0, 0] += 20
-    dest_coords[1, 0] += 7
-    dest_coords[2, 0] += 10
-    dest_coords[3, 0] += 5
-
-    # Apply in the Y direction
-    dest_coords[4, 1] += 5
-
-    # Apply in the Z direction
-    dest_coords[3, 2] += 5
-    test_shift = 6  # This shift will be validated below
-    dest_coords[4, 2] += test_shift
-
-    # Create synthetic DEM data
-    transform = rio.transform.from_origin(0, 500, 1, 1)
-    shape = (500, 550)
-    xx, yy = _coords(transform=transform, shape=shape, area_or_point=None)
-    # Make it a 2D polynomial gaussian-filtered
-    dem = xdem.fit.polynomial_2d((xx, yy), 1, 1, 1, 1)  # type: ignore
-    dem = xdem.filters.gaussian_filter_scipy(dem, sigma=10)
-
-    # Warp the DEM using the source-destination coordinates.
-    transformed_dem = coreg.blockwise.warp_dem(
-        dem=dem, transform=transform, source_coords=source_coords, destination_coords=dest_coords, resampling="linear"
-    )
-
-    # Try to undo the warp by reversing the source-destination coordinates.
-    untransformed_dem = coreg.blockwise.warp_dem(
-        dem=transformed_dem,
-        transform=transform,
-        source_coords=dest_coords,
-        destination_coords=source_coords,
-        resampling="linear",
-    )
-    # Validate that the DEM is now more or less the same as the original.
-    # Due to the randomness, the threshold is quite high, but would be something like 10+ if it was incorrect.
-    assert spatialstats.nmad(dem - untransformed_dem) < 0.5
-
-    # Test with Z-correction disabled
-    transformed_dem_no_z = coreg.blockwise.warp_dem(
-        dem=dem,
-        transform=transform,
-        source_coords=source_coords,
-        destination_coords=dest_coords,
-        resampling="linear",
-        apply_z_correction=False,
-    )
-
-    # Try to undo the warp by reversing the source-destination coordinates with Z-correction disabled
-    untransformed_dem_no_z = coreg.blockwise.warp_dem(
-        dem=transformed_dem_no_z,
-        transform=transform,
-        source_coords=dest_coords,
-        destination_coords=source_coords,
-        resampling="linear",
-        apply_z_correction=False,
-    )
-
-    # Validate that the DEM is now more or less the same as the original, with Z-correction disabled.
-    # The result should be similar to the original, but with no Z-shift applied.
-    assert spatialstats.nmad(dem - untransformed_dem_no_z) < 0.5
-
-    # The difference between the two DEMs should be the vertical shift.
-    # We expect the difference to be approximately equal to the average vertical shift.
-    expected_vshift = np.mean(dest_coords[:, 2] - source_coords[:, 2])
-
-    # Check that the mean difference between the DEMs matches the expected vertical shift.
-    assert np.nanmean(transformed_dem_no_z - transformed_dem) == pytest.approx(expected_vshift, rel=0.3)
-
-    if False:
-        import matplotlib.pyplot as plt
-
-        plt.figure(dpi=200)
-        plt.subplot(141)
-
-        plt.imshow(dem, vmin=0, vmax=300)
-        plt.subplot(142)
-        plt.imshow(transformed_dem, vmin=0, vmax=300)
-        plt.subplot(143)
-        plt.imshow(untransformed_dem, vmin=0, vmax=300)
-
-        plt.subplot(144)
-        plt.imshow(dem - untransformed_dem, cmap="coolwarm_r", vmin=-10, vmax=10)
-        plt.show()
+        valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
+        assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=20)

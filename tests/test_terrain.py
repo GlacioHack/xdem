@@ -7,6 +7,7 @@ import warnings
 import geoutils as gu
 import numpy as np
 import pytest
+from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
 
@@ -285,6 +286,56 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
+    def test_get_terrain_attribute_multiproc(self) -> None:
+        """Test the get_terrain attribute function in multiprocessing."""
+        outfile = "mp_output.tif"
+        outfile_multi = ["mp_output_slope.tif", "mp_output_aspect.tif", "mp_output_hillshade.tif"]
+
+        mp_config = MultiprocConfig(
+            chunk_size=200,
+            outfile=outfile,
+        )
+
+        # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
+        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res)
+        assert os.path.exists(outfile)
+        slope = gu.Raster(outfile, load_data=True)
+        assert isinstance(slope, gu.Raster)
+        os.remove(outfile)
+
+        # Create three products at the same time
+        xdem.terrain.get_terrain_attribute(
+            self.dem, ["slope", "aspect", "hillshade"], mp_config=mp_config, resolution=self.dem.res
+        )
+        for file in outfile_multi:
+            assert os.path.exists(file)
+        slope2 = gu.Raster(outfile_multi[0], load_data=True)
+        hillshade = gu.Raster(outfile_multi[2], load_data=True)
+        for file in outfile_multi:
+            os.remove(file)
+
+        # Create a hillshade using its own function
+        xdem.terrain.hillshade(self.dem, mp_config=mp_config, resolution=self.dem.res)
+        assert os.path.exists(outfile)
+        hillshade2 = gu.Raster(outfile, load_data=True)
+        os.remove(outfile)
+
+        # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
+        assert hillshade.raster_equal(hillshade2)
+        assert slope.raster_equal(slope2)
+
+        # Compare with classic terrain attribute calculation
+        slope_classic = self.dem.slope()
+        hillshade_classic = self.dem.hillshade()
+        assert np.allclose(slope.data, slope_classic.data, rtol=1e-7)
+        assert np.allclose(hillshade.data, hillshade_classic.data, rtol=1e-7)
+
+        # A slope map with a lower resolution (higher value) should have gentler slopes.
+        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res[0] * 2)
+        slope_lowres = gu.Raster(outfile, load_data=True)
+        os.remove(outfile)
+        assert slope.get_stats("mean") > slope_lowres.get_stats("mean")
+
     def test_get_terrain_attribute_errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
@@ -394,3 +445,21 @@ class TestTerrainAttribute:
         # When using edge wrapping, all coefficients should be finite.
         coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
         assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+
+    def test_get_terrain_attribute__out_dtype(self) -> None:
+
+        # Get one attribute using quadratic coeff, and one using windowed indexes
+        slope, tpi = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "topographic_position_index"])
+
+        assert slope.dtype == self.dem.dtype
+        assert tpi.dtype == self.dem.dtype
+
+        # Using a different output dtype
+        out_dtype = np.float64
+        slope, tpi = xdem.terrain.get_terrain_attribute(
+            self.dem, attribute=["slope", "topographic_position_index"], out_dtype=out_dtype
+        )
+
+        assert self.dem.dtype != out_dtype
+        assert np.dtype(slope.dtype) == out_dtype
+        assert np.dtype(tpi.dtype) == out_dtype

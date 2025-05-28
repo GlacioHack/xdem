@@ -183,7 +183,7 @@ class TestDEM:
         # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
 
         # using list directly available in Class
-        attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
+        attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver", "profile"]]
         all_attrs = attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)

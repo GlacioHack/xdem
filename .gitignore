@@ -153,6 +153,7 @@ doc/source/advanced_examples/
 doc/source/gen_modules/
 doc/source/sg_execution_times.rst
 examples/basic/temp.tif
+examples/advanced/aligned_dem.tif
 
 # Directory where myst_nb executes jupyter code and cache
 doc/jupyter_execute/

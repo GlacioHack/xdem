@@ -33,6 +33,7 @@ import scipy.optimize
 import scipy.spatial
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _coords, _res
+from geoutils.stats import nmad
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
@@ -51,7 +52,6 @@ from xdem.coreg.base import (
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
-from xdem.spatialstats import nmad
 
 try:
     import pytransform3d.rotations
