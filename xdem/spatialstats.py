@@ -46,7 +46,6 @@ from scipy.optimize import curve_fit
 from scipy.signal import fftconvolve
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from skimage.draw import disk
 
 from xdem._typing import NDArrayf
 from xdem.misc import deprecate
@@ -879,17 +878,10 @@ def _create_circular_mask(
     if radius is None:  # use the smallest distance between the center and image walls
         radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    # Skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
-    mask = np.zeros(shape, dtype=bool)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-        rr, cc = disk(center=center, radius=radius, shape=shape)
-    mask[rr, cc] = True
-
-    # manual solution
-    # Y, X = np.ogrid[:h, :w]
-    # dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-    # mask = dist_from_center < radius
+    # Manual solution
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    mask = dist_from_center < radius
 
     return mask
 
