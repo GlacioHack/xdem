@@ -7,6 +7,7 @@ import tempfile
 import warnings
 from typing import Any
 
+import geoutils
 import geoutils as gu
 import numpy as np
 import pytest
@@ -116,8 +117,7 @@ class TestDEM:
         transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
         crs = CRS("EPSG:4326")
         nodata = -9999
-        vcrs = "EGM08"
-        dem = DEM.from_array(data=data, transform=transform, crs=crs, nodata=nodata, vcrs=vcrs)
+        dem = DEM.from_array(data=data, transform=transform, crs=crs, nodata=nodata)
 
         # Check output matches
         assert isinstance(dem, DEM)
@@ -126,37 +126,33 @@ class TestDEM:
         assert dem.transform == transform
         assert dem.crs == crs
         assert dem.nodata == nodata
-        assert dem.vcrs == xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs)
 
     def test_from_array__vcrs(self) -> None:
         """Test that overridden from_array rightly sets the vertical CRS."""
 
         # Create a 5x5 DEM with a 2D CRS
         transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
-        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=None)
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
         assert dem.vcrs is None
 
         # One with a 3D ellipsoid CRS
-        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4979"), nodata=None, vcrs=None)
-        assert dem.vcrs == "Ellipsoid"
-
-        # One with a 2D and the ellipsoid vertical CRS
-        dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs="Ellipsoid"
-        )
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4979"), nodata=None)
         assert dem.vcrs == "Ellipsoid"
 
         # One with a compound CRS
         dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None, vcrs=None
+            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None
         )
         assert dem.vcrs == CRS("EPSG:5773")
 
-        # One with a CRS and vertical CRS
-        dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=CRS("EPSG:5773")
-        )
-        assert dem.vcrs == CRS("EPSG:5773")
+    def test_from_array__cast_mask(self) -> None:
+        """Test that DEMs are cast into mask for a logical operation."""
+
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
+
+        mask_dem = dem > 1
+        assert isinstance(mask_dem, geoutils.Mask)
 
     def test_copy(self) -> None:
         """

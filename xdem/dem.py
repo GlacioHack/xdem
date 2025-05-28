@@ -183,49 +183,6 @@ class DEM(Raster):  # type: ignore
 
         return new_dem  # type: ignore
 
-    @classmethod
-    def from_array(
-        cls: type[DEM],
-        data: NDArrayf | MArrayf,
-        transform: tuple[float, ...] | Affine,
-        crs: CRS | int | None,
-        nodata: int | float | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        tags: dict[str, Any] = None,
-        cast_nodata: bool = True,
-        vcrs: (
-            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-    ) -> DEM:
-        """Create a DEM from a numpy array and the georeferencing information.
-
-        :param data: Input array.
-        :param transform: Affine 2D transform. Either a tuple(x_res, 0.0, top_left_x,
-            0.0, y_res, top_left_y) or an affine.Affine object.
-        :param crs: Coordinate reference system. Either a rasterio CRS, or an EPSG integer.
-        :param nodata: Nodata value.
-        :param area_or_point: Pixel interpretation of the raster, will be stored in AREA_OR_POINT metadata.
-        :param tags: Metadata stored in a dictionary.
-        :param cast_nodata: Automatically cast nodata value to the default nodata for the new array type if not
-            compatible. If False, will raise an error when incompatible.
-        :param vcrs: Vertical coordinate reference system.
-
-
-        :returns: DEM created from the provided array and georeferencing.
-        """
-        # We first apply the from_array of the parent class
-        rast = Raster.from_array(
-            data=data,
-            transform=transform,
-            crs=crs,
-            nodata=nodata,
-            area_or_point=area_or_point,
-            tags=tags,
-            cast_nodata=cast_nodata,
-        )
-        # Then add the vcrs to the class call (that builds on top of the parent class)
-        return cls(filename_or_dataset=rast, vcrs=vcrs)
-
     @property
     def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
         """Vertical coordinate reference system of the DEM."""
@@ -374,16 +331,17 @@ class DEM(Raster):  # type: ignore
             return None
         # Otherwise, return new DEM
         else:
-            return DEM.from_array(
+            dem = DEM.from_array(
                 data=new_data,
                 transform=self.transform,
                 crs=self.crs,
                 nodata=self.nodata,
                 area_or_point=self.area_or_point,
                 tags=self.tags,
-                vcrs=vcrs,
                 cast_nodata=False,
             )
+            dem.set_vcrs(new_vcrs=vcrs)
+            return dem
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
