@@ -25,7 +25,7 @@ More details are available on each feature page!
    * - Slope, aspect and hillshade
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
    * - Curvatures
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) and [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103)
    * - Topographic position index
      - [Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf)
    * - Terrain ruggedness index
