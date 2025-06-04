@@ -365,7 +365,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
 
 # We align the two DEMs before doing any bias correction
-tba_dem_nk, _ = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), resample=True)
+tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), resample=True)
 ```
 
 ```{code-cell} ipython3

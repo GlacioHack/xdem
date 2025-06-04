@@ -165,7 +165,7 @@ filename_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 dem_tba = xdem.DEM(filename_tba)
 
 # Coregister (horizontal and vertical shifts)
-dem_tba_coreg, _ = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
+dem_tba_coreg = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
 
 # Plot the elevation change of the DEM due to coregistration
 dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)
