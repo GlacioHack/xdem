@@ -354,7 +354,7 @@ class TestDEM:
         # Compare the elevation difference
         z_diff = 100 - trans_dem.data[0, 0]
 
-        # Check the shift is the one expect within 10%
+        # Check the shift is the expected one within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
 
     @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)  # type: ignore
@@ -369,21 +369,101 @@ class TestDEM:
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
-    def test_coregister_3d_wrapper(self) -> None:
-
+    @staticmethod
+    @pytest.mark.parametrize(  # type: ignore
+        "coreg_method, initial_shift, expected_pipeline_types",
+        [
+            pytest.param(xdem.coreg.Deramp(), None, [xdem.coreg.Deramp], id="Custom method: Deramp"),
+            pytest.param(
+                xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
+                [10, 5],
+                [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
+                id="Pipeline: NuthKaab + VerticalShift with initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
+                None,
+                [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
+                id="Pipeline: NuthKaab + VerticalShift without initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.DhMinimize(),
+                (-5, 2),
+                [xdem.coreg.AffineCoreg],
+                id="Simple affine method: DhMinimize with initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.DhMinimize(),
+                None,
+                [xdem.coreg.AffineCoreg],
+                id="Simple affine method: DhMinimize without initial shift",
+            ),
+        ],
+    )
+    def test_coregister_3d(coreg_method, initial_shift, expected_pipeline_types) -> None:  # type: ignore
+        """
+        Test coregister_3d functionality
+        """
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
 
-        dem_class_aligned = dem_tba.coregister_3d(dem_ref, random_state=42)
+        # Run coregistration
+        dem_aligned = dem_tba.coregister_3d(
+            dem_ref, coreg_method=coreg_method, estimated_initial_shift=initial_shift, random_state=42
+        )
 
-        nk = xdem.coreg.NuthKaab()
-        nk.fit(dem_ref, dem_tba, random_state=42)
-        coreg_module_aligned = nk.apply(dem_tba)
+        assert isinstance(dem_aligned, xdem.DEM)
+        assert isinstance(coreg_method, xdem.coreg.Coreg)
 
-        assert dem_class_aligned.raster_equal(coreg_module_aligned)
+        pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
+        for i, expected_type in enumerate(expected_pipeline_types):
+            assert isinstance(pipeline[i], expected_type)
+
+        if coreg_method is xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift():
+            dem_ref = DEM(fn_ref)
+            dem_tba = DEM(fn_tba)
+            nk = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
+            nk.fit(dem_ref, dem_tba, random_state=42)
+            manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
+            assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
+
+    @pytest.mark.parametrize(  # type: ignore
+        "coreg_method, error, expected_match, test_shift_tuple",
+        [
+            pytest.param(xdem.coreg.Deramp(), TypeError, r".*affine.*", (-5, 2)),
+            pytest.param(xdem.coreg.Deramp() + xdem.coreg.TerrainBias(), TypeError, r".*affine.*", (-5, 2)),
+            pytest.param(
+                xdem.coreg.AffineCoreg() + xdem.coreg.VerticalShift(), ValueError, r".*two numerical values.*", ["2", 2]
+            ),
+            pytest.param(
+                xdem.coreg.AffineCoreg() + xdem.coreg.VerticalShift(),
+                ValueError,
+                r".*two numerical values.*",
+                [2, 3, 5],
+            ),
+        ],
+    )
+    def test_exceptions_initial_shift(
+        self, coreg_method, error, expected_match, test_shift_tuple
+    ) -> None:  # type: ignore
+        """
+        Test that the initial shift method exceptions work correctly
+        without an affine coregistration method.
+        """
+
+        dem_tba = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        dem_ref = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+
+        with pytest.raises(error, match=expected_match):
+            dem_tba.coregister_3d(
+                dem_ref,
+                coreg_method=coreg_method,
+                estimated_initial_shift=test_shift_tuple,
+                random_state=42,
+            )
 
     def test_estimate_uncertainty(self) -> None:
 
