@@ -500,7 +500,7 @@ class DEM(Raster):  # type: ignore
         random_state: int | np.random.Generator | None = None,
         resample: bool = False,
         **kwargs,
-    ) -> tuple[DEM | GeoDataFrame, Coreg | AffineCoreg | CoregPipeline]:
+    ) -> DEM | GeoDataFrame:
         """
         Coregister DEM to a reference DEM in three dimensions.
 
@@ -519,7 +519,7 @@ class DEM(Raster):  # type: ignore
             Useful to avoid spreading data gaps.
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
-        :return: A tuple containing 1) coregistered DEM as a xdem.DEM instance 2) the coregistration method
+        :return: Coregistered DEM as a xdem.DEM instance
         """
 
         src_dem = self.copy()
@@ -588,7 +588,7 @@ class DEM(Raster):  # type: ignore
 
             update_shift(coreg_method)
 
-        return aligned_dem, coreg_method
+        return aligned_dem
 
     def estimate_uncertainty(
         self,

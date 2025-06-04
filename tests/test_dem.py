@@ -411,14 +411,14 @@ class TestDEM:
         dem_tba = DEM(fn_tba)
 
         # Run coregistration
-        dem_aligned, method = dem_tba.coregister_3d(
+        dem_aligned = dem_tba.coregister_3d(
             dem_ref, coreg_method=coreg_method, estimated_initial_shift=initial_shift, random_state=42
         )
 
         assert isinstance(dem_aligned, xdem.DEM)
-        assert isinstance(method, xdem.coreg.Coreg)
+        assert isinstance(coreg_method, xdem.coreg.Coreg)
 
-        pipeline = method.pipeline if hasattr(method, "pipeline") else [method]
+        pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
         for i, expected_type in enumerate(expected_pipeline_types):
             assert isinstance(pipeline[i], expected_type)
 
