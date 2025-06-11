@@ -92,7 +92,7 @@ Once defined, they can be applied the same two ways as for coregistration (using
 
 ```{code-cell} ipython3
 # Coregister with bias correction by calling the DEM method
-corrected_dem, _ = tba_dem.coregister_3d(ref_dem, biascorr)
+corrected_dem = tba_dem.coregister_3d(ref_dem, biascorr)
 # (Equivalent) Or by calling the fit and apply steps
 corrected_dem = biascorr.fit_and_apply(ref_dem, tba_dem)
 ```

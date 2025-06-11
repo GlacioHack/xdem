@@ -75,7 +75,7 @@ tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 
 ```{code-cell} ipython3
 # Coregister by calling the DEM method
-aligned_dem, coreg_method = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
+aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 ```
 
 Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially

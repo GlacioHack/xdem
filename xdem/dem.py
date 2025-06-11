@@ -29,7 +29,6 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geopandas import GeoDataFrame
 from geoutils import Raster
 from geoutils._typing import Number
 from geoutils.raster import Mask, RasterType
@@ -500,7 +499,7 @@ class DEM(Raster):  # type: ignore
         random_state: int | np.random.Generator | None = None,
         resample: bool = False,
         **kwargs,
-    ) -> DEM | GeoDataFrame:
+    ) -> DEM:
         """
         Coregister DEM to a reference DEM in three dimensions.
 
@@ -519,7 +518,7 @@ class DEM(Raster):  # type: ignore
             Useful to avoid spreading data gaps.
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
-        :return: Coregistered DEM as a xdem.DEM instance
+        :return: Coregistered DEM
         """
 
         src_dem = self.copy()
