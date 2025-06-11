@@ -12,9 +12,9 @@ ifndef VENV
 endif
 
 # Python global variables definition
-PYTHON_VERSION_MIN = 3.11
+PYTHON_VERSION_MIN = 3.10
 # Set PYTHON if not defined in command line
-# Example: PYTHON="python3.11" make venv to use python 3.11 for the venv
+# Example: PYTHON="python3.13" make venv to use python 3.13 for the venv
 # By default the default python3 of the system.
 ifndef PYTHON
 	PYTHON = "python3"
