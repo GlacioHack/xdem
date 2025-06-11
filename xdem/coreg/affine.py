@@ -24,20 +24,16 @@ import logging
 import warnings
 from typing import Any, Callable, Iterable, Literal, TypeVar
 
-import xdem.coreg.base
-
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
+import affine
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rasterio as rio
 import scipy.optimize
+import scipy.spatial
 from geoutils.interface.interpolate import _interp_points
-from geoutils.raster.georeferencing import _bounds, _coords, _res
+from geoutils.raster.georeferencing import _coords, _res
+from geoutils.stats import nmad
 from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
@@ -47,12 +43,15 @@ from xdem.coreg.base import (
     InFitOrBinDict,
     InRandomDict,
     OutAffineDict,
+    _apply_matrix_pts_mat,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
     _preprocess_pts_rst_subsample,
     _reproject_horizontal_shift_samecrs,
+    invert_matrix,
+    matrix_from_translations_rotations,
+    translations_rotations_from_matrix,
 )
-from xdem.spatialstats import nmad
 
 try:
     import pytransform3d.rotations
@@ -61,13 +60,6 @@ try:
     _HAS_P3D = True
 except ImportError:
     _HAS_P3D = False
-
-try:
-    from noisyopt import minimizeCompass
-
-    _HAS_NOISYOPT = True
-except ImportError:
-    _HAS_NOISYOPT = False
 
 ######################################
 # Generic functions for affine methods
@@ -122,7 +114,7 @@ def _iterate_method(
     """
     Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches a tolerance or maximum number of iterations.
 
-    :param method: Method that needs to be iterated to derive a transformation. Take argument "inputs" as its input,
+    :param method: Method that needs to be iterated to derive a transformation. Takes argument "inputs" as its input,
         and outputs three terms: a "statistic" to compare to tolerance, "updated inputs" with this transformation, and
         the parameters of the transformation.
     :param iterating_input: Iterating input to method, should be first argument.
@@ -147,7 +139,7 @@ def _iterate_method(
 
         # Print final results
         # TODO: Allow to pass a string to _iterate_method on how to print/describe exactly the iterating input
-        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
+        if logging.getLogger().getEffectiveLevel() <= logging.INFO:
             pbar.write(f"      Iteration #{i + 1:d} - Offset: {new_inputs}; Magnitude: {new_statistic}")
 
         if i > 1 and new_statistic < tolerance:
@@ -282,6 +274,7 @@ def _preprocess_pts_rst_subsample_interpolator(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
+        z_name=z_name,
         aux_vars=aux_vars,
     )
 
@@ -301,6 +294,41 @@ def _preprocess_pts_rst_subsample_interpolator(
 
     # Return 1D arrays of subsampled points at the same location
     return sub_dh_interpolator, sub_bias_vars, subsample_final
+
+
+def _standardize_epc(
+    ref_epc: NDArrayf, tba_epc: NDArrayf, scale_std: bool = True
+) -> tuple[NDArrayf, NDArrayf, tuple[float, float, float], float]:
+    """
+    Standardize elevation point clouds by getting centroid and standardization factor using median statistics.
+
+    :param ref_epc: Reference point cloud.
+    :param tba_epc: To-be-aligned point cloud.
+    :param scale_std: Whether to scale all axes by a factor.
+
+    :return: Standardized point clouds, Centroid of standardization, Scale factor of standardization.
+    """
+
+    # Get centroid
+    centroid = np.median(ref_epc, axis=1)
+
+    # Subtract centroid from point clouds
+    ref_epc = ref_epc - centroid[:, None]
+    tba_epc = tba_epc - centroid[:, None]
+
+    centroid = (centroid[0], centroid[1], centroid[2])
+
+    if scale_std:
+        # Get mean standardization factor for all axes
+        std_fac = np.mean([nmad(ref_epc[0, :]), nmad(ref_epc[1, :]), nmad(ref_epc[2, :])])
+
+        # Standardize point clouds
+        ref_epc = ref_epc / std_fac
+        tba_epc = tba_epc / std_fac
+    else:
+        std_fac = 1
+
+    return ref_epc, tba_epc, centroid, std_fac
 
 
 ################################
@@ -339,6 +367,8 @@ def _nuth_kaab_bin_fit(
     """
     Optimize the Nuth and Kääb (2011) function based on observed values of elevation differences, slope tangent and
     aspect at the same locations, using either fitting or binning + fitting.
+
+    Called at each iteration step.
 
     :param dh: 1D array of elevation differences (in georeferenced unit, typically meters).
     :param slope_tan: 1D array of slope tangent (unitless).
@@ -456,7 +486,7 @@ def _nuth_kaab_iteration_step(
     params_fit_bin: InFitOrBinDict,
 ) -> tuple[tuple[float, float, float], float]:
     """
-    Iteration step of Nuth and Kääb (2011), passed to the iterate_method function.
+    Iteration step of Nuth and Kääb (2011).
 
     Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
 
@@ -466,6 +496,8 @@ def _nuth_kaab_iteration_step(
     :param slope_tan: Array of slope tangent.
     :param aspect: Array of aspect.
     :param res: Resolution of DEM.
+
+    :return X/Y/Z offsets, Horizontal tolerance.
     """
 
     # Calculate the elevation difference with offsets
@@ -525,6 +557,10 @@ def nuth_kaab(
     """
     Nuth and Kääb (2011) iterative coregistration.
 
+    This function subsamples input data, then runs Nuth and Kääb iteration steps to optimize its fit function until
+    convergence or a maximum of iterations is reached.
+
+
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
     logging.info("Running Nuth and Kääb (2011) coregistration")
@@ -558,7 +594,6 @@ def nuth_kaab(
         z_name=z_name,
     )
 
-    logging.info("Iteratively estimating horizontal shift:")
     # Initialise east, north and vertical offset variables (these will be incremented up and down)
     initial_offset = (0.0, 0.0, 0.0)
     # Resolution
@@ -631,13 +666,6 @@ def _dh_minimize_fit(
             # This method has trouble when initialized with 0,0, so defaulting to 1,1
             # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
-
-    elif _HAS_NOISYOPT and params_fit_or_bin["fit_minimizer"] == minimizeCompass:
-        kwargs.update({"errorcontrol": False})
-        if "deltatol" not in kwargs.keys():
-            kwargs.update({"deltatol": 0.004})
-        if "feps" not in kwargs.keys():
-            kwargs.update({"feps": 10e-5})
 
     results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
 
@@ -713,7 +741,7 @@ def vertical_shift(
     logging.info("Running vertical shift coregistration")
 
     # Pre-process point-raster inputs to the same subsampled points
-    sub_ref, sub_tba, _ = _preprocess_pts_rst_subsample(
+    sub_ref, sub_tba, _, _ = _preprocess_pts_rst_subsample(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -738,6 +766,1017 @@ def vertical_shift(
     subsample_final = len(sub_ref)
 
     return vshift, subsample_final
+
+
+############################
+# 4/ Iterative closest point
+############################
+
+
+def _icp_fit_func(
+    inputs: tuple[NDArrayf, NDArrayf, NDArrayf | None],
+    t1: float,
+    t2: float,
+    t3: float,
+    alpha1: float,
+    alpha2: float,
+    alpha3: float,
+    method: Literal["point-to-point", "point-to-plane"],
+) -> NDArrayf:
+    """
+    Fit function of ICP, a rigid transformation with 6 parameters (3 translations and 3 rotations) between closest
+    points (that are fixed for this optimization and located at the same indexes, and update at each iterative step).
+
+    :param inputs: Constant input for the fit function: three arrays of size 3xN, for the reference point cloud, the
+        to-be-aligned point cloud ordered for its nearest points to the reference, and the plane normals.
+    :param t1: Translation in X.
+    :param t2: Translation in Y.
+    :param t3: Translation in Z.
+    :param alpha1: Rotation around X.
+    :param alpha2: Rotation around Y.
+    :param alpha3: Rotation around Z.
+    :param method: Method of iterative closest point registration, either "point-to-point" of Besl and McKay (1992)
+        that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
+        projected on normals.
+
+    :return Array of distances between closest points.
+    """
+
+    # Get inputs
+    ref, tba, norm = inputs
+
+    # Build an affine matrix for 3D translations and rotations
+    matrix = matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3, use_degrees=False)
+
+    # Apply affine transformation
+    trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix)
+
+    # Compute residuals between reference points and nearest to-be-aligned points (located at the same indexes)
+    # depending on type of ICP method
+
+    # Point-to-point is simply the difference, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
+    if method == "point-to-point":
+        diffs = (trans_tba - ref) ** 2
+    # Point-to-plane used the normals, from Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C
+    # A priori, this method is faster based on Rusinkiewicz and Levoy (2001), https://doi.org/10.1109/IM.2001.924423
+    elif method == "point-to-plane":
+        assert norm is not None
+        diffs = (trans_tba - ref) * norm
+    else:
+        raise ValueError("ICP method must be 'point-to-point' or 'point-to-plane'.")
+
+    # Distance residuals summed for all 3 dimensions
+    res = np.sum(diffs, axis=0)
+
+    # For point-to-point, take the squareroot of the sum
+    if method == "point-to-point":
+        res = np.sqrt(res)
+
+    return res
+
+
+def _icp_fit_approx_lsq(
+    ref: NDArrayf,
+    tba: NDArrayf,
+    norms: NDArrayf | None,
+    weights: NDArrayf | None = None,
+    method: Literal["point-to-point", "point-to-plane"] = "point-to-point",
+) -> NDArrayf:
+    """
+    Linear approximation of the rigid transformation least-square optimization.
+
+    See Low (2004), https://www.comp.nus.edu.sg/~lowkl/publications/lowk_point-to-plane_icp_techrep.pdf for the
+    "point-to-plane" approximation.
+
+    :param ref: Reference point cloud as Nx3 array.
+    :param tba: To-be-aligned point cloud as Nx3 array.
+    :param norms: Plane normals as Nx3 array.
+    :param weights: Weights as Nx3 array.
+    :param method: Method of iterative closest point registration, either "point-to-point" of Besl and McKay (1992)
+        that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
+        projected on normals.
+
+    :return Affine transform matrix.
+    """
+
+    # Linear approximation of ICP least-squares
+
+    # Point-to-plane
+    if method == "point-to-plane":
+
+        assert norms is not None
+
+        # Define A and B as in Low (2004)
+        B = np.expand_dims(np.sum(ref * norms, axis=1) - np.sum(tba * norms, axis=1), axis=1)
+        A = np.hstack((np.cross(tba, norms), norms))
+
+        # Choose if using weights or not
+        if weights is not None:
+            x = np.linalg.inv(A.T @ weights @ A) @ A.T @ weights @ B
+        else:
+            x = np.linalg.inv(A.T @ A) @ A.T @ B
+        x = x.squeeze()
+
+        # Convert back to affine matrix
+        matrix = matrix_from_translations_rotations(
+            alpha1=x[0], alpha2=x[1], alpha3=x[2], t1=x[3], t2=x[4], t3=x[5], use_degrees=False
+        )
+
+    else:
+        raise ValueError("Fit optimizer 'lst_approx' of ICP is only available for point-to-plane method.")
+
+    return matrix
+
+
+def _icp_fit(
+    ref: NDArrayf,
+    tba: NDArrayf,
+    norms: NDArrayf | None,
+    method: Literal["point-to-point", "point-to-plane"],
+    params_fit_or_bin: InFitOrBinDict,
+    only_translation: bool,
+    **kwargs: Any,
+) -> NDArrayf:
+    """
+    Optimization of ICP fit function, using either any optimizer or specific linearized approximations for ICP.
+
+    Returns affine transform optimized for this iteration.
+
+    :param ref: Reference point cloud as 3xN array.
+    :param tba: To-be-aligned point cloud as 3xN array.
+    :param norms: Plane normals as 3xN array.
+    :param method: Method of iterative closest point registration, either "point-to-point" of Besl and McKay (1992)
+        that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
+        projected on normals.
+    :param params_fit_or_bin: Dictionary of parameters for fitting or binning.
+    :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+        rotation as default.
+    :param **kwargs: Keyword arguments passed to fit optimizer.
+
+    :return: Affine transform matrix.
+    """
+
+    # Group inputs into a single array
+    inputs = (ref, tba, norms)
+
+    # If we use the linear approximation
+    if isinstance(params_fit_or_bin["fit_minimizer"], str) and params_fit_or_bin["fit_minimizer"] == "lsq_approx":
+
+        assert norms is not None
+
+        matrix = _icp_fit_approx_lsq(ref.T, tba.T, norms.T, method=method)
+
+    # Or we solve using any optimizer and loss function
+    else:
+        # Define loss function
+        loss_func = params_fit_or_bin["fit_loss_func"]
+
+        # With rotation
+        if not only_translation:
+
+            def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
+                return _icp_fit_func(
+                    inputs=inputs,
+                    t1=offsets[0],
+                    t2=offsets[1],
+                    t3=offsets[2],
+                    alpha1=offsets[3],
+                    alpha2=offsets[4],
+                    alpha3=offsets[5],
+                    method=method,
+                )
+
+            # Initial offset near zero
+            init_offsets = np.zeros(6)
+
+        # Without rotation
+        else:
+
+            def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
+                return _icp_fit_func(
+                    inputs=inputs,
+                    t1=offsets[0],
+                    t2=offsets[1],
+                    t3=offsets[2],
+                    alpha1=0.0,
+                    alpha2=0.0,
+                    alpha3=0.0,
+                    method=method,
+                )
+
+            # Initial offset near zero
+            init_offsets = np.zeros(3)
+
+        results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func)
+
+        # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+        assert results is not None
+        # Build matrix out of optimized parameters
+        matrix = matrix_from_translations_rotations(*results.x, use_degrees=False)  # type: ignore
+
+    return matrix
+
+
+def _icp_iteration_step(
+    matrix: NDArrayf,
+    ref_epc: NDArrayf,
+    tba_epc: NDArrayf,
+    norms: NDArrayf,
+    ref_epc_nearest_tree: scipy.spatial.KDTree,
+    params_fit_or_bin: InFitOrBinDict,
+    method: Literal["point-to-point", "point-to-plane"],
+    picky: bool,
+    only_translation: bool,
+) -> tuple[NDArrayf, float]:
+    """
+    Iteration step of Iterative Closest Point coregistration.
+
+    Returns affine transform optimized for this iteration, and tolerance parameters.
+
+    :param matrix: Affine transform matrix.
+    :param ref_epc: Reference point cloud as 3xN array.
+    :param tba_epc: To-be-aligned point cloud as 3xN array.
+    :param norms: Plane normals as 3xN array.
+    :param ref_epc_nearest_tree: Nearest neighbour mapping to reference point cloud as scipy.KDTree.
+    :param params_fit_or_bin: Dictionary of parameters for fitting or binning.
+    :param method: Method of iterative closest point registration, either "point-to-point" of Besl and McKay (1992)
+        that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
+        projected on normals.
+    :param picky: Whether to use the duplicate removal for pairs of closest points of Zinsser et al. (2003).
+    :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+        rotation as default.
+
+    :return: Affine transform matrix, Tolerance.
+    """
+
+    # Apply transform matrix from previous steps
+    trans_tba_epc = _apply_matrix_pts_mat(tba_epc, matrix=matrix)
+
+    # Create nearest neighbour tree from reference elevations, and query for transformed point cloud
+    dists, ind = ref_epc_nearest_tree.query(trans_tba_epc.T, k=1)
+
+    # Picky ICP: Remove duplicates of transformed points with the same closest reference points
+    # Keep only the one with minimum distance
+    if picky:
+        init_len = len(ind)
+        df = pd.DataFrame(data={"ind": ind, "dists": dists})
+        ind_tba = df.groupby(["ind"]).idxmin()["dists"].values
+        logging.info(f"Picky ICP duplicate removal: Reducing from {init_len} to {len(ind)} point pairs.")
+    # In case the number of points is different for ref and tba (can't happen with current subsampling)
+    else:
+        ind_tba = ind < ref_epc.shape[1]
+
+    # Reference index is the original indexed by the other
+    ind_ref = ind[ind_tba]
+
+    # Index points to get nearest
+    step_ref = ref_epc[:, ind_ref]
+    step_trans_tba = trans_tba_epc[:, ind_tba]
+
+    if method == "point-to-plane":
+        step_normals = norms[:, ind_ref]
+    else:
+        step_normals = None
+
+    # Fit to get new step transform
+    step_matrix = _icp_fit(
+        ref=step_ref,
+        tba=step_trans_tba,
+        norms=step_normals,
+        params_fit_or_bin=params_fit_or_bin,
+        method=method,
+        only_translation=only_translation,
+    )
+
+    # Increment transformation matrix by step
+    new_matrix = step_matrix @ matrix
+
+    # Compute statistic on offset to know if it reached tolerance
+    translations = step_matrix[:3, 3]
+
+    tolerance_translation = np.sqrt(np.sum(translations) ** 2)
+    # TODO: If we allow multiple tolerances in the future, here's the rotation tolerance
+    # rotations = step_matrix[:3, :3]
+    # tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+
+    return new_matrix, tolerance_translation
+
+
+def _icp_norms(dem: NDArrayf, transform: affine.Affine) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
+    """
+    Derive normals from the DEM for "point-to-plane" method.
+
+    :param dem: Array of DEM.
+    :param transform: Transform of DEM.
+
+    :return: Arrays of 3D normals: east, north and upward.
+    """
+
+    # Get DEM resolution
+    resolution = _res(transform)
+
+    # Generate the X, Y and Z normals
+    gradient_x, gradient_y = np.gradient(dem)
+    normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
+    normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
+    normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
+
+    return normal_east, normal_north, normal_up
+
+
+def icp(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    max_iterations: int,
+    tolerance: float,
+    params_random: InRandomDict,
+    params_fit_or_bin: InFitOrBinDict,
+    method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
+    picky: bool = False,
+    only_translation: bool = False,
+    standardize: bool = True,
+) -> tuple[NDArrayf, tuple[float, float, float], int]:
+    """
+    Main function for Iterative Closest Point coregistration.
+
+    This function subsamples input data, then runs ICP iteration steps to optimize its fit function until
+    convergence or a maximum of iterations is reached.
+
+    Based on Besl and McKay (1992), https://doi.org/10.1117/12.57955 for "point-to-point" and on
+    Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C for "point-to-plane".
+
+    The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
+    The normals for "point-to-plane" are computed on the DEM for speed.
+
+    :return: Affine transform matrix, Centroid, Subsample size.
+    """
+
+    # Derive normals if method is point-to-plane, otherwise not
+    if method == "point-to-plane":
+        # We use the DEM to derive the normals
+        if isinstance(ref_elev, np.ndarray):
+            dem = ref_elev
+        else:
+            dem = tba_elev
+        nx, ny, nz = _icp_norms(dem, transform)
+        aux_vars = {"nx": nx, "ny": ny, "nz": nz}
+    else:
+        aux_vars = None
+
+    # Pre-process point-raster inputs to the same subsampled points
+    sub_ref, sub_tba, sub_aux_vars, sub_coords = _preprocess_pts_rst_subsample(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        crs=crs,
+        area_or_point=area_or_point,
+        z_name=z_name,
+        aux_vars=aux_vars,
+        return_coords=True,
+    )
+
+    # Convert point clouds to Nx3 arrays for efficient calculations below
+    ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
+    tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
+    if sub_aux_vars is not None:
+        norms = np.vstack((sub_aux_vars["nx"], sub_aux_vars["ny"], sub_aux_vars["nz"]))
+    else:
+        norms = None
+
+    # Remove centroid and standardize to facilitate numerical convergence
+    ref_epc, tba_epc, centroid, std_fac = _standardize_epc(ref_epc, tba_epc, scale_std=standardize)
+    tolerance /= std_fac
+
+    # Define search tree outside of loop for performance
+    ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
+
+    # Iterate through method until tolerance or max number of iterations is reached
+    init_matrix = np.eye(4)  # Initial matrix is the identity transform
+    constant_inputs = (
+        ref_epc,
+        tba_epc,
+        norms,
+        ref_epc_nearest_tree,
+        params_fit_or_bin,
+        method,
+        picky,
+        only_translation,
+    )
+    final_matrix = _iterate_method(
+        method=_icp_iteration_step,
+        iterating_input=init_matrix,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    # De-standardize
+    final_matrix[:3, 3] *= std_fac
+
+    # Get subsample size
+    subsample_final = len(sub_ref)
+
+    return final_matrix, centroid, subsample_final
+
+
+#########################
+# 5/ Coherent Point Drift
+#########################
+
+
+def _cpd_fit(
+    ref_epc: NDArrayf,
+    tba_epc: NDArrayf,
+    trans_tba_epc: NDArrayf,
+    weight_cpd: float,
+    sigma2: float,
+    sigma2_min: float,
+    scale: bool = False,
+    only_translation: bool = False,
+) -> tuple[NDArrayf, float, float]:
+    """
+    Fit step of Coherent Point Drift by expectation-minimization, with variance updating.
+
+    See Fig. 2 of Myronenko and Song (2010), https://doi.org/10.1109/TPAMI.2010.46 for equations below.
+
+    Inspired from pycpd implementation: https://github.com/siavashk/pycpd/blob/master/pycpd/rigid_registration.py.
+    """
+
+    X, Y, TY = (ref_epc, tba_epc, trans_tba_epc)
+
+    # Get shape of inputs
+    N, D = X.shape
+    M, _ = Y.shape
+
+    # 0/ Initialize variance if not defined
+    diff2 = (X[None, :, :] - TY[:, None, :]) ** 2
+    if sigma2 is None:
+        sigma2 = np.sum(diff2) / (D * N * M)
+
+    # 1/ Expectation step
+
+    # Sum only over D axis for numerator
+    P = np.sum(diff2, axis=2)
+    P = np.exp(-P / (2 * sigma2))
+
+    # Re-sum over M axis for denominator
+    Pden = np.sum(P, axis=0, keepdims=True)
+    c = (2 * np.pi * sigma2) ** (D / 2) * weight_cpd / (1.0 - weight_cpd) * M / N
+    Pden = np.clip(Pden, np.finfo(X.dtype).eps, None) + c
+
+    P = np.divide(P, Pden)
+
+    # Extract P subterms useful for next steps
+    Pt1 = np.sum(P, axis=0)
+    P1 = np.sum(P, axis=1)
+    Np = np.sum(P1)
+    PX = np.matmul(P, X)
+
+    # 2/ Minimization step
+
+    # Get centroid of each point cloud
+    muX = np.divide(np.sum(PX, axis=0), Np)
+    muY = np.divide(np.sum(np.dot(np.transpose(P), Y), axis=0), Np)
+
+    # Subtract centroid from each point cloud
+    X_hat = X - np.tile(muX, (N, 1))
+    Y_hat = Y - np.tile(muY, (M, 1))
+    YPY = np.dot(np.transpose(P1), np.sum(np.multiply(Y_hat, Y_hat), axis=1))
+
+    # Derive A as in Fig. 2
+    A = np.dot(np.transpose(X_hat), np.transpose(P))
+    A = np.dot(A, Y_hat)
+
+    # Singular value decomposition as per lemma 1
+    if not only_translation:
+        try:
+            U, _, V = np.linalg.svd(A, full_matrices=True)
+        except np.linalg.LinAlgError:
+            raise ValueError("CPD coregistration numerics during np.linalg.svd(), try setting standardize=True.")
+        C = np.ones((D,))
+        C[D - 1] = np.linalg.det(np.dot(U, V))
+
+        # Calculate the rotation matrix using Eq. 9
+        R = np.transpose(np.dot(np.dot(U, np.diag(C)), V))
+    else:
+        R = np.eye(3)
+
+    # Update scale and translation using Fig. 2
+    if scale is True:
+        s = np.trace(np.dot(np.transpose(A), np.transpose(R))) / YPY
+    else:
+        s = 1
+    t = np.transpose(muX) - s * np.dot(np.transpose(R), np.transpose(muY))
+
+    # Store in affine matrix
+    matrix = np.eye(4)
+    matrix[:3, :3] = R
+    matrix[:3, 3] = -t  # Translation is inverted here
+
+    # 3/ Update variance and objective function
+
+    # Update objective function using Eq. 7
+    trAR = np.trace(np.dot(A, R))
+    xPx = np.dot(np.transpose(Pt1), np.sum(np.multiply(X_hat, X_hat), axis=1))
+    q = (xPx - 2 * s * trAR + s * s * YPY) / (2 * sigma2) + D * Np / 2 * np.log(sigma2)
+
+    # Update variance using Fig. 2
+    sigma2 = (xPx - s * trAR) / (Np * D)
+
+    # If sigma2 gets negative, we use a minimal sigma value instead
+    if sigma2 <= 0:
+        sigma2 = sigma2_min
+
+    return matrix, sigma2, q
+
+
+def _cpd_iteration_step(
+    iterating_input: tuple[NDArrayf, float, float],
+    ref_epc: NDArrayf,
+    tba_epc: NDArrayf,
+    weight_cpd: float,
+    sigma2_min: float,
+    only_translation: bool,
+) -> tuple[tuple[NDArrayf, float, float], float]:
+    """
+    Iteration step for Coherent Point Drift algorithm.
+
+    Returns the updated iterating input (affine matrix, variance and objective function).
+    """
+
+    matrix, sigma2, q = iterating_input
+
+    # Apply transform matrix from previous step
+    trans_tba_epc = _apply_matrix_pts_mat(tba_epc, matrix=matrix, invert=True)
+
+    # Fit to get new step transform
+    # (Note: the CPD algorithm re-computes the full transform from the original target point cloud,
+    # so there is no need to combine a step transform within the iteration as in ICP/LZD)
+    new_matrix, new_sigma2, new_q = _cpd_fit(
+        ref_epc=ref_epc.T,
+        tba_epc=tba_epc.T,
+        trans_tba_epc=trans_tba_epc.T,
+        sigma2=sigma2,
+        weight_cpd=weight_cpd,
+        sigma2_min=sigma2_min,
+        only_translation=only_translation,
+    )
+
+    # Compute statistic on offset to know if it reached tolerance
+    tolerance_q = np.abs(q - new_q)
+
+    # TODO: If we allow multiple tolerances in the future, here are the translation and rotation tolerances
+    # translations = new_matrix[:3, 3]
+    # rotations = new_matrix[:3, :3]
+    # tolerance_translation = np.sqrt(np.sum(translations) ** 2)
+    # tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+
+    return (new_matrix, new_sigma2, new_q), tolerance_q
+
+
+def cpd(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    weight_cpd: float,
+    params_random: InRandomDict,
+    max_iterations: int,
+    tolerance: float,
+    only_translation: bool = False,
+    standardize: bool = True,
+) -> tuple[NDArrayf, tuple[float, float, float], int]:
+    """
+    Main function for Coherent Point Drift coregistration.
+    See Myronenko and Song (2010), https://doi.org/10.1109/TPAMI.2010.46.
+
+    This function subsamples input data, then runs CPD iteration steps to optimize its expectation-minimization until
+    convergence or a maximum of iterations is reached.
+
+    The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
+    """
+
+    # Pre-process point-raster inputs to the same subsampled points
+    sub_ref, sub_tba, _, sub_coords = _preprocess_pts_rst_subsample(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        crs=crs,
+        area_or_point=area_or_point,
+        z_name=z_name,
+        return_coords=True,
+    )
+
+    # Convert point clouds to Nx3 arrays for efficient calculations below
+    ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
+    tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
+
+    # Remove centroid and standardize to facilitate numerical convergence
+    ref_epc, tba_epc, centroid, std_fac = _standardize_epc(ref_epc=ref_epc, tba_epc=tba_epc, scale_std=standardize)
+    tolerance /= std_fac
+
+    # Run rigid CPD registration
+    # Iterate through method until tolerance or max number of iterations is reached
+    init_matrix = np.eye(4)  # Initial matrix is the identity transform
+    init_q = np.inf
+    init_sigma2 = None
+    iterating_input = (init_matrix, init_sigma2, init_q)
+    sigma2_min = tolerance / 10
+    constant_inputs = (ref_epc, tba_epc, weight_cpd, sigma2_min, only_translation)
+    final_matrix, _, _ = _iterate_method(
+        method=_cpd_iteration_step,
+        iterating_input=iterating_input,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+    final_matrix = invert_matrix(final_matrix)
+
+    # De-standardize
+    final_matrix[:3, 3] *= std_fac
+
+    # Get subsample size
+    subsample_final = len(sub_ref)
+
+    return final_matrix, centroid, subsample_final
+
+
+#######################
+# 6/ Least Z-difference
+#######################
+
+
+def _lzd_aux_vars(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    transform: affine.Affine,
+) -> tuple[NDArrayf, NDArrayf]:
+    """
+    Deriving gradient in X/Y expected by the Least Z-difference coregistration.
+
+    :return: Gradient in X/Y, scaled based on the DEM resolution.
+    """
+
+    # If inputs are both point clouds, raise an error
+    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
+
+        raise TypeError(
+            "The LZD coregistration does not support two point clouds, one elevation "
+            "dataset in the pair must be a DEM."
+        )
+
+    # If inputs are both rasters, derive terrain attributes from ref and get 2D dh interpolator
+    elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
+
+        # Derive slope and aspect from the reference as default
+        gradient_y, gradient_x = np.gradient(ref_elev)
+
+    # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
+    else:
+
+        if isinstance(ref_elev, gpd.GeoDataFrame):
+            rst_elev = tba_elev
+        else:
+            rst_elev = ref_elev
+
+        # Derive slope and aspect from the raster dataset
+        gradient_y, gradient_x = np.gradient(rst_elev)
+
+    # Convert to unitary gradient depending on resolution
+    res = _res(transform)
+    gradient_x = gradient_x / res[0]
+    gradient_y = -gradient_y / res[1]  # Because raster Y axis is inverted, need to add a minus
+
+    return gradient_x, gradient_y
+
+
+def _lzd_fit_func(
+    inputs: tuple[NDArrayf, NDArrayf, NDArrayf, NDArrayf, NDArrayf, NDArrayf],
+    t1: float,
+    t2: float,
+    t3: float,
+    alpha1: float,
+    alpha2: float,
+    alpha3: float,
+    scale: float = 0.0,
+) -> NDArrayf:
+    """
+    Fit function of Least Z-difference coregistration, Rosenholm and Torlegård (1988).
+
+    Linearizes a rigid transformation for small rotations and utilizes dZ as a differential function of the plane
+    coordinates (Equation 6).
+
+    Will solve for the 7 parameters of a scaled rigid transform.
+
+    :param inputs: Inputs not optimized by fit function: 1D arrays of X, Y, Z, as well as elevation change and elevation
+        gradient along X and Y evaluated at X/Y coordinates.
+    :param t1: Translation in X.
+    :param t2: Translation in Y.
+    :param t3: Translation in Z.
+    :param alpha1: Rotation around X.
+    :param alpha2: Rotation around Y.
+    :param alpha3: Rotation around Z.
+    :param scale: Scaling factor.
+
+    :return: 1D array of residuals between elevation change and approximate rigid transformation in X/Y.
+    """
+
+    # Get constant inputs
+    x, y, z, dh, gradx, grady = inputs
+
+    # We compute lambda from estimated parameters (Equation 6)
+    lda = (
+        t3
+        - x * alpha2
+        + y * alpha1
+        + z * scale
+        - gradx * (t1 + x * scale - y * alpha3 + z * alpha2)
+        - grady * (t2 + x * alpha3 + y * scale - z * alpha1)
+    )
+
+    # Get residuals with elevation change
+    res = lda - dh
+
+    return res
+
+
+def _lzd_fit(
+    x: NDArrayf,
+    y: NDArrayf,
+    z: NDArrayf,
+    dh: NDArrayf,
+    gradx: NDArrayf,
+    grady: NDArrayf,
+    params_fit_or_bin: InFitOrBinDict,
+    only_translation: bool,
+    **kwargs: Any,
+) -> NDArrayf:
+    """
+    Optimization of fit function for Least Z-difference coregistration.
+
+    :param x: X coordinate as 1D array.
+    :param y: Y coordinate as 1D array.
+    :param z: Z coordinate as 1D array.
+    :param dh: Elevation change with other elevation dataset at X/Y coordinates as 1D array.
+    :param gradx: DEM gradient along X axis at X/Y coordinates as 1D array.
+    :param grady: DEM gradient along Y axis at X/Y coordinates as 1D array.
+    :param params_fit_or_bin: Dictionary of fitting and binning parameters.
+    :param only_translation: Whether to coregister only a translation, otherwise both translation and rotation.
+    :param: **kwargs: Keyword arguments passed to fit optimizer.
+
+    :return: Optimized affine matrix.
+    """
+
+    # Inputs that are not parameters to optimize
+    inputs = (x, y, z, dh, gradx, grady)
+
+    # Define loss function
+    loss_func = params_fit_or_bin["fit_loss_func"]
+
+    # For translation + rotation
+    if not only_translation:
+
+        def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
+            return _lzd_fit_func(
+                inputs=inputs,
+                t1=offsets[0],
+                t2=offsets[1],
+                t3=offsets[2],
+                alpha1=offsets[3],
+                alpha2=offsets[4],
+                alpha3=offsets[5],
+            )
+
+        # Initial offset near zero
+        init_offsets = np.zeros(6)
+
+    # For only translation
+    else:
+
+        def fit_func(offsets: tuple[float, float, float, float, float, float]) -> NDArrayf:
+            return _lzd_fit_func(
+                inputs=inputs,
+                t1=offsets[0],
+                t2=offsets[1],
+                t3=offsets[2],
+                alpha1=0.0,
+                alpha2=0.0,
+                alpha3=0.0,
+            )
+
+        # Initial offset near zero
+        init_offsets = np.zeros(3)
+
+    # Run optimizer on function
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
+
+    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
+    assert results is not None
+    # Build matrix out of optimized parameters
+    matrix = matrix_from_translations_rotations(*results.x, use_degrees=False)  # type: ignore
+
+    return matrix
+
+
+def _lzd_iteration_step(
+    matrix: NDArrayf,
+    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_pts: NDArrayf,
+    sub_coords: tuple[NDArrayf, NDArrayf],
+    centroid: tuple[float, float, float],
+    sub_gradx: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    params_fit_or_bin: InFitOrBinDict,
+    only_translation: bool,
+) -> tuple[NDArrayf, float]:
+    """
+    Iteration step of Least Z-difference coregistration from Rosenholm and Torlegård (1988).
+
+    The function uses 2D array interpolators of the DEM input and its gradient, computed only once outside iteration
+    loops, to optimize computing time.
+
+    Returns optimized affine matrix and tolerance for this iteration step.
+
+    :param matrix: Affine transform matrix.
+    :param sub_rst: Interpolator for 2D array of DEM.
+    :param sub_pts: Subsampled elevation for other elevation data (DEM or point) as 1D array.
+    :param sub_coords: Subsampled X/Y coordinates arrays for point or second DEM input as 1D arrays.
+    :param centroid: Centroid removed from point or second DEM input (to facilitate numerical convergence).
+    :param sub_gradx: Interpolator for 2D array of DEM gradient along X axis.
+    :param sub_grady: Interpolator for 2D array of DEM gradient along Y axis.
+    :param params_fit_or_bin: Dictionary of fitting and binning parameters.
+    :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+        rotation as default.
+
+    :return Affine matrix, Tolerance.
+    """
+
+    # Apply transform matrix from previous steps
+    pts_epc = np.vstack((sub_coords[0], sub_coords[1], sub_pts))
+    trans_pts_epc = _apply_matrix_pts_mat(pts_epc, matrix=matrix, centroid=centroid)
+
+    # Evaluate dh and gradients at new X/Y coordinates
+    x = trans_pts_epc[0, :]
+    y = trans_pts_epc[1, :]
+    z = trans_pts_epc[2, :]
+    dh = sub_rst((y, x)) - z
+    gradx = sub_gradx((y, x))
+    grady = sub_grady((y, x))
+
+    # Remove centroid before fit for better convergence
+    x -= centroid[0]
+    y -= centroid[1]
+    z -= centroid[2]
+
+    # Remove invalid values sampled by interpolators
+    valids = np.logical_and.reduce((np.isfinite(dh), np.isfinite(z), np.isfinite(gradx), np.isfinite(grady)))
+    if np.count_nonzero(valids) == 0:
+        raise ValueError(
+            "The subsample contains no more valid values. This can happen if the affine transformation to "
+            "correct is larger than the data extent, or if the algorithm diverged. To ensure all possible points can "
+            "be used at any iteration step, use subsample=1."
+        )
+    x = x[valids]
+    y = y[valids]
+    z = z[valids]
+    dh = dh[valids]
+    gradx = gradx[valids]
+    grady = grady[valids]
+
+    # Fit to get new step transform
+    step_matrix = _lzd_fit(
+        x=x,
+        y=y,
+        z=z,
+        dh=dh,
+        gradx=gradx,
+        grady=grady,
+        params_fit_or_bin=params_fit_or_bin,
+        only_translation=only_translation,
+    )
+
+    # Increment transformation matrix by step
+    new_matrix = step_matrix @ matrix
+
+    # Compute statistic on offset to know if it reached tolerance
+    translations = step_matrix[:3, 3]
+
+    tolerance_translation = np.sqrt(np.sum(translations) ** 2)
+    # TODO: If we allow multiple tolerances in the future, here's the rotation tolerance
+    # rotations = step_matrix[:3, :3]
+    # tolerance_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
+
+    return new_matrix, tolerance_translation
+
+
+def lzd(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    max_iterations: int,
+    tolerance: float,
+    params_random: InRandomDict,
+    params_fit_or_bin: InFitOrBinDict,
+    only_translation: bool,
+) -> tuple[NDArrayf, tuple[float, float, float], int]:
+    """
+    Least Z-differences coregistration.
+    See Rosenholm and Torlegård (1988),
+    https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf.
+
+    This function subsamples input data, then runs LZD iteration steps to optimize its fit function until
+    convergence or a maximum of iterations is reached.
+
+    The function assumes we have two DEMs, or a DEM and an elevation point cloud, in the same CRS.
+    """
+
+    logging.info("Running LZD coregistration")
+
+    # Check that DEM CRS is projected, otherwise slope is not correctly calculated
+    if not crs.is_projected:
+        raise NotImplementedError(
+            f"LZD coregistration only works with a projected CRS, current CRS is {crs}. Reproject "
+            f"your DEMs with DEM.reproject() in a local projected CRS such as UTM, that you can find "
+            f"using DEM.get_metric_crs()."
+        )
+
+    # First, derive auxiliary variables of Nuth and Kääb (slope tangent, and aspect) for any point-raster input
+    gradx, grady = _lzd_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev, transform=transform)
+
+    # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
+    sub_ref, sub_tba, _, sub_coords = _preprocess_pts_rst_subsample(
+        params_random=params_random,
+        ref_elev=ref_elev,
+        tba_elev=tba_elev,
+        inlier_mask=inlier_mask,
+        transform=transform,
+        crs=crs,
+        area_or_point=area_or_point,
+        z_name=z_name,
+        return_coords=True,
+    )
+    # Define inputs of methods, depending on if they are point or raster data
+    if not isinstance(ref_elev, gpd.GeoDataFrame):
+        ref = "rst"
+        sub_pts = sub_tba
+        sub_rst = _reproject_horizontal_shift_samecrs(ref_elev, src_transform=transform, return_interpolator=True)
+    else:
+        ref = "pts"
+        sub_pts = sub_ref
+        sub_rst = _reproject_horizontal_shift_samecrs(tba_elev, src_transform=transform, return_interpolator=True)
+    # We use interpolators of gradx and grady in any case
+    sub_gradx = _reproject_horizontal_shift_samecrs(gradx, src_transform=transform, return_interpolator=True)
+    sub_grady = _reproject_horizontal_shift_samecrs(grady, src_transform=transform, return_interpolator=True)
+
+    # Estimate centroid to use
+    centroid_x = float(np.nanmean(sub_coords[0]))
+    centroid_y = float(np.nanmean(sub_coords[1]))
+    centroid_z = float(np.nanmean(sub_pts))
+    centroid = (centroid_x, centroid_y, centroid_z)
+
+    logging.info("Iteratively estimating rigid transformation:")
+    # Iterate through method until tolerance or max number of iterations is reached
+    init_matrix = np.eye(4)  # Initial matrix is the identity transform
+    constant_inputs = (
+        sub_rst,
+        sub_pts,
+        sub_coords,
+        centroid,
+        sub_gradx,
+        sub_grady,
+        params_fit_or_bin,
+        only_translation,
+    )
+    final_matrix = _iterate_method(
+        method=_lzd_iteration_step,
+        iterating_input=init_matrix,
+        constant_inputs=constant_inputs,
+        tolerance=tolerance,
+        max_iterations=max_iterations,
+    )
+
+    # Invert matrix if reference was the point data
+    if ref == "pts":
+        final_matrix = invert_matrix(final_matrix)
+
+    subsample_final = len(sub_pts)
+
+    return final_matrix, centroid, subsample_final
 
 
 ##################################
@@ -794,25 +1833,25 @@ class AffineCoreg(Coreg):
         """
 
         matrix = self.to_matrix()
-        shift_x = matrix[0, 3]
-        shift_y = matrix[1, 3]
-        shift_z = matrix[2, 3]
+        shift_x, shift_y, shift_z = translations_rotations_from_matrix(matrix)[:3]
 
         return shift_x, shift_y, shift_z
 
-    def to_rotations(self) -> tuple[float, float, float]:
+    def to_rotations(self, return_degrees: bool = True) -> tuple[float, float, float]:
         """
         Extract X/Y/Z euler rotations (extrinsic convention) from the affine transformation matrix.
 
         Warning: This function only works for a rigid transformation (rotation and translation).
 
+        :param return_degrees: Whether to return degrees, otherwise radians.
+
         :return: Extrinsinc Euler rotations along easting, northing and vertical directions (degrees).
         """
 
         matrix = self.to_matrix()
-        rots = pytransform3d.rotations.euler_from_matrix(matrix, i=0, j=1, k=2, extrinsic=True, strict_check=True)
-        rots = np.rad2deg(np.array(rots))
-        return rots[0], rots[1], rots[2]
+        alpha1, alpha2, alpha3 = translations_rotations_from_matrix(matrix, return_degrees=return_degrees)[3:]
+
+        return alpha1, alpha2, alpha3
 
     def centroid(self) -> tuple[float, float, float] | None:
         """Get the centroid of the coregistration, if defined."""
@@ -855,6 +1894,7 @@ class AffineCoreg(Coreg):
             inlier_mask=inlier_mask,
             transform=transform,
             area_or_point=area_or_point,
+            z_name=z_name,
             aux_vars=aux_vars,
         )
 
@@ -907,36 +1947,30 @@ class AffineCoreg(Coreg):
 
         :returns: An instantiated generic Coreg class.
         """
-        # Initialize a diagonal matrix
-        matrix = np.diag(np.ones(4, dtype=float))
-        # Add the three translations (which are in the last column)
-        matrix[0, 3] = x_off
-        matrix[1, 3] = y_off
-        matrix[2, 3] = z_off
+        matrix = matrix_from_translations_rotations(t1=x_off, t2=y_off, t3=z_off, alpha1=0.0, alpha2=0.0, alpha3=0.0)
 
         return cls.from_matrix(matrix)
 
     @classmethod
-    def from_rotations(cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0) -> AffineCoreg:
+    def from_rotations(
+        cls, x_rot: float = 0.0, y_rot: float = 0.0, z_rot: float = 0.0, use_degrees: bool = True
+    ) -> AffineCoreg:
         """
         Instantiate a generic Coreg class from a X/Y/Z rotation.
 
-        :param x_rot: The rotation (degrees) to apply around the X (west-east) direction.
-        :param y_rot: The rotation (degrees) to apply around the Y (south-north) direction.
-        :param z_rot: The rotation (degrees) to apply around the Z (vertical) direction.
+        :param x_rot: The rotation to apply around the X (west-east) direction.
+        :param y_rot: The rotation to apply around the Y (south-north) direction.
+        :param z_rot: The rotation to apply around the Z (vertical) direction.
+        :param use_degrees: Whether to use degrees for input angles, otherwise radians.
 
         :raises ValueError: If the given rotation contained invalid values.
 
         :returns: An instantiated generic Coreg class.
         """
 
-        # Initialize a diagonal matrix
-        matrix = np.diag(np.ones(4, dtype=float))
-        # Convert rotations to radians
-        e = np.deg2rad(np.array([x_rot, y_rot, z_rot]))
-        # Derive 3x3 rotation matrix, and insert in 4x4 affine matrix
-        rot_matrix = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
-        matrix[0:3, 0:3] = rot_matrix
+        matrix = matrix_from_translations_rotations(
+            t1=0.0, t2=0.0, t3=0.0, alpha1=x_rot, alpha2=y_rot, alpha3=z_rot, use_degrees=use_degrees
+        )
 
         return cls.from_matrix(matrix)
 
@@ -1052,44 +2086,74 @@ class VerticalShift(AffineCoreg):
 
 class ICP(AffineCoreg):
     """
-    Iterative closest point registration, based on Besl and McKay (1992), https://doi.org/10.1117/12.57955.
+    Iterative closest point registration.
 
     Estimates a rigid transform (rotation + translation) between two elevation datasets.
+
+    The ICP method can be:
+
+     - Point-to-point of Besl and McKay (1992), https://doi.org/10.1117/12.57955, where the loss function is computed
+       on the 3D distances of closest points (original method),
+     - Point-to-plane of Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C where the loss function
+       is computed on the 3D distances of closest points projected on the plane normals (generally faster and more
+       accurate, particularly for point clouds representing contiguous surfaces).
+
+
+    Other ICP options are:
+
+    - Linearized approximation of the point-to-plane least-square optimization of Low (2004),
+      https://www.cs.unc.edu/techreports/04-004.pdf (faster, only for rotations
+      below 30° degrees),
+    - Picky ICP of Zinsser et al. (2003), https://doi.org/10.1109/ICIP.2003.1246775, where closest point pairs matched
+      to the same point in the reference point cloud are removed, keeping only the pair with the minimum distance
+      (useful for datasets with different extents that won't exactly overlap).
 
     The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
     on the coordinates in the key "centroid". The translation parameters are also stored individually in the
     keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
     elevation dataset inputs for the vertical shift).
-
-    Requires 'opencv'. See opencv doc for more info:
-    https://docs.opencv.org/master/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html
     """
 
     def __init__(
         self,
-        max_iterations: int = 100,
-        tolerance: float = 0.05,
-        rejection_scale: float = 2.5,
-        num_levels: int = 6,
+        method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
+        picky: bool = True,
+        only_translation: bool = False,
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"] = scipy.optimize.least_squares,
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
+        max_iterations: int = 20,
+        tolerance: float = 0.01,
+        standardize: bool = True,
         subsample: float | int = 5e5,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
 
-        :param max_iterations: The maximum allowed iterations before stopping.
-        :param tolerance: The residual change threshold after which to stop the iterations.
-        :param rejection_scale: The threshold (std * rejection_scale) to consider points as outliers.
-        :param num_levels: Number of octree levels to consider. A higher number is faster but may be more inaccurate.
+        :param method: Method of iterative closest point registration, either "point-to-point" of Besl and McKay (1992)
+            that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
+            projected on normals.
+        :param picky: Whether to use the duplicate removal for pairs of closest points of Zinsser et al. (2003).
+        :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+            rotation as default.
+        :param fit_minimizer: Minimizer for the coregistration function. Use "lsq_approx" for the linearized
+            least-square approximation of Low (2004) (only available for "point-to-plane").
+        :param fit_loss_func: Loss function for the minimization of residuals (if minimizer is not "lsq_approx").
+        :param max_iterations: Maximum allowed iterations before stopping.
+        :param tolerance: Residual change threshold after which to stop the iterations.
+        :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
+            (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
-        if not _has_cv2:
-            raise ValueError("Optional dependency needed. Install 'opencv'")
 
         meta = {
+            "icp_method": method,
+            "icp_picky": picky,
+            "fit_minimizer": fit_minimizer,
+            "fit_loss_func": fit_loss_func,
             "max_iterations": max_iterations,
             "tolerance": tolerance,
-            "rejection_scale": rejection_scale,
-            "num_levels": num_levels,
+            "only_translation": only_translation,
+            "standardize": standardize,
         }
         super().__init__(subsample=subsample, meta=meta)
 
@@ -1108,42 +2172,18 @@ class ICP(AffineCoreg):
     ) -> None:
         """Estimate the rigid transform from tba_dem to ref_dem."""
 
-        if weights is not None:
-            warnings.warn("ICP was given weights, but does not support it.")
-
-        resolution = _res(transform)
-
-        # Generate the x and y coordinates for the reference_dem
-        x_coords, y_coords = _coords(transform, ref_elev.shape, area_or_point=area_or_point)
-        gradient_x, gradient_y = np.gradient(ref_elev)
-
-        normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
-        normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
-        normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
-
-        valid_mask = np.logical_and.reduce(
-            (inlier_mask, np.isfinite(ref_elev), np.isfinite(normal_east), np.isfinite(normal_north))
-        )
-        subsample_mask = self._get_subsample_on_valid_mask(valid_mask=valid_mask)
-
-        ref_pts = gpd.GeoDataFrame(
-            geometry=gpd.points_from_xy(x=x_coords[subsample_mask], y=y_coords[subsample_mask], crs=None),
-            data={
-                "z": ref_elev[subsample_mask],
-                "nx": normal_east[subsample_mask],
-                "ny": normal_north[subsample_mask],
-                "nz": normal_up[subsample_mask],
-            },
-        )
-
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
         self._fit_rst_pts(
-            ref_elev=ref_pts,
+            ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name="z",
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
         )
 
     def _fit_rst_pts(
@@ -1160,102 +2200,30 @@ class ICP(AffineCoreg):
         **kwargs: Any,
     ) -> None:
 
-        # Check which one is reference
-        if isinstance(ref_elev, gpd.GeoDataFrame):
-            point_elev = ref_elev
-            rst_elev = tba_elev
-            ref = "point"
-        else:
-            point_elev = tba_elev
-            rst_elev = ref_elev
-            ref = "raster"
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
 
-        # Pre-process point data
-        point_elev = point_elev.dropna(how="any", subset=[z_name])
+        # Call method
+        matrix, centroid, subsample_final = icp(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            params_random=params_random,
+            params_fit_or_bin=params_fit_or_bin,
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
+            method=self._meta["inputs"]["specific"]["icp_method"],
+            picky=self._meta["inputs"]["specific"]["icp_picky"],
+            only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            standardize=self._meta["inputs"]["affine"]["standardize"],
+        )
 
-        bounds = _bounds(transform=transform, shape=rst_elev.shape)
-        resolution = _res(transform)
-
-        # Generate the x and y coordinates for the TBA DEM
-        x_coords, y_coords = _coords(transform, rst_elev.shape, area_or_point=area_or_point)
-        centroid = (float(np.mean([bounds.left, bounds.right])), float(np.mean([bounds.bottom, bounds.top])), 0.0)
-        # Subtract by the bounding coordinates to avoid float32 rounding errors.
-        x_coords -= centroid[0]
-        y_coords -= centroid[1]
-
-        gradient_x, gradient_y = np.gradient(rst_elev)
-
-        # This CRS is temporary and doesn't affect the result. It's just needed for Raster instantiation.
-        normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
-        normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
-        normal_up = 1 - np.linalg.norm([normal_east.data, normal_north.data], axis=0)
-
-        valid_mask = ~np.isnan(rst_elev) & ~np.isnan(normal_east.data) & ~np.isnan(normal_north.data)
-
-        points: dict[str, NDArrayf] = {}
-        points["raster"] = np.dstack(
-            [
-                x_coords[valid_mask],
-                y_coords[valid_mask],
-                rst_elev[valid_mask],
-                normal_east[valid_mask],
-                normal_north[valid_mask],
-                normal_up[valid_mask],
-            ]
-        ).squeeze()
-
-        # TODO: Should be a way to not duplicate this column and just feed it directly
-        point_elev["E"] = point_elev.geometry.x.values
-        point_elev["N"] = point_elev.geometry.y.values
-
-        if any(col not in point_elev for col in ["nx", "ny", "nz"]):
-            for key, arr in [("nx", normal_east), ("ny", normal_north), ("nz", normal_up)]:
-                point_elev[key] = _interp_points(
-                    arr,
-                    transform=transform,
-                    area_or_point=area_or_point,
-                    points=(point_elev["E"].values, point_elev["N"].values),
-                )
-
-        point_elev["E"] -= centroid[0]
-        point_elev["N"] -= centroid[1]
-
-        points["point"] = point_elev[["E", "N", z_name, "nx", "ny", "nz"]].values
-
-        for key in points:
-            points[key] = points[key][~np.any(np.isnan(points[key]), axis=1)].astype("float32")
-            points[key][:, 0] -= resolution[0] / 2
-            points[key][:, 1] -= resolution[1] / 2
-
-        # Extract parameters and pass them to method
-        max_it = self._meta["inputs"]["iterative"]["max_iterations"]
-        tol = self._meta["inputs"]["iterative"]["tolerance"]
-        rej = self._meta["inputs"]["specific"]["rejection_scale"]
-        num_lv = self._meta["inputs"]["specific"]["num_levels"]
-        icp = cv2.ppf_match_3d_ICP(max_it, tol, rej, num_lv)
-        logging.info("Running ICP...")
-        try:
-            # Use points as reference
-            _, residual, matrix = icp.registerModelToScene(points["raster"], points["point"])
-        except cv2.error as exception:
-            if "(expected: 'n > 0'), where" not in str(exception):
-                raise exception
-
-            raise ValueError(
-                "Not enough valid points in input data."
-                f"'reference_dem' had {points['ref'].size} valid points."
-                f"'dem_to_be_aligned' had {points['tba'].size} valid points."
-            )
-
-        # If raster was reference, invert the matrix
-        if ref == "raster":
-            matrix = xdem.coreg.base.invert_matrix(matrix)
-
-        logging.info("ICP finished")
-
-        assert residual < 1000, f"ICP coregistration failed: residual={residual}, threshold: 1000"
-
-        # Save outputs
+        # Write output to class
         # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
         output_affine = OutAffineDict(
             centroid=centroid,
@@ -1265,6 +2233,128 @@ class ICP(AffineCoreg):
             shift_z=matrix[2, 3],
         )
         self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
+
+
+class CPD(AffineCoreg):
+    """
+    Coherent Point Drift coregistration, based on Myronenko and Song (2010), https://doi.org/10.1109/TPAMI.2010.46.
+
+    Estimate translations and rotations.
+
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
+    """
+
+    def __init__(
+        self,
+        weight: float = 0,
+        only_translation: bool = False,
+        max_iterations: int = 100,
+        tolerance: float = 0.01,
+        standardize: bool = True,
+        subsample: int | float = 5e3,
+    ):
+        """
+        Instantiate a CPD coregistration object.
+
+        :param weight: Weight contribution of the uniform distribution to account for outliers, from 0 (inclusive) to
+            1 (exclusive).
+        :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+            rotation as default.
+        :param max_iterations: Maximum allowed iterations before stopping.
+        :param tolerance: Residual change threshold after which to stop the iterations.
+        :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
+            (tolerance is also standardized by the same factor).
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        """
+
+        meta_cpd = {
+            "max_iterations": max_iterations,
+            "tolerance": tolerance,
+            "cpd_weight": weight,
+            "only_translation": only_translation,
+            "standardize": standardize,
+        }
+
+        super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
+
+    def _fit_rst_rst(
+        self,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Estimate the rigid transform from tba_dem to ref_dem."""
+
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+    def _fit_rst_pts(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+
+        # Call method
+        matrix, centroid, subsample_final = cpd(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            params_random=params_random,
+            weight_cpd=self._meta["inputs"]["specific"]["cpd_weight"],
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
+            only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            standardize=self._meta["inputs"]["affine"]["standardize"],
+        )
+
+        # Write output to class
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            centroid=centroid,
+            matrix=matrix,
+            shift_x=matrix[0, 3],
+            shift_y=matrix[1, 3],
+            shift_z=matrix[2, 3],
+        )
+        self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
 
 class NuthKaab(AffineCoreg):
@@ -1292,8 +2382,8 @@ class NuthKaab(AffineCoreg):
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
 
-        :param max_iterations: The maximum allowed iterations before stopping.
-        :param offset_threshold: The residual offset threshold after which to stop the iterations (in pixels).
+        :param max_iterations: Maximum allowed iterations before stopping.
+        :param offset_threshold: Residual offset threshold after which to stop the iterations (in pixels).
         :param bin_before_fit: Whether to bin data before fitting the coregistration function. For the Nuth and Kääb
             (2011) algorithm, this corresponds to bins of aspect to compute statistics on dh/tan(slope).
         :param fit_optimizer: Optimizer to minimize the coregistration function.
@@ -1418,6 +2508,126 @@ class NuthKaab(AffineCoreg):
         matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
 
         return matrix
+
+
+class LZD(AffineCoreg):
+    """
+    Least Z-difference coregistration.
+
+    See Rosenholm and Torlegård (1988),
+    https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf.
+
+    Estimates a rigid transform (rotation + translation) between two elevation datasets.
+
+    The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
+    on the coordinates in the key "centroid". The translation parameters are also stored individually in the
+    keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
+    elevation dataset inputs for the vertical shift).
+    """
+
+    def __init__(
+        self,
+        only_translation: bool = False,
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
+        max_iterations: int = 200,
+        tolerance: float = 0.01,
+        subsample: float | int = 5e5,
+    ):
+        """
+         Instantiate an LZD coregistration object.
+
+        :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
+            rotation as default.
+        :param fit_minimizer: Minimizer for the coregistration function.
+        :param fit_loss_func: Loss function for the minimization of residuals.
+        :param max_iterations: Maximum allowed iterations before stopping.
+        :param tolerance: Residual change threshold after which to stop the iterations.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        """
+        meta = {
+            "fit_minimizer": fit_minimizer,
+            "fit_loss_func": fit_loss_func,
+            "max_iterations": max_iterations,
+            "tolerance": tolerance,
+            "only_translation": only_translation,
+        }
+        super().__init__(subsample=subsample, meta=meta)
+
+    def _fit_rst_rst(
+        self,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Estimate the rigid transform from tba_dem to ref_dem."""
+
+        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
+        self._fit_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+    def _fit_rst_pts(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+
+        # Get parameters stored in class
+        params_random = self._meta["inputs"]["random"]
+        params_fit_or_bin = self._meta["inputs"]["fitorbin"]
+
+        # Call method
+        matrix, centroid, subsample_final = lzd(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            params_random=params_random,
+            params_fit_or_bin=params_fit_or_bin,
+            max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
+            tolerance=self._meta["inputs"]["iterative"]["tolerance"],
+            only_translation=self._meta["inputs"]["affine"]["only_translation"],
+        )
+
+        # Write output to class
+        # (Mypy does not pass with normal dict, requires "OutAffineDict" here for some reason...)
+        output_affine = OutAffineDict(
+            centroid=centroid,
+            matrix=matrix,
+            shift_x=matrix[0, 3],
+            shift_y=matrix[1, 3],
+            shift_z=matrix[2, 3],
+        )
+        self._meta["outputs"]["affine"] = output_affine
+        self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
 
 
 class DhMinimize(AffineCoreg):

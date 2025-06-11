@@ -259,7 +259,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     coreg.VerticalShift
     coreg.NuthKaab
     coreg.DhMinimize
+    coreg.LZD
     coreg.ICP
+    coreg.CPD
 ```
 
 #### Manipulating affine transforms
@@ -268,15 +270,10 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    coreg.AffineCoreg.from_matrix
-    coreg.AffineCoreg.to_matrix
-    coreg.AffineCoreg.from_translations
-    coreg.AffineCoreg.to_translations
-    coreg.AffineCoreg.from_rotations
-    coreg.AffineCoreg.to_rotations
-
     coreg.apply_matrix
     coreg.invert_matrix
+    coreg.matrix_from_translations_rotations
+    coreg.translations_rotations_from_matrix
 ```
 
 ### Bias-correction

@@ -397,7 +397,7 @@ class TestBiasCorr:
 
         # Run with input parameter, and using only 100 subsamples for speed
         # Passing p0 defines the number of parameters to solve for
-        bcorr.fit(**elev_fit_args, subsample=100, p0=[0, 0, 0, 0], random_state=42)
+        bcorr.fit(**elev_fit_args, subsample=1000, p0=[0, 0, 0, 0], random_state=42)
 
         # Check that variable names are defined during fit
         assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation", "slope"]

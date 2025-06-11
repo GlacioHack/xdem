@@ -1,5 +1,5 @@
 (authors)=
-## Authors
+# Authors
 
 © 2024 **xDEM developers**.
 
@@ -9,4 +9,4 @@ All contributors listed in this document are part of the **xDEM developers**, an
 contributions are subject to the project's copyright under the terms of the
 [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
 
-Please refer to [AUTHORS file](../../AUTHORS.md) for the complete and detailed list of authors and their contributions.
+Please refer to [AUTHORS file](https://github.com/GlacioHack/xdem/blob/main/AUTHORS.md) for the complete and detailed list of authors and their contributions.
