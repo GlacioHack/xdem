@@ -19,9 +19,9 @@
 """Small functions for testing, examples, and other miscellaneous uses."""
 from __future__ import annotations
 
-import sys
 import copy
 import functools
+import sys
 import warnings
 from typing import Any, Callable
 
@@ -144,7 +144,7 @@ def copy_doc(
                     )
                 else:
                     resolution_section = (
-                            "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                        "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
                     )
 
                 other_doc = other_doc.replace(resolution_section, "")
