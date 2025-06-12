@@ -33,7 +33,6 @@ from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
-from skgstat import Variogram
 
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -532,7 +531,7 @@ class DEM(Raster):  # type: ignore
         list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
         z_name: str = "z",
         random_state: int | np.random.Generator | None = None,
-    ) -> tuple[RasterType, Variogram]:
+    ) -> tuple[RasterType, Callable[[NDArrayf], NDArrayf]]:
         """
         Estimate uncertainty of DEM.
 
@@ -562,6 +561,7 @@ class DEM(Raster):  # type: ignore
             or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
         :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
             a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
+        :param random_state: State or seed to use for randomization.
 
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """

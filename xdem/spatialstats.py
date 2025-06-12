@@ -52,7 +52,15 @@ from xdem.misc import deprecate
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
-    import skgstat as skg
+
+    try:
+        import skgstat as skg
+
+        _has_skgstat = True
+        if Version(skg.__version__) < Version("1.0.18"):
+            raise ImportWarning(f"scikit-gstat>=1.0.18 is recommended, current version is {skg.__version__}.")
+    except ImportError:
+        _has_skgstat = False
 
 
 @deprecate(
@@ -1337,6 +1345,10 @@ def sample_empirical_variogram(
 
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
     """
+
+    if not _has_skgstat:
+        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
         gsd = values.res[0]
@@ -1523,6 +1535,9 @@ def sample_empirical_variogram(
 
 def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, float], NDArrayf]) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
+
+    if not _has_skgstat:
+        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
 
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
