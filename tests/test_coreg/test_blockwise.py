@@ -49,7 +49,8 @@ class TestBlockwiseCoreg:
     def test_init_with_valid_parameters(self, mp_config, step, tmp_path) -> None:
         """Test initialization with valid multiprocessing config only."""
         coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
-        assert coreg_obj.block_size == 500
+        assert coreg_obj.block_size_apply == 500
+        assert coreg_obj.block_size_fit == 500
         assert coreg_obj.apply_z_correction is False
         assert coreg_obj.output_path_reproject == tmp_path / "reprojected_dem.tif"
         assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
