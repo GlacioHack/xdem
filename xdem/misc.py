@@ -127,11 +127,11 @@ def copy_doc(
 
             # Find and remove them if they exist
             if ":param dem:" in other_doc:
-                dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+                dem_section = "\n:param dem:" + other_doc.split("\n:param dem:")[1].split("\n")[0]
                 other_doc = other_doc.replace(dem_section, "")
             if ":param resolution:" in other_doc:
                 resolution_section = (
-                    "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                    "\n:param resolution:" + other_doc.split("\n:param resolution:")[1].split("\n")[0]
                 )
                 other_doc = other_doc.replace(resolution_section, "")
 
