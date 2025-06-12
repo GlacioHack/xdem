@@ -254,7 +254,7 @@ def _wrapper_scipy_leastsquares(
 
 def _wrapper_sklearn_robustlinear(
     model: PolynomialFeatures,
-    cost_func: Callable[[NDArrayf, NDArrayf], float],
+    cost_func: Callable[[NDArrayf], float],
     xdata: NDArrayf,
     ydata: NDArrayf,
     sigma: NDArrayf | None = None,
@@ -322,7 +322,7 @@ def _wrapper_sklearn_robustlinear(
     y_pred = pipeline.predict(xdata.reshape(-1, 1))
 
     # Calculate cost
-    cost = cost_func(y_pred, ydata)
+    cost = cost_func(y_pred - ydata)
 
     # Get polynomial coefficients estimated with the estimators Linear, Theil-Sen and Huber
     if estimator_name in ["Linear", "Theil-Sen", "Huber"]:
@@ -340,7 +340,7 @@ def robust_norder_polynomial_fit(
     sigma: NDArrayf | None = None,
     max_order: int = 6,
     estimator_name: str = "Theil-Sen",
-    cost_func: Callable[[NDArrayf, NDArrayf], float] = median_absolute_error,
+    cost_func: Callable[[NDArrayf], float] = soft_loss,
     margin_improvement: float = 20.0,
     subsample: float | int = 1,
     linear_pkg: str = "scipy",
@@ -357,8 +357,8 @@ def robust_norder_polynomial_fit(
     :param ydata: Input y data (N,).
     :param sigma: Standard error of y data (N,).
     :param max_order: Maximum polynomial order tried for the fit.
-    :param estimator_name: robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'.
-    :param cost_func: cost function taking as input two vectors y (true y), y' (predicted y) of same length.
+    :param estimator_name: Robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'.
+    :param cost_func: Cost function taking as input the residuals.
     :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept.
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
         If > 1 will be considered the number of pixels to extract.
