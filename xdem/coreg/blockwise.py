@@ -63,7 +63,8 @@ class BlockwiseCoreg:
         self,
         step: Coreg | CoregPipeline,
         mp_config: MultiprocConfig | None = None,
-        block_size: int = 500,
+        block_size_fit: int = 500,
+        block_size_apply: int = 500,
         parent_path: str = None,
     ) -> None:
         """
@@ -71,7 +72,8 @@ class BlockwiseCoreg:
 
         :param step: An instantiated coregistration method or pipeline to apply on each tile.
         :param mp_config: Configuration object for multiprocessing
-        :param block_size: Size of tiles to process per coregistration step.
+        :param block_size_fit: Size of tiles to process per coregistration step in fit step.
+        :param block_size_apply: Size of tiles to process per coregistration step in apply step.
         :param parent_path: Parent path for output files.
         """
 
@@ -86,17 +88,18 @@ class BlockwiseCoreg:
             )
 
         self.procstep = step
-        self.block_size = block_size
+        self.block_size_fit = block_size_fit
+        self.block_size_apply = block_size_apply
 
         if isinstance(step, NuthKaab):
             self.apply_z_correction = step.vertical_shift  # type: ignore
 
         if mp_config is not None:
             self.mp_config = mp_config
-            self.mp_config.chunk_size = block_size
+            self.mp_config.chunk_size = block_size_fit
             self.parent_path = Path(mp_config.outfile).parent
         else:
-            self.mp_config = MultiprocConfig(chunk_size=self.block_size, outfile="aligned_dem.tif")
+            self.mp_config = MultiprocConfig(chunk_size=self.block_size_fit, outfile="aligned_dem.tif")
             self.parent_path = Path(parent_path)  # type: ignore
 
         os.makedirs(self.parent_path, exist_ok=True)
@@ -167,7 +170,9 @@ class BlockwiseCoreg:
             return_tile=True,
         )
 
-        self.shape_tiling_grid = compute_tiling(self.block_size, reference_elev.shape, to_be_aligned_elev.shape).shape
+        self.shape_tiling_grid = compute_tiling(
+            self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
+        ).shape
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
 
         self.x_coords = []  # type: ignore
@@ -186,8 +191,8 @@ class BlockwiseCoreg:
                 continue
 
             x, y = (
-                tile_coords[2] + self.block_size / 2,
-                tile_coords[0] + self.block_size / 2,
+                tile_coords[2] + self.block_size_fit / 2,
+                tile_coords[0] + self.block_size_fit / 2,
             ) * self.reproject_dem.transform
 
             self.x_coords.append(x)
@@ -353,6 +358,7 @@ class BlockwiseCoreg:
             coeff_z = (0, 0, 0)
 
         self.mp_config.outfile = self.output_path_aligned
+        self.mp_config.chunk_size = self.block_size_apply
 
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
