@@ -54,12 +54,14 @@ slope = dem.slope()
 slope = xdem.terrain.slope(dem.data, resolution=dem.res)
 ```
 
-:::{admonition} Coming soon
-:class: note
+```{tip}
+All attributes can be derived using either SciPy or Numba as computing engine. Both engines perform similarly for attributes 
+based on a surface fit (e.g., slope, aspect, curvatures), while Numba is much faster for windowed indexes (e.g., TPI, roughness).
 
-We are working on further optimizing the computational performance of certain terrain attributes using convolution.
-:::
-
+Note that Numba requires a [just-in-time compilation](https://numba.readthedocs.io/en/stable/reference/jit-compilation.html) 
+at the first execution of an attribute (usually lasting about 5 seconds). This 
+compilation is cached and can later be re-used in the same Python environment. 
+```
 
 ## Summary of supported methods
 
