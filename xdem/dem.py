@@ -395,7 +395,7 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
         self,
-        method: str = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
         degrees: bool = True,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
@@ -404,7 +404,7 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
-        method: str = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
         degrees: bool = True,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
@@ -414,7 +414,7 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
         self,
-        method: str = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
         azimuth: float = 315.0,
         altitude: float = 45.0,
         z_factor: float = 1.0,
@@ -462,7 +462,7 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def terrain_ruggedness_index(
         self,
-        method: str = "Riley",
+        method: Literal["Riley", "Wilson"] = "Riley",
         window_size: int = 3,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:

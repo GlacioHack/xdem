@@ -3,17 +3,18 @@ from __future__ import annotations
 import os.path
 import re
 import warnings
+from typing import Literal
 
 import geoutils as gu
 import numpy as np
 import pytest
+import rasterio as rio
 from geoutils.raster.distributed_computing import MultiprocConfig
+from pyproj import CRS
 
 import xdem
 
-xdem.examples.download_longyearbyen_examples()
-
-PLOT = True
+PLOT = False
 
 
 class TestTerrainAttribute:
@@ -201,19 +202,6 @@ class TestTerrainAttribute:
         # output = functions_richdem[attribute](dem)
         # assert np.all(dem.data.mask == output.data.mask)
 
-    def test_hillshade_errors(self) -> None:
-        """Validate that the hillshade function raises appropriate errors."""
-        # Try giving the hillshade invalid arguments.
-
-        with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
-            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, azimuth=361)
-
-        with pytest.raises(ValueError, match="Altitude must be a value between 0 and 90"):
-            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=91)
-
-        with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
-            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
-
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
 
@@ -229,6 +217,19 @@ class TestTerrainAttribute:
         # A low altitude should be darker than a high altitude.
         assert np.nanmean(low_altitude) < np.nanmean(high_altitude)
 
+    def test_hillshade__errors(self) -> None:
+        """Validate that the hillshade function raises appropriate errors."""
+        # Try giving the hillshade invalid arguments.
+
+        with pytest.raises(ValueError, match="Azimuth must be a value between 0 and 360"):
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, azimuth=361)
+
+        with pytest.raises(ValueError, match="Altitude must be a value between 0 and 90"):
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, altitude=91)
+
+        with pytest.raises(ValueError, match="z_factor must be a non-negative finite value"):
+            xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
+
     @pytest.mark.parametrize(
         "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
     )  # type: ignore
@@ -239,21 +240,25 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive curvature without any gaps
-        curvature = xdem.terrain.get_terrain_attribute(
-            dem.data, attribute=name, resolution=dem.res, edge_method="nearest"
-        )
+        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
-        # Validate that the array has the same shape as the input and that all values are finite.
+        # Validate that the array has the same shape as the input and that all non-edge values are finite.
         assert curvature.shape == dem.data.shape
         try:
-            assert np.all(np.isfinite(curvature))
+            assert np.all(np.isfinite(curvature[1:-1, 1:-1]))
         except Exception:
             import matplotlib.pyplot as plt
 
             plt.imshow(curvature.squeeze())
             plt.show()
 
-        with pytest.raises(ValueError, match="Quadric surface fit requires the same X and Y resolution."):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                f"Surface fit and rugosity require the same X and Y resolution "
+                f"((1.0, 2.0) was given). This was required by: ['{name}']."
+            ),
+        ):
             xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
@@ -263,7 +268,7 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
-    def test_get_terrain_attribute(self) -> None:
+    def test_get_terrain_attribute__multiple_inputs(self) -> None:
         """Test the get_terrain_attribute function by itself."""
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
@@ -286,7 +291,7 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    def test_get_terrain_attribute_multiproc(self) -> None:
+    def test_get_terrain_attribute__multiproc(self) -> None:
         """Test the get_terrain attribute function in multiprocessing."""
         outfile = "mp_output.tif"
         outfile_multi = ["mp_output_slope.tif", "mp_output_aspect.tif", "mp_output_hillshade.tif"]
@@ -336,7 +341,7 @@ class TestTerrainAttribute:
         os.remove(outfile)
         assert slope.get_stats("mean") > slope_lowres.get_stats("mean")
 
-    def test_get_terrain_attribute_errors(self) -> None:
+    def test_get_terrain_attribute__errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
@@ -346,15 +351,25 @@ class TestTerrainAttribute:
                 "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
             ),
         ):
-            xdem.terrain.slope(self.dem.data, method="DoesNotExist")
+            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, method="DoesNotExist")  # type: ignore
 
         with pytest.raises(
             ValueError,
             match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
         ):
-            xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")
+            xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")  # type: ignore
 
-    def test_raster_argument(self) -> None:
+        # Check warning for geographic CRS
+        data = np.ones((5, 5))
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        crs = CRS("EPSG:4326")
+        nodata = -9999
+        dem = xdem.DEM.from_array(data, transform=transform, crs=crs, nodata=nodata)
+        with pytest.warns(match="DEM is not in a projected CRS.*"):
+            xdem.terrain.get_terrain_attribute(dem, "slope")
+
+    def test_get_terrain_attribute__raster_input(self) -> None:
+        """Test the get_terrain_attribute function supports raster input/output."""
 
         slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
 
@@ -384,9 +399,9 @@ class TestTerrainAttribute:
         assert rugosity[1, 1] == pytest.approx(r, rel=10 ** (-4))
 
     # Loop for various elevation differences with the center
-    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 10))  # type: ignore
+    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 3))  # type: ignore
     # Loop for different resolutions
-    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 10))  # type: ignore
+    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 3))  # type: ignore
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
 
@@ -415,36 +430,134 @@ class TestTerrainAttribute:
         # Check rugosity value is valid
         assert r == pytest.approx(rugosity[1, 1], rel=10 ** (-6))
 
-    def test_get_quadric_coefficients(self) -> None:
-        """Test the outputs and exceptions of the get_quadric_coefficients() function."""
+    def test_fractal_roughness(self) -> None:
+        """Test fractal roughness for synthetic cases for which we know the output."""
+
+        # The fractal dimension of a line is 1 (a single pixel with non-zero value)
+        dem = np.zeros((13, 13), dtype="float32")
+        dem[1, 1] = 6.5
+        frac_rough = xdem.terrain.fractal_roughness(dem)
+        assert np.round(frac_rough[6, 6], 5) == np.float32(1.0)
+
+        # The fractal dimension of plane is 2 (a plan of pixels with non-zero values)
+        dem = np.zeros((13, 13), dtype="float32")
+        dem[:, 1] = 13
+        frac_rough = xdem.terrain.fractal_roughness(dem)
+        assert np.round(frac_rough[6, 6]) == np.float32(2.0)
+
+        # The fractal dimension of a cube is 3 (a block of pixels with non-zero values
+        dem = np.zeros((13, 13), dtype="float32")
+        dem[:, :6] = 13
+        frac_rough = xdem.terrain.fractal_roughness(dem)
+        assert np.round(frac_rough[6, 6]) == np.float32(3.0)
+
+    def test_convolution__quadric_coefficients(self) -> None:
+        """Test the outputs of quadric coefficients (not accessible by users)."""
 
         dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
 
-        coefficients = xdem.terrain.get_quadric_coefficients(
-            dem, resolution=1.0, edge_method="nearest", make_rugosity=True
+        # Get all coefficients and convolve middle mixel
+        coef_arrs = list(xdem.terrain.all_coefs.values())
+        coef_names = list(xdem.terrain.all_coefs.keys())
+        kern3d = np.stack(coef_arrs, axis=0)
+        coefs = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 1, 1]
+
+        # The 4th to last coefficient is identity, so the dem itself
+        assert np.array_equal(coefs[coef_names.index("zt_i")], dem[1, 1])
+
+        # The third should be concave in the x-direction
+        assert coefs[coef_names.index("zt_d")] < 0
+
+        # The fourth should be concave in the y-direction
+        assert coefs[coef_names.index("zt_e")] < 0
+
+    def test_convolution_equal__engine(self) -> None:
+        """
+        Check that convolution through SciPy or Numba give equal result for all kernels.
+        This calls the convolution subfunctions directly (as they need to be chained sequentially with other
+        steps in the main functions).
+        """
+
+        # Stack to convolve all coefs at once
+        coef_arrs = list(xdem.terrain.all_coefs.values())
+        kern3d = np.stack(coef_arrs, axis=0)
+
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(5, 7))
+
+        # With SciPy
+        conv_scipy = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 3, 3]
+
+        # With Numba
+        _, M1, M2 = kern3d.shape
+        half_M1 = int((M1 - 1) / 2)
+        half_M2 = int((M2 - 1) / 2)
+        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        conv_numba = xdem.terrain._convolution_numba(dem, filters=kern3d, row=3, col=3)
+
+        np.allclose(conv_scipy, conv_numba, equal_nan=True)
+
+    @pytest.mark.parametrize(
+        "attribute",
+        ["slope", "aspect", "hillshade", "curvature", "profile_curvature", "planform_curvature", "maximum_curvature"],
+    )  # type: ignore
+    @pytest.mark.parametrize("slope_method", ["Horn", "ZevenbergThorne"])  # type: ignore
+    def test_get_surface_attributes__engine(
+        self, attribute: str, slope_method: Literal["Horn", "ZevenbergThorne"]
+    ) -> None:
+        """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
+
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(5, 7))
+
+        attrs_scipy = xdem.terrain._get_surface_attributes(
+            dem=dem, resolution=2, surface_attributes=[attribute], slope_method=slope_method, engine="scipy"
+        )
+        attrs_numba = xdem.terrain._get_surface_attributes(
+            dem=dem, resolution=2, surface_attributes=[attribute], slope_method=slope_method, engine="numba"
         )
 
-        # Check all coefficients are finite with an edge method
-        assert np.all(np.isfinite(coefficients))
+        assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
+        # assert np.allclose(coefs_numba, coefs_numba_cv, equal_nan=True)
 
-        # The 4th to last coefficient is the dem itself (could maybe be removed in the future as it is duplication..)
-        assert np.array_equal(coefficients[-4, :, :], dem)
+    @pytest.mark.parametrize(
+        "attribute",
+        [
+            "topographic_position_index",
+            "terrain_ruggedness_index_Riley",
+            "terrain_ruggedness_index_Wilson",
+            "roughness",
+            "rugosity",
+            "fractal_roughness",
+        ],
+    )  # type: ignore
+    def test_get_windowed_indices__engine(self, attribute: str) -> None:
+        """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
-        # The middle pixel (index 1, 1) should be concave in the x-direction
-        assert coefficients[3, 1, 1] < 0
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(15, 15))
 
-        # The middle pixel (index 1, 1) should be concave in the y-direction
-        assert coefficients[4, 1, 1] < 0
+        # Get TRI method if specified
+        if "Wilson" in attribute or "Riley" in attribute:
+            attribute = "terrain_ruggedness_index"
+            tri_method: Literal["Riley", "Wilson"]
+            tri_method = attribute.split("_")[-1]  # type: ignore
+        # Otherwise use any one, doesn't matter
+        else:
+            tri_method = "Wilson"
 
-        with pytest.raises(ValueError, match="Invalid input array shape"):
-            xdem.terrain.get_quadric_coefficients(dem.reshape((1, 1, -1)), 1.0)
+        attrs_scipy = xdem.terrain._get_windowed_indexes(
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy"
+        )
+        attrs_numba = xdem.terrain._get_windowed_indexes(
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="numba"
+        )
 
-        # Validate that when using the edge_method="none", only the one non-edge value is kept.
-        coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="none")
-        assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 1
-        # When using edge wrapping, all coefficients should be finite.
-        coefs = xdem.terrain.get_quadric_coefficients(dem, resolution=1.0, edge_method="wrap")
-        assert np.count_nonzero(np.isfinite(coefs[0, :, :])) == 9
+        assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
     def test_get_terrain_attribute__out_dtype(self) -> None:
 

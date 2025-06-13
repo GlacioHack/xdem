@@ -35,15 +35,16 @@ import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
+import scipy.ndimage
 from geoutils.raster import Mask, Raster, RasterType, subsample_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.vector.vector import Vector, VectorType
+from numba import prange
 from numpy.typing import ArrayLike
 from packaging.version import Version
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
-from scipy.signal import fftconvolve
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
@@ -2504,15 +2505,13 @@ def _scipy_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
 
     for i_N in np.arange(imgs.shape[0]):
         for i_M in np.arange(filters.shape[0]):
-            output[i_N, i_M, :, :] = fftconvolve(imgs[i_N, :, :], filters[i_M, :, :], mode="same")
+            output[i_N, i_M, :, :] = scipy.ndimage.convolve(
+                imgs[i_N, :, :], filters[i_M, :, :], mode="constant", cval=np.nan
+            )
 
 
-nd4type = numba.double[:, :, :, :]
-nd3type = numba.double[:, :, :]
-
-
-@numba.njit((nd3type, nd3type, nd4type))  # type: ignore
-def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> None:
+@numba.njit(parallel=True)  # type: ignore
+def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> NDArrayf:
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
 
@@ -2520,18 +2519,25 @@ def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
     :param filters: Input array of filters of size (n_M, M1, M2) with n_M filters of size M1 x M2
     :param output: Initialized output array of size (n_N, n_M, N1, N2)
     """
-    n_rows, n_cols, n_imgs = imgs.shape
-    height, width, n_filters = filters.shape
+    # Shapes
+    n_N, N1, N2 = imgs.shape
+    n_M, M1, M2 = filters.shape
 
-    for ii in range(n_imgs):
-        for rr in range(n_rows - height + 1):
-            for cc in range(n_cols - width + 1):
-                for hh in range(height):
-                    for ww in range(width):
-                        for ff in range(n_filters):
-                            imgval = imgs[rr + hh, cc + ww, ii]
-                            filterval = filters[hh, ww, ff]
-                            output[rr, cc, ii, ff] += imgval * filterval
+    # Range
+    row_range = N1 - M1 + 1
+    col_range = N2 - M2 + 1
+
+    for ii in range(n_N):
+        for rr in prange(row_range):
+            for cc in prange(col_range):
+                for m1 in range(M1):
+                    for m2 in range(M2):
+                        for ff in range(n_M):
+                            imgval = imgs[ii, rr + m1, cc + m2]
+                            filterval = filters[ff, m1, m2]
+                            output[ii, ff, rr, cc] += imgval * filterval
+
+    return output
 
 
 def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDArrayf:
@@ -2555,11 +2561,14 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
 
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
-    elif method.lower() == "numba":
-        _numba_convolution(
-            imgs=imgs.astype(dtype=np.double),
-            filters=filters.astype(dtype=np.double),
-            output=output.astype(dtype=np.double),
+    elif "numba" in method.lower():
+        half_M1 = int((M1 - 1) / 2)
+        half_M2 = int((M2 - 1) / 2)
+        imgs_pad = np.pad(imgs, pad_width=((0, 0), (half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        output = _numba_convolution(
+            imgs=imgs_pad,
+            filters=filters,
+            output=output,
         )
     else:
         raise ValueError('Method must be "scipy" or "numba".')
