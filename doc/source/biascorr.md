@@ -99,7 +99,7 @@ corrected_dem = biascorr.fit_and_apply(ref_dem, tba_dem)
 
 Additionally, **bias corrections can be customized to use any number of variables to correct simultaneously**,
 by defining `bias_var_names` in {class}`~xdem.coreg.BiasCorr`  and passing a `bias_vars` dictionary arrays or rasters
-to {func}`~xdem.coreg.Coreg.fit` and  {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
+to {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
 
 
 ## The modular {class}`~xdem.coreg.BiasCorr` object
@@ -118,7 +118,7 @@ applied in a block-wise manner through {class}`~xdem.coreg.BlockwiseCoreg`.
 ```
 
 The main difference with {class}`~xdem.coreg.Coreg` is that a {class}`~xdem.coreg.BiasCorr` has a new `bias_var_names`
-argument which allows to declare the names of N bias-correction variables that will be passed, which **corresponds to the
+argument which allows declaring the names of N bias-correction variables that will be passed, which **corresponds to the
 number of simultaneous dimensions in which the bias correction is performed**.
 This step is implicit for predefined methods such as {class}`~xdem.coreg.DirectionalBias`.
 
@@ -365,7 +365,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
 
 # We align the two DEMs before doing any bias correction
-tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab())
+tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), resample=True)
 ```
 
 ```{code-cell} ipython3

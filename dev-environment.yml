@@ -24,6 +24,7 @@ dependencies:
   - pytransform3d
   - pyyaml
   - scikit-learn
+  - scikit-gstat>=1.0.18
 
   # Test dependencies
   - pytest

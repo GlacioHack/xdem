@@ -55,8 +55,8 @@ my_coreg_pipeline = xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 my_coreg_pipeline = xdem.coreg.NuthKaab()
 ```
 
-Then, coregistering a pair of elevation data can be done by calling {func}`xdem.coreg.workflows.dem_coregistration`, or
-{func}`xdem.DEM.coregister_3d` from the DEM that should be aligned.
+Then, coregistering a pair of elevation data can be done by calling {func}`xdem.DEM.coregister_3d` from the DEM that
+should be aligned.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -67,16 +67,10 @@ Then, coregistering a pair of elevation data can be done by calling {func}`xdem.
 import geoutils as gu
 import numpy as np
 import matplotlib.pyplot as plt
-from xdem.coreg.workflows import dem_coregistration
 
 # Open a reference and to-be-aligned DEM
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-```
-
-```{code-cell} ipython3
-# Coregister by calling the dem_coregistration function
-aligned_dem = dem_coregistration(tba_dem, ref_dem, coreg_method=my_coreg_pipeline)
 ```
 
 ```{code-cell} ipython3
