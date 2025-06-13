@@ -74,7 +74,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
-tba_dem_coreg = tba_dem.coregister_3d(ref_dem, inlier_mask=inlier_mask)
+tba_dem_coreg = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(), inlier_mask=inlier_mask, resample=True)
 ```
 
 ```{code-cell} ipython3
@@ -104,7 +104,7 @@ and thus generally encompass methods described in other studies on the topic (e.
 
 The tables below summarize the characteristics of these methods.
 
-### Estimating and modelling the structure of error
+### Estimating and modeling the structure of error
 
 Frequently, in spatial statistics, a single correlation range is considered ("basic" method below).
 However, elevation data often contains errors with correlation ranges spanning different orders of magnitude.
@@ -243,7 +243,7 @@ curv_arr = curv[stable_terrain]
 
 # Estimate the variable error by bin of slope and curvature
 df_h = xdem.spatialstats.nd_binning(
-    dh_arr, list_var=[slope_arr, curv_arr], list_var_names=["slope", "curv"], statistics=["count", xdem.spatialstats.nmad], list_var_bins=[np.linspace(0, 60, 10), np.linspace(-10, 10, 10)]
+    dh_arr, list_var=[slope_arr, curv_arr], list_var_names=["slope", "curv"], statistics=["count", gu.stats.nmad], list_var_bins=[np.linspace(0, 60, 10), np.linspace(-10, 10, 10)]
 )
 
 # Plot 2D binning

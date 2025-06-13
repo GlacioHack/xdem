@@ -11,9 +11,8 @@ dependencies:
   - rasterio>=1.3,<2
   - scipy=1.*
   - tqdm
-  - scikit-image=0.*
   - scikit-gstat>=1.0.18,<1.1
-  - geoutils=0.1.16
+  - geoutils=0.1.17
   - affine
   - pandas
   - pyogrio
@@ -26,6 +25,7 @@ dependencies:
   - pytransform3d
   - pyyaml
   - scikit-learn
+  - scikit-gstat>=1.0.18
 
   # Test dependencies
   - pytest
@@ -48,12 +48,7 @@ dependencies:
   - numpydoc
 
   - pip:
-    # Optional dependency
     - -e ./
-    - noisyopt
-    # "Headless" needed for opencv to install without requiring system dependencies
-    - opencv-contrib-python-headless
-    - pyransac3d
 
     # To run CI against latest GeoUtils
 #    - git+https://github.com/rhugonnet/geoutils.git

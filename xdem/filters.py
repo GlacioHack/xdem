@@ -20,13 +20,6 @@
 from __future__ import annotations
 
 import warnings
-
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
 from collections.abc import Callable
 
 import numpy as np
@@ -38,7 +31,6 @@ from xdem._typing import Any, NDArrayf
 def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
-    gaussian_filter_cv is recommended as it is usually faster, but this depends on the value of sigma.
 
     N.B: kernel_size is set automatically based on sigma.
 
@@ -76,61 +68,6 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
             gauss = gauss_no_nan / gauss_mask
 
         return gauss
-
-
-def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
-    """
-    Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
-    Arguments are for now hard-coded to be identical to scipy.
-
-    N.B: kernel_size is set automatically based on sigma
-
-    :param array: the input array to be filtered.
-    :param sigma: the sigma of the Gaussian kernel
-
-    :returns: the filtered array (same shape as input)
-    """
-    if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'.")
-
-    # Check that array dimension is 2, or can be squeezed to 2D
-    orig_shape = array.shape
-    if len(orig_shape) == 2:
-        pass
-    elif len(orig_shape) == 3:
-        if orig_shape[0] == 1:
-            array = array.squeeze()
-        else:
-            raise NotImplementedError("Case of array of dimension 3 not implemented.")
-    else:
-        raise ValueError(f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array.")
-
-    # In case array does not contain NaNs, use OpenCV's gaussian filter directly
-    # With kernel size (0, 0), i.e. set to default, and borderType=BORDER_REFLECT, the output is equivalent to scipy
-    if np.count_nonzero(np.isnan(array)) == 0:
-        gauss = cv2.GaussianBlur(array, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
-
-    # If array contain NaNs, need a more sophisticated approach
-    # Inspired by https://stackoverflow.com/a/36307291
-    else:
-
-        # Run filter on a copy with NaNs set to 0
-        array_no_nan = array.copy()
-        array_no_nan[np.isnan(array)] = 0
-        gauss_no_nan = cv2.GaussianBlur(array_no_nan, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
-        del array_no_nan
-
-        # Mask of NaN values
-        nan_mask = 0 * array.copy() + 1
-        nan_mask[np.isnan(array)] = 0
-        gauss_mask = cv2.GaussianBlur(nan_mask, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
-        del nan_mask
-
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="invalid value encountered")
-            gauss = gauss_no_nan / gauss_mask
-
-    return gauss.reshape(orig_shape)
 
 
 def median_filter_scipy(array: NDArrayf, **kwargs: dict[Any, Any]) -> NDArrayf:
@@ -230,7 +167,7 @@ pixels within a given radius.
     :returns: the filtered array (same shape as input)
     """
     # Calculate the average value within the radius
-    smooth = gaussian_filter_cv(array, sigma=radius)
+    smooth = gaussian_filter_scipy(array, sigma=radius)
 
     # Filter outliers
     outliers = (np.abs(array - smooth)) > outlier_threshold

@@ -47,14 +47,21 @@ from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
-from skimage.draw import disk
 
-from xdem._typing import NDArrayf
+from xdem._typing import NDArrayb, NDArrayf
 from xdem.misc import deprecate
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
-    import skgstat as skg
+
+    try:
+        import skgstat as skg
+
+        _has_skgstat = True
+        if Version(skg.__version__) < Version("1.0.18"):
+            raise ImportWarning(f"scikit-gstat>=1.0.18 is recommended, current version is {skg.__version__}.")
+    except ImportError:
+        _has_skgstat = False
 
 
 @deprecate(
@@ -80,7 +87,7 @@ def nd_binning(
     list_var: list[NDArrayf],
     list_var_names: list[str],
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf, ...] | None = None,
-    statistics: Iterable[str | Callable[[NDArrayf], np.floating[Any]]] = ("count", np.nanmedian, nmad),
+    statistics: Iterable[str | Callable[[NDArrayf], np.floating[Any]]] = ("count", np.nanmedian, gu.stats.nmad),
     list_ranges: list[float] | None = None,
 ) -> pd.DataFrame:
     """
@@ -224,7 +231,7 @@ def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
 def interp_nd_binning(
     df: pd.DataFrame,
     list_var_names: str | list[str],
-    statistic: str | Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic: str | Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     interpolate_method: Literal["nearest"] | Literal["linear"] = "linear",
     min_count: int | None = 100,
 ) -> Callable[[tuple[ArrayLike, ...]], NDArrayf]:
@@ -518,7 +525,7 @@ def two_step_standardization(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
     unscaled_error_fun: Callable[[tuple[ArrayLike, ...]], NDArrayf],
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     fac_spread_outliers: float | None = 7,
 ) -> tuple[NDArrayf, Callable[[tuple[ArrayLike, ...]], NDArrayf]]:
     """
@@ -561,7 +568,7 @@ def _estimate_model_heteroscedasticity(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
     list_var_names: list[str],
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -768,7 +775,7 @@ def infer_heteroscedasticity_from_stable(
     stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -782,7 +789,7 @@ def infer_heteroscedasticity_from_stable(
     stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -795,7 +802,7 @@ def infer_heteroscedasticity_from_stable(
     stable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Mask | VectorType | gpd.GeoDataFrame = None,
     list_var_names: list[str] = None,
-    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    spread_statistic: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
@@ -863,7 +870,7 @@ def infer_heteroscedasticity_from_stable(
 
 def _create_circular_mask(
     shape: tuple[int, int], center: tuple[int, int] | None = None, radius: float | None = None
-) -> NDArrayf:
+) -> NDArrayb:
     """
     Create circular mask on a raster, defaults to the center of the array and its half width
 
@@ -880,17 +887,10 @@ def _create_circular_mask(
     if radius is None:  # use the smallest distance between the center and image walls
         radius = min(center[0], center[1], w - center[0], h - center[1])
 
-    # Skimage disk is not inclusive (correspond to distance_from_center < radius and not <= radius)
-    mask = np.zeros(shape, dtype=bool)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "invalid value encountered in *divide")
-        rr, cc = disk(center=center, radius=radius, shape=shape)
-    mask[rr, cc] = True
-
-    # manual solution
-    # Y, X = np.ogrid[:h, :w]
-    # dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-    # mask = dist_from_center < radius
+    # Manual solution
+    Y, X = np.ogrid[:w, :h]
+    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    mask = dist_from_center < radius
 
     return mask
 
@@ -900,7 +900,7 @@ def _create_ring_mask(
     center: tuple[int, int] | None = None,
     in_radius: float = 0,
     out_radius: float | None = None,
-) -> NDArrayf:
+) -> NDArrayb:
     """
     Create ring mask on a raster, defaults to the center of the array and a circle mask of half width of the array
 
@@ -1346,6 +1346,10 @@ def sample_empirical_variogram(
 
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
     """
+
+    if not _has_skgstat:
+        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
         gsd = values.res[0]
@@ -1532,6 +1536,9 @@ def sample_empirical_variogram(
 
 def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, float], NDArrayf]) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
+
+    if not _has_skgstat:
+        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
 
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
@@ -2637,7 +2644,7 @@ def _patches_convolution(
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     method: str = "scipy",
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
     """
@@ -2720,7 +2727,7 @@ def _patches_loop_quadrants(
     n_patches: int = 1000,
     perc_min_valid: float = 80.0,
     statistics_in_patch: Iterable[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     random_state: int | np.random.Generator | None = None,
     return_in_patch_statistics: bool = False,
 ) -> tuple[float, float, float] | tuple[float, float, float, pd.DataFrame]:
@@ -2860,7 +2867,7 @@ def patches_method(
     stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     vectorized: bool = True,
@@ -2880,7 +2887,7 @@ def patches_method(
     stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     vectorized: bool = True,
@@ -2899,7 +2906,7 @@ def patches_method(
     stable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | VectorType | gpd.GeoDataFrame = None,
     statistics_in_patch: tuple[Callable[[NDArrayf], np.floating[Any]] | str] = (np.nanmean,),
-    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = nmad,
+    statistic_between_patches: Callable[[NDArrayf], np.floating[Any]] = gu.stats.nmad,
     perc_min_valid: float = 80.0,
     patch_shape: str = "circular",
     vectorized: bool = True,
@@ -2911,8 +2918,8 @@ def patches_method(
     """
     Monte Carlo patches method that samples multiple patches of terrain, square or circular, of a certain area and
     computes a statistic in each patch. Then, another statistic is computed between all patches. Typically, a statistic
-    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g., the NMAD) is
-    computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
+    of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g., the NMAD)
+    is computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
     standard error of the mean.
 
     The function returns the exact areas of the patches, which might differ from the input due to rasterization of the

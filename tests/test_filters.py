@@ -30,15 +30,6 @@ class TestFilters:
         assert np.max(dem_array) > np.max(dem_sm)
         assert dem_array.shape == dem_sm.shape
 
-        # Test applying OpenCV's Gaussian filter
-        dem_sm2 = xdem.filters.gaussian_filter_cv(dem_array, sigma=5)
-        assert np.min(dem_array) < np.min(dem_sm2)
-        assert np.max(dem_array) > np.max(dem_sm2)
-        assert dem_array.shape == dem_sm2.shape
-
-        # Assert that both implementations yield similar results
-        assert np.nanmax(np.abs(dem_sm - dem_sm2)) < 1e-3
-
         # Test that it works with NaNs too
         nan_count = 1000
         rng = np.random.default_rng(42)
@@ -51,22 +42,14 @@ class TestFilters:
         assert np.nanmin(dem_with_nans) < np.min(dem_sm)
         assert np.nanmax(dem_with_nans) > np.max(dem_sm)
 
-        dem_sm = xdem.filters.gaussian_filter_cv(dem_with_nans, sigma=10)
-        assert np.nanmin(dem_with_nans) < np.min(dem_sm)
-        assert np.nanmax(dem_with_nans) > np.max(dem_sm)
-
         # Test that it works with 3D arrays
         array_3d = np.vstack((dem_array[np.newaxis, :], dem_array[np.newaxis, :]))
         dem_sm = xdem.filters.gaussian_filter_scipy(array_3d, sigma=5)
         assert array_3d.shape == dem_sm.shape
 
-        # 3D case not implemented with OpenCV
-        pytest.raises(NotImplementedError, xdem.filters.gaussian_filter_cv, array_3d, sigma=5)
-
         # Tests that it fails with 1D arrays with appropriate error
         data = dem_array[:, 0]
         pytest.raises(ValueError, xdem.filters.gaussian_filter_scipy, data, sigma=5)
-        pytest.raises(ValueError, xdem.filters.gaussian_filter_cv, data, sigma=5)
 
     def test_dist_filter(self) -> None:
         """Test that distance_filter works"""

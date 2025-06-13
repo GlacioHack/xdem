@@ -46,7 +46,7 @@ profc_arr = profc[~mask_glacier].filled(np.nan)
 maxc_arr = np.maximum(np.abs(planc_arr), np.abs(profc_arr))
 
 # Remove large outliers
-dh_arr[np.abs(dh_arr) > 4 * xdem.spatialstats.nmad(dh_arr)] = np.nan
+dh_arr[np.abs(dh_arr) > 4 * gu.stats.nmad(dh_arr)] = np.nan
 
 # Define bins for 2D binning
 custom_bin_slope = np.unique(

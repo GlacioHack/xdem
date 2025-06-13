@@ -11,16 +11,12 @@ dependencies:
   - rasterio>=1.3,<2
   - scipy=1.*
   - tqdm
-  - scikit-image=0.*
-  - scikit-gstat>=1.0.18,<1.1
-  - geoutils=0.1.16
+  - geoutils=0.1.17
   - affine
   - pandas
   - pyogrio
   - shapely
   - pip
-  - pip:
-    - pyransac3d
 
   # To run CI against latest GeoUtils
 #  - pip:

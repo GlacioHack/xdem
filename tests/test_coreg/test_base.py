@@ -108,13 +108,10 @@ class TestCoregClass:
         # Assert all keys exist in the mapping key to str dictionary used for info
         list_info_keys = list(dict_key_to_str.keys())
 
-        # TODO: Remove ICP keys here once generic optimizer is used
-        # Temporary exceptions: pipeline/blockwise + gradientdescending/icp
+        # Temporary exceptions: pipeline/blockwise
         list_exceptions = [
             "step_meta",
             "pipeline",
-            "rejection_scale",
-            "num_levels",
         ]
 
         # Compare the two lists
@@ -869,10 +866,10 @@ class TestAffineManipulation:
     list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations, matrix_all]
 
     @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
-    def test_apply_matrix__points_opencv(self, matrix: NDArrayf) -> None:
+    def test_apply_matrix__points_geopandas(self, matrix: NDArrayf) -> None:
         """
         Test that apply matrix's exact transformation for points (implemented with NumPy matrix multiplication)
-        is exactly the same as the one of OpenCV (optional dependency).
+        is exactly the same as the one of GeoPandas.
         """
 
         # Create random points
@@ -882,14 +879,18 @@ class TestAffineManipulation:
         epc = gpd.GeoDataFrame(data={"z": points[:, 2]}, geometry=gpd.points_from_xy(x=points[:, 0], y=points[:, 1]))
         trans_epc = apply_matrix(epc, matrix=matrix)
 
-        # Run the same operation with openCV
-        import cv2
+        # Compare to geopandas transformation
+        # We first need to convert the 4x4 affine matrix into a 12-parameter affine matrix
+        epc_3d = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=points[:, 0], y=points[:, 1], z=points[:, 2]))
+        mat_12params = np.zeros(12)
+        mat_12params[:9] = matrix[:3, :3].flatten()
+        mat_12params[9:] = matrix[:3, 3]
+        trans_epc_gpd = epc_3d.affine_transform(matrix=mat_12params)
 
-        trans_cv2_arr = cv2.perspectiveTransform(points[:, :].reshape(1, -1, 3), matrix)[0, :, :]
-
-        # Transform point cloud back to array
-        trans_numpy = np.array([trans_epc.geometry.x.values, trans_epc.geometry.y.values, trans_epc["z"].values]).T
-        assert np.allclose(trans_numpy, trans_cv2_arr)
+        # Check both transformations are equal
+        assert np.allclose(trans_epc.geometry.x.values, trans_epc_gpd.geometry.x.values)
+        assert np.allclose(trans_epc.geometry.y.values, trans_epc_gpd.geometry.y.values)
+        assert np.allclose(trans_epc["z"].values, trans_epc_gpd.geometry.z.values)
 
     @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])  # type: ignore
     @pytest.mark.parametrize("matrix", list_matrices)  # type: ignore
