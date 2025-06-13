@@ -24,7 +24,6 @@ dependencies:
   - pytransform3d
   - pyyaml
   - scikit-learn
-  - scikit-gstat>=1.0.18
 
   # Test dependencies
   - pytest
@@ -47,7 +46,9 @@ dependencies:
   - numpydoc
 
   - pip:
-      - scikit-gstat>=1.0.18,<1.1
+      # Optional dependencies with Pip
+      # SciKit-GStat temporarily here until Conda version supports Python 3.13
+      - scikit-gstat>=1.0.18
 
       - -e ./
 

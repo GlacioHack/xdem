@@ -19,6 +19,5 @@ dependencies:
   - pip
 
   # To run CI against latest GeoUtils
-  - pip:
-      - scikit-gstat>=1.0.18,<1.1
+#  - pip:
 #    - git+https://github.com/rhugonnet/geoutils.git
