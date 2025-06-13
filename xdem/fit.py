@@ -275,7 +275,7 @@ def _wrapper_sklearn_robustlinear(
     states, scales input and de-scales output data, prints out statements
 
     :param model: Function model to fit (e.g., Polynomial features)
-    :param cost_func: Cost function to use for optimization
+    :param cost_func: Cost function taking as input two vectors y (true y), y' (predicted y) of same length.
     :param xdata: X vector
     :param ydata: Y vector
     :param estimator_name: Linear estimator to use (one of "Linear", "Theil-Sen", "RANSAC" and "Huber")
@@ -367,7 +367,7 @@ def robust_norder_polynomial_fit(
     :param sigma: Standard error of y data (N,).
     :param max_order: Maximum polynomial order tried for the fit.
     :param estimator_name: Robust estimator to use, one of 'Linear', 'Theil-Sen', 'RANSAC' or 'Huber'.
-    :param cost_func: Cost function taking as input the residuals.
+    :param cost_func: Cost function taking as input two vectors y (true y), y' (predicted y) of same length.
     :param margin_improvement: improvement margin (percentage) below which the lesser degree polynomial is kept.
     :param subsample: If <= 1, will be considered a fraction of valid pixels to extract.
         If > 1 will be considered the number of pixels to extract.
