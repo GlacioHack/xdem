@@ -34,6 +34,7 @@ import numpy as np
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import Mask, RasterType
+from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,
     map_multiproc_collect,
@@ -130,9 +131,19 @@ class BlockwiseCoreg:
         """
         coreg_method = coreg_method.copy()
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
-        if inlier_mask:
-            inlier_mask = inlier_mask.crop(ref_dem_tiled)
-        return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
+
+        _, ref_mask = get_array_and_mask(ref_dem_tiled)
+        _, sec_mask = get_array_and_mask(tba_dem_tiled)
+
+        if np.all(ref_mask) or np.all(sec_mask):
+            coreg_method.meta["outputs"] = {"affine": {"shift_x": np.nan}}
+            coreg_method.meta["outputs"] = {"affine": {"shift_y": np.nan}}
+            coreg_method.meta["outputs"] = {"affine": {"shift_z": np.nan}}
+            return coreg_method
+        else:
+            if inlier_mask:
+                inlier_mask = inlier_mask.crop(ref_dem_tiled)
+            return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
 
     def fit(
         self: BlockwiseCoreg,
