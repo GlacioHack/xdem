@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import sys
 import warnings
 from typing import Any, Callable
 
@@ -125,14 +126,27 @@ def copy_doc(
         # Replace argument description of dem and resolution (not used in the DEM class, only in terrain)
         if remove_dem_res_params:
 
+            # Get Python version (spaces of docstring are not handled the same way after Python 3.13)
+            pyv = Version(".".join(str(getattr(sys.version_info, v)) for v in ["major", "minor", "micro"]))
+
             # Find and remove them if they exist
             if ":param dem:" in other_doc:
-                dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+                if pyv >= Version("3.13"):
+                    dem_section = "\n:param dem:" + other_doc.split("\n:param dem:")[1].split("\n")[0]
+                else:
+                    dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+
                 other_doc = other_doc.replace(dem_section, "")
             if ":param resolution:" in other_doc:
-                resolution_section = (
-                    "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
-                )
+                if pyv >= Version("3.13"):
+                    resolution_section = (
+                        "\n:param resolution:" + other_doc.split("\n:param resolution:")[1].split("\n")[0]
+                    )
+                else:
+                    resolution_section = (
+                        "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                    )
+
                 other_doc = other_doc.replace(resolution_section, "")
 
         # Remove docstring examples

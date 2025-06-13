@@ -2,7 +2,7 @@ name: xdem
 channels:
   - conda-forge
 dependencies:
-  - python>=3.10,<3.13
+  - python>=3.10,<3.14
   - geopandas>=0.12.0
   - numba=0.*
   - numpy>=1,<3
