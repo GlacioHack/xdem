@@ -40,7 +40,6 @@ try:
         RANSACRegressor,
         TheilSenRegressor,
     )
-    from sklearn.metrics import median_absolute_error
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import PolynomialFeatures
 
@@ -49,34 +48,44 @@ except ImportError:
     _has_sklearn = False
 
 
-def rmse(z: NDArrayf) -> float:
+def rmse(ytrue: NDArrayf, ypred: NDArrayf) -> float:
     """
     Return root mean square error
-    :param z: Residuals between predicted and true value
-    :return: Root Mean Square Error
+
+    :param ytrue: True values
+    :param ypred: Predicted values
+
+    :return: Root mean square error
     """
-    return np.sqrt(np.nanmean(np.square(z)))
+    return np.sqrt(np.nanmean(np.square(ytrue - ypred)))
 
 
-def huber_loss(z: NDArrayf) -> float:
+def huber_loss(ytrue: NDArrayf, ypred: NDArrayf) -> float:
     """
     Huber loss cost (reduces the weight of outliers)
-    :param z: Residuals between predicted and true values
+
+    :param ytrue: True values
+    :param ypred: Predicted values
+
     :return: Huber cost
     """
+    z = ytrue - ypred
     out = np.where(z > 1, 2 * np.sqrt(z[np.where(z > 1)]) - 1, np.square(z))
 
     return out.sum()
 
 
-def soft_loss(z: NDArrayf, scale: float = 0.5) -> float:
+def soft_loss(ytrue: NDArrayf, ypred: NDArrayf, scale: float = 0.5) -> float:
     """
     Soft loss cost (reduces the weight of outliers)
-    :param z: Residuals between predicted and true values
+
+    :param ytrue: True values
+    :param ypred: Predicted values
     :param scale: Scale factor
+
     :return: Soft loss cost
     """
-    return np.sum(np.square(scale) * 2 * (np.sqrt(1 + np.square(z / scale)) - 1))
+    return np.sum(np.square(scale) * 2 * (np.sqrt(1 + np.square((ytrue - ypred) / scale)) - 1))
 
 
 ######################################################
@@ -254,7 +263,7 @@ def _wrapper_scipy_leastsquares(
 
 def _wrapper_sklearn_robustlinear(
     model: PolynomialFeatures,
-    cost_func: Callable[[NDArrayf], float],
+    cost_func: Callable[[NDArrayf, NDArrayf], float],
     xdata: NDArrayf,
     ydata: NDArrayf,
     sigma: NDArrayf | None = None,
@@ -322,7 +331,7 @@ def _wrapper_sklearn_robustlinear(
     y_pred = pipeline.predict(xdata.reshape(-1, 1))
 
     # Calculate cost
-    cost = cost_func(y_pred - ydata)
+    cost = cost_func(ydata, y_pred)
 
     # Get polynomial coefficients estimated with the estimators Linear, Theil-Sen and Huber
     if estimator_name in ["Linear", "Theil-Sen", "Huber"]:
@@ -340,7 +349,7 @@ def robust_norder_polynomial_fit(
     sigma: NDArrayf | None = None,
     max_order: int = 6,
     estimator_name: str = "Theil-Sen",
-    cost_func: Callable[[NDArrayf], float] = soft_loss,
+    cost_func: Callable[[NDArrayf, NDArrayf], float] = soft_loss,
     margin_improvement: float = 20.0,
     subsample: float | int = 1,
     linear_pkg: str = "scipy",
@@ -441,14 +450,13 @@ def robust_norder_polynomial_fit(
 def _cost_sumofsin(
     x: NDArrayf,
     y: NDArrayf,
-    cost_func: Callable[[NDArrayf], float],
+    cost_func: Callable[[NDArrayf, NDArrayf], float],
     *p: NDArrayf,
 ) -> float:
     """
     Calculate robust cost function for sum of sinusoids
     """
-    z = y - sumsin_1d(x, *p)
-    return cost_func(z)
+    return cost_func(y, sumsin_1d(x, *p))
 
 
 def robust_nfreq_sumsin_fit(
@@ -457,7 +465,7 @@ def robust_nfreq_sumsin_fit(
     sigma: NDArrayf | None = None,
     max_nb_frequency: int = 3,
     bounds_amp_wave_phase: list[tuple[float, float]] | None = None,
-    cost_func: Callable[[NDArrayf], float] = soft_loss,
+    cost_func: Callable[[NDArrayf, NDArrayf], float] = soft_loss,
     subsample: float | int = 1,
     hop_length: float | None = None,
     random_state: int | np.random.Generator | None = None,
