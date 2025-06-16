@@ -90,6 +90,7 @@ class BlockwiseCoreg:
 
         self.procstep = step
         self.block_size_fit = block_size_fit
+        # NB: in case of memory peak reduce block_size_apply
         self.block_size_apply = block_size_apply
 
         if isinstance(step, NuthKaab):
@@ -184,6 +185,7 @@ class BlockwiseCoreg:
         self.shape_tiling_grid = compute_tiling(
             self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
         ).shape
+
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
 
         self.x_coords = []  # type: ignore
@@ -230,7 +232,6 @@ class BlockwiseCoreg:
         y_coords: tuple[float, float, float],
         shifts: tuple[float, float, float],
         threshold: float = 0.01,
-        min_inliers: int = 5,
         max_iterations: int = 2000,
     ) -> tuple[float, float, float]:
         """
@@ -241,7 +242,6 @@ class BlockwiseCoreg:
         :param y_coords: 1D array of y coordinates.
         :param shifts: 1D array of observed shifts (errors) at the corresponding (x, y) positions.
         :param threshold: Maximum allowed deviation to consider a point as an inlier.
-        :param min_inliers: Minimum number of inliers required to accept a model.
         :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
         :return: Estimated transformation coefficients (a, b, c) such as shift = a * x + b * y + c.
         """
@@ -251,9 +251,6 @@ class BlockwiseCoreg:
         # Assemble input data
         points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
         points = points[~np.isnan(points).any(axis=1)]
-
-        if len(points) < min_inliers:
-            raise ValueError(f"Not enough valid points in RANSAC: got {len(points)}, need at least {min_inliers}")
 
         X = points[:, :2]  # x and y
         y = points[:, 2]  # shifts
@@ -328,14 +325,12 @@ class BlockwiseCoreg:
     def apply(
         self,
         threshold_ransac: float = 0.01,
-        min_inliers_ransac: int = 5,
         max_iterations_ransac: int = 2000,
     ) -> RasterType:
         """
         Apply the coregistration transformation to an elevation array using a ransac filter.
 
         :param threshold_ransac: Maximum distance threshold to consider a point as an inlier.
-        :param min_inliers_ransac: Minimum number of inliers required to accept a model.
         :param max_iterations_ransac: Maximum number of RANSAC iterations to perform.
         :return: The transformed elevation raster.
         """
@@ -345,7 +340,6 @@ class BlockwiseCoreg:
             self.y_coords,  # type: ignore
             self.shifts_x,  # type: ignore
             threshold_ransac,
-            min_inliers_ransac,
             max_iterations_ransac,
         )
         coeff_y = self._ransac(
@@ -353,7 +347,6 @@ class BlockwiseCoreg:
             self.y_coords,  # type: ignore
             self.shifts_y,  # type: ignore
             threshold_ransac,
-            min_inliers_ransac,
             max_iterations_ransac,
         )
         if self.apply_z_correction:
@@ -362,7 +355,6 @@ class BlockwiseCoreg:
                 self.y_coords,  # type: ignore
                 self.shifts_z,  # type: ignore
                 threshold_ransac,
-                min_inliers_ransac,
                 max_iterations_ransac,
             )
         else:

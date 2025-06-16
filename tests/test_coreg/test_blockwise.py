@@ -96,17 +96,6 @@ class TestBlockwiseCoreg:
         assert np.isclose(b, 3.0, atol=0.2)
         assert np.isclose(c, 5.0, atol=0.2)
 
-    def test_ransac_with_insufficient_points(self, blockwise_coreg) -> None:
-        """Test RANSAC raises error when too few points are provided."""
-        x = np.array([1, 2, 3, 4, 5])
-        y = np.array([1, 2, 3, 4, 5])
-        z = np.array([2, 4, 6, 8, 10])
-
-        min_inliers = 10
-
-        with pytest.raises(ValueError, match="Not enough valid points in RANSAC: got 5, need at least 10"):
-            blockwise_coreg._ransac(x, y, z, min_inliers=min_inliers)
-
     def test_wrapper_apply_epc(self, blockwise_coreg, example_data) -> None:
         """Test point cloud coefficient application via _wrapper_apply_epc."""
         _, tba_dem, _ = example_data
