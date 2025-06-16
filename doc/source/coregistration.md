@@ -584,12 +584,22 @@ method independently in each subset.
 It can also happen that memory requirements exceed the capacity of the computers.
 In such cases, it may be necessary to process the data in blocks and then aggregate the results afterward.
 
+> **Note:**
+> The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
+>
+> The `block_size_apply` parameter allows the DEM to be aligned in blocks to prevent memory leaks. In such case
+> reduce block_size_apply value.
+>
+> These two parameters do **not** need to be the same size.
+
+
 
 A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
-                                      block_size_apply=500,
+                                      block_size_fit=500,
+                                      block_size_apply=100,
                                       parent_path="")
 
 blockwise.fit(ref_dem, tba_dem_shifted)
