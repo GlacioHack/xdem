@@ -16,6 +16,9 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - cerberus
+  - PyYAML
+  - weasyprint
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
@@ -44,6 +47,7 @@ dependencies:
   - graphviz
   - myst-nb
   - numpydoc
+  - sphinx-tabs
 
   - pip:
       # Optional dependencies with Pip
