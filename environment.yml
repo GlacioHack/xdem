@@ -17,6 +17,8 @@ dependencies:
   - pyogrio
   - shapely
   - pip
+  - cerberus
+  - PyYAML
 
   # To run CI against latest GeoUtils
 #  - pip:

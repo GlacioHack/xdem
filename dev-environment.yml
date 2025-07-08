@@ -16,6 +16,8 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - cerberus
+  - PyYAML
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
