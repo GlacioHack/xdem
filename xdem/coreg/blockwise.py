@@ -248,18 +248,43 @@ class BlockwiseCoreg:
         if not _has_sklearn:
             raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
-        # Assemble input data
-        points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
+        # Stack and squeeze
+        points = np.dstack([x_coords, y_coords, shifts])
+        points = np.squeeze(points)
+
+        # If only one point, squeeze() gives (3,) -> reshape to (1, 3)
+        if points.ndim == 1:
+            if points.shape[0] != 3:
+                raise ValueError(f"Unexpected point shape: {points.shape}")
+            points = points.reshape(1, 3)
+
+        # Remove NaNs safely
         points = points[~np.isnan(points).any(axis=1)]
 
-        X = points[:, :2]  # x and y
-        y = points[:, 2]  # shifts
+        if points.size == 0:
+            raise ValueError("No valid points after removing NaNs.")
 
-        ransac = RANSACRegressor(estimator=LinearRegression(), residual_threshold=threshold, max_trials=max_iterations)
-        ransac.fit(X, y)
-
-        a, b = ransac.estimator_.coef_
-        c = ransac.estimator_.intercept_
+        # 1D: Variation on only 1 dimension
+        if np.allclose(points[:, 1], points[0, 1]):
+            # 1D variation on x
+            a, c = np.polyfit(points[:, 0], points[:, 2], 1)
+            b = 0.0
+        elif np.allclose(points[:, 0], points[0, 0]):
+            # 1D variation on y
+            b, c = np.polyfit(points[:, 1], points[:, 2], 1)
+            a = 0.0
+        else:
+            # 2D: fit RANSAC
+            X = points[:, :2]
+            y = points[:, 2]
+            ransac = RANSACRegressor(
+                estimator=LinearRegression(),
+                residual_threshold=threshold,
+                max_trials=max_iterations,
+            )
+            ransac.fit(X, y)
+            a, b = ransac.estimator_.coef_
+            c = ransac.estimator_.intercept_
 
         return a, b, c
 
