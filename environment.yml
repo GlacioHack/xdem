@@ -17,7 +17,10 @@ dependencies:
   - pyogrio
   - shapely
   - pip
+  - cerberus
+  - PyYAML
+  - weasyprint
 
-  # To run CI against latest GeoUtils
+  # To run CI against the latest GeoUtils
 #  - pip:
 #    - git+https://github.com/rhugonnet/geoutils.git
