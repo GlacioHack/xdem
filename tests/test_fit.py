@@ -69,8 +69,8 @@ class TestRobustFitting:
         y[900:925] = 1000.0
 
         # Run with the "Linear" estimator
-        coefs, deg = xdem.fit.robust_norder_polynomial_fit(
-            x, y, estimator_name="Linear", linear_pkg="scipy", loss="soft_l1", method="trf", f_scale=0.5
+        _, _ = xdem.fit.robust_norder_polynomial_fit(
+            x, y, estimator_name="Linear", linear_pkg="scipy", method="trf"  # loss="soft_l1", f_scale=0.5
         )
 
         # TODO: understand why this is not robust since moving from least_squares() to curve_fit(), while the
