@@ -587,8 +587,8 @@ In such cases, it may be necessary to process the data in blocks and then aggreg
 > **Note:**
 > The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
 >
-> The `block_size_apply` parameter allows the DEM to be aligned in blocks to prevent memory leaks. In such case
-> reduce block_size_apply value.
+> The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage. Smaller blocks
+> during the apply step reduce memory usage but increase computing time
 >
 > These two parameters do **not** need to be the same size.
 

@@ -228,9 +228,9 @@ class BlockwiseCoreg:
 
     @staticmethod
     def _ransac(
-        x_coords: tuple[float, float, float],
-        y_coords: tuple[float, float, float],
-        shifts: tuple[float, float, float],
+        x_coords: NDArrayf,
+        y_coords: NDArrayf,
+        shifts: NDArrayf,
         threshold: float = 0.01,
         max_iterations: int = 2000,
     ) -> tuple[float, float, float]:
