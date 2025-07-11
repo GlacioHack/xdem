@@ -47,7 +47,6 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-from geoutils._typing import Number
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster import Mask, RasterType, raster
@@ -55,7 +54,6 @@ from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _translate
-from geoutils.stats import nmad
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
@@ -125,6 +123,7 @@ dict_key_to_str = {
 #####################################
 # Generic functions for preprocessing
 ###########################################
+
 
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
