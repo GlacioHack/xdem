@@ -19,7 +19,7 @@
 """
 DemComparison class from workflow
 """
-
+import logging
 import os
 from typing import Any
 
@@ -210,11 +210,14 @@ class DemComparison(Workflows):
         return aligned_dem
 
     def _compute_reproj(self, test_dem: str) -> None:
-        """ """
+        """
+        Compute reprojection
+        """
         # Reproject data
         src = self.config["coregistration"]["sampling_source"]
 
         if src == test_dem:
+            logging.info(f"Computing reprojection on {test_dem}")
             src_dem = getattr(self, src)
             target_dem = getattr(self, "to_be_aligned_dem" if src == "reference_elev" else "reference_elev")
 
@@ -244,12 +247,19 @@ class DemComparison(Workflows):
         """
         # Compute user statistics
         list_to_compute = self.config["statistics"].get("list_to_compute", [])
-        return dem.get_stats(list_to_compute) if list_to_compute else dem.get_stats()
+        logging.info(
+            f"Computed statistics: {list_to_compute}"
+            if list_to_compute
+            else "All the metrics are computed for the statistics"
+        )
+        list_stat = dem.get_stats(list_to_compute) if list_to_compute else dem.get_stats()
+        return list_stat
 
     def _compute_histogram(self) -> None:
         """
         Compute altitudes difference histogram.
         """
+        logging.info("Compute histogram")
         plt.figure(figsize=(7, 8))
         bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)
         plt.hist(self.diff_before.data.flatten(), bins=bins, color="g", alpha=0.6, label="Before_coregistration")
@@ -358,8 +368,8 @@ class DemComparison(Workflows):
             html += f"<h2>{title}</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
-            for cle, valeur in dictionary.items():
-                html += f"<tr><td>{cle}</td><td>{valeur}</td></tr>\n"
+            for key, value in dictionary.items():
+                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
             html += "</table>\n"
             html += "</div>\n"
 

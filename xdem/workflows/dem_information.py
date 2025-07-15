@@ -19,7 +19,7 @@
 """
 DemInformation class from workflows.
 """
-
+import logging
 import math
 import os
 from typing import Any
@@ -105,6 +105,8 @@ class DemInformation(Workflows):
         else:
             list_attributes = self.config["terrain_attributes"]
 
+        logging.info(f"Computed attributes : {list_attributes}")
+
         attributes = xdem.terrain.get_terrain_attribute(
             self.dem.data,
             resolution=self.dem.res,
@@ -128,6 +130,7 @@ class DemInformation(Workflows):
             }
             for attr in list_attributes:
                 attribute = from_str_to_fun[attr]()
+                logging.info(f"Compute {attr}")
                 attribute.save(self.path_terrain / f"{attr}.tif")
 
         n = len(attributes)
@@ -211,9 +214,12 @@ class DemInformation(Workflows):
         if "statistics" not in self.config:
             stats_dem = self.dem.get_stats()
             stats_dem_mask = self.dem.get_stats(inlier_mask=self.inlier_mask)
+            logging.info("Every metrics are computed")
         else:
-            stats_dem = self.dem.get_stats(self.config["statistics"])
-            stats_dem_mask = self.dem.get_stats(self.config["statistics"], inlier_mask=self.inlier_mask)
+            list_metrics = self.config["statistics"]
+            stats_dem = self.dem.get_stats(list_metrics)
+            stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
+            logging.info(f"Computed metrics: {list_metrics}")
 
         # Terrain attributes
         self.generate_terrain_attributes()
@@ -227,7 +233,7 @@ class DemInformation(Workflows):
 
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """
-        Create html page from png files and table
+        Create HTML page from png files and table
         :param list_dict: list containing tuples of title and various dictionaries
         :return: None
         """
@@ -242,8 +248,8 @@ class DemInformation(Workflows):
             html += f"<h2>{title}</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
-            for cle, valeur in dictionary.items():
-                html += f"<tr><td>{cle}</td><td>{valeur}</td></tr>\n"
+            for key, value in dictionary.items():
+                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
             html += "</table>\n"
             html += "</div>\n"
 
