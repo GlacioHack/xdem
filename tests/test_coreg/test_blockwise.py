@@ -128,7 +128,7 @@ class TestBlockwiseCoreg:
 
         assert actual == expected
 
-    @pytest.mark.parametrize("block_size", [500, 985], ids=["2d_shifts", "1d_shifts_x"])
+    @pytest.mark.parametrize("block_size", [500, 985, 1332], ids=["2d_shifts", "1d_shifts_x", "monotile"])
     def test_blockwise_coreg_pipeline(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration and validate output."""
         ref, tba, mask = example_data
