@@ -101,9 +101,11 @@ dict_key_to_str = {
     "fit_perr": "Error on optimized function parameters",
     "bin_dataframe": "Binning output dataframe",
     "max_iterations": "Maximum number of iterations",
-    "tolerance": "Tolerance to reach (pixel size)",
+    "tolerance_translation": "Tolerance in translation (georeferenced unit)",
+    "tolerance_rotation": "Tolerance in rotation (degrees)",
+    "tolerance_objective_func": "Tolerance in objective function",
     "last_iteration": "Iteration at which algorithm stopped",
-    "all_tolerances": "Tolerances at each iteration",
+    "iteration_stats": "Statistics compared to tolerances at each iteration",
     "terrain_attribute": "Terrain attribute used for correction",
     "angle": "Angle of directional correction",
     "poly_order": "Polynomial order",
@@ -1682,16 +1684,17 @@ class InIterativeDict(TypedDict, total=False):
     # Maximum number of iterations
     max_iterations: int
     # Tolerance at which to stop algorithm (unit specified in method)
-    tolerance: float
-
+    tolerance_translation: float | None
+    tolerance_rotation: float | None
+    tolerance_objective_func: float | None
 
 class OutIterativeDict(TypedDict, total=False):
     """Keys and types of outputs associated with iterative methods."""
 
     # Iteration at which the algorithm stopped
     last_iteration: int
-    # Tolerances of each iteration until threshold
-    all_tolerances: list[float]
+    # Statistics (often offsets) compared to tolerances at each iteration
+    iteration_stats: pd.DataFrame
 
 
 class InSpecificDict(TypedDict, total=False):
