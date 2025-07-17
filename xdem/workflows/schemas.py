@@ -141,12 +141,7 @@ COMPARE_SCHEMA = {
             },
         },
     },
-    "statistics": {
-        "type": "list",
-        "required": False,
-        "default": STATS_METHODS,
-        "schema": {"type": "list", "allowed": STATS_METHODS},
-    },
+    "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "default": STATS_METHODS},
 }
 
 INFO_SCHEMA = {
