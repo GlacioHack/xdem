@@ -208,8 +208,9 @@ class Compare(Workflows):
         stat_items = [
             (self.reference_elev, "reference_stats", "Statistics on reference elevation", 2),
             (self.to_be_aligned_dem, "to_be_aligned_stats", "Statistics on to be aligned elevation", 2),
-            (self.diff_before, "alti_diff_before_stats", "Statistics on alti diff before coregistration", 1),
-            (self.diff_after, "alti_diff_after_stats", "Statistics on alti diff after coregistration", 1),
+            (self.diff_before, "alti_diff_before_stats", "Statistics on alti diff before coregistration", 2),
+            (self.diff_after, "alti_diff_after_stats", "Statistics on alti diff after coregistration", 2),
+            (aligned_dem, "align_dem", "Statistics aligned DEM", 1),
         ]
 
         for data, fname, title, level in stat_items:
