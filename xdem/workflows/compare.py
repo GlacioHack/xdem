@@ -218,8 +218,9 @@ class Compare(Workflows):
                 self.save_stat_as_csv(stats, fname)
             self.dico_to_show.append((title, self.floats_process(stats)))
 
-        self.diff_before.save(self.outputs_folder / "raster" / "diff_before.tif")
-        self.diff_after.save(self.outputs_folder / "raster" / "diff_after.tif")
+        if self.level > 1:
+            self.diff_before.save(self.outputs_folder / "raster" / "diff_before.tif")
+            self.diff_after.save(self.outputs_folder / "raster" / "diff_after.tif")
 
         # Compute altitude differences value histogram
         self._compute_histogram()
