@@ -17,121 +17,84 @@
 # limitations under the License.
 
 """
-DemInformation class from workflows.
+TopoSummary class from workflows.
 """
 import logging
 import math
-import os
 from typing import Any
 
 import matplotlib.pyplot as plt
 
 import xdem
+from xdem.workflows.schemas import INFO_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
-class DemInformation(Workflows):
+class TopoSummary(Workflows):
     """
-    DemInformation class from workflows.
+    TopoSummary class from workflows.
     """
 
     def __init__(self, config_dem: str):
         """
-        Initialize DemInformation class
+        Initialize TopoSummary class
         :param config_dem: Path to a user configuration file
         """
 
-        self.schema = {
-            "inputs": {
-                "type": "dict",
-                "schema": {
-                    "dem": {"type": "string", "required": True},
-                    "nodata": {"type": ["integer", "float"], "required": False},
-                    "mask": {"type": "string", "required": False},
-                },
-            },
-            "statistics": {"type": "list", "required": False},
-            "terrain_attributes": {
-                "type": "list",
-                "required": False,
-                "schema": {
-                    "type": "string",
-                    "allowed": [
-                        "slope",
-                        "aspect",
-                        "hillshade",
-                        "curvature",
-                        "planform_curvature",
-                        "profile_curvature",
-                        "maximum_curvature",
-                        "terrain_ruggedness_index",
-                        "topographic_position_index",
-                        "roughness",
-                        "rugosity",
-                        "fractal_roughness",
-                    ],
-                },
-            },
-            "outputs": {
-                "type": "dict",
-                "schema": {
-                    "path": {"type": "string"},
-                    "terrain_attributes": {"type": "boolean"},
-                    "dem": {"type": "boolean"},
-                },
-            },
-        }
+        self.schema = INFO_SCHEMA
 
         super().__init__(config_dem)
 
-        # Verify entry
-        assert os.path.isfile(self.config["inputs"]["dem"]), f"{self.config['inputs']['dem']} does not exist"
         self.dem, self.inlier_mask = self.generate_dem(self.config["inputs"])
-        self.generate_graph(self.dem, "Digitial_elevation_model")
-        self.save_terrain_attributes = self.config["outputs"]["terrain_attributes"]
+        self.generate_graph(self.dem, "dem")
 
-        if self.save_terrain_attributes:
-            self.path_terrain = self.outputs_folder / "terrain_attributes"
-            self.path_terrain.mkdir(parents=True, exist_ok=True)
+        self.config_attributes = self.config["terrain_attributes"]
+        if isinstance(self.config_attributes, dict):
+            self.list_attributes = list(self.config_attributes.keys())
+        else:
+            self.list_attributes = self.config_attributes
 
-    def generate_terrain_attributes(self) -> None:
+    def generate_terrain_attributes_tiff(self) -> None:
+        """
+        Generate terrain attributes tiff
+        """
+
+        attribute_extra = {}
+
+        from_str_to_fun = {
+            "slope": lambda: self.dem.slope(**attribute_extra),
+            "aspect": lambda: self.dem.aspect(**attribute_extra),
+            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
+            "curvature": lambda: self.dem.curvature(**attribute_extra),
+            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
+            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
+            "maximum_curvature": lambda: self.dem.maximum_curvature(**attribute_extra),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
+            "roughness": lambda: self.dem.roughness(**attribute_extra),
+            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
+        }
+        for attr in self.list_attributes:
+            if isinstance(self.config_attributes, dict):
+                attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
+            attribute = from_str_to_fun[attr]()
+            logging.info(f"Compute {attr} as a raster file")
+            attribute.save(self.outputs_folder / "raster" / f"{attr}.tif")
+
+    def generate_terrain_attributes_png(self) -> None:
         """
         Generates an image png containing the plots of the terrain attributes requested by the user.
         :return: None
         """
 
-        if "terrain_attributes" not in self.config:
-            list_attributes = ["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"]
-        else:
-            list_attributes = self.config["terrain_attributes"]
-
-        logging.info(f"Computed attributes : {list_attributes}")
+        logging.info(f"Computed attributes : {self.list_attributes}")
 
         attributes = xdem.terrain.get_terrain_attribute(
             self.dem.data,
             resolution=self.dem.res,
-            attribute=list_attributes,
+            attribute=self.list_attributes,
         )
-
-        if self.save_terrain_attributes:
-            from_str_to_fun = {
-                "slope": lambda: self.dem.slope(),
-                "aspect": lambda: self.dem.aspect(),
-                "hillshade": lambda: self.dem.hillshade(),
-                "curvature": lambda: self.dem.curvature(),
-                "planform_curvature": lambda: self.dem.planform_curvature(),
-                "profile_curvature": lambda: self.dem.profile_curvature(),
-                "maximum_curvature": lambda: self.dem.maximum_curvature(),
-                "topographic_position_index": lambda: self.dem.topographic_position_index(),
-                "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(),
-                "roughness": lambda: self.dem.roughness(),
-                "rugosity": lambda: self.dem.rugosity(),
-                "fractal_roughness": lambda: self.dem.fractal_roughness(),
-            }
-            for attr in list_attributes:
-                attribute = from_str_to_fun[attr]()
-                logging.info(f"Compute {attr}")
-                attribute.save(self.path_terrain / f"{attr}.tif")
 
         n = len(attributes)
 
@@ -186,7 +149,7 @@ class DemInformation(Workflows):
             plt.yticks([])
 
         plt.tight_layout()
-        plt.savefig(self.path_png / "terrain_attributes.png")
+        plt.savefig(self.outputs_folder / "png" / "terrain_attributes.png")
         plt.close()
 
     def run(self) -> None:
@@ -211,18 +174,20 @@ class DemInformation(Workflows):
         }
 
         # Statistics
-        if "statistics" not in self.config:
-            stats_dem = self.dem.get_stats()
-            stats_dem_mask = self.dem.get_stats(inlier_mask=self.inlier_mask)
-            logging.info("Every metrics are computed")
-        else:
-            list_metrics = self.config["statistics"]
-            stats_dem = self.dem.get_stats(list_metrics)
-            stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
-            logging.info(f"Computed metrics: {list_metrics}")
+        list_metrics = self.config["statistics"]
+        stats_dem = self.dem.get_stats(list_metrics)
+        self.save_stat_as_csv(stats_dem, "stats_dem")
+        stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
+        self.save_stat_as_csv(stats_dem_mask, "stats_dem_mask")
+        logging.info(f"Computed metrics: {list_metrics}")
 
         # Terrain attributes
-        self.generate_terrain_attributes()
+        if self.list_attributes is not None:
+            self.generate_terrain_attributes_png()
+            if self.level > 1:
+                self.generate_terrain_attributes_tiff()
+        else:
+            logging.info("Computed terrain attributes: None")
 
         # Generate HTML
         self.dico_to_show.append(("DEM information", dem_informations))
@@ -241,7 +206,7 @@ class DemInformation(Workflows):
         html = "<html>\n<head><meta charset='UTF-8'><title>Qualify DEM results</title></head>\n<body>\n"
 
         html += "<h2>Digital Elevation Model</h2>\n"
-        html += "<img src='png/Digitial_elevation_model.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='png/dem.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore

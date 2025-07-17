@@ -17,3 +17,4 @@ shapely
 pip
 cerberus
 PyYAML
+sliderule

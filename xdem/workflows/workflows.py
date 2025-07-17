@@ -19,6 +19,8 @@
 Workflow class
 """
 
+import csv
+import logging
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -28,13 +30,13 @@ import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # type: ignore
-from cerberus import Validator
 from geoutils import Mask
 from geoutils.raster import RasterType
 
 import xdem
 from xdem import DEM
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
+from xdem.workflows.schemas import validate_configuration
 
 
 class Workflows(ABC):
@@ -42,27 +44,38 @@ class Workflows(ABC):
     Abstract Class for workflows
     """
 
-    def __init__(self, config_path: str) -> None:
+    def __init__(self, user_config: str | Dict[str, Any]) -> None:
         """
         Initialize the workflows class
-        :param config_path: path to config file
+        :param user_config: str path to a config file or dict as config
         :return: None
         """
 
-        self.config_path = config_path
-        self.config = self.load_config()
-        self.validate_yaml()
+        # Load configuration
+        if isinstance(user_config, str):
+            if not os.path.isfile(user_config):
+                raise FileNotFoundError(f"{user_config} does not exist")
+            self.config_path = user_config
+            self.config = self.load_config()
+        elif isinstance(user_config, dict):
+            self.config = user_config
+        else:
+            raise ValueError(
+                "The configuration should be provided either as a path to the configuration file"
+                " or as a dictionary containing the configuration details."
+            )
+
+        self.config = validate_configuration(self.config, self.schema)
+        self.level = self.config["outputs"]["level"]
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
 
-        self.path_png = self.outputs_folder / "png"
-        self.path_png.mkdir(parents=True, exist_ok=True)
+        for folder in ["png", "raster", "csv"]:
+            Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
 
-        self.save_dem = self.config["outputs"]["dem"]
-        if self.save_dem:
-            self.path_tiff = self.outputs_folder / "raw_DEM"
-            self.path_tiff.mkdir(parents=True, exist_ok=True)
+        yaml_str = yaml.dump(self.config, allow_unicode=True)
+        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
 
         self.dico_to_show = [
             ("Information about inputs", self.config["inputs"]),
@@ -78,15 +91,6 @@ class Workflows(ABC):
         with open(self.config_path) as f:
             return yaml.safe_load(f)
 
-    def validate_yaml(self) -> None:
-        """
-        Validate the YAML file
-        """
-        v = Validator(self.schema)
-        if not v.validate(self.config):
-            for field, errors in v.errors.items():
-                raise ValueError(f"User configuration mistakes in '{field}': {errors}")
-
     def generate_graph(self, dem: RasterType, title: str, **kwargs: Any) -> None:
         """
         Generate plot from a DEM
@@ -97,7 +101,7 @@ class Workflows(ABC):
 
         plot_title = title.replace("_", " ")
         dem.plot(title=plot_title, **kwargs)
-        plt.savefig(self.path_png / f"{title}.png")
+        plt.savefig(self.outputs_folder / "png" / f"{title}.png")
         plt.close()
 
     def floats_process(
@@ -120,21 +124,30 @@ class Workflows(ABC):
             return dict_with_floats
 
     @staticmethod
-    def generate_dem(config_dem: Dict[str, Any]) -> tuple[DEM, Mask | None]:
+    def generate_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask]:
         """
         Generate DEM from user configuration dictionary
         :param config_dem: Configuration dictionary
         :return: DEM
         """
-        dem = xdem.DEM(config_dem["dem"])
-        inlier_mask = None
-        if "nodata" in config_dem:
-            dem.set_nodata(config_dem["nodata"])
-        if "mask" in config_dem:
-            mask = gu.Vector(config_dem["mask"])
-            inlier_mask = ~mask.create_mask(dem)
+        if config_dem is not None:
+            dem = xdem.DEM(config_dem["dem"])
+            inlier_mask = None
+            from_vcrs = next(iter(config_dem["from_vcrs"].values()))
+            to_vcrs = next(iter(config_dem["to_vcrs"].values()))
+            dem.set_vcrs(from_vcrs)
+            if from_vcrs != to_vcrs:
+                dem.to_vcrs(to_vcrs)
+            if "nodata" in config_dem:
+                dem.set_nodata(config_dem["nodata"])
+            if "mask" in config_dem:
+                mask = gu.Vector(config_dem["mask"])
+                inlier_mask = ~mask.create_mask(dem)
 
-        return dem, inlier_mask
+            return dem, inlier_mask
+        else:
+            logging.warning("No DEM provided")
+            return None, None  # type: ignore
 
     @abstractmethod
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
@@ -143,3 +156,20 @@ class Workflows(ABC):
         :param list_dict: list containing tuples of title and various dictionaries
         :return: None
         """
+
+    def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
+        """
+        Save the statistics into a CSV file
+        :param data: Statistics dictionary
+        :param file_name: Name of csv file
+        """
+        cleaned_data = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in data.items()}
+
+        fieldnames = list(cleaned_data.keys())
+
+        filename = self.outputs_folder / "csv" / f"{file_name}.csv"
+
+        with filename.open(mode="w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerow(cleaned_data)

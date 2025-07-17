@@ -16,5 +16,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from xdem.workflows.dem_comparison import DemComparison  # noqa
-from xdem.workflows.dem_information import DemInformation  # noqa
+from xdem.workflows.compare import Compare  # noqa
+from xdem.workflows.topo_summary import TopoSummary  # noqa
+from xdem.workflows.volchange import VolChange  # noqa

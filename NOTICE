@@ -125,3 +125,8 @@ cerberus: Cerberus is a lightweight and extensible data validation library for P
 Copyright (c) 2012-2016 Nicola Iarocci.
 Website: https://github.com/pyeve/cerberus
 License: ISC License
+
+sliderule: A cloud-native framework for on-demand science data processing
+Copyright (c) 2021, University of Washington.
+Website: https://slideruleearth.io./
+License: BSD 3-Clause.

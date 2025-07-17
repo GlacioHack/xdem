@@ -18,6 +18,7 @@ dependencies:
   - shapely
   - cerberus
   - PyYAML
+  - sliderule
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip

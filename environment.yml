@@ -19,6 +19,7 @@ dependencies:
   - pip
   - cerberus
   - PyYAML
+  - sliderule
 
   # To run CI against latest GeoUtils
 #  - pip:
