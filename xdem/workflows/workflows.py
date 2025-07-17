@@ -42,16 +42,28 @@ class Workflows(ABC):
     Abstract Class for workflows
     """
 
-    def __init__(self, config_path: str) -> None:
+    def __init__(self, user_config: str | Dict[str, Any]) -> None:
         """
         Initialize the workflows class
-        :param config_path: path to config file
+        :param user_config: str path to a config file or dict as config
         :return: None
         """
 
-        self.config_path = config_path
-        self.config = self.load_config()
-        self.validate_yaml()
+        # Load configuration
+        if isinstance(user_config, str):
+            assert os.path.isfile(user_config), f"{user_config} does not exist"
+            self.config_path = user_config
+            self.config = self.load_config()
+
+        elif isinstance(user_config, dict):
+            self.config = user_config
+        else:
+            raise ValueError(
+                "The configuration should be provided either as a path to the configuration file"
+                " or as a dictionary containing the configuration details."
+            )
+
+        self.validate_configuration()
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
@@ -78,9 +90,9 @@ class Workflows(ABC):
         with open(self.config_path) as f:
             return yaml.safe_load(f)
 
-    def validate_yaml(self) -> None:
+    def validate_configuration(self) -> None:
         """
-        Validate the YAML file
+        Validate the configuration
         """
         v = Validator(self.schema)
         if not v.validate(self.config):
