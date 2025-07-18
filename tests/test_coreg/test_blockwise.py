@@ -49,7 +49,8 @@ class TestBlockwiseCoreg:
     def test_init_with_valid_parameters(self, mp_config, step, tmp_path) -> None:
         """Test initialization with valid multiprocessing config only."""
         coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
-        assert coreg_obj.block_size == 500
+        assert coreg_obj.block_size_apply == 500
+        assert coreg_obj.block_size_fit == 500
         assert coreg_obj.apply_z_correction is False
         assert coreg_obj.output_path_reproject == tmp_path / "reprojected_dem.tif"
         assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
@@ -95,17 +96,6 @@ class TestBlockwiseCoreg:
         assert np.isclose(b, 3.0, atol=0.2)
         assert np.isclose(c, 5.0, atol=0.2)
 
-    def test_ransac_with_insufficient_points(self, blockwise_coreg) -> None:
-        """Test RANSAC raises error when too few points are provided."""
-        x = np.array([1, 2, 3, 4, 5])
-        y = np.array([1, 2, 3, 4, 5])
-        z = np.array([2, 4, 6, 8, 10])
-
-        min_inliers = 10
-
-        with pytest.raises(ValueError, match="Not enough valid points in RANSAC: got 5, need at least 10"):
-            blockwise_coreg._ransac(x, y, z, min_inliers=min_inliers)
-
     def test_wrapper_apply_epc(self, blockwise_coreg, example_data) -> None:
         """Test point cloud coefficient application via _wrapper_apply_epc."""
         _, tba_dem, _ = example_data
@@ -138,10 +128,13 @@ class TestBlockwiseCoreg:
 
         assert actual == expected
 
-    def test_blockwise_coreg_pipeline(self, blockwise_coreg, example_data, tmp_path) -> None:
+    @pytest.mark.parametrize("block_size", [500, 985, 1332], ids=["2d_shifts", "1d_shifts_x", "monotile"])
+    def test_blockwise_coreg_pipeline(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration and validate output."""
         ref, tba, mask = example_data
 
+        config_mc = MultiprocConfig(chunk_size=block_size, outfile=tmp_path / "test.tif")
+        blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)
         blockwise_coreg.apply()
 
@@ -153,3 +146,40 @@ class TestBlockwiseCoreg:
 
         valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
         assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=20)
+
+    def test_ransac_on_horizontal_tiles(self, blockwise_coreg) -> None:
+        """Test case where RANSAC works on horizontal tiles."""
+        x = np.linspace(0, 100, 50)
+        y = np.full_like(x, 50)
+        shift = 0.2 * x + 3.0
+
+        a, b, c = blockwise_coreg._ransac(x, y, shift)
+
+        assert np.isclose(a, 0.2, atol=1e-2)
+        assert np.isclose(b, 0.0, atol=1e-6)
+        assert np.isclose(c, 3.0, atol=1e-2)
+
+    def test_ransac_on_vertical_tiles(self, blockwise_coreg):
+        """Test case where RANSAC works on vertical tiles."""
+        y = np.linspace(0, 100, 50)
+        x = np.full_like(y, 50)
+        shift = -0.1 * y + 1.5
+
+        a, b, c = blockwise_coreg._ransac(x, y, shift)
+
+        assert np.isclose(a, 0.0, atol=1e-6)
+        assert np.isclose(b, -0.1, atol=1e-2)
+        assert np.isclose(c, 1.5, atol=1e-2)
+
+    def test_ransac_on_2d_grid(self, blockwise_coreg) -> None:
+        """Test case where RANSAC works on 2D grid."""
+        x, y = np.meshgrid(np.linspace(0, 10, 10), np.linspace(0, 5, 10))
+        x = x.ravel()
+        y = y.ravel()
+        shift = 0.3 * x - 0.2 * y + 1.0
+
+        a, b, c = blockwise_coreg._ransac(x, y, shift)
+
+        assert np.isclose(a, 0.3, atol=1e-2)
+        assert np.isclose(b, -0.2, atol=1e-2)
+        assert np.isclose(c, 1.0, atol=1e-2)

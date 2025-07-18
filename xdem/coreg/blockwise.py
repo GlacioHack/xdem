@@ -34,6 +34,7 @@ import numpy as np
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import Mask, RasterType
+from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,
     map_multiproc_collect,
@@ -63,7 +64,8 @@ class BlockwiseCoreg:
         self,
         step: Coreg | CoregPipeline,
         mp_config: MultiprocConfig | None = None,
-        block_size: int = 500,
+        block_size_fit: int = 500,
+        block_size_apply: int = 500,
         parent_path: str = None,
     ) -> None:
         """
@@ -71,7 +73,8 @@ class BlockwiseCoreg:
 
         :param step: An instantiated coregistration method or pipeline to apply on each tile.
         :param mp_config: Configuration object for multiprocessing
-        :param block_size: Size of tiles to process per coregistration step.
+        :param block_size_fit: Size of tiles to process per coregistration step in fit step.
+        :param block_size_apply: Size of tiles to process per coregistration step in apply step.
         :param parent_path: Parent path for output files.
         """
 
@@ -86,17 +89,19 @@ class BlockwiseCoreg:
             )
 
         self.procstep = step
-        self.block_size = block_size
+        self.block_size_fit = block_size_fit
+        # NB: in case of memory peak reduce block_size_apply
+        self.block_size_apply = block_size_apply
 
         if isinstance(step, NuthKaab):
             self.apply_z_correction = step.vertical_shift  # type: ignore
 
         if mp_config is not None:
             self.mp_config = mp_config
-            self.mp_config.chunk_size = block_size
+            self.mp_config.chunk_size = block_size_fit
             self.parent_path = Path(mp_config.outfile).parent
         else:
-            self.mp_config = MultiprocConfig(chunk_size=self.block_size, outfile="aligned_dem.tif")
+            self.mp_config = MultiprocConfig(chunk_size=self.block_size_fit, outfile="aligned_dem.tif")
             self.parent_path = Path(parent_path)  # type: ignore
 
         os.makedirs(self.parent_path, exist_ok=True)
@@ -127,9 +132,19 @@ class BlockwiseCoreg:
         """
         coreg_method = coreg_method.copy()
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
-        if inlier_mask:
-            inlier_mask = inlier_mask.crop(ref_dem_tiled)
-        return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
+
+        _, ref_mask = get_array_and_mask(ref_dem_tiled)
+        _, sec_mask = get_array_and_mask(tba_dem_tiled)
+
+        if np.all(ref_mask) or np.all(sec_mask):
+            coreg_method.meta["outputs"] = {"affine": {"shift_x": np.nan}}
+            coreg_method.meta["outputs"] = {"affine": {"shift_y": np.nan}}
+            coreg_method.meta["outputs"] = {"affine": {"shift_z": np.nan}}
+            return coreg_method
+        else:
+            if inlier_mask:
+                inlier_mask = inlier_mask.crop(ref_dem_tiled)
+            return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
 
     def fit(
         self: BlockwiseCoreg,
@@ -167,7 +182,10 @@ class BlockwiseCoreg:
             return_tile=True,
         )
 
-        self.shape_tiling_grid = compute_tiling(self.block_size, reference_elev.shape, to_be_aligned_elev.shape).shape
+        self.shape_tiling_grid = compute_tiling(
+            self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
+        ).shape
+
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
 
         self.x_coords = []  # type: ignore
@@ -186,8 +204,8 @@ class BlockwiseCoreg:
                 continue
 
             x, y = (
-                tile_coords[2] + self.block_size / 2,
-                tile_coords[0] + self.block_size / 2,
+                tile_coords[2] + self.block_size_fit / 2,
+                tile_coords[0] + self.block_size_fit / 2,
             ) * self.reproject_dem.transform
 
             self.x_coords.append(x)
@@ -210,11 +228,10 @@ class BlockwiseCoreg:
 
     @staticmethod
     def _ransac(
-        x_coords: tuple[float, float, float],
-        y_coords: tuple[float, float, float],
-        shifts: tuple[float, float, float],
+        x_coords: NDArrayf,
+        y_coords: NDArrayf,
+        shifts: NDArrayf,
         threshold: float = 0.01,
-        min_inliers: int = 5,
         max_iterations: int = 2000,
     ) -> tuple[float, float, float]:
         """
@@ -225,28 +242,49 @@ class BlockwiseCoreg:
         :param y_coords: 1D array of y coordinates.
         :param shifts: 1D array of observed shifts (errors) at the corresponding (x, y) positions.
         :param threshold: Maximum allowed deviation to consider a point as an inlier.
-        :param min_inliers: Minimum number of inliers required to accept a model.
         :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
         :return: Estimated transformation coefficients (a, b, c) such as shift = a * x + b * y + c.
         """
         if not _has_sklearn:
             raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
 
-        # Assemble input data
-        points = np.squeeze(np.dstack([x_coords, y_coords, shifts]))
+        # Stack and squeeze
+        points = np.dstack([x_coords, y_coords, shifts])
+        points = np.squeeze(points)
+
+        # If only one point, squeeze() gives (3,) -> reshape to (1, 3)
+        if points.ndim == 1:
+            if points.shape[0] != 3:
+                raise ValueError(f"Unexpected point shape: {points.shape}")
+            points = points.reshape(1, 3)
+
+        # Remove NaNs safely
         points = points[~np.isnan(points).any(axis=1)]
 
-        if len(points) < min_inliers:
-            raise ValueError(f"Not enough valid points in RANSAC: got {len(points)}, need at least {min_inliers}")
+        if points.size == 0:
+            raise ValueError("No valid points after removing NaNs.")
 
-        X = points[:, :2]  # x and y
-        y = points[:, 2]  # shifts
-
-        ransac = RANSACRegressor(estimator=LinearRegression(), residual_threshold=threshold, max_trials=max_iterations)
-        ransac.fit(X, y)
-
-        a, b = ransac.estimator_.coef_
-        c = ransac.estimator_.intercept_
+        # 1D: Variation on only 1 dimension
+        if np.allclose(points[:, 1], points[0, 1]):
+            # 1D variation on x
+            a, c = np.polyfit(points[:, 0], points[:, 2], 1)
+            b = 0.0
+        elif np.allclose(points[:, 0], points[0, 0]):
+            # 1D variation on y
+            b, c = np.polyfit(points[:, 1], points[:, 2], 1)
+            a = 0.0
+        else:
+            # 2D: fit RANSAC
+            X = points[:, :2]
+            y = points[:, 2]
+            ransac = RANSACRegressor(
+                estimator=LinearRegression(),
+                residual_threshold=threshold,
+                max_trials=max_iterations,
+            )
+            ransac.fit(X, y)
+            a, b = ransac.estimator_.coef_
+            c = ransac.estimator_.intercept_
 
         return a, b, c
 
@@ -312,14 +350,12 @@ class BlockwiseCoreg:
     def apply(
         self,
         threshold_ransac: float = 0.01,
-        min_inliers_ransac: int = 5,
         max_iterations_ransac: int = 2000,
     ) -> RasterType:
         """
         Apply the coregistration transformation to an elevation array using a ransac filter.
 
         :param threshold_ransac: Maximum distance threshold to consider a point as an inlier.
-        :param min_inliers_ransac: Minimum number of inliers required to accept a model.
         :param max_iterations_ransac: Maximum number of RANSAC iterations to perform.
         :return: The transformed elevation raster.
         """
@@ -329,7 +365,6 @@ class BlockwiseCoreg:
             self.y_coords,  # type: ignore
             self.shifts_x,  # type: ignore
             threshold_ransac,
-            min_inliers_ransac,
             max_iterations_ransac,
         )
         coeff_y = self._ransac(
@@ -337,7 +372,6 @@ class BlockwiseCoreg:
             self.y_coords,  # type: ignore
             self.shifts_y,  # type: ignore
             threshold_ransac,
-            min_inliers_ransac,
             max_iterations_ransac,
         )
         if self.apply_z_correction:
@@ -346,13 +380,13 @@ class BlockwiseCoreg:
                 self.y_coords,  # type: ignore
                 self.shifts_z,  # type: ignore
                 threshold_ransac,
-                min_inliers_ransac,
                 max_iterations_ransac,
             )
         else:
             coeff_z = (0, 0, 0)
 
         self.mp_config.outfile = self.output_path_aligned
+        self.mp_config.chunk_size = self.block_size_apply
 
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())

@@ -579,17 +579,27 @@ methods, and create edge artefacts.
 :warning: This particular method relies on storing all data entirely on disk.
 ```
 
-Sometimes, we want to split a coregistration across different spatial block of an elevation dataset, running that
+Sometimes, we want to split a coregistration across different spatial blocks of an elevation dataset, running that
 method independently in each subset.
 It can also happen that memory requirements exceed the capacity of the computers.
 In such cases, it may be necessary to process the data in blocks and then aggregate the results afterward.
+
+> **Note:**
+> The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
+>
+> The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage. Smaller blocks
+> during the apply step reduce memory usage but increase computing time
+>
+> These two parameters do **not** need to be the same size.
+
 
 
 A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
 
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
-                                      block_size=500,
+                                      block_size_fit=500,
+                                      block_size_apply=100,
                                       parent_path="")
 
 blockwise.fit(ref_dem, tba_dem_shifted)
