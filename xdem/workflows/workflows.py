@@ -35,7 +35,7 @@ from geoutils.raster import RasterType
 import xdem
 from xdem import DEM
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
-from xdem.workflows.schemas import PathValidator
+from xdem.workflows.schemas import validate_configuration
 
 
 class Workflows(ABC):
@@ -52,7 +52,8 @@ class Workflows(ABC):
 
         # Load configuration
         if isinstance(user_config, str):
-            assert os.path.isfile(user_config), f"{user_config} does not exist"
+            if not os.path.isfile(user_config):
+                raise FileNotFoundError(f"{user_config} does not exist")
             self.config_path = user_config
             self.config = self.load_config()
         elif isinstance(user_config, dict):
@@ -63,7 +64,7 @@ class Workflows(ABC):
                 " or as a dictionary containing the configuration details."
             )
 
-        self.config = self.validate_configuration()
+        self.config = validate_configuration(self.config, self.schema)
         self.level = self.config["outputs"]["level"]
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
@@ -73,7 +74,7 @@ class Workflows(ABC):
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
 
         yaml_str = yaml.dump(self.config, allow_unicode=True)
-        Path(self.outputs_folder / "completed_config.yaml").write_text(yaml_str, encoding="utf-8")
+        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
 
         self.dico_to_show = [
             ("Information about inputs", self.config["inputs"]),
@@ -88,17 +89,6 @@ class Workflows(ABC):
             raise FileNotFoundError(f"File not found : {self.config_path}")
         with open(self.config_path) as f:
             return yaml.safe_load(f)
-
-    def validate_configuration(self) -> Dict[str, Any]:
-        """
-        Validate the configuration:
-        :return: Completed configuration dictionary
-        """
-        v = PathValidator(self.schema)
-        if not v.validate(self.config):
-            for field, errors in v.errors.items():
-                raise ValueError(f"User configuration mistakes in '{field}': {errors}")
-        return v.document
 
     def generate_graph(self, dem: RasterType, title: str, **kwargs: Any) -> None:
         """

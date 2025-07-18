@@ -1,0 +1,29 @@
+inputs:
+  dem: /home/adebardo/development/Qualif/xdem/examples/data/Longyearbyen/data/DEM_1990.tif
+  mask: /home/adebardo/development/Qualif/xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp
+outputs:
+  level: 1
+  path: outputs
+statistics:
+- mean
+- median
+- max
+- min
+- sum
+- sumofsquares
+- 90thpercentile
+- le90
+- nmad
+- rmse
+- std
+- standarddeviation
+- validcount
+- totalcount
+- percentagevalidpoints
+terrain_attributes:
+- hillshade
+- slope
+- aspect
+- curvature
+- terrain_ruggedness_index
+- rugosity

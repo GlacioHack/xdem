@@ -21,6 +21,7 @@ Schema constants and validation function
 """
 
 import os
+from typing import Any, Dict
 
 from cerberus import Validator
 
@@ -107,6 +108,27 @@ class PathValidator(Validator):  # type: ignore
             self._error(field, f"Path does not exist: {value}")
 
 
+def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Validate the configuration:
+    :param user_config: Configuration dict or YAML string
+    :param schema: Schema dict for validating configuration
+    :return: Completed configuration dictionary
+    """
+    validator = PathValidator(schema)
+    if not validator.validate(user_config):
+        for field, errors in validator.errors.items():
+            raise ValueError(f"User configuration mistakes in '{field}': {errors}")
+
+    if "statistics" not in validator.document:
+        validator.document["statistics"] = STATS_METHODS
+
+    if "terrain_attributes" not in validator.document:
+        validator.document["terrain_attributes"] = TERRAIN_ATTRIBUTES_DEFAULT
+
+    return validator.document
+
+
 COMPARE_SCHEMA = {
     "inputs": {
         "type": "dict",
@@ -141,7 +163,7 @@ COMPARE_SCHEMA = {
             },
         },
     },
-    "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "default": STATS_METHODS},
+    "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
 }
 
 INFO_SCHEMA = {
@@ -149,10 +171,11 @@ INFO_SCHEMA = {
         "type": "dict",
         "schema": INPUTS_DEM,
     },
-    "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "default": STATS_METHODS},
+    "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
     "terrain_attributes": {
         "required": False,
         "default": TERRAIN_ATTRIBUTES_DEFAULT,
+        "nullable": True,
         "anyof": [
             {
                 "type": "list",
