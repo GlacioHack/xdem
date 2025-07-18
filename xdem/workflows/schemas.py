@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-Schema constants
+Schema constants and validation function
 """
 
 import os
