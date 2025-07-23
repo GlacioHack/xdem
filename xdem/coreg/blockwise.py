@@ -144,7 +144,14 @@ class BlockwiseCoreg:
         else:
             if inlier_mask:
                 inlier_mask = inlier_mask.crop(ref_dem_tiled)
-            return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
+            try:
+                return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
+            except (ValueError, TypeError) as e:
+                logging.error(f"Failed to fit coregistration. Reason: {e}")
+                coreg_method.meta["outputs"] = {"affine": {"shift_x": np.nan}}
+                coreg_method.meta["outputs"] = {"affine": {"shift_y": np.nan}}
+                coreg_method.meta["outputs"] = {"affine": {"shift_z": np.nan}}
+                return coreg_method
 
     def fit(
         self: BlockwiseCoreg,
