@@ -55,17 +55,17 @@ class CustomValidator(Validator):  # type: ignore
 
             if key == "common":
                 if val not in ["Ellipsoid", "EGM08", "EGM96"]:
-                    self._error(field, f"Invalid 'common' value: {val}")
+                    self._error(field, f"Invalid common value: {val}")
 
             elif key == "proj_grid":
                 if not isinstance(val, str):
-                    self._error(field, "'proj_grid' must be a string path")
+                    self._error(field, "proj_grid must be a string path")
                 elif not val.endswith(".tif"):
-                    self._error(field, f"'proj_grid' must point to a .tif file: {val}")
+                    self._error(field, f"proj_grid must point to a .tif file: {val}")
 
             elif key == "epsg_code":
                 if not isinstance(val, int):
-                    self._error(field, "'epsg_code' must be an integer")
+                    self._error(field, "epsg_code must be an integer")
                 else:
                     try:
                         _ = CRS.from_epsg(val)

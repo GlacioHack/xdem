@@ -21,7 +21,7 @@ TopoSummary class from workflows.
 """
 import logging
 import math
-from typing import Any
+from typing import Any, Dict
 
 import matplotlib.pyplot as plt
 
@@ -35,7 +35,7 @@ class TopoSummary(Workflows):
     TopoSummary class from workflows.
     """
 
-    def __init__(self, config_dem: str):
+    def __init__(self, config_dem: str | Dict[str, Any]):
         """
         Initialize TopoSummary class
         :param config_dem: Path to a user configuration file

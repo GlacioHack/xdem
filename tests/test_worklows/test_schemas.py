@@ -78,7 +78,6 @@ def test_validate_info_configuration_with_errors(get_info_inputs_config, new_par
     """ """
     info_conf = get_info_inputs_config
     info_conf.update(new_param_config)
-    print(info_conf)
     info_str = "User configuration mistakes in" + expected
 
     with pytest.raises(ValueError, match=re.escape(info_str)):
@@ -104,7 +103,6 @@ def test_validate_info_configuration_with_errors(get_compare_inputs_config, new_
     """ """
     info_conf = get_compare_inputs_config
     info_conf.update(new_param_config)
-    print(info_conf)
     info_str = "User configuration mistakes in" + expected
 
     with pytest.raises(ValueError, match=re.escape(info_str)):
@@ -147,3 +145,97 @@ def test_extra_information_is_optional():
     schema = schemas.make_coreg_step()
     assert "extra_information" in schema["schema"]
     assert not schema["schema"]["extra_information"]["required"]
+
+
+@pytest.mark.parametrize(
+    "from_vcrs",
+    [
+        {"common": "EGM96"},
+        {"common": "EGM08"},
+        {"common": "Ellipsoid"},
+        {"proj_grid": "no_kv_arcgp-2006-sk.tif"},
+        {"epsg_code": 4326},
+    ],
+)
+def test_valid_from_vcrs_common(get_info_inputs_config, pipeline_topo, from_vcrs):
+    info_conf = get_info_inputs_config
+    info_conf["inputs"].update({"from_vcrs": from_vcrs})
+
+    pipeline_test = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
+    pipeline_test["inputs"].update({"from_vcrs": from_vcrs})
+    pipeline_topo["inputs"].update({"from_vcrs": from_vcrs})
+    assert pipeline_topo == pipeline_test
+
+
+@pytest.mark.parametrize(
+    "to_vcrs",
+    [
+        {"common": "EGM96"},
+        {"common": "EGM08"},
+        {"common": "Ellipsoid"},
+        {"proj_grid": "no_kv_arcgp-2006-sk.tif"},
+        {"epsg_code": 4326},
+    ],
+)
+def test_valid_to_vcrs_common(get_info_inputs_config, pipeline_topo, to_vcrs):
+    info_conf = get_info_inputs_config
+    info_conf["inputs"].update({"to_vcrs": to_vcrs})
+
+    pipeline_test = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
+    pipeline_test["inputs"].update({"to_vcrs": to_vcrs})
+    pipeline_topo["inputs"].update({"to_vcrs": to_vcrs})
+    assert pipeline_topo == pipeline_test
+
+
+@pytest.mark.parametrize(
+    "wrong_vcrs, expected",
+    [
+        pytest.param(
+            4326,
+            "must be of dict type",
+            id="not_a_dictionary",
+        ),
+        pytest.param(
+            {"common": "EGM96", "epsg_code": 4326},
+            "Only one of",
+            id="two_keys",
+        ),
+        pytest.param(
+            {"common": "wrong"},
+            "Invalid common value",
+            id="wrong_common",
+        ),
+        pytest.param(
+            {"proj_grid": 0},
+            "proj_grid must be a string path",
+            id="wrong_proj_grid",
+        ),
+        pytest.param(
+            {"proj_grid": "wrong.txt"},
+            "proj_grid must point to a .tif file",
+            id="wrong_proj_grid",
+        ),
+        pytest.param(
+            {"epsg_code": "wrong.txt"},
+            "epsg_code must be an integer",
+            id="wrong_epsg_code_type",
+        ),
+        pytest.param(
+            {"epsg_code": 0000},
+            "Invalid EPSG code",
+            id="wrong_epsg_code",
+        ),
+        pytest.param(
+            {"my_crs": 0000},
+            "Unknown keys in CRS",
+            id="unknown_key",
+        ),
+    ],
+)
+def test_invalid_vcrs_common(get_info_inputs_config, pipeline_topo, wrong_vcrs, expected):
+    info_conf = get_info_inputs_config
+    info_conf["inputs"].update({"from_vcrs": wrong_vcrs})
+    print(info_conf)
+
+    with pytest.raises(ValueError, match=expected):
+        _ = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
