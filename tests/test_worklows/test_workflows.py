@@ -81,7 +81,9 @@ def test_load_config(get_topo_inputs_config, tmp_path):
 
 
 def test_generate_graph(get_topo_inputs_config, tmp_path):
-    """ Test generate_graph function """
+    """
+    Test generate_graph function
+    """
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     title = "test_generate_graph"
 
