@@ -28,13 +28,17 @@ from xdem.workflows import schemas
 
 
 def test_validate_base_configuration(get_topo_inputs_config, get_compare_inputs_config):
-    """ """
+    """
+    Test validate_base_configuration function
+    """
     schemas.validate_configuration(get_topo_inputs_config, schemas.INFO_SCHEMA)
     schemas.validate_configuration(get_compare_inputs_config, schemas.COMPARE_SCHEMA)
 
 
 def test_wrong_path(get_topo_inputs_config):
-    """ """
+    """
+    Test wrong_path function
+    """
     info_conf = get_topo_inputs_config
     info_conf["inputs"]["dem"] = "doesn_t_exist.tif"
     expected = "User configuration mistakes in 'inputs': [{'dem': ['Path does not exist: doesn_t_exist.tif']}]"
@@ -77,7 +81,9 @@ def test_wrong_path(get_topo_inputs_config):
     ],
 )
 def test_validate_info_configuration_with_errors(get_topo_inputs_config, new_param_config, expected):
-    """ """
+    """
+    Test validation of configuration with errors
+    """
     info_conf = get_topo_inputs_config
     info_conf.update(new_param_config)
     info_str = "User configuration mistakes in" + expected
@@ -102,7 +108,9 @@ def test_validate_info_configuration_with_errors(get_topo_inputs_config, new_par
     ],
 )
 def test_validate_info_coreg_configuration_with_errors(get_compare_inputs_config, new_param_config, expected):
-    """ """
+    """
+    Test validation of coregistration configuration with errors
+    """
     info_conf = get_compare_inputs_config
     info_conf.update(new_param_config)
     info_str = "User configuration mistakes in" + expected
@@ -119,6 +127,9 @@ def test_validate_info_coreg_configuration_with_errors(get_compare_inputs_config
     ],
 )
 def test_required_flag(required, expected_required):
+    """
+    Test required_flag in coregistration
+    """
     schema = schemas.make_coreg_step(required=required)
     assert schema["required"] == expected_required
     assert schema["schema"]["method"]["required"] == expected_required
@@ -132,6 +143,9 @@ def test_required_flag(required, expected_required):
     ],
 )
 def test_default_method_handling(default_method, expected_present):
+    """
+    Test default method handling for coregistration
+    """
     schema = schemas.make_coreg_step(default_method=default_method)
     assert ("default" in schema) == expected_present
     if expected_present:
@@ -139,53 +153,48 @@ def test_default_method_handling(default_method, expected_present):
 
 
 def test_allowed_methods():
+    """
+    Test allowed_methods in coregistration
+    """
     schema = schemas.make_coreg_step()
     assert schema["schema"]["method"]["allowed"] == schemas.COREG_METHODS
 
 
 def test_extra_information_is_optional():
+    """
+    Test extra_information_is_optional in coregistration
+    """
     schema = schemas.make_coreg_step()
     assert "extra_information" in schema["schema"]
     assert not schema["schema"]["extra_information"]["required"]
 
 
-@pytest.mark.parametrize(
-    "from_vcrs",
-    [
-        {"common": "EGM96"},
-        {"common": "EGM08"},
-        {"common": "Ellipsoid"},
-        {"proj_grid": "no_kv_arcgp-2006-sk.tif"},
-        {"epsg_code": 4326},
-    ],
-)
-def test_valid_from_vcrs_common(get_topo_inputs_config, pipeline_topo, from_vcrs):
-    info_conf = get_topo_inputs_config
-    info_conf["inputs"].update({"from_vcrs": from_vcrs})
-
-    pipeline_test = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
-    pipeline_test["inputs"].update({"from_vcrs": from_vcrs})
-    pipeline_topo["inputs"].update({"from_vcrs": from_vcrs})
-    assert pipeline_topo == pipeline_test
-
 
 @pytest.mark.parametrize(
-    "to_vcrs",
+    "prefix, vcrs",
     [
-        {"common": "EGM96"},
-        {"common": "EGM08"},
-        {"common": "Ellipsoid"},
-        {"proj_grid": "no_kv_arcgp-2006-sk.tif"},
-        {"epsg_code": 4326},
+        ("from_vcrs", {"common": "EGM96"}),
+        ("from_vcrs", {"common": "EGM08"}),
+        ("from_vcrs", {"common": "Ellipsoid"}),
+        ("from_vcrs", {"proj_grid": "no_kv_arcgp-2006-sk.tif"}),
+        ("from_vcrs", {"epsg_code": 4326}),
+        ("to_vcrs", {"common": "EGM96"}),
+        ("to_vcrs", {"common": "EGM08"}),
+        ("to_vcrs", {"common": "Ellipsoid"}),
+        ("to_vcrs", {"proj_grid": "no_kv_arcgp-2006-sk.tif"}),
+        ("to_vcrs", {"epsg_code": 4326}),
     ],
 )
-def test_valid_to_vcrs_common(get_topo_inputs_config, pipeline_topo, to_vcrs):
+def test_valid_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
+    """
+    Test valid VCRS function for 'from' and 'to'
+    """
     info_conf = get_topo_inputs_config
-    info_conf["inputs"].update({"to_vcrs": to_vcrs})
+    info_conf["inputs"].update({prefix: vcrs})
 
     pipeline_test = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
-    pipeline_test["inputs"].update({"to_vcrs": to_vcrs})
-    pipeline_topo["inputs"].update({"to_vcrs": to_vcrs})
+    pipeline_test["inputs"].update({prefix: vcrs})
+    pipeline_topo["inputs"].update({prefix: vcrs})
     assert pipeline_topo == pipeline_test
 
 
@@ -234,7 +243,10 @@ def test_valid_to_vcrs_common(get_topo_inputs_config, pipeline_topo, to_vcrs):
         ),
     ],
 )
-def test_invalid_vcrs_common(get_topo_inputs_config, pipeline_topo, wrong_vcrs, expected):
+def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, expected):
+    """
+    Test invalid crs
+    """
     info_conf = get_topo_inputs_config
     info_conf["inputs"].update({"from_vcrs": wrong_vcrs})
 

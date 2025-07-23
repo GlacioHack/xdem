@@ -21,7 +21,7 @@ Test TopoSummary class
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
-from rasterio._base import Affine
+from rasterio import Affine
 
 import xdem
 from xdem.workflows import TopoSummary
@@ -29,7 +29,9 @@ from xdem.workflows.workflows import Workflows
 
 
 def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrain_attributes):
-    """ """
+    """
+    Test TopoSummary class initialization
+    """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
@@ -47,7 +49,9 @@ def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrai
 
 
 def test_generate_terrain_attributes(tmp_path, get_topo_inputs_config, list_default_terrain_attributes):
-    """ """
+    """
+    Test generate_terrain_attributes function
+    """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
@@ -59,7 +63,9 @@ def test_generate_terrain_attributes(tmp_path, get_topo_inputs_config, list_defa
 
 
 def test_generate_terrain_attributes_png(tmp_path, get_topo_inputs_config):
-    """ """
+    """
+    Test generate_terrain_attributes_png function
+    """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
@@ -69,7 +75,9 @@ def test_generate_terrain_attributes_png(tmp_path, get_topo_inputs_config):
 
 
 def test_run(get_topo_inputs_config, tmp_path):
-    """ """
+    """
+    Test run function
+    """
 
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}

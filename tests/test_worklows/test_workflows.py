@@ -32,7 +32,9 @@ from xdem.workflows.workflows import Workflows
 
 
 def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
-    """ """
+    """
+    Test workflows class initialization
+    """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
@@ -61,7 +63,9 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
 
 
 def test_load_config(get_topo_inputs_config, tmp_path):
-    """ """
+    """
+    Test load_config function
+    """
     cfg = get_topo_inputs_config
 
     # Succeed
@@ -77,7 +81,7 @@ def test_load_config(get_topo_inputs_config, tmp_path):
 
 
 def test_generate_graph(get_topo_inputs_config, tmp_path):
-    """ " """
+    """ Test generate_graph function """
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     title = "test_generate_graph"
 
@@ -107,7 +111,9 @@ def test_generate_graph(get_topo_inputs_config, tmp_path):
     ],
 )
 def test_floats_process(get_topo_inputs_config, tmp_path, inputs, expected):
-    """ """
+    """
+    Test floats_process function
+    """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
@@ -116,7 +122,9 @@ def test_floats_process(get_topo_inputs_config, tmp_path, inputs, expected):
 
 
 def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
-    """ """
+    """
+    Test save_stat_as_csv function
+    """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
@@ -136,5 +144,7 @@ def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
 
 @pytest.mark.skip(reason="not implemented")
 def test_generate_dem():
-    """ """
+    """
+    Test generate_dem function
+    """
     pass

@@ -30,7 +30,9 @@ from xdem.workflows.workflows import Workflows
 
 
 def test_init_compare(get_compare_inputs_config, tmp_path, list_default_terrain_attributes):
-    """ """
+    """
+    Test initialization of Compare class
+    """
     user_config = get_compare_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Compare(user_config)
@@ -47,26 +49,36 @@ def test_init_compare(get_compare_inputs_config, tmp_path, list_default_terrain_
 
 @pytest.mark.skip("Not implemented")
 def test__get_reference_elevation():
-    """ """
+    """
+    Test _get_reference_elevation function
+    """
 
 
 @pytest.mark.skip("Not implemented")
 def test__compute_coregistration():
-    """ """
+    """
+    Test _compute_coregistration function
+    """
 
 
 @pytest.mark.skip("Not implemented")
 def test__compute_reproj():
-    """ """
+    """
+    Test _compute_reproj function
+    """
 
 
 @pytest.mark.skip("Not implemented")
 def test__process_diff():
-    """ """
+    """
+    Test _process_diff function
+    """
 
 
 def test__get_stats(get_compare_inputs_config, tmp_path):
-    """ """
+    """
+    Test _get_stats function
+    """
     user_config = get_compare_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Compare(user_config)
@@ -95,7 +107,9 @@ def test__get_stats(get_compare_inputs_config, tmp_path):
 
 @pytest.mark.skip("Not implemented")
 def test__compute_histogram(get_compare_inputs_config, tmp_path):
-    """ """
+    """
+    Test _compute_histogram function
+    """
 
 
 @pytest.mark.parametrize(
@@ -103,7 +117,9 @@ def test__compute_histogram(get_compare_inputs_config, tmp_path):
     [1, 2],
 )
 def test_run(get_compare_inputs_config, tmp_path, level):
-    """ """
+    """
+    Test run function
+    """
 
     user_config = get_compare_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": level}
@@ -124,4 +140,6 @@ def test_run(get_compare_inputs_config, tmp_path, level):
 
 @pytest.mark.skip("Not implemented")
 def test_create_html():
-    """ """
+    """
+    Test create_html function
+    """
