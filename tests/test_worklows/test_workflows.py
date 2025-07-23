@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-test for workflows class
+test for workflow class
 """
 # mypy: disable-error-code=no-untyped-def
 import csv
