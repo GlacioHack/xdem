@@ -19,6 +19,7 @@
 """
 test for schema files
 """
+# mypy: disable-error-code=no-untyped-def
 import re
 
 import pytest
@@ -26,15 +27,15 @@ import pytest
 from xdem.workflows import schemas
 
 
-def test_validate_base_configuration(get_info_inputs_config, get_compare_inputs_config):
+def test_validate_base_configuration(get_topo_inputs_config, get_compare_inputs_config):
     """ """
-    schemas.validate_configuration(get_info_inputs_config, schemas.INFO_SCHEMA)
+    schemas.validate_configuration(get_topo_inputs_config, schemas.INFO_SCHEMA)
     schemas.validate_configuration(get_compare_inputs_config, schemas.COMPARE_SCHEMA)
 
 
-def test_wrong_path(get_info_inputs_config):
+def test_wrong_path(get_topo_inputs_config):
     """ """
-    info_conf = get_info_inputs_config
+    info_conf = get_topo_inputs_config
     info_conf["inputs"]["dem"] = "doesn_t_exist.tif"
     expected = "User configuration mistakes in 'inputs': [{'dem': ['Path does not exist: doesn_t_exist.tif']}]"
 
@@ -62,7 +63,8 @@ def test_wrong_path(get_info_inputs_config):
         ),
         pytest.param(
             {"terrain_attributes": ["wrong_attr"]},
-            " 'terrain_attributes': ['no definitions validate', {'anyof definition 0': [{0: ['unallowed value wrong_attr']}], "
+            " 'terrain_attributes': ['no definitions validate', "
+            "{'anyof definition 0': [{0: ['unallowed value wrong_attr']}], "
             "'anyof definition 1': ['must be of dict type']}]",
             id="terrain_attributes_wrong_attr",
         ),
@@ -74,9 +76,9 @@ def test_wrong_path(get_info_inputs_config):
         ),
     ],
 )
-def test_validate_info_configuration_with_errors(get_info_inputs_config, new_param_config, expected):
+def test_validate_info_configuration_with_errors(get_topo_inputs_config, new_param_config, expected):
     """ """
-    info_conf = get_info_inputs_config
+    info_conf = get_topo_inputs_config
     info_conf.update(new_param_config)
     info_str = "User configuration mistakes in" + expected
 
@@ -99,7 +101,7 @@ def test_validate_info_configuration_with_errors(get_info_inputs_config, new_par
         ),
     ],
 )
-def test_validate_info_configuration_with_errors(get_compare_inputs_config, new_param_config, expected):
+def test_validate_info_coreg_configuration_with_errors(get_compare_inputs_config, new_param_config, expected):
     """ """
     info_conf = get_compare_inputs_config
     info_conf.update(new_param_config)
@@ -157,8 +159,8 @@ def test_extra_information_is_optional():
         {"epsg_code": 4326},
     ],
 )
-def test_valid_from_vcrs_common(get_info_inputs_config, pipeline_topo, from_vcrs):
-    info_conf = get_info_inputs_config
+def test_valid_from_vcrs_common(get_topo_inputs_config, pipeline_topo, from_vcrs):
+    info_conf = get_topo_inputs_config
     info_conf["inputs"].update({"from_vcrs": from_vcrs})
 
     pipeline_test = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
@@ -177,8 +179,8 @@ def test_valid_from_vcrs_common(get_info_inputs_config, pipeline_topo, from_vcrs
         {"epsg_code": 4326},
     ],
 )
-def test_valid_to_vcrs_common(get_info_inputs_config, pipeline_topo, to_vcrs):
-    info_conf = get_info_inputs_config
+def test_valid_to_vcrs_common(get_topo_inputs_config, pipeline_topo, to_vcrs):
+    info_conf = get_topo_inputs_config
     info_conf["inputs"].update({"to_vcrs": to_vcrs})
 
     pipeline_test = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)
@@ -232,10 +234,9 @@ def test_valid_to_vcrs_common(get_info_inputs_config, pipeline_topo, to_vcrs):
         ),
     ],
 )
-def test_invalid_vcrs_common(get_info_inputs_config, pipeline_topo, wrong_vcrs, expected):
-    info_conf = get_info_inputs_config
+def test_invalid_vcrs_common(get_topo_inputs_config, pipeline_topo, wrong_vcrs, expected):
+    info_conf = get_topo_inputs_config
     info_conf["inputs"].update({"from_vcrs": wrong_vcrs})
-    print(info_conf)
 
     with pytest.raises(ValueError, match=expected):
         _ = schemas.validate_configuration(info_conf, schemas.INFO_SCHEMA)

@@ -19,6 +19,7 @@
 """
 test for workflows class
 """
+# mypy: disable-error-code=no-untyped-def
 import csv
 
 import numpy as np
@@ -33,12 +34,12 @@ from xdem.workflows.workflows import Workflows
 def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
     """ """
     user_config = get_topo_inputs_config
-    user_config["outputs"]["path"] = str(tmp_path)
+    user_config["outputs"] = {"path": str(tmp_path)}
     workflows = TopoSummary(user_config)
 
     assert isinstance(workflows, Workflows)
     pipeline_gt = pipeline_topo
-    pipeline_gt["outputs"]["path"] = str(tmp_path)
+    pipeline_gt["outputs"] = {"path": str(tmp_path), "level": 1}
     assert workflows.config == pipeline_topo
     assert workflows.level == 1
     assert workflows.outputs_folder == tmp_path
@@ -46,7 +47,6 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
     for folder in ["png", "raster", "csv"]:
         assert workflows.outputs_folder.joinpath(folder).exists()
     assert workflows.outputs_folder.joinpath("used_config.yaml").exists()
-    print(workflows.dico_to_show)
     assert workflows.dico_to_show == [
         (
             "Information about inputs",
@@ -129,13 +129,12 @@ def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
 
     with open(out, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        final_dict = [ligne for ligne in reader]
+        final_dict = list(reader)
 
     assert final_dict == [{"a": "1.2345", "b": "2.9876"}]
 
+
 @pytest.mark.skip(reason="not implemented")
 def test_generate_dem():
-    """
-
-    """
+    """ """
     pass
