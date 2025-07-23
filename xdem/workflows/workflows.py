@@ -32,6 +32,7 @@ import numpy as np
 import yaml  # type: ignore
 from geoutils import Mask
 from geoutils.raster import RasterType
+from yaml.dumper import SafeDumper  # type: ignore
 
 import xdem
 from xdem import DEM
@@ -56,16 +57,16 @@ class Workflows(ABC):
             if not os.path.isfile(user_config):
                 raise FileNotFoundError(f"{user_config} does not exist")
             self.config_path = user_config
-            self.config = self.load_config()
+            config_not_verify = self.load_config()
         elif isinstance(user_config, dict):
-            self.config = user_config
+            config_not_verify = user_config
         else:
             raise ValueError(
                 "The configuration should be provided either as a path to the configuration file"
                 " or as a dictionary containing the configuration details."
             )
 
-        self.config = validate_configuration(self.config, self.schema)
+        self.config = validate_configuration(config_not_verify, self.schema)
         self.level = self.config["outputs"]["level"]
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
@@ -74,12 +75,23 @@ class Workflows(ABC):
         for folder in ["png", "raster", "csv"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
 
-        yaml_str = yaml.dump(self.config, allow_unicode=True)
+        yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
 
         self.dico_to_show = [
             ("Information about inputs", self.config["inputs"]),
         ]
+
+    class NoAliasDumper(SafeDumper):  # type: ignore
+        """
+        NoAliasDumper to avoid id in YAML file
+        """
+
+        def ignore_aliases(self, data: Any) -> bool:
+            """
+            avoid id in YAML file
+            """
+            return True
 
     def load_config(self) -> Dict[str, Any]:
         """
@@ -91,18 +103,28 @@ class Workflows(ABC):
         with open(self.config_path) as f:
             return yaml.safe_load(f)
 
-    def generate_graph(self, dem: RasterType, title: str, **kwargs: Any) -> None:
+    def generate_graph(self, dem: RasterType, title: str, mask_path: str = None, **kwargs: Any) -> None:
         """
         Generate plot from a DEM
         :param dem: Digital Elevation model
         :param title: title of graph
+        :param mask_path: Path to mask
         :return: None
         """
 
         plot_title = title.replace("_", " ")
-        dem.plot(title=plot_title, **kwargs)
-        plt.savefig(self.outputs_folder / "png" / f"{title}.png")
-        plt.close()
+
+        if mask_path is None:
+            dem.plot(title=plot_title, **kwargs)
+            plt.savefig(self.outputs_folder / "png" / f"{title}.png")
+            plt.close()
+        else:
+            mask = gu.Vector(mask_path)
+            mask = mask.crop(dem)
+            dem.plot(title=plot_title, **kwargs)
+            mask.plot(dem, ec="k", fc="none")
+            plt.savefig(self.outputs_folder / "png" / f"{title}.png")
+            plt.close()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any
@@ -131,7 +153,7 @@ class Workflows(ABC):
         :return: DEM
         """
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["dem"])
+            dem = xdem.DEM(config_dem["path_to_elev"])
             inlier_mask = None
             from_vcrs = next(iter(config_dem["from_vcrs"].values()))
             to_vcrs = next(iter(config_dem["to_vcrs"].values()))
@@ -140,8 +162,8 @@ class Workflows(ABC):
                 dem.to_vcrs(to_vcrs)
             if "nodata" in config_dem:
                 dem.set_nodata(config_dem["nodata"])
-            if "mask" in config_dem:
-                mask = gu.Vector(config_dem["mask"])
+            if "path_to_mask" in config_dem:
+                mask = gu.Vector(config_dem["path_to_mask"])
                 inlier_mask = ~mask.create_mask(dem)
 
             return dem, inlier_mask
@@ -167,7 +189,7 @@ class Workflows(ABC):
 
         fieldnames = list(cleaned_data.keys())
 
-        filename = self.outputs_folder / "csv" / f"{file_name}.csv"
+        filename = self.outputs_folder / "csv" / f"{file_name}_stats.csv"
 
         with filename.open(mode="w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)

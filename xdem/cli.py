@@ -19,10 +19,15 @@
 
 import argparse
 import logging
+import pprint
 
 from weasyprint import HTML
 
-from xdem.workflows import Compare, TopoSummary, Uncertainty
+from xdem.workflows import DiffAnalysis, TopoSummary
+from xdem.workflows.schemas import (
+    COMPLETE_CONFIG_DIFF_ANALYSIS,
+    COMPLETE_CONFIG_TOPO_SUMMARY,
+)
 
 
 def main() -> None:
@@ -40,34 +45,29 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", help="Available workflows as subcommand")
 
     # Subcommand: info
-    qualify_parser = subparsers.add_parser(
+    topo_parser = subparsers.add_parser(
         "topo-summary",
         help="Run DEM qualification workflow",
         description="Run a DEM information workflow using a YAML configuration file.",
         epilog="Example: xdem info config.yaml",
     )
-    qualify_parser.add_argument(
-        "config",
+    topo_group = topo_parser.add_mutually_exclusive_group(required=True)
+    topo_group.add_argument(
+        "--config",
         help="Path to YAML configuration file",
     )
+    topo_group.add_argument("--generate-config", action="store_true", help="Affiche un template de configuration")
 
-    # Subcommand: compare
-    coreg_parser = subparsers.add_parser(
-        "compare",
+    # Subcommand: diff-analysis
+    diff_parser = subparsers.add_parser(
+        "diff-analysis",
         help="Run DEM comparison workflow",
         description="Run a DEM comparison workflow using a YAML configuration file.",
-        epilog="Example: xdem compare config.yaml",
+        epilog="Example: xdem diff-analysis config.yaml",
     )
-    coreg_parser.add_argument("config", help="Path to YAML configuration file")
-
-    # Subcommand: uncertainty
-    coreg_parser = subparsers.add_parser(
-        "uncertainty",
-        help="Run DEM uncertainty workflow",
-        description="Run a DEM uncertainty workflow using a YAML configuration file.",
-        epilog="Example: xdem uncertainty config.yaml",
-    )
-    coreg_parser.add_argument("config", help="Path to YAML configuration file")
+    diff_group = diff_parser.add_mutually_exclusive_group(required=True)
+    diff_group.add_argument("--config", help="Path to YAML configuration file")
+    diff_group.add_argument("--generate-config", action="store_true", help="Affiche un template de configuration")
 
     args = parser.parse_args()
 
@@ -80,25 +80,27 @@ def main() -> None:
     logging.getLogger("fontTools").propagate = False
 
     if args.command == "topo-summary":
-        logger.info("Running DEM information workflow")
-        workflow = TopoSummary(args.config)
-        workflow.run()
+        if args.generate_config:
+            pprint.pp(COMPLETE_CONFIG_TOPO_SUMMARY)
+        elif args.config:
+            logger.info("Running DEM information workflow")
+            workflow = TopoSummary(args.config)
+            workflow.run()
 
-    elif args.command == "compare":
-        logger.info("Running DEM comparison workflow")
-        workflow = Compare(args.config)  # type: ignore
-        workflow.run()
-
-    elif args.command == "uncertainty":
-        logger.info("Running DEM comparison workflow")
-        workflow = Uncertainty(args.config)  # type: ignore
-        workflow.run()
+    elif args.command == "diff-analysis":
+        if args.generate_config:
+            pprint.pp(COMPLETE_CONFIG_DIFF_ANALYSIS)
+        elif args.config:
+            logger.info("Running DEM comparison workflow")
+            workflow = DiffAnalysis(args.config)  # type: ignore
+            workflow.run()
 
     else:
-        raise ValueError(f"{args.command} doesn't exist, valid command are 'compare', 'info' or 'uncertainty")
+        raise ValueError(f"{args.command} doesn't exist, valid command are 'diff-analysis', 'topo-summary'")
 
-    logger.info("Generate report")
-    HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
+    if args.config:
+        logger.info("Generate report")
+        HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
 
     logger.info("End of execution")
 

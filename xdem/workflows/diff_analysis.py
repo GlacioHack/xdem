@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-Compare class from workflow
+DiffAnalysis class from workflow
 """
 import logging
 from typing import Any, Dict
@@ -32,14 +32,14 @@ from xdem.workflows.schemas import COMPARE_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
-class Compare(Workflows):
+class DiffAnalysis(Workflows):
     """
-    Compare class from workflow
+    DiffAnalysis class from workflow
     """
 
     def __init__(self, config_dem: str | Dict[str, Any]) -> None:
         """
-        Initialize the Compare class
+        Initialize the DiffAnalysis class
         :param config_dem: Path to a user configuration file
         """
 
@@ -47,13 +47,13 @@ class Compare(Workflows):
 
         super().__init__(config_dem)
 
-        self.to_be_aligned_dem, tba_mask = self.generate_dem(self.config["inputs"]["to_be_aligned_elev"])
+        self.to_be_aligned_elev, tba_mask = self.generate_dem(self.config["inputs"]["to_be_aligned_elev"])
         self.reference_elev, ref_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
             ref_mask = None
-        self.generate_graph(self.reference_elev, "Reference_elevation")
-        self.generate_graph(self.to_be_aligned_dem, "To_be_aligned_elevation")
+        self.generate_graph(self.reference_elev, "reference_elev_map")
+        self.generate_graph(self.to_be_aligned_elev, "to_be_aligned_elev_map")
 
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
@@ -72,67 +72,80 @@ class Compare(Workflows):
         """
         Wrapper for coregistration
         """
-        coreg_extra = {}
+        if not self.config["coregistration"]["process"]:
+            aligned_elev = self.to_be_aligned_elev
+            logging.info("Coregistration not executed")
+        else:
+            coreg_extra = {}
 
-        # Coregister
-        from_str_to_fun = {
-            "NuthKaab": lambda: xdem.coreg.NuthKaab(**coreg_extra),
-            "DhMinimize": lambda: xdem.coreg.DhMinimize(**coreg_extra),
-            "VerticalShift": lambda: xdem.coreg.VerticalShift(**coreg_extra),
-            "DirectionalBias": lambda: xdem.coreg.DirectionalBias(**coreg_extra),
-            "TerrainBias": lambda: xdem.coreg.TerrainBias(**coreg_extra),
-        }
+            # Coregister
+            from_str_to_fun = {
+                "NuthKaab": lambda: xdem.coreg.NuthKaab(**coreg_extra),
+                "DhMinimize": lambda: xdem.coreg.DhMinimize(**coreg_extra),
+                "VerticalShift": lambda: xdem.coreg.VerticalShift(**coreg_extra),
+                "DirectionalBias": lambda: xdem.coreg.DirectionalBias(**coreg_extra),
+                "TerrainBias": lambda: xdem.coreg.TerrainBias(**coreg_extra),
+            }
 
-        coreg_steps = ["step_one", "step_two", "step_three"]
-        coreg_functions = []
+            coreg_steps = ["step_one", "step_two", "step_three"]
+            coreg_functions = []
 
-        for step in coreg_steps:
-            config_coreg = self.config["coregistration"].get(step)
-            if config_coreg:
-                method_name = config_coreg.get("method")
-                coreg_extra = config_coreg.get("extra_information", {})
-                coreg_fun = from_str_to_fun[method_name]()
-                coreg_functions.append(coreg_fun)
+            for step in coreg_steps:
+                config_coreg = self.config["coregistration"].get(step)
+                if config_coreg:
+                    method_name = config_coreg.get("method")
+                    coreg_extra = config_coreg.get("extra_information", {})
+                    coreg_fun = from_str_to_fun[method_name]()
+                    coreg_functions.append(coreg_fun)
 
-        my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
+            my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
-        # Coregister
-        aligned_dem = self.to_be_aligned_dem.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
-        aligned_dem.save(self.outputs_folder / "raster" / "aligned_dem.tif")
+            # Coregister
+            aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
+            aligned_elev.save(self.outputs_folder / "raster" / "aligned_elev.tif")
 
-        self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
+            self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
-        for idx, step in enumerate(coreg_steps):
-            config_coreg = self.config["coregistration"].get(step)
-            if config_coreg:
-                method_name = config_coreg.get("method")
-                self.dico_to_show.append(
-                    (f"{method_name} inputs", self.floats_process(coreg_functions[idx].meta["inputs"]))
-                )
-                self.dico_to_show.append(
-                    (f"{method_name} outputs", self.floats_process(coreg_functions[idx].meta["outputs"]))
-                )
+            for idx, step in enumerate(coreg_steps):
+                config_coreg = self.config["coregistration"].get(step)
+                if config_coreg:
+                    method_name = config_coreg.get("method")
+                    self.dico_to_show.append(
+                        (f"{method_name} inputs", self.floats_process(coreg_functions[idx].meta["inputs"]))
+                    )
+                    self.dico_to_show.append(
+                        (f"{method_name} outputs", self.floats_process(coreg_functions[idx].meta["outputs"]))
+                    )
 
-        return aligned_dem
+        return aligned_elev
 
     def _compute_reproj(self, test_dem: str) -> None:
         """
         Compute reprojection
+        :param test_dem: str value for testing the target dem
         """
         # Reproject data
-        src = self.config["coregistration"]["sampling_source"]
 
-        if src == test_dem:
-            logging.info(f"Computing reprojection on {test_dem}")
-            src_dem = getattr(self, src)
-            target_dem = getattr(self, "to_be_aligned_dem" if src == "reference_elev" else "reference_elev")
+        sampling = self.config["coregistration"]["sampling_source"]
+        if sampling == test_dem:
+            return  # No reprojection needed
 
-            reprojected = src_dem.reproject(target_dem, silent=True)
-            setattr(self, src, reprojected)
+        logging.info(f"Computing reprojection on {test_dem}")
 
-            if self.level > 1:
-                filename = f"{src}_reprojected.tif"
-                reprojected.save(self.outputs_folder / "raster" / filename)
+        if sampling == "reference_elev":
+            src, target = self.to_be_aligned_elev, self.reference_elev
+            name = "to_be_aligned_elev"
+            reprojected = src.reproject(target, silent=True)
+            self.to_be_aligned_elev = reprojected
+        elif sampling == "to_be_aligned_elev":
+            src, target = self.reference_elev, self.to_be_aligned_elev
+            name = "reference_elevation"
+            reprojected = src.reproject(target, silent=True)
+            self.reference_elev = reprojected
+
+        if self.level > 1:
+            output_path = self.outputs_folder / "raster" / f"{name}_reprojected.tif"
+            reprojected.save(output_path)
 
     def _process_diff(self, diff: RasterType, title: str, filename: str, vmin: float, vmax: float) -> None:
         """
@@ -143,8 +156,8 @@ class Compare(Workflows):
         :param vmin: Minimum value for colorbar
         :param vmax: Maximum value for colorbar
         """
-        diff.plot(title=title, vmin=vmin, vmax=vmax)
-        self.generate_graph(diff, filename, vmin=vmin, vmax=vmax)
+        # diff.plot(title=title, vmin=vmin, vmax=vmax, cmap='RdBu')
+        self.generate_graph(diff, filename, vmin=vmin, vmax=vmax, cmap="RdBu")
 
     def _get_stats(self, dem: RasterType) -> floating[Any] | dict[str, floating[Any]]:
         """
@@ -186,7 +199,7 @@ class Compare(Workflows):
         plt.legend()
         plt.grid(False)
         plt.tight_layout()
-        plt.savefig(self.outputs_folder / "png" / "histo_diff.png")
+        plt.savefig(self.outputs_folder / "png" / "elev_diff_histo.png")
         plt.close()
 
     def run(self) -> None:
@@ -200,10 +213,10 @@ class Compare(Workflows):
         self._compute_reproj("to_be_aligned_elev")
 
         # Coregistration step
-        aligned_dem = self._compute_coregistration()
+        aligned_elev = self._compute_coregistration()
 
         # Altitude differences
-        for label, dem in [("before", self.to_be_aligned_dem), ("after", aligned_dem.reproject(self.reference_elev))]:
+        for label, dem in [("before", self.to_be_aligned_elev), ("after", aligned_elev.reproject(self.reference_elev))]:
             diff = dem - self.reference_elev
             stats = diff.get_stats(["min", "max", "nmad", "median"])
             if label == "before":
@@ -211,16 +224,16 @@ class Compare(Workflows):
             else:
                 self.diff_after, self.stats_after = diff, stats
             vmin, vmax = self.stats_before["min"], self.stats_before["max"]
-            diff.plot(title=label, vmin=vmin, vmax=vmax)
-            self._process_diff(diff, label, f"Altitude_difference_{label}_coregistration", vmin, vmax)
+            self.generate_graph(diff, f"diff_elev_{label}_coreg", vmin=vmin, vmax=vmax, cmap="RdBu")
+            # self._process_diff(diff, label, f"diff_elev_{label}_coreg", vmin, vmax)
 
         # Statistics
         stat_items = [
-            (self.reference_elev, "reference_stats", "Statistics on reference elevation", 2),
-            (self.to_be_aligned_dem, "to_be_aligned_stats", "Statistics on to be aligned elevation", 2),
-            (self.diff_before, "alti_diff_before_stats", "Statistics on alti diff before coregistration", 2),
-            (self.diff_after, "alti_diff_after_stats", "Statistics on alti diff after coregistration", 2),
-            (aligned_dem, "align_dem", "Statistics aligned DEM", 1),
+            (self.reference_elev, "reference_elev", "Statistics on reference elevation", 2),
+            (self.to_be_aligned_elev, "to_be_aligned_elev", "Statistics on to be aligned elevation", 2),
+            (self.diff_before, "diff_elev_before_coreg", "Statistics on alti diff before coregistration", 2),
+            (self.diff_after, "diff_elev_after_coreg", "Statistics on alti diff after coregistration", 2),
+            (aligned_elev, "aligned_elev", "Statistics aligned DEM", 1),
         ]
 
         for data, fname, title, level in stat_items:
@@ -230,8 +243,8 @@ class Compare(Workflows):
             self.dico_to_show.append((title, self.floats_process(stats)))
 
         if self.level > 1:
-            self.diff_before.save(self.outputs_folder / "raster" / "diff_before.tif")
-            self.diff_after.save(self.outputs_folder / "raster" / "diff_after.tif")
+            self.diff_before.save(self.outputs_folder / "raster" / "diff_elev_before_coreg.tif")
+            self.diff_after.save(self.outputs_folder / "raster" / "diff_elev_after_coreg.tif")
 
         # Compute altitude differences value histogram
         self._compute_histogram()
@@ -249,11 +262,11 @@ class Compare(Workflows):
         html += "<h2>Digital Elevation Model</h2>\n"
         html += "<div style='display: flex; gap: 10px;'>\n"
         html += (
-            "  <img src='png/Reference_elevation.png' alt='Image PNG' "
+            "  <img src='png/reference_elev_map.png' alt='Image PNG' "
             "style='max-width: 100%; height: auto; width: 40%;'>\n"
         )
         html += (
-            "  <img src='png/To_be_aligned_elevation.png' alt='Image PNG' style='max-width: "
+            "  <img src='png/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
             "100%; height: auto; width: 40%;'>\n"
         )
         html += "</div>\n"
@@ -271,17 +284,17 @@ class Compare(Workflows):
         html += "<h2>Altitude differences</h2>\n"
         html += "<div style='display: flex; gap: 10px;'>\n"
         html += (
-            "  <img src='png/Altitude_difference_before_coregistration.png' alt='Image PNG' style='max-width: "
+            "  <img src='png/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: "
             "40%; height: auto; width: 50%;'>\n"
         )
         html += (
-            "  <img src='png/Altitude_difference_after_coregistration.png' alt='Image PNG' style='max-width: "
+            "  <img src='png/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: "
             "40%; height: auto; width: 50%;'>\n"
         )
         html += "</div>\n"
 
         html += "<h2>Differences histogram</h2>\n"
-        html += "<img src='png/histo_diff.png' alt='Image PNG' style='max-width: 40%; height: auto;'>\n"
+        html += "<img src='png/elev_diff_histo.png' alt='Image PNG' style='max-width: 40%; height: auto;'>\n"
 
         html += """
              </div>

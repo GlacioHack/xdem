@@ -21,12 +21,12 @@ TopoSummary class from workflows.
 """
 import logging
 import math
-from typing import Any
+from typing import Any, Dict
 
 import matplotlib.pyplot as plt
 
 import xdem
-from xdem.workflows.schemas import INFO_SCHEMA
+from xdem.workflows.schemas import TOPO_SUMMARY_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
@@ -35,18 +35,27 @@ class TopoSummary(Workflows):
     TopoSummary class from workflows.
     """
 
-    def __init__(self, config_dem: str):
+    def __init__(self, config_dem: str | Dict[str, Any]):
         """
         Initialize TopoSummary class
         :param config_dem: Path to a user configuration file
         """
 
-        self.schema = INFO_SCHEMA
+        self.schema = TOPO_SUMMARY_SCHEMA
 
         super().__init__(config_dem)
 
-        self.dem, self.inlier_mask = self.generate_dem(self.config["inputs"])
-        self.generate_graph(self.dem, "dem")
+        self.dem, self.inlier_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
+        self.generate_graph(self.dem, "elevation (m)", cmap="terrain", cbar_title="Elevation (m)")
+
+        if self.inlier_mask is not None:
+            self.generate_graph(
+                self.dem,
+                "masked elevation",
+                mask_path=self.config["inputs"]["reference_elev"]["path_to_mask"],
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
 
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
@@ -105,42 +114,31 @@ class TopoSummary(Workflows):
 
         plt_extent = [self.dem.bounds.left, self.dem.bounds.right, self.dem.bounds.bottom, self.dem.bounds.top]
 
-        cmaps = [
-            "Greys_r",
-            "Reds",
-            "twilight",
-            "RdGy_r",
-            "RdGy_r",
-            "RdGy_r",
-            "Purples",
-            "YlOrRd",
-            "Spectral",
-            "Oranges",
-            "Reds",
-        ]
-        labels = [
-            "Hillshade",
-            "Slope (°)",
-            "Aspect (°)",
-            "Curvature (100 / m)",
-            "Planform curvature (100 / m)",
-            "Profile curvature (100 / m)",
-            "Terrain Ruggedness Index",
-            "Rugosity",
-            "Topographic position index (m)",
-            "Roughness (m)",
-            "Fractal roughness (dimensions)",
-        ]
-        vlims = [(None, None)] * n
-        if n > 3:
-            vlims[3] = [-2, 2]  # type: ignore
+        attribute_params = {
+            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (None, None)},
+            "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (None, None)},
+            "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (None, None)},
+            "curvature": {"label": "Curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "planform_curvature": {"label": "Planform curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "profile_curvature": {"label": "Profile curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
+            "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
+            "topographic_position_index": {
+                "label": "Topographic position index (m)",
+                "cmap": "Spectral",
+                "vlim": (None, None),
+            },
+            "roughness": {"label": "Roughness (m)", "cmap": "Oranges", "vlim": (None, None)},
+            "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
+        }
 
-        for i in range(n):
+        for i, attr in enumerate(self.list_attributes):
             plt.subplot(nrows, ncols, i + 1)
 
-            cmap = cmaps[i] if i < len(cmaps) else "viridis"
-            label = labels[i] if i < len(labels) else f"Attribute {i + 1}"
-            vmin, vmax = vlims[i] if i < len(vlims) else (None, None)
+            params = attribute_params.get(attr, {})
+            cmap = params.get("cmap", "viridis")
+            label = params.get("label", f"Attribute {i + 1}")
+            vmin, vmax = params.get("vlim", (None, None))
 
             plt.imshow(attributes[i].squeeze(), cmap=cmap, extent=plt_extent, vmin=vmin, vmax=vmax)
             cbar = plt.colorbar()
@@ -203,10 +201,13 @@ class TopoSummary(Workflows):
         :return: None
         """
 
-        html = "<html>\n<head><meta charset='UTF-8'><title>Qualify DEM results</title></head>\n<body>\n"
+        html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
 
-        html += "<h2>Digital Elevation Model</h2>\n"
-        html += "<img src='png/dem.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<h2>Elevation Model</h2>\n"
+        html += "<img src='png/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+
+        html += "<h2>Masked elevation Model</h2>\n"
+        html += "<img src='png/masked elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore

@@ -55,17 +55,17 @@ class CustomValidator(Validator):  # type: ignore
 
             if key == "common":
                 if val not in ["Ellipsoid", "EGM08", "EGM96"]:
-                    self._error(field, f"Invalid 'common' value: {val}")
+                    self._error(field, f"Invalid common value: {val}")
 
             elif key == "proj_grid":
                 if not isinstance(val, str):
-                    self._error(field, "'proj_grid' must be a string path")
+                    self._error(field, "proj_grid must be a string path")
                 elif not val.endswith(".tif"):
-                    self._error(field, f"'proj_grid' must point to a .tif file: {val}")
+                    self._error(field, f"proj_grid must point to a .tif file: {val}")
 
             elif key == "epsg_code":
                 if not isinstance(val, int):
-                    self._error(field, "'epsg_code' must be an integer")
+                    self._error(field, "epsg_code must be an integer")
                 else:
                     try:
                         _ = CRS.from_epsg(val)
@@ -81,9 +81,9 @@ class CustomValidator(Validator):  # type: ignore
 
 
 INPUTS_DEM = {
-    "dem": {"type": "string", "required": True, "path_exists": True},
+    "path_to_elev": {"type": "string", "required": True, "path_exists": True},
     "nodata": {"type": ["integer", "float"], "required": False},
-    "mask": {"type": "string", "required": False, "path_exists": True},
+    "path_to_mask": {"type": "string", "required": False, "path_exists": True},
     "from_vcrs": {"type": "dict", "required": False, "crs_dict": True, "default": {"common": "EGM96"}},
     "to_vcrs": {"type": "dict", "required": False, "crs_dict": True, "default": {"common": "EGM96"}},
 }
@@ -114,7 +114,7 @@ STATS_METHODS = [
     "percentagevalidpoints",
 ]
 
-TERRAIN_ATTRIBUTES_DEFAULT = ["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"]
+TERRAIN_ATTRIBUTES_DEFAULT = ["slope", "aspect", "curvature"]
 
 TERRAIN_ATTRIBUTES = [
     "slope",
@@ -170,7 +170,7 @@ def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) 
     if "statistics" not in validator.document:
         validator.document["statistics"] = STATS_METHODS
 
-    if "terrain_attributes" not in validator.document:
+    if "terrain_attributes" not in validator.document and "coregistration" not in validator.document:
         validator.document["terrain_attributes"] = TERRAIN_ATTRIBUTES_DEFAULT
 
     return validator.document
@@ -208,15 +208,19 @@ COMPARE_SCHEMA = {
                 "default": "reference_elev",
                 "required": False,
             },
+            "process": {"type": "boolean", "default": True, "required": False},
         },
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
 }
 
-INFO_SCHEMA = {
+TOPO_SUMMARY_SCHEMA = {
     "inputs": {
         "type": "dict",
-        "schema": INPUTS_DEM,
+        "required": True,
+        "schema": {
+            "reference_elev": {"type": "dict", "schema": INPUTS_DEM, "required": False},
+        },
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
     "terrain_attributes": {
@@ -261,10 +265,89 @@ VOLCHANGE_SCHEMA = {
     "outputs": {
         "type": "dict",
         "required": False,
-        "default": {"path": "outputs", "dem": False},
+        "default": {"path": "outputs"},
         "schema": {
             "path": {"type": "string", "default": "outputs"},
-            "dem": {"type": "boolean", "default": False},
         },
+    },
+}
+
+COMPLETE_CONFIG_DIFF_ANALYSIS = {
+    "inputs": {
+        "reference_elev": {
+            "path_to_elev": "path_to/reference_elev.tif",
+            "nodata": -32768,
+            "from_vcrs": {"common": "EGM96"},
+            "to_vcrs": {"common": "Ellipsoid"},
+        },
+        "to_be_aligned_elev": {
+            "path_to_elev": "path_to/to_be_aligned_elev.tif",
+            "nodata": -32768,
+            "from_vcrs": {"common": "EGM96"},
+            "to_vcrs": {"common": "Ellipsoid"},
+            "path_to_mask": "path_to/mask.tif",
+        },
+    },
+    "outputs": {"level": 1, "path": "output"},
+    "coregistration": {
+        "sampling_source": "reference_elev",
+        "step_one": {"method": "VerticalShift", "extra_informations": {"vshift_reduc_func": "np.mean"}},
+        "step_two": {"method": "ICP", "extra_informations": {"only_translation": True}},
+        "step_three": {"method": "NuthKaab", "extra_informations": {"max_iterations": 10}},
+    },
+    "statistics": [
+        "mean",
+        "median",
+        "max",
+        "min",
+        "sum",
+        "sumofsquares",
+        "90thpercentile",
+        "le90",
+        "nmad",
+        "rmse",
+        "std",
+        "standarddeviation",
+        "validcount",
+        "totalcount",
+        "percentagevalidpoints",
+    ],
+}
+
+COMPLETE_CONFIG_TOPO_SUMMARY = {
+    "inputs": {
+        "reference_elev": {
+            "path_to_elev": "path_to/dem.tif",
+            "from_vcrs": {"common": "EGM96"},
+            "to_vcrs": {"common": "EGM96"},
+            "path_to_mask": "path_to/mask.tif",
+            "nodata": -9999,
+        }
+    },
+    "outputs": {"level": 1, "path": "output"},
+    "statistics": [
+        "mean",
+        "median",
+        "max",
+        "min",
+        "sum",
+        "sumofsquares",
+        "90thpercentile",
+        "le90",
+        "nmad",
+        "rmse",
+        "std",
+        "standarddeviation",
+        "validcount",
+        "totalcount",
+        "percentagevalidpoints",
+    ],
+    "terrain_attributes": {
+        "hillshade": {"extra_informations": {"method": "ZevenbergThornen"}},
+        "slope": {"extra_informations": {"degrees": False}},
+        "aspect": {"extra_informations": {"method": "ZevenbergThorne"}},
+        "curvature": {},
+        "terrain_ruggedness_index": {},
+        "rugosity": {},
     },
 }
