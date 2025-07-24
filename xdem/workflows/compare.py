@@ -47,13 +47,13 @@ class Compare(Workflows):
 
         super().__init__(config_dem)
 
-        self.to_be_aligned_dem, tba_mask = self.generate_dem(self.config["inputs"]["to_be_aligned_elev"])
+        self.to_be_aligned_elev, tba_mask = self.generate_dem(self.config["inputs"]["to_be_aligned_elev"])
         self.reference_elev, ref_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
             ref_mask = None
         self.generate_graph(self.reference_elev, "Reference_elevation")
-        self.generate_graph(self.to_be_aligned_dem, "To_be_aligned_elevation")
+        self.generate_graph(self.to_be_aligned_elev, "To_be_aligned_elevation")
 
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
@@ -97,8 +97,8 @@ class Compare(Workflows):
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
-        aligned_dem = self.to_be_aligned_dem.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
-        aligned_dem.save(self.outputs_folder / "raster" / "aligned_dem.tif")
+        aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
+        aligned_elev.save(self.outputs_folder / "raster" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
@@ -113,7 +113,7 @@ class Compare(Workflows):
                     (f"{method_name} outputs", self.floats_process(coreg_functions[idx].meta["outputs"]))
                 )
 
-        return aligned_dem
+        return aligned_elev
 
     def _compute_reproj(self, test_dem: str) -> None:
         """
@@ -125,7 +125,7 @@ class Compare(Workflows):
         if src == test_dem:
             logging.info(f"Computing reprojection on {test_dem}")
             src_dem = getattr(self, src)
-            target_dem = getattr(self, "to_be_aligned_dem" if src == "reference_elev" else "reference_elev")
+            target_dem = getattr(self, "to_be_aligned_elev" if src == "reference_elev" else "reference_elev")
 
             reprojected = src_dem.reproject(target_dem, silent=True)
             setattr(self, src, reprojected)
@@ -200,10 +200,10 @@ class Compare(Workflows):
         self._compute_reproj("to_be_aligned_elev")
 
         # Coregistration step
-        aligned_dem = self._compute_coregistration()
+        aligned_elev = self._compute_coregistration()
 
         # Altitude differences
-        for label, dem in [("before", self.to_be_aligned_dem), ("after", aligned_dem.reproject(self.reference_elev))]:
+        for label, dem in [("before", self.to_be_aligned_elev), ("after", aligned_elev.reproject(self.reference_elev))]:
             diff = dem - self.reference_elev
             stats = diff.get_stats(["min", "max", "nmad", "median"])
             if label == "before":
@@ -217,10 +217,10 @@ class Compare(Workflows):
         # Statistics
         stat_items = [
             (self.reference_elev, "reference_stats", "Statistics on reference elevation", 2),
-            (self.to_be_aligned_dem, "to_be_aligned_stats", "Statistics on to be aligned elevation", 2),
+            (self.to_be_aligned_elev, "to_be_aligned_stats", "Statistics on to be aligned elevation", 2),
             (self.diff_before, "alti_diff_before_stats", "Statistics on alti diff before coregistration", 2),
             (self.diff_after, "alti_diff_after_stats", "Statistics on alti diff after coregistration", 2),
-            (aligned_dem, "align_dem", "Statistics aligned DEM", 1),
+            (aligned_elev, "align_dem", "Statistics aligned DEM", 1),
         ]
 
         for data, fname, title, level in stat_items:

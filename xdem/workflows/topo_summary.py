@@ -26,7 +26,7 @@ from typing import Any, Dict
 import matplotlib.pyplot as plt
 
 import xdem
-from xdem.workflows.schemas import INFO_SCHEMA
+from xdem.workflows.schemas import TOPO_SUMMARY_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
@@ -41,7 +41,7 @@ class TopoSummary(Workflows):
         :param config_dem: Path to a user configuration file
         """
 
-        self.schema = INFO_SCHEMA
+        self.schema = TOPO_SUMMARY_SCHEMA
 
         super().__init__(config_dem)
 

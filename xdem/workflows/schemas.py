@@ -170,7 +170,7 @@ def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) 
     if "statistics" not in validator.document:
         validator.document["statistics"] = STATS_METHODS
 
-    if "terrain_attributes" not in validator.document:
+    if "terrain_attributes" not in validator.document and "coregistration" not in validator.document:
         validator.document["terrain_attributes"] = TERRAIN_ATTRIBUTES_DEFAULT
 
     return validator.document
@@ -213,7 +213,7 @@ COMPARE_SCHEMA = {
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
 }
 
-INFO_SCHEMA = {
+TOPO_SUMMARY_SCHEMA = {
     "inputs": {
         "type": "dict",
         "schema": INPUTS_DEM,
