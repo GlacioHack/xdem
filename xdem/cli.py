@@ -22,7 +22,7 @@ import logging
 
 from weasyprint import HTML
 
-from xdem.workflows import Compare, TopoSummary, Uncertainty
+from xdem.workflows import Compare, TopoSummary, VolChange
 
 
 def main() -> None:
@@ -60,12 +60,12 @@ def main() -> None:
     )
     coreg_parser.add_argument("config", help="Path to YAML configuration file")
 
-    # Subcommand: uncertainty
+    # Subcommand: volchange
     coreg_parser = subparsers.add_parser(
-        "uncertainty",
-        help="Run DEM uncertainty workflow",
-        description="Run a DEM uncertainty workflow using a YAML configuration file.",
-        epilog="Example: xdem uncertainty config.yaml",
+        "vol-change",
+        help="Run DEM volchange workflow",
+        description="Run a DEM volchange workflow using a YAML configuration file.",
+        epilog="Example: xdem volchange config.yaml",
     )
     coreg_parser.add_argument("config", help="Path to YAML configuration file")
 
@@ -89,13 +89,13 @@ def main() -> None:
         workflow = Compare(args.config)  # type: ignore
         workflow.run()
 
-    elif args.command == "uncertainty":
+    elif args.command == "vol-change":
         logger.info("Running DEM comparison workflow")
-        workflow = Uncertainty(args.config)  # type: ignore
+        workflow = VolChange(args.config)  # type: ignore
         workflow.run()
 
     else:
-        raise ValueError(f"{args.command} doesn't exist, valid command are 'compare', 'info' or 'uncertainty")
+        raise ValueError(f"{args.command} doesn't exist, valid command are 'compare', 'topo-summary' or 'vol-change")
 
     logger.info("Generate report")
     HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
