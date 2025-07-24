@@ -19,6 +19,10 @@ kernelspec:
 Below is a short example show-casing some of the core functionalities of xDEM.
 To find an example about a specific functionality, jump directly to {ref}`quick-gallery`.
 
+## Command line interface
+
+
+
 ## Short example
 
 ```{note}
