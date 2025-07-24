@@ -169,7 +169,6 @@ def test_extra_information_is_optional():
     assert not schema["schema"]["extra_information"]["required"]
 
 
-
 @pytest.mark.parametrize(
     "prefix, vcrs",
     [
