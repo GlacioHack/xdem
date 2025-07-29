@@ -23,6 +23,7 @@ Fixtures for test_workflows
 import pytest
 
 import xdem
+from xdem.workflows.schemas import TERRAIN_ATTRIBUTES_DEFAULT
 
 
 @pytest.fixture()
@@ -32,8 +33,10 @@ def get_topo_inputs_config():
     """
     return {
         "inputs": {
-            "dem": xdem.examples.get_path("longyearbyen_tba_dem"),
-            "mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+            "reference_elev": {
+                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+            }
         },
     }
 
@@ -46,12 +49,12 @@ def get_compare_inputs_config():
     return {
         "inputs": {
             "reference_elev": {
-                "dem": xdem.examples.get_path("longyearbyen_ref_dem"),
-                "mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path("longyearbyen_ref_dem"),
+                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
             },
             "to_be_aligned_elev": {
-                "dem": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
             },
         },
     }
@@ -64,10 +67,12 @@ def pipeline_topo():
     """
     return {
         "inputs": {
-            "dem": xdem.examples.get_path("longyearbyen_tba_dem"),
-            "mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
-            "from_vcrs": {"common": "EGM96"},
-            "to_vcrs": {"common": "EGM96"},
+            "reference_elev": {
+                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "from_vcrs": {"common": "EGM96"},
+                "to_vcrs": {"common": "EGM96"},
+            }
         },
         "statistics": [
             "mean",
@@ -86,7 +91,7 @@ def pipeline_topo():
             "totalcount",
             "percentagevalidpoints",
         ],
-        "terrain_attributes": ["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"],
+        "terrain_attributes": TERRAIN_ATTRIBUTES_DEFAULT,
         "outputs": {"path": "outputs", "level": 1},
     }
 
@@ -96,4 +101,4 @@ def list_default_terrain_attributes():
     """
     Return default list of terrain attributes
     """
-    return ["hillshade", "slope", "aspect", "curvature", "terrain_ruggedness_index", "rugosity"]
+    return TERRAIN_ATTRIBUTES_DEFAULT

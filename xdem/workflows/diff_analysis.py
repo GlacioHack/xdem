@@ -47,8 +47,10 @@ class DiffAnalysis(Workflows):
 
         super().__init__(config_dem)
 
-        self.to_be_aligned_elev, tba_mask = self.generate_dem(self.config["inputs"]["to_be_aligned_elev"])
-        self.reference_elev, ref_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
+        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.generate_dem(
+            self.config["inputs"]["to_be_aligned_elev"]
+        )
+        self.reference_elev, ref_mask, ref_mask_path = self.generate_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
             ref_mask = None
@@ -58,8 +60,19 @@ class DiffAnalysis(Workflows):
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
             self.inlier_mask = tba_mask
+            path_mask = tba_path_mask
         else:
             self.inlier_mask = ref_mask or tba_mask
+            path_mask = ref_mask_path or tba_path_mask
+
+        if self.inlier_mask is not None:
+            self.generate_graph(
+                self.dem,
+                "masked elevation",
+                mask_path=path_mask,
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
 
     def _get_reference_elevation(self) -> float:
         """

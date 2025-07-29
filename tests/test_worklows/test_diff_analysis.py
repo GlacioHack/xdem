@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Test Compare class
+Test DiffAnalysis class
 """
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
@@ -25,22 +25,23 @@ import geoutils as gu
 import pytest
 
 import xdem
-from xdem.workflows import Compare
+from xdem.workflows import DiffAnalysis
 from xdem.workflows.workflows import Workflows
 
 
-def test_init_compare(get_compare_inputs_config, tmp_path, list_default_terrain_attributes):
+def test_init_diff_analysis(get_compare_inputs_config, tmp_path, list_default_terrain_attributes):
     """
-    Test initialization of Compare class
+    Test initialization of DiffAnalysis class
     """
     user_config = get_compare_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Compare(user_config)
+    workflows = DiffAnalysis(user_config)
 
     assert isinstance(workflows, Workflows)
-    assert isinstance(workflows, Compare)
-    assert Path(tmp_path / "png").joinpath("Reference_elevation.png").exists()
-    assert Path(tmp_path / "png").joinpath("To_be_aligned_elevation.png").exists()
+    assert isinstance(workflows, DiffAnalysis)
+    assert Path(tmp_path / "png").joinpath("reference_elev_map.png").exists()
+    assert Path(tmp_path / "png").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "png").joinpath("reference_elev_map.png").exists()
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
@@ -81,7 +82,7 @@ def test__get_stats(get_compare_inputs_config, tmp_path):
     """
     user_config = get_compare_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Compare(user_config)
+    workflows = DiffAnalysis(user_config)
 
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     assert workflows._get_stats(dem) == dem.get_stats(
@@ -123,7 +124,7 @@ def test_run(get_compare_inputs_config, tmp_path, level):
 
     user_config = get_compare_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": level}
-    workflows = Compare(user_config)
+    workflows = DiffAnalysis(user_config)
     workflows.run()
 
     assert Path(tmp_path / "png").joinpath("histo_diff.png").exists()

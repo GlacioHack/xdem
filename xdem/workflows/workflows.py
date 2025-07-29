@@ -146,12 +146,13 @@ class Workflows(ABC):
             return dict_with_floats
 
     @staticmethod
-    def generate_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask]:
+    def generate_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str]:
         """
         Generate DEM from user configuration dictionary
         :param config_dem: Configuration dictionary
         :return: DEM
         """
+        mask_path = None
         if config_dem is not None:
             dem = xdem.DEM(config_dem["path_to_elev"])
             inlier_mask = None
@@ -163,13 +164,14 @@ class Workflows(ABC):
             if "nodata" in config_dem:
                 dem.set_nodata(config_dem["nodata"])
             if "path_to_mask" in config_dem:
-                mask = gu.Vector(config_dem["path_to_mask"])
+                mask_path = config_dem["path_to_mask"]
+                mask = gu.Vector(mask_path)
                 inlier_mask = ~mask.create_mask(dem)
 
-            return dem, inlier_mask
+            return dem, inlier_mask, mask_path
         else:
             logging.warning("No DEM provided")
-            return None, None  # type: ignore
+            return None, None, None  # type: ignore
 
     @abstractmethod
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
