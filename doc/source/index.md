@@ -138,6 +138,7 @@ advanced_examples/index.rst
 :caption: Reference
 :maxdepth: 2
 
+cli
 api
 config
 release_notes
