@@ -146,7 +146,7 @@ def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) 
     return validator.document
 
 
-COMPARE_SCHEMA = {
+DIFF_ANALYSIS_SCHEMA = {
     "inputs": {
         "type": "dict",
         "required": True,
@@ -223,21 +223,6 @@ TOPO_SUMMARY_SCHEMA = {
         "schema": {
             "path": {"type": "string", "default": "outputs"},
             "level": {"type": "integer", "default": 1, "required": False, "allowed": [1, 2]},
-        },
-    },
-}
-
-VOLCHANGE_SCHEMA = {
-    "inputs": {
-        "type": "dict",
-        "schema": INPUTS_DEM,
-    },
-    "outputs": {
-        "type": "dict",
-        "required": False,
-        "default": {"path": "outputs"},
-        "schema": {
-            "path": {"type": "string", "default": "outputs"},
         },
     },
 }

@@ -42,7 +42,7 @@ def get_topo_inputs_config():
 
 
 @pytest.fixture()
-def get_compare_inputs_config():
+def get_diffanalysis_inputs_config():
     """
     Return minimal configuration for inputs in compare
     """
@@ -70,8 +70,8 @@ def pipeline_topo():
             "reference_elev": {
                 "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
                 "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
-                "from_vcrs": {"common": "EGM96"},
-                "to_vcrs": {"common": "EGM96"},
+                "from_vcrs": "EGM96",
+                "to_vcrs": "EGM96",
             }
         },
         "statistics": [

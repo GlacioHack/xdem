@@ -28,7 +28,7 @@ from geoutils.raster import RasterType
 from numpy import floating
 
 import xdem
-from xdem.workflows.schemas import COMPARE_SCHEMA
+from xdem.workflows.schemas import DIFF_ANALYSIS_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
@@ -43,7 +43,7 @@ class DiffAnalysis(Workflows):
         :param config_dem: Path to a user configuration file
         """
 
-        self.schema = COMPARE_SCHEMA
+        self.schema = DIFF_ANALYSIS_SCHEMA
 
         super().__init__(config_dem)
 
@@ -67,7 +67,7 @@ class DiffAnalysis(Workflows):
 
         if self.inlier_mask is not None:
             self.generate_graph(
-                self.dem,
+                self.to_be_aligned_elev,
                 "masked elevation",
                 mask_path=path_mask,
                 cmap="terrain",

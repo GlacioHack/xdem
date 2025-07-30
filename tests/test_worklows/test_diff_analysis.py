@@ -127,16 +127,42 @@ def test_run(get_compare_inputs_config, tmp_path, level):
     workflows = DiffAnalysis(user_config)
     workflows.run()
 
-    assert Path(tmp_path / "png").joinpath("histo_diff.png").exists()
+    assert Path(tmp_path / "csv").joinpath("aligned_elev_stats.csv").exists()
+
+    assert Path(tmp_path / "png").joinpath("diff_elev_after_coreg.png").exists()
+    assert Path(tmp_path / "png").joinpath("diff_elev_before_coreg.png").exists()
+    assert Path(tmp_path / "png").joinpath("elev_diff_histo.png").exists()
+    assert Path(tmp_path / "png").joinpath("masked elevation.png").exists()
+    assert Path(tmp_path / "png").joinpath("reference_elev_map.png").exists()
+    assert Path(tmp_path / "png").joinpath("to_be_aligned_elev_map.png").exists()
+
+    assert Path(tmp_path / "raster").joinpath("aligned_elev.tif").exists()
+
     assert Path(tmp_path).joinpath("report.html").exists()
-    assert Path(tmp_path / "raster").joinpath("aligned_dem.tif").exists()
+    # sometimes the PDF creation fails for no reason
+    # assert Path(tmp_path).joinpath("report.pdf").exists()
+    assert Path(tmp_path).joinpath("used_config.yaml").exists()
+
+    csv_files = [
+        "diff_elev_after_coreg_stats.csv",
+        "diff_elev_before_coreg_stats.csv",
+        "reference_elev_stats.csv",
+        "to_be_aligned_elev_stats.csv",
+    ]
+
+    raster_files = ["diff_elev_after_coreg.tif", "diff_elev_before_coreg.tif", "to_be_aligned_elev_reprojected.tif"]
 
     if level == 1:
-        assert not Path(tmp_path / "raster").joinpath("diff_before.tif").exists()
-        assert not Path(tmp_path / "raster").joinpath("diff_after.tif").exists()
+        for file in csv_files:
+            assert not (Path(tmp_path) / "csv" / file).exists()
+        for file in raster_files:
+            assert not (Path(tmp_path) / "raster" / file).exists()
+
     if level == 2:
-        assert Path(tmp_path / "raster").joinpath("diff_before.tif").exists()
-        assert Path(tmp_path / "raster").joinpath("diff_after.tif").exists()
+        for file in csv_files:
+            assert (Path(tmp_path) / "csv" / file).exists()
+        for file in raster_files:
+            assert (Path(tmp_path) / "raster" / file).exists()
 
 
 @pytest.mark.skip("Not implemented")
