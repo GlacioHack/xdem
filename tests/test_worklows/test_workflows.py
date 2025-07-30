@@ -24,7 +24,7 @@ import csv
 
 import numpy as np
 import pytest
-import yaml
+import yaml  # type: ignore
 
 import xdem
 from xdem.workflows.topo_summary import TopoSummary
