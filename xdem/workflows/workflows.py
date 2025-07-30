@@ -146,7 +146,7 @@ class Workflows(ABC):
             return dict_with_floats
 
     @staticmethod
-    def generate_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str]:
+    def generate_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str | None]:
         """
         Generate DEM from user configuration dictionary
         :param config_dem: Configuration dictionary
@@ -156,8 +156,8 @@ class Workflows(ABC):
         if config_dem is not None:
             dem = xdem.DEM(config_dem["path_to_elev"])
             inlier_mask = None
-            from_vcrs = next(iter(config_dem["from_vcrs"].values()))
-            to_vcrs = next(iter(config_dem["to_vcrs"].values()))
+            from_vcrs = config_dem["from_vcrs"]
+            to_vcrs = config_dem["to_vcrs"]
             dem.set_vcrs(from_vcrs)
             if from_vcrs != to_vcrs:
                 dem.to_vcrs(to_vcrs)

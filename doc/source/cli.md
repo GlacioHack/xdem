@@ -80,16 +80,10 @@ xdem diff-analysis --generate-config
                "path_to_elev", "Path to reference DEM", "str", "", "Yes"
                "no_data", "No data DEM", "int", "", "No"
                "path_to_mask", "Path to mask associated to the DEM", "str", "", "No"
-               "from_vcrs", "Original vcrs", "dict", "{'common': 'EGM98'}", "No"
-               "to_vcrs", "Destination vcrs", "dict", "{'common': 'EGM98'}", "No"
+               "from_vcrs", "Original vcrs", "str, int", "EGM96", "No"
+               "to_vcrs", "Destination vcrs", "str, int", "EGM96", "No"
 
-            .. csv-table:: Zoom on from_vcrs and to_vcrs configuration
-               :header: "Key", "Type", "Allowed Values", "Example"
-               :widths: 15, 15, 40, 30
-
-               "common", "str", "EGM96, EGM08, Ellipsoid", "{'common': 'EGM98'}"
-               "proj_grid", "str", "Grid file name from https://cdn.proj.org/", "{'proj_grid': 'us_noaa_geoid06_ak.tif'}"
-               "epsg_code", "int", "EPSG code of the vertical CRS", "{'epsg_code': 5773}"
+            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
         .. tab:: to_be_aligned_elev
 
@@ -100,16 +94,10 @@ xdem diff-analysis --generate-config
                "path_to_elev", "Path to reference DEM", "str", "", "Yes"
                "no_data", "No data DEM", "int", "", "No"
                "path_to_mask", "Path to mask associated to the DEM", "str", "", "No"
-               "from_vcrs", "Original vcrs", "dict", "{'common': 'EGM98'}", "No"
-               "to_vcrs", "Destination vcrs", "dict", "{'common': 'EGM98'}", "No"
+               "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
+               "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
 
-            .. csv-table:: Zoom on from_vcrs and to_vcrs configuration
-               :header: "Key", "Type", "Allowed Values", "Example"
-               :widths: 15, 15, 40, 30
-
-               "common", "str", "EGM96, EGM08, Ellipsoid", "{'common': 'EGM98'}"
-               "proj_grid", "str", "Grid file name from https://cdn.proj.org/", "{'proj_grid': 'us_noaa_geoid06_ak.tif'}"
-               "epsg_code", "int", "EPSG code of the vertical CRS", "{'epsg_code': 5773}"
+            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
       .. code-block:: yaml
 
@@ -117,8 +105,8 @@ xdem diff-analysis --generate-config
             reference_elev:
                 path_to_elev: "path_to/ref_dem.tif"
                 nodata: -32768
-                from_vcrs: {"common": "EGM96"}
-                to_vcrs: {"common": "Ellipsoid"}
+                from_vcrs: "EGM96"
+                to_vcrs: "Ellipsoid"
             to_be_aligned_elev:
                 path_to_elev: "path_to/to_be_aligned_dem.tif"
                 path_to_mask: "path_to/mask.tif
@@ -301,16 +289,10 @@ xdem diff-analysis --generate-config
         "path_to_elev", "Path to reference elevation", "str", "", "Yes"
         "no_data", "No data elevation", "int", "", "No"
         "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-        "from_vcrs", "Original vcrs", "dict", """{'common': 'EGM98'}""", "No"
-        "to_vcrs", "Destination vcrs", "dict", """{'common': 'EGM98'}""", "No"
+        "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
+        "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
 
-     .. csv-table:: Zoom on from_vcrs and to_vcrs configuration
-       :header: "Key", "Type", "Description / Allowed Values", "Example"
-       :widths: 15, 15, 40, 30
-
-       "common", "str", "EGM96, EGM08, Ellipsoid", """{'common': 'EGM98'}"""
-       "proj_grid", "str", "Grid file name from https://cdn.proj.org/", """{'proj_grid': 'us_noaa_geoid06_ak.tif'}"""
-       "epsg_code", "int", "EPSG code of the vertical CRS", """{'epsg_code': 5773}"""
+     .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
      .. code-block:: yaml
 
@@ -318,8 +300,8 @@ xdem diff-analysis --generate-config
            reference_elev:
              path_to_elev: "path_to/ref_dem.tif"
              nodata: -32768
-             from_vcrs: {"common": "EGM96"}
-             to_vcrs: {"common": "Ellipsoid"}
+             from_vcrs: "EGM96"
+             to_vcrs: "Ellipsoid"
 
    .. tab:: statistics
 
@@ -373,8 +355,8 @@ xdem diff-analysis --generate-config
 
     Outputs information.
     Operates by levels:
-      1. Level 1 → aligned elevation only
-      2. Level 2 → more detailed output
+    1. Level 1 → aligned elevation only
+    2. Level 2 → more detailed output
 
     .. csv-table:: Outputs parameters
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"

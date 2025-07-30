@@ -19,12 +19,14 @@
 """
 Schema constants and validation function
 """
-
+import logging
 import os
 from typing import Any, Dict
+from urllib.error import HTTPError, URLError
 
 from cerberus import Validator
-from pyproj import CRS
+
+from xdem.vcrs import _vcrs_from_user_input
 
 
 class CustomValidator(Validator):  # type: ignore
@@ -36,47 +38,15 @@ class CustomValidator(Validator):  # type: ignore
             self._error(field, f"Path does not exist: {value}")
         return True
 
-    def _validate_crs_dict(self, crs_dict: dict[str, Any], field: str, value: dict[str, Any]) -> bool:
+    def _validate_crs(self, crs: bool, field: str, value: str | int) -> bool:
         """
         {'type': 'boolean'}
         """
-        if crs_dict:
-
-            if not isinstance(value, dict):
-                self._error(field, "CRS must be a dictionary")
-                return False
-
-            if len(value) != 1:
-                self._error(field, "Only one of 'common', 'proj_grid', or 'epsg_code' must be defined")
-                return False
-
-            key = next(iter(value))
-            val = value[key]
-
-            if key == "common":
-                if val not in ["Ellipsoid", "EGM08", "EGM96"]:
-                    self._error(field, f"Invalid common value: {val}")
-
-            elif key == "proj_grid":
-                if not isinstance(val, str):
-                    self._error(field, "proj_grid must be a string path")
-                elif not val.endswith(".tif"):
-                    self._error(field, f"proj_grid must point to a .tif file: {val}")
-
-            elif key == "epsg_code":
-                if not isinstance(val, int):
-                    self._error(field, "epsg_code must be an integer")
-                else:
-                    try:
-                        _ = CRS.from_epsg(val)
-                    except Exception:
-                        self._error(field, f"Invalid EPSG code: {val}")
-            else:
-                self._error(field, f"Unknown keys in CRS: {key}")
-                return False
-
+        try:
+            _vcrs_from_user_input(value)
             return True
-        else:
+        except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError):
+            logging.error(f"'{field}' field is not valid. See: https://xdem.readthedocs.io/en/stable/vertical_ref.html")
             return False
 
 
@@ -84,8 +54,8 @@ INPUTS_DEM = {
     "path_to_elev": {"type": "string", "required": True, "path_exists": True},
     "nodata": {"type": ["integer", "float"], "required": False},
     "path_to_mask": {"type": "string", "required": False, "path_exists": True},
-    "from_vcrs": {"type": "dict", "required": False, "crs_dict": True, "default": {"common": "EGM96"}},
-    "to_vcrs": {"type": "dict", "required": False, "crs_dict": True, "default": {"common": "EGM96"}},
+    "from_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
+    "to_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
 }
 
 COREG_METHODS = [

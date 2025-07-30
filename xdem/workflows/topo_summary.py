@@ -45,14 +45,14 @@ class TopoSummary(Workflows):
 
         super().__init__(config_dem)
 
-        self.dem, self.inlier_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
+        self.dem, self.inlier_mask, path_to_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
         self.generate_graph(self.dem, "elevation (m)", cmap="terrain", cbar_title="Elevation (m)")
 
         if self.inlier_mask is not None:
             self.generate_graph(
                 self.dem,
                 "masked elevation",
-                mask_path=self.config["inputs"]["reference_elev"]["path_to_mask"],
+                mask_path=path_to_mask,
                 cmap="terrain",
                 cbar_title="Elevation (m)",
             )
