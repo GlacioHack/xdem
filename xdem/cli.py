@@ -19,8 +19,8 @@
 
 import argparse
 import logging
-import pprint
 
+import yaml  # type: ignore
 from weasyprint import HTML
 
 from xdem.workflows import DiffAnalysis, TopoSummary
@@ -81,7 +81,8 @@ def main() -> None:
 
     if args.command == "topo-summary":
         if args.generate_config:
-            pprint.pp(COMPLETE_CONFIG_TOPO_SUMMARY)
+            yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO_SUMMARY, sort_keys=False, allow_unicode=True)
+            logging.info(yaml_string)
         elif args.config:
             logger.info("Running DEM information workflow")
             workflow = TopoSummary(args.config)
@@ -89,7 +90,8 @@ def main() -> None:
 
     elif args.command == "diff-analysis":
         if args.generate_config:
-            pprint.pp(COMPLETE_CONFIG_DIFF_ANALYSIS)
+            yaml_string = yaml.dump(COMPLETE_CONFIG_DIFF_ANALYSIS, sort_keys=False, allow_unicode=True)
+            logging.info(yaml_string)
         elif args.config:
             logger.info("Running DEM comparison workflow")
             workflow = DiffAnalysis(args.config)  # type: ignore
