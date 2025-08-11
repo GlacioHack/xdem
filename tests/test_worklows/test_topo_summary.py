@@ -21,11 +21,14 @@ Test TopoSummary class
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
+import pytest
 from rasterio import Affine
 
 import xdem
 from xdem.workflows import TopoSummary
 from xdem.workflows.workflows import Workflows
+
+pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
 
 def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrain_attributes):
