@@ -1575,7 +1575,6 @@ def _get_terrain_attribute(
                 # Use default alpha=0.8 for texture shading
                 result = _texture_shading_fft(dem_arr, alpha=0.8)
                 frequency_attributes.append(result.astype(out_dtype))
-        frequency_attributes = [freq_attr for freq_attr in frequency_attributes]  # type: ignore
     else:
         frequency_attributes = []  # type: ignore
 
