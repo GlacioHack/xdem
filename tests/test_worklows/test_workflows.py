@@ -31,6 +31,8 @@ import xdem
 from xdem.workflows.topo_summary import TopoSummary
 from xdem.workflows.workflows import Workflows
 
+pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+
 
 def test_workflows_init_wrong_config():
     """

@@ -28,6 +28,8 @@ import xdem
 from xdem.workflows import DiffAnalysis
 from xdem.workflows.workflows import Workflows
 
+pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+
 
 def test_init_diff_analysis(get_diffanalysis_object_with_run, tmp_path):
     """
