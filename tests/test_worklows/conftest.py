@@ -23,14 +23,14 @@ Fixtures for test_workflows
 import pytest
 
 import xdem
-from xdem.workflows import DiffAnalysis
+from xdem.workflows import Accuracy
 from xdem.workflows.schemas import TERRAIN_ATTRIBUTES_DEFAULT
 
 
 @pytest.fixture()
 def get_topo_inputs_config():
     """
-    Return minimal configuration for inputs in topo_summary
+    Return minimal configuration for inputs in topo
     """
     return {
         "inputs": {
@@ -43,9 +43,9 @@ def get_topo_inputs_config():
 
 
 @pytest.fixture()
-def get_diffanalysis_inputs_config():
+def get_accuracy_inputs_config():
     """
-    Return minimal configuration for inputs in compare
+    Return minimal configuration for inputs in accuracy
     """
     return {
         "inputs": {
@@ -62,9 +62,9 @@ def get_diffanalysis_inputs_config():
 
 
 @pytest.fixture()
-def get_diffanalysis_object_with_run(tmp_path):
+def get_accuracy_object_with_run(tmp_path):
     """
-    Generate classical diff analysis object
+    Generate classical accuracy object
     """
     user_config = {
         "inputs": {
@@ -79,7 +79,7 @@ def get_diffanalysis_object_with_run(tmp_path):
         },
         "outputs": {"path": str(tmp_path)},
     }
-    workflows = DiffAnalysis(user_config)
+    workflows = Accuracy(user_config)
     workflows.run()
 
     return workflows
