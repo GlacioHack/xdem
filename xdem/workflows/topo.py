@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-TopoSummary class from workflows.
+Topo class from workflows.
 """
 import logging
 import math
@@ -28,30 +28,30 @@ import matplotlib.pyplot as plt
 import yaml  # type: ignore
 
 import xdem
-from xdem.workflows.schemas import TOPO_SUMMARY_SCHEMA
+from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
-class TopoSummary(Workflows):
+class Topo(Workflows):
     """
-    TopoSummary class from workflows.
+    Topo class from workflows.
     """
 
     def __init__(self, config_dem: str | Dict[str, Any]):
         """
-        Initialize TopoSummary class
+        Initialize Topo class
         :param config_dem: Path to a user configuration file
         """
 
-        self.schema = TOPO_SUMMARY_SCHEMA
+        self.schema = TOPO_SCHEMA
 
         super().__init__(config_dem)
 
-        self.dem, self.inlier_mask, path_to_mask = self.generate_dem(self.config["inputs"]["reference_elev"])
-        self.generate_graph(self.dem, "elevation (m)", cmap="terrain", cbar_title="Elevation (m)")
+        self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.generate_plot(self.dem, "elevation (m)", cmap="terrain", cbar_title="Elevation (m)")
 
         if self.inlier_mask is not None:
-            self.generate_graph(
+            self.generate_plot(
                 self.dem,
                 "masked_elevation",
                 mask_path=path_to_mask,
@@ -93,8 +93,8 @@ class TopoSummary(Workflows):
             if isinstance(self.config_attributes, dict):
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
             attribute = from_str_to_fun[attr]()
-            logging.info(f"Compute {attr} as a raster file")
-            attribute.save(self.outputs_folder / "raster" / f"{attr}.tif")
+            logging.info(f"Compute {attr} as a rasters file")
+            attribute.save(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def generate_terrain_attributes_png(self) -> None:
         """
@@ -152,7 +152,7 @@ class TopoSummary(Workflows):
             plt.yticks([])
 
         plt.tight_layout()
-        plt.savefig(self.outputs_folder / "png" / "terrain_attributes.png")
+        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes.png")
         plt.close()
 
     def run(self) -> None:
@@ -209,10 +209,10 @@ class TopoSummary(Workflows):
         html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
 
         html += "<h2>Elevation Model</h2>\n"
-        html += "<img src='png/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         html += "<h2>Masked elevation Model</h2>\n"
-        html += "<img src='png/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore
@@ -225,7 +225,7 @@ class TopoSummary(Workflows):
             html += "</div>\n"
 
         html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='png/terrain_attributes.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/terrain_attributes.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 

@@ -17,7 +17,7 @@ dependencies:
   - pyogrio
   - shapely
   - cerberus
-  - PyYAML
+  - pyyaml
   - weasyprint
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
@@ -25,13 +25,11 @@ dependencies:
 
   # Optional dependencies
   - pytransform3d
-  - pyyaml
   - scikit-learn
 
   # Test dependencies
   - pytest
   - pytest-xdist
-  - pyyaml
   - flake8
   - pylint
 

@@ -23,11 +23,8 @@ import logging
 
 import yaml  # type: ignore
 
-from xdem.workflows import DiffAnalysis, TopoSummary
-from xdem.workflows.schemas import (
-    COMPLETE_CONFIG_DIFF_ANALYSIS,
-    COMPLETE_CONFIG_TOPO_SUMMARY,
-)
+from xdem.workflows import Accuracy, Topo
+from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
 libname = ctypes.util.find_library("gobject-2.0")
 if libname is None:
@@ -54,28 +51,28 @@ def main() -> None:
 
     # Subcommand: info
     topo_parser = subparsers.add_parser(
-        "topo-summary",
+        "topo",
         help="Run DEM qualification workflow",
         description="Run a DEM information workflow using a YAML configuration file.",
-        epilog="Example: xdem info config.yaml",
+        epilog="Example: xdem topo config.yaml",
     )
     topo_group = topo_parser.add_mutually_exclusive_group(required=True)
     topo_group.add_argument(
         "--config",
         help="Path to YAML configuration file",
     )
-    topo_group.add_argument("--generate-config", action="store_true", help="Print configuration template")
+    topo_group.add_argument("--generate-config", action="store_true", help="Show configuration template")
 
-    # Subcommand: diff-analysis
+    # Subcommand: accuracy
     diff_parser = subparsers.add_parser(
-        "diff-analysis",
+        "accuracy",
         help="Run DEM comparison workflow",
         description="Run a DEM comparison workflow using a YAML configuration file.",
-        epilog="Example: xdem diff-analysis config.yaml",
+        epilog="Example: xdem accuracy config.yaml",
     )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
-    diff_group.add_argument("--generate-config", action="store_true", help="Print configuration template")
+    diff_group.add_argument("--generate-config", action="store_true", help="Show configuration template")
 
     args = parser.parse_args()
 
@@ -87,26 +84,26 @@ def main() -> None:
     logging.getLogger("fontTools").setLevel(logging.WARNING)
     logging.getLogger("fontTools").propagate = False
 
-    if args.command == "topo-summary":
+    if args.command == "topo":
         if args.generate_config:
-            yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO_SUMMARY, sort_keys=False, allow_unicode=True)
+            yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
             logging.info(yaml_string)
         elif args.config:
             logger.info("Running DEM information workflow")
-            workflow = TopoSummary(args.config)
+            workflow = Topo(args.config)
             workflow.run()
 
-    elif args.command == "diff-analysis":
+    elif args.command == "accuracy":
         if args.generate_config:
-            yaml_string = yaml.dump(COMPLETE_CONFIG_DIFF_ANALYSIS, sort_keys=False, allow_unicode=True)
+            yaml_string = yaml.dump(COMPLETE_CONFIG_ACCURACY, sort_keys=False, allow_unicode=True)
             logging.info(yaml_string)
         elif args.config:
             logger.info("Running DEM comparison workflow")
-            workflow = DiffAnalysis(args.config)  # type: ignore
+            workflow = Accuracy(args.config)  # type: ignore
             workflow.run()
 
     else:
-        raise ValueError(f"{args.command} doesn't exist, valid command are 'diff-analysis', 'topo-summary'")
+        raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
 
     if args.config and _has_libgobject:
         logger.info("Generate report")
