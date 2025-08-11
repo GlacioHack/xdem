@@ -28,7 +28,7 @@ import pytest
 import yaml  # type: ignore
 
 import xdem
-from xdem.workflows.topo_summary import TopoSummary
+from xdem.workflows.topo import Topo
 from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
@@ -40,7 +40,7 @@ def test_workflows_init_wrong_config():
     """
     user_config = 2
     with pytest.raises(ValueError, match="The configuration should be provided either as a path"):
-        _ = TopoSummary(user_config)  # type: ignore
+        _ = Topo(user_config)  # type: ignore
 
 
 def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
@@ -49,7 +49,7 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
 
     assert isinstance(workflows, Workflows)
     pipeline_gt = pipeline_topo
@@ -58,7 +58,7 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
     assert workflows.level == 1
     assert workflows.outputs_folder == tmp_path
     assert workflows.outputs_folder.exists()
-    for folder in ["png", "raster", "csv"]:
+    for folder in ["plots", "rasters", "tables"]:
         assert workflows.outputs_folder.joinpath(folder).exists()
     assert workflows.outputs_folder.joinpath("used_config.yaml").exists()
     assert workflows.dico_to_show == [
@@ -86,27 +86,27 @@ def test_load_config(get_topo_inputs_config, tmp_path):
     with open(tmp_path / "temp_config.yaml", "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
 
-    workflows = TopoSummary(str(tmp_path / "temp_config.yaml"))
+    workflows = Topo(str(tmp_path / "temp_config.yaml"))
     assert workflows.load_config() == cfg
 
     # Fail
     with pytest.raises(FileNotFoundError, match=f"{tmp_path}/tempconfig.yaml does not exist"):
-        _ = TopoSummary(str(tmp_path / "tempconfig.yaml"))
+        _ = Topo(str(tmp_path / "tempconfig.yaml"))
 
 
 def test_generate_graph(get_topo_inputs_config, tmp_path):
     """
-    Test generate_graph function
+    Test generate_plot function
     """
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
     title = "test_generate_graph"
 
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
 
-    workflows.generate_graph(dem, title)
-    out = tmp_path / "png" / f"{title}.png"
+    workflows.generate_plot(dem, title)
+    out = tmp_path / "plots" / f"{title}.png"
     assert out.exists()
 
 
@@ -132,7 +132,7 @@ def test_floats_process(get_topo_inputs_config, tmp_path, inputs, expected):
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
 
     assert workflows.floats_process(inputs) == expected
 
@@ -143,12 +143,12 @@ def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
 
     data = {"a": 1.2345, "b": 2.9876}
     title = "test_save_stat_as_csv"
     workflows.save_stat_as_csv(data, title)
-    out = tmp_path / "csv" / f"{title}_stats.csv"
+    out = tmp_path / "tables" / f"{title}_stats.csv"
     assert out.exists()
 
     with open(out, newline="", encoding="utf-8") as f:
@@ -159,7 +159,7 @@ def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
 
 
 @pytest.mark.skip(reason="not implemented")
-def test_generate_dem():
+def test_load_dem():
     """
     Test generate_dem function
     """

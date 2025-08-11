@@ -18,7 +18,7 @@ dependencies:
   - shapely
   - pip
   - cerberus
-  - PyYAML
+  - pyyaml
   - weasyprint
 
   # To run CI against the latest GeoUtils

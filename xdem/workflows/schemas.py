@@ -52,7 +52,7 @@ class CustomValidator(Validator):  # type: ignore
 
 INPUTS_DEM = {
     "path_to_elev": {"type": "string", "required": True, "path_exists": True},
-    "nodata": {"type": ["integer", "float"], "required": False},
+    "force_source_nodata": {"type": ["integer", "float"], "required": False},
     "path_to_mask": {"type": "string", "required": False, "path_exists": True},
     "from_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
     "to_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
@@ -146,7 +146,7 @@ def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) 
     return validator.document
 
 
-DIFF_ANALYSIS_SCHEMA = {
+ACCURACY_SCHEMA = {
     "inputs": {
         "type": "dict",
         "required": True,
@@ -190,7 +190,7 @@ DIFF_ANALYSIS_SCHEMA = {
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
 }
 
-TOPO_SUMMARY_SCHEMA = {
+TOPO_SCHEMA = {
     "inputs": {
         "type": "dict",
         "required": True,
@@ -233,17 +233,17 @@ TOPO_SUMMARY_SCHEMA = {
     },
 }
 
-COMPLETE_CONFIG_DIFF_ANALYSIS = {
+COMPLETE_CONFIG_ACCURACY = {
     "inputs": {
         "reference_elev": {
             "path_to_elev": "to_complete_with_an_elev",
-            "nodata": "to_complete_with_user_nodata",
+            "force_source_nodata": "to_complete_with_user_nodata",
             "from_vcrs": "to_complete_with_vcrs",
             "to_vcrs": "to_complete_with_vcrs",
         },
         "to_be_aligned_elev": {
             "path_to_elev": "to_complete_with_an_elev",
-            "nodata": "to_complete_with_user_nodata",
+            "force_source_nodata": "to_complete_with_user_nodata",
             "from_vcrs": "to_complete_with_vcrs",
             "to_vcrs": "to_complete_with_vcrs",
             "path_to_mask": "to_complete_with_a_mask",
@@ -272,11 +272,11 @@ COMPLETE_CONFIG_DIFF_ANALYSIS = {
     "statistics": "to_complete_with_list_of_statistics",
 }
 
-COMPLETE_CONFIG_TOPO_SUMMARY = {
+COMPLETE_CONFIG_TOPO = {
     "inputs": {
         "reference_elev": {
             "path_to_elev": "to_complete_with_an_elev",
-            "nodata": "to_complete_with_user_nodata",
+            "force_source_nodata": "to_complete_with_user_nodata",
             "from_vcrs": "to_complete_with_vcrs",
             "to_vcrs": "to_complete_with_vcrs",
             "path_to_mask": "to_complete_with_a_mask",

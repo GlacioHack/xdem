@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Test TopoSummary class
+Test Topo class
 """
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
@@ -25,7 +25,7 @@ import pytest
 from rasterio import Affine
 
 import xdem
-from xdem.workflows import TopoSummary
+from xdem.workflows import Topo
 from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
@@ -33,22 +33,22 @@ pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
 def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrain_attributes):
     """
-    Test TopoSummary class initialization
+    Test Topo class initialization
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
 
     assert isinstance(workflows, Workflows)
-    assert isinstance(workflows, TopoSummary)
-    assert Path(tmp_path / "png").joinpath("elevation (m).png").exists()
-    assert Path(tmp_path / "png").joinpath("masked_elevation.png").exists()
+    assert isinstance(workflows, Topo)
+    assert Path(tmp_path / "plots").joinpath("elevation (m).png").exists()
+    assert Path(tmp_path / "plots").joinpath("masked_elevation.png").exists()
     assert workflows.config_attributes == list_default_terrain_attributes
 
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["terrain_attributes"] = []
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
     assert workflows.config_attributes == []
 
     user_config = get_topo_inputs_config
@@ -56,7 +56,7 @@ def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrai
     user_config["terrain_attributes"] = {
         "hillshade": {"extra_information": {"method": "ZevenbergThorne", "azimuth": 90}}
     }
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
     assert workflows.config_attributes == {
         "hillshade": {"extra_information": {"method": "ZevenbergThorne", "azimuth": 90}}
     }
@@ -69,12 +69,12 @@ def test_generate_terrain_attributes(tmp_path, get_topo_inputs_config, list_defa
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
 
     workflows.generate_terrain_attributes_tiff()
 
     for attr in list_default_terrain_attributes:
-        assert Path(tmp_path / "raster").joinpath(f"{attr}.tif").exists()
+        assert Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
 
 
 def test_generate_terrain_attributes_level_2(tmp_path, get_topo_inputs_config, list_default_terrain_attributes):
@@ -83,11 +83,11 @@ def test_generate_terrain_attributes_level_2(tmp_path, get_topo_inputs_config, l
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
     workflows.run()
 
     for attr in list_default_terrain_attributes:
-        assert Path(tmp_path / "raster").joinpath(f"{attr}.tif").exists()
+        assert Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
 
 
 def test_generate_no_terrain_attributes(tmp_path, get_topo_inputs_config, list_default_terrain_attributes):
@@ -97,11 +97,11 @@ def test_generate_no_terrain_attributes(tmp_path, get_topo_inputs_config, list_d
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     user_config["terrain_attributes"] = None
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
     workflows.run()
 
     for attr in list_default_terrain_attributes:
-        assert not Path(tmp_path / "raster").joinpath(f"{attr}.tif").exists()
+        assert not Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
 
 
 def test_generate_terrain_attributes_png(tmp_path, get_topo_inputs_config):
@@ -110,11 +110,11 @@ def test_generate_terrain_attributes_png(tmp_path, get_topo_inputs_config):
     """
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
     workflows.run()
 
     workflows.generate_terrain_attributes_png()
-    assert Path(tmp_path / "png").joinpath("terrain_attributes.png").exists()
+    assert Path(tmp_path / "plots").joinpath("terrain_attributes.png").exists()
 
 
 def test_run(get_topo_inputs_config, tmp_path):
@@ -124,11 +124,11 @@ def test_run(get_topo_inputs_config, tmp_path):
 
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = TopoSummary(user_config)
+    workflows = Topo(user_config)
     workflows.run()
 
-    assert Path(tmp_path / "csv").joinpath("stats_elev_stats.csv").exists()
-    assert Path(tmp_path / "csv").joinpath("stats_elev_mask_stats.csv").exists()
+    assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
+    assert Path(tmp_path / "tables").joinpath("stats_elev_mask_stats.csv").exists()
     assert Path(tmp_path).joinpath("report.html").exists()
     assert workflows.dico_to_show == [
         (

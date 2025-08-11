@@ -16,5 +16,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from xdem.workflows.diff_analysis import DiffAnalysis  # noqa
-from xdem.workflows.topo_summary import TopoSummary  # noqa
+from xdem.workflows.accuracy import Accuracy  # noqa
+from xdem.workflows.topo import Topo  # noqa

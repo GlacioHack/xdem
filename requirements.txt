@@ -16,5 +16,5 @@ pyogrio
 shapely
 pip
 cerberus
-PyYAML
+pyyaml
 weasyprint

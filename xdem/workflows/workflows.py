@@ -72,7 +72,7 @@ class Workflows(ABC):
         self.outputs_folder = Path(self.config["outputs"]["path"])
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
 
-        for folder in ["png", "raster", "csv"]:
+        for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
 
         self.dico_to_show = [
@@ -100,7 +100,7 @@ class Workflows(ABC):
         with open(self.config_path) as f:
             return yaml.safe_load(f)
 
-    def generate_graph(self, dem: RasterType, title: str, mask_path: str = None, **kwargs: Any) -> None:
+    def generate_plot(self, dem: RasterType, title: str, mask_path: str = None, **kwargs: Any) -> None:
         """
         Generate plot from a DEM
         :param dem: Digital Elevation model
@@ -113,14 +113,14 @@ class Workflows(ABC):
 
         if mask_path is None:
             dem.plot(title=plot_title, **kwargs)
-            plt.savefig(self.outputs_folder / "png" / f"{title}.png")
+            plt.savefig(self.outputs_folder / "plots" / f"{title}.png")
             plt.close()
         else:
             mask = gu.Vector(mask_path)
             mask = mask.crop(dem)
             dem.plot(title=plot_title, **kwargs)
             mask.plot(dem, ec="k", fc="none")
-            plt.savefig(self.outputs_folder / "png" / f"{title}.png")
+            plt.savefig(self.outputs_folder / "plots" / f"{title}.png")
             plt.close()
 
     def floats_process(
@@ -143,7 +143,7 @@ class Workflows(ABC):
             return dict_with_floats
 
     @staticmethod
-    def generate_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str | None]:
+    def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str | None]:
         """
         Generate DEM from user configuration dictionary
         :param config_dem: Configuration dictionary
@@ -158,8 +158,8 @@ class Workflows(ABC):
             dem.set_vcrs(from_vcrs)
             if from_vcrs != to_vcrs:
                 dem.to_vcrs(to_vcrs)
-            if "nodata" in config_dem:
-                dem.set_nodata(config_dem["nodata"])
+            if "force_source_nodata" in config_dem:
+                dem.set_nodata(config_dem["force_source_nodata"])
             if "path_to_mask" in config_dem:
                 mask_path = config_dem["path_to_mask"]
                 mask = gu.Vector(mask_path)
@@ -188,7 +188,7 @@ class Workflows(ABC):
 
         fieldnames = list(cleaned_data.keys())
 
-        filename = self.outputs_folder / "csv" / f"{file_name}_stats.csv"
+        filename = self.outputs_folder / "tables" / f"{file_name}_stats.csv"
 
         with filename.open(mode="w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)

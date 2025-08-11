@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-DiffAnalysis class from workflow
+Accuracy class from workflow
 """
 import logging
 from pathlib import Path
@@ -30,33 +30,31 @@ from geoutils.raster import RasterType
 from numpy import floating
 
 import xdem
-from xdem.workflows.schemas import DIFF_ANALYSIS_SCHEMA
+from xdem.workflows.schemas import ACCURACY_SCHEMA
 from xdem.workflows.workflows import Workflows
 
 
-class DiffAnalysis(Workflows):
+class Accuracy(Workflows):
     """
-    DiffAnalysis class from workflow
+    Accuracy class from workflow
     """
 
     def __init__(self, config_dem: str | Dict[str, Any]) -> None:
         """
-        Initialize the DiffAnalysis class
+        Initialize the Accuracy class
         :param config_dem: Path to a user configuration file
         """
 
-        self.schema = DIFF_ANALYSIS_SCHEMA
+        self.schema = ACCURACY_SCHEMA
 
         super().__init__(config_dem)
 
-        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.generate_dem(
-            self.config["inputs"]["to_be_aligned_elev"]
-        )
-        self.reference_elev, ref_mask, ref_mask_path = self.generate_dem(self.config["inputs"]["reference_elev"])
+        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
+        self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
-        self.generate_graph(self.reference_elev, "reference_elev_map")
-        self.generate_graph(self.to_be_aligned_elev, "to_be_aligned_elev_map")
+        self.generate_plot(self.reference_elev, "reference_elev_map")
+        self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
 
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
@@ -67,7 +65,7 @@ class DiffAnalysis(Workflows):
             path_mask = ref_mask_path or tba_path_mask
 
         if self.inlier_mask is not None:
-            self.generate_graph(
+            self.generate_plot(
                 self.to_be_aligned_elev,
                 "masked_elevation",
                 mask_path=path_mask,
@@ -122,7 +120,7 @@ class DiffAnalysis(Workflows):
 
         # Coregister
         aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
-        aligned_elev.save(self.outputs_folder / "raster" / "aligned_elev.tif")
+        aligned_elev.save(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
@@ -164,7 +162,7 @@ class DiffAnalysis(Workflows):
             self.reference_elev = reprojected
 
         if self.level > 1:
-            output_path = self.outputs_folder / "raster" / f"{name}_reprojected.tif"
+            output_path = self.outputs_folder / "rasters" / f"{name}_reprojected.tif"
             reprojected.save(output_path)
 
     def _get_stats(self, dem: RasterType) -> floating[Any] | dict[str, floating[Any]]:
@@ -207,7 +205,7 @@ class DiffAnalysis(Workflows):
         plt.legend()
         plt.grid(False)
         plt.tight_layout()
-        plt.savefig(self.outputs_folder / "png" / "elev_diff_histo.png")
+        plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png")
         plt.close()
 
     def run(self) -> None:
@@ -252,7 +250,7 @@ class DiffAnalysis(Workflows):
                 vmin, vmax = stats["min"], stats["max"]
 
             suffix = f"_elev_{label}_coreg" if label else "_elev"
-            self.generate_graph(diff, f"diff{suffix}", vmin=vmin, vmax=vmax, cmap="RdBu")
+            self.generate_plot(diff, f"diff{suffix}", vmin=vmin, vmax=vmax, cmap="RdBu")
 
         if self.compute_coreg:
             stat_items = [
@@ -278,8 +276,8 @@ class DiffAnalysis(Workflows):
         if self.compute_coreg:
             self._compute_histogram()
             if self.level > 1:
-                self.diff_before.save(self.outputs_folder / "raster" / "diff_elev_before_coreg.tif")
-                self.diff_after.save(self.outputs_folder / "raster" / "diff_elev_after_coreg.tif")
+                self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg.tif")
+                self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg.tif")
 
         self.create_html(self.dico_to_show)
 
@@ -294,11 +292,11 @@ class DiffAnalysis(Workflows):
         html += "<h2>Digital Elevation Model</h2>\n"
         html += "<div style='display: flex; gap: 10px;'>\n"
         html += (
-            "  <img src='png/reference_elev_map.png' alt='Image PNG' "
+            "  <img src='plots/reference_elev_map.png' alt='Image PNG' "
             "style='max-width: 100%; height: auto; width: 40%;'>\n"
         )
         html += (
-            "  <img src='png/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
+            "  <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
             "100%; height: auto; width: 40%;'>\n"
         )
         html += "</div>\n"
@@ -317,23 +315,24 @@ class DiffAnalysis(Workflows):
             html += "<h2>Altitude differences</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
             html += (
-                "  <img src='png/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: "
                 "40%; height: auto; width: 50%;'>\n"
             )
             html += (
-                "  <img src='png/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: "
                 "40%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
 
             html += "<h2>Differences histogram</h2>\n"
-            html += "<img src='png/elev_diff_histo.png' alt='Image PNG' style='max-width: 40%; height: auto;'>\n"
+            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='max-width: 40%; height: auto;'>\n"
 
         else:
             html += "<h2>Altitude differences</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
             html += (
-                "  <img src='png/diff_elev.png' alt='Image PNG' style='max-width: " "40%; height: auto; width: 50%;'>\n"
+                "  <img src='plots/diff_elev.png' alt='Image PNG' style='max-width: "
+                "40%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
 
