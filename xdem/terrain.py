@@ -2441,7 +2441,7 @@ def texture_shading(
     be apparent in traditional hillshading.
 
     The fractional Laplacian operator is controlled by the alpha parameter:
-    - alpha = 0: No enhancement (returns original DEM)
+    - alpha = 0: Preserves all frequencies with mean removed (~zero-centered DEM)
     - alpha = 1: Standard Laplacian operator (edge detection)
     - alpha = 2: Enhanced high-frequency features
 
