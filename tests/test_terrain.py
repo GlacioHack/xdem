@@ -576,3 +576,110 @@ class TestTerrainAttribute:
         assert self.dem.dtype != out_dtype
         assert np.dtype(slope.dtype) == out_dtype
         assert np.dtype(tpi.dtype) == out_dtype
+
+    def test_texture_shading(self) -> None:
+        """Test the texture_shading function."""
+        
+        # Test with a simple DEM
+        dem_simple = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
+        
+        # Test basic functionality
+        result = xdem.terrain.texture_shading(dem_simple, alpha=0.8)
+        
+        # Check output properties
+        assert result.shape == dem_simple.shape
+        assert np.issubdtype(result.dtype, np.floating)
+        assert np.all(np.isfinite(result))  # No NaN values for simple case
+        
+        # Test different alpha values
+        result_low = xdem.terrain.texture_shading(dem_simple, alpha=0.5)
+        result_mid = xdem.terrain.texture_shading(dem_simple, alpha=0.8)
+        result_high = xdem.terrain.texture_shading(dem_simple, alpha=1.5)
+        
+        # Results should be different for different alpha values
+        assert not np.array_equal(result_low, result_mid)
+        assert not np.array_equal(result_mid, result_high)
+        
+        # Test with NaN values
+        dem_with_nan = dem_simple.copy()
+        dem_with_nan[0, 0] = np.nan
+        
+        result_nan = xdem.terrain.texture_shading(dem_with_nan, alpha=0.8)
+        assert result_nan.shape == dem_with_nan.shape
+        assert np.isnan(result_nan[0, 0])  # NaN should be preserved
+        
+        # Test error handling
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 2"):
+            xdem.terrain.texture_shading(dem_simple, alpha=-0.1)
+            
+        with pytest.raises(ValueError, match="Alpha must be between 0 and 2"):
+            xdem.terrain.texture_shading(dem_simple, alpha=2.1)
+            
+        with pytest.raises(ValueError, match="Only 'fft' method is supported"):
+            xdem.terrain.texture_shading(dem_simple, method="invalid")
+
+    def test_texture_shading_via_get_terrain_attribute(self) -> None:
+        """Test texture_shading via the get_terrain_attribute interface."""
+        
+        # Test with a simple DEM
+        dem_simple = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
+        
+        # Test via get_terrain_attribute
+        result = xdem.terrain.get_terrain_attribute(dem_simple, "texture_shading")
+        
+        # Check output properties
+        assert result.shape == dem_simple.shape
+        assert np.issubdtype(result.dtype, np.floating)
+        assert np.all(np.isfinite(result))
+        
+        # Test with multiple attributes including texture_shading
+        slope, texture = xdem.terrain.get_terrain_attribute(
+            dem_simple, ["slope", "texture_shading"], resolution=1.0
+        )
+        
+        assert slope.shape == dem_simple.shape
+        assert texture.shape == dem_simple.shape
+        assert not np.array_equal(slope, texture)  # Should be different attributes
+
+    def test_texture_shading_larger_dem(self) -> None:
+        """Test texture_shading with a larger, more realistic DEM."""
+        
+        # Create a synthetic DEM with some terrain features
+        x = np.linspace(-5, 5, 50)
+        y = np.linspace(-5, 5, 50)
+        X, Y = np.meshgrid(x, y)
+        
+        # Create a DEM with ridges and valleys
+        dem_synthetic = (np.sin(X) * np.cos(Y) * 10 + 
+                        np.exp(-(X**2 + Y**2)/5) * 20 + 
+                        np.random.normal(0, 0.5, X.shape)).astype(np.float32)
+        
+        # Test texture shading
+        result = xdem.terrain.texture_shading(dem_synthetic, alpha=0.8)
+        
+        # Check output properties
+        assert result.shape == dem_synthetic.shape
+        assert np.issubdtype(result.dtype, np.floating)
+        assert np.all(np.isfinite(result))
+        
+        # Check that texture shading enhances features (should have higher variance than flat areas)
+        flat_region = np.ones((50, 50), dtype=np.float32) * 100
+        flat_result = xdem.terrain.texture_shading(flat_region, alpha=1.0)
+        
+        # Textured terrain should have higher variance than flat terrain
+        assert np.var(result) > np.var(flat_result)
+
+    def test_nextprod_fft(self) -> None:
+        """Test the _nextprod_fft helper function."""
+        
+        # Test known values
+        assert xdem.terrain._nextprod_fft(1) == 1
+        assert xdem.terrain._nextprod_fft(10) == 16
+        assert xdem.terrain._nextprod_fft(20) == 32
+        assert xdem.terrain._nextprod_fft(32) == 32
+        assert xdem.terrain._nextprod_fft(100) == 128
+        
+        # Test that result is always >= input
+        for size in [1, 5, 13, 25, 37, 63, 91]:
+            result = xdem.terrain._nextprod_fft(size)
+            assert result >= size
