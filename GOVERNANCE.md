@@ -1,7 +1,7 @@
 # Governance Policy
 
 This document provides the governance policy for the Project. Maintainers agree to this policy and to abide by all Project polices,
-including the [code of conduct](./CODE-OF-CONDUCT.md) and by adding their name to the [AUTHORS.md file](./AUTHORS.md).
+including the [code of conduct](./CODE_OF_CONDUCT.md) and by adding their name to the [AUTHORS.md file](./AUTHORS.md).
 
 ## 1. Roles.
 
