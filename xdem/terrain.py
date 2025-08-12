@@ -1312,6 +1312,7 @@ def get_terrain_attribute(
                     tri_method,
                     window_size,
                     engine,
+                    texture_alpha,
                     out_dtype,
                     depth=1,
                 )
@@ -2328,7 +2329,7 @@ def _nextprod_fft(n: int) -> int:
 
 def _texture_shading_fft(
     dem: NDArrayf,
-    alpha: float = 0.8,
+    alpha: float | None = 0.8,
     method: str = "fft",
 ) -> NDArrayf:
     """
@@ -2344,6 +2345,8 @@ def _texture_shading_fft(
     :returns: Texture shaded array
     """
     # Validate inputs
+    if alpha is None:
+        alpha = 0.8  # Use default value if None
     if not 0 <= alpha <= 2:
         raise ValueError(f"Alpha must be between 0 and 2, got {alpha}")
 
