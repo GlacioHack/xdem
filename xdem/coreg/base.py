@@ -47,7 +47,6 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-from geoutils._typing import Number
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster import Mask, RasterType, raster
@@ -55,7 +54,6 @@ from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _translate
-from geoutils.stats import nmad
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
@@ -125,51 +123,6 @@ dict_key_to_str = {
 #####################################
 # Generic functions for preprocessing
 ###########################################
-
-
-def _calculate_ddem_stats(
-    ddem: NDArrayf | MArrayf,
-    inlier_mask: NDArrayb | None = None,
-    stats_list: tuple[Callable[[NDArrayf], Number], ...] | None = None,
-    stats_labels: tuple[str, ...] | None = None,
-) -> dict[str, float]:
-    """
-    Calculate standard statistics of ddem, e.g., to be used to compare before/after coregistration.
-    Default statistics are: count, mean, median, NMAD and std.
-
-    :param ddem: The DEM difference to be analyzed.
-    :param inlier_mask: 2D boolean array of areas to include in the analysis (inliers=True).
-    :param stats_list: Statistics to compute on the DEM difference.
-    :param stats_labels: Labels of the statistics to compute (same length as stats_list).
-
-    Returns: a dictionary containing the statistics
-    """
-    # Default stats - Cannot be put in default args due to circular import with gu.stats.nmad.
-    if (stats_list is None) or (stats_labels is None):
-        stats_list = (np.size, np.mean, np.median, nmad, np.std)
-        stats_labels = ("count", "mean", "median", "nmad", "std")
-
-    # Check that stats_list and stats_labels are correct
-    if len(stats_list) != len(stats_labels):
-        raise ValueError("Number of items in `stats_list` and `stats_labels` should be identical.")
-    for stat, label in zip(stats_list, stats_labels):
-        if not callable(stat):
-            raise ValueError(f"Item {stat} in `stats_list` should be a callable/function.")
-        if not isinstance(label, str):
-            raise ValueError(f"Item {label} in `stats_labels` should be a string.")
-
-    # Get the mask of valid and inliers pixels
-    nan_mask = ~np.isfinite(ddem)
-    if inlier_mask is None:
-        inlier_mask = np.ones(ddem.shape, dtype="bool")
-    valid_ddem = ddem[~nan_mask & inlier_mask]
-
-    # Calculate stats
-    stats = {}
-    for stat, label in zip(stats_list, stats_labels):
-        stats[label] = stat(valid_ddem)
-
-    return stats
 
 
 def _preprocess_coreg_fit_raster_raster(
@@ -2416,153 +2369,6 @@ class Coreg:
         )
 
         return aligned_dem
-
-    def residuals(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        subsample: float | int = 1.0,
-        random_state: int | np.random.Generator | None = None,
-    ) -> NDArrayf:
-        """
-        Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
-
-        :param reference_elev: 2D array of elevation values acting reference.
-        :param to_be_aligned_elev: 2D array of elevation values to be aligned.
-        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
-        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
-        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
-        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
-
-        :returns: A 1D array of finite residuals.
-        """
-
-        # Apply the transformation to the dem to be aligned
-        aligned_elev = self.apply(to_be_aligned_elev, transform=transform, crs=crs)[0]
-
-        # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, align_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-        )
-
-        # Calculate the DEM difference
-        diff = ref_dem - align_elev
-
-        # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
-        full_mask = np.isfinite(diff)
-        if "float" in str(diff.dtype):
-            full_mask[(diff == np.finfo(diff.dtype).min) | np.isinf(diff)] = False
-
-        # Return the difference values within the full inlier mask
-        return diff[full_mask]
-
-    @overload
-    def error(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        error_type: list[str],
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> list[np.floating[Any] | float | np.integer[Any] | int]: ...
-
-    @overload
-    def error(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        error_type: str = "nmad",
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int: ...
-
-    def error(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        error_type: str | list[str] = "nmad",
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
-        """
-        Calculate the error of a coregistration approach.
-
-        Choices:
-            - "nmad": Default. The Normalized Median Absolute Deviation of the residuals.
-            - "median": The median of the residuals.
-            - "mean": The mean/average of the residuals
-            - "std": The standard deviation of the residuals.
-            - "rms": The root mean square of the residuals.
-            - "mae": The mean absolute error of the residuals.
-            - "count": The residual count.
-
-        :param reference_elev: 2D array of elevation values acting reference.
-        :param to_be_aligned_elev: 2D array of elevation values to be aligned.
-        :param error_type: The type of error measure to calculate. May be a list of error types.
-        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
-        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
-
-        :returns: The error measure of choice for the residuals.
-        """
-        if isinstance(error_type, str):
-            error_type = [error_type]
-
-        residuals = self.residuals(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-        )
-
-        def rms(res: NDArrayf) -> np.floating[Any]:
-            return np.sqrt(np.mean(np.square(res)))
-
-        def mae(res: NDArrayf) -> np.floating[Any]:
-            return np.mean(np.abs(res))
-
-        def count(res: NDArrayf) -> int:
-            return res.size
-
-        error_functions: dict[str, Callable[[NDArrayf], np.floating[Any] | float | np.integer[Any] | int]] = {
-            "nmad": nmad,
-            "median": np.median,
-            "mean": np.mean,
-            "std": np.std,
-            "rms": rms,
-            "mae": mae,
-            "count": count,
-        }
-
-        try:
-            errors = [error_functions[err_type](residuals) for err_type in error_type]
-        except KeyError as exception:
-            raise ValueError(
-                f"Invalid 'error_type'{'s' if len(error_type) > 1 else ''}: "
-                f"'{error_type}'. Choices: {list(error_functions.keys())}"
-            ) from exception
-
-        return errors if len(errors) > 1 else errors[0]
 
     def _fit_func(
         self,

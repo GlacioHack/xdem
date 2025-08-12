@@ -138,31 +138,6 @@ class TestCoregClass:
         # Make sure these don't appear in the copy
         assert corr_copy.meta != corr.meta
 
-    def test_error_method(self) -> None:
-        """Test different error measures."""
-        dem1: NDArrayf = np.ones((50, 50)).astype(np.float32)
-        # Create a vertically shifted dem
-        dem2 = dem1.copy() + 2.0
-        affine = rio.transform.from_origin(0, 0, 1, 1)
-        crs = rio.crs.CRS.from_epsg(4326)
-
-        vshiftcorr = coreg.VerticalShift()
-        # Fit the vertical shift
-        vshiftcorr.fit(dem1, dem2, transform=affine, crs=crs)
-
-        # Check that the vertical shift after coregistration is zero
-        assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == 0
-
-        # Remove the vertical shift fit and see what happens.
-        vshiftcorr.meta["outputs"]["affine"]["shift_z"] = 0
-        # Now it should be equal to dem1 - dem2
-        assert vshiftcorr.error(dem1, dem2, transform=affine, crs=crs, error_type="median") == -2
-
-        # Create random noise and see if the standard deviation is equal (it should)
-        rng = np.random.default_rng(42)
-        dem3 = dem1.copy() + rng.random(size=dem1.size).reshape(dem1.shape)
-        assert abs(vshiftcorr.error(dem1, dem3, transform=affine, crs=crs, error_type="std") - np.std(dem3)) < 1e-6
-
     @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])  # type: ignore
     def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
         """Test the subsampling function called by all subclasses"""
