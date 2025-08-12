@@ -485,6 +485,19 @@ class DEM(Raster):  # type: ignore
         return terrain.fractal_roughness(self, window_size=window_size, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
+    def texture_shading(
+        self,
+        alpha: float = 0.8,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.texture_shading(
+            self,
+            alpha=alpha,
+            mp_config=mp_config,
+        )
+
+    @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
