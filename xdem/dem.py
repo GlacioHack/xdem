@@ -489,7 +489,6 @@ class DEM(Raster):  # type: ignore
         self,
         alpha: float = 0.8,
         method: str = "fft",
-        window_size: int | None = None,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
@@ -497,7 +496,6 @@ class DEM(Raster):  # type: ignore
             self,
             alpha=alpha,
             method=method,
-            window_size=window_size,
             mp_config=mp_config,
         )
 

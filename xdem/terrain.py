@@ -1133,6 +1133,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
@@ -1151,6 +1152,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> list[NDArrayf]: ...
@@ -1169,6 +1171,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> list[RasterType]: ...
@@ -1187,6 +1190,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
@@ -1204,6 +1208,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
@@ -1327,6 +1332,7 @@ def get_terrain_attribute(
             tri_method,
             window_size,
             engine,
+            texture_alpha,
             out_dtype,
         )
 
@@ -1344,6 +1350,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> NDArrayf: ...
 
@@ -1361,6 +1368,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[NDArrayf]: ...
 
@@ -1378,6 +1386,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[RasterType]: ...
 
@@ -1395,6 +1404,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> RasterType: ...
 
@@ -1411,6 +1421,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
@@ -1572,8 +1583,8 @@ def _get_terrain_attribute(
         frequency_attributes = []
         for attr in attributes_requiring_frequency_domain:
             if attr == "texture_shading":
-                # Use default alpha=0.8 for texture shading
-                result = _texture_shading_fft(dem_arr, alpha=0.8)
+                # Use texture_alpha parameter for texture shading
+                result = _texture_shading_fft(dem_arr, alpha=texture_alpha)
                 frequency_attributes.append(result.astype(out_dtype))
     else:
         frequency_attributes = []  # type: ignore
@@ -2319,7 +2330,6 @@ def _texture_shading_fft(
     dem: NDArrayf,
     alpha: float = 0.8,
     method: str = "fft",
-    window_size: int | None = None,
 ) -> NDArrayf:
     """
     Core texture shading implementation using fractional Laplacian operator.
@@ -2331,7 +2341,6 @@ def _texture_shading_fft(
     :param dem: Input DEM array
     :param alpha: Fractional exponent for Laplacian operator (0-2, default 0.8)
     :param method: Method to use ("fft" for frequency domain)
-    :param window_size: Window size for local processing (None for global)
     :returns: Texture shaded array
     """
     # Validate inputs
@@ -2410,7 +2419,6 @@ def texture_shading(
     dem: NDArrayf | MArrayf,
     alpha: float = 0.8,
     method: str = "fft",
-    window_size: int | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -2420,7 +2428,6 @@ def texture_shading(
     dem: RasterType,
     alpha: float = 0.8,
     method: str = "fft",
-    window_size: int | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -2429,7 +2436,6 @@ def texture_shading(
     dem: NDArrayf | MArrayf | RasterType,
     alpha: float = 0.8,
     method: str = "fft",
-    window_size: int | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
@@ -2454,7 +2460,6 @@ def texture_shading(
     :param alpha: Fractional exponent for Laplacian operator (0-2, default 0.8).
         Higher values enhance fine details, lower values provide smoother results.
     :param method: Processing method, currently only "fft" (frequency domain) is supported
-    :param window_size: Window size for local processing (None for global processing)
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None
 
     :raises ValueError: If alpha is not between 0 and 2, or if method is not supported
@@ -2472,19 +2477,9 @@ def texture_shading(
 
     :returns: Texture shaded array with same shape as input DEM
     """
-    # Get array from input
-    dem_arr = gu.raster.get_array_and_mask(dem)[0]
-
-    # Apply texture shading
-    result = _texture_shading_fft(
-        dem_arr,
-        alpha=alpha,
-        method=method,
-        window_size=window_size,
+    return get_terrain_attribute(
+        dem=dem,
+        attribute="texture_shading",
+        texture_alpha=alpha,
+        mp_config=mp_config,
     )
-
-    # If input was a Raster, return a Raster
-    if isinstance(dem, gu.Raster):
-        return gu.Raster.from_array(result, transform=dem.transform, crs=dem.crs, nodata=dem.nodata)
-
-    return result
