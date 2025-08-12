@@ -488,14 +488,12 @@ class DEM(Raster):  # type: ignore
     def texture_shading(
         self,
         alpha: float = 0.8,
-        method: str = "fft",
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
         return terrain.texture_shading(
             self,
             alpha=alpha,
-            method=method,
             mp_config=mp_config,
         )
 

@@ -615,9 +615,6 @@ class TestTerrainAttribute:
         with pytest.raises(ValueError, match="Alpha must be between 0 and 2"):
             xdem.terrain.texture_shading(dem_simple, alpha=2.1)
 
-        with pytest.raises(ValueError, match="Only 'fft' method is supported"):
-            xdem.terrain.texture_shading(dem_simple, method="invalid")
-
     def test_texture_shading_via_get_terrain_attribute(self) -> None:
         """Test texture_shading via the get_terrain_attribute interface."""
 

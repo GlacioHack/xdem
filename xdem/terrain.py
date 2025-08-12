@@ -2330,7 +2330,6 @@ def _nextprod_fft(n: int) -> int:
 def _texture_shading_fft(
     dem: NDArrayf,
     alpha: float | None = 0.8,
-    method: str = "fft",
 ) -> NDArrayf:
     """
     Core texture shading implementation using fractional Laplacian operator.
@@ -2341,7 +2340,6 @@ def _texture_shading_fft(
 
     :param dem: Input DEM array
     :param alpha: Fractional exponent for Laplacian operator (0-2, default 0.8)
-    :param method: Method to use ("fft" for frequency domain)
     :returns: Texture shaded array
     """
     # Validate inputs
@@ -2349,9 +2347,6 @@ def _texture_shading_fft(
         alpha = 0.8  # Use default value if None
     if not 0 <= alpha <= 2:
         raise ValueError(f"Alpha must be between 0 and 2, got {alpha}")
-
-    if method != "fft":
-        raise ValueError(f"Only 'fft' method is supported, got '{method}'")
 
     # Handle NaN values by creating a mask
     valid_mask = np.isfinite(dem)
@@ -2421,7 +2416,6 @@ def _texture_shading_fft(
 def texture_shading(
     dem: NDArrayf | MArrayf,
     alpha: float = 0.8,
-    method: str = "fft",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -2430,7 +2424,6 @@ def texture_shading(
 def texture_shading(
     dem: RasterType,
     alpha: float = 0.8,
-    method: str = "fft",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -2438,7 +2431,6 @@ def texture_shading(
 def texture_shading(
     dem: NDArrayf | MArrayf | RasterType,
     alpha: float = 0.8,
-    method: str = "fft",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
@@ -2462,10 +2454,9 @@ def texture_shading(
     :param dem: Input DEM array or Raster object
     :param alpha: Fractional exponent for Laplacian operator (0-2, default 0.8).
         Higher values enhance fine details, lower values provide smoother results.
-    :param method: Processing method, currently only "fft" (frequency domain) is supported
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None
 
-    :raises ValueError: If alpha is not between 0 and 2, or if method is not supported
+    :raises ValueError: If alpha is not between 0 and 2
 
     :examples:
         >>> import numpy as np
