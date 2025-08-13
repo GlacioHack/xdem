@@ -24,7 +24,7 @@ identify on **a map of elevation differences with another elevation dataset (loo
 
 ## Cheatsheet
 
-The patterns of errors categories listed in this spreadsheet **are linked to visual examples further below** that
+The patterns of error categories listed in this spreadsheet **are linked to visual examples further below** that
 you can use to compare to your own elevation differences.
 
 ```{list-table}
