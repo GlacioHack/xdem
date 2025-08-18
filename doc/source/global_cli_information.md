@@ -1,6 +1,6 @@
 (global_cli_information)=
 
-# Command line interface
+# Command line interface (CLI)
 
 To simplify the use of xDEM and provide a universal tool to assess one or multiple DEMs,
 we have decided to implement a Command Line Interface (CLI).
@@ -16,15 +16,15 @@ All workflows follow the same command structure:
 xdem workflow_name --config config_file.yaml
 ```
 
-The configuration YAML file contains at least the required input parameters for the workflow.
+The YAML configuration file contains at least the required input parameters for the workflow.
 xDEM then automatically fills in the rest with suggested settings. Users are free to edit the
-configuration to run only the parts they need.
+configuration file to run only the parts they need.
 
 
-It is possible to display a template of all possible configuration options for the file using the following command:
+To display a template of all available configuration options for the YAML file, use the following command:
 
 ```{code}
-xdem workflow_name --generate-config
+xdem workflow_name --display-template-config
 ```
 
 ```{note}
@@ -33,7 +33,7 @@ and its corresponding PDF version.
 ```
 
 ```{toctree}
-:caption: Available workflow
+:caption: Available workflows
 :maxdepth: 2
 cli_topo
 cli_accuracy

@@ -4,8 +4,10 @@
 
 ## Summary
 
-The topo workflow aims to provide the user with various information about their DEM,
-such as terrain attributes and sets of statistics.
+The topo workflow is designed to provide users with comprehensive information about their elevation model,
+including terrain attributes (i.e. slope, hillshade, aspect, etc.) and statistical analyses (i.e. mean, max, min, etc.)
+
+
 
 :::{figure} imgs/topo_workflow_pipeline.png
 :width: 100%
@@ -19,10 +21,10 @@ Run the workflow :
 xdem topo --config config_file.yaml
 ```
 
-Preview available parameters :
+To display a template of all available configuration options for the YAML file, use the following command:
 
 ```{code}
-xdem topo --generate-config
+xdem topo --display-template-config
 ```
 
 ## Detailed description of input parameters
@@ -63,7 +65,15 @@ xdem topo --generate-config
 
       Statistics step information. This section relates to the computed statistics:
         1. If no block is specified, all available statistics are calculated by default.
+        [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
+        percentage valid points, inter quartile range]
         2. If a block is specified but no statistics are provided, then no statistics will be computed.
+
+      .. code-block:: yaml
+
+         statistics:
+
+        3. If a block is specified and some statistics are provided, then only these statistics are computed.
 
       .. code-block:: yaml
 
@@ -71,6 +81,8 @@ xdem topo --generate-config
            - min
            - max
            - mean
+
+      If a mask is provided, the statistics are also computed inside the mask.
 
    .. tab:: terrain attributes
 
@@ -188,7 +200,7 @@ xdem topo --generate-config
         </table>
         </div>
         <div style='clear: both; margin-bottom: 30px;'>
-        <h2>DEM information</h2>
+        <h2>elevation information</h2>
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
         <tr><td>Driver</td><td>GTiff</td></tr>

@@ -61,7 +61,7 @@ def main() -> None:
         "--config",
         help="Path to YAML configuration file",
     )
-    topo_group.add_argument("--generate-config", action="store_true", help="Show configuration template")
+    topo_group.add_argument("--display-template-config", action="store_true", help="Show configuration template")
 
     # Subcommand: accuracy
     diff_parser = subparsers.add_parser(
@@ -72,7 +72,7 @@ def main() -> None:
     )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
-    diff_group.add_argument("--generate-config", action="store_true", help="Show configuration template")
+    diff_group.add_argument("--display-template-config", action="store_true", help="Show configuration template")
 
     args = parser.parse_args()
 

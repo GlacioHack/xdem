@@ -4,8 +4,8 @@
 
 ## Summary
 
-The accuracy workflow allows the user to generate various outputs to facilitate
-the analysis of differences between two elevation datasets. An optional coregistration step can also be included.
+The accuracy workflow is designed to help users analyze differences between two elevation datasets by
+generating various outputs. It also includes optional coregistration for improved alignment.
 
 :::{figure} imgs/accuracy_workflow_pipeline.png
 :width: 100%
@@ -18,10 +18,10 @@ Run the workflow:
 ```{code}
 xdem accuracy --config config_file.yaml
 ```
-Preview available parameters:
+To display a template of all available configuration options for the YAML file, use the following command:
 
 ```{code}
-xdem accuracy --generate-config
+xdem accuracy --display-template-config
 ```
 
 ## Detailed description of input parameters
@@ -43,9 +43,9 @@ xdem accuracy --generate-config
                :header: "Name", "Description", "Type", "Default value", "Required"
                :widths: 20, 40, 20, 10, 10
 
-               "path_to_elev", "Path to reference DEM", "str", "", "Yes"
-               "force_source_nodata", "No data DEM", "int", "", "No"
-               "path_to_mask", "Path to mask associated to the DEM", "str", "", "No"
+               "path_to_elev", "Path to reference elevation", "str", "", "Yes"
+               "force_source_nodata", "No data elevation", "int", "", "No"
+               "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
                "from_vcrs", "Original vcrs", "str, int", "EGM96", "No"
                "to_vcrs", "Destination vcrs", "str, int", "EGM96", "No"
 
@@ -57,9 +57,9 @@ xdem accuracy --generate-config
                :header: "Name", "Description", "Type", "Default value", "Required"
                :widths: 20, 40, 20, 10, 10
 
-               "path_to_elev", "Path to to_be_aligned DEM", "str", "", "Yes"
-               "force_source_nodata", "No data DEM", "int", "", "No"
-               "path_to_mask", "Path to mask associated to the DEM", "str", "", "No"
+               "path_to_elev", "Path to to_be_aligned elevation", "str", "", "Yes"
+               "force_source_nodata", "No data elevation", "int", "", "No"
+               "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
                "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
                "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
 
@@ -75,7 +75,7 @@ xdem accuracy --generate-config
                 to_vcrs: "Ellipsoid"
             to_be_aligned_elev:
                 path_to_elev: "path_to/to_be_aligned_dem.tif"
-                path_to_mask: "path_to/mask.tif
+                path_to_mask: "path_to/mask.tif"
 
    .. tab:: coregistration
 
@@ -83,6 +83,7 @@ xdem accuracy --generate-config
 
       Coregistration step details. You can create a pipeline with up to three coregistration steps by
       using the keys step_one, step_two, and step_three.
+      Available coregistration : NuthKaab, DhMinimize, VerticalShift, DirectionalBias, TerrainBias
 
       .. note::
         By default, coregistration is carried out using the Nuth and Kääb method.
@@ -96,7 +97,7 @@ xdem accuracy --generate-config
 
            "step_[one | two | three]", "method", "Name of coregistration method", "str", "NuthKaab", "Every available coregistration method", "No"
            "", "extra_information", "Extra parameters fitting with the method", "dict", "", "", "No"
-           "sampling_grid", "", "Destination DEM for reprojection", "str", "reference_dem", "reference_dem or to_be_aligned_elev", "No"
+           "sampling_grid", "", "Destination elevation for reprojection", "str", "reference_dem", "reference_dem or to_be_aligned_elev", "No"
            "process", "", "Activate the coregistration", "bool", "True", "True or False", "No"
 
         .. note::
@@ -115,20 +116,40 @@ xdem accuracy --generate-config
           sampling_grid: "reference_elev"
           process: True
 
+      other example :
+
+      .. code-block:: yaml
+
+        coregistration:
+          step_one:
+            method: "VerticalShift"
+          sampling_grid: "reference_elev"
+          process: True
+
    .. tab:: statistics
 
       **Required:** No
 
       Statistics step information. This section relates to the computed statistics:
         1. If no block is specified, all available statistics are calculated by default.
+        [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
+        percentage valid points, inter quartile range]
         2. If a block is specified but no statistics are provided, then no statistics will be computed.
 
       .. code-block:: yaml
 
-        statistics:
-          - min
-          - max
-          - mean
+         statistics:
+
+        3. If a block is specified and some statistics are provided, then only these statistics are computed.
+
+      .. code-block:: yaml
+
+         statistics:
+           - min
+           - max
+           - mean
+
+      If a mask is provided, the statistics are also computed inside the mask.
 
    .. tab:: outputs
 
@@ -205,7 +226,7 @@ xdem accuracy --generate-config
 ```{eval-rst}
     .. raw:: html
 
-        <meta charset='UTF-8'><title>Qualify DEM results</title></head>
+        <meta charset='UTF-8'><title>Qualify elevation results</title></head>
         <h2>Digital Elevation Model</h2>
         <div style='display: flex; gap: 10px;'>
           <img src='_static/reference_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto; width: 40%;'>
@@ -332,7 +353,7 @@ xdem accuracy --generate-config
         </table>
         </div>
         <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics aligned DEM</h2>
+        <h2>Statistics aligned elevation</h2>
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
         <tr><td>mean</td><td>379.33</td></tr>
