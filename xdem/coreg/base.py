@@ -62,6 +62,7 @@ from xdem.fit import (
     robust_norder_polynomial_fit,
     sumsin_1d,
 )
+from xdem.profiler import profile
 from xdem.spatialstats import nd_binning
 
 try:
@@ -2299,6 +2300,7 @@ class Coreg:
         apply_kwargs: dict[str, Any] | None = None,
     ) -> RasterType | gpd.GeoDataFrame: ...
 
+    @profile("coreg.base.fit_and_apply", memprof=True)  # type: ignore
     def fit_and_apply(
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,

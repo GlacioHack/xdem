@@ -41,6 +41,7 @@ from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import AffineCoreg, Coreg, CoregPipeline
 from xdem.misc import copy_doc
+from xdem.profiler import profile
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
@@ -87,6 +88,7 @@ class DEM(Raster):  # type: ignore
     See the API for more details.
     """
 
+    @profile("dem.__init__", memprof=True)  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
@@ -119,7 +121,6 @@ class DEM(Raster):  # type: ignore
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
         self._vcrs_name: str | None = None
         self._vcrs_grid: str | None = None
-
         # If DEM is passed, simply point back to DEM
         if isinstance(filename_or_dataset, DEM):
             for key in filename_or_dataset.__dict__:

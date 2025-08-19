@@ -34,6 +34,7 @@ from rasterio.warp import Affine
 
 import xdem
 from xdem._typing import MArrayf, NDArrayf
+from xdem.profiler import profile
 
 
 def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raster) -> NDArrayf:
@@ -180,6 +181,7 @@ class dDEM(Raster):  # type: ignore
             error=error,
         )
 
+    @profile("ddem.interpolate", memprof=True)  # type: ignore
     def interpolate(
         self,
         method: Literal["idw", "local_hypsometric", "regional_hypsometric"] = "idw",
