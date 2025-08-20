@@ -106,6 +106,9 @@ compilation is cached and can later be re-used in the same Python environment.
    * - {ref}`fractrough`
      - Fractal dimension number (1 to 3)
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
+   * - {ref}`texture-shading`
+     - Unitless
+     - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf)
 ```
 
 ```{note}
@@ -406,6 +409,32 @@ DEM pixels. Its unit is that of a dimension, and is always between 1 (dimension 
 ```{code-cell} ipython3
 fractal_roughness = dem.fractal_roughness()
 fractal_roughness.plot(cmap="Reds", cbar_title="Fractal roughness (dimensions)")
+```
+
+(texture-shading)=
+## Texture shading
+
+{func}`xdem.DEM.texture_shading`
+
+The texture shading technique produces an isotropic relief visualization that emphasizes the drainage network structure of terrain, including ridges and canyons. Unlike traditional hillshading, texture shading exhibits scale invariance and orientation independence, making it particularly effective for revealing the hierarchical structure of mountainous topography without directional bias.
+
+Texture shading is computed by applying a fractional Laplacian operator to the elevation data, which acts as a scale-independent high-pass filter. The technique produces relative elevation values where positive values correspond to ridges and peaks (higher than surrounding terrain) and negative values correspond to valleys and canyons (lower than surrounding terrain). The method includes a detail parameter α (typically 0.5-1.0) that controls the emphasis given to fine terrain features versus major landscape structure.
+
+The fractional Laplacian operator L^α is based on [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and computed in the frequency domain as:
+
+L^α(f_x, f_y) = (2π)^α (f_x² + f_y²)^(α/2)
+
+where f_x and f_y are spatial frequencies, and α is the fractional order parameter.
+
+Unlike hillshading, texture shading maintains visual hierarchy across different scales - smaller terrain features automatically have lower contrast relative to larger features, creating a "self-generalizing" effect. This makes texture shading particularly valuable for displaying terrain at multiple zoom levels or for combining with traditional hillshading to enhance the visibility of drainage networks.
+
+Unlike curvature, which highlights local convexity and concavity based on the second derivative of elevation, texture shading emphasizes the multi-scale drainage network structure through a fractional Laplacian that preserves relationships across different spatial frequencies. While curvature is optimal for identifying specific geomorphological features like ridges and valley bottoms at a single scale, texture shading provides a scale-invariant visualization that simultaneously reveals both fine-scale terrain details and broad landscape patterns.
+
+For more information on texture shading, see the [official texture shading website](https://www.textureshading.com/Home.html) and the [Python implementation reference](https://github.com/fasiha/texshade-py).
+
+```{code-cell} ipython3
+texture_shading = dem.texture_shading(alpha=0.8)
+texture_shading.plot(cmap="Greys_r", cbar_title="Texture shading")
 ```
 
 ## Generating attributes in multiprocessing
