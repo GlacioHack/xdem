@@ -443,7 +443,6 @@ class DEM(Raster):  # type: ignore
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def profile_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
-
         return terrain.profile_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)

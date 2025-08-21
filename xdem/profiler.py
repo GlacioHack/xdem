@@ -129,7 +129,7 @@ class Profiler:
     @staticmethod
     def get_profiling_info(function_name: str = None) -> pd.DataFrame:
         """
-        Get profiling dataframe with addiational max memory information.
+        Get profiling dataframe with additional max memory information.
         If function_name is filled, it returns uniquely function(s) with this name and their child(s).
 
         :param function_name: function name to show the profiled information
@@ -191,8 +191,8 @@ class Profiler:
             sub_t = row["call_time"] - call_start_time
             sub_name = row["name"]
 
+            # start function
             y_position = base_y + current_offset
-            print(sub_name, y_position)
             fig.add_trace(
                 go.Scatter(
                     x=[sub_t],
@@ -221,10 +221,9 @@ class Profiler:
                 },
             )
 
-            # Increment offset for next marker
+            # Increment offset for end function
             current_offset += offset_step
             y_position = base_y + current_offset
-            print("end " + sub_name, y_position)
 
             fig.add_trace(
                 go.Scatter(
