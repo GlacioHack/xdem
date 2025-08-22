@@ -140,6 +140,7 @@ advanced_examples/index.rst
 
 api
 config
+profiling
 release_notes
 ```
 
