@@ -1,4 +1,4 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2025 CNES developers
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -46,7 +46,7 @@ class Profiler:
     enabled = False
     save_graphs = False
     save_raw_data = False
-    columns = ["level", "parent", "name", "uuid", "time", "call_time", "memory"]
+    columns = ["level", "uuid_function", "name", "uuid_parent", "time", "call_time", "memory"]
     _profiling_info = pd.DataFrame(columns=columns)
     running_processes = []
 
@@ -71,16 +71,16 @@ class Profiler:
         """
         Profiler._profiling_info.loc[len(Profiler._profiling_info)] = {
             "level": info["level"],
-            "parent": info["parent"],
+            "uuid_function": info["uuid_function"],
             "name": info["name"],
-            "uuid": info["uuid"],
+            "uuid_parent": info["uuid_parent"],
             "time": info["time"],
             "call_time": info["call_time"],
             "memory": info["memory"],
         }
 
     @staticmethod
-    def generate_summary(base_output: str) -> None:
+    def generate_summary(output: str) -> None:
         """
         Generate Profiling summary
 
@@ -88,8 +88,6 @@ class Profiler:
         """
         if not Profiler.enabled:
             return
-
-        output = os.path.join(base_output, "profiling")
 
         if Profiler.save_raw_data or Profiler.save_graphs:
             os.makedirs(output, exist_ok=True)
@@ -106,8 +104,8 @@ class Profiler:
             fig = px.icicle(
                 Profiler._profiling_info,
                 names="text_display",
-                ids="uuid",
-                parents="parent",
+                ids="uuid_function",
+                parents="uuid_parent",
                 values="time",
                 title="Time profiling icicle graph (functions tagged only)",
                 color="time",
@@ -121,7 +119,7 @@ class Profiler:
 
             # memory profiling graph
             for _, call_row in Profiler._profiling_info[Profiler._profiling_info["memory"].notnull()].iterrows():
-                fig = Profiler.plot_trace_for_call(call_row["uuid"], "memory")
+                fig = Profiler.plot_trace_for_call(call_row["uuid_function"], "memory")
 
                 if fig:
                     fig.write_html(os.path.join(output, "memory_{}.html".format(call_row["name"])))
@@ -143,8 +141,11 @@ class Profiler:
             parent_list = df.loc[df["name"] == function_name]
             if not parent_list.empty:
                 df = df[
-                    (df.parent.str.contains("|".join(parent_list.uuid.values))) | (df.name.str.contains(function_name))
+                    (df.uuid_parent.str.contains("|".join(parent_list.uuid_function.values)))
+                    | (df.name.str.contains(function_name))
                 ]
+        else:
+            print("No ", function_name, "exists")  # TODO
         return df
 
     @staticmethod
@@ -155,18 +156,18 @@ class Profiler:
         Profiler._profiling_info = pd.DataFrame(columns=Profiler.columns)
 
     @staticmethod
-    def plot_trace_for_call(call_uuid: str, data_name: str) -> go.Figure:
+    def plot_trace_for_call(uuid_function: str, data_name: str) -> go.Figure:
         """
         Plot memory (or any resource tracked) usage over time for a function call, with markers for its subcalls.
 
-        :param call_uuid: UUID of the parent function call
+        :param uuid_function: UUID of the parent function call
         :param data_name: The name of the data to plot (if cpu consumption were to be added for example)
 
         :return: The generated plotly figure
         """
 
         # Get the parent call entry
-        parent_row = Profiler._profiling_info[Profiler._profiling_info["uuid"] == call_uuid]
+        parent_row = Profiler._profiling_info[Profiler._profiling_info["uuid_function"] == uuid_function]
         if parent_row.empty:
             return None
         parent_row = parent_row.iloc[0]
@@ -176,7 +177,7 @@ class Profiler:
         values = [data[1] for data in parent_row[data_name]]
 
         # Collect subcalls (direct children)
-        subcalls = Profiler._profiling_info[Profiler._profiling_info["parent"] == call_uuid]
+        subcalls = Profiler._profiling_info[Profiler._profiling_info["uuid_parent"] == uuid_function]
 
         # Plot memory usage line
         fig = go.Figure()
@@ -293,15 +294,15 @@ def profile(name: str, interval: int | float = 0.05, memprof: bool = False):  # 
             if not Profiler.enabled:
                 return func(*args, **kwargs)
 
-            call_uuid = str(uuid.uuid4())
-            parent_uuid = Profiler.running_processes[-1] if Profiler.running_processes else "__main__"
+            uuid_function = str(uuid.uuid4())
+            uuid_parent = Profiler.running_processes[-1] if Profiler.running_processes else "__main__"
             level = len(Profiler.running_processes)
 
             func_name = name
             if name is None:
                 func_name = func.__name__.capitalize()
 
-            Profiler.running_processes.append(call_uuid)
+            Profiler.running_processes.append(uuid_function)
 
             if memprof:
                 # Launch memory profiling thread
@@ -323,9 +324,9 @@ def profile(name: str, interval: int | float = 0.05, memprof: bool = False):  # 
 
             func_data = {
                 "level": level,
-                "parent": parent_uuid,
+                "uuid_function": uuid_function,
                 "name": func_name,
-                "uuid": call_uuid,
+                "uuid_parent": uuid_parent,
                 "time": total_time,
                 "call_time": start_time,
                 "memory": thread_monitoring.mem_data if memprof else None,
