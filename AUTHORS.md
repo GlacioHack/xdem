@@ -11,24 +11,14 @@ contributions are subject to the project's copyright under the terms of the
 
 This file keeps track of authors contributions.
 
-## Maintainers / Steering Comittee
+## Maintainers / Steering comittee
 
 ---
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
-- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
-- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
-- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
+- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)*
 - **Valentine Bellet** [@Valentine-Bellet](https://github.com/valentine-bellet) <valentine.bellet@cnes.fr>
 - **Alice de Bardonnèche-Richard** [@adebardo](https://github.com/adebardo) <alice.de-bardonneche-richard@cs-soprasteria.com>
-
-
-## Development Lead
-
----
-
-- **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
-- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
 - **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
 
 
@@ -36,24 +26,33 @@ This file keeps track of authors contributions.
 
 ---
 
+- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
+- **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn) <valentin.schaffner@cs-soprasteria.com>
+- **Marine XXX** [@marinebcht](https://github.com/marinebcht)
 - **Friedrich Knuth** [@friedrichknuth](https://github.com/friedrichknuth)
 - **Andrew Tedstone** [@atedstone](https://github.com/atedstone)
-- **Zhihao LIU** [@liuh886](https://github.com/liuh886)
+- **Zhihao Liu** [@liuh886](https://github.com/liuh886)
 - **Diego Cusicanqui** [@cusicand](https://github.com/cusicand)
 - **Alessandro Gentilini** [@alessandro-gentilini](https://github.com/alessandro-gentilini)
 - **Ferdinand Schenck** [@fnands](https://github.com/fnands)
 - **Johannes Landmann** [@jlandmann](https://github.com/jlandmann)
-- **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn) <valentin.schaffner@cs-soprasteria.com>
 - **Bob McNabb** [@iamdonovan](https://github.com/iamdonovan)
 - **Enrico Mattea** [@MatteaE](https://github.com/MatteaE)
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
 - **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara) <clara.quinto@cs-soprasteria.com>
 
-## Original Developers/Designers/Supporters
+## Original creators
 
 ---
+
+### xDEM
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
 - **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
 - **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
+
+### DemCompare
+
+- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
+
