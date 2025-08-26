@@ -16,7 +16,7 @@ This file keeps track of authors contributions.
 ---
 
 - **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
-- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)*
+- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
 - **Valentine Bellet** [@Valentine-Bellet](https://github.com/valentine-bellet) <valentine.bellet@cnes.fr>
 - **Alice de Bardonnèche-Richard** [@adebardo](https://github.com/adebardo) <alice.de-bardonneche-richard@cs-soprasteria.com>
 - **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
