@@ -11,7 +11,7 @@ contributions are subject to the project's copyright under the terms of the
 
 This file keeps track of authors contributions.
 
-## Maintainers / Steering comittee
+## Maintainers / Steering committee
 
 ---
 
