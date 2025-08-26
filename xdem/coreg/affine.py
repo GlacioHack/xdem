@@ -69,7 +69,7 @@ except ImportError:
 
 def _check_inputs_bin_before_fit(
     bin_before_fit: bool,
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]],
+    fit_minimizer: Callable[..., tuple[NDArrayf, Any]],
     bin_sizes: int | dict[str, int | Iterable[float]],
     bin_statistic: Callable[[NDArrayf], np.floating[Any]],
 ) -> None:
@@ -77,14 +77,14 @@ def _check_inputs_bin_before_fit(
     Check input types of fit or bin_and_fit affine functions.
 
     :param bin_before_fit: Whether to bin data before fitting the coregistration function.
-    :param fit_optimizer: Optimizer to minimize the coregistration function.
+    :param fit_minimizer: Minimizer for the coregistration.
     :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
     :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
     """
 
-    if not callable(fit_optimizer):
+    if not callable(fit_minimizer):
         raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
+            "Argument `fit_minimizer` must be a function (callable), " "got {}.".format(type(fit_minimizer))
         )
 
     if bin_before_fit:
@@ -321,39 +321,80 @@ def _preprocess_pts_rst_subsample_interpolator(
     return sub_dh_interpolator, sub_bias_vars, subsample_final
 
 
-def _standardize_epc(
-    ref_epc: NDArrayf, tba_epc: NDArrayf, scale_std: bool = True
-) -> tuple[NDArrayf, NDArrayf, tuple[float, float, float], float]:
+def _get_centroid_scale(ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine.Affine | None) -> tuple[tuple[float, float, float], float]:
     """
-    Standardize elevation point clouds by getting centroid and standardization factor using median statistics.
+    Get centroid and standardization factor from reference elevation (whether it is a DEM or an elevation point cloud).
+
+    This step needs to be computed before subsampling to avoid inconsistencies between random samplings.
+
+    :param ref_elev: Reference elevation, either an array or a point cloud.
+    :param transform: Geotransform if reference elevation is a DEM.
+
+    :return: Centroid of elevation object, Scale factor of elevation object.
+    """
+
+    # For a DEM
+    if isinstance(ref_elev, np.ndarray):
+
+        # Get coordinates of DEM
+        coords_x, coords_y = _coords(transform=transform,
+                                     shape=ref_elev.shape,
+                                     area_or_point=None,
+                                     grid=False)
+        # Derive centroid
+        centroid_x = np.nanmedian(coords_x)
+        centroid_y = np.nanmedian(coords_y)
+        centroid_z = np.nanmedian(ref_elev)
+        centroid = (centroid_x, centroid_y, centroid_z)
+
+        # Derive standardization factor
+        std_fac = np.mean([nmad(coords_x - centroid[0]),
+                           nmad(coords_y - centroid[1]),
+                           nmad(ref_elev - centroid[2])])
+
+    # For an elevation point cloud
+    else:
+        # Derive centroid
+        centroid = np.nanmedian(ref_elev, axis=1)
+        centroid = (centroid[0], centroid[1], centroid[2])
+
+        # Derive standardization factor
+        std_fac = float(np.mean([nmad(ref_elev[0, :] - centroid[0]),
+                                 nmad(ref_elev[1, :] - centroid[1]),
+                                 nmad(ref_elev[2, :] - centroid[2])]))
+
+    return centroid, std_fac
+
+def _standardize_epc(
+    ref_epc: NDArrayf, tba_epc: NDArrayf, centroid: tuple[float, float, float], scale: float, apply_scale: bool = True,
+) -> tuple[NDArrayf, NDArrayf]:
+    """
+    Standardize elevation point clouds by subtracting a centroid and dividing per scale factor.
+
+    Usually paired with _get_centroid_scale() to get the centroid and scale factor.
 
     :param ref_epc: Reference point cloud.
     :param tba_epc: To-be-aligned point cloud.
-    :param scale_std: Whether to scale all axes by a factor.
+    :param centroid: Centroid of point cloud.
+    :param scale: Scale of point cloud.
+    :param apply_scale: Whether to apply the scale factor. Otherwise, simply subtracts the centroid.
 
-    :return: Standardized point clouds, Centroid of standardization, Scale factor of standardization.
+    :return: Standardized point clouds.
     """
 
-    # Get centroid
-    centroid = np.median(ref_epc, axis=1)
+    # Convert centroid to array
+    centroid = np.array(centroid)
 
     # Subtract centroid from point clouds
     ref_epc = ref_epc - centroid[:, None]
     tba_epc = tba_epc - centroid[:, None]
 
-    centroid = (centroid[0], centroid[1], centroid[2])
+    # Standardize point clouds
+    if apply_scale:
+        ref_epc = ref_epc / scale
+        tba_epc = tba_epc / scale
 
-    if scale_std:
-        # Get mean standardization factor for all axes
-        std_fac = np.mean([nmad(ref_epc[0, :]), nmad(ref_epc[1, :]), nmad(ref_epc[2, :])])
-
-        # Standardize point clouds
-        ref_epc = ref_epc / std_fac
-        tba_epc = tba_epc / std_fac
-    else:
-        std_fac = 1
-
-    return ref_epc, tba_epc, centroid, std_fac
+    return ref_epc, tba_epc
 
 
 ################################
@@ -409,7 +450,7 @@ def _nuth_kaab_bin_fit(
         y = dh / slope_tan
 
     # Make an initial guess of the a, b, and c parameters
-    p0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
+    x0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
 
     # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
@@ -426,13 +467,13 @@ def _nuth_kaab_bin_fit(
         params_fit_or_bin=params_fit_or_bin,
         values=y,
         bias_vars={"aspect": aspect},
-        p0=p0,
+        x0=x0,
     )
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
-    easting_offset = results[0][0] * np.sin(results[0][1])
-    northing_offset = results[0][0] * np.cos(results[0][1])
-    vertical_offset = results[0][2]
+    easting_offset = results[0] * np.sin(results[1])
+    northing_offset = results[0] * np.cos(results[1])
+    vertical_offset = results[2]
 
     return easting_offset, northing_offset, vertical_offset
 
@@ -1180,8 +1221,9 @@ def icp(
         norms = None
 
     # Remove centroid and standardize to facilitate numerical convergence
-    ref_epc, tba_epc, centroid, std_fac = _standardize_epc(ref_epc, tba_epc, scale_std=standardize)
-    tolerance_translation /= std_fac
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=transform)
+    ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale, apply_scale=standardize)
+    tolerance_translation /= scale
 
     # Define search tree outside of loop for performance
     ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
@@ -1206,7 +1248,7 @@ def icp(
         max_iterations=max_iterations,
     )
     # De-standardize
-    final_matrix[:3, 3] *= std_fac
+    final_matrix[:3, 3] *= scale
 
     # Get subsample size
     subsample_final = len(sub_ref)
@@ -1418,8 +1460,9 @@ def cpd(
     tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
 
     # Remove centroid and standardize to facilitate numerical convergence
-    ref_epc, tba_epc, centroid, std_fac = _standardize_epc(ref_epc=ref_epc, tba_epc=tba_epc, scale_std=standardize)
-    tolerance_translation /= std_fac
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=transform)
+    ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale, apply_scale=standardize)
+    tolerance_translation /= scale
 
     # Run rigid CPD registration
     # Iterate through method until tolerance or max number of iterations is reached
@@ -1440,7 +1483,7 @@ def cpd(
     final_matrix = invert_matrix(final_matrix)
 
     # De-standardize
-    final_matrix[:3, 3] *= std_fac
+    final_matrix[:3, 3] *= scale
 
     # Get subsample size
     subsample_final = len(sub_ref)
@@ -1782,10 +1825,7 @@ def lzd(
     sub_grady = _reproject_horizontal_shift_samecrs(grady, src_transform=transform, return_interpolator=True)
 
     # Estimate centroid to use
-    centroid_x = float(np.nanmean(sub_coords[0]))
-    centroid_y = float(np.nanmean(sub_coords[1]))
-    centroid_z = float(np.nanmean(sub_pts))
-    centroid = (centroid_x, centroid_y, centroid_z)
+    centroid = _get_centroid_scale(ref_elev=ref_elev, transform=transform)[0]
 
     logging.info("Iteratively estimating rigid transformation:")
     # Iterate through method until tolerance or max number of iterations is reached
@@ -2436,7 +2476,8 @@ class NuthKaab(AffineCoreg):
         max_iterations: int = 10,
         tolerance_translation: float = 0.001,
         bin_before_fit: bool = True,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
+        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
@@ -2450,7 +2491,8 @@ class NuthKaab(AffineCoreg):
             iterations.
         :param bin_before_fit: Whether to bin data before fitting the coregistration function. For the Nuth and Kääb
             (2011) algorithm, this corresponds to bins of aspect to compute statistics on dh/tan(slope).
-        :param fit_optimizer: Optimizer to minimize the coregistration function.
+        :param fit_minimizer: Minimizer for the coregistration function.
+        :param fit_loss_func: Loss function for the minimization of residuals.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2461,7 +2503,7 @@ class NuthKaab(AffineCoreg):
 
         # Input checks
         _check_inputs_bin_before_fit(
-            bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
+            bin_before_fit=bin_before_fit, bin_sizes=bin_sizes, bin_statistic=bin_statistic, fit_minimizer=fit_minimizer
         )
 
         # Define iterative parameters and vertical shift
@@ -2474,14 +2516,16 @@ class NuthKaab(AffineCoreg):
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
         if not bin_before_fit:
-            meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
+            meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func,  "fit_minimizer": fit_minimizer,
+                        "fit_loss_func": fit_loss_func}
             meta_fit.update(meta_input_iterative)
             super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
         else:
             meta_bin_and_fit = {
                 "fit_or_bin": "bin_and_fit",
                 "fit_func": _nuth_kaab_fit_func,
-                "fit_optimizer": fit_optimizer,
+                "fit_minimizer": fit_minimizer,
+                "fit_loss_func": fit_loss_func,
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
             }

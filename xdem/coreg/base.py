@@ -89,7 +89,6 @@ dict_key_to_str = {
     "subsample_final": "Subsample size drawn from valid values",
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
-    "fit_optimizer": "Optimizer for fitting",
     "fit_minimizer": "Minimizer of method",
     "fit_loss_func": "Loss function of method",
     "bin_statistic": "Binning statistic",
@@ -942,7 +941,7 @@ def _bin_or_and_fit_nd(
 
     # Remove random state for keyword argument if its value is not in the optimizer function
     if fit_or_bin in ["fit", "bin_and_fit"]:
-        fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_optimizer"]).args
+        fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"]).args
         if "random_state" not in fit_func_args and "random_state" in kwargs:
             kwargs.pop("random_state")
 
@@ -966,12 +965,20 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["fit_func"].__name__,
         )
 
-        results = params_fit_or_bin["fit_optimizer"](
-            f=params_fit_or_bin["fit_func"],
-            xdata=np.array([var.flatten() for var in bias_vars.values()]).squeeze(),
-            ydata=values.flatten(),
-            sigma=weights.flatten() if weights is not None else None,
-            absolute_sigma=True,
+        # Convert to residual function for minimization
+        # (equivalent of extra step in scipy.optimize.curve_fit compared to scipy.optimize.least_squares)
+        xdata = np.array([var.flatten() for var in bias_vars.values()]).squeeze()
+        ydata = values.flatten()
+
+        def func_wrapped(params):
+            return params_fit_or_bin["fit_func"](xdata, *params) - ydata
+
+        # Add loss argument if it is supported
+        sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
+        if "loss" in sig.args:
+            kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
+        results = params_fit_or_bin["fit_minimizer"](
+            func_wrapped,
             **kwargs,
         )
         df = None
@@ -1026,17 +1033,25 @@ def _bin_or_and_fit_nd(
         if np.all(~ind_valid):
             raise ValueError("Only NaN values after binning, did you pass the right bin edges?")
 
-        results = params_fit_or_bin["fit_optimizer"](
-            f=params_fit_or_bin["fit_func"],
-            xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
-            ydata=new_diff[ind_valid].flatten(),
-            sigma=weights[ind_valid].flatten() if weights is not None else None,
-            absolute_sigma=True,
+        # Convert to residual function for minimization (equivalent of steps in scipy.optimize.curve_fit)
+        xdata = np.array([var[ind_valid].flatten() for var in new_vars]).squeeze()
+        ydata = new_diff[ind_valid].flatten()
+
+        def func_wrapped(params):
+            return params_fit_or_bin["fit_func"](xdata, *params) - ydata
+
+        # Add loss argument if it is supported
+        sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
+        if "loss" in sig.args:
+            kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
+
+        results = params_fit_or_bin["fit_minimizer"](
+            func_wrapped,
             **kwargs,
         )
     logging.debug("%dD bias estimated.", nd)
 
-    return df, results
+    return df, results.x
 
 
 ###############################################
@@ -1652,9 +1667,7 @@ class InFitOrBinDict(TypedDict, total=False):
 
     # Fit parameters: function to fit and optimizer
     fit_func: Callable[..., NDArrayf]
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
 
-    # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
     fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
     fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
@@ -2741,19 +2754,20 @@ class Coreg:
         if self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
 
             # Write the results to metadata in different ways depending on optimizer returns
-            if self._meta["inputs"]["fitorbin"]["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
+            if self._meta["inputs"]["fitorbin"]["fit_minimizer"] in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
                 order_or_freq = results[1]
-                if self._meta["inputs"]["fitorbin"]["fit_optimizer"] == robust_norder_polynomial_fit:
+                if self._meta["inputs"]["fitorbin"]["fit_minimizer"] == robust_norder_polynomial_fit:
                     self._meta["outputs"]["specific"] = {"best_poly_order": order_or_freq}
                 else:
                     self._meta["outputs"]["specific"] = {"best_nb_sin_freq": order_or_freq}
 
-            elif self._meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit:
-                params = results[0]
+            elif self._meta["inputs"]["fitorbin"]["fit_minimizer"] == scipy.optimize.least_squares:
+                params = results
+                # TODO: Get structure to get this output again (as with old curve_fit implementation)?
                 # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
-                perr = np.sqrt(np.diag(results[1]))
-                self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
+                # perr = np.sqrt(np.diag(results[1]))
+                # self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
 
             else:
                 params = results[0]
