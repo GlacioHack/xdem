@@ -55,4 +55,3 @@ This file keeps track of authors contributions.
 ### DemCompare
 
 - **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
-
