@@ -2372,36 +2372,37 @@ def _texture_shading_fft(
     pad_cols = (fft_cols - cols) // 2
 
     # Use symmetric padding to reduce edge effects
-    dem_padded = np.pad(
-        dem_work, ((pad_rows, fft_rows - rows - pad_rows), (pad_cols, fft_cols - cols - pad_cols)), mode="symmetric"
+    dem_work = np.pad(
+        dem_work, 
+        ((pad_rows, fft_rows - rows - pad_rows), 
+         (pad_cols, fft_cols - cols - pad_cols)), 
+        mode="symmetric"
     )
 
-    # Create frequency domain coordinates
-    freq_y = fft.fftfreq(fft_rows)
-    freq_x = fft.fftfreq(fft_cols)
-
-    # Create 2D frequency grids
-    fy, fx = np.meshgrid(freq_y, freq_x, indexing="ij")
+    # Create frequency domain grids
+    fy = fft.fftfreq(fft_rows)[:, None]
+    fx = fft.rfftfreq(fft_cols)[None, :]
 
     # Calculate frequency magnitude (avoiding division by zero)
-    freq_magnitude = np.sqrt(fx**2 + fy**2)
-    freq_magnitude[0, 0] = 1.0  # Avoid log(0) later
+    freq_magnitude = np.hypot(fx, fy)
+    freq_magnitude[0, 0] = 1.0
 
     # Create fractional Laplacian filter in frequency domain
     # For alpha=1, this is the standard Laplacian
     # For alpha<1, it emphasizes low frequencies
     # For alpha>1, it emphasizes high frequencies
     laplacian_filter = freq_magnitude**alpha
-    laplacian_filter[0, 0] = 0  # DC component should be zero
+    if alpha > 0:
+        laplacian_filter[0, 0] = 0.0 #only zero DC when alpha>0
 
     # Apply FFT
-    dem_fft = fft.fft2(dem_padded)
+    dem_fft = fft.rfft2(dem_work, s=(fft_rows, fft_cols), overwrite_x=True)
 
-    # Apply fractional Laplacian in frequency domain
-    result_fft = dem_fft * laplacian_filter
+    # Apply fractional Laplacian in frequency domain in-place
+    dem_fft *= laplacian_filter
 
     # Transform back to spatial domain
-    result_padded = np.real(fft.ifft2(result_fft))
+    result_padded = fft.irfft2(dem_fft, s=(fft_rows, fft_cols), overwrite_x=True)
 
     # Extract the original size from padded result
     result = result_padded[pad_rows : pad_rows + rows, pad_cols : pad_cols + cols]
@@ -2465,6 +2466,11 @@ def texture_shading(
         >>> dem[20:30, :] = np.sin(np.linspace(0, np.pi, 50)) * 10
         >>> textured = texture_shading(dem, alpha=0.8)
         >>> textured.shape == dem.shape
+        True
+        >>> # Flat surface returns no texture (all 0)
+        >>> dem_flat = np.ones((32, 32), dtype=float)
+        >>> dem_flat_ts = xdem.terrain.texture_shading(dem_flat, alpha=0.8)
+        >>> np.allclose(dem_flat_ts, 0.0)
         True
         >>> # Higher alpha enhances fine details
         >>> textured_enhanced = texture_shading(dem, alpha=1.5)
