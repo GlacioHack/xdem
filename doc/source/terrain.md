@@ -108,7 +108,7 @@ compilation is cached and can later be re-used in the same Python environment.
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
    * - {ref}`texture-shading`
      - Unitless
-     - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf)
+     - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) or [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1)
 ```
 
 ```{note}
