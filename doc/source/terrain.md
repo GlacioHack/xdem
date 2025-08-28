@@ -430,7 +430,7 @@ Unlike hillshading, texture shading maintains visual hierarchy across different 
 
 Unlike curvature, which highlights local convexity and concavity based on the second derivative of elevation, texture shading emphasizes the multi-scale drainage network structure through a fractional Laplacian that preserves relationships across different spatial frequencies. While curvature is optimal for identifying specific geomorphological features like ridges and valley bottoms at a single scale, texture shading provides a scale-invariant visualization that simultaneously reveals both fine-scale terrain details and broad landscape patterns.
 
-For more information on texture shading, see the [official texture shading website](https://www.textureshading.com/Home.html) and the [Python implementation reference](https://github.com/fasiha/texshade-py).
+For more information on texture shading, see the [official texture shading website](https://www.textureshading.com/Home.html), the [Python implementation reference](https://github.com/fasiha/texshade-py), and the publication by [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1).
 
 ```{code-cell} ipython3
 texture_shading = dem.texture_shading(alpha=0.8)

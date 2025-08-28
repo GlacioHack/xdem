@@ -2447,6 +2447,8 @@ def texture_shading(
     Based on: Brown, L. (2010). Texture Shading: A New Technique for Depicting Terrain Relief.
     Workshop on Mountain Cartography, Banff, Canada.
 
+    Also described in: Allmendinger and Karabinos (2023), https://doi.org/10.1130/GES02531.1
+
     Adapted from the Python implementation at https://github.com/fasiha/texshade-py
 
     :param dem: Input DEM array or Raster object
