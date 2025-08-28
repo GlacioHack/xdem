@@ -2466,7 +2466,7 @@ def texture_shading(
         True
         >>> # Flat surface returns no texture (all 0)
         >>> dem_flat = np.ones((32, 32), dtype=float)
-        >>> dem_flat_ts = xdem.terrain.texture_shading(dem_flat, alpha=0.8)
+        >>> dem_flat_ts = texture_shading(dem_flat, alpha=0.8)
         >>> np.allclose(dem_flat_ts, 0.0)
         True
         >>> # Higher alpha enhances fine details
