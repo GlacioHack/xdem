@@ -2354,14 +2354,14 @@ def _texture_shading_fft(
         return np.full_like(dem, np.nan)
 
     # Work with a copy to avoid modifying input
-    dem_work = dem.copy()
+    result = dem.copy()
 
     # Fill NaN values with mean of valid values for processing
     if not np.all(valid_mask):
-        dem_work[~valid_mask] = np.nanmean(dem)
+        result[~valid_mask] = np.nanmean(dem)
 
     # Get dimensions
-    rows, cols = dem_work.shape
+    rows, cols = result.shape
 
     # Determine FFT sizes for optimal performance
     fft_rows = _nextprod_fft(rows)
@@ -2372,8 +2372,8 @@ def _texture_shading_fft(
     pad_cols = (fft_cols - cols) // 2
 
     # Use symmetric padding to reduce edge effects
-    dem_work = np.pad(
-        dem_work, ((pad_rows, fft_rows - rows - pad_rows), (pad_cols, fft_cols - cols - pad_cols)), mode="symmetric"
+    result = np.pad(
+        result, ((pad_rows, fft_rows - rows - pad_rows), (pad_cols, fft_cols - cols - pad_cols)), mode="symmetric"
     )
 
     # Create frequency domain grids
@@ -2393,16 +2393,16 @@ def _texture_shading_fft(
         laplacian_filter[0, 0] = 0.0  # only zero DC when alpha>0
 
     # Apply FFT
-    dem_fft = fft.rfft2(dem_work, s=(fft_rows, fft_cols), overwrite_x=True)
+    result = fft.rfft2(result, s=(fft_rows, fft_cols), overwrite_x=True)
 
     # Apply fractional Laplacian in frequency domain in-place
-    dem_fft *= laplacian_filter
+    result *= laplacian_filter
 
     # Transform back to spatial domain
-    result_padded = fft.irfft2(dem_fft, s=(fft_rows, fft_cols), overwrite_x=True)
+    result = fft.irfft2(result, s=(fft_rows, fft_cols), overwrite_x=True)
 
     # Extract the original size from padded result
-    result = result_padded[pad_rows : pad_rows + rows, pad_cols : pad_cols + cols]
+    result = result[pad_rows : pad_rows + rows, pad_cols : pad_cols + cols]
 
     # Restore NaN values where original data was invalid
     result[~valid_mask] = np.nan
