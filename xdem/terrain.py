@@ -2373,10 +2373,7 @@ def _texture_shading_fft(
 
     # Use symmetric padding to reduce edge effects
     dem_work = np.pad(
-        dem_work, 
-        ((pad_rows, fft_rows - rows - pad_rows), 
-         (pad_cols, fft_cols - cols - pad_cols)), 
-        mode="symmetric"
+        dem_work, ((pad_rows, fft_rows - rows - pad_rows), (pad_cols, fft_cols - cols - pad_cols)), mode="symmetric"
     )
 
     # Create frequency domain grids
@@ -2393,7 +2390,7 @@ def _texture_shading_fft(
     # For alpha>1, it emphasizes high frequencies
     laplacian_filter = freq_magnitude**alpha
     if alpha > 0:
-        laplacian_filter[0, 0] = 0.0 #only zero DC when alpha>0
+        laplacian_filter[0, 0] = 0.0  # only zero DC when alpha>0
 
     # Apply FFT
     dem_fft = fft.rfft2(dem_work, s=(fft_rows, fft_cols), overwrite_x=True)
