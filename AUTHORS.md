@@ -50,6 +50,9 @@ This file keeps track of authors contributions.
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
 - **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara) <clara.quinto@cs-soprasteria.com>
 
+## External contributions
+This project includes code originally part of the [texshade-py](https://github.com/fasiha/texshade-py/tree/main) project.
+
 ## Original Developers/Designers/Supporters
 
 ---
