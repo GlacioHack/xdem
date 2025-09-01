@@ -161,7 +161,8 @@ def _iterate_method(
             for j in range(len(tolerances)):
                 pbar.write(f"   Last {k[j]} offset: {new_statistics[j]}")
 
-        if i > 1 and all(new_statistics[k] < tolerances[k] if k is not None else True for k in tolerances.keys()):
+        # Check that all statistics are below their respective tolerance
+        if all(new_statistics[k] < tolerances[k] if k is not None else True for k in tolerances.keys()):
             if logging.getLogger().getEffectiveLevel() <= logging.INFO:
                 pbar.write(f"   The last offset(s) were all below the set tolerance(s) -> stopping")
                 all_tolerances = ";".join(f"{k}: {v}" for k, v in tolerances.items())
@@ -170,7 +171,7 @@ def _iterate_method(
             break
 
     df_all_it = pd.concat(list_df)
-    output_iterative: OutAffineDict = {"last_iteration": i, "iteration_stats": df_all_it}
+    output_iterative: OutAffineDict = {"last_iteration": i+1, "iteration_stats": df_all_it}
 
     return new_inputs, output_iterative
 
@@ -410,7 +411,7 @@ def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> ND
     """
     Nuth and Kääb (2011) fitting function.
 
-    Describes the elevation differences divided by the slope tangente (y) as a 1D function of the aspect.
+    Describes the elevation differences divided by the slope tangent (y) as a 1D function of the aspect.
 
     y(x) = a * cos(b - x) + c
 
@@ -473,7 +474,7 @@ def _nuth_kaab_bin_fit(
     assert results is not None
     easting_offset = results[0] * np.sin(results[1])
     northing_offset = results[0] * np.cos(results[1])
-    vertical_offset = results[2]
+    vertical_offset = results[2] * np.nanmean(slope_tan)
 
     return easting_offset, northing_offset, vertical_offset
 
@@ -570,7 +571,7 @@ def _nuth_kaab_iteration_step(
     dh_step = dh_interpolator(coords_offsets[0], coords_offsets[1])
     # Tests show that using the median vertical offset significantly speeds up the algorithm compared to
     # using the vertical offset output of the fit function below
-    vshift = np.nanmedian(dh_step)
+    vshift = np.nanmean(dh_step)
     dh_step -= vshift
 
     # Interpolating with an offset creates new invalid values, so the subsample is reduced
@@ -611,7 +612,8 @@ def nuth_kaab(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
+    ref_transform: rio.transform.Affine,
+    tba_transform: rio.transform.Affine,
     crs: rio.crs.CRS,
     area_or_point: Literal["Area", "Point"] | None,
     tolerance_translation: float,
@@ -632,6 +634,8 @@ def nuth_kaab(
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
     logging.info("Running Nuth and Kääb (2011) coregistration")
+
+    transform = ref_transform if ref_transform is not None else tba_transform
 
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
     if not crs.is_projected:
@@ -749,7 +753,8 @@ def dh_minimize(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
+    ref_transform: rio.transform.Affine,
+    tba_transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
@@ -765,6 +770,8 @@ def dh_minimize(
     """
 
     logging.info("Running dh minimization coregistration.")
+
+    transform = ref_transform if ref_transform is not None else tba_transform
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     dh_interpolator, _, subsample_final = _preprocess_pts_rst_subsample_interpolator(
@@ -793,7 +800,8 @@ def vertical_shift(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
+    ref_transform: rio.transform.Affine,
+    tba_transform: rio.transform.Affine,
     crs: rio.crs.CRS,
     area_or_point: Literal["Area", "Point"] | None,
     params_random: InRandomDict,
@@ -807,6 +815,8 @@ def vertical_shift(
     """
 
     logging.info("Running vertical shift coregistration")
+
+    transform = ref_transform if ref_transform is not None else tba_transform
 
     # Pre-process point-raster inputs to the same subsampled points
     sub_ref, sub_tba, _, _ = _preprocess_pts_rst_subsample(
@@ -1157,7 +1167,8 @@ def icp(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
+    ref_transform: rio.transform.Affine,
+    tba_transform: rio.transform.Affine,
     crs: rio.crs.CRS,
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
@@ -1185,6 +1196,8 @@ def icp(
 
     :return: Affine transform matrix, Centroid, Subsample size.
     """
+
+    transform = ref_transform if ref_transform is not None else tba_transform
 
     # Derive normals if method is point-to-plane, otherwise not
     if method == "point-to-plane":
@@ -1419,7 +1432,8 @@ def cpd(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
+    ref_transform: rio.transform.Affine,
+    tba_transform: rio.transform.Affine,
     crs: rio.crs.CRS,
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
@@ -1441,6 +1455,8 @@ def cpd(
 
     The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
     """
+
+    transform = ref_transform if ref_transform is not None else tba_transform
 
     # Pre-process point-raster inputs to the same subsampled points
     sub_ref, sub_tba, _, sub_coords = _preprocess_pts_rst_subsample(
@@ -1764,7 +1780,8 @@ def lzd(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
+    ref_transform: rio.transform.Affine,
+    tba_transform: rio.transform.Affine,
     crs: rio.crs.CRS,
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
@@ -1787,6 +1804,8 @@ def lzd(
     """
 
     logging.info("Running LZD coregistration")
+
+    transform = ref_transform if ref_transform is not None else tba_transform
 
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
     if not crs.is_projected:
@@ -1898,6 +1917,96 @@ class AffineCoreg(Coreg):
             self._meta["outputs"]["affine"] = {"matrix": valid_matrix}
 
         self._is_affine = True
+
+    def _fit_rst_rst(
+        self,
+        ref_elev: NDArrayf,
+        tba_elev: NDArrayf,
+        inlier_mask: NDArrayb,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+
+        # We re-direct to a common _fit_any_rst_pts for that subclass
+        # The subclass will raise an error if a certain input type is not supported
+        # Affine registration need the original raster data without reprojection as overlap is not required
+        self._fit_any_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+    def _fit_rst_pts(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+
+        # We re-direct to a common _fit_any_rst_pts for that subclass
+        # The subclass will raise an error if a certain input type is not supported
+        # Affine registration need the original raster data without reprojection as overlap is not required        
+        self._fit_any_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            ref_transform=transform if isinstance(ref_elev, np.ndarray) else None,
+            tba_transform=transform if isinstance(tba_elev, np.ndarray) else None,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+        
+    def _fit_pts_pts(
+        self,
+        ref_elev: gpd.GeoDataFrame,
+        tba_elev: gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        crs: rio.crs.CRS,
+        z_name: str,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        
+         # We re-direct to a common _fit_any_rst_pts for that subclass
+        # The subclass will raise an error if a certain input type is not supported
+        # Affine registration need the original raster data without reprojection as overlap is not required        
+        self._fit_any_rst_pts(
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,
+            inlier_mask=inlier_mask,
+            ref_transform=None,
+            tba_transform=None,
+            crs=crs,
+            area_or_point=None,
+            z_name=z_name,
+            weights=weights,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
 
     def to_matrix(self) -> NDArrayf:
         """Convert the transform to a 4x4 transformation matrix."""
@@ -2090,43 +2199,16 @@ class VerticalShift(AffineCoreg):
 
         super().__init__(meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample)
 
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the vertical shift using the vshift_func."""
-
-        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
-        self._fit_rst_pts(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            weights=weights,
-            **kwargs,
-        )
-
-    def _fit_rst_pts(
+    def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -2140,7 +2222,8 @@ class VerticalShift(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
             params_random=params_random,
@@ -2243,44 +2326,16 @@ class ICP(AffineCoreg):
         }
         super().__init__(subsample=subsample, meta=meta)
 
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the rigid transform from tba_dem to ref_dem."""
-
-        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
-        self._fit_rst_pts(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            weights=weights,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
-
-    def _fit_rst_pts(
+    def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -2295,7 +2350,8 @@ class ICP(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -2381,44 +2437,16 @@ class CPD(AffineCoreg):
 
         super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
 
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the rigid transform from tba_dem to ref_dem."""
-
-        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
-        self._fit_rst_pts(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            weights=weights,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
-
-    def _fit_rst_pts(
+    def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -2432,7 +2460,8 @@ class CPD(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -2473,7 +2502,7 @@ class NuthKaab(AffineCoreg):
 
     def __init__(
         self,
-        max_iterations: int = 10,
+        max_iterations: int = 20,
         tolerance_translation: float = 0.001,
         bin_before_fit: bool = True,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
@@ -2532,51 +2561,20 @@ class NuthKaab(AffineCoreg):
             meta_bin_and_fit.update(meta_input_iterative)
             super().__init__(subsample=subsample, meta=meta_bin_and_fit)  # type: ignore
 
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the x/y/z offset between two DEMs."""
-
-        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
-        self._fit_rst_pts(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            weights=weights,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
-
-    def _fit_rst_pts(
+    def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> None:
-        """
-        Estimate the x/y/z offset between a DEM and points cloud.
-        """
 
         # Get parameters stored in class
         params_random = self._meta["inputs"]["random"]
@@ -2587,7 +2585,8 @@ class NuthKaab(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -2639,7 +2638,7 @@ class LZD(AffineCoreg):
         only_translation: bool = False,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
-        max_iterations: int = 200,
+        max_iterations: int = 20,
         tolerance_translation: float | None = 0.01,
         tolerance_rotation: float | None = 0.001,
         subsample: float | int = 5e5,
@@ -2672,44 +2671,16 @@ class LZD(AffineCoreg):
         }
         super().__init__(subsample=subsample, meta=meta)
 
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Estimate the rigid transform from tba_dem to ref_dem."""
-
-        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
-        self._fit_rst_pts(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            weights=weights,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
-
-    def _fit_rst_pts(
+    def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -2724,7 +2695,8 @@ class LZD(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -2777,48 +2749,21 @@ class DhMinimize(AffineCoreg):
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
         super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
-
-    def _fit_rst_rst(
-        self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
-
-        # Method is the same for 2D or 1D elevation differences, so we can simply re-direct to fit_rst_pts
-        self._fit_rst_pts(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            weights=weights,
-            bias_vars=bias_vars,
-            **kwargs,
-        )
-
-    def _fit_rst_pts(
+        
+    def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,
-    ) -> None:
+        **kwargs: Any,     
+    ):
 
         # Get parameters stored in class
         params_random = self._meta["inputs"]["random"]
@@ -2829,7 +2774,8 @@ class DhMinimize(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             area_or_point=area_or_point,
             z_name=z_name,
             weights=weights,
@@ -2843,6 +2789,7 @@ class DhMinimize(AffineCoreg):
         output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
+
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

@@ -180,7 +180,8 @@ def _preprocess_coreg_fit_raster_raster(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
-) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
+    reproj_same_grid: bool = True,
+) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit() for two raster input."""
 
     # Validate that both inputs are valid array-like (or Raster) types.
@@ -192,7 +193,13 @@ def _preprocess_coreg_fit_raster_raster(
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
-        dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+        # Only reproject to the same grid if required, otherwise simply reproject to the same CRS
+        if reproj_same_grid:
+            dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+            tba_transform = reference_dem.transform
+        else:
+            dem_to_be_aligned = dem_to_be_aligned.reproject(crs=reference_dem.crs, silent=True)
+            tba_transform = dem_to_be_aligned.transform
 
     # If both inputs are raster, cast their pixel interpretation and override any individual interpretation
     indiv_check = True
@@ -275,7 +282,7 @@ def _preprocess_coreg_fit_raster_raster(
     if np.all(invalid_mask):
         raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
 
-    return ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point
+    return ref_dem, tba_dem, inlier_mask, transform, tba_transform, crs, area_or_point
 
 
 def _preprocess_coreg_fit_raster_point(
@@ -285,6 +292,7 @@ def _preprocess_coreg_fit_raster_point(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
+    z_name: str | None = None,
 ) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
 
@@ -306,6 +314,12 @@ def _preprocess_coreg_fit_raster_point(
 
     if crs is None:
         raise ValueError("'crs' must be given if both DEMs are array-like.")
+    
+    if z_name is None:
+        raise ValueError(f"'z_name' must be given if an elevation point cloud is used as elevation input.")
+    
+    if z_name not in point_elev.columns:
+        raise ValueError(f"'z_name' {z_name} is not a column of the elevation point cloud dataframe; those are {point_elev.columns}.")
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
@@ -328,10 +342,19 @@ def _preprocess_coreg_fit_raster_point(
 
 
 def _preprocess_coreg_fit_point_point(
-    reference_elev: gpd.GeoDataFrame, to_be_aligned_elev: gpd.GeoDataFrame
+    reference_elev: gpd.GeoDataFrame, to_be_aligned_elev: gpd.GeoDataFrame, z_name: str | None = None,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Pre-processing and checks of fit for point-point input."""
 
+    if z_name is None:
+        raise ValueError(f"'z_name' must be given if an elevation point cloud is used as elevation input.")
+    
+    if z_name not in reference_elev.columns:
+        raise ValueError(f"'z_name' {z_name} is not a column of the reference elevation point cloud geodataframe.")
+    
+    if z_name not in to_be_aligned_elev.columns:
+        raise ValueError(f"'z_name' {z_name} is not a column of the to-be-aligned elevation point cloud geodataframe.")
+    
     ref_elev = reference_elev
     tba_elev = to_be_aligned_elev.to_crs(crs=reference_elev.crs)
 
@@ -345,14 +368,9 @@ def _preprocess_coreg_fit(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
-) -> tuple[
-    NDArrayf | gpd.GeoDataFrame,
-    NDArrayf | gpd.GeoDataFrame,
-    NDArrayb | None,
-    affine.Affine | None,
-    rio.crs.CRS | None,
-    Literal["Area", "Point"] | None,
-]:
+    z_name: str | None = None,
+    reproj_same_grid: bool = True,
+) ->  dict[str, NDArrayf | gpd.GeoDataFrame | affine.Affine | rio.crs.CRS | Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for any input."""
 
     if not all(
@@ -362,16 +380,28 @@ def _preprocess_coreg_fit(
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):
-        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_raster(
+        ref_elev, tba_elev, inlier_mask, ref_transform, tba_transform, crs, area_or_point = _preprocess_coreg_fit_raster_raster(
             reference_dem=reference_elev,
             dem_to_be_aligned=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
+            reproj_same_grid=reproj_same_grid
         )
 
-    # If one input is raster, and the other is point, we reproject the point data to the same CRS and extract arrays
+        # Arguments required for _fit_rst_rst from outputs of this function
+        main_args = {
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
+            "inlier_mask": inlier_mask,
+            "ref_transform": ref_transform,
+            "tba_transform": tba_transform,
+            "crs": crs,
+            "area_or_point": area_or_point,
+        }
+
+    # If one input is raster, and the other is point, we reproject the point data to the same CRS
     elif any(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
         if isinstance(reference_elev, (np.ndarray, gu.Raster)):
             raster_elev = reference_elev
@@ -389,6 +419,7 @@ def _preprocess_coreg_fit(
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
+            z_name=z_name,
         )
 
         if ref == "raster":
@@ -398,13 +429,33 @@ def _preprocess_coreg_fit(
             ref_elev = point_elev
             tba_elev = raster_elev
 
+        # Arguments required for _fit_rst_pts from outputs of this function
+        main_args = {
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
+            "inlier_mask": inlier_mask,
+            "transform": transform,
+            "crs": crs,
+            "area_or_point": area_or_point,
+            "z_name": z_name,
+        }
+
     # If both inputs are points, simply reproject to the same CRS
     else:
         ref_elev, tba_elev = _preprocess_coreg_fit_point_point(
-            reference_elev=reference_elev, to_be_aligned_elev=to_be_aligned_elev
+            reference_elev=reference_elev, to_be_aligned_elev=to_be_aligned_elev, z_name=z_name,
         )
 
-    return ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point
+        # Arguments required for _fit_pts_pts from outputs of this function
+        main_args = {
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
+            "inlier_mask": inlier_mask,
+            "crs": ref_elev.crs,
+            "z_name": z_name,
+        }
+
+    return main_args
 
 
 def _preprocess_coreg_apply(
@@ -2109,7 +2160,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
@@ -2156,25 +2207,23 @@ class Coreg:
             self._meta["inputs"]["random"]["random_state"] = random_state
 
         # Pre-process the inputs, by reprojecting and converting to arrays
-        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
+        # For an affine alignment, overlap is not necessary, so rasters are not reprojected to the same grid
+        if self._is_affine:
+            reproj_same_grid = True
+        else:
+            reproj_same_grid = True
+
+        # Get main arguments
+        main_args = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
+            z_name=z_name,
+            reproj_same_grid=reproj_same_grid
         )
-
-        main_args = {
-            "ref_elev": ref_elev,
-            "tba_elev": tba_elev,
-            "inlier_mask": inlier_mask,
-            "transform": transform,
-            "crs": crs,
-            "area_or_point": area_or_point,
-            "z_name": z_name,
-            "weights": weights,
-        }
 
         # If bias_vars are defined, update dictionary content to array
         if bias_vars is not None:
@@ -2589,74 +2638,88 @@ class Coreg:
         Needs to be _fit_func of the main class to simplify calls from CoregPipeline and BlockwiseCoreg.
         """
 
-        # Determine if input is raster-raster, raster-point or point-point
         if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
-            rop = "r-r"
+            self._fit_rst_rst(**kwargs)
         elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
-            rop = "p-p"
+            self._fit_pts_pts(**kwargs)
         else:
-            rop = "r-p"
+            self._fit_rst_pts(**kwargs)
 
-        # Fallback logic is always the same: 1/ raster-raster, 2/ raster-point, 3/ point-point
-        try_rp = False
-        try_pp = False
+        # OLD FALLBACK LOGIC: NOT USEFUL RIGHT NOW SINCE POINT-RASTER IS DEALT WITHIN AFFINE METHODS...
+        # BUT KEEPING IN CASE IT'D BE A BETTER STRUCTURE FOR THAT RASTER-POINT SAMPLING MECHANISM IN THE FUTURE? 
+        # (FOR EX, REMOVING _subsample() FROM INSIDE LZD/ICP/CPD?) 
+        # FACTORS TO DECIDE THIS ARE:
+        # 1/ WOULD IT BE COMPATIBLE WITH OUT-OF-MEM OPS?
+        # 2/ WOULD IT BE COMPATIBLE WITH ITERATIVE RESAMPLING?
 
-        # For raster-raster
-        if rop == "r-r":
-            # Check if raster-raster function exists, if yes run it and stop
-            try:
-                self._fit_rst_rst(**kwargs)
-            # Otherwise, convert the tba raster to points and try raster-points
-            except NotImplementedCoregFit:
-                warnings.warn(
-                    f"No raster-raster method found for coregistration {self.__class__.__name__}, "
-                    f"trying raster-point method by converting to-be-aligned DEM to points.",
-                    UserWarning,
-                )
-                tba_elev_pts = (
-                    gu.Raster.from_array(data=kwargs["tba_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
-                    .to_pointcloud()
-                    .ds
-                )
-                kwargs.update({"tba_elev": tba_elev_pts})
-                try_rp = True
+        # # Determine if input is raster-raster, raster-point or point-point
+        # if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        #     rop = "r-r"
+        # elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        #     rop = "p-p"
+        # else:
+        #     rop = "r-p"
 
-        # For raster-point
-        if rop == "r-p" or try_rp:
-            try:
-                self._fit_rst_pts(**kwargs)
-            except NotImplementedCoregFit:
-                warnings.warn(
-                    f"No raster-point method found for coregistration {self.__class__.__name__}, "
-                    f"trying point-point method by converting all elevation data to points.",
-                    UserWarning,
-                )
-                ref_elev_pts = (
-                    gu.Raster.from_array(data=kwargs["ref_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
-                    .to_pointcloud()
-                    .ds
-                )
-                kwargs.update({"ref_elev": ref_elev_pts})
-                try_pp = True
+        # # Fallback logic is always the same: 1/ raster-raster, 2/ raster-point, 3/ point-point
+        # try_rp = False
+        # try_pp = False
 
-        # For point-point
-        if rop == "p-p" or try_pp:
-            try:
-                self._fit_pts_pts(**kwargs)
-            except NotImplementedCoregFit:
-                if try_pp and try_rp:
-                    raise NotImplementedCoregFit(
-                        f"No raster-raster, raster-point or point-point method found for "
-                        f"coregistration {self.__class__.__name__}."
-                    )
-                elif try_pp:
-                    raise NotImplementedCoregFit(
-                        f"No raster-point or point-point method found for coregistration {self.__class__.__name__}."
-                    )
-                else:
-                    raise NotImplementedCoregFit(
-                        f"No point-point method found for coregistration {self.__class__.__name__}."
-                    )
+        # # For raster-raster
+        # if rop == "r-r":
+        #     # Check if raster-raster function exists, if yes run it and stop
+        #     try:
+        #         self._fit_rst_rst(**kwargs)
+        #     # Otherwise, convert the tba raster to points and try raster-points
+        #     except NotImplementedCoregFit:
+        #         warnings.warn(
+        #             f"No raster-raster method found for coregistration {self.__class__.__name__}, "
+        #             f"trying raster-point method by converting to-be-aligned DEM to points.",
+        #             UserWarning,
+        #         )
+        #         tba_elev_pts = (
+        #             gu.Raster.from_array(data=kwargs["tba_elev"], transform=kwargs["tba_transform"], crs=kwargs["crs"])
+        #             .to_pointcloud()
+        #             .ds
+        #         )
+        #         kwargs.update({"tba_elev": tba_elev_pts})
+        #         try_rp = True
+
+        # # For raster-point
+        # if rop == "r-p" or try_rp:
+        #     try:
+        #         self._fit_rst_pts(**kwargs)
+        #     except NotImplementedCoregFit:
+        #         warnings.warn(
+        #             f"No raster-point method found for coregistration {self.__class__.__name__}, "
+        #             f"trying point-point method by converting all elevation data to points.",
+        #             UserWarning,
+        #         )
+        #         ref_elev_pts = (
+        #             gu.Raster.from_array(data=kwargs["ref_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
+        #             .to_pointcloud()
+        #             .ds
+        #         )
+        #         kwargs.update({"ref_elev": ref_elev_pts})
+        #         try_pp = True
+
+        # # For point-point
+        # if rop == "p-p" or try_pp:
+        #     try:
+        #         self._fit_pts_pts(**kwargs)
+        #     except NotImplementedCoregFit:
+        #         if try_pp and try_rp:
+        #             raise NotImplementedCoregFit(
+        #                 f"No raster-raster, raster-point or point-point method found for "
+        #                 f"coregistration {self.__class__.__name__}."
+        #             )
+        #         elif try_pp:
+        #             raise NotImplementedCoregFit(
+        #                 f"No raster-point or point-point method found for coregistration {self.__class__.__name__}."
+        #             )
+        #         else:
+        #             raise NotImplementedCoregFit(
+        #                 f"No point-point method found for coregistration {self.__class__.__name__}."
+        #             )
 
     def _apply_func(self, **kwargs: Any) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
         """Distribute to _apply_rst and _apply_pts based on input and method availability."""
@@ -2783,10 +2846,10 @@ class Coreg:
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -2815,7 +2878,6 @@ class Coreg:
         ref_elev: gpd.GeoDataFrame,
         tba_elev: gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         z_name: str,
         weights: NDArrayf | None = None,
