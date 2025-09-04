@@ -89,8 +89,17 @@ class DEM(Raster):  # type: ignore
 
     def __init__(
         self,
-        filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
+        filename_or_dataset: (
+            str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile
+        ),
+        vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | VerticalCRS
+            | str
+            | pathlib.Path
+            | int
+            | None
+        ) = None,
         load_data: bool = False,
         parse_sensor_metadata: bool = False,
         silent: bool = True,
@@ -128,7 +137,9 @@ class DEM(Raster):  # type: ignore
         # Else rely on parent Raster class options (including raised errors)
         else:
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
+                warnings.filterwarnings(
+                    "ignore", message="Parse metadata from file not implemented"
+                )
                 super().__init__(
                     filename_or_dataset,
                     load_data=load_data,
@@ -197,7 +208,14 @@ class DEM(Raster):  # type: ignore
         tags: dict[str, Any] = None,
         cast_nodata: bool = True,
         vcrs: (
-            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+            Literal["Ellipsoid"]
+            | Literal["EGM08"]
+            | Literal["EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+            | None
         ) = None,
     ) -> DEM | Mask:
         """Create a DEM from a numpy array and the georeferencing information.
@@ -264,7 +282,15 @@ class DEM(Raster):  # type: ignore
 
     def set_vcrs(
         self,
-        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        new_vcrs: (
+            Literal["Ellipsoid"]
+            | Literal["EGM08"]
+            | Literal["EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+        ),
     ) -> None:
         """
         Set the vertical coordinate reference system of the DEM.
@@ -290,9 +316,20 @@ class DEM(Raster):  # type: ignore
     @overload
     def to_vcrs(
         self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+        ),
         force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+            | None
         ) = None,
         *,
         inplace: Literal[False] = False,
@@ -301,9 +338,20 @@ class DEM(Raster):  # type: ignore
     @overload
     def to_vcrs(
         self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+        ),
         force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+            | None
         ) = None,
         *,
         inplace: Literal[True],
@@ -312,9 +360,20 @@ class DEM(Raster):  # type: ignore
     @overload
     def to_vcrs(
         self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+        ),
         force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+            | None
         ) = None,
         *,
         inplace: bool = False,
@@ -322,9 +381,20 @@ class DEM(Raster):  # type: ignore
 
     def to_vcrs(
         self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+        ),
         force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+            Literal["Ellipsoid", "EGM08", "EGM96"]
+            | str
+            | pathlib.Path
+            | VerticalCRS
+            | int
+            | None
         ) = None,
         inplace: bool = False,
     ) -> DEM | None:
@@ -358,7 +428,9 @@ class DEM(Raster):  # type: ignore
             src_ccrs = self.ccrs
 
         # New destination Compound CRS
-        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=vcrs))
+        dst_ccrs = _build_ccrs_from_crs_and_vcrs(
+            self.crs, vcrs=_vcrs_from_user_input(vcrs_input=vcrs)
+        )
 
         # If both compound CCRS are equal, do not run any transform
         if src_ccrs.equals(dst_ccrs):
@@ -371,7 +443,9 @@ class DEM(Raster):  # type: ignore
         # Transform elevation with new vertical CRS
         zz = self.data
         xx, yy = self.coords()
-        zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
+        zz_trans = _transform_zz(
+            crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz
+        )
         new_data = zz_trans.astype(self.dtype)  # type: ignore
 
         # If inplace, update DEM and vcrs
@@ -395,35 +469,73 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
         self,
-        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
         degrees: bool = True,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees, mp_config=mp_config)
+
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.slope(
+            self, surface_fit=surface_fit, degrees=degrees, mp_config=mp_config
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
-        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
         degrees: bool = True,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees, mp_config=mp_config)
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.aspect(
+            self, surface_fit=surface_fit, degrees=degrees, mp_config=mp_config
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
         self,
-        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
         azimuth: float = 315.0,
         altitude: float = 45.0,
         z_factor: float = 1.0,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
         return terrain.hillshade(
             self,
-            method=method,
+            surface_fit=surface_fit,
             azimuth=azimuth,
             altitude=altitude,
             z_factor=z_factor,
@@ -431,22 +543,42 @@ class DEM(Raster):  # type: ignore
         )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def curvature(
+        self,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        return terrain.curvature(self, mp_config=mp_config)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
-
-        return terrain.planform_curvature(self, mp_config=mp_config)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
-
-        return terrain.profile_curvature(self, mp_config=mp_config)
+        return terrain.curvature(self, surface_fit=surface_fit, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def planform_curvature(
+        self,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.planform_curvature(
+            self, surface_fit=surface_fit, mp_config=mp_config
+        )
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def profile_curvature(
+        self,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.profile_curvature(
+            self, surface_fit=surface_fit, mp_config=mp_config
+        )
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def maximum_curvature(
+        self,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
         return terrain.maximum_curvature(self, mp_config=mp_config)
 
@@ -457,7 +589,9 @@ class DEM(Raster):  # type: ignore
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.topographic_position_index(self, window_size=window_size, mp_config=mp_config)
+        return terrain.topographic_position_index(
+            self, window_size=window_size, mp_config=mp_config
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def terrain_ruggedness_index(
@@ -467,10 +601,14 @@ class DEM(Raster):  # type: ignore
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size, mp_config=mp_config)
+        return terrain.terrain_ruggedness_index(
+            self, method=method, window_size=window_size, mp_config=mp_config
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def roughness(self, window_size: int = 3, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def roughness(
+        self, window_size: int = 3, mp_config: MultiprocConfig | None = None
+    ) -> RasterType:
 
         return terrain.roughness(self, window_size=window_size, mp_config=mp_config)
 
@@ -480,12 +618,18 @@ class DEM(Raster):  # type: ignore
         return terrain.rugosity(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(self, window_size: int = 13, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def fractal_roughness(
+        self, window_size: int = 13, mp_config: MultiprocConfig | None = None
+    ) -> RasterType:
 
-        return terrain.fractal_roughness(self, window_size=window_size, mp_config=mp_config)
+        return terrain.fractal_roughness(
+            self, window_size=window_size, mp_config=mp_config
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
+    def get_terrain_attribute(
+        self, attribute: str | list[str], **kwargs: Any
+    ) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
     def coregister_3d(  # type: ignore
@@ -524,20 +668,26 @@ class DEM(Raster):  # type: ignore
 
         # Check inputs
         if not isinstance(coreg_method, Coreg):
-            raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
+            raise ValueError(
+                "Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab())."
+            )
 
         # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
         if estimated_initial_shift:
             if not (
                 isinstance(estimated_initial_shift, (list, tuple))
                 and len(estimated_initial_shift) == 2
-                and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+                and all(
+                    isinstance(val, (float, int)) for val in estimated_initial_shift
+                )
             ):
                 raise ValueError(
                     "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
                 )
             if isinstance(coreg_method, CoregPipeline):
-                if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
+                if not any(
+                    isinstance(step, AffineCoreg) for step in coreg_method.pipeline
+                ):
                     raise TypeError(
                         "An initial shift has been provided, but none of the coregistration methods in the pipeline "
                         "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
@@ -569,20 +719,29 @@ class DEM(Raster):  # type: ignore
         if estimated_initial_shift:
 
             def update_shift(
-                coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+                coreg_method: Coreg | CoregPipeline,
+                shift_x: float = shift_x,
+                shift_y: float = shift_y,
             ) -> None:
                 if isinstance(coreg_method, CoregPipeline):
                     for step in coreg_method.pipeline:
                         update_shift(step)
                 else:
                     # check if the keys exist
-                    if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                    if (
+                        "outputs" in coreg_method.meta
+                        and "affine" in coreg_method.meta["outputs"]
+                    ):
                         if "shift_x" in coreg_method.meta["outputs"]["affine"]:
                             coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
-                            logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
+                            logging.debug(
+                                f"Updated shift_x by {shift_x} in {coreg_method}"
+                            )
                         if "shift_y" in coreg_method.meta["outputs"]["affine"]:
                             coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
-                            logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+                            logging.debug(
+                                f"Updated shift_y by {shift_y} in {coreg_method}"
+                            )
 
             update_shift(coreg_method)
 
@@ -652,7 +811,9 @@ class DEM(Raster):  # type: ignore
             dh = other_elev[z_name].values - self.interp_points(points)
             stable_terrain = stable_terrain
         else:
-            raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
+            raise TypeError(
+                "Other elevation should be a DEM or elevation point cloud object."
+            )
 
         # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
         # See Equation 7 and 8 of Hugonnet et al. (2022)
@@ -671,11 +832,16 @@ class DEM(Raster):  # type: ignore
 
             # Estimate variable error from these variables
             sig_dh = infer_heteroscedasticity_from_stable(
-                dvalues=dh, list_var=list_var_rast, spread_statistic=spread_estimator, stable_mask=stable_terrain
+                dvalues=dh,
+                list_var=list_var_rast,
+                spread_statistic=spread_estimator,
+                stable_mask=stable_terrain,
             )[0]
         # Otherwise, return a constant error raster
         else:
-            sig_dh = self.copy(new_array=spread_estimator(dh[stable_terrain]) * np.ones(self.shape))
+            sig_dh = self.copy(
+                new_array=spread_estimator(dh[stable_terrain]) * np.ones(self.shape)
+            )
 
         # If the approach does not allow multiple ranges of spatial correlation
         if not approach_dict[approach]["multi_range"]:

@@ -93,11 +93,116 @@ h1 = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
 h2 = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
 horn_coefs = {"h1": h1, "h2": h2}
 
-# Florinsky (2009) coefficients: ASK TOM?
+# Florinsky (2009) coefficients, equations 12-20
 #########################################
+
+fl_a = np.array(
+    [
+        [-1, 2, 0, -2, 1],
+        [-1, 2, 0, -2, 1],
+        [-1, 2, 0, -2, 1],
+        [-1, 2, 0, -2, 1],
+        [-1, 2, 0, -2, 1],
+    ]
+)
+
+fl_d = np.array(
+    [
+        [1, 1, 1, 1, 1],
+        [-2, -2, -2, -2, -2],
+        [0, 0, 0, 0, 0],
+        [2, 2, 2, 2, 2],
+        [-1, -1, -1, -1, -1],
+    ]
+)
+
+fl_b = np.array(
+    [
+        [4, -2, -4, -2, 4],
+        [2, -1, -2, -1, 2],
+        [0, 0, 0, 0, 0],
+        [-2, 1, 2, 1, -2],
+        [-4, 2, 4, 2, -4],
+    ]
+)
+
+fl_c = np.array(
+    [
+        [-4, -2, 0, 2, 4],
+        [2, 1, 0, -1, -2],
+        [4, 2, 0, -2, -4],
+        [2, 1, 0, -1, -2],
+        [-4, -2, 0, 2, 4],
+    ]
+)
+
+fl_r = np.array(
+    [
+        [2, -1, -2, -1, 2],
+        [2, -1, -2, -1, 2],
+        [2, -1, -2, -1, 2],
+        [2, -1, -2, -1, 2],
+        [2, -1, -2, -1, 2],
+    ]
+)
+
+fl_t = np.array(
+    [
+        [2, 2, 2, 2, 2],
+        [-1, -1, -1, -1, -1],
+        [-2, -2, -2, -2, -2],
+        [-1, -1, -1, -1, -1],
+        [2, 2, 2, 2, 2],
+    ]
+)
+
+fl_s = np.array(
+    [
+        [-4, -2, 0, 2, 4],
+        [-2, -1, 0, 1, 2],
+        [0, 0, 0, 0, 0],
+        [2, 1, 0, -1, -2],
+        [4, 2, 0, -2, -4],
+    ]
+)
+
+fl_p = np.array(
+    [
+        [31, -44, 0, 44, -31],
+        [-5, -62, 0, 62, 5],
+        [-17, -68, 0, 68, 17],
+        [-5, -62, 0, 62, 5],
+        [31, -44, 0, 44, -31],
+    ]
+)
+
+fl_q = np.array(
+    [
+        [-31, 5, 17, 5, -31],
+        [44, 62, 68, 62, 44],
+        [0, 0, 0, 0, 0],
+        [-44, -62, -68, -62, -44],
+        [31, -5, -17, -5, 31],
+    ]
+)
+
+
+fl_coefs = {
+    "fl_a": fl_a,
+    "fl_d": fl_d,
+    "fl_b": fl_b,
+    "fl_c": fl_c,
+    "fl_r": fl_r,
+    "fl_t": fl_t,
+    "fl_s": fl_s,
+    "fl_p": fl_p,
+    "fl_q": fl_q,
+}
+
 
 all_coefs = zv_coefs.copy()
 all_coefs.update(horn_coefs)
+all_coefs.update(fl_coefs)
 
 # Dividers associated with coefficients
 #######################################
@@ -118,13 +223,24 @@ def _divider_method_coef(res: float, coef: str) -> float:
         "zt_i": 1,
         "h1": 8 * res,
         "h2": 8 * res,
+        "fl_a": 10 * res**3,
+        "fl_d": 10 * res**3,
+        "fl_b": 70 * res**3,
+        "fl_c": 70 * res**3,
+        "fl_r": 35 * res**2,
+        "fl_t": 35 * res**2,
+        "fl_s": 100 * res**2,
+        "fl_p": 420 * res,
+        "fl_q": 420 * res,
     }
 
     return mapping_div_coef[coef]
 
 
 def _preprocess_surface_fit(
-    surface_attributes: list[str], resolution: float, slope_method: Literal["Horn", "ZevenbergThorne"]
+    surface_attributes: list[str],
+    resolution: float,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"],
 ) -> tuple[list[NDArrayf], list[int], list[int], list[bool], int]:
     """
     Pre-processing for surface fit attributes.
@@ -140,22 +256,33 @@ def _preprocess_surface_fit(
 
     # For slope, aspect and hillshade, only 2 coefs depending on method
     if any(att in surface_attributes for att in ["slope", "aspect", "hillshade"]):
-        if slope_method == "Horn":
+        if surface_fit == "Horn":
             c_sah = ["h1", "h2"]
-        elif slope_method == "ZevenbergThorne":
+        elif surface_fit == "ZevenbergThorne":
             c_sah = ["zt_g", "zt_h"]
+        elif surface_fit == "Florinsky":
+            c_sah = ["fl_p", "fl_q"]
     else:
         c_sah = []
 
     # For simple curvature, only 2 coefs needed
     if "curvature" in surface_attributes:
-        c_curv = ["zt_d", "zt_e"]
+        if surface_fit == "ZevenbergThorne":
+            c_curv = ["zt_d", "zt_e"]
+        elif surface_fit == "Florinsky":
+            c_curv = ["fl_r", "fl_t"]
     else:
         c_curv = []
 
     # For other curvature, 5 coefs needed
-    if any(att in surface_attributes for att in ["planform_curvature", "profile_curvature", "maximum_curvature"]):
-        c_pcurv = ["zt_d", "zt_e", "zt_f", "zt_g", "zt_h"]
+    if any(
+        att in surface_attributes
+        for att in ["planform_curvature", "profile_curvature", "maximum_curvature"]
+    ):
+        if surface_fit == "ZevenbergThorne":
+            c_pcurv = ["zt_d", "zt_e", "zt_f", "zt_g", "zt_h"]
+        elif surface_fit == "Florinsky":
+            c_pcurv = ["fl_r", "fl_t", "fl_s", "fl_p", "fl_q"]
     else:
         c_pcurv = []
 
@@ -175,8 +302,14 @@ def _preprocess_surface_fit(
     make_aspect = "aspect" in surface_attributes or "hillshade" in surface_attributes
     make_hillshade = "hillshade" in surface_attributes
     make_curvature = "curvature" in surface_attributes
-    make_planform_curvature = "planform_curvature" in surface_attributes or "maximum_curvature" in surface_attributes
-    make_profile_curvature = "profile_curvature" in surface_attributes or "maximum_curvature" in surface_attributes
+    make_planform_curvature = (
+        "planform_curvature" in surface_attributes
+        or "maximum_curvature" in surface_attributes
+    )
+    make_profile_curvature = (
+        "profile_curvature" in surface_attributes
+        or "maximum_curvature" in surface_attributes
+    )
     make_maximum_curvature = "maximum_curvature" in surface_attributes
 
     make_attrs = [
@@ -199,9 +332,33 @@ def _preprocess_surface_fit(
         "profile_curvature",
         "maximum_curvature",
     ]
-    order_coefs = ["zt_a", "zt_b", "zt_c", "zt_d", "zt_e", "zt_f", "zt_g", "zt_h", "zt_i", "h1", "h2"]
+    order_coefs = [
+        "zt_a",
+        "zt_b",
+        "zt_c",
+        "zt_d",
+        "zt_e",
+        "zt_f",
+        "zt_g",
+        "zt_h",
+        "zt_i",
+        "h1",
+        "h2",
+        "fl_a",
+        "fl_d",
+        "fl_b",
+        "fl_c",
+        "fl_r",
+        "fl_t",
+        "fl_s",
+        "fl_p",
+        "fl_q",
+    ]
 
-    idx_attrs = [surface_attributes.index(oa) if oa in surface_attributes else 99 for oa in order_attrs]
+    idx_attrs = [
+        surface_attributes.index(oa) if oa in surface_attributes else 99
+        for oa in order_attrs
+    ]
     idx_coefs = [coef_names.index(oc) if oc in coef_names else 99 for oc in order_coefs]
 
     # Because of the above indexes, we don't store the length of the output attributes anymore
@@ -219,6 +376,15 @@ def _make_attribute_from_coefs(
     zt_f_idx: int,
     zt_g_idx: int,
     zt_h_idx: int,
+    fl_a_idx: int,
+    fl_d_idx: int,
+    fl_b_idx: int,
+    fl_c_idx: int,
+    fl_r_idx: int,
+    fl_t_idx: int,
+    fl_s_idx: int,
+    fl_p_idx: int,
+    fl_q_idx: int,
     slope_idx: int,
     aspect_idx: int,
     hs_idx: int,
@@ -228,7 +394,8 @@ def _make_attribute_from_coefs(
     maxcurv_idx: int,
     make_attrs: list[bool],
     out_size: tuple[int, ...],
-    slope_method_id: int,
+    # slope_method_id: int,
+    surface_fit_id: int,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
@@ -244,18 +411,33 @@ def _make_attribute_from_coefs(
 
     # Indexes of attributes and coefficients are already mapped to the same indexes to avoid solving outside Numba loop
 
-    # For surface attributes
+    # For surface attributes - CURRENT
     # slope: 0,
     # aspect: 1,
     # hillshade: 2,
     # curvature: 3,
     # planform_curvature: 4,
     # profile_curvature: 5,
-    # maximum_curvature: 6
+    # maximum_curvature:
+
+    # For surface attributes - NEW PLANNED?
+    # slope: 0,
+    # aspect; 1,
+    # hillshade: 2,
+    # maximal curvature: 3,
+    # mimimal curvature: 4,
+    # mean curvature: 5
+    # profile curvature: 6,
+    # plan curvature: 7
+    # tangential curvature: 8
+    # flowline curvature: 9
+    # unsphericity curvature: 10
+    # difference curvature: 11
 
     # For methods
     # horn: 0
     # zevenbergthorne: 1
+    # florinsky: 2
 
     # For coefficients names
     # zt_a: 0
@@ -287,18 +469,26 @@ def _make_attribute_from_coefs(
 
     if make_slope:
 
-        if slope_method_id == 0:
+        if surface_fit_id == 0:
 
             # This calculation is based on page 18 (bottom left) and 20-21 of Horn (1981),
             # http://dx.doi.org/10.1109/PROC.1981.11918.
             slope = np.arctan((C[h1_idx] ** 2 + C[h2_idx] ** 2) ** 0.5)
 
-        elif slope_method_id == 1:
+        elif surface_fit_id == 1:
 
             # This calculation is based on Equation 13 of Zevenbergen and Thorne (1987),
             # http://dx.doi.org/10.1002/esp.3290120107.
             # SLOPE = ARCTAN((G²+H²)**(1/2))
             slope = np.arctan((C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2) ** 0.5)
+
+        elif surface_fit_id == 2:
+
+            slope = np.arctan((C[fl_p_idx] ** 2 + C[fl_q_idx] ** 2) ** 0.5)
+
+            # Calculation following Florisnky (2017)
+            # https://doi.org/10.1177/0309133317733667
+            # slope = np.arctan(np.sqrt(C[fl_p_idx] ** 2 + C[fl_q_idx] ** 2))
 
         # In case slope is only derived for hillshade
         if slope_idx != 99:
@@ -308,15 +498,21 @@ def _make_attribute_from_coefs(
 
         # ASPECT = ARCTAN(-H/-G)  # This did not work
         # ASPECT = (ARCTAN2(-G, H) + 0.5PI) % 2PI  did work.
-        if slope_method_id == 0:
+        if surface_fit_id == 0:
 
             # This uses the estimates from Horn (1981).
             aspect = (-np.arctan2(-C[h1_idx], C[h2_idx]) - np.pi) % (2 * np.pi)
 
-        elif slope_method_id == 1:
+        elif surface_fit_id == 1:
 
             # This uses the estimate from Zevenbergen and Thorne (1987).
             aspect = (np.arctan2(-C[zt_g_idx], C[zt_h_idx]) + np.pi / 2) % (2 * np.pi)
+
+        elif surface_fit_id == 2:
+
+            aspect = (np.arctan2(-C[fl_p_idx], C[fl_q_idx]) + np.pi / 2) % (2 * np.pi)
+            # pdemtools version - sanity check
+            # aspect = np.arctan2(fl_p_idx, fl_q_idx) * np.pi
 
         # In case aspect is only derived for hillshade
         if aspect_idx != 99:
@@ -342,29 +538,64 @@ def _make_attribute_from_coefs(
 
     if make_curvature:
 
-        # Curvature is the second derivative of the surface fit equation.
-        # (URL in get_quadric_coefficients() docstring)
-        # Curvature = -2(D + E) * 100, see Moore et al. (1991) Equation 16 based on Zevenberg and Thorne (1987)
-        attrs[curv_idx] = -2.0 * (C[zt_d_idx] + C[zt_e_idx]) * 100
+        # TODO: No action for `if surface_fit_id == 0` (invalid). Cannot raise
+        # ValueError here because numba cannot parralelise assertions.
+        # Multiple checks exist before this point, but is there another
+        # thing we can do at this point?
+
+        if surface_fit_id == 1:
+
+            # Curvature is the second derivative of the surface fit equation.
+            # (URL in get_quadric_coefficients() docstring)
+            # Curvature = -2(D + E) * 100, see Moore et al. (1991) Equation 16 based on Zevenberg and Thorne (1987)
+            attrs[curv_idx] = -2.0 * (C[zt_d_idx] + C[zt_e_idx]) * 100
+
+        elif surface_fit_id == 2:
+
+            # Temporary - just reapplying from id=1
+            attrs[curv_idx] = -2.0 * (C[fl_r_idx] + C[fl_t_idx]) * 100
 
     if make_planform_curvature:
 
-        # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
-        # Completely flat surfaces need to be set to zero to avoid division by zero
-        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
-        # so we use a 1-d array and write in a 2-d array output
-        plancurv = np.where(
-            C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
-            np.array([0.0]),
-            -2
-            * (
-                C[zt_d_idx] * C[zt_h_idx] ** 2
-                + C[zt_e_idx] * C[zt_g_idx] ** 2
-                - C[zt_f_idx] * C[zt_g_idx] * C[zt_h_idx]
+        # TODO: No action for `if surface_fit_id == 0` (invalid). Cannot raise
+        # ValueError here because numba cannot parralelise assertions.
+        # Multiple checks exist before this point, but is there another
+        # thing we can do at this point?
+
+        if surface_fit_id == 1:
+
+            # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
+            # Completely flat surfaces need to be set to zero to avoid division by zero
+            # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+            # so we use a 1-d array and write in a 2-d array output
+            plancurv = np.where(
+                C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -2
+                * (
+                    C[zt_d_idx] * C[zt_h_idx] ** 2
+                    + C[zt_e_idx] * C[zt_g_idx] ** 2
+                    - C[zt_f_idx] * C[zt_g_idx] * C[zt_h_idx]
+                )
+                / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
+                * 100,
             )
-            / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
-            * 100,
-        )
+
+        elif surface_fit_id == 2:
+
+            # Temporary - applying above but for Florinsky parameters
+            plancurv = np.where(
+                C[fl_p_idx] ** 2 + C[fl_q_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -2
+                * (
+                    C[fl_r_idx] * C[fl_q_idx] ** 2
+                    + C[fl_t_idx] * C[fl_r_idx] ** 2
+                    - C[fl_s_idx] * C[fl_p_idx] * C[fl_q_idx]
+                )
+                / (C[fl_p_idx] ** 2 + C[fl_q_idx] ** 2)
+                * 100,
+            )
 
         # In case plan curv is only derived for max curv
         if plancurv_idx != 99:
@@ -372,22 +603,45 @@ def _make_attribute_from_coefs(
 
     if make_profile_curvature:
 
-        # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
-        # Completely flat surfaces need to be set to zero to avoid division by zero
-        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
-        # so we use a 1-d array and write in a 2-d array output
-        profcurv = np.where(
-            C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
-            np.array([0.0]),
-            2
-            * (
-                C[zt_d_idx] * C[zt_g_idx] ** 2
-                + C[zt_e_idx] * C[zt_h_idx] ** 2
-                + C[zt_f_idx] * C[zt_g_idx] * C[zt_h_idx]
+        # TODO: No action for `if surface_fit_id == 0` (invalid). Cannot raise
+        # ValueError here because numba cannot parralelise assertions.
+        # Multiple checks exist before this point, but is there another
+        # thing we can do at this point?
+
+        if surface_fit_id == 1:
+
+            # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
+            # Completely flat surfaces need to be set to zero to avoid division by zero
+            # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+            # so we use a 1-d array and write in a 2-d array output
+            profcurv = np.where(
+                C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                2
+                * (
+                    C[zt_d_idx] * C[zt_g_idx] ** 2
+                    + C[zt_e_idx] * C[zt_h_idx] ** 2
+                    + C[zt_f_idx] * C[zt_g_idx] * C[zt_h_idx]
+                )
+                / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
+                * 100,
             )
-            / (C[zt_g_idx] ** 2 + C[zt_h_idx] ** 2)
-            * 100,
-        )
+
+        elif surface_fit_id == 2:
+
+            # Temporary, adapting above for Florinsky
+            profcurv = np.where(
+                C[fl_p_idx] ** 2 + C[fl_q_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                2
+                * (
+                    C[fl_r_idx] * C[fl_q_idx] ** 2
+                    + C[fl_t_idx] * C[fl_q_idx] ** 2
+                    + C[fl_s_idx] * C[fl_q_idx] * C[fl_q_idx]
+                )
+                / (C[fl_p_idx] ** 2 + C[fl_q_idx] ** 2)
+                * 100,
+            )
 
         # In case profile curv is only derived for max curv
         if profcurv_idx != 99:
@@ -404,7 +658,11 @@ def _make_attribute_from_coefs(
 
 @numba.njit(inline="always", cache=True)  # type: ignore
 def _convolution_numba(
-    dem: NDArrayf, filters: NDArrayf, row: int, col: int, out_dtype: DTypeLike = np.float32
+    dem: NDArrayf,
+    filters: NDArrayf,
+    row: int,
+    col: int,
+    out_dtype: DTypeLike = np.float32,
 ) -> NDArrayf:
     """Convolution in Numba for a given row/col pixel."""
 
@@ -424,7 +682,9 @@ def _convolution_numba(
 
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_make_attribute_from_coefs_numba = numba.njit(inline="always", cache=True)(_make_attribute_from_coefs)
+_make_attribute_from_coefs_numba = numba.njit(inline="always", cache=True)(
+    _make_attribute_from_coefs
+)
 
 
 @numba.njit(parallel=True, cache=True)  # type: ignore
@@ -436,7 +696,8 @@ def _get_surface_attributes_numba(
     idx_attrs: list[int],
     attrs_size: int,
     out_dtype: DTypeLike,
-    slope_method_id: int = 0,
+    # slope_method_id: int = 0,
+    surface_fit_id: int,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
@@ -459,14 +720,27 @@ def _get_surface_attributes_numba(
     zt_h_idx = idx_coefs[7]
     h1_idx = idx_coefs[9]
     h2_idx = idx_coefs[10]
-    slope_idx, aspect_idx, hs_idx, curv_idx, plancurv_idx, profcurv_idx, maxcurv_idx = idx_attrs
+    fl_a_idx = idx_coefs[11]
+    fl_d_idx = idx_coefs[12]
+    fl_b_idx = idx_coefs[13]
+    fl_c_idx = idx_coefs[14]
+    fl_r_idx = idx_coefs[15]
+    fl_t_idx = idx_coefs[16]
+    fl_s_idx = idx_coefs[17]
+    fl_p_idx = idx_coefs[18]
+    fl_q_idx = idx_coefs[19]
+    slope_idx, aspect_idx, hs_idx, curv_idx, plancurv_idx, profcurv_idx, maxcurv_idx = (
+        idx_attrs
+    )
 
     # Define ranges to loop through given padding
     row_range = N1 - M1 + 1
     col_range = N2 - M2 + 1
 
     # Allocate output array
-    outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
+    outputs = np.full(
+        (attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype
+    )
 
     # Loop over every pixel concurrently by using prange
     for row in numba.prange(row_range):
@@ -486,6 +760,15 @@ def _get_surface_attributes_numba(
                 zt_f_idx=zt_f_idx,
                 zt_g_idx=zt_g_idx,
                 zt_h_idx=zt_h_idx,
+                fl_a_idx=fl_a_idx,
+                fl_d_idx=fl_d_idx,
+                fl_b_idx=fl_b_idx,
+                fl_c_idx=fl_c_idx,
+                fl_r_idx=fl_r_idx,
+                fl_t_idx=fl_t_idx,
+                fl_s_idx=fl_s_idx,
+                fl_p_idx=fl_p_idx,
+                fl_q_idx=fl_q_idx,
                 slope_idx=slope_idx,
                 aspect_idx=aspect_idx,
                 hs_idx=hs_idx,
@@ -494,7 +777,7 @@ def _get_surface_attributes_numba(
                 profcurv_idx=profcurv_idx,
                 maxcurv_idx=maxcurv_idx,
                 out_size=(attrs_size, 1),  # 2-d required for np.where inside func
-                slope_method_id=slope_method_id,
+                surface_fit_id=surface_fit_id,
                 out_dtype=np.float64,
                 hillshade_azimuth=hillshade_azimuth,
                 hillshade_altitude=hillshade_altitude,
@@ -513,7 +796,8 @@ def _get_surface_attributes_scipy(
     make_attrs: list[bool],
     idx_coefs: list[int],
     idx_attrs: list[int],
-    slope_method_id: int,
+    # slope_method_id: int,
+    surface_fit_id: int,
     attrs_size: int,
     out_dtype: DTypeLike = np.float32,
     **kwargs: Any,
@@ -522,7 +806,11 @@ def _get_surface_attributes_scipy(
     # Perform convolution and squeeze output into 3D array
     from xdem.spatialstats import convolution
 
-    coefs = convolution(imgs=dem.reshape((1, dem.shape[0], dem.shape[1])), filters=filters, method="scipy").squeeze()
+    coefs = convolution(
+        imgs=dem.reshape((1, dem.shape[0], dem.shape[1])),
+        filters=filters,
+        method="scipy",
+    ).squeeze()
 
     # Convert coefficients to attributes
     out_size = (attrs_size, dem.shape[0], dem.shape[1])
@@ -538,7 +826,25 @@ def _get_surface_attributes_scipy(
         zt_h_idx = idx_coefs[7]
         h1_idx = idx_coefs[9]
         h2_idx = idx_coefs[10]
-        slope_idx, aspect_idx, hs_idx, curv_idx, plancurv_idx, profcurv_idx, maxcurv_idx = idx_attrs
+        fl_a_idx = idx_coefs[11]
+        fl_d_idx = idx_coefs[12]
+        fl_b_idx = idx_coefs[13]
+        fl_c_idx = idx_coefs[14]
+        fl_r_idx = idx_coefs[15]
+        fl_t_idx = idx_coefs[16]
+        fl_s_idx = idx_coefs[17]
+        fl_p_idx = idx_coefs[18]
+        fl_q_idx = idx_coefs[19]
+
+        (
+            slope_idx,
+            aspect_idx,
+            hs_idx,
+            curv_idx,
+            plancurv_idx,
+            profcurv_idx,
+            maxcurv_idx,
+        ) = idx_attrs
 
         attrs = _make_attribute_from_coefs(
             coef_arrs=coefs,
@@ -550,6 +856,15 @@ def _get_surface_attributes_scipy(
             zt_f_idx=zt_f_idx,
             zt_g_idx=zt_g_idx,
             zt_h_idx=zt_h_idx,
+            fl_a_idx=fl_a_idx,
+            fl_d_idx=fl_d_idx,
+            fl_b_idx=fl_b_idx,
+            fl_c_idx=fl_c_idx,
+            fl_r_idx=fl_r_idx,
+            fl_t_idx=fl_t_idx,
+            fl_s_idx=fl_s_idx,
+            fl_p_idx=fl_p_idx,
+            fl_q_idx=fl_q_idx,
             slope_idx=slope_idx,
             aspect_idx=aspect_idx,
             hs_idx=hs_idx,
@@ -558,7 +873,7 @@ def _get_surface_attributes_scipy(
             profcurv_idx=profcurv_idx,
             maxcurv_idx=maxcurv_idx,
             out_size=out_size,
-            slope_method_id=slope_method_id,
+            surface_fit_id=surface_fit_id,
             out_dtype=out_dtype,
             **kwargs,
         )
@@ -571,7 +886,8 @@ def _get_surface_attributes(
     resolution: float,
     surface_attributes: list[str],
     out_dtype: DTypeLike = np.float32,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     engine: Literal["scipy", "numba"] = "scipy",
     **kwargs: Any,
 ) -> NDArrayf:
@@ -583,6 +899,8 @@ def _get_surface_attributes(
       equations computed on a 3x3 window.
     - Slope, aspect, hillshade and curvatures from Zevenbergen and Thorne (1987),
       http://dx.doi.org/10.1002/esp.3290120107 also computed on a 3x3 window.
+    - Slope, aspect, hillshade and curvatures from Florinsky (2008),
+      https://doi.org/10.1080/13658810802527499 also computed on a 5x5 window.
 
     :param dem: Input DEM as 2D array.
     :param resolution: Resolution of the DEM (X and Y length are equal).
@@ -593,16 +911,30 @@ def _get_surface_attributes(
     :param engine: Engine to compute the surface attributes ("scipy" or "numba").
     """
 
+    # Deprecating slope method
+    if slope_method is not None:
+        warnings.warn(
+            "'slope_method' is deprecated, use 'surface_fit' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        surface_fit = slope_method  # override
+        slope_method = None
+
     # Get list of necessary coefficients depending on method and resolution
     coef_arrs, idx_coefs, idx_attrs, make_attrs, attrs_size = _preprocess_surface_fit(
-        surface_attributes=surface_attributes, resolution=resolution, slope_method=slope_method
+        surface_attributes=surface_attributes,
+        resolution=resolution,
+        surface_fit=surface_fit,
     )
 
     # Stack coefficients into a 3D convolution kernel along the first axis
     kern3d = np.stack(coef_arrs, axis=0)
 
     # Map slope method to integer ID to improve efficiency in Numba loop
-    slope_method_id = 0 if slope_method.lower() == "horn" else 1
+    # surface_fit_id = 0 if surface_fit.lower() == "horn" else 1
+    surface_fit_mapping = {"horn": 0, "zevenbergthorne": 1, "florinsky": 2}
+    surface_fit_id = surface_fit_mapping.get(surface_fit.lower(), -1)
 
     # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
     # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
@@ -613,7 +945,7 @@ def _get_surface_attributes(
             idx_coefs=idx_coefs,
             idx_attrs=idx_attrs,
             make_attrs=make_attrs,
-            slope_method_id=slope_method_id,
+            surface_fit_id=surface_fit_id,
             attrs_size=attrs_size,
             out_dtype=out_dtype,
             **kwargs,
@@ -622,9 +954,17 @@ def _get_surface_attributes(
         _, M1, M2 = kern3d.shape
         half_M1 = int((M1 - 1) / 2)
         half_M2 = int((M2 - 1) / 2)
-        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        dem = np.pad(
+            dem,
+            pad_width=((half_M1, half_M1), (half_M2, half_M2)),
+            constant_values=np.nan,
+        )
         # Now required to declare list typing in latest Numba before deprecation
-        typed_make_attrs, typed_idx_attrs, typed_idx_coefs = numba.typed.List(), numba.typed.List(), numba.typed.List()
+        typed_make_attrs, typed_idx_attrs, typed_idx_coefs = (
+            numba.typed.List(),
+            numba.typed.List(),
+            numba.typed.List(),
+        )
         [typed_make_attrs.append(x) for x in make_attrs]
         [typed_idx_attrs.append(x) for x in idx_attrs]
         [typed_idx_coefs.append(x) for x in idx_coefs]
@@ -636,7 +976,7 @@ def _get_surface_attributes(
             idx_attrs=typed_idx_attrs,
             attrs_size=attrs_size,
             out_dtype=out_dtype,
-            slope_method_id=slope_method_id,
+            surface_fit_id=surface_fit_id,
             **kwargs,
         )
 
@@ -679,7 +1019,9 @@ def _roughness_func(arr: NDArrayf) -> float:
         return float(np.max(arr) - np.min(arr))
 
 
-def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32) -> float:
+def _fractal_roughness_func(
+    arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32
+) -> float:
     """Fractal roughness according to the box-counting method of Taud and Parrot (2005)."""
 
     # First, we compute the number of voxels for each pixel of Equation 4
@@ -720,7 +1062,9 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
         sumNs = 0
         for j in range(0, int((window_size - 1) / q)):
             for k in range(0, int((window_size - 1) / q)):
-                sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
+                sumNs += np.max(
+                    V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten()
+                )
         Ns[l0] = sumNs / q
 
     # Finally, we calculate the slope of the logarithm of Ns with q
@@ -744,7 +1088,9 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     return D
 
 
-def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32) -> float:
+def _rugosity_func(
+    arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32
+) -> float:
     """
     Rugosity from Jenness (2004): difference between real surface area and planimetric surface area.
 
@@ -839,10 +1185,14 @@ _tri_riley_func_numba = numba.njit(inline="always", cache=True)(_tri_riley_func)
 _tri_wilson_func_numba = numba.njit(inline="always", cache=True)(_tri_wilson_func)
 _roughness_func_numba = numba.njit(inline="always", cache=True)(_roughness_func)
 _rugosity_func_numba = numba.njit(inline="always", cache=True)(_rugosity_func)
-_fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(_fractal_roughness_func)
+_fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(
+    _fractal_roughness_func
+)
 
 
-def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int], list[bool], int]:
+def _preprocess_windowed_indexes(
+    windowed_indexes: list[str],
+) -> tuple[list[int], list[bool], int]:
     """
     Pre-processing for windowed indexes.
 
@@ -862,7 +1212,13 @@ def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int]
     make_rugosity = "rugosity" in windowed_indexes
     make_fractal_roughness = "fractal_roughness" in windowed_indexes
 
-    make_attrs = [make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness]
+    make_attrs = [
+        make_tpi,
+        make_tri,
+        make_roughness,
+        make_rugosity,
+        make_fractal_roughness,
+    ]
 
     # Map index of attributes and coefficients to defined order
     order_attrs = [
@@ -872,7 +1228,10 @@ def _preprocess_windowed_indexes(windowed_indexes: list[str]) -> tuple[list[int]
         "rugosity",
         "fractal_roughness",
     ]
-    idx_attrs = [windowed_indexes.index(oa) if oa in windowed_indexes else 99 for oa in order_attrs]
+    idx_attrs = [
+        windowed_indexes.index(oa) if oa in windowed_indexes else 99
+        for oa in order_attrs
+    ]
 
     # Because of the above indexes, we don't store the length of the output attributes anymore
     attrs_size = len(windowed_indexes)
@@ -898,7 +1257,9 @@ def _make_windowed_indexes(
 
     attrs = np.full(out_size, fill_value=np.nan, dtype=out_dtype)
 
-    make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = make_attrs
+    make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = (
+        make_attrs
+    )
 
     # Topographic position index
     if make_tpi:
@@ -919,7 +1280,9 @@ def _make_windowed_indexes(
 
     if make_rugosity:
 
-        attrs[rugosity_idx] = _rugosity_func_numba(dem_window, resolution=resolution, out_dtype=out_dtype)
+        attrs[rugosity_idx] = _rugosity_func_numba(
+            dem_window, resolution=resolution, out_dtype=out_dtype
+        )
 
     if make_fractal_roughness:
 
@@ -958,7 +1321,9 @@ def _get_windowed_indexes_numba(
     tpi_idx, tri_idx, roughness_idx, rugosity_idx, frac_roughness_idx = idx_attrs
 
     # Allocate output array
-    outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
+    outputs = np.full(
+        (attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype
+    )
 
     # Loop over every pixel concurrently by using prange
     for row in numba.prange(row_range):
@@ -997,43 +1362,72 @@ def _get_windowed_indexes_scipy(
     out_dtype: DTypeLike = np.float32,
 ) -> NDArrayf:
 
-    outputs = np.full((attrs_size, dem.shape[0], dem.shape[1]), fill_value=np.nan, dtype=out_dtype)
+    outputs = np.full(
+        (attrs_size, dem.shape[0], dem.shape[1]), fill_value=np.nan, dtype=out_dtype
+    )
 
-    make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = make_attrs
+    make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = (
+        make_attrs
+    )
 
     # Topographic position index
     if make_tpi:
         tpi_idx = idx_attrs[0]
         outputs[tpi_idx] = generic_filter(
-            dem, _tpi_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(window_size,)
+            dem,
+            _tpi_func,
+            mode="constant",
+            size=window_size,
+            cval=np.nan,
+            extra_arguments=(window_size,),
         )
 
     if make_tri:
 
         tri_idx = idx_attrs[1]
         if tri_method_id == 0:
-            outputs[tri_idx] = generic_filter(dem, _tri_riley_func, mode="constant", size=window_size, cval=np.nan)
+            outputs[tri_idx] = generic_filter(
+                dem, _tri_riley_func, mode="constant", size=window_size, cval=np.nan
+            )
 
         elif tri_method_id == 1:
             outputs[tri_idx] = generic_filter(
-                dem, _tri_wilson_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(window_size,)
+                dem,
+                _tri_wilson_func,
+                mode="constant",
+                size=window_size,
+                cval=np.nan,
+                extra_arguments=(window_size,),
             )
 
     if make_roughness:
         roughness_idx = idx_attrs[2]
-        outputs[roughness_idx] = generic_filter(dem, _roughness_func, mode="constant", size=window_size, cval=np.nan)
+        outputs[roughness_idx] = generic_filter(
+            dem, _roughness_func, mode="constant", size=window_size, cval=np.nan
+        )
 
     if make_rugosity:
         rugosity_idx = idx_attrs[3]
         outputs[rugosity_idx] = generic_filter(
-            dem, _rugosity_func, mode="constant", size=window_size, cval=np.nan, extra_arguments=(resolution, out_dtype)
+            dem,
+            _rugosity_func,
+            mode="constant",
+            size=window_size,
+            cval=np.nan,
+            extra_arguments=(resolution, out_dtype),
         )
 
     if make_fractal_roughness:
         frac_roughness_idx = idx_attrs[4]
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in divide")
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message="Mean of empty slice."
+            )
+            warnings.filterwarnings(
+                "ignore",
+                category=RuntimeWarning,
+                message="invalid value encountered in divide",
+            )
             outputs[frac_roughness_idx] = generic_filter(
                 dem,
                 _fractal_roughness_func,
@@ -1079,7 +1473,9 @@ def _get_windowed_indexes(
     """
 
     # Get list of necessary coefficients depending on method and resolution
-    idx_attrs, make_attrs, attrs_size = _preprocess_windowed_indexes(windowed_indexes=windowed_indexes)
+    idx_attrs, make_attrs, attrs_size = _preprocess_windowed_indexes(
+        windowed_indexes=windowed_indexes
+    )
 
     # Map slope method to integer ID to improve efficiency in Numba loop
     tri_method_id = 0 if tri_method.lower() == "riley" else 1
@@ -1127,7 +1523,8 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1145,7 +1542,8 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1163,7 +1561,8 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1181,7 +1580,8 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1198,7 +1598,8 @@ def get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1206,6 +1607,9 @@ def get_terrain_attribute(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
+
+    TODO: UPDATE DOC STRING TO ACCOUNT FOR FLORINSKY (2009) UPDATE
+
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
 
@@ -1276,6 +1680,17 @@ def get_terrain_attribute(
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
+
+    # Deprecating slope method
+    if slope_method is not None:
+        warnings.warn(
+            "'slope_method' is deprecated, use 'surface_fit' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        surface_fit = slope_method  # override
+        slope_method = None
+
     if mp_config is not None:
         if not isinstance(dem, Raster):
             raise TypeError("The DEM must be a Raster")
@@ -1286,7 +1701,9 @@ def get_terrain_attribute(
         for attr in attribute:
             mp_config_copy = mp_config.copy()
             if mp_config.outfile is not None and len(attribute) > 1:
-                mp_config_copy.outfile = mp_config_copy.outfile.split(".")[0] + "_" + attr + ".tif"
+                mp_config_copy.outfile = (
+                    mp_config_copy.outfile.split(".")[0] + "_" + attr + ".tif"
+                )
             list_raster.append(
                 map_overlap_multiproc_save(
                     _get_terrain_attribute,
@@ -1299,6 +1716,7 @@ def get_terrain_attribute(
                     hillshade_azimuth,
                     hillshade_z_factor,
                     slope_method,
+                    surface_fit,
                     tri_method,
                     window_size,
                     engine,
@@ -1319,6 +1737,7 @@ def get_terrain_attribute(
             hillshade_azimuth,
             hillshade_z_factor,
             slope_method,
+            surface_fit,
             tri_method,
             window_size,
             engine,
@@ -1335,7 +1754,8 @@ def _get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1352,7 +1772,8 @@ def _get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1369,7 +1790,8 @@ def _get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1386,7 +1808,8 @@ def _get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1402,7 +1825,8 @@ def _get_terrain_attribute(
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
-    slope_method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    slope_method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1411,6 +1835,17 @@ def _get_terrain_attribute(
     """
     See description of get_terrain_attribute().
     """
+
+    # Deprecating slope method
+    if slope_method is not None:
+        warnings.warn(
+            "'slope_method' is deprecated, use 'surface_fit' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        surface_fit = slope_method  # override
+        slope_method = None
+
     if isinstance(dem, gu.Raster):
         if resolution is None:
             resolution = dem.res
@@ -1436,7 +1871,9 @@ def _get_terrain_attribute(
         "profile_curvature",
         "maximum_curvature",
     ]
-    attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
+    attributes_requiring_surface_fit = [
+        attr for attr in attribute if attr in list_requiring_surface_fit
+    ]
 
     list_requiring_windowed_index = [
         "terrain_ruggedness_index",
@@ -1445,7 +1882,9 @@ def _get_terrain_attribute(
         "rugosity",
         "fractal_roughness",
     ]
-    attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
+    attributes_requiring_windowed_index = [
+        attr for attr in attribute if attr in list_requiring_windowed_index
+    ]
 
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
@@ -1475,21 +1914,36 @@ def _get_terrain_attribute(
         if attr not in choices:
             raise ValueError(f"Attribute '{attr}' is not supported. Choices: {choices}")
 
-    list_slope_methods = ["Horn", "ZevenbergThorne"]
-    if slope_method.lower() not in [sm.lower() for sm in list_slope_methods]:
-        raise ValueError(f"Slope method '{slope_method}' is not supported. Must be one of: {list_slope_methods}")
+    # list_slope_methods = ["Horn", "ZevenbergThorne"]
+    list_surface_fit = ["Horn", "ZevenbergThorne", "Florinsky"]
+    if surface_fit.lower() not in [sm.lower() for sm in list_surface_fit]:
+        raise ValueError(
+            f"Slope method '{surface_fit}' is not supported. Must be one of: {list_surface_fit}"
+        )
     list_tri_methods = ["Riley", "Wilson"]
     if tri_method.lower() not in [tm.lower() for tm in list_tri_methods]:
-        raise ValueError(f"TRI method '{tri_method}' is not supported. Must be one of: {list_tri_methods}")
+        raise ValueError(
+            f"TRI method '{tri_method}' is not supported. Must be one of: {list_tri_methods}"
+        )
     if (hillshade_azimuth < 0.0) or (hillshade_azimuth > 360.0):
-        raise ValueError(f"Azimuth must be a value between 0 and 360 degrees (given value: {hillshade_azimuth})")
+        raise ValueError(
+            f"Azimuth must be a value between 0 and 360 degrees (given value: {hillshade_azimuth})"
+        )
     if (hillshade_altitude < 0.0) or (hillshade_altitude > 90):
-        raise ValueError("Altitude must be a value between 0 and 90 degrees (given value: {altitude})")
+        raise ValueError(
+            "Altitude must be a value between 0 and 90 degrees (given value: {altitude})"
+        )
     if (hillshade_z_factor < 0.0) or not np.isfinite(hillshade_z_factor):
-        raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
+        raise ValueError(
+            f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})"
+        )
 
     # Raise warning if CRS is not projected and using a surface fit attribute
-    if isinstance(dem, gu.Raster) and not dem.crs.is_projected and len(attributes_requiring_surface_fit) > 0:
+    if (
+        isinstance(dem, gu.Raster)
+        and not dem.crs.is_projected
+        and len(attributes_requiring_surface_fit) > 0
+    ):
         warnings.warn(
             category=UserWarning,
             message=f"DEM is not in a projected CRS, the following surface fit attributes might be "
@@ -1519,7 +1973,7 @@ def _get_terrain_attribute(
             resolution=resolution,
             surface_attributes=attributes_requiring_surface_fit,
             out_dtype=out_dtype,
-            slope_method=slope_method,
+            surface_fit=surface_fit,
             engine=engine,
             **surface_kwargs,
         )
@@ -1560,12 +2014,17 @@ def _get_terrain_attribute(
 
     # Convert 3D array output to list of 2D arrays
     output_attributes = surface_attributes + windowed_indexes
-    order_indices = [attribute.index(a) for a in attributes_requiring_surface_fit + attributes_requiring_windowed_index]
+    order_indices = [
+        attribute.index(a)
+        for a in attributes_requiring_surface_fit + attributes_requiring_windowed_index
+    ]
     output_attributes[:] = [output_attributes[idx] for idx in order_indices]
 
     if isinstance(dem, gu.Raster):
         output_attributes = [
-            gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=-99999)
+            gu.Raster.from_array(
+                attr, transform=dem.transform, crs=dem.crs, nodata=-99999
+            )
             for attr in output_attributes
         ]  # type: ignore
 
@@ -1575,7 +2034,8 @@ def _get_terrain_attribute(
 @overload
 def slope(
     dem: NDArrayf | MArrayf,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -1585,7 +2045,8 @@ def slope(
 @overload
 def slope(
     dem: RasterType,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -1594,7 +2055,8 @@ def slope(
 
 def slope(
     dem: NDArrayf | MArrayf | RasterType,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -1624,10 +2086,21 @@ def slope(
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
+
+    # Deprecating slope method
+    if method is not None:
+        warnings.warn(
+            "'method' is deprecated, use 'surface_fit' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        surface_fit = method  # override
+        method = None
+
     return get_terrain_attribute(
         dem,
         attribute="slope",
-        slope_method=method,
+        surface_fit=surface_fit,
         resolution=resolution,
         degrees=degrees,
         mp_config=mp_config,
@@ -1637,7 +2110,8 @@ def slope(
 @overload
 def aspect(
     dem: NDArrayf | MArrayf,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
@@ -1646,7 +2120,8 @@ def aspect(
 @overload
 def aspect(
     dem: RasterType,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
@@ -1654,7 +2129,8 @@ def aspect(
 
 def aspect(
     dem: NDArrayf | MArrayf | RasterType,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | Raster:
@@ -1691,10 +2167,21 @@ def aspect(
         np.float32(180.0)
 
     """
+
+    # Deprecating slope method
+    if method is not None:
+        warnings.warn(
+            "'method' is deprecated, use 'surface_fit' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        surface_fit = method  # override
+        method = None
+
     return get_terrain_attribute(
         dem,
         attribute="aspect",
-        slope_method=method,
+        surface_fit=surface_fit,
         resolution=1.0,
         degrees=degrees,
         mp_config=mp_config,
@@ -1704,7 +2191,8 @@ def aspect(
 @overload
 def hillshade(
     dem: NDArrayf | MArrayf,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
@@ -1716,7 +2204,8 @@ def hillshade(
 @overload
 def hillshade(
     dem: RasterType,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
@@ -1727,7 +2216,8 @@ def hillshade(
 
 def hillshade(
     dem: NDArrayf | MArrayf,
-    method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+    method: Literal["Horn", "ZevenbergThorne"] = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     azimuth: float = 315.0,
     altitude: float = 45.0,
     z_factor: float = 1.0,
@@ -1753,11 +2243,23 @@ def hillshade(
 
     :returns: A hillshade with the dtype "float32" with value ranges of 0-255.
     """
+
+    # Deprecating slope method
+    if method is not None:
+        warnings.warn(
+            "'method' is deprecated, use 'surface_fit' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        surface_fit = method  # override
+        method = None
+
     return get_terrain_attribute(
         dem,
         attribute="hillshade",
         resolution=resolution,
-        slope_method=method,
+        # slope_method=method,
+        surface_fit=surface_fit,
         hillshade_azimuth=azimuth,
         hillshade_altitude=altitude,
         hillshade_z_factor=z_factor,
@@ -1769,6 +2271,7 @@ def hillshade(
 def curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -1777,6 +2280,7 @@ def curvature(
 def curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -1784,6 +2288,7 @@ def curvature(
 def curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
@@ -1817,6 +2322,7 @@ def curvature(
     return get_terrain_attribute(
         dem=dem,
         attribute="curvature",
+        surface_fit=surface_fit,
         resolution=resolution,
         mp_config=mp_config,
     )
@@ -1826,6 +2332,7 @@ def curvature(
 def planform_curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -1834,6 +2341,7 @@ def planform_curvature(
 def planform_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -1841,6 +2349,7 @@ def planform_curvature(
 def planform_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
@@ -1871,6 +2380,7 @@ def planform_curvature(
     return get_terrain_attribute(
         dem=dem,
         attribute="planform_curvature",
+        surface_fit=surface_fit,
         resolution=resolution,
         mp_config=mp_config,
     )
@@ -1880,6 +2390,7 @@ def planform_curvature(
 def profile_curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -1888,6 +2399,7 @@ def profile_curvature(
 def profile_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -1895,6 +2407,7 @@ def profile_curvature(
 def profile_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
@@ -1925,6 +2438,7 @@ def profile_curvature(
     return get_terrain_attribute(
         dem=dem,
         attribute="profile_curvature",
+        surface_fit=surface_fit,
         resolution=resolution,
         mp_config=mp_config,
     )
@@ -1934,6 +2448,7 @@ def profile_curvature(
 def maximum_curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -1942,6 +2457,7 @@ def maximum_curvature(
 def maximum_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -1949,6 +2465,7 @@ def maximum_curvature(
 def maximum_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
@@ -1968,6 +2485,7 @@ def maximum_curvature(
     return get_terrain_attribute(
         dem=dem,
         attribute="maximum_curvature",
+        surface_fit=surface_fit,
         resolution=resolution,
         mp_config=mp_config,
     )
