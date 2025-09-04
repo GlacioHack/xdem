@@ -115,3 +115,7 @@ yaml (PyYAML): Python bindings for YAML, a human-readable data serialization lan
 Copyright (c) 2006-2023, PyYAML contributors.
 Website: https://pyyaml.org/
 License: CC-BY 2.0.
+
+Texshade: Low-memory approximation to texture-shaded elevation via the fractional-Laplacian operator.
+Website: https://github.com/fasiha/texshade-py
+License: Unlicense.

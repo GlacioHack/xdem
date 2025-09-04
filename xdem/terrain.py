@@ -25,6 +25,7 @@ from typing import Any, Literal, Sized, overload
 import geoutils as gu
 import numba
 import numpy as np
+import scipy.fft as fft
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,
@@ -48,6 +49,7 @@ available_attributes = [
     "roughness",
     "rugosity",
     "fractal_roughness",
+    "texture_shading",
 ]
 
 ##############################################################################
@@ -1528,6 +1530,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
@@ -1547,6 +1550,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> list[NDArrayf]: ...
@@ -1566,6 +1570,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> list[RasterType]: ...
@@ -1585,6 +1590,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
@@ -1603,6 +1609,7 @@ def get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
@@ -1647,6 +1654,9 @@ def get_terrain_attribute(
     * 'roughness': The roughness, i.e. maximum difference between neighbouring pixels.
     * 'rugosity': The rugosity, i.e. difference between real and planimetric surface area.
     * 'fractal_roughness': The roughness based on a volume box-counting estimate of the fractal dimension.
+    * 'texture_shading': Texture shaded relief using fractional Laplacian operator to enhance terrain texture and
+        fine-scale topographic features.
+
 
     :param dem: Input DEM.
     :param attribute: Terrain attribute(s) to calculate.
@@ -1720,6 +1730,7 @@ def get_terrain_attribute(
                     tri_method,
                     window_size,
                     engine,
+                    texture_alpha,
                     out_dtype,
                     depth=1,
                 )
@@ -1741,6 +1752,7 @@ def get_terrain_attribute(
             tri_method,
             window_size,
             engine,
+            texture_alpha,
             out_dtype,
         )
 
@@ -1759,6 +1771,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> NDArrayf: ...
 
@@ -1777,6 +1790,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[NDArrayf]: ...
 
@@ -1795,6 +1809,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[RasterType]: ...
 
@@ -1813,6 +1828,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> RasterType: ...
 
@@ -1830,6 +1846,7 @@ def _get_terrain_attribute(
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
@@ -1886,6 +1903,10 @@ def _get_terrain_attribute(
         attr for attr in attribute if attr in list_requiring_windowed_index
     ]
 
+    # Frequency domain attributes (texture shading)
+    list_requiring_frequency_domain = ["texture_shading"]
+    attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
+
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
     )
@@ -1909,7 +1930,7 @@ def _get_terrain_attribute(
     elif isinstance(resolution, Sized):
         resolution = resolution[0]
 
-    choices = list_requiring_surface_fit + list_requiring_windowed_index
+    choices = list_requiring_surface_fit + list_requiring_windowed_index + list_requiring_frequency_domain
     for attr in attribute:
         if attr not in choices:
             raise ValueError(f"Attribute '{attr}' is not supported. Choices: {choices}")
@@ -2012,11 +2033,24 @@ def _get_terrain_attribute(
     else:
         windowed_indexes = []  # type: ignore
 
+    # Process frequency domain attributes
+    if len(attributes_requiring_frequency_domain) > 0:
+        frequency_attributes = []
+        for attr in attributes_requiring_frequency_domain:
+            if attr == "texture_shading":
+                # Use texture_alpha parameter for texture shading
+                result = _texture_shading_fft(dem_arr, alpha=texture_alpha)
+                frequency_attributes.append(result.astype(out_dtype))
+    else:
+        frequency_attributes = []  # type: ignore
+
     # Convert 3D array output to list of 2D arrays
-    output_attributes = surface_attributes + windowed_indexes
+    output_attributes = surface_attributes + windowed_indexes + frequency_attributes
     order_indices = [
         attribute.index(a)
-        for a in attributes_requiring_surface_fit + attributes_requiring_windowed_index
+        for a in attributes_requiring_surface_fit
+        + attributes_requiring_windowed_index
+        + attributes_requiring_frequency_domain
     ]
     output_attributes[:] = [output_attributes[idx] for idx in order_indices]
 
@@ -2774,5 +2808,192 @@ def fractal_roughness(
         dem=dem,
         attribute="fractal_roughness",
         window_size=window_size,
+        mp_config=mp_config,
+    )
+
+
+def _nextprod_fft(n: int) -> int:
+    """
+    Find the next valid FFT size (power of 2, 3, 5, or 7).
+
+    Based on MATLAB's nextpow2 and optimized for scipy.fft.
+
+    :param n: Input size
+    :returns: Next valid FFT size
+    """
+    if n <= 1:
+        return 1
+
+    # For small sizes, use powers of 2
+    if n <= 1024:
+        return int(2 ** np.ceil(np.log2(n)))
+
+    # For larger sizes, find the smallest m >= n such that m = 2^a * 3^b * 5^c * 7^d
+    factors = [2, 3, 5, 7]
+    candidate = n
+
+    while True:
+        temp = candidate
+        for factor in factors:
+            while temp % factor == 0:
+                temp //= factor
+        if temp == 1:
+            return candidate
+        candidate += 1
+
+
+def _texture_shading_fft(
+    dem: NDArrayf,
+    alpha: float | None = 0.8,
+) -> NDArrayf:
+    """
+    Core texture shading implementation using fractional Laplacian operator.
+
+    Based on Leland Brown's texture shading technique from:
+    Brown, L. (2010). Texture Shading: A New Technique for Depicting Terrain Relief.
+    Workshop on Mountain Cartography, Banff, Canada.
+
+    :param dem: Input DEM array
+    :param alpha: Fractional exponent for Laplacian operator (0-2, default 0.8)
+    :returns: Texture shaded array
+    """
+    # Validate inputs
+    if alpha is None:
+        alpha = 0.8  # Use default value if None
+    if not 0 <= alpha <= 2:
+        raise ValueError(f"Alpha must be between 0 and 2, got {alpha}")
+
+    # Handle NaN values by creating a mask
+    valid_mask = np.isfinite(dem)
+    if not np.any(valid_mask):
+        return np.full_like(dem, np.nan)
+
+    # Work with a copy to avoid modifying input
+    result = dem.copy()
+
+    # Fill NaN values with mean of valid values for processing
+    if not np.all(valid_mask):
+        result[~valid_mask] = np.nanmean(dem)
+
+    # Get dimensions
+    rows, cols = result.shape
+
+    # Determine FFT sizes for optimal performance
+    fft_rows = _nextprod_fft(rows)
+    fft_cols = _nextprod_fft(cols)
+
+    # Pad the array for FFT
+    pad_rows = (fft_rows - rows) // 2
+    pad_cols = (fft_cols - cols) // 2
+
+    # Use symmetric padding to reduce edge effects
+    result = np.pad(
+        result, ((pad_rows, fft_rows - rows - pad_rows), (pad_cols, fft_cols - cols - pad_cols)), mode="symmetric"
+    )
+
+    # Create frequency domain grids
+    fy = fft.fftfreq(fft_rows)[:, None]
+    fx = fft.rfftfreq(fft_cols)[None, :]
+
+    # Calculate frequency magnitude (avoiding division by zero)
+    freq_magnitude = np.hypot(fx, fy)
+    freq_magnitude[0, 0] = 1.0
+
+    # Create fractional Laplacian filter in frequency domain
+    # For alpha=1, this is the standard Laplacian
+    # For alpha<1, it emphasizes low frequencies
+    # For alpha>1, it emphasizes high frequencies
+    laplacian_filter = freq_magnitude**alpha
+    if alpha > 0:
+        laplacian_filter[0, 0] = 0.0  # only zero DC when alpha>0
+
+    # Apply FFT
+    result = fft.rfft2(result, s=(fft_rows, fft_cols), overwrite_x=True)
+
+    # Apply fractional Laplacian in frequency domain in-place
+    result *= laplacian_filter
+
+    # Transform back to spatial domain
+    result = fft.irfft2(result, s=(fft_rows, fft_cols), overwrite_x=True)
+
+    # Extract the original size from padded result
+    result = result[pad_rows : pad_rows + rows, pad_cols : pad_cols + cols]
+
+    # Restore NaN values where original data was invalid
+    result[~valid_mask] = np.nan
+
+    return result
+
+
+@overload
+def texture_shading(
+    dem: NDArrayf | MArrayf,
+    alpha: float = 0.8,
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf: ...
+
+
+@overload
+def texture_shading(
+    dem: RasterType,
+    alpha: float = 0.8,
+    mp_config: MultiprocConfig | None = None,
+) -> RasterType: ...
+
+
+def texture_shading(
+    dem: NDArrayf | MArrayf | RasterType,
+    alpha: float = 0.8,
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf | RasterType:
+    """
+    Generate a texture shaded relief map using fractional Laplacian operator.
+
+    This technique, developed by Leland Brown, applies a fractional Laplacian operator
+    in the frequency domain to enhance terrain texture and fine-scale topographic features.
+    It's particularly effective for visualizing subtle terrain variations that may not
+    be apparent in traditional hillshading.
+
+    The fractional Laplacian operator is controlled by the alpha parameter:
+    - alpha = 0: Preserves all frequencies with mean removed (~zero-centered DEM)
+    - alpha = 1: Standard Laplacian operator (edge detection)
+    - alpha = 2: Enhanced high-frequency features
+
+    Based on: Brown, L. (2010). Texture Shading: A New Technique for Depicting Terrain Relief.
+    Workshop on Mountain Cartography, Banff, Canada.
+
+    Also described in: Allmendinger and Karabinos (2023), https://doi.org/10.1130/GES02531.1
+
+    Adapted from the Python implementation at https://github.com/fasiha/texshade-py
+
+    :param dem: Input DEM array or Raster object
+    :param alpha: Fractional exponent for Laplacian operator (0-2, default 0.8).
+        Higher values enhance fine details, lower values provide smoother results.
+    :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None
+
+    :raises ValueError: If alpha is not between 0 and 2
+
+    :examples:
+        >>> import numpy as np
+        >>> # Create a simple test DEM with a ridge
+        >>> dem = np.zeros((50, 50))
+        >>> dem[20:30, :] = np.sin(np.linspace(0, np.pi, 50)) * 10
+        >>> textured = texture_shading(dem, alpha=0.8)
+        >>> textured.shape == dem.shape
+        True
+        >>> # Flat surface returns no texture (all 0)
+        >>> dem_flat = np.ones((32, 32), dtype=float)
+        >>> dem_flat_ts = texture_shading(dem_flat, alpha=0.8)
+        >>> np.allclose(dem_flat_ts, 0.0)
+        True
+        >>> # Higher alpha enhances fine details
+        >>> textured_enhanced = texture_shading(dem, alpha=1.5)
+
+    :returns: Texture shaded array with same shape as input DEM
+    """
+    return get_terrain_attribute(
+        dem=dem,
+        attribute="texture_shading",
+        texture_alpha=alpha,
         mp_config=mp_config,
     )
