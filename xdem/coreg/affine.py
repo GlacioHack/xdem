@@ -44,11 +44,13 @@ from xdem.coreg.base import (
     InRandomDict,
     OutAffineDict,
     OutIterativeDict,
+    _apply_matrix_pts,
     _apply_matrix_pts_mat,
+    _apply_matrix_rst,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
-    _preprocess_pts_rst_subsample,
     _reproject_horizontal_shift_samecrs,
+    _subsample_rst_pts,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
@@ -111,7 +113,7 @@ def _iterate_method(
     constant_inputs: tuple[Any, ...],
     tolerances: dict[str, float],
     max_iterations: int,
-) -> tuple[Any, dict[str, Any]]:
+) -> tuple[Any, Any, dict[str, Any]]:
     """
     Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches tolerances or maximum number of iterations.
 
@@ -142,7 +144,7 @@ def _iterate_method(
         new_inputs, new_statistics = method(new_inputs, *constant_inputs)
 
         # Store statistics to dataframe and append to list
-        df_iteration = pd.DataFrame(new_statistics, index=[i+1])
+        df_iteration = pd.DataFrame(new_statistics, index=[i + 1])
         df_iteration["iteration"] = i + 1
         list_df.append(df_iteration)
 
@@ -150,16 +152,18 @@ def _iterate_method(
         new_statistics_keys = list(new_statistics.keys())
         tolerance_keys = list(tolerances.keys())
         if not all([n in tolerance_keys for n in new_statistics_keys]):
-            raise NotImplementedError("Developer Error: The keys of the tolerances dictionary passed "
-                                      "to _iterate_method in the coregistration method call should match the keys of "
-                                      "the statistics return by the method's iteration_step function.")
+            raise NotImplementedError(
+                "Developer Error: The keys of the tolerances dictionary passed "
+                "to _iterate_method in the coregistration method call should match the keys of "
+                "the statistics return by the method's iteration_step function."
+            )
 
         # Print final results
         if logging.getLogger().getEffectiveLevel() <= logging.INFO:
             pbar.write(f"      Iteration #{i + 1:d}")
             k = list(tolerances.keys())
             for j in range(len(tolerances)):
-                pbar.write(f"   Last {k[j]} offset: {new_statistics[j]}")
+                pbar.write(f"   Last {k[j]} offset: {new_statistics[k[j]]}")
 
         # Check that all statistics are below their respective tolerance
         if all(new_statistics[k] < tolerances[k] if k is not None else True for k in tolerances.keys()):
@@ -171,9 +175,9 @@ def _iterate_method(
             break
 
     df_all_it = pd.concat(list_df)
-    output_iterative: OutAffineDict = {"last_iteration": i+1, "iteration_stats": df_all_it}
+    output_iterative: OutAffineDict = {"last_iteration": i + 1, "iteration_stats": df_all_it}
 
-    return new_inputs, output_iterative
+    return new_inputs, new_statistics, output_iterative
 
 
 def _subsample_on_mask_interpolator(
@@ -272,7 +276,7 @@ def _subsample_on_mask_interpolator(
     return sub_dh_interpolator, sub_bias_vars
 
 
-def _preprocess_pts_rst_subsample_interpolator(
+def _subsample_rst_pts_interpolator(
     params_random: InRandomDict,
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
@@ -283,7 +287,7 @@ def _preprocess_pts_rst_subsample_interpolator(
     aux_vars: None | dict[str, NDArrayf] = None,
 ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf], int]:
     """
-    Mirrors coreg.base._preprocess_pts_rst_subsample, but returning an interpolator for efficiency in iterative methods.
+    Mirrors coreg.base._subsample_rst_pts, but returning an interpolator for efficiency in iterative methods.
 
     Pre-process raster-raster or point-raster datasets into an elevation difference interpolator at the same
     points, and subsample arrays for auxiliary variables, with subsampled coordinates to evaluate the interpolator.
@@ -322,7 +326,9 @@ def _preprocess_pts_rst_subsample_interpolator(
     return sub_dh_interpolator, sub_bias_vars, subsample_final
 
 
-def _get_centroid_scale(ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine.Affine | None) -> tuple[tuple[float, float, float], float]:
+def _get_centroid_scale(
+    ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine.Affine | None
+) -> tuple[tuple[float, float, float], float]:
     """
     Get centroid and standardization factor from reference elevation (whether it is a DEM or an elevation point cloud).
 
@@ -338,10 +344,7 @@ def _get_centroid_scale(ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine
     if isinstance(ref_elev, np.ndarray):
 
         # Get coordinates of DEM
-        coords_x, coords_y = _coords(transform=transform,
-                                     shape=ref_elev.shape,
-                                     area_or_point=None,
-                                     grid=False)
+        coords_x, coords_y = _coords(transform=transform, shape=ref_elev.shape, area_or_point=None, grid=False)
         # Derive centroid
         centroid_x = np.nanmedian(coords_x)
         centroid_y = np.nanmedian(coords_y)
@@ -349,9 +352,7 @@ def _get_centroid_scale(ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine
         centroid = (centroid_x, centroid_y, centroid_z)
 
         # Derive standardization factor
-        std_fac = np.mean([nmad(coords_x - centroid[0]),
-                           nmad(coords_y - centroid[1]),
-                           nmad(ref_elev - centroid[2])])
+        std_fac = np.mean([nmad(coords_x - centroid[0]), nmad(coords_y - centroid[1]), nmad(ref_elev - centroid[2])])
 
     # For an elevation point cloud
     else:
@@ -360,25 +361,32 @@ def _get_centroid_scale(ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine
         centroid = (centroid[0], centroid[1], centroid[2])
 
         # Derive standardization factor
-        std_fac = float(np.mean([nmad(ref_elev[0, :] - centroid[0]),
-                                 nmad(ref_elev[1, :] - centroid[1]),
-                                 nmad(ref_elev[2, :] - centroid[2])]))
+        std_fac = float(
+            np.mean(
+                [
+                    nmad(ref_elev[0, :] - centroid[0]),
+                    nmad(ref_elev[1, :] - centroid[1]),
+                    nmad(ref_elev[2, :] - centroid[2]),
+                ]
+            )
+        )
 
     return centroid, std_fac
 
+
 def _standardize_epc(
-    ref_epc: NDArrayf, tba_epc: NDArrayf, centroid: tuple[float, float, float], scale: float, apply_scale: bool = True,
+    ref_epc: NDArrayf, tba_epc: NDArrayf, centroid: tuple[float, float, float], scale: float | int = 1
 ) -> tuple[NDArrayf, NDArrayf]:
     """
     Standardize elevation point clouds by subtracting a centroid and dividing per scale factor.
 
     Usually paired with _get_centroid_scale() to get the centroid and scale factor.
+    To avoid applying the scale, simply leave to default (=1).
 
     :param ref_epc: Reference point cloud.
     :param tba_epc: To-be-aligned point cloud.
     :param centroid: Centroid of point cloud.
-    :param scale: Scale of point cloud.
-    :param apply_scale: Whether to apply the scale factor. Otherwise, simply subtracts the centroid.
+    :param scale: Scale of point cloud (defaults to 1).
 
     :return: Standardized point clouds.
     """
@@ -391,7 +399,7 @@ def _standardize_epc(
     tba_epc = tba_epc - centroid[:, None]
 
     # Standardize point clouds
-    if apply_scale:
+    if scale != 1:
         ref_epc = ref_epc / scale
         tba_epc = tba_epc / scale
 
@@ -655,7 +663,7 @@ def nuth_kaab(
 
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     aux_vars = {"slope_tan": slope_tan, "aspect": aspect}  # Wrap auxiliary data in dictionary to use generic function
-    sub_dh_interpolator, sub_aux_vars, subsample_final = _preprocess_pts_rst_subsample_interpolator(
+    sub_dh_interpolator, sub_aux_vars, subsample_final = _subsample_rst_pts_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -673,7 +681,7 @@ def nuth_kaab(
     # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
     assert sub_aux_vars is not None  # Mypy: dictionary cannot be None here
     constant_inputs = (sub_dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
-    final_offsets, output_iterative = _iterate_method(
+    final_offsets, _, output_iterative = _iterate_method(
         method=_nuth_kaab_iteration_step,
         iterating_input=initial_offset,
         constant_inputs=constant_inputs,
@@ -774,7 +782,7 @@ def dh_minimize(
     transform = ref_transform if ref_transform is not None else tba_transform
 
     # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    dh_interpolator, _, subsample_final = _preprocess_pts_rst_subsample_interpolator(
+    dh_interpolator, _, subsample_final = _subsample_rst_pts_interpolator(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
@@ -816,21 +824,21 @@ def vertical_shift(
 
     logging.info("Running vertical shift coregistration")
 
-    transform = ref_transform if ref_transform is not None else tba_transform
-
     # Pre-process point-raster inputs to the same subsampled points
-    sub_ref, sub_tba, _, _ = _preprocess_pts_rst_subsample(
+    sub_ref, sub_tba, _ = _subsample_rst_pts(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
-        transform=transform,
+        ref_transform=ref_transform,
+        tba_transform=tba_transform,
+        sampling_strategy="same_xy",  # This needs to be enforced for a vertical shift based on mean elevation differences
         crs=crs,
         area_or_point=area_or_point,
         z_name=z_name,
     )
     # Get elevation difference
-    dh = sub_ref - sub_tba
+    dh = sub_ref[2] - sub_tba[2]
 
     # Get vertical shift on subsa weights if those were provided.
     vshift = float(vshift_reduc_func(dh) if weights is None else vshift_reduc_func(dh, weights))  # type: ignore
@@ -1178,6 +1186,7 @@ def icp(
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
     method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
+    sampling_strategy: Literal["independent", "same_xy"] = "same_xy",
     picky: bool = False,
     only_translation: bool = False,
     standardize: bool = True,
@@ -1197,74 +1206,128 @@ def icp(
     :return: Affine transform matrix, Centroid, Subsample size.
     """
 
-    transform = ref_transform if ref_transform is not None else tba_transform
+    # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform)
+    if not standardize:
+        scale = 1
+    tolerance_translation /= scale
+
+    # Initial parameters and tolerances as dictionary
+    init_matrix = np.eye(4)  # Initial matrix is the identity transform
+    tolerances = {"translation": tolerance_translation, "rotation": tolerance_rotation}
 
     # Derive normals if method is point-to-plane, otherwise not
+    # (This has to happen before subsampling, because it creates new invalid data
+    # and we wanted a fixed valid data size for subsampling)
     if method == "point-to-plane":
         # We use the DEM to derive the normals
         if isinstance(ref_elev, np.ndarray):
-            dem = ref_elev
+            nx, ny, nz = _icp_norms(ref_elev, ref_transform)
+            aux_tied_to = "ref"
         else:
-            dem = tba_elev
-        nx, ny, nz = _icp_norms(dem, transform)
+            nx, ny, nz = _icp_norms(tba_elev, tba_transform)
+            aux_tied_to = "tba"
         aux_vars = {"nx": nx, "ny": ny, "nz": nz}
     else:
         aux_vars = None
+        aux_tied_to = "ref"
 
-    # Pre-process point-raster inputs to the same subsampled points
-    sub_ref, sub_tba, sub_aux_vars, sub_coords = _preprocess_pts_rst_subsample(
-        params_random=params_random,
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        inlier_mask=inlier_mask,
-        transform=transform,
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
-        aux_vars=aux_vars,
-        return_coords=True,
-    )
-
-    # Convert point clouds to Nx3 arrays for efficient calculations below
-    ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
-    tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
-    if sub_aux_vars is not None:
-        norms = np.vstack((sub_aux_vars["nx"], sub_aux_vars["ny"], sub_aux_vars["nz"]))
+    # If we iterate the sampling, we re-define maximum iterations to be in the outside loop, running a single iteration with every sample
+    if sampling_strategy == "iterative_same_xy":
+        in_loop_max_it = max_iterations
+        out_loop_max_it = max_iterations
+        in_loop_sampling_strategy = "same_xy"
+    # Otherwise, we run a single iteration of outside loop, as if there was no loop
     else:
-        norms = None
+        in_loop_max_it = max_iterations
+        out_loop_max_it = 1
+        in_loop_sampling_strategy = sampling_strategy
 
-    # Remove centroid and standardize to facilitate numerical convergence
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=transform)
-    ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale, apply_scale=standardize)
-    tolerance_translation /= scale
+    # Initialize values for iterative sampling loop (tba_elev updates out_step_matrix that updates tba_elev)
+    list_iteration_stats = []
+    final_matrix = np.eye(4)
+    tba_elev_orig = tba_elev.copy()
+    tba_transform_orig = tba_transform
+    for i in range(out_loop_max_it):
 
-    # Define search tree outside of loop for performance
-    ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
+        # Pre-process point-raster inputs to the same subsampled points
+        ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
+            params_random=params_random,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,  # For iterative sampling, tba_elev is updated below
+            inlier_mask=inlier_mask,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,  # For iterative sampling, tba_transform can be updated below
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            sampling_strategy=in_loop_sampling_strategy,
+            aux_vars=aux_vars,
+            aux_tied_to=aux_tied_to,
+        )
 
-    # Iterate through method until tolerance or max number of iterations is reached
-    init_matrix = np.eye(4)  # Initial matrix is the identity transform
-    constant_inputs = (
-        ref_epc,
-        tba_epc,
-        norms,
-        ref_epc_nearest_tree,
-        params_fit_or_bin,
-        method,
-        picky,
-        only_translation,
-    )
-    final_matrix, output_iterative = _iterate_method(
-        method=_icp_iteration_step,
-        iterating_input=init_matrix,
-        constant_inputs=constant_inputs,
-        tolerances={"translation": tolerance_translation, "rotation": tolerance_rotation},
-        max_iterations=max_iterations,
-    )
-    # De-standardize
-    final_matrix[:3, 3] *= scale
+        # Re-stack normals if defined
+        if sub_aux is not None:
+            norms = np.vstack((sub_aux["nx"], sub_aux["ny"], sub_aux["nz"]))
+        else:
+            norms = None
+
+        # Remove centroid and standardize to facilitate numerical convergence
+        ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale)
+
+        # Define search tree outside of loop for performance
+        ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
+
+        # Iterate through method until tolerance or max number of iterations is reached
+        constant_inputs = (
+            ref_epc,
+            tba_epc,  # For iterative sampling, tba_epc is updated above
+            norms,
+            ref_epc_nearest_tree,
+            params_fit_or_bin,
+            method,
+            picky,
+            only_translation,
+        )
+        out_step_matrix, new_stats, output_iterative = _iterate_method(
+            method=_icp_iteration_step,
+            iterating_input=init_matrix,
+            constant_inputs=constant_inputs,
+            tolerances=tolerances,
+            max_iterations=in_loop_max_it,
+        )
+
+        # We destandardize and update the matrix
+        out_step_matrix[:3, 3] *= scale
+        final_matrix = out_step_matrix @ final_matrix
+
+        # If we apply iterative sampling, we need to do additional things each loop
+        if sampling_strategy == "iterative_same_xy":
+            # We update the to-be-aligned elevation (input before subsampling) here directly, so that X/Y sampling will be updated
+            if isinstance(tba_elev, np.ndarray):
+                tba_elev, tba_transform = _apply_matrix_rst(
+                    tba_elev_orig, transform=tba_transform_orig, centroid=centroid, matrix=final_matrix
+                )
+            else:
+                tba_elev = _apply_matrix_pts(tba_elev_orig, matrix=final_matrix, centroid=centroid, z_name=z_name)
+            # We update the iterative output with the outside loop iteration number
+            it_stats = output_iterative["iteration_stats"]
+            it_stats["iteration"] = i + 1
+            list_iteration_stats.append(it_stats)
+
+            # Check exit condition was reached in inside loop
+            if all(new_stats[k] < tolerances[k] if k is not None else True for k in tolerances.keys()):
+                logging.debug("Exiting outside loop of iterative sampling as statistics have all reached tolerance.")
+                break
+
+    # Over-write iterative output for iterative sampling
+    if sampling_strategy == "iterative_same_xy":
+        iteration_stats = pd.concat(list_iteration_stats)
+        output_iterative: OutAffineDict = {"last_iteration": i + 1, "iteration_stats": iteration_stats}
 
     # Get subsample size
-    subsample_final = len(sub_ref)
+    # TODO: Support reporting different number of subsamples when independent?
+    subsample_final = min(ref_epc.shape[0], tba_epc.shape[0])
 
     return final_matrix, centroid, subsample_final, output_iterative
 
@@ -1411,12 +1474,13 @@ def _cpd_iteration_step(
         sigma2_min=sigma2_min,
         only_translation=only_translation,
     )
+    new_matrix = invert_matrix(new_matrix)
 
     # Compute statistic on offset to know if it reached tolerance
     offset_q = np.abs(q - new_q)
 
     # For CPD, we need to compute the step matrix ourselves as it re-computes the full transform as described above
-    step_matrix = new_matrix @ invert_matrix(matrix)
+    step_matrix = invert_matrix(matrix @ new_matrix)
 
     translations = step_matrix[:3, 3]
     rotations = step_matrix[:3, :3]
@@ -1443,6 +1507,7 @@ def cpd(
     tolerance_q: float | None,
     tolerance_translation: float | None,
     tolerance_rotation: float | None,
+    sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
     only_translation: bool = False,
     standardize: bool = True,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict]:
@@ -1456,53 +1521,117 @@ def cpd(
     The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
     """
 
-    transform = ref_transform if ref_transform is not None else tba_transform
-
-    # Pre-process point-raster inputs to the same subsampled points
-    sub_ref, sub_tba, _, sub_coords = _preprocess_pts_rst_subsample(
-        params_random=params_random,
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        inlier_mask=inlier_mask,
-        transform=transform,
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
-        return_coords=True,
-    )
-
-    # Convert point clouds to Nx3 arrays for efficient calculations below
-    ref_epc = np.vstack((sub_coords[0], sub_coords[1], sub_ref))
-    tba_epc = np.vstack((sub_coords[0], sub_coords[1], sub_tba))
-
-    # Remove centroid and standardize to facilitate numerical convergence
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=transform)
-    ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale, apply_scale=standardize)
+    # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform)
+    if not standardize:
+        scale = 1
     tolerance_translation /= scale
 
-    # Run rigid CPD registration
-    # Iterate through method until tolerance or max number of iterations is reached
+    # Initial values and tolerances as dictionary
     init_matrix = np.eye(4)  # Initial matrix is the identity transform
     init_q = np.inf
     init_sigma2 = None
-    iterating_input = (init_matrix, init_sigma2, init_q)
-    sigma2_min = tolerance_translation / 10
-    constant_inputs = (ref_epc, tba_epc, weight_cpd, sigma2_min, only_translation)
-    final_output, output_iterative = _iterate_method(
-        method=_cpd_iteration_step,
-        iterating_input=iterating_input,
-        constant_inputs=constant_inputs,
-        tolerances={"translation": tolerance_translation, "rotation": tolerance_rotation, "objective_func": tolerance_q},
-        max_iterations=max_iterations,
-    )
-    final_matrix = final_output[0]
-    final_matrix = invert_matrix(final_matrix)
+    tolerances = {"translation": tolerance_translation, "rotation": tolerance_rotation, "objective_func": tolerance_q}
 
-    # De-standardize
-    final_matrix[:3, 3] *= scale
+    # If we iterate the sampling, we re-define maximum iterations to be in the outside loop, running a single CPD iteration with every sample
+    if sampling_strategy == "iterative_same_xy":
+        in_loop_max_it = max_iterations
+        out_loop_max_it = max_iterations
+        in_loop_sampling_strategy = "same_xy"
+    # Otherwise, we run a single iteration of outside loop, as if there was no loop
+    else:
+        in_loop_max_it = max_iterations
+        out_loop_max_it = 1
+        in_loop_sampling_strategy = sampling_strategy
+
+    # Initialize values for iterative sampling loop (tba_elev updates out_step_matrix that updates tba_elev)
+    list_iteration_stats = []
+    final_matrix = np.eye(4)
+    tba_elev_orig = tba_elev.copy()
+    tba_transform_orig = tba_transform
+    new_q = init_q
+    new_sigma2 = init_sigma2
+    for i in range(out_loop_max_it):
+
+        # Pre-process point-raster inputs to the same subsampled points
+        ref_epc, tba_epc, _ = _subsample_rst_pts(
+            params_random=params_random,
+            ref_elev=ref_elev,
+            tba_elev=tba_elev,  # For iterative sampling, tba_elev is updated below
+            inlier_mask=inlier_mask,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,  # For iterative sampling, tba_transform can be updated below
+            crs=crs,
+            area_or_point=area_or_point,
+            sampling_strategy=in_loop_sampling_strategy,
+            z_name=z_name,
+        )
+
+        # Remove centroid and standardize to facilitate numerical convergence
+        ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale)
+
+        # Run rigid CPD registration
+        # Iterate through method until tolerance or max number of iterations is reached
+        iterating_input = (init_matrix, new_sigma2, new_q)
+        sigma2_min = tolerance_translation / 10
+        constant_inputs = (
+            ref_epc,
+            tba_epc,
+            weight_cpd,
+            sigma2_min,
+            only_translation,
+        )  # For iterative sampling, tba_epc is updated above
+        new_output, new_stats, output_iterative = _iterate_method(
+            method=_cpd_iteration_step,
+            iterating_input=iterating_input,
+            constant_inputs=constant_inputs,
+            tolerances=tolerances,
+            max_iterations=in_loop_max_it,
+        )
+
+        # Re-define inputs
+        out_step_matrix = new_output[0]
+        new_sigma2 = new_output[1]
+        new_q = new_output[2]
+
+        # Prints to help debug
+        # trans_rot = translations_rotations_from_matrix(out_step_matrix)
+        # print(f"Sampling iteration {i}: step translation/rotations: {trans_rot[3]}")
+
+        # We invert, destandardize and update the matrix
+        out_step_matrix[:3, 3] *= scale
+        final_matrix = out_step_matrix @ final_matrix
+
+        # trans_rot = translations_rotations_from_matrix(final_matrix)
+        # print(f"Sampling iteration {i}: full matrix translation/rotations: {trans_rot[3]}")
+
+        # If we apply iterative sampling, we need to do additional things each loop
+        if sampling_strategy == "iterative_same_xy":
+            # We update the to-be-aligned elevation (input before subsampling) here directly, so that X/Y sampling will be updated
+            if isinstance(tba_elev, np.ndarray):
+                tba_elev, tba_transform = _apply_matrix_rst(
+                    tba_elev_orig, transform=tba_transform_orig, centroid=centroid, matrix=final_matrix
+                )
+            else:
+                tba_elev = _apply_matrix_pts(tba_elev_orig, matrix=final_matrix, centroid=centroid, z_name=z_name)
+            # We update the iterative output with the outside loop iteration number
+            it_stats = output_iterative["iteration_stats"]
+            it_stats["iteration"] = i + 1
+            list_iteration_stats.append(it_stats)
+
+            # Check exit condition was reached in inside loop
+            if all(new_stats[k] < tolerances[k] if k is not None else True for k in tolerances.keys()):
+                logging.debug("Exiting outside loop of iterative sampling as statistics have all reached tolerance.")
+                break
+
+    # Over-write iterative output for iterative sampling
+    if sampling_strategy == "iterative_same_xy":
+        iteration_stats = pd.concat(list_iteration_stats)
+        output_iterative: OutAffineDict = {"last_iteration": i + 1, "iteration_stats": iteration_stats}
 
     # Get subsample size
-    subsample_final = len(sub_ref)
+    # TODO: Support reporting different number of subsamples when independent?
+    subsample_final = min(ref_epc.shape[0], tba_epc.shape[0])
 
     return final_matrix, centroid, subsample_final, output_iterative
 
@@ -1819,17 +1948,23 @@ def lzd(
     gradx, grady = _lzd_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev, transform=transform)
 
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    sub_ref, sub_tba, _, sub_coords = _preprocess_pts_rst_subsample(
+    sub_ref, sub_tba, _ = _subsample_rst_pts(
         params_random=params_random,
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
-        transform=transform,
+        ref_transform=ref_transform,
+        tba_transform=tba_transform,
+        sampling_strategy="same_xy",  # This sampling needs to be enforced for LZD
         crs=crs,
         area_or_point=area_or_point,
         z_name=z_name,
-        return_coords=True,
     )
+    # Simplify output given that the X/Y coordinates are the same
+    sub_coords = (sub_ref[0, :], sub_ref[1, :])
+    sub_ref = sub_ref[2, :]
+    sub_tba = sub_tba[2, :]
+
     # Define inputs of methods, depending on if they are point or raster data
     if not isinstance(ref_elev, gpd.GeoDataFrame):
         ref = "rst"
@@ -1859,7 +1994,7 @@ def lzd(
         params_fit_or_bin,
         only_translation,
     )
-    final_matrix, output_iterative = _iterate_method(
+    final_matrix, _, output_iterative = _iterate_method(
         method=_lzd_iteration_step,
         iterating_input=init_matrix,
         constant_inputs=constant_inputs,
@@ -1964,7 +2099,7 @@ class AffineCoreg(Coreg):
 
         # We re-direct to a common _fit_any_rst_pts for that subclass
         # The subclass will raise an error if a certain input type is not supported
-        # Affine registration need the original raster data without reprojection as overlap is not required        
+        # Affine registration need the original raster data without reprojection as overlap is not required
         self._fit_any_rst_pts(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
@@ -1978,7 +2113,7 @@ class AffineCoreg(Coreg):
             bias_vars=bias_vars,
             **kwargs,
         )
-        
+
     def _fit_pts_pts(
         self,
         ref_elev: gpd.GeoDataFrame,
@@ -1990,10 +2125,10 @@ class AffineCoreg(Coreg):
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> None:
-        
-         # We re-direct to a common _fit_any_rst_pts for that subclass
+
+        # We re-direct to a common _fit_any_rst_pts for that subclass
         # The subclass will raise an error if a certain input type is not supported
-        # Affine registration need the original raster data without reprojection as overlap is not required        
+        # Affine registration need the original raster data without reprojection as overlap is not required
         self._fit_any_rst_pts(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
@@ -2285,6 +2420,7 @@ class ICP(AffineCoreg):
         max_iterations: int = 20,
         tolerance_translation: float | None = 0.01,
         tolerance_rotation: float | None = 0.001,
+        sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
         standardize: bool = True,
         subsample: float | int = 5e5,
     ) -> None:
@@ -2322,6 +2458,7 @@ class ICP(AffineCoreg):
             "tolerance_translation": tolerance_translation,
             "tolerance_rotation": tolerance_rotation,
             "only_translation": only_translation,
+            "sampling_strategy": sampling_strategy,
             "standardize": standardize,
         }
         super().__init__(subsample=subsample, meta=meta)
@@ -2363,6 +2500,7 @@ class ICP(AffineCoreg):
             method=self._meta["inputs"]["specific"]["icp_method"],
             picky=self._meta["inputs"]["specific"]["icp_picky"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            sampling_strategy=self._meta["inputs"]["specific"]["sampling_strategy"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
         )
 
@@ -2400,6 +2538,7 @@ class CPD(AffineCoreg):
         tolerance_translation: float | None = 0.01,
         tolerance_rotation: float | None = 0.001,
         tolerance_objective_func: float | None = 0.001,
+        sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
         standardize: bool = True,
         subsample: int | float = 5e3,
     ):
@@ -2432,6 +2571,7 @@ class CPD(AffineCoreg):
             "tolerance_rotation": tolerance_rotation,
             "cpd_weight": weight,
             "only_translation": only_translation,
+            "sampling_strategy": sampling_strategy,
             "standardize": standardize,
         }
 
@@ -2471,6 +2611,7 @@ class CPD(AffineCoreg):
             tolerance_translation=self._meta["inputs"]["iterative"]["tolerance_translation"],
             tolerance_rotation=self._meta["inputs"]["iterative"]["tolerance_rotation"],
             tolerance_q=self._meta["inputs"]["iterative"]["tolerance_objective_func"],
+            sampling_strategy=self._meta["inputs"]["specific"]["sampling_strategy"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
         )
@@ -2545,8 +2686,12 @@ class NuthKaab(AffineCoreg):
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
         if not bin_before_fit:
-            meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func,  "fit_minimizer": fit_minimizer,
-                        "fit_loss_func": fit_loss_func}
+            meta_fit = {
+                "fit_or_bin": "fit",
+                "fit_func": _nuth_kaab_fit_func,
+                "fit_minimizer": fit_minimizer,
+                "fit_loss_func": fit_loss_func,
+            }
             meta_fit.update(meta_input_iterative)
             super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
         else:
@@ -2749,7 +2894,7 @@ class DhMinimize(AffineCoreg):
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
         super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
-        
+
     def _fit_any_rst_pts(
         self,
         ref_elev: NDArrayf | gpd.GeoDataFrame,
@@ -2762,7 +2907,7 @@ class DhMinimize(AffineCoreg):
         z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        **kwargs: Any,     
+        **kwargs: Any,
     ):
 
         # Get parameters stored in class
@@ -2789,7 +2934,6 @@ class DhMinimize(AffineCoreg):
         output_affine = OutAffineDict(shift_x=easting_offset, shift_y=northing_offset, shift_z=vertical_offset)
         self._meta["outputs"]["affine"] = output_affine
         self._meta["outputs"]["random"] = {"subsample_final": subsample_final}
-
 
     def _to_matrix_func(self) -> NDArrayf:
         """Return a transformation matrix from the estimated offsets."""

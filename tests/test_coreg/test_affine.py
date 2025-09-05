@@ -527,6 +527,47 @@ class TestAffineCoreg:
             assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
+    def test_coreg_rigid__sampling_strategy(self, coreg_method) -> None:
+        """Test sampling strategies are properly applied, relevant only for point-point methods like ICP and CPD."""
+
+        # Get reference elevation
+        ref = self.ref
+
+        # Add artificial shift and rotations
+        # (Define small rotations on purpose, so that the "translation only" coregistration is not affected)
+        shifts_rotations = (10, 10, 10, 0.5, 0.5, 0.5)
+        matrix = matrix_from_translations_rotations(*shifts_rotations)
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
+        ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+
+        # Run co-registration
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c = coreg_method(subsample=subsample_size, sampling_strategy="independent")
+        c.fit(ref, ref_shifted_rotated, random_state=42)
+
+        c2 = coreg_method(subsample=subsample_size, sampling_strategy="same_xy")
+        c2.fit(ref, ref_shifted_rotated, random_state=42)
+
+        c3 = coreg_method(subsample=subsample_size, sampling_strategy="iterative_same_xy")
+        c3.fit(ref, ref_shifted_rotated, random_state=42)
+
+        # Get invert of resulting matrices
+        invert_fit_matrix = invert_matrix(c.meta["outputs"]["affine"]["matrix"])
+        invert_fit_shifts_translations = translations_rotations_from_matrix(invert_fit_matrix)
+        invert_fit_matrix2 = invert_matrix(c2.meta["outputs"]["affine"]["matrix"])
+        invert_fit_shifts_translations2 = translations_rotations_from_matrix(invert_fit_matrix2)
+        invert_fit_matrix3 = invert_matrix(c3.meta["outputs"]["affine"]["matrix"])
+        invert_fit_shifts_translations3 = translations_rotations_from_matrix(invert_fit_matrix3)
+
+        # TODO: Add checks depending on magnitude of translation/rotation
+        #  ("independent" should perform better for large magnitude, "same_xy" better for small, and "iterative_same_xy" best for all)
+
+        # Check that rotations are not far from expected values, skipping Z axis which is harder to get
+        assert np.allclose(invert_fit_shifts_translations[3:5], shifts_rotations[3:5], rtol=2e-1)
+        assert np.allclose(invert_fit_shifts_translations2[3:5], shifts_rotations[3:5], rtol=2e-1)
+        assert np.allclose(invert_fit_shifts_translations3[3:5], shifts_rotations[3:5], rtol=2e-1)
+
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
     def test_coreg_rigid__standardize(self, coreg_method) -> None:
 
         # Get reference elevation
@@ -576,7 +617,7 @@ class TestAffineCoreg:
         assert np.allclose(invert_fit_shifts_translations_nonstd[:3], shifts_rotations[:3], rtol=1)
         assert np.allclose(invert_fit_shifts_translations_nonstd[3:], shifts_rotations[3:], rtol=10e-1, atol=2 * 10e-2)
 
-    def test_nuthkaab_no_vertical_shift(self) -> None:
+    def test_nuthkaab__no_vertical_shift(self) -> None:
         ref, tba = load_examples(crop=False)[0:2]
 
         # Compare Nuth and Kaab method with and without applying vertical shift

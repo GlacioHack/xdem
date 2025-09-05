@@ -30,7 +30,7 @@ import scipy
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, fit_workflows
+from xdem.coreg.base import Coreg, InRandomDict, _subsample_rst_pts, fit_workflows
 from xdem.fit import polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
@@ -179,18 +179,26 @@ class BiasCorr(Coreg):
     ) -> None:
         """Function for fitting raster-raster and raster-point for bias correction methods."""
 
+        # Get random parameters
+        params_random: InRandomDict = self._meta["inputs"]["random"]
+
         # Pre-process raster-point input
-        sub_ref, sub_tba, sub_bias_vars = self._preprocess_rst_pts_subsample(
+        sub_ref, sub_tba, sub_bias_vars = _subsample_rst_pts(
+            params_random=params_random,
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             ref_transform=ref_transform,
             tba_transform=tba_transform,
+            sampling_strategy="same_xy",  # The "same_xy" sampling strategy has to be enforced for bias corrections (always same coordinates)
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
             aux_vars=bias_vars,
         )
+
+        # Write final subsample to class
+        self._meta["outputs"]["random"] = {"subsample_final": len(sub_ref)}
 
         # Derive difference to get dh
         diff = sub_ref - sub_tba
