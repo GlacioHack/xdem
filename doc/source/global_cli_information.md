@@ -2,7 +2,7 @@
 
 # Command line interface (CLI)
 
-To simplify the use of xDEM and provide a universal tool to assess one or multiple DEMs,
+To simplify the use of xDEM and provide a universal tool to analyze one or multiple DEMs,
 we have decided to implement a Command Line Interface (CLI).
 To support this, we offer a set of workflows that can be easily run using a configuration file.
 Users can also create their own workflows and submit them for inclusion.

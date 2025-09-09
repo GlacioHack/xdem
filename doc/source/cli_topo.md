@@ -24,7 +24,7 @@ xdem topo --config config_file.yaml
 To display a template of all available configuration options for the YAML file, use the following command:
 
 ```{code}
-xdem topo --display-template-config
+xdem topo --display_template_config
 ```
 
 ## Detailed description of input parameters
@@ -67,11 +67,8 @@ xdem topo --display-template-config
         1. If no block is specified, all available statistics are calculated by default.
         [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
         percentage valid points, inter quartile range]
+
         2. If a block is specified but no statistics are provided, then no statistics will be computed.
-
-      .. code-block:: yaml
-
-         statistics:
 
         3. If a block is specified and some statistics are provided, then only these statistics are computed.
 
@@ -114,7 +111,7 @@ xdem topo --display-template-config
                 degrees: False
 
       .. note::
-        The data provided in extra_information is not validated beforehand.
+        The data provided in extra_information is not checked for errors before executing the code.
         Its use is entirely the responsibility of the user.
 
    .. tab:: outputs

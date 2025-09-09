@@ -58,13 +58,7 @@ INPUTS_DEM = {
     "to_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
 }
 
-COREG_METHODS = [
-    "NuthKaab",
-    "DhMinimize",
-    "VerticalShift",
-    "DirectionalBias",
-    "TerrainBias",
-]
+COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD"]
 
 STATS_METHODS = [
     "mean",
@@ -173,9 +167,9 @@ ACCURACY_SCHEMA = {
     "coregistration": {
         "type": "dict",
         "required": False,
-        "default": {"step_one": {"method": "NuthKaab"}, "sampling_grid": "reference_elev"},
+        "default": {"step_one": {"method": "LZD"}, "sampling_grid": "reference_elev"},
         "schema": {
-            "step_one": make_coreg_step(default_method="NuthKaab"),
+            "step_one": make_coreg_step(default_method="LZD"),
             "step_two": make_coreg_step(required=False),
             "step_three": make_coreg_step(required=False),
             "sampling_grid": {

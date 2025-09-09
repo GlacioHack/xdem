@@ -103,6 +103,7 @@ class Accuracy(Workflows):
             "VerticalShift": lambda: xdem.coreg.VerticalShift(**coreg_extra),
             "DirectionalBias": lambda: xdem.coreg.DirectionalBias(**coreg_extra),
             "TerrainBias": lambda: xdem.coreg.TerrainBias(**coreg_extra),
+            "LZD": lambda: xdem.coreg.LZD(**coreg_extra),
         }
 
         coreg_steps = ["step_one", "step_two", "step_three"]
@@ -173,8 +174,30 @@ class Accuracy(Workflows):
         # Compute user statistics
         list_to_compute = self.config["statistics"]
         logging.info(f"Computed statistics: {list_to_compute}")
-        list_stat = dem.get_stats(list_to_compute)
-        return list_stat
+        dict_stats = dem.get_stats(list_to_compute)
+
+        # Aliases for nicer CSV headers
+        aliases = {
+            "mean": "Mean",
+            "median": "Median",
+            "max": "Maximum",
+            "min": "Minimum",
+            "sum": "Sum",
+            "sumofsquares": "Sum of squares",
+            "90thpercentile": "90th percentile",
+            "le90": "LE90",
+            "nmad": "NMAD",
+            "rmse": "RMSE",
+            "std": "STD",
+            "standarddeviation": "Standard deviation",
+            "validcount": "Valid count",
+            "totalcount": "Total count",
+            "percentagevalidpoints": "Percentage valid points",
+        }
+
+        dict_stats_aliased = {aliases.get(k, k): v for k, v in dict_stats.items()}
+
+        return dict_stats_aliased
 
     def _compute_histogram(self) -> None:
         """
@@ -256,15 +279,20 @@ class Accuracy(Workflows):
             stat_items = [
                 (self.reference_elev, "reference_elev", "Statistics on reference elevation", 2),
                 (self.to_be_aligned_elev, "to_be_aligned_elev", "Statistics on to be aligned elevation", 2),
-                (self.diff_before, "diff_elev_before_coreg", "Statistics on alti diff before coregistration", 2),
-                (self.diff_after, "diff_elev_after_coreg", "Statistics on alti diff after coregistration", 2),
+                (
+                    self.diff_before,
+                    "diff_elev_before_coreg",
+                    "Statistics on altitude difference before coregistration",
+                    1,
+                ),
+                (self.diff_after, "diff_elev_after_coreg", "Statistics on altitude difference after coregistration", 1),
                 (aligned_elev, "aligned_elev", "Statistics aligned DEM", 1),
             ]
         else:
             stat_items = [
                 (self.reference_elev, "reference_elev", "Statistics on reference elevation", 2),
                 (self.to_be_aligned_elev, "to_be_aligned_elev", "Statistics on to be aligned elevation", 2),
-                (self.diff, "diff_elev", "Statistics on alti diff", 2),
+                (self.diff, "diff_elev", "Statistics on altitude difference", 2),
             ]
 
         for data, fname, title, level in stat_items:
@@ -280,6 +308,14 @@ class Accuracy(Workflows):
                 self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg.tif")
 
         self.create_html(self.dico_to_show)
+
+        # Remove empty folder
+        for folder in self.outputs_folder.rglob("*"):
+            if folder.is_dir():
+                try:
+                    folder.rmdir()
+                except OSError:
+                    pass
 
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """

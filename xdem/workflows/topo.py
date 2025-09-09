@@ -48,7 +48,7 @@ class Topo(Workflows):
         super().__init__(config_dem)
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
-        self.generate_plot(self.dem, "elevation (m)", cmap="terrain", cbar_title="Elevation (m)")
+        self.generate_plot(self.dem, "elevation_(m)", cmap="terrain", cbar_title="Elevation (m)")
 
         if self.inlier_mask is not None:
             self.generate_plot(
@@ -199,6 +199,14 @@ class Topo(Workflows):
 
         self.create_html(self.dico_to_show)
 
+        # Remove empty folder
+        for folder in self.outputs_folder.rglob("*"):
+            if folder.is_dir():
+                try:
+                    folder.rmdir()
+                except OSError:
+                    pass
+
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """
         Create HTML page from png files and table
@@ -209,7 +217,7 @@ class Topo(Workflows):
         html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
 
         html += "<h2>Elevation Model</h2>\n"
-        html += "<img src='plots/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/elevation_(m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         html += "<h2>Masked elevation Model</h2>\n"
         html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"

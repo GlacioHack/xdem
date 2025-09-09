@@ -61,7 +61,7 @@ def main() -> None:
         "--config",
         help="Path to YAML configuration file",
     )
-    topo_group.add_argument("--display-template-config", action="store_true", help="Show configuration template")
+    topo_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
 
     # Subcommand: accuracy
     diff_parser = subparsers.add_parser(
@@ -72,7 +72,7 @@ def main() -> None:
     )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
-    diff_group.add_argument("--display-template-config", action="store_true", help="Show configuration template")
+    diff_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
 
     args = parser.parse_args()
 
@@ -85,7 +85,7 @@ def main() -> None:
     logging.getLogger("fontTools").propagate = False
 
     if args.command == "topo":
-        if args.generate_config:
+        if args.display_template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
             logging.info(yaml_string)
         elif args.config:
@@ -94,7 +94,7 @@ def main() -> None:
             workflow.run()
 
     elif args.command == "accuracy":
-        if args.generate_config:
+        if args.display_template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_ACCURACY, sort_keys=False, allow_unicode=True)
             logging.info(yaml_string)
         elif args.config:

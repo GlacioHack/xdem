@@ -187,7 +187,6 @@ class Workflows(ABC):
         cleaned_data = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in data.items()}
 
         fieldnames = list(cleaned_data.keys())
-
         filename = self.outputs_folder / "tables" / f"{file_name}_stats.csv"
 
         with filename.open(mode="w", newline="", encoding="utf-8") as csvfile:

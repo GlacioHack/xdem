@@ -100,7 +100,7 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path):
     workflows = Accuracy(user_config)
 
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    assert workflows._get_stats(dem) == dem.get_stats(
+    stats_gt = dem.get_stats(
         [
             "mean",
             "median",
@@ -119,6 +119,28 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path):
             "percentagevalidpoints",
         ]
     )
+
+    # Aliases for nicer CSV headers
+    aliases = {
+        "mean": "Mean",
+        "median": "Median",
+        "max": "Maximum",
+        "min": "Minimum",
+        "sum": "Sum",
+        "sumofsquares": "Sum of squares",
+        "90thpercentile": "90th percentile",
+        "le90": "LE90",
+        "nmad": "NMAD",
+        "rmse": "RMSE",
+        "std": "STD",
+        "standarddeviation": "Standard deviation",
+        "validcount": "Valid count",
+        "totalcount": "Total count",
+        "percentagevalidpoints": "Percentage valid points",
+    }
+
+    stats_gt = {aliases.get(k, k): v for k, v in stats_gt.items()}
+    assert workflows._get_stats(dem) == stats_gt
 
 
 def test__compute_histogram(get_accuracy_object_with_run, tmp_path):
@@ -161,9 +183,12 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
     # assert Path(tmp_path).joinpath("report.pdf").exists()
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
-    csv_files = [
+    csv_files_level_1 = [
         "diff_elev_after_coreg_stats.csv",
         "diff_elev_before_coreg_stats.csv",
+    ]
+
+    csv_files_level_2 = [
         "reference_elev_stats.csv",
         "to_be_aligned_elev_stats.csv",
     ]
@@ -171,13 +196,17 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
     raster_files = ["diff_elev_after_coreg.tif", "diff_elev_before_coreg.tif", "to_be_aligned_elev_reprojected.tif"]
 
     if level == 1:
-        for file in csv_files:
+        for file in csv_files_level_1:
+            assert (Path(tmp_path) / "tables" / file).exists()
+        for file in csv_files_level_2:
             assert not (Path(tmp_path) / "tables" / file).exists()
         for file in raster_files:
             assert not (Path(tmp_path) / "rasters" / file).exists()
 
     if level == 2:
-        for file in csv_files:
+        for file in csv_files_level_1:
+            assert (Path(tmp_path) / "tables" / file).exists()
+        for file in csv_files_level_2:
             assert (Path(tmp_path) / "tables" / file).exists()
         for file in raster_files:
             assert (Path(tmp_path) / "rasters" / file).exists()
