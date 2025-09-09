@@ -1,4 +1,4 @@
-# Copyright (c) 2025 CNES developers
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -25,7 +25,6 @@ from multiprocessing import Pipe, connection
 from threading import Thread
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 try:
@@ -48,6 +47,8 @@ class Profiler:
     save_raw_data = False
     columns = ["level", "uuid_function", "name", "uuid_parent", "time", "call_time", "memory"]
     _profiling_info = pd.DataFrame(columns=columns)
+    selection_activated = False
+    functions_selected = []
     running_processes = []
 
     @staticmethod
@@ -61,6 +62,27 @@ class Profiler:
         Profiler.save_graphs = save_graphs
         Profiler.save_raw_data = save_raw_data
         Profiler.enabled = Profiler.save_graphs or Profiler.save_raw_data
+
+        # Reset profiling information as a new Profiler is enabled
+        Profiler.reset()
+
+    @staticmethod
+    def selection_functions(functions: list[str]) -> None:
+        """
+        List the functions to profile by their name
+
+        :param functions: list of the functions name to profile
+        """
+        Profiler.selection_activated = True
+        Profiler.functions_selected = functions
+
+    @staticmethod
+    def reset_selection_functions() -> None:
+        """
+        Cancel the possible selection of functions to profile
+        """
+        Profiler.selection_activated = False
+        Profiler.functions_selected = []
 
     @staticmethod
     def add_profiling_info(info: dict[str, float | int | Any | str | list[Any] | None]) -> None:
@@ -84,7 +106,7 @@ class Profiler:
         """
         Generate Profiling summary
 
-        :param base_output: xDEM's output directory
+        :param output: xDEM's output directory
         """
         if not Profiler.enabled:
             return
@@ -94,7 +116,7 @@ class Profiler:
 
         if Profiler.save_raw_data:
             Profiler._profiling_info.to_pickle(os.path.join(output, "raw_data.pickle"))
-
+        print(Profiler._profiling_info)
         Profiler._profiling_info["text_display"] = (
             Profiler._profiling_info["name"] + " (" + Profiler._profiling_info["time"].round(2).astype(str) + " s)"
         )
@@ -127,26 +149,19 @@ class Profiler:
     @staticmethod
     def get_profiling_info(function_name: str = None) -> pd.DataFrame:
         """
-        Get profiling dataframe with additional max memory information.
-        If function_name is filled, it returns uniquely function(s) with this name and their child(s).
+        Get profiling dataframe.
+        If function_name is filled, it returns only matching rows (empty if no "name" matches).
 
         :param function_name: function name to show the profiled information
         :return dataframe information restrains function_name if filled
         """
-        df = Profiler._profiling_info
-        df["max_memory"] = [np.max(np.array(x), axis=0)[1] for x in df["memory"].values]
+
+        if Profiler._profiling_info.empty or not function_name:
+            return Profiler._profiling_info
 
         if function_name:
-            # capture only function_name function(s) and their child(s).
-            parent_list = df.loc[df["name"] == function_name]
-            if not parent_list.empty:
-                df = df[
-                    (df.uuid_parent.str.contains("|".join(parent_list.uuid_function.values)))
-                    | (df.name.str.contains(function_name))
-                ]
-        else:
-            print("No ", function_name, "exists")  # TODO
-        return df
+            function_list = Profiler._profiling_info.loc[Profiler._profiling_info["name"] == function_name]
+            return function_list
 
     @staticmethod
     def reset() -> None:
@@ -294,11 +309,15 @@ def profile(name: str, interval: int | float = 0.05, memprof: bool = False):  # 
             if not Profiler.enabled:
                 return func(*args, **kwargs)
 
+            func_name = name
+            if Profiler.selection_activated and name not in Profiler.functions_selected:
+                print(Profiler.selection_activated, Profiler.functions_selected, name)
+                return func(*args, **kwargs)
+
             uuid_function = str(uuid.uuid4())
             uuid_parent = Profiler.running_processes[-1] if Profiler.running_processes else "__main__"
             level = len(Profiler.running_processes)
 
-            func_name = name
             if name is None:
                 func_name = func.__name__.capitalize()
 
@@ -332,7 +351,6 @@ def profile(name: str, interval: int | float = 0.05, memprof: bool = False):  # 
                 "memory": thread_monitoring.mem_data if memprof else None,
             }
             Profiler.add_profiling_info(func_data)
-
             return res
 
         return wrapper_profile
