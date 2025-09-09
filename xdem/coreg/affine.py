@@ -31,6 +31,7 @@ import pandas as pd
 import rasterio as rio
 import scipy.optimize
 import scipy.spatial
+from geoutils._typing import Number
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _coords, _res
 from geoutils.stats import nmad
@@ -1803,13 +1804,14 @@ class AffineCoreg(Coreg):
         subsample: float | int = 1.0,
         matrix: NDArrayf | None = None,
         meta: dict[str, Any] | None = None,
+        estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
     ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
         if meta is None:
             meta = {}
         # Define subsample size
-        meta.update({"subsample": subsample})
+        meta.update({"subsample": subsample, "estimated_initial_shift": estimated_initial_shift})
         super().__init__(meta=meta)
 
         if matrix is not None:
@@ -2378,6 +2380,7 @@ class NuthKaab(AffineCoreg):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
         vertical_shift: bool = True,
+        estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
@@ -2391,6 +2394,8 @@ class NuthKaab(AffineCoreg):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         :param vertical_shift: Whether to apply the vertical shift or not (default is True).
+        :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
+            the coregistration process begins.
         """
 
         self.vertical_shift = vertical_shift
@@ -2407,12 +2412,25 @@ class NuthKaab(AffineCoreg):
             "apply_vshift": vertical_shift,
         }
 
+        # Ensure that if an initial shift is provided, at least one coregistration method is affine.
+        if estimated_initial_shift:
+            if not (
+                isinstance(estimated_initial_shift, (list, tuple))
+                and len(estimated_initial_shift) == 2
+                and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+            ):
+                raise ValueError(
+                    "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+                )
+
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
         if not bin_before_fit:
             meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
             meta_fit.update(meta_input_iterative)
-            super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
+            super().__init__(
+                subsample=subsample, meta=meta_fit, estimated_initial_shift=estimated_initial_shift
+            )  # type: ignore
         else:
             meta_bin_and_fit = {
                 "fit_or_bin": "bin_and_fit",
@@ -2422,7 +2440,9 @@ class NuthKaab(AffineCoreg):
                 "bin_statistic": bin_statistic,
             }
             meta_bin_and_fit.update(meta_input_iterative)
-            super().__init__(subsample=subsample, meta=meta_bin_and_fit)  # type: ignore
+            super().__init__(
+                subsample=subsample, meta=meta_bin_and_fit, estimated_initial_shift=estimated_initial_shift
+            )  # t)  # type: ignore
 
     def _fit_rst_rst(
         self,
