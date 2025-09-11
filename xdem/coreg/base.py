@@ -2096,12 +2096,13 @@ class Coreg:
             self._meta["inputs"]["random"]["random_state"] = random_state
 
         # Apply the shift to the source dem
-        print(type(reference_elev))
-        # from xdem import DEM  # Local import
-
-        if isinstance(reference_elev, gu.Raster) and self._meta["inputs"]["affine"]["estimated_initial_shift"]:
-            print(reference_elev.res)
-
+        initial_shift = False
+        if (
+            isinstance(reference_elev, gu.Raster)
+            and "estimated_initial_shift" in self._meta["inputs"]["affine"]
+            and self._meta["inputs"]["affine"]["estimated_initial_shift"]
+        ):
+            initial_shift = True
             shift_x = self._meta["inputs"]["affine"]["estimated_initial_shift"][0] * reference_elev.res[0]
             shift_y = self._meta["inputs"]["affine"]["estimated_initial_shift"][1] * reference_elev.res[1]
 
@@ -2148,11 +2149,7 @@ class Coreg:
         )
 
         # check if the keys exist
-        if (
-            self._meta["inputs"]["affine"]["estimated_initial_shift"]
-            and "outputs" in self.meta
-            and "affine" in self.meta["outputs"]
-        ):
+        if initial_shift and "outputs" in self.meta and "affine" in self.meta["outputs"]:
             x = self.meta["outputs"]["affine"]["shift_x"]
             y = self.meta["outputs"]["affine"]["shift_y"]
             print(f"> Output shift coreg : shift_x: {x}, shift_y: {y}")
@@ -2806,7 +2803,6 @@ class CoregPipeline(Coreg):
             crs=crs,
             area_or_point=area_or_point,
         )
-        raise ValueError("ic!!!!!!!!!!!!!!!!!!!!!!!!!!i")
         tba_dem_mod = tba_dem.copy()
         out_transform = transform
 
