@@ -113,7 +113,7 @@ dict_key_to_str = {
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
-    "estimated_initial_shift": "Estimated initial shift",
+    "initial_shift": "Estimated initial shift",
     "matrix": "Affine transformation matrix estimated",
     "only_translation": "Only translations are considered",
     "standardize": "Input data was standardized",
@@ -1679,7 +1679,7 @@ class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Estimated initial shift
-    estimated_initial_shift: tuple[float, float, float]
+    initial_shift: tuple[float, float, float]
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
@@ -2095,19 +2095,17 @@ class Coreg:
         if self._meta["inputs"]["random"]["subsample"] != 1:
             self._meta["inputs"]["random"]["random_state"] = random_state
 
-        # Apply the shift to the source dem
-        initial_shift = False
+        # Apply the shift to the source dem if given
+        initial_shift_apply = False
         if (
             isinstance(reference_elev, gu.Raster)
-            and "estimated_initial_shift" in self._meta["inputs"]["affine"]
-            and self._meta["inputs"]["affine"]["estimated_initial_shift"]
+            and "initial_shift" in self._meta["inputs"]["affine"]
+            and self._meta["inputs"]["affine"]["initial_shift"]
         ):
-            initial_shift = True
-            shift_x = self._meta["inputs"]["affine"]["estimated_initial_shift"][0] * reference_elev.res[0]
-            shift_y = self._meta["inputs"]["affine"]["estimated_initial_shift"][1] * reference_elev.res[1]
-
+            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0] * reference_elev.res[0]
+            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1] * reference_elev.res[1]
             reference_elev = reference_elev.translate(-shift_x, -shift_y)
-            print(f"> Apply to the source dem : shift_x: {-shift_x}, shift_y: {-shift_y}")
+            initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
@@ -2148,19 +2146,14 @@ class Coreg:
             **kwargs,
         )
 
-        # check if the keys exist
-        if initial_shift and "outputs" in self.meta and "affine" in self.meta["outputs"]:
-            x = self.meta["outputs"]["affine"]["shift_x"]
-            y = self.meta["outputs"]["affine"]["shift_y"]
-            print(f"> Output shift coreg : shift_x: {x}, shift_y: {y}")
-
+        # Unapply the shift to the source dem if apply before
+        if initial_shift_apply and "outputs" in self.meta and "affine" in self.meta["outputs"]:
             if "shift_x" in self.meta["outputs"]["affine"]:
                 self.meta["outputs"]["affine"]["shift_x"] += shift_x
                 logging.debug(f"Updated shift_x by {shift_x} in {self}")
             if "shift_y" in self.meta["outputs"]["affine"]:
                 self.meta["outputs"]["affine"]["shift_y"] += shift_y
                 logging.debug(f"Updated shift_y by {shift_y} in {self}")
-            print(f"> Add the initial shift : shift_x: {shift_x}, shift_y: {shift_y}")
 
         # Flag that the fitting function has been called.
         self._fit_called = True
