@@ -604,7 +604,7 @@ class DEM(Raster):  # type: ignore
     def estimate_uncertainty(
         self,
         other_elev: DEM | gpd.GeoDataFrame,
-        stable_terrain: Mask | NDArrayb = None,
+        stable_terrain: Mask = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
@@ -656,14 +656,19 @@ class DEM(Raster):  # type: ignore
             "Basic": {"heterosc": False, "multi_range": False},
         }
 
+        # Stable terrain depending on input
+        if stable_terrain is None:
+            stable_terrain = self.copy(new_array=np.ones(self.shape, dtype=bool))
+
         # Elevation change with the other DEM or elevation point cloud
         if isinstance(other_elev, DEM):
             dh = other_elev.reproject(self, silent=True) - self
+            stable_terrain = stable_terrain.data
         elif isinstance(other_elev, gpd.GeoDataFrame):
             other_elev = other_elev.to_crs(self.crs)
             points = (other_elev.geometry.x.values, other_elev.geometry.y.values)
             dh = other_elev[z_name].values - self.interp_points(points)
-            stable_terrain = stable_terrain
+            stable_terrain = stable_terrain.interp_points(points, method="nearest")
         else:
             raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
 

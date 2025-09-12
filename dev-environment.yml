@@ -44,6 +44,7 @@ dependencies:
   - graphviz
   - myst-nb
   - numpydoc
+  - sliderule  # To run pairing example
 
   - pip:
       # Optional dependencies with Pip
