@@ -2394,8 +2394,8 @@ class NuthKaab(AffineCoreg):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         :param vertical_shift: Whether to apply the vertical shift or not (default is True).
-        :param initial_shift: List containing x and y shifts (in pixels). These shifts are applied before
-            during fit() part.
+        :param initial_shift: List containing x and y shifts (in georeferenced units). These shifts are applied before
+            the fit() part.
         """
 
         self.vertical_shift = vertical_shift
