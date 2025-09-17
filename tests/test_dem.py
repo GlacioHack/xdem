@@ -423,11 +423,11 @@ class TestDEM:
         [
             pytest.param(None, None, False, id="NuthKaab method: No initial shift"),
             pytest.param([0, 0], None, False, id="NuthKaab method: [0, 0] initial shift"),
-            pytest.param([5, 10], None, False, id="NuthKaab method: [5, 10] initial shift"),
-            pytest.param([10, 5], None, False, id="NuthKaab + VerticalShift methods: [10, 5] initial shift"),
+            pytest.param([50, 10], None, False, id="NuthKaab method: [5, 10] initial shift"),
+            pytest.param([10, 50], None, False, id="NuthKaab + VerticalShift methods: [10, 5] initial shift"),
             pytest.param(["2", 2], r".*two numerical values.*", False, id='NuthKaab method: ["2", 2] initial shift'),
             pytest.param([2, 3, 5], r".*two numerical values.*", False, id="NuthKaab method: [2, 3, 5] initial shift"),
-            pytest.param([5, 10], None, True, id="NuthKaab method: [5, 10] initial shift + VerticalShift"),
+            pytest.param([50, 10], None, True, id="NuthKaab method: [5, 10] initial shift + VerticalShift"),
         ],
     )
     def test_NuthKaab_initial_shift(shift, expected_error, pipeline) -> None:  # type: ignore
@@ -462,7 +462,6 @@ class TestDEM:
                 dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
                 dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
                 nk.fit(dem_ref, dem_tba, random_state=42)
-                print(nk.meta["outputs"]["affine"])
 
                 manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
 

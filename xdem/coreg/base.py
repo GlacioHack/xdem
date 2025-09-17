@@ -113,7 +113,7 @@ dict_key_to_str = {
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
-    "initial_shift": "Estimated initial shift",
+    "initial_shift": "Estimated initial shift (georeferenced unit)",
     "matrix": "Affine transformation matrix estimated",
     "only_translation": "Only translations are considered",
     "standardize": "Input data was standardized",
@@ -2102,8 +2102,8 @@ class Coreg:
             and "initial_shift" in self._meta["inputs"]["affine"]
             and self._meta["inputs"]["affine"]["initial_shift"]
         ):
-            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0] * reference_elev.res[0]
-            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1] * reference_elev.res[1]
+            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]
+            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]
             reference_elev = reference_elev.translate(-shift_x, -shift_y)
             initial_shift_apply = True
 
