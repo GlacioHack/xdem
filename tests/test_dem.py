@@ -417,6 +417,68 @@ class TestDEM:
         for i, expected_type in enumerate(expected_pipeline_types):
             assert isinstance(pipeline[i], expected_type)
 
+    @staticmethod
+    @pytest.mark.parametrize(  # type: ignore
+        "shift, expected_error, pipeline",
+        [
+            pytest.param(None, None, False, id="NuthKaab method: No initial shift"),
+            pytest.param([0, 0], None, False, id="NuthKaab method: [0, 0] initial shift"),
+            pytest.param([5, 10], None, False, id="NuthKaab method: [5, 10] initial shift"),
+            pytest.param([10, 5], None, False, id="NuthKaab + VerticalShift methods: [10, 5] initial shift"),
+            pytest.param(["2", 2], r".*two numerical values.*", False, id='NuthKaab method: ["2", 2] initial shift'),
+            pytest.param([2, 3, 5], r".*two numerical values.*", False, id="NuthKaab method: [2, 3, 5] initial shift"),
+            pytest.param([5, 10], None, True, id="NuthKaab method: [5, 10] initial shift + VerticalShift"),
+        ],
+    )
+    def test_NuthKaab_initial_shift(shift, expected_error, pipeline) -> None:  # type: ignore
+        """
+        Test coregister_3d initial and output shift
+        """
+
+        dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+
+        if expected_error:
+            # Init coreg method and catch error
+            with pytest.raises(ValueError, match=expected_error):
+                xdem.coreg.NuthKaab(initial_shift=shift)
+        else:
+
+            if not pipeline:
+
+                # Verify process for Nuth & Kaab only
+                coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
+                if shift:
+                    assert coreg_method.meta["inputs"]["affine"]["initial_shift"][0] == shift[0]
+                    assert coreg_method.meta["inputs"]["affine"]["initial_shift"][1] == shift[1]
+                else:
+                    assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is None
+
+                # Test output shift vs fit result
+                dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+                output_shift = coreg_method.meta["outputs"]["affine"]
+
+                nk = xdem.coreg.NuthKaab(initial_shift=shift)
+                dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+                dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+                nk.fit(dem_ref, dem_tba, random_state=42)
+                print(nk.meta["outputs"]["affine"])
+
+                manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
+
+                # Output metadata
+                assert nk.meta["outputs"]["affine"] == output_shift
+
+                # Output DEM
+                assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
+
+            else:
+                # Verify Pipeline process
+                coreg_method = xdem.coreg.NuthKaab(initial_shift=shift) + xdem.coreg.VerticalShift()  # type: ignore
+                assert coreg_method.pipeline[0].meta["inputs"]["affine"]["initial_shift"][0] == shift[0]
+                assert coreg_method.pipeline[0].meta["inputs"]["affine"]["initial_shift"][1] == shift[1]
+                assert coreg_method.pipeline[1].meta["inputs"]["affine"]["initial_shift"] is None
+
     def test_estimate_uncertainty(self) -> None:
 
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
@@ -429,60 +491,3 @@ class TestDEM:
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
-
-    @staticmethod
-    @pytest.mark.parametrize(  # type: ignore
-        "shift, expected_error, pipeline",
-        [
-            pytest.param(None, None, False, id="NuthKaab method: No initial shift"),
-            pytest.param([0, 0], None, False, id="NuthKaab method: [0, 0] initial shift"),
-            pytest.param([5, 10], None, False, id="NuthKaab method: [5, 10] initial shift"),
-            pytest.param([10, 5], None, False, id="NuthKaab + VerticalShift methods: [10, 5] initial shift"),
-            pytest.param(["2", 2], False, r".*two numerical values.*", id='NuthKaab method: ["2", 2] initial shift'),
-            pytest.param([2, 3, 5], False, r".*two numerical values.*", id="NuthKaab method: [2, 3, 5] initial shift"),
-        ],
-    )
-    def test_NuthKaab_initial_shift(shift, expected_error, pipeline) -> None:  # type: ignore
-        """
-        Test coregister_3d initial and output shift
-        """
-
-        dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-        dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-
-        # Init coreg method/pipeline and verify input initial shift if given
-        if pipeline:
-            coreg_method = xdem.coreg.NuthKaab(initial_shift=shift) + xdem.coreg.VerticalShift()  # type: ignore
-            assert coreg_method.pipeline[0].meta["inputs"]["affine"]["initial_shift"][0] == shift[0]
-            assert coreg_method.pipeline[0].meta["inputs"]["affine"]["initial_shift"][1] == shift[1]
-        else:
-            coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
-            if shift:
-                assert coreg_method.meta["inputs"]["affine"]["initial_shift"][0] == shift[0]
-                assert coreg_method.meta["inputs"]["affine"]["initial_shift"][1] == shift[1]
-            else:
-                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is None
-
-        if expected_error:
-            # Catch error if tested and compare with expected error reason
-            with pytest.raises(ValueError, match=expected_error):
-                dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
-        else:
-            # Test output shift vs fit result
-            dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
-            output_shift = coreg_method.meta["outputs"]["affine"]
-
-            nk = xdem.coreg.NuthKaab(initial_shift=shift)
-            dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-            dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-            nk.fit(dem_ref, dem_tba, random_state=42)
-            manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
-
-            # Output metadata
-            if pipeline:
-                assert coreg_method.pipeline[0].meta["outputs"]["affine"] == output_shift
-            else:
-                assert nk.meta["outputs"]["affine"] == output_shift
-
-            # Output DEM
-            assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
