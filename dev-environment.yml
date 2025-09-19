@@ -16,19 +16,20 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - cerberus
+  - pyyaml
+  - weasyprint
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
 
   # Optional dependencies
   - pytransform3d
-  - pyyaml
   - scikit-learn
 
   # Test dependencies
   - pytest
   - pytest-xdist
-  - pyyaml
   - flake8
   - pylint
   - pre-commit
@@ -45,6 +46,7 @@ dependencies:
   - graphviz
   - myst-nb
   - numpydoc
+  - sphinx-tabs
 
   - pip:
       # Optional dependencies with Pip
