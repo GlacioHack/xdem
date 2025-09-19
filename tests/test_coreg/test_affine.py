@@ -596,3 +596,28 @@ class TestAffineCoreg:
         # Assert horizontal shifts are the same
         matrix2[2, 3] = matrix1[2, 3]
         assert np.array_equal(matrix1, matrix2)
+
+    def test_nuthkaab_initial_shift(self) -> None:
+        """
+        Test that the initial_shift don't impact fit_and_apply process.
+        """
+
+        # Use entire DEMs here (to compare to original values from older package versions)
+        ref, tba = load_examples(crop=False)[0:2]
+
+        # Get the coregistration method and expected shifts from the inputs
+        inlier_mask = ~self.outlines.create_mask(ref)
+
+        c = coreg.NuthKaab(initial_shift=(0, 0), subsample=50000)
+        dem_aligned_is = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
+        shifts_is = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+
+        c = coreg.NuthKaab(subsample=50000)
+        dem_aligned = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
+        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+
+        # Check the output translations match the exact values
+        assert shifts_is == pytest.approx(shifts)
+        assert (dem_aligned_is.data == dem_aligned.data).min()
+        assert dem_aligned_is.transform == dem_aligned.transform
+        assert dem_aligned_is.crs == dem_aligned.crs
