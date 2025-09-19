@@ -1679,7 +1679,7 @@ class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Estimated initial shift
-    initial_shift: tuple[float, float, float]
+    initial_shift: tuple[float, float] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated

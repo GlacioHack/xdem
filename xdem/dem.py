@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 xDEM developers
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
