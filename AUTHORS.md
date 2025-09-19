@@ -15,20 +15,28 @@ This file keeps track of authors contributions.
 
 ---
 
-- **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
-- **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
-- **Valentine Bellet** [@Valentine-Bellet](https://github.com/valentine-bellet) <valentine.bellet@cnes.fr>
-- **Alice de Bardonnèche-Richard** [@adebardo](https://github.com/adebardo) <alice.de-bardonneche-richard@cs-soprasteria.com>
-- **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
+| Maintainer                       | GitHub | Affiliation                    | Email                                   |
+|----------------------------------|------|--------------------------------|-----------------------------------------|
+| **Romain Hugonnet**              | [@rhugonnet](https://github.com/rhugonnet) | University of Alaska Fairbanks | [📧](mailto:romain.hugonnet@gmail.com)  |
+| **Amaury Dehecq**                | [@adehecq](https://github.com/adehecq) | Université Grenoble Alpes      | N/A                                     |
+| **Valentine Bellet**             | [@Valentine-Bellet](https://github.com/valentine-bellet) | French Space Agency (CNES)     | [📧](mailto:valentine.bellet@cnes.fr)   |
+| **Alice de Bardonnèche-Richard** | [@adebardo](https://github.com/adebardo) | CS Group                       | [📧](mailto:alice.de-bardonneche-richard@cs-soprasteria.com) |
 
+## Emeritus maintainers
+
+---
+
+| Emeritus                   | GitHub | Affiliation                | Email                                                        |
+|----------------------------|------|----------------------------|--------------------------------------------------------------|
+| **Erik Schytt Mannerfelt** | [@erikmannerfelt](https://github.com/erikmannerfelt) | University of Oslo         | N/A                                                          |
+| **Emmanuel Dubois**        | [@duboise-cnes](https://github.com/duboise-cnes) | Université Grenoble Alpes  | [📧](mailto:emmanuel.dubois@cnes.fr)                         |
 
 ## Contributors
 
 ---
 
-- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
-- **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn) <valentin.schaffner@cs-soprasteria.com>
-- **Marine XXX** [@marinebcht](https://github.com/marinebcht)
+- **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn)
+- **Marine Bouchet** [@marinebcht](https://github.com/marinebcht)
 - **Friedrich Knuth** [@friedrichknuth](https://github.com/friedrichknuth)
 - **Andrew Tedstone** [@atedstone](https://github.com/atedstone)
 - **Zhihao Liu** [@liuh886](https://github.com/liuh886)
@@ -40,18 +48,21 @@ This file keeps track of authors contributions.
 - **Enrico Mattea** [@MatteaE](https://github.com/MatteaE)
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
-- **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara) <clara.quinto@cs-soprasteria.com>
+- **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara)
 
 ## Original creators
 
 ---
 
-### xDEM
-
-- **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet) <romain.hugonnet@gmail.com>
+- **Romain Hugonnet** [@rhugonnet](https://github.com/rhugonnet)
 - **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
 - **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
 
-### DemCompare
+### Federation with Demcompare
 
-- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes) <emmanuel.dubois@cnes.fr>
+---
+
+- **Emmanuel Dubois** [@duboise-cnes](https://github.com/duboise-cnes)
+- **Alice de Bardonnèche-Richard** [@adebardo](https://github.com/adebardo)
+
+All Demcompare authors and creators can be found [here](https://github.com/CNES/demcompare/blob/master/AUTHORS.md).

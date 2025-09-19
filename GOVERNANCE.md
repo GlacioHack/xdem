@@ -9,7 +9,8 @@ This project may include the following roles. Additional roles may be adopted an
 
 **1.1. Maintainers**. Maintainers are responsible for organizing activities around developing, maintaining, and updating
 the Project. Maintainers are also responsible for determining consensus. This Project may add or remove Maintainers with
-the approval of the current Maintainers.
+the approval of the current Maintainers. All past Maintainers will be listed as an Emeritus maintainer, and may rejoin 
+at any time.
 
 **1.2. Contributors**. Contributors are those that have made contributions to the Project.
 
