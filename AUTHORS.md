@@ -66,3 +66,7 @@ This file keeps track of authors contributions.
 - **Alice de Bardonnèche-Richard** [@adebardo](https://github.com/adebardo)
 
 All Demcompare authors and creators can be found [here](https://github.com/CNES/demcompare/blob/master/AUTHORS.md).
+
+## External contributions
+
+This project includes code originally part of the [texshade-py](https://github.com/fasiha/texshade-py/tree/main) project.

@@ -36,6 +36,8 @@ More details are available on each feature page!
      - [Jenness (2004)](<https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>)
    * - Fractal roughness
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
+   * - Texture shading
+     - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1)
 ```
 
 ### Coregistration
