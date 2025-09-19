@@ -72,7 +72,7 @@ repos:
                         --disable-error-code=no-any-return
 
                   ]
-                  additional_dependencies: [tokenize-rt, numpy==2]
+                  additional_dependencies: [tokenize-rt, numpy==2.0.*]
                   files: ^(xdem|tests|doc/code)
 
 
