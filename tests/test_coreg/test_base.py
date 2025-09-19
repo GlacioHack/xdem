@@ -60,7 +60,7 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     # If input is a dictionary, we recursively call this function to check equality of all its sub-keys
     elif isinstance(input1, dict):
         return all(assert_coreg_meta_equal(input1[k], input2[k]) for k in input1.keys())
-    elif input1.isinstance(type(input2)) and input1 == input2:
+    elif input2 == input1:
         return True
     else:
         raise TypeError(f"Input type {type(input1)} not supported for this test function.")
