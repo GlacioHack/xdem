@@ -29,7 +29,7 @@ This file keeps track of authors contributions.
 | Emeritus                   | GitHub | Affiliation                | Email                                                        |
 |----------------------------|------|----------------------------|--------------------------------------------------------------|
 | **Erik Schytt Mannerfelt** | [@erikmannerfelt](https://github.com/erikmannerfelt) | University of Oslo         | N/A                                                          |
-| **Emmanuel Dubois**        | [@duboise-cnes](https://github.com/duboise-cnes) | Université Grenoble Alpes  | [📧](mailto:emmanuel.dubois@cnes.fr)                         |
+| **Emmanuel Dubois**        | [@duboise-cnes](https://github.com/duboise-cnes) | French Space Agency (CNES) | [📧](mailto:emmanuel.dubois@cnes.fr)                         |
 
 ## Contributors
 
@@ -58,7 +58,7 @@ This file keeps track of authors contributions.
 - **Amaury Dehecq** [@adehecq](https://github.com/adehecq)
 - **Erik Schytt Mannerfelt** [@erikmannerfelt](https://github.com/erikmannerfelt)
 
-### Federation with Demcompare
+## Federation with Demcompare
 
 ---
 
