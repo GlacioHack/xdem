@@ -15,12 +15,12 @@ This file keeps track of authors contributions.
 
 ---
 
-| Maintainer                       | GitHub | Affiliation                    | Email                                   |
-|----------------------------------|------|--------------------------------|-----------------------------------------|
+| Maintainer                       | GitHub                                     | Affiliation                    | Email                                   |
+|----------------------------------|--------------------------------------------|--------------------------------|-----------------------------------------|
 | **Romain Hugonnet**              | [@rhugonnet](https://github.com/rhugonnet) | University of Alaska Fairbanks | [📧](mailto:romain.hugonnet@gmail.com)  |
-| **Amaury Dehecq**                | [@adehecq](https://github.com/adehecq) | Université Grenoble Alpes      | N/A                                     |
-| **Valentine Bellet**             | [@Valentine-Bellet](https://github.com/valentine-bellet) | French Space Agency (CNES)     | [📧](mailto:valentine.bellet@cnes.fr)   |
-| **Alice de Bardonnèche-Richard** | [@adebardo](https://github.com/adebardo) | CS Group                       | [📧](mailto:alice.de-bardonneche-richard@cs-soprasteria.com) |
+| **Amaury Dehecq**                | [@adehecq](https://github.com/adehecq)     | Université Grenoble Alpes      | N/A                                     |
+| **Valentine Bellet**             | [@belletva](https://github.com/belletva)   | French Space Agency (CNES)     | [📧](mailto:valentine.bellet@cnes.fr)   |
+| **Alice de Bardonnèche-Richard** | [@adebardo](https://github.com/adebardo)   | CS Group                       | [📧](mailto:alice.de-bardonneche-richard@cs-soprasteria.com) |
 
 ## Emeritus maintainers
 
