@@ -1,4 +1,5 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2025 xDEM developers
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -2420,6 +2421,8 @@ class NuthKaab(AffineCoreg):
                 and all(isinstance(val, (float, int)) for val in initial_shift)
             ):
                 raise ValueError("Argument `initial_shift` must be a list or tuple of exactly two numerical values.")
+            if isinstance(initial_shift, list):
+                initial_shift = tuple(initial_shift)
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined

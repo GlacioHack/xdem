@@ -448,9 +448,11 @@ class TestDEM:
 
                 # Verify process for Nuth & Kaab only
                 coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
-                if shift:
+                if shift is not None:
+                    assert coreg_method.meta["inputs"]["affine"]["initial_shift"]
                     assert coreg_method.meta["inputs"]["affine"]["initial_shift"][0] == shift[0]
                     assert coreg_method.meta["inputs"]["affine"]["initial_shift"][1] == shift[1]
+                    assert isinstance(coreg_method.meta["inputs"]["affine"]["initial_shift"], tuple)
                 else:
                     assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is None
 
