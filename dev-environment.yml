@@ -24,6 +24,8 @@ dependencies:
   - pytransform3d
   - pyyaml
   - scikit-learn
+  - psutil
+  - plotly
 
   # Test dependencies
   - pytest
