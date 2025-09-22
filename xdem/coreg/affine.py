@@ -1805,7 +1805,7 @@ class AffineCoreg(Coreg):
         subsample: float | int = 1.0,
         matrix: NDArrayf | None = None,
         meta: dict[str, Any] | None = None,
-        initial_shift: list[Number] | tuple[Number, Number] | None = None,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
@@ -2381,7 +2381,7 @@ class NuthKaab(AffineCoreg):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
         vertical_shift: bool = True,
-        initial_shift: list[Number] | tuple[Number, Number] | None = None,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
@@ -2395,8 +2395,8 @@ class NuthKaab(AffineCoreg):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         :param vertical_shift: Whether to apply the vertical shift or not (default is True).
-        :param initial_shift: List containing x and y shifts (in georeferenced units). These shifts are applied before
-            the fit() part.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+        These shifts are applied before the fit() part.
         """
 
         self.vertical_shift = vertical_shift
@@ -2416,13 +2416,11 @@ class NuthKaab(AffineCoreg):
         # Test consistency of the estimated initial shift given if provided
         if initial_shift:
             if not (
-                isinstance(initial_shift, (list, tuple))
-                and len(initial_shift) == 2
+                isinstance(initial_shift, tuple)
+                and (len(initial_shift) == 2 or len(initial_shift) == 3)
                 and all(isinstance(val, (float, int)) for val in initial_shift)
             ):
-                raise ValueError("Argument `initial_shift` must be a list or tuple of exactly two numerical values.")
-            if isinstance(initial_shift, list):
-                initial_shift = tuple(initial_shift)
+                raise ValueError("Argument `initial_shift` must be a tuple of exactly two or three numerical values.")
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
