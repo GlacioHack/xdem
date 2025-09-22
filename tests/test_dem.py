@@ -375,12 +375,12 @@ class TestDEM:
         [
             pytest.param(xdem.coreg.Deramp(), [xdem.coreg.Deramp], id="Custom method: Deramp"),
             pytest.param(
-                xdem.coreg.NuthKaab(initial_shift=[10, 5]) + xdem.coreg.VerticalShift(),
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
                 [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
                 id="Pipeline: NuthKaab + VerticalShift with initial shift",
             ),
             pytest.param(
-                xdem.coreg.NuthKaab(initial_shift=[10, 5]),
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)),
                 [xdem.coreg.AffineCoreg],
                 id="Pipeline: NuthKaab with initial shift",
             ),
@@ -422,15 +422,17 @@ class TestDEM:
         "shift, expected_error, pipeline",
         [
             pytest.param(None, None, False, id="NuthKaab method: No initial shift"),
-            pytest.param([0, 0], None, False, id="NuthKaab method: [0, 0] initial shift"),
-            pytest.param([50, 10], None, False, id="NuthKaab method: [5, 10] initial shift"),
-            pytest.param([10, 50], None, False, id="NuthKaab + VerticalShift methods: [10, 5] initial shift"),
-            pytest.param(["2", 2], r".*two numerical values.*", False, id='NuthKaab method: ["2", 2] initial shift'),
-            pytest.param([2, 3, 5], r".*two numerical values.*", False, id="NuthKaab method: [2, 3, 5] initial shift"),
-            pytest.param([50, 10], None, True, id="NuthKaab method: [5, 10] initial shift + VerticalShift"),
+            pytest.param((0, 0), None, False, id="NuthKaab method: [0, 0] initial shift"),
+            pytest.param((50, 10), None, False, id="NuthKaab method: [5, 10] initial shift"),
+            pytest.param((10, 50), None, False, id="NuthKaab + VerticalShift methods: [10, 5] initial shift"),
+            pytest.param(("2", 2), r".*three numerical values.*", False, id='NuthKaab method: ["2", 2] initial shift'),
+            pytest.param(
+                (2, 3, 5, 4), r".*three numerical values.*", False, id="NuthKaab method: [2, 3, 5] initial shift"
+            ),
+            pytest.param((50, 10), None, True, id="NuthKaab method: [5, 10] initial shift + VerticalShift"),
         ],
     )
-    def test_NuthKaab_initial_shift(shift, expected_error, pipeline) -> None:  # type: ignore
+    def test_nuthkaab_initial_shift(shift, expected_error, pipeline) -> None:  # type: ignore
         """
         Test coregister_3d initial and output shift
         """

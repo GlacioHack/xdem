@@ -599,7 +599,7 @@ class TestAffineCoreg:
 
     def test_nuthkaab_initial_shift(self) -> None:
         """
-        Test that the initial_shift don't impact fit_and_apply process.
+        Test that the initial_shift don't impact fit_and_apply process for the Nuth and Kaab coregistration.
         """
 
         # Use entire DEMs here (to compare to original values from older package versions)
@@ -608,7 +608,7 @@ class TestAffineCoreg:
         # Get the coregistration method and expected shifts from the inputs
         inlier_mask = ~self.outlines.create_mask(ref)
 
-        c = coreg.NuthKaab(initial_shift=(0, 0), subsample=50000)
+        c = coreg.NuthKaab(initial_shift=(0, 0, 0), subsample=50000)
         dem_aligned_is = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
         shifts_is = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
 

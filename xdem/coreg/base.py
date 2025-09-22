@@ -1679,7 +1679,7 @@ class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Estimated initial shift
-    initial_shift: tuple[float, float] | None
+    initial_shift: tuple[float, float, float] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
@@ -2097,14 +2097,10 @@ class Coreg:
 
         # Apply the shift to the source dem if given
         initial_shift_apply = False
-        if (
-            isinstance(reference_elev, gu.Raster)
-            and "initial_shift" in self._meta["inputs"]["affine"]
-            and self._meta["inputs"]["affine"]["initial_shift"]
-        ):
-            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]
-            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]
-            reference_elev = reference_elev.translate(-shift_x, -shift_y)
+        if self._meta["inputs"]["affine"].get("initial_shift") is not None:
+            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
+            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
+            reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
             initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
