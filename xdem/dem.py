@@ -509,7 +509,6 @@ class DEM(Raster):  # type: ignore
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
         random_state: int | np.random.Generator | None = None,
-        resample: bool = False,
         **kwargs,
     ) -> DEM:
         """
@@ -574,7 +573,6 @@ class DEM(Raster):  # type: ignore
             inlier_mask=inlier_mask,
             random_state=random_state,
             bias_vars=bias_vars,
-            resample=resample,
             **kwargs,
         )
 

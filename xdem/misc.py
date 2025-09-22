@@ -25,14 +25,8 @@ import sys
 import warnings
 from typing import Any, Callable
 
+import yaml  # type: ignore
 from packaging.version import Version
-
-try:
-    import yaml  # type: ignore
-
-    _has_yaml = True
-except ImportError:
-    _has_yaml = False
 
 import xdem
 
@@ -170,9 +164,6 @@ def diff_environment_yml(
     :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
-
-    if not _has_yaml:
-        raise ValueError("Test dependency needed. Install 'pyyaml'.")
 
     if not input_dict:
         # Load the yml as dictionaries
