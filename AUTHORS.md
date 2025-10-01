@@ -1,7 +1,7 @@
 # Credits
 
 ---
-© 2024 **xDEM developers**.
+© 2025 **xDEM developers**.
 
 **xDEM** is licensed under permissive Apache 2 license (See LICENSE file).
 
@@ -15,29 +15,29 @@ This file keeps track of authors contributions.
 
 ---
 
-| Maintainer                       | GitHub                                     | Affiliation                    | Email                                   |
+| Full name                        | GitHub                                     | Affiliation                    | Email                                   |
 |----------------------------------|--------------------------------------------|--------------------------------|-----------------------------------------|
 | **Romain Hugonnet**              | [@rhugonnet](https://github.com/rhugonnet) | University of Alaska Fairbanks | [📧](mailto:romain.hugonnet@gmail.com)  |
-| **Amaury Dehecq**                | [@adehecq](https://github.com/adehecq)     | Université Grenoble Alpes      | N/A                                     |
-| **Valentine Bellet**             | [@belletva](https://github.com/belletva)   | French Space Agency (CNES)     | [📧](mailto:valentine.bellet@cnes.fr)   |
+| **Amaury Dehecq**                | [@adehecq](https://github.com/adehecq)     | Université Grenoble Alpes, IRD | N/A                                     |
+| **Valentine Bellet**             | [@belletva](https://github.com/belletva)   | CNES (French Space Agency)     | [📧](mailto:valentine.bellet@cnes.fr)   |
 | **Alice de Bardonnèche-Richard** | [@adebardo](https://github.com/adebardo)   | CS Group                       | [📧](mailto:alice.de-bardonneche-richard@cs-soprasteria.com) |
 
 ## Emeritus maintainers
 
 ---
 
-| Emeritus                   | GitHub | Affiliation                | Email                                                        |
+| Full name                  | GitHub | Affiliation                | Email                                                        |
 |----------------------------|------|----------------------------|--------------------------------------------------------------|
 | **Erik Schytt Mannerfelt** | [@erikmannerfelt](https://github.com/erikmannerfelt) | University of Oslo         | N/A                                                          |
-| **Emmanuel Dubois**        | [@duboise-cnes](https://github.com/duboise-cnes) | French Space Agency (CNES) | [📧](mailto:emmanuel.dubois@cnes.fr)                         |
+| **Emmanuel Dubois**        | [@duboise-cnes](https://github.com/duboise-cnes) | CNES (French Space Agency) | [📧](mailto:emmanuel.dubois@cnes.fr)                         |
 
 ## Contributors
 
 ---
 
 - **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn)
-- **Marine Bouchet** [@marinebcht](https://github.com/marinebcht)
 - **Friedrich Knuth** [@friedrichknuth](https://github.com/friedrichknuth)
+- **Marine Bouchet** [@marinebcht](https://github.com/marinebcht)
 - **Andrew Tedstone** [@atedstone](https://github.com/atedstone)
 - **Zhihao Liu** [@liuh886](https://github.com/liuh886)
 - **Diego Cusicanqui** [@cusicand](https://github.com/cusicand)
