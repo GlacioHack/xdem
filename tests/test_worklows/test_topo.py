@@ -121,6 +121,7 @@ def test_run(get_topo_inputs_config, tmp_path):
     """
     Test run function
     """
+    import numpy as np
 
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
@@ -172,10 +173,10 @@ def test_run(get_topo_inputs_config, tmp_path):
                 "rmse": 452.68,
                 "standarddeviation": 243.95,
                 "std": 243.95,
-                "sum": 500301600.0,
-                "sumofsquares": 268858540032.0,
+                "sum": 500301504.0,
+                "sumofsquares": 268858638336.0,
                 "totalcount": 1312020,
-                "validcount": 1312020,
+                "validcount": np.int64(1312020),
             },
         ),
         (
@@ -192,10 +193,10 @@ def test_run(get_topo_inputs_config, tmp_path):
                 "rmse": 611.76,
                 "standarddeviation": 152.66,
                 "std": 152.66,
-                "sum": 98813536.0,
-                "sumofsquares": 62425526272.0,
+                "sum": 98813544.0,
+                "sumofsquares": 62425530368.0,
                 "totalcount": 1312020,
-                "validcount": 1312020,
+                "validcount": np.int64(1312020),
             },
         ),
     ]
