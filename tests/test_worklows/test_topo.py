@@ -27,6 +27,7 @@ from rasterio import Affine
 import xdem
 from xdem.workflows import Topo
 from xdem.workflows.workflows import Workflows
+from xdem.workflows.schemas import STATS_METHODS
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -130,8 +131,10 @@ def test_run(get_topo_inputs_config, tmp_path):
     assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
     assert Path(tmp_path / "tables").joinpath("stats_elev_mask_stats.csv").exists()
     assert Path(tmp_path).joinpath("report.html").exists()
-    assert workflows.dico_to_show == [
-        (
+    # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
+    # and as those are already tested separately
+    # 1/ Input information
+    assert workflows.dico_to_show[0] == (
             "Information about inputs",
             {
                 "reference_elev": {
@@ -141,8 +144,9 @@ def test_run(get_topo_inputs_config, tmp_path):
                     "to_vcrs": "EGM96",
                 }
             },
-        ),
-        (
+        )
+    # 2/ DEM information
+    assert workflows.dico_to_show[2] == (
             "DEM information",
             {
                 "Data types": "float32",
@@ -157,45 +161,9 @@ def test_run(get_topo_inputs_config, tmp_path):
                 "Transform": Affine(20.0, 0.0, 502810.0, 0.0, -20.0, 8674030.0),
                 "Width": 1332,
             },
-        ),
-        (
-            "Global statistics",
-            {
-                "90thpercentile": 727.55,
-                "le90": 766.79,
-                "max": 1022.29,
-                "mean": 381.32,
-                "median": 365.23,
-                "min": 8.38,
-                "nmad": 291.27,
-                "percentagevalidpoints": 100.0,
-                "rmse": 452.68,
-                "standarddeviation": 243.95,
-                "std": 243.95,
-                "sum": 500301600.0,
-                "sumofsquares": 268858540032.0,
-                "totalcount": 1312020,
-                "validcount": 1312020,
-            },
-        ),
-        (
-            "Mask statistics",
-            {
-                "90thpercentile": 788.29,
-                "le90": 498.87,
-                "max": 1011.9,
-                "mean": 592.41,
-                "median": 591.89,
-                "min": 139.9,
-                "nmad": 163.87,
-                "percentagevalidpoints": 100.0,
-                "rmse": 611.76,
-                "standarddeviation": 152.66,
-                "std": 152.66,
-                "sum": 98813536.0,
-                "sumofsquares": 62425526272.0,
-                "totalcount": 1312020,
-                "validcount": 1312020,
-            },
-        ),
-    ]
+        )
+    # 3/ Statistics names
+    assert list(workflows.dico_to_show[3][0].keys()) == "Global statistics"
+    assert list(workflows.dico_to_show[3][1].keys()) == STATS_METHODS
+    assert list(workflows.dico_to_show[4][0].keys()) == "Mask statistics"
+    assert list(workflows.dico_to_show[4][1].keys()) == STATS_METHODS
