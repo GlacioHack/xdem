@@ -43,6 +43,7 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
+coverage.lcov
 .cache
 nosetests.xml
 coverage.xml
@@ -158,3 +159,6 @@ examples/advanced/aligned_dem.tif
 # Directory where myst_nb executes jupyter code and cache
 doc/jupyter_execute/
 doc/.jupyter_cache/
+
+# Workflows outputs created during documentation build
+/outputs
