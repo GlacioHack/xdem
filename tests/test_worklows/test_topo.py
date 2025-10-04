@@ -26,8 +26,8 @@ from rasterio import Affine
 
 import xdem
 from xdem.workflows import Topo
-from xdem.workflows.workflows import Workflows
 from xdem.workflows.schemas import STATS_METHODS
+from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -135,35 +135,35 @@ def test_run(get_topo_inputs_config, tmp_path):
     # and as those are already tested separately
     # 1/ Input information
     assert workflows.dico_to_show[0] == (
-            "Information about inputs",
-            {
-                "reference_elev": {
-                    "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                    "from_vcrs": "EGM96",
-                    "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
-                    "to_vcrs": "EGM96",
-                }
-            },
-        )
+        "Information about inputs",
+        {
+            "reference_elev": {
+                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                "from_vcrs": "EGM96",
+                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "to_vcrs": "EGM96",
+            }
+        },
+    )
     # 2/ DEM information
-    assert workflows.dico_to_show[2] == (
-            "DEM information",
-            {
-                "Data types": "float32",
-                "Driver": "GTiff",
-                "Filename": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "Grid size": "us_nga_egm96_15.tif",
-                "Height": 985,
-                "Nodata Value": -9999.0,
-                "Number of band": (1,),
-                "Pixel interpretation": "Area",
-                "Pixel size": (20.0, 20.0),
-                "Transform": Affine(20.0, 0.0, 502810.0, 0.0, -20.0, 8674030.0),
-                "Width": 1332,
-            },
-        )
+    assert workflows.dico_to_show[1] == (
+        "DEM information",
+        {
+            "Data types": "float32",
+            "Driver": "GTiff",
+            "Filename": xdem.examples.get_path("longyearbyen_tba_dem"),
+            "Grid size": "us_nga_egm96_15.tif",
+            "Height": 985,
+            "Nodata Value": -9999.0,
+            "Number of band": (1,),
+            "Pixel interpretation": "Area",
+            "Pixel size": (20.0, 20.0),
+            "Transform": Affine(20.0, 0.0, 502810.0, 0.0, -20.0, 8674030.0),
+            "Width": 1332,
+        },
+    )
     # 3/ Statistics names
-    assert list(workflows.dico_to_show[3][0].keys()) == "Global statistics"
+    assert workflows.dico_to_show[2][0] == "Global statistics"
+    assert list(workflows.dico_to_show[2][1].keys()) == STATS_METHODS
+    assert workflows.dico_to_show[3][0] == "Mask statistics"
     assert list(workflows.dico_to_show[3][1].keys()) == STATS_METHODS
-    assert list(workflows.dico_to_show[4][0].keys()) == "Mask statistics"
-    assert list(workflows.dico_to_show[4][1].keys()) == STATS_METHODS

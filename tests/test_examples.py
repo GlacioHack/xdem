@@ -34,7 +34,7 @@ class TestExamples:
             (ddem, np.array([1.37, -1.67, 0.13, -10.10, 2.49], dtype=np.float32), 10e-3),
         ],
     )  # type: ignore
-    def test_array_content(self, rst_truevals_abs: tuple[Raster, NDArrayf]) -> None:
+    def test_array_content(self, rst_truevals_abs: tuple[Raster, NDArrayf, float]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
         rst = rst_truevals_abs[0]
