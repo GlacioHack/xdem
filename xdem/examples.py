@@ -85,7 +85,7 @@ def download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = Fa
 
     # Extract the tarball
     with tarfile.open(tar_path) as tar:
-        tar.extractall(temp_dir.name)
+        tar.extractall(temp_dir.name, filter="fully_trusted")
 
     # Find the first directory inside the extracted tarball
     extracted_dir = os.path.join(
