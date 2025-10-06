@@ -115,3 +115,17 @@ yaml (PyYAML): Python bindings for YAML, a human-readable data serialization lan
 Copyright (c) 2006-2023, PyYAML contributors.
 Website: https://pyyaml.org/
 License: CC-BY 2.0.
+
+Texshade: Low-memory approximation to texture-shaded elevation via the fractional-Laplacian operator.
+Website: https://github.com/fasiha/texshade-py
+License: Unlicense.
+
+WeasyPrint: Smart solution helping web developers to create PDF documents..
+Copyright (c) 2011-2021, Simon Sapin and contributors.
+Website: https://weasyprint.org/
+License: BSD 3-Clause.
+
+cerberus: Cerberus is a lightweight and extensible data validation library for Python.
+Copyright (c) 2012-2016 Nicola Iarocci.
+Website: https://github.com/pyeve/cerberus
+License: ISC License
