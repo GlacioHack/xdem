@@ -95,8 +95,6 @@ def pipeline_topo():
             "reference_elev": {
                 "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
                 "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
-                "from_vcrs": "EGM96",
-                "to_vcrs": "EGM96",
             }
         },
         "statistics": [

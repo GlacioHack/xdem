@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from rasterio import Affine
+from rasterio.coords import BoundingBox
 
 import xdem
 from xdem.workflows import Topo
@@ -42,7 +43,7 @@ def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrai
 
     assert isinstance(workflows, Workflows)
     assert isinstance(workflows, Topo)
-    assert Path(tmp_path / "plots").joinpath("elevation_(m).png").exists()
+    assert Path(tmp_path / "plots").joinpath("elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elevation.png").exists()
     assert workflows.config_attributes == list_default_terrain_attributes
 
@@ -115,7 +116,7 @@ def test_generate_terrain_attributes_png(tmp_path, get_topo_inputs_config):
     workflows.run()
 
     workflows.generate_terrain_attributes_png()
-    assert Path(tmp_path / "plots").joinpath("terrain_attributes.png").exists()
+    assert Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
 
 
 def test_run(get_topo_inputs_config, tmp_path):
@@ -139,20 +140,20 @@ def test_run(get_topo_inputs_config, tmp_path):
         {
             "reference_elev": {
                 "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "from_vcrs": "EGM96",
+                "from_vcrs": None,
                 "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
-                "to_vcrs": "EGM96",
+                "to_vcrs": None,
             }
         },
     )
-    # 2/ DEM information
+    # 2/ Elevation information
     assert workflows.dico_to_show[1] == (
-        "DEM information",
+        "Elevation information",
         {
             "Data types": "float32",
             "Driver": "GTiff",
             "Filename": xdem.examples.get_path("longyearbyen_tba_dem"),
-            "Grid size": "us_nga_egm96_15.tif",
+            "Grid size": None,
             "Height": 985,
             "Nodata Value": -9999.0,
             "Number of band": (1,),
@@ -160,6 +161,7 @@ def test_run(get_topo_inputs_config, tmp_path):
             "Pixel size": (20.0, 20.0),
             "Transform": Affine(20.0, 0.0, 502810.0, 0.0, -20.0, 8674030.0),
             "Width": 1332,
+            "Bounds": BoundingBox(left=502810.0, bottom=8654330.0, right=529450.0, top=8674030.0),
         },
     )
     # 3/ Statistics names

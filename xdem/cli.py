@@ -26,13 +26,15 @@ import yaml  # type: ignore
 from xdem.workflows import Accuracy, Topo
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
-libname = ctypes.util.find_library("gobject-2.0")
-if libname is None:
-    _has_libgobject = False
-else:
+lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+lib_pango_name = ctypes.util.find_library("pango-1.0")
+
+if lib_gobject_name and lib_pango_name:
     from weasyprint import HTML
 
     _has_libgobject = True
+else:
+    _has_libgobject = False
 
 
 def main() -> None:
@@ -87,18 +89,18 @@ def main() -> None:
     if args.command == "topo":
         if args.display_template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
-            logging.info(yaml_string)
+            logging.info("\n" + yaml_string)
         elif args.config:
-            logger.info("Running DEM information workflow")
+            logger.info("Running topo workflow")
             workflow = Topo(args.config)
             workflow.run()
 
     elif args.command == "accuracy":
         if args.display_template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_ACCURACY, sort_keys=False, allow_unicode=True)
-            logging.info(yaml_string)
+            logging.info("\n" + yaml_string)
         elif args.config:
-            logger.info("Running DEM comparison workflow")
+            logger.info("Running accuracy workflow")
             workflow = Accuracy(args.config)  # type: ignore
             workflow.run()
 
@@ -106,7 +108,7 @@ def main() -> None:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
 
     if args.config and _has_libgobject:
-        logger.info("Generate report")
+        logger.info("Generating HTML and PDF report")
         HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
 
     logger.info("End of execution")

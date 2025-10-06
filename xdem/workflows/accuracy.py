@@ -82,6 +82,8 @@ class Accuracy(Workflows):
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
 
+        self.config = self.remove_none(self.config)  # type: ignore
+
     def _get_reference_elevation(self) -> float:
         """
         Get reference elevation
@@ -166,36 +168,39 @@ class Accuracy(Workflows):
             output_path = self.outputs_folder / "rasters" / f"{name}_reprojected.tif"
             reprojected.save(output_path)
 
-    def _get_stats(self, dem: RasterType) -> floating[Any] | dict[str, floating[Any]]:
+    def _get_stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
         """
         Return a list of computed statistics chose by user or the default one.
         :param dem: DEM to process
+        :name_of_data: string for logging
         """
         # Compute user statistics
+        dict_stats_aliased = {}
         list_to_compute = self.config["statistics"]
-        logging.info(f"Computed statistics: {list_to_compute}")
-        dict_stats = dem.get_stats(list_to_compute)
+        if list_to_compute is not None:
+            logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
+            dict_stats = dem.get_stats(list_to_compute)
 
-        # Aliases for nicer CSV headers
-        aliases = {
-            "mean": "Mean",
-            "median": "Median",
-            "max": "Maximum",
-            "min": "Minimum",
-            "sum": "Sum",
-            "sumofsquares": "Sum of squares",
-            "90thpercentile": "90th percentile",
-            "le90": "LE90",
-            "nmad": "NMAD",
-            "rmse": "RMSE",
-            "std": "STD",
-            "standarddeviation": "Standard deviation",
-            "validcount": "Valid count",
-            "totalcount": "Total count",
-            "percentagevalidpoints": "Percentage valid points",
-        }
+            # Aliases for nicer CSV headers
+            aliases = {
+                "mean": "Mean",
+                "median": "Median",
+                "max": "Maximum",
+                "min": "Minimum",
+                "sum": "Sum",
+                "sumofsquares": "Sum of squares",
+                "90thpercentile": "90th percentile",
+                "le90": "LE90",
+                "nmad": "NMAD",
+                "rmse": "RMSE",
+                "std": "STD",
+                "standarddeviation": "Standard deviation",
+                "validcount": "Valid count",
+                "totalcount": "Total count",
+                "percentagevalidpoints": "Percentage valid points",
+            }
 
-        dict_stats_aliased = {aliases.get(k, k): v for k, v in dict_stats.items()}
+            dict_stats_aliased = {aliases.get(k, k): v for k, v in dict_stats.items()}
 
         return dict_stats_aliased
 
@@ -203,7 +208,7 @@ class Accuracy(Workflows):
         """
         Compute altitudes difference histogram.
         """
-        logging.info("Compute histogram")
+        logging.info("Computing histogram on altitude difference")
         plt.figure(figsize=(7, 8))
         bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)
         plt.hist(self.diff_before.data.flatten(), bins=bins, color="g", alpha=0.6, label="Before_coregistration")
@@ -279,6 +284,7 @@ class Accuracy(Workflows):
             stat_items = [
                 (self.reference_elev, "reference_elev", "Statistics on reference elevation", 2),
                 (self.to_be_aligned_elev, "to_be_aligned_elev", "Statistics on to be aligned elevation", 2),
+                (aligned_elev, "aligned_elev", "Statistics on aligned elevation", 1),
                 (
                     self.diff_before,
                     "diff_elev_before_coreg",
@@ -286,7 +292,6 @@ class Accuracy(Workflows):
                     1,
                 ),
                 (self.diff_after, "diff_elev_after_coreg", "Statistics on altitude difference after coregistration", 1),
-                (aligned_elev, "aligned_elev", "Statistics aligned DEM", 1),
             ]
         else:
             stat_items = [
@@ -296,8 +301,8 @@ class Accuracy(Workflows):
             ]
 
         for data, fname, title, level in stat_items:
-            stats = self._get_stats(data)
-            if level <= self.level or not self.compute_coreg:
+            stats = self._get_stats(data, fname)
+            if (level <= self.level or not self.compute_coreg) and self.config["statistics"] is not None:
                 self.save_stat_as_csv(stats, fname)
             self.dico_to_show.append((title, self.floats_process(stats)))
 
@@ -323,7 +328,7 @@ class Accuracy(Workflows):
         :param list_dict: list containing tuples of title and various dictionaries
         :return: None
         """
-        html = "<html>\n<head><meta charset='UTF-8'><title>Qualify DEM results</title></head>\n<body>\n"
+        html = "<html>\n<head><meta charset='UTF-8'><title>Qualify elevation results</title></head>\n<body>\n"
 
         html += "<h2>Digital Elevation Model</h2>\n"
         html += "<div style='display: flex; gap: 10px;'>\n"

@@ -46,8 +46,8 @@ xdem accuracy --display_template_config
                "path_to_elev", "Path to reference elevation", "str", "", "Yes"
                "force_source_nodata", "No data elevation", "int", "", "No"
                "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "str, int", "EGM96", "No"
-               "to_vcrs", "Destination vcrs", "str, int", "EGM96", "No"
+               "from_vcrs", "Original vcrs", "str, int", None, "No"
+               "to_vcrs", "Destination vcrs", "str, int", None, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
@@ -60,8 +60,8 @@ xdem accuracy --display_template_config
                "path_to_elev", "Path to to_be_aligned elevation", "str", "", "Yes"
                "force_source_nodata", "No data elevation", "int", "", "No"
                "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
-               "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
+               "from_vcrs", "Original vcrs", "int, str", None, "No"
+               "to_vcrs", "Destination vcrs", "int, str", None, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
@@ -71,8 +71,8 @@ xdem accuracy --display_template_config
             reference_elev:
                 path_to_elev: "path_to/ref_dem.tif"
                 force_source_nodata: -32768
-                from_vcrs: "EGM96"
-                to_vcrs: "Ellipsoid"
+                from_vcrs: None
+                to_vcrs: None
             to_be_aligned_elev:
                 path_to_elev: "path_to/to_be_aligned_dem.tif"
                 path_to_mask: "path_to/mask.tif"
@@ -110,7 +110,7 @@ xdem accuracy --display_template_config
         coregistration:
           step_one:
             method: "NuthKaab"
-            extra_informations : {"max_iterations": 10}
+            extra_information : {"max_iterations": 10}
           step_two:
             method: "DHMinimize"
           sampling_grid: "reference_elev"

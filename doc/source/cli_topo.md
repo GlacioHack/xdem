@@ -45,8 +45,8 @@ xdem topo --display_template_config
         "path_to_elev", "Path to reference elevation", "str", "", "Yes"
         "force_source_nodata", "No data elevation", "int", "", "No"
         "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-        "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
-        "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
+        "from_vcrs", "Original vcrs", "int, str", None, "No"
+        "to_vcrs", "Destination vcrs", "int, str", None, "No"
 
      .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
@@ -56,8 +56,8 @@ xdem topo --display_template_config
            reference_elev:
              path_to_elev: "path_to/ref_dem.tif"
              force_source_nodata: -32768
-             from_vcrs: "EGM96"
-             to_vcrs: "Ellipsoid"
+             from_vcrs: None
+             to_vcrs: None
 
    .. tab:: statistics
 
@@ -88,7 +88,7 @@ xdem topo --display_template_config
       List or set of dictionaries for extra information.
 
       .. note::
-          - If no block is specified, slope, aspect, and max_curvature attributes are calculated by default.
+          - If no block is specified, slope, aspect, and curvature attributes are calculated by default.
           - If a block is specified but no information is provided, then no attributes will be calculated.
 
       .. code-block:: yaml
@@ -103,11 +103,11 @@ xdem topo --display_template_config
 
          terrain_attributes:
            hillshade:
-               extra_informations:
+               extra_information:
            slope:
-              extra_informations:
+              extra_information:
            aspect:
-            extra_informations:
+            extra_information:
                 degrees: False
 
       .. note::
