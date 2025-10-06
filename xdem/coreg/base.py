@@ -1807,6 +1807,11 @@ class Coreg:
         """Return a pipeline consisting of self and the other processing function."""
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
+
+        # Cancel possible initial shift(s) in CoregPipeline case
+        self.meta["inputs"]["affine"]["initial_shift"] = None
+        other.meta["inputs"]["affine"]["initial_shift"] = None
+
         return CoregPipeline([self, other])
 
     @property
@@ -2948,6 +2953,11 @@ class CoregPipeline(Coreg):
             other = [other]
 
         pipelines = self.pipeline + other
+
+        # Cancel possible initial shift(s) in CoregPipeline case
+        for method in pipelines:
+            if "affine" in method.meta["inputs"]:
+                method.meta["inputs"]["affine"]["initial_shift"] = None
 
         return CoregPipeline(pipelines)
 

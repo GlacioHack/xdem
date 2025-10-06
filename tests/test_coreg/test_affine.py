@@ -599,7 +599,7 @@ class TestAffineCoreg:
 
     def test_nuthkaab_initial_shift(self) -> None:
         """
-        Test that the initial_shift don't impact fit_and_apply process for the Nuth and Kaab coregistration.
+        Test that the initial_shift does not impact fit_and_apply process for the Nuth and Kaab coregistration.
         """
 
         # Use entire DEMs here (to compare to original values from older package versions)
