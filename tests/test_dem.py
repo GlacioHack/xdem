@@ -457,11 +457,8 @@ class TestDEM:
             output_shift = coreg_method.meta["outputs"]["affine"]
 
             nk = xdem.coreg.NuthKaab(initial_shift=shift)
-            dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-            dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
             nk.fit(dem_ref, dem_tba, random_state=42)
-
-            manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
+            manually_aligned = nk.apply(dem_tba, resampling=rio.warp.Resampling.bilinear)
 
             # Output metadata
             assert nk.meta["outputs"]["affine"] == output_shift
