@@ -29,7 +29,6 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geoutils import Raster
 from geoutils._typing import Number
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
