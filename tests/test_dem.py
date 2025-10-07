@@ -165,7 +165,7 @@ class TestDEM:
         dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
 
         mask_dem = dem > 1
-        assert isinstance(mask_dem, gu.Mask)
+        assert isinstance(mask_dem, gu.Raster)
 
     def test_copy(self) -> None:
         """

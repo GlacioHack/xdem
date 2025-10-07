@@ -33,7 +33,7 @@ import geoutils as gu
 import numpy as np
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import Mask, RasterType
+from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,
@@ -157,7 +157,7 @@ class BlockwiseCoreg:
         self: BlockwiseCoreg,
         reference_elev: NDArrayf | MArrayf | RasterType,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
     ) -> None:
         """
         Fit the coregistration model by estimating transformation parameters

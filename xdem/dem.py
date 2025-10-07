@@ -31,7 +31,7 @@ import rasterio as rio
 from affine import Affine
 from geoutils import Raster
 from geoutils._typing import Number
-from geoutils.raster import Mask, RasterType
+from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
@@ -199,7 +199,7 @@ class DEM(Raster):  # type: ignore
         vcrs: (
             Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
         ) = None,
-    ) -> DEM | Mask:
+    ) -> DEM | Raster:
         """Create a DEM from a numpy array and the georeferencing information.
 
         :param data: Input array.
@@ -226,8 +226,8 @@ class DEM(Raster):  # type: ignore
             cast_nodata=cast_nodata,
         )
 
-        # This is for casting to Mask to work
-        if not isinstance(rast, Mask):
+        # This is for casting to Raster to work
+        if not isinstance(rast, Raster):
             # Then add the vcrs to the class call (that builds on top of the parent class)
             return cls(filename_or_dataset=rast, vcrs=vcrs)
         else:
@@ -505,7 +505,7 @@ class DEM(Raster):  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg,
-        inlier_mask: Mask | NDArrayb = None,
+        inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
         random_state: int | np.random.Generator | None = None,
@@ -602,7 +602,7 @@ class DEM(Raster):  # type: ignore
     def estimate_uncertainty(
         self,
         other_elev: DEM | gpd.GeoDataFrame,
-        stable_terrain: Mask | NDArrayb = None,
+        stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
@@ -624,7 +624,7 @@ class DEM(Raster):  # type: ignore
 
         :param other_elev: Other elevation dataset to use for estimation, either of finer or similar precision for
             reliable estimates.
-        :param stable_terrain: Mask of stable terrain to use as error proxy.
+        :param stable_terrain: Raster of stable terrain to use as error proxy.
         :param approach: Whether to use Hugonnet et al., 2022 (variable errors, multiple ranges of error correlation),
             or Rolstad et al., 2009 (constant error, multiple ranges of error correlation), or a basic approach
             (constant error, single range of error correlation). Note that all approaches use robust estimators of

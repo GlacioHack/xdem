@@ -118,7 +118,6 @@ plot_formats = [(".png", 600)]
 # To avoid long path names in inheritance diagrams
 inheritance_alias = {
     "geoutils.georaster.raster.Raster": "geoutils.Raster",
-    "geoutils.georaster.raster.Mask": "geoutils.Mask",
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
     "xdem.coreg.base.Coreg": "xdem.Coreg",
