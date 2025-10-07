@@ -87,6 +87,7 @@ class BlockwiseCoreg:
             raise ValueError(
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
+
         self.procstep = step
         self.block_size_fit = block_size_fit
         # NB: in case of memory peak reduce block_size_apply

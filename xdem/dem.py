@@ -497,7 +497,7 @@ class DEM(Raster):  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
-        coreg_method: coreg.Coreg = None,
+        coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
