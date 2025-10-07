@@ -16,32 +16,19 @@ jobs:
     strategy:
       matrix:
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
-        python-version: ["3.10", "3.11", "3.12"]
-
-    # Run all shells using bash (including Windows)
-    defaults:
-      run:
-        shell: bash -l {0}
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      # We initiate the environment empty
-      - name: Initiate empty environment
-        uses: conda-incubator/setup-miniconda@v3
+      - uses: actions/setup-python@v6
         with:
-          miniforge-version: latest
-          auto-update-conda: true
-          use-mamba: true
-          channel-priority: strict
-          activate-environment: xdem-pip
           python-version: ${{ matrix.python-version }}
 
       # Use pip install
       - name: Install project
         run: |
-          mamba install pip
-          pip install -e .
+          python -m pip install . -vv
 
       # Check import works
       - name: Check import works with base environment

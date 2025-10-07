@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import copy
 import inspect
 import logging
@@ -48,20 +47,13 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
-import skimage.transform
-from geoutils._typing import Number
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
-from geoutils.raster import RasterMask, RasterType, raster
+from geoutils.raster import Raster, RasterType, raster
+from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.georeferencing import (
-    _bounds,
-    _cast_pixel_interpretation,
-    _coords,
-    _res,
-)
-from geoutils.raster.geotransformations import _resampling_method_from_str, _translate
-from tqdm import tqdm
+from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
+from geoutils.raster.geotransformations import _translate
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
@@ -70,7 +62,7 @@ from xdem.fit import (
     robust_norder_polynomial_fit,
     sumsin_1d,
 )
-from xdem.spatialstats import nd_binning, nmad
+from xdem.spatialstats import nd_binning
 
 try:
     import pytransform3d.rotations
@@ -116,69 +108,27 @@ dict_key_to_str = {
     "best_poly_order": "Best polynomial order",
     "best_nb_sin_freq": "Best number of sinusoid frequencies",
     "vshift_reduc_func": "Reduction function used to remove vertical shift",
+    "apply_vshift": "Vertical shift activated",
     "centroid": "Centroid found for affine rotation",
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
     "matrix": "Affine transformation matrix estimated",
-    "rejection_scale": "Rejection scale",
-    "num_levels": "Number of levels",
+    "only_translation": "Only translations are considered",
+    "standardize": "Input data was standardized",
+    "icp_method": "Type of ICP method",
+    "icp_picky": "Picky closest pair selection",
+    "cpd_weight": "Weight of CPD outlier removal",
 }
-
 #####################################
 # Generic functions for preprocessing
 ###########################################
 
 
-def _calculate_ddem_stats(
-    ddem: NDArrayf | MArrayf,
-    inlier_mask: NDArrayb | None = None,
-    stats_list: tuple[Callable[[NDArrayf], Number], ...] | None = None,
-    stats_labels: tuple[str, ...] | None = None,
-) -> dict[str, float]:
-    """
-    Calculate standard statistics of ddem, e.g., to be used to compare before/after coregistration.
-    Default statistics are: count, mean, median, NMAD and std.
-
-    :param ddem: The DEM difference to be analyzed.
-    :param inlier_mask: 2D boolean array of areas to include in the analysis (inliers=True).
-    :param stats_list: Statistics to compute on the DEM difference.
-    :param stats_labels: Labels of the statistics to compute (same length as stats_list).
-
-    Returns: a dictionary containing the statistics
-    """
-    # Default stats - Cannot be put in default args due to circular import with xdem.spatialstats.nmad.
-    if (stats_list is None) or (stats_labels is None):
-        stats_list = (np.size, np.mean, np.median, nmad, np.std)
-        stats_labels = ("count", "mean", "median", "nmad", "std")
-
-    # Check that stats_list and stats_labels are correct
-    if len(stats_list) != len(stats_labels):
-        raise ValueError("Number of items in `stats_list` and `stats_labels` should be identical.")
-    for stat, label in zip(stats_list, stats_labels):
-        if not callable(stat):
-            raise ValueError(f"Item {stat} in `stats_list` should be a callable/function.")
-        if not isinstance(label, str):
-            raise ValueError(f"Item {label} in `stats_labels` should be a string.")
-
-    # Get the mask of valid and inliers pixels
-    nan_mask = ~np.isfinite(ddem)
-    if inlier_mask is None:
-        inlier_mask = np.ones(ddem.shape, dtype="bool")
-    valid_ddem = ddem[~nan_mask & inlier_mask]
-
-    # Calculate stats
-    stats = {}
-    for stat, label in zip(stats_list, stats_labels):
-        stats[label] = stat(valid_ddem)
-
-    return stats
-
-
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-    inlier_mask: NDArrayb | RasterMask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -255,7 +205,7 @@ def _preprocess_coreg_fit_raster_raster(
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
-        if isinstance(inlier_mask, RasterMask):
+        if isinstance(inlier_mask, Raster):
             inlier_mask = inlier_mask.data.filled(False).squeeze()
         else:
             inlier_mask = np.asarray(inlier_mask).squeeze()
@@ -283,7 +233,7 @@ def _preprocess_coreg_fit_raster_raster(
 def _preprocess_coreg_fit_raster_point(
     raster_elev: NDArrayf | MArrayf | RasterType,
     point_elev: gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | RasterMask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -311,7 +261,7 @@ def _preprocess_coreg_fit_raster_point(
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
-        if isinstance(inlier_mask, RasterMask):
+        if isinstance(inlier_mask, Raster):
             inlier_mask = inlier_mask.data.filled(False).squeeze()
         else:
             inlier_mask = np.asarray(inlier_mask).squeeze()
@@ -343,7 +293,7 @@ def _preprocess_coreg_fit_point_point(
 def _preprocess_coreg_fit(
     reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
     to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | RasterMask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -569,7 +519,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
     """
     Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
 
-    :param valid_mask: Mask of valid values (inlier and not nodata).
+    :param valid_mask: Raster of valid values (inlier and not nodata).
     """
 
     # This should never happen
@@ -619,6 +569,7 @@ def _get_subsample_mask_pts_rst(
     tba_elev: NDArrayf | gpd.GeoDataFrame,
     inlier_mask: NDArrayb,
     transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+    z_name: str,
     area_or_point: Literal["Area", "Point"] | None,
     aux_vars: None | dict[str, NDArrayf] = None,
 ) -> NDArrayb:
@@ -666,10 +617,13 @@ def _get_subsample_mask_pts_rst(
         pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
 
+        # Remove non-finite values from point dataset
+        pts_elev = pts_elev[np.isfinite(pts_elev[z_name].values)]
+
         # Get coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
 
-        # Get valid mask ahead of subsampling to have the exact number of requested subsamples by user
+        # Get valid mask ahead of subsampling to have the exact number of requested subsamples
         if aux_vars is not None:
             valid_mask = np.logical_and.reduce(
                 (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in aux_vars.values()))
@@ -680,15 +634,16 @@ def _get_subsample_mask_pts_rst(
         # Convert inlier mask to points to be able to determine subsample later
         # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
         # Interpolates boolean mask as integers
-        # TODO: Pass area_or_point all the way to here
-        valid_mask = np.floor(
+        # TODO: Create a function in GeoUtils that can compute the valid boolean mask of an interpolation without
+        #  having to convert data to float32
+        valid_mask = valid_mask.astype(np.float32)
+        valid_mask[valid_mask == 0] = np.nan
+        valid_mask = np.isfinite(
             _interp_points(array=valid_mask, transform=transform, points=pts, area_or_point=area_or_point)
-        ).astype(bool)
+        )
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
         sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
-
-    # TODO: Move check to Coreg.fit()?
 
     return sub_mask
 
@@ -701,13 +656,14 @@ def _subsample_on_mask(
     transform: rio.transform.Affine,
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
+    return_coords: bool = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None | tuple[NDArrayf, NDArrayf]]:
     """
     Perform subsampling on mask for raster-raster or point-raster datasets on valid points of all inputs (including
     potential auxiliary variables).
 
     Returns 1D arrays of subsampled inputs: reference elevation, to-be-aligned elevation and auxiliary variables
-    (in dictionary).
+    (in dictionary), and (optionally) tuple of X/Y coordinates.
     """
 
     # For two rasters
@@ -723,12 +679,22 @@ def _subsample_on_mask(
         else:
             sub_bias_vars = None
 
+        # Return coordinates if required
+        if return_coords:
+            coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=area_or_point)
+            sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
+        else:
+            sub_coords = None
+
     # For one raster and one point cloud
     else:
 
         # Identify which dataset is point or raster
         pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
         rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+
+        # Remove invalid points
+        pts_elev = pts_elev[np.isfinite(pts_elev[z_name].values)]
 
         # Subsample point coordinates
         pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
@@ -757,7 +723,45 @@ def _subsample_on_mask(
         else:
             sub_bias_vars = None
 
-    return sub_ref, sub_tba, sub_bias_vars
+        # Return coordinates if required
+        if return_coords:
+            sub_coords = pts
+        else:
+            sub_coords = None
+
+    return sub_ref, sub_tba, sub_bias_vars, sub_coords
+
+
+@overload
+def _preprocess_pts_rst_subsample(
+    params_random: InRandomDict,
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    aux_vars: None | dict[str, NDArrayf] = None,
+    *,
+    return_coords: Literal[False] = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None]: ...
+
+
+@overload
+def _preprocess_pts_rst_subsample(
+    params_random: InRandomDict,
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: rio.transform.Affine,
+    crs: rio.crs.CRS,
+    area_or_point: Literal["Area", "Point"] | None,
+    z_name: str,
+    aux_vars: None | dict[str, NDArrayf] = None,
+    *,
+    return_coords: Literal[True],
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], tuple[NDArrayf, NDArrayf]]: ...
 
 
 def _preprocess_pts_rst_subsample(
@@ -770,7 +774,8 @@ def _preprocess_pts_rst_subsample(
     area_or_point: Literal["Area", "Point"] | None,
     z_name: str,
     aux_vars: None | dict[str, NDArrayf] = None,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
+    return_coords: bool = False,
+) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None | tuple[NDArrayf, NDArrayf]]:
     """
     Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
     (and interpolated in the case of point-raster input).
@@ -787,11 +792,12 @@ def _preprocess_pts_rst_subsample(
         inlier_mask=inlier_mask,
         transform=transform,
         area_or_point=area_or_point,
+        z_name=z_name,
         aux_vars=aux_vars,
     )
 
     # Perform subsampling on mask for all inputs
-    sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(
+    sub_ref, sub_tba, sub_bias_vars, sub_coords = _subsample_on_mask(
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         aux_vars=aux_vars,
@@ -799,10 +805,11 @@ def _preprocess_pts_rst_subsample(
         transform=transform,
         area_or_point=area_or_point,
         z_name=z_name,
+        return_coords=return_coords,
     )
 
     # Return 1D arrays of subsampled points at the same location
-    return sub_ref, sub_tba, sub_bias_vars
+    return sub_ref, sub_tba, sub_bias_vars, sub_coords
 
 
 @overload
@@ -988,8 +995,85 @@ def _bin_or_and_fit_nd(
 ###############################################
 
 
+def matrix_from_translations_rotations(
+    t1: float = 0.0,
+    t2: float = 0.0,
+    t3: float = 0.0,
+    alpha1: float = 0.0,
+    alpha2: float = 0.0,
+    alpha3: float = 0.0,
+    use_degrees: bool = True,
+) -> NDArrayf:
+    """
+    Build rigid affine matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees or radians).
+
+    The euler rotations use the extrinsic convention.
+
+    :param t1: Translation in the X (west-east) direction (unit of coordinates).
+    :param t2: Translation in the Y (south-north) direction (unit of coordinates).
+    :param t3: Translation in the Z (vertical) direction (unit of DEM).
+    :param alpha1: Rotation around the X (west-east) direction.
+    :param alpha2: Rotation around the Y (south-north) direction.
+    :param alpha3: Rotation around the Z (vertical) direction.
+    :param use_degrees: Whether to use degrees for input rotations, otherwise radians.
+
+    :raises ValueError: If the given translation or rotations contained invalid values.
+
+    :return: Rigid affine matrix of transformation.
+    """
+
+    # Initialize diagonal matrix
+    matrix = np.eye(4)
+    # Convert euler angles to rotation matrix
+    e = np.array([alpha1, alpha2, alpha3])
+    # If angles were given in degrees
+    if use_degrees:
+        e = np.deg2rad(e)
+    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+
+    # Add rotation matrix, and translations
+    matrix[0:3, 0:3] = rot_matrix
+    matrix[:3, 3] = [t1, t2, t3]
+
+    return matrix
+
+
+def translations_rotations_from_matrix(
+    matrix: NDArrayf, return_degrees: bool = True
+) -> tuple[float, float, float, float, float, float]:
+    """
+    Extract 3 translations (unit of coordinates) and 3 rotations (degrees or radians) from rigid affine matrix.
+
+    The extracted euler rotations use the extrinsic convention.
+
+    :param matrix: Rigid affine matrix of transformation.
+    :param return_degrees: Whether to return rotations in degrees, otherwise radians.
+
+    :return: Translations in the X, Y and Z direction and rotations around the X, Y and Z directions.
+    """
+
+    # Extract translations
+    t1, t2, t3 = matrix[:3, 3]
+
+    # Get rotations from affine matrix
+    rots = pytransform3d.rotations.euler_from_matrix(matrix[:3, :3], i=0, j=1, k=2, extrinsic=True, strict_check=True)
+    if return_degrees:
+        rots = np.rad2deg(np.array(rots))
+
+    # Extract rotations
+    alpha1, alpha2, alpha3 = rots
+
+    return t1, t2, t3, alpha1, alpha2, alpha3
+
+
 def invert_matrix(matrix: NDArrayf) -> NDArrayf:
-    """Invert a transformation matrix."""
+    """
+    Invert a transformation matrix.
+
+    :param matrix: Affine transformation matrix.
+
+    :return: Inverted transformation matrix.
+    """
     with warnings.catch_warnings():
         # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
         warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
@@ -997,6 +1081,35 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
         checked_matrix = pytransform3d.transformations.check_transform(matrix)
         # Invert the transform if wanted.
         return pytransform3d.transformations.invert_transform(checked_matrix)
+
+
+def _apply_matrix_pts_mat(
+    mat: NDArrayf,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    invert: bool = False,
+) -> NDArrayf:
+    """Apply matrix to points as a 3D array with 3D array output (to improve speed in some functions)."""
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # First, get 4xN array, adding a column of ones for translations during matrix multiplication
+    points = np.concatenate((mat, np.ones((1, mat.shape[1]))))
+
+    # Temporarily subtract centroid coordinates
+    if centroid is not None:
+        points[:3, :] -= np.array(centroid)[:, None]
+
+    # Transform using matrix multiplication, and get only the first three columns
+    transformed_points = (matrix @ points)[:3, :]
+
+    # Add back centroid coordinates
+    if centroid is not None:
+        transformed_points += np.array(centroid)[:, None]
+
+    return transformed_points
 
 
 def _apply_matrix_pts_arr(
@@ -1202,21 +1315,6 @@ def _iterate_affine_regrid_small_rotations(
     return transformed_dem.data.filled(np.nan), transform
 
 
-def _get_rotations_from_matrix(matrix: NDArrayf) -> tuple[float, float, float]:
-    """
-    Get rotation angles along each axis from the 4x4 affine matrix, derived as Euler extrinsic angles in degrees.
-
-    :param matrix: Affine matrix.
-
-    :return: Euler extrinsic rotation angles along X, Y and Z (degrees).
-    """
-
-    # The rotation matrix is composed of the first 3 rows/columns
-    rot_matrix = matrix[0:3, 0:3]
-    angles = pytransform3d.rotations.euler_from_matrix(R=rot_matrix, i=0, j=1, k=2, extrinsic=True)
-    return np.rad2deg(angles)
-
-
 def _apply_matrix_rst(
     dem: NDArrayf,
     transform: rio.transform.Affine,
@@ -1268,7 +1366,7 @@ def _apply_matrix_rst(
         return dem + matrix[2, 3], new_transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
-    rotations = _get_rotations_from_matrix(matrix)
+    rotations = translations_rotations_from_matrix(matrix)[3:]
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
         new_dem, transform = _iterate_affine_regrid_small_rotations(
             dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling
@@ -1558,10 +1656,13 @@ class InSpecificDict(TypedDict, total=False):
     angle: float
     # (Using Deramp) Polynomial order selected for deramping
     poly_order: int
+    # (Using ICP) Method type to compute 3D distances
+    icp_method: Literal["point-to-point", "point-to-plane"]
+    # (Using ICP) Picky selection of closest pairs
+    icp_picky: bool
 
-    # (Using ICP)
-    rejection_scale: float
-    num_levels: int
+    # (Using CPD) Weight for outlier removal
+    cpd_weight: float
 
 
 class OutSpecificDict(TypedDict, total=False):
@@ -1578,6 +1679,12 @@ class InAffineDict(TypedDict, total=False):
 
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
+    # Vertical shift activated
+    apply_vshift: bool
+    # Apply coregistration method only for translations
+    only_translation: bool
+    # Standardize input data for numerics
+    standardize: bool
 
 
 class OutAffineDict(TypedDict, total=False):
@@ -1860,7 +1967,7 @@ class Coreg:
         """
         Get mask of values to subsample on valid mask.
 
-        :param valid_mask: Mask of valid values (inlier and not nodata).
+        :param valid_mask: Raster of valid values (inlier and not nodata).
         """
 
         # Get random parameters
@@ -1908,11 +2015,12 @@ class Coreg:
             inlier_mask=inlier_mask,
             transform=transform,
             area_or_point=area_or_point,
+            z_name=z_name,
             aux_vars=aux_vars,
         )
 
         # Perform subsampling on mask for all inputs
-        sub_ref, sub_tba, sub_bias_vars = _subsample_on_mask(
+        sub_ref, sub_tba, sub_bias_vars, _ = _subsample_on_mask(
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             aux_vars=aux_vars,
@@ -1931,7 +2039,7 @@ class Coreg:
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | RasterMask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -1947,7 +2055,7 @@ class Coreg:
 
         :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
         :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
-        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param inlier_mask: Raster or boolean array of areas to include (inliers=True).
         :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
         :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2136,7 +2244,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: MArrayf,
-        inlier_mask: NDArrayb | RasterMask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2156,7 +2264,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf,
-        inlier_mask: NDArrayb | RasterMask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2176,7 +2284,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | RasterMask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2195,7 +2303,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | RasterMask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2213,7 +2321,7 @@ class Coreg:
 
         :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
         :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
-        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param inlier_mask: Raster or boolean array of areas to include (inliers=True).
         :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
         :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2261,153 +2369,6 @@ class Coreg:
         )
 
         return aligned_dem
-
-    def residuals(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        subsample: float | int = 1.0,
-        random_state: int | np.random.Generator | None = None,
-    ) -> NDArrayf:
-        """
-        Calculate the residual offsets (the difference) between two DEMs after applying the transformation.
-
-        :param reference_elev: 2D array of elevation values acting reference.
-        :param to_be_aligned_elev: 2D array of elevation values to be aligned.
-        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
-        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
-        :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
-        :param random_state: Random state or seed number to use for calculations (to fix random sampling during testing)
-
-        :returns: A 1D array of finite residuals.
-        """
-
-        # Apply the transformation to the dem to be aligned
-        aligned_elev = self.apply(to_be_aligned_elev, transform=transform, crs=crs)[0]
-
-        # Pre-process the inputs, by reprojecting and subsampling
-        ref_dem, align_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-        )
-
-        # Calculate the DEM difference
-        diff = ref_dem - align_elev
-
-        # Sometimes, the float minimum (for float32 = -3.4028235e+38) is returned. This and inf should be excluded.
-        full_mask = np.isfinite(diff)
-        if "float" in str(diff.dtype):
-            full_mask[(diff == np.finfo(diff.dtype).min) | np.isinf(diff)] = False
-
-        # Return the difference values within the full inlier mask
-        return diff[full_mask]
-
-    @overload
-    def error(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        error_type: list[str],
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> list[np.floating[Any] | float | np.integer[Any] | int]: ...
-
-    @overload
-    def error(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        error_type: str = "nmad",
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int: ...
-
-    def error(
-        self,
-        reference_elev: NDArrayf,
-        to_be_aligned_elev: NDArrayf,
-        error_type: str | list[str] = "nmad",
-        inlier_mask: NDArrayb | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-    ) -> np.floating[Any] | float | np.integer[Any] | int | list[np.floating[Any] | float | np.integer[Any] | int]:
-        """
-        Calculate the error of a coregistration approach.
-
-        Choices:
-            - "nmad": Default. The Normalized Median Absolute Deviation of the residuals.
-            - "median": The median of the residuals.
-            - "mean": The mean/average of the residuals
-            - "std": The standard deviation of the residuals.
-            - "rms": The root mean square of the residuals.
-            - "mae": The mean absolute error of the residuals.
-            - "count": The residual count.
-
-        :param reference_elev: 2D array of elevation values acting reference.
-        :param to_be_aligned_elev: 2D array of elevation values to be aligned.
-        :param error_type: The type of error measure to calculate. May be a list of error types.
-        :param inlier_mask: Optional. 2D boolean array of areas to include in the analysis (inliers=True).
-        :param transform: Optional. Transform of the reference_dem. Mandatory in some cases.
-        :param crs: Optional. CRS of the reference_dem. Mandatory in some cases.
-        :param area_or_point: Pixel interpretation of the DEMs, only if provided as 2D arrays.
-
-        :returns: The error measure of choice for the residuals.
-        """
-        if isinstance(error_type, str):
-            error_type = [error_type]
-
-        residuals = self.residuals(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-        )
-
-        def rms(res: NDArrayf) -> np.floating[Any]:
-            return np.sqrt(np.mean(np.square(res)))
-
-        def mae(res: NDArrayf) -> np.floating[Any]:
-            return np.mean(np.abs(res))
-
-        def count(res: NDArrayf) -> int:
-            return res.size
-
-        error_functions: dict[str, Callable[[NDArrayf], np.floating[Any] | float | np.integer[Any] | int]] = {
-            "nmad": nmad,
-            "median": np.median,
-            "mean": np.mean,
-            "std": np.std,
-            "rms": rms,
-            "mae": mae,
-            "count": count,
-        }
-
-        try:
-            errors = [error_functions[err_type](residuals) for err_type in error_type]
-        except KeyError as exception:
-            raise ValueError(
-                f"Invalid 'error_type'{'s' if len(error_type) > 1 else ''}: "
-                f"'{error_type}'. Choices: {list(error_functions.keys())}"
-            ) from exception
-
-        return errors if len(errors) > 1 else errors[0]
 
     def _fit_func(
         self,
@@ -2774,7 +2735,7 @@ class CoregPipeline(Coreg):
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | RasterMask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2992,4 +2953,3 @@ class CoregPipeline(Coreg):
                 transform_mgr.add_transform(i, i + 1, new_matrix)
 
             return transform_mgr.get_transform(0, len(self.pipeline))
-

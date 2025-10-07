@@ -21,74 +21,14 @@ from __future__ import annotations
 
 import copy
 import functools
+import sys
 import warnings
 from typing import Any, Callable
 
+import yaml  # type: ignore
 from packaging.version import Version
 
-try:
-    import yaml  # type: ignore
-
-    _has_yaml = True
-except ImportError:
-    _has_yaml = False
-
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
-
-import numpy as np
-
 import xdem
-from xdem._typing import NDArrayf
-
-
-def generate_random_field(
-    shape: tuple[int, int], corr_size: int, random_state: int | np.random.Generator | None = None
-) -> NDArrayf:
-    """
-    Generate a semi-random gaussian field (to simulate a DEM or DEM error)
-
-    :param shape: The output shape of the field.
-    :param corr_size: The correlation size of the field.
-    :param random_state: Seed for random number generator.
-
-    :examples:
-        >>> generate_random_field((4, 5), corr_size=2, random_state=1).round(2)
-        array([[0.74, 0.74, 0.75, 0.75, 0.75],
-               [0.69, 0.69, 0.7 , 0.71, 0.71],
-               [0.51, 0.51, 0.54, 0.57, 0.58],
-               [0.45, 0.47, 0.5 , 0.53, 0.54]])
-
-    :returns: A numpy array of semi-random values from 0 to 1
-    """
-
-    rng = np.random.default_rng(random_state)
-
-    if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'.")
-
-    field = cv2.resize(
-        cv2.GaussianBlur(
-            np.repeat(
-                np.repeat(
-                    rng.integers(0, 255, (shape[0] // corr_size, shape[1] // corr_size), dtype="uint8"),
-                    corr_size,
-                    axis=0,
-                ),
-                corr_size,
-                axis=1,
-            ),
-            ksize=(2 * corr_size + 1, 2 * corr_size + 1),
-            sigmaX=corr_size,
-        )
-        / 255,
-        dsize=(shape[1], shape[0]),
-    )
-    return field
 
 
 def deprecate(removal_version: Version = None, details: str = None) -> Callable[[Any], Any]:
@@ -180,14 +120,27 @@ def copy_doc(
         # Replace argument description of dem and resolution (not used in the DEM class, only in terrain)
         if remove_dem_res_params:
 
+            # Get Python version (spaces of docstring are not handled the same way after Python 3.13)
+            pyv = Version(".".join(str(getattr(sys.version_info, v)) for v in ["major", "minor", "micro"]))
+
             # Find and remove them if they exist
             if ":param dem:" in other_doc:
-                dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+                if pyv >= Version("3.13"):
+                    dem_section = "\n:param dem:" + other_doc.split("\n:param dem:")[1].split("\n")[0]
+                else:
+                    dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+
                 other_doc = other_doc.replace(dem_section, "")
             if ":param resolution:" in other_doc:
-                resolution_section = (
-                    "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
-                )
+                if pyv >= Version("3.13"):
+                    resolution_section = (
+                        "\n:param resolution:" + other_doc.split("\n:param resolution:")[1].split("\n")[0]
+                    )
+                else:
+                    resolution_section = (
+                        "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                    )
+
                 other_doc = other_doc.replace(resolution_section, "")
 
         # Remove docstring examples
@@ -211,9 +164,6 @@ def diff_environment_yml(
     :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
-
-    if not _has_yaml:
-        raise ValueError("Test dependency needed. Install 'pyyaml'.")
 
     if not input_dict:
         # Load the yml as dictionaries

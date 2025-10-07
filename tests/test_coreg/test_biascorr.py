@@ -321,7 +321,7 @@ class TestBiasCorr:
             scipy.optimize.curve_fit,
         ],
     )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": np.arange(0, 1000, 100)}))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (100, {"elevation": np.arange(0, 1000, 100)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_and_fit_1d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
@@ -377,6 +377,10 @@ class TestBiasCorr:
     def test_biascorr__bin_and_fit_2d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
 
+        # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
+        # We don't care for this test
+        warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated*")
+
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(
             fit_or_bin="bin_and_fit",
@@ -393,7 +397,7 @@ class TestBiasCorr:
 
         # Run with input parameter, and using only 100 subsamples for speed
         # Passing p0 defines the number of parameters to solve for
-        bcorr.fit(**elev_fit_args, subsample=100, p0=[0, 0, 0, 0], random_state=42)
+        bcorr.fit(**elev_fit_args, subsample=1000, p0=[0, 0, 0, 0], random_state=42)
 
         # Check that variable names are defined during fit
         assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation", "slope"]

@@ -138,6 +138,7 @@ advanced_examples/index.rst
 :caption: Reference
 :maxdepth: 2
 
+global_cli_information
 api
 config
 release_notes
@@ -148,9 +149,7 @@ release_notes
 :maxdepth: 2
 
 publis
-background
-authors
-license
+credits
 ```
 
 # Indices and tables

@@ -94,5 +94,4 @@ xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demco
 
 ::::
 
-More details about the people behind xDEM, funding sources, and the package's objectives can be found on the **{ref}`background` reference
-page**.
+More details about the people behind xDEM, funding sources, and the package's objectives can be found on the **{ref}`credits` pages**.

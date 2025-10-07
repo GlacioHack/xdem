@@ -1,4 +1,5 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2025 xDEM developers
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -19,6 +20,7 @@
 """This module defines the DEM class."""
 from __future__ import annotations
 
+import logging
 import pathlib
 import warnings
 from typing import Any, Callable, Literal, overload
@@ -27,19 +29,20 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geoutils import Raster
-from geoutils.raster import RasterMask, RasterType
+from geoutils._typing import Number
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.stats import nmad
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
-from skgstat import Variogram
 
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem.coreg import AffineCoreg, Coreg, CoregPipeline
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
-    nmad,
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
@@ -211,7 +214,6 @@ class DEM(Raster):  # type: ignore
 
         :returns: DEM created from the provided array and georeferencing.
         """
-        # We first apply the from_array of the parent class
         rast = Raster.from_array(
             data=data,
             transform=transform,
@@ -221,7 +223,7 @@ class DEM(Raster):  # type: ignore
             tags=tags,
             cast_nodata=cast_nodata,
         )
-        # Then add the vcrs to the class call (that builds on top of the parent class)
+
         return cls(filename_or_dataset=rast, vcrs=vcrs)
 
     @property
@@ -384,81 +386,123 @@ class DEM(Raster):  # type: ignore
             )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees)
+    def slope(
+        self,
+        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        degrees: bool = True,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+        return terrain.slope(self, method=method, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
-        method: str = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
         degrees: bool = True,
+        mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees)
+        return terrain.aspect(self, method=method, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
-        self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
+        self,
+        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        azimuth: float = 315.0,
+        altitude: float = 45.0,
+        z_factor: float = 1.0,
+        mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.hillshade(self, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
+        return terrain.hillshade(
+            self,
+            method=method,
+            azimuth=azimuth,
+            altitude=altitude,
+            z_factor=z_factor,
+            mp_config=mp_config,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self) -> RasterType:
+    def curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self) -> RasterType:
-
-        return terrain.planform_curvature(self)
+        return terrain.curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self) -> RasterType:
+    def planform_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.profile_curvature(self)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self) -> RasterType:
-
-        return terrain.maximum_curvature(self)
+        return terrain.planform_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def topographic_position_index(self, window_size: int = 3) -> RasterType:
+    def profile_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.topographic_position_index(self, window_size=window_size)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
-
-        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size)
+        return terrain.profile_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def roughness(self, window_size: int = 3) -> RasterType:
+    def maximum_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.roughness(self, window_size=window_size)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def rugosity(self) -> RasterType:
-
-        return terrain.rugosity(self)
+        return terrain.maximum_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(self, window_size: int = 13) -> RasterType:
+    def topographic_position_index(
+        self,
+        window_size: int = 3,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        return terrain.fractal_roughness(self, window_size=window_size)
+        return terrain.topographic_position_index(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def terrain_ruggedness_index(
+        self,
+        method: Literal["Riley", "Wilson"] = "Riley",
+        window_size: int = 3,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def roughness(self, window_size: int = 3, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.roughness(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def rugosity(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.rugosity(self, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def fractal_roughness(self, window_size: int = 13, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.fractal_roughness(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def texture_shading(
+        self,
+        alpha: float = 0.8,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.texture_shading(
+            self,
+            alpha=alpha,
+            mp_config=mp_config,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
-    def coregister_3d(
+    def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg = None,
-        inlier_mask: RasterMask | NDArrayb = None,
+        inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-        **kwargs: Any,
+        estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
+        random_state: int | np.random.Generator | None = None,
+        **kwargs,
     ) -> DEM:
         """
         Coregister DEM to a reference DEM in three dimensions.
@@ -470,27 +514,88 @@ class DEM(Raster):  # type: ignore
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
+        :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
+            the coregistration process begins.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
+            the array/transform will be updated (if possible) and no resampling is done. \
+            Useful to avoid spreading data gaps.
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
-        :return: Coregistered DEM.
+        :return: Coregistered DEM
         """
 
-        if coreg_method is None:
-            coreg_method = coreg.NuthKaab()
+        src_dem = self.copy()
 
-        coreg_method.fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=self,
+        # Check inputs
+        if not isinstance(coreg_method, Coreg):
+            raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
+
+        # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
+        if estimated_initial_shift:
+            if not (
+                isinstance(estimated_initial_shift, (list, tuple))
+                and len(estimated_initial_shift) == 2
+                and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
+            ):
+                raise ValueError(
+                    "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
+                )
+            if isinstance(coreg_method, CoregPipeline):
+                if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
+                    raise TypeError(
+                        "An initial shift has been provided, but none of the coregistration methods in the pipeline "
+                        "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
+                    )
+            elif not isinstance(coreg_method, AffineCoreg):
+                raise TypeError(
+                    "An initial shift has been provided, but the coregistration method is not affine. "
+                    "An affine coregistration method (e.g., AffineCoreg) is required."
+                )
+
+            # convert shift
+            shift_x = estimated_initial_shift[0] * reference_elev.res[0]
+            shift_y = estimated_initial_shift[1] * reference_elev.res[1]
+
+            # Apply the shift to the source dem
+            reference_elev = reference_elev.translate(shift_x, shift_y)
+
+        aligned_dem = coreg_method.fit_and_apply(
+            reference_elev,
+            src_dem,
             inlier_mask=inlier_mask,
+            random_state=random_state,
             bias_vars=bias_vars,
             **kwargs,
         )
-        return coreg_method.apply(self)  # type: ignore
+
+        # # Add the initial shift to the calculated shift
+        if estimated_initial_shift:
+
+            def update_shift(
+                coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
+            ) -> None:
+                if isinstance(coreg_method, CoregPipeline):
+                    for step in coreg_method.pipeline:
+                        update_shift(step)
+                else:
+                    # check if the keys exist
+                    if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
+                        if "shift_x" in coreg_method.meta["outputs"]["affine"]:
+                            coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
+                            logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
+                        if "shift_y" in coreg_method.meta["outputs"]["affine"]:
+                            coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
+                            logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
+
+            update_shift(coreg_method)
+
+        return aligned_dem
 
     def estimate_uncertainty(
         self,
         other_elev: DEM | gpd.GeoDataFrame,
-        stable_terrain: RasterMask | NDArrayb = None,
+        stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
@@ -499,9 +604,9 @@ class DEM(Raster):  # type: ignore
         list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
         z_name: str = "z",
         random_state: int | np.random.Generator | None = None,
-    ) -> tuple[RasterType, Variogram]:
+    ) -> tuple[RasterType, Callable[[NDArrayf], NDArrayf]]:
         """
-        Estimate uncertainty of DEM.
+        Estimate the uncertainty of DEM.
 
         Derives either a map of variable errors (based on slope and curvature by default) and a function describing the
         spatial correlation of error (between 0 and 1) with spatial lag (distance between observations).
@@ -512,7 +617,7 @@ class DEM(Raster):  # type: ignore
 
         :param other_elev: Other elevation dataset to use for estimation, either of finer or similar precision for
             reliable estimates.
-        :param stable_terrain: Mask of stable terrain to use as error proxy.
+        :param stable_terrain: Raster of stable terrain to use as error proxy.
         :param approach: Whether to use Hugonnet et al., 2022 (variable errors, multiple ranges of error correlation),
             or Rolstad et al., 2009 (constant error, multiple ranges of error correlation), or a basic approach
             (constant error, single range of error correlation). Note that all approaches use robust estimators of
@@ -525,10 +630,12 @@ class DEM(Raster):  # type: ignore
         :param variogram_estimator: Estimator for empirical variogram, defaults to Dowd for robustness and consistency
             with the NMAD estimator for the spread.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
         :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity). Either rasters
             or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
         :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
             a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
+        :param random_state: State or seed to use for randomization.
 
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """
@@ -556,9 +663,9 @@ class DEM(Raster):  # type: ignore
         if precision_of_other == "same":
             dh /= np.sqrt(2)
 
-        # If approach allows heteroscedasticity, derive a map of errors
+        # If the approach allows heteroscedasticity, derive a map of errors
         if approach_dict[approach]["heterosc"]:
-            # Derive terrain attributes of DEM if string are passed in the list of variables
+            # Derive terrain attributes of DEM if string is passed in the list of variables
             list_var_rast = []
             for var in list_vars:
                 if isinstance(var, str):

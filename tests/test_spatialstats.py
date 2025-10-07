@@ -16,7 +16,7 @@ from geoutils import Raster, Vector
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
-from xdem.spatialstats import EmpiricalVariogramKArgs, nmad
+from xdem.spatialstats import EmpiricalVariogramKArgs, neff_hugonnet_approx
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -35,28 +35,6 @@ def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
     mask = outlines.create_mask(ddem)
 
     return reference_raster, ddem, mask, outlines
-
-
-class TestStats:
-
-    # Load data for the entire test class
-    ref, diff, mask, outlines = load_ref_and_diff()
-
-    def test_nmad(self) -> None:
-        """Test NMAD functionality runs on any type of input"""
-
-        # Check that the NMAD is computed the same with a raster, masked array or NaN array
-        nmad_raster = nmad(self.diff)
-        nmad_ma = nmad(self.diff.data)
-        nmad_array = nmad(self.diff.get_nanarray())
-
-        assert nmad_raster == nmad_ma == nmad_array
-
-        # Check that the scaling factor works
-        nmad_1 = nmad(self.diff, nfact=1)
-        nmad_2 = nmad(self.diff, nfact=2)
-
-        assert nmad_1 * 2 == nmad_2
 
 
 class TestBinning:
@@ -404,14 +382,14 @@ class TestBinning:
             values=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
             list_var_names=["var1", "var2"],
-            statistics=[xdem.spatialstats.nmad],
+            statistics=[gu.stats.nmad],
         )
         unscaled_fun = xdem.spatialstats.interp_nd_binning(
             df_binning, list_var_names=["var1", "var2"], statistic="nmad"
         )
         # The zscore spread should not be one right after binning
         zscores = self.diff[~self.mask] / unscaled_fun((self.slope[~self.mask], self.maximum_curv[~self.mask]))
-        scale_fac = xdem.spatialstats.nmad(zscores)
+        scale_fac = gu.stats.nmad(zscores)
         assert scale_fac != 1
 
         # Filter with a factor of 3 and the standard deviation (not default values) and check the function outputs
@@ -467,11 +445,13 @@ class TestBinning:
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
                 dvalues="not_an_array", stable_mask=~self.mask, list_var=[self.slope.get_nanarray()]
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Raster, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
                 dvalues=self.diff, stable_mask="not_a_vector_or_array", list_var=[self.slope.get_nanarray()]
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(
+            ValueError, match="The unstable mask must be a Vector, Raster, GeoDataFrame or NumPy array."
+        ):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_var=[self.slope.get_nanarray()]
             )
@@ -923,11 +903,13 @@ class TestVariogram:
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues="not_an_array", stable_mask=~self.mask, list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Raster, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, stable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(
+            ValueError, match="The unstable mask must be a Vector, Raster, GeoDataFrame or NumPy array."
+        ):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
@@ -1066,31 +1048,23 @@ class TestNeffEstimation:
         )
 
         # Check that the function runs with default parameters
-        # t0 = time.time()
         neff_exact = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model
         )
-        # t1 = time.time()
 
         # Check that the non-vectorized version gives the same result
         neff_exact_nv = xdem.spatialstats.neff_exact(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, vectorized=False
         )
-        # t2 = time.time()
         assert neff_exact == pytest.approx(neff_exact_nv, rel=0.001)
 
-        # Check that the vectorized version is faster (vectorized for about 250 points here)
-        # assert (t1 - t0) < (t2 - t1)
-
         # Check that the approximation function runs with default parameters, sampling 100 out of 250 samples
-        # t3 = time.time()
-        neff_approx = xdem.spatialstats.neff_hugonnet_approx(
+        neff_approx = neff_hugonnet_approx(
             coords=coords, errors=errors, params_variogram_model=params_variogram_model, subsample=100, random_state=42
         )
-        # t4 = time.time()
 
         # Check that the non-vectorized version gives the same result, sampling 100 out of 250 samples
-        neff_approx_nv = xdem.spatialstats.neff_hugonnet_approx(
+        neff_approx_nv = neff_hugonnet_approx(
             coords=coords,
             errors=errors,
             params_variogram_model=params_variogram_model,
@@ -1101,12 +1075,24 @@ class TestNeffEstimation:
 
         assert neff_approx == pytest.approx(neff_approx_nv, rel=0.001)
 
-        # Check that the approximation version is faster within 30% error
-        # TODO: find a more robust way to test time for CI
-        # assert (t4 - t3) < (t1 - t0)
-
         # Check that the approximation is about the same as the original estimate within 10%
         assert neff_approx == pytest.approx(neff_exact, rel=0.1)
+
+        # Check that the approximation works even on large dataset without creating memory errors
+        # 100,000 points squared (pairwise) should use more than 64GB of RAM without subsample
+        rng = np.random.default_rng(42)
+        coords = rng.normal(size=(100000, 2))
+        errors = rng.normal(size=(100000))
+        # This uses a subsample of 100, so should run just fine despite the large size
+        neff_approx_nv = neff_hugonnet_approx(
+            coords=coords,
+            errors=errors,
+            params_variogram_model=params_variogram_model,
+            subsample=100,
+            vectorized=True,
+            random_state=42,
+        )
+        assert neff_approx_nv is not None
 
     def test_number_effective_samples(self) -> None:
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""

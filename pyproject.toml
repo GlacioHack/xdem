@@ -2,7 +2,7 @@
 # Minimum requirements for the build system to execute.
 requires = [
     "setuptools>=64",
-    "setuptools_scm[toml]>=8",
+    "setuptools_scm[toml]>=8,<9.0.0",
     "wheel",
 ]
 build-backend = "setuptools.build_meta"

@@ -26,6 +26,24 @@ passed any external variables (e.g., land cover type, processing metric) to atte
 Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain
 (e.g., curvature- or elevation-dependant corrections), derived solely from the elevation data.
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+#################################################################################
+# This a temporary trick to allow vertical referencing to work in other notebooks
+#################################################################################
+# Somehow, only on Readthedocs (locally works fine), the first notebook to run (in alphabetical order) fails
+# to download from PROJ... while all other notebook render normally.
+# The first alphabetical notebook is "biascorr", so adding this trick here
+
+import xdem
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+# Define the vertical CRS as the 3D ellipsoid of the 2D CRS
+dem.set_vcrs("Ellipsoid")
+# Transform to the EGM96 geoid
+dem.to_vcrs("EGM96")
+```
+
 ## Quick use
 
 Bias-correction methods are **used the same way as coregistrations**:
@@ -81,7 +99,7 @@ corrected_dem = biascorr.fit_and_apply(ref_dem, tba_dem)
 
 Additionally, **bias corrections can be customized to use any number of variables to correct simultaneously**,
 by defining `bias_var_names` in {class}`~xdem.coreg.BiasCorr`  and passing a `bias_vars` dictionary arrays or rasters
-to {func}`~xdem.coreg.Coreg.fit` and  {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
+to {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
 
 
 ## The modular {class}`~xdem.coreg.BiasCorr` object
@@ -100,7 +118,7 @@ applied in a block-wise manner through {class}`~xdem.coreg.BlockwiseCoreg`.
 ```
 
 The main difference with {class}`~xdem.coreg.Coreg` is that a {class}`~xdem.coreg.BiasCorr` has a new `bias_var_names`
-argument which allows to declare the names of N bias-correction variables that will be passed, which **corresponds to the
+argument which allows declaring the names of N bias-correction variables that will be passed, which **corresponds to the
 number of simultaneous dimensions in which the bias correction is performed**.
 This step is implicit for predefined methods such as {class}`~xdem.coreg.DirectionalBias`.
 
@@ -347,7 +365,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
 
 # We align the two DEMs before doing any bias correction
-tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab())
+tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), resample=True)
 ```
 
 ```{code-cell} ipython3

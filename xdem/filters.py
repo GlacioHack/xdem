@@ -20,23 +20,17 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
 import numpy as np
 import scipy
 
-from xdem._typing import NDArrayf
+from xdem._typing import Any, NDArrayf
 
 
 def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
     """
     Apply a Gaussian filter to a raster that may contain NaNs, using scipy's implementation.
-    gaussian_filter_cv is recommended as it is usually faster, but this depends on the value of sigma.
 
     N.B: kernel_size is set automatically based on sigma.
 
@@ -63,7 +57,7 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
         gauss_no_nan = scipy.ndimage.gaussian_filter(array_no_nan, sigma=sigma)
         del array_no_nan
 
-        # Mask of NaN values
+        # Raster of NaN values
         nan_mask = 0 * array.copy() + 1
         nan_mask[np.isnan(array)] = 0
         gauss_mask = scipy.ndimage.gaussian_filter(nan_mask, sigma=sigma)
@@ -76,68 +70,86 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
         return gauss
 
 
-def gaussian_filter_cv(array: NDArrayf, sigma: float) -> NDArrayf:
+def median_filter_scipy(array: NDArrayf, **kwargs: dict[Any, Any]) -> NDArrayf:
     """
-    Apply a Gaussian filter to a raster that may contain NaNs, using OpenCV's implementation.
-    Arguments are for now hard-coded to be identical to scipy.
-
-    N.B: kernel_size is set automatically based on sigma
+    Apply a median filter to a raster that may contain NaNs, using scipy's implementation.
 
     :param array: the input array to be filtered.
-    :param sigma: the sigma of the Gaussian kernel
 
-    :returns: the filtered array (same shape as input)
+    :returns: the filtered array (same shape as input).
     """
-    if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'.")
+    # Check that array dimension is 2 or 3
+    if np.ndim(array) not in [2, 3]:
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array.")
 
-    # Check that array dimension is 2, or can be squeezed to 2D
-    orig_shape = array.shape
-    if len(orig_shape) == 2:
-        pass
-    elif len(orig_shape) == 3:
-        if orig_shape[0] == 1:
-            array = array.squeeze()
-        else:
-            raise NotImplementedError("Case of array of dimension 3 not implemented.")
-    else:
-        raise ValueError(f"Invalid array shape given: {orig_shape}. Expected 2D or 3D array.")
-
-    # In case array does not contain NaNs, use OpenCV's gaussian filter directly
-    # With kernel size (0, 0), i.e. set to default, and borderType=BORDER_REFLECT, the output is equivalent to scipy
-    if np.count_nonzero(np.isnan(array)) == 0:
-        gauss = cv2.GaussianBlur(array, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
-
-    # If array contain NaNs, need a more sophisticated approach
-    # Inspired by https://stackoverflow.com/a/36307291
-    else:
-
-        # Run filter on a copy with NaNs set to 0
-        array_no_nan = array.copy()
-        array_no_nan[np.isnan(array)] = 0
-        gauss_no_nan = cv2.GaussianBlur(array_no_nan, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
-        del array_no_nan
-
-        # Mask of NaN values
-        nan_mask = 0 * array.copy() + 1
-        nan_mask[np.isnan(array)] = 0
-        gauss_mask = cv2.GaussianBlur(nan_mask, (0, 0), sigmaX=sigma, borderType=cv2.BORDER_REFLECT)
-        del nan_mask
-
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="invalid value encountered")
-            gauss = gauss_no_nan / gauss_mask
-
-    return gauss.reshape(orig_shape)
+    nans = np.isnan(array)
+    # We replace temporarily NaNs by infinite values during filtering to avoid spreading NaNs
+    array_nans_replaced = np.where(nans, np.inf, array)
+    array_nans_replaced_f = scipy.ndimage.median_filter(array_nans_replaced, **kwargs)
+    # In the end we want the filtered array without infinite values, so we put back NaNs
+    return np.where(nans, array, array_nans_replaced_f)
 
 
-# Median filters
+def mean_filter(array: NDArrayf, kernel_size: int) -> NDArrayf:
+    """
+    Apply a mean filter to a raster that may contain NaNs.
 
-# To be added
+    :param array: the input array to be filtered.
+    :param kernel_size: the size of the kernel.
 
-# Min/max filters
+    :returns: the filtered array (same shape as input).
+    """
+    # Check that array dimension is 2
+    if np.ndim(array) not in [2]:
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D array.")
 
-# To be added
+    kernel = np.ones((kernel_size, kernel_size)) / kernel_size**2
+    nans = np.isnan(array)
+    # We replace temporarily NaNs by zeros during filtering to avoid spreading NaNs
+    array_nans_replaced = np.where(nans, 0, array)
+    array_nans_replaced_f = scipy.ndimage.convolve(array_nans_replaced, kernel)
+    # In the end we want the filtered array without the introduced zeros, so we put back NaNs
+    return np.where(nans, array, array_nans_replaced_f)
+
+
+def min_filter_scipy(array: NDArrayf, **kwargs: dict[Any, Any]) -> NDArrayf:
+    """
+    Apply a minimum filter to a raster that may contain NaNs, using scipy's implementation.
+
+    :param array: the input array to be filtered.
+
+    :returns: the filtered array (same shape as input).
+    """
+    # Check that array dimension is 2 or 3
+    if np.ndim(array) not in [2, 3]:
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array.")
+
+    nans = np.isnan(array)
+    # We replace temporarily NaNs by infinite values during filtering to avoid spreading NaNs
+    array_nans_replaced = np.where(nans, np.inf, array)
+    array_nans_replaced_f = scipy.ndimage.minimum_filter(array_nans_replaced, **kwargs)
+    # In the end we want the filtered array without infinite values, so we put back NaNs
+    return np.where(nans, array, array_nans_replaced_f)
+
+
+def max_filter_scipy(array: NDArrayf, **kwargs: dict[Any, Any]) -> NDArrayf:
+    """
+    Apply a maximum filter to a raster that may contain NaNs, using scipy's implementation.
+
+    :param array: the input array to be filtered.
+
+    :returns: the filtered array (same shape as input).
+    """
+    # Check that array dimension is 2 or 3
+    if np.ndim(array) not in [2, 3]:
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array.")
+
+    nans = np.isnan(array)
+    # We replace temporarily NaNs by negative infinite values during filtering to avoid spreading NaNs
+    array_nans_replaced = np.where(nans, -np.inf, array)
+    array_nans_replaced_f = scipy.ndimage.maximum_filter(array_nans_replaced, **kwargs)
+    # In the end we want the filtered array without negative infinite values, so we put back NaNs
+    return np.where(nans, array, array_nans_replaced_f)
 
 
 def distance_filter(array: NDArrayf, radius: float, outlier_threshold: float) -> NDArrayf:
@@ -155,7 +167,7 @@ pixels within a given radius.
     :returns: the filtered array (same shape as input)
     """
     # Calculate the average value within the radius
-    smooth = gaussian_filter_cv(array, sigma=radius)
+    smooth = gaussian_filter_scipy(array, sigma=radius)
 
     # Filter outliers
     outliers = (np.abs(array - smooth)) > outlier_threshold
@@ -163,3 +175,19 @@ pixels within a given radius.
     out_array[outliers] = np.nan
 
     return out_array
+
+
+def generic_filter(array: NDArrayf, filter_function: Callable[..., NDArrayf], **kwargs: dict[Any, Any]) -> NDArrayf:
+    """
+    Apply a filter from a function.
+
+    :param array: the input array to be filtered.
+    :param filter_function: the function of the filter.
+
+    :returns: the filtered array (same shape as input).
+    """
+    # Check that array dimension is 2 or 3
+    if np.ndim(array) not in [2, 3]:
+        raise ValueError(f"Invalid array shape given: {array.shape}. Expected 2D or 3D array.")
+
+    return scipy.ndimage.generic_filter(array, filter_function, **kwargs)

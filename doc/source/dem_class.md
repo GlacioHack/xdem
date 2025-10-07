@@ -136,6 +136,23 @@ slope.plot(cmap="Reds", cbar_title="Slope (°)")
 For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 ```
 
+## Statistics
+The [`get_stats()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.get_stats.html) method allows to extract key statistical information from a raster in a dictionary.
+
+- Get all statistics in a dict:
+```{code-cell} ipython3
+dem.get_stats()
+```
+
+The DEM statistics functionalities in `xdem` are based on those in `geoutils`.
+For more information on computing statistics, please refer to the [`geoutils` documentation](https://geoutils.readthedocs.io/en/latest/raster_class.html#obtain-statistics).
+
+
+Note: as [`get_stats()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.get_stats.html) is a raster method, it can also be used for terrain attributes:
+```{code-cell} ipython3
+slope.get_stats()
+```
+
 ## Coregistration
 
 3D coregistration is performed with {func}`~xdem.DEM.coregister_3d`, which aligns the
@@ -148,7 +165,7 @@ filename_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 dem_tba = xdem.DEM(filename_tba)
 
 # Coregister (horizontal and vertical shifts)
-dem_tba_coreg = dem_tba.coregister_3d(dem)
+dem_tba_coreg = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
 
 # Plot the elevation change of the DEM due to coregistration
 dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)
@@ -182,3 +199,8 @@ We use `random_state` to ensure a fixed randomized output. It is **only necessar
 
 For more details on quantifying random and structured errors, see the {ref}`uncertainty` page.
 ```
+
+## Cropping a DEM
+
+The DEM cropping functionalities in `xdem` are based on those in `geoutils` ([`crop()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.crop.html#geoutils.Raster.crop), [`icrop()`](https://geoutils.readthedocs.io/en/latest/gen_modules/geoutils.Raster.icrop.html#geoutils.Raster.icrop)).
+For more information on using cropping functions, please refer to the [`geoutils` documentation](https://geoutils.readthedocs.io/en/latest/raster_class.html#crop).

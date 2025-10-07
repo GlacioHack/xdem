@@ -79,4 +79,4 @@ class TestdDEM:
         assert ddem.filled_data is None
 
         ddem.interpolate(method="local_hypsometric", reference_elevation=self.dem_2009.data, mask=scott_1990)
-        assert np.abs(np.mean(self.ddem.data - ddem.filled_data)) < 1
+        assert np.abs(np.nanmean(self.ddem.data - ddem.filled_data)) < 1

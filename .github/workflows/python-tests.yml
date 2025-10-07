@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         os: ["ubuntu-latest", "macos-latest"]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     # Run all shells using bash (including Windows)
     defaults:
@@ -25,7 +25,7 @@ jobs:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
@@ -34,6 +34,7 @@ jobs:
         miniforge-version: latest
         auto-update-conda: true
         use-mamba: true
+        mamba-version: "2.0.5"
         channel-priority: strict
         activate-environment: xdem-dev
         python-version:
@@ -96,7 +97,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Setup pip dependencies
-      run: pip install pytest-cov coveralls coveragepy-lcov 'coverage<7'
+      run: pip install pytest-cov coveralls
 
     - name: Print conda environment (for debugging)
       run: |
@@ -107,19 +108,14 @@ jobs:
       run: |
         # We unset the PROJ_DATA environment variable to make PROJ work on Windows
         unset PROJ_DATA
-        pytest -ra --cov=xdem/
-
-    # We can skip the conversion step once this PR of pytest is merged: https://github.com/pytest-dev/pytest-cov/pull/536
-    # and replace pytest argument by --cov-report=lcov
-    - name: Converting coverage to LCOV format
-      run: coveragepy-lcov --data_file_path .coverage --output_file_path coverage.info
+        pytest -ra --cov=xdem/ --cov-report=lcov
 
     - name: Upload coverage to Coveralls
-      uses: coverallsapp/github-action@master
+      uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.github_token }}
-        flag-name: run-${{ matrix.test_number }}
-        path-to-lcov: coverage.info
+        flag-name: run-${{ join(matrix.*, '-') }}
+        path-to-lcov: coverage.lcov
         parallel: true
 
   finish:
@@ -127,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Upload to Coveralls finished
-      uses: coverallsapp/github-action@master
+      uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.github_token }}
         parallel-finished: true
