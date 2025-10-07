@@ -195,7 +195,7 @@ class Topo(Workflows):
         # Generate HTML
         self.dico_to_show.append(("DEM information", dem_informations))
         self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-        self.dico_to_show.append(("Raster statistics", self.floats_process(stats_dem_mask)))
+        self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
 
         self.create_html(self.dico_to_show)
 
@@ -219,7 +219,7 @@ class Topo(Workflows):
         html += "<h2>Elevation Model</h2>\n"
         html += "<img src='plots/elevation_(m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
-        html += "<h2>Rastered elevation Model</h2>\n"
+        html += "<h2>Masked elevation Model</h2>\n"
         html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
