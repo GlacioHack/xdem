@@ -36,7 +36,8 @@ import numba
 import numpy as np
 import pandas as pd
 import scipy.ndimage
-from geoutils.raster import Raster, RasterType, subsample_array
+from geoutils.raster import Raster, RasterType
+from geoutils.stats import subsample_array
 from geoutils.raster.array import get_array_and_mask
 from geoutils.vector.vector import Vector, VectorType
 from numba import prange
@@ -670,7 +671,7 @@ def _preprocess_values_with_mask_to_array(
         isinstance(values, list) and not all(isinstance(val, (Raster, np.ndarray)) for val in values)
     ):
         raise ValueError("The values must be a Raster or NumPy array, or a list of those.")
-    # Rasters need to be an array, Vector or GeoPandas dataframe
+    # Mask needs to be an array, Vector or GeoPandas dataframe
     if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, Raster, gpd.GeoDataFrame)):
         raise ValueError("The stable mask must be a Vector, Raster, GeoDataFrame or NumPy array.")
     if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, Raster, gpd.GeoDataFrame)):
@@ -2367,7 +2368,7 @@ def number_effective_samples(
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(raster=rasterize_resolution, as_array=True).squeeze()
+            mask = V.create_mask(rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
             coords_on_mask = coords[:, mask].T
 
