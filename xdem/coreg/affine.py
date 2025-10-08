@@ -1812,7 +1812,12 @@ class AffineCoreg(Coreg):
         if meta is None:
             meta = {}
         # Define subsample size
-        meta.update({"subsample": subsample, "initial_shift": initial_shift})
+        meta.update({"subsample": subsample})
+
+        # Define initial shift
+        if initial_shift is not None:
+            meta.update({"initial_shift": initial_shift})
+
         super().__init__(meta=meta)
 
         if matrix is not None:
@@ -2396,7 +2401,7 @@ class NuthKaab(AffineCoreg):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         :param vertical_shift: Whether to apply the vertical shift or not (default is True).
         :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
-        These shifts are applied before the fit() part.
+            These shifts are applied before the fit() part.
         """
 
         self.vertical_shift = vertical_shift
@@ -2421,6 +2426,15 @@ class NuthKaab(AffineCoreg):
                 and all(isinstance(val, (float, int)) for val in initial_shift)
             ):
                 raise ValueError("Argument `initial_shift` must be a tuple of exactly two or three numerical values.")
+
+            if len(initial_shift) == 2:
+                initial_shift += (0,)
+            elif initial_shift[2] != 0:  # initial z shift is not taken into account
+                initial_shift = (*initial_shift[:2], 0)
+                warnings.warn(
+                    "Initial shift in altitude is currently work in progress.",
+                    category=UserWarning,
+                )
 
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined

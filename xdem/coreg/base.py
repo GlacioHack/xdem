@@ -1678,7 +1678,7 @@ class OutSpecificDict(TypedDict, total=False):
 class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
-    # Estimated initial shift
+    # Estimated initial shift (z currently always equal to zero)
     initial_shift: tuple[float, float, float] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
@@ -2105,6 +2105,7 @@ class Coreg:
         if self._meta["inputs"]["affine"].get("initial_shift") is not None:
             shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
             shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
+            # shift_z is currently always equal to zero
             reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
             initial_shift_apply = True
 

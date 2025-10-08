@@ -419,18 +419,29 @@ class TestDEM:
 
     @staticmethod
     @pytest.mark.parametrize(
-        "shift, expected_error",
+        "shift, expected_message",
         [
             pytest.param(None, None, id="NuthKaab method: No initial shift"),
             pytest.param((0, 0), None, id="NuthKaab method: (0, 0) initial shift"),
             pytest.param((50, 10), None, id="NuthKaab method: (50, 10) initial shift"),
             pytest.param((10, 50), None, id="NuthKaab method: (10, 50) initial shift"),
-            pytest.param((10, 50, 20), None, id="NuthKaab method: (10, 50, 20) initial shift"),
-            pytest.param(("2", 2), r".*three numerical values.*", id='NuthKaab method: ("2", 2) initial shift'),
-            pytest.param((2, 3, 4, 5), r".*three numerical values.*", id="NuthKaab method: (2, 3, 5) initial shift"),
+            pytest.param((10, 50, 0), None, id="NuthKaab method: (10, 50, 20) initial shift"),
+            pytest.param(
+                (10, 50, 20),
+                (UserWarning, r".*altitude is currently work*"),
+                id="NuthKaab method: (10, 50, 20) initial shift",
+            ),
+            pytest.param(
+                ("2", 2), (ValueError, r".*three numerical values.*"), id='NuthKaab method: ("2", 2) initial shift'
+            ),
+            pytest.param(
+                (2, 3, 4, 5),
+                (ValueError, r".*three numerical values.*"),
+                id="NuthKaab method: (2, 3, 4, 5) initial shift",
+            ),
         ],
     )  # type: ignore
-    def test_nuthkaab_initial_shift(shift, expected_error) -> None:  # type: ignore
+    def test_nuthkaab_initial_shift(shift, expected_message) -> None:  # type: ignore
         """
         Test coregister_3d initial and output shift
         """
@@ -438,19 +449,23 @@ class TestDEM:
         dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
         dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 
-        if expected_error:
+        if expected_message is not None:
             # Init coreg method and catch error
-            with pytest.raises(ValueError, match=expected_error):
-                xdem.coreg.NuthKaab(initial_shift=shift)
-        else:
+            with pytest.raises(expected_message[0], match=expected_message[1]):
+                coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is not None
+                assert list(coreg_method.meta["inputs"]["affine"]["initial_shift"])[2] == 0
 
+        else:
             coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
             if shift is not None:
+                if len(shift) == 2:
+                    shift += (0,)
                 assert coreg_method.meta["inputs"]["affine"]["initial_shift"]
                 assert coreg_method.meta["inputs"]["affine"]["initial_shift"] == shift
                 assert isinstance(coreg_method.meta["inputs"]["affine"]["initial_shift"], tuple)
             else:
-                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is None
+                assert "initial_shift" not in coreg_method.meta["inputs"]["affine"]
 
             # Test output shift vs fit result
             dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
