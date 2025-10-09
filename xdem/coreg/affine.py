@@ -1,4 +1,5 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2025 xDEM developers
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -31,6 +32,7 @@ import pandas as pd
 import rasterio as rio
 import scipy.optimize
 import scipy.spatial
+from geoutils._typing import Number
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _coords, _res
 from geoutils.stats import nmad
@@ -1803,6 +1805,7 @@ class AffineCoreg(Coreg):
         subsample: float | int = 1.0,
         matrix: NDArrayf | None = None,
         meta: dict[str, Any] | None = None,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """Instantiate a generic AffineCoreg method."""
 
@@ -1810,6 +1813,11 @@ class AffineCoreg(Coreg):
             meta = {}
         # Define subsample size
         meta.update({"subsample": subsample})
+
+        # Define initial shift
+        if initial_shift is not None:
+            meta.update({"initial_shift": initial_shift})
+
         super().__init__(meta=meta)
 
         if matrix is not None:
@@ -2378,6 +2386,7 @@ class NuthKaab(AffineCoreg):
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
         vertical_shift: bool = True,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
@@ -2391,6 +2400,8 @@ class NuthKaab(AffineCoreg):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         :param vertical_shift: Whether to apply the vertical shift or not (default is True).
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         self.vertical_shift = vertical_shift
@@ -2407,12 +2418,30 @@ class NuthKaab(AffineCoreg):
             "apply_vshift": vertical_shift,
         }
 
+        # Test consistency of the estimated initial shift given if provided
+        if initial_shift:
+            if not (
+                isinstance(initial_shift, tuple)
+                and (len(initial_shift) == 2 or len(initial_shift) == 3)
+                and all(isinstance(val, (float, int)) for val in initial_shift)
+            ):
+                raise ValueError("Argument `initial_shift` must be a tuple of exactly two or three numerical values.")
+
+            if len(initial_shift) == 2:
+                initial_shift += (0,)
+            elif initial_shift[2] != 0:  # initial z shift is not taken into account
+                initial_shift = (*initial_shift[:2], 0)
+                warnings.warn(
+                    "Initial shift in altitude is currently work in progress.",
+                    category=UserWarning,
+                )
+
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
         if not bin_before_fit:
             meta_fit = {"fit_or_bin": "fit", "fit_func": _nuth_kaab_fit_func, "fit_optimizer": fit_optimizer}
             meta_fit.update(meta_input_iterative)
-            super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
+            super().__init__(subsample=subsample, meta=meta_fit, initial_shift=initial_shift)  # type: ignore
         else:
             meta_bin_and_fit = {
                 "fit_or_bin": "bin_and_fit",
@@ -2422,7 +2451,9 @@ class NuthKaab(AffineCoreg):
                 "bin_statistic": bin_statistic,
             }
             meta_bin_and_fit.update(meta_input_iterative)
-            super().__init__(subsample=subsample, meta=meta_bin_and_fit)  # type: ignore
+            super().__init__(
+                subsample=subsample, meta=meta_bin_and_fit, initial_shift=initial_shift
+            )  # t)  # type: ignore
 
     def _fit_rst_rst(
         self,

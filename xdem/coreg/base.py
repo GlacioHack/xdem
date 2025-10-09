@@ -113,6 +113,7 @@ dict_key_to_str = {
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
+    "initial_shift": "Estimated initial shift (georeferenced unit)",
     "matrix": "Affine transformation matrix estimated",
     "only_translation": "Only translations are considered",
     "standardize": "Input data was standardized",
@@ -1677,6 +1678,8 @@ class OutSpecificDict(TypedDict, total=False):
 class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
+    # Estimated initial shift (z currently always equal to zero)
+    initial_shift: tuple[float, float, float] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
@@ -1804,6 +1807,13 @@ class Coreg:
         """Return a pipeline consisting of self and the other processing function."""
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
+
+        # Cancel possible initial shift(s) in CoregPipeline case
+        if "affine" in self.meta["inputs"] and "initial_shift" in self.meta["inputs"]["affine"]:
+            del self.meta["inputs"]["affine"]["initial_shift"]
+        if "affine" in other.meta["inputs"] and "initial_shift" in other.meta["inputs"]["affine"]:
+            del other.meta["inputs"]["affine"]["initial_shift"]
+
         return CoregPipeline([self, other])
 
     @property
@@ -2049,7 +2059,7 @@ class Coreg:
         z_name: str = "z",
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
-    ) -> CoregType:
+    ) -> CoregType:  # type: ignore
         """
         Estimate the coregistration transform on the given DEMs.
 
@@ -2092,6 +2102,15 @@ class Coreg:
         if self._meta["inputs"]["random"]["subsample"] != 1:
             self._meta["inputs"]["random"]["random_state"] = random_state
 
+        # Apply the shift to the source dem if given
+        initial_shift_apply = False
+        if self._meta["inputs"]["affine"].get("initial_shift") is not None:
+            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
+            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
+            # shift_z is currently always equal to zero
+            reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
+            initial_shift_apply = True
+
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
             reference_elev=reference_elev,
@@ -2130,6 +2149,15 @@ class Coreg:
             **main_args,
             **kwargs,
         )
+
+        # Unapply the shift to the source dem if apply before
+        if initial_shift_apply and "outputs" in self.meta and "affine" in self.meta["outputs"]:
+            if "shift_x" in self.meta["outputs"]["affine"]:
+                self.meta["outputs"]["affine"]["shift_x"] += shift_x
+                logging.debug(f"Updated shift_x by {shift_x} in {self}")
+            if "shift_y" in self.meta["outputs"]["affine"]:
+                self.meta["outputs"]["affine"]["shift_y"] += shift_y
+                logging.debug(f"Updated shift_y by {shift_y} in {self}")
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -2356,7 +2384,6 @@ class Coreg:
             random_state=random_state,
             **fit_kwargs,
         )
-
         aligned_dem = self.apply(
             elev=to_be_aligned_elev,
             bias_vars=bias_vars,
@@ -2773,7 +2800,6 @@ class CoregPipeline(Coreg):
             crs=crs,
             area_or_point=area_or_point,
         )
-
         tba_dem_mod = tba_dem.copy()
         out_transform = transform
 
@@ -2930,6 +2956,11 @@ class CoregPipeline(Coreg):
             other = [other]
 
         pipelines = self.pipeline + other
+
+        # Cancel possible initial shift(s) in CoregPipeline case
+        for method in pipelines:
+            if "affine" in method.meta["inputs"] and "initial_shift" in method.meta["inputs"]["affine"]:
+                del method.meta["inputs"]["affine"]["initial_shift"]
 
         return CoregPipeline(pipelines)
 
