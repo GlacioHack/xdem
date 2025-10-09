@@ -16,6 +16,8 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - psutil
+  - plotly
   - cerberus
   - pyyaml
   - weasyprint
