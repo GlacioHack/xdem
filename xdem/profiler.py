@@ -26,20 +26,16 @@ from threading import Thread
 from typing import Any
 
 import pandas as pd
-
-try:
-    import plotly.express as px  # type: ignore
-    import plotly.graph_objects as go  # type: ignore
-    import psutil  # type: ignore
-
-    _HAS_PLOTLY_PSUTIL = True
-except ImportError:
-    _HAS_PLOTLY_PSUTIL = False
+import plotly.express as px  # type: ignore
+import plotly.graph_objects as go  # type: ignore
+import psutil  # type: ignore
 
 
 class Profiler:
     """
     Main profiler class for xDEM
+
+
     """
 
     enabled = False
@@ -286,9 +282,21 @@ def profile(name: str, interval: int | float = 0.05, memprof: bool = False):  # 
     """
     xDEM profiling decorator
 
+    To profile other functions and add them to the summary graphs and data, simply add the @profile decorator before
+    them, providing a descriptive name. If you also want to track memory usage over time for a specific function call,
+    set `memprof=True` in the decorator and if the function is too fast (or slow) for the default memory sampling
+    interval, you can modify it with the interval parameter (in seconds).
+
     :param name: name of the function in the report
     :param interval: memory sampling interval (seconds)
     :param memprof: whether to profile the memory consumption
+
+    :example:
+        from xdem.profiler import Profiler
+
+        @profile("my profiled function", memprof=True, interval=0.5)  # type: ignore
+        def my_function():
+
     """
 
     def decorator_generator(func):  # type: ignore

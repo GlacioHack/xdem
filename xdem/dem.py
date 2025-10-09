@@ -501,6 +501,7 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
+    @profile("dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,

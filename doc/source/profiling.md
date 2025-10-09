@@ -11,7 +11,7 @@ With the profiling activated with the graphs output, two kinds of .HTML graphs w
 
 ## Configuration and parameters
 
-xDEM's profiling configuration works just like a pipeline step. It need to be initialised with two parameters like this:
+xDEM's profiling configuration works just like a pipeline step. It is executed only if at least one of this two parameters is set to True :
 
 | Name              | Description                       | Type | Default value | Required |
 |-------------------|-----------------------------------| ------- | ------- | ------- |
@@ -48,8 +48,6 @@ When *save_raw_data* is enabled, xDEM saves the profiling information as a .pick
 Currently, some processes are already profiled by xDEM with a memory consumption report each 0.05 seconds.
 - all the terrain attributes computation {class}`xdem.DEM` attributes computations
 - all the co-registration processing through the {class}`xdem.Coreg.fit_and_apply` function
-
-
 
 ### Modifying the profiled functions
 
