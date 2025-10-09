@@ -1809,8 +1809,10 @@ class Coreg:
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
 
         # Cancel possible initial shift(s) in CoregPipeline case
-        self.meta["inputs"]["affine"]["initial_shift"] = None
-        other.meta["inputs"]["affine"]["initial_shift"] = None
+        if "affine" in self.meta["inputs"] and "initial_shift" in self.meta["inputs"]["affine"]:
+            del self.meta["inputs"]["affine"]["initial_shift"]
+        if "affine" in other.meta["inputs"] and "initial_shift" in other.meta["inputs"]["affine"]:
+            del other.meta["inputs"]["affine"]["initial_shift"]
 
         return CoregPipeline([self, other])
 
@@ -2957,8 +2959,8 @@ class CoregPipeline(Coreg):
 
         # Cancel possible initial shift(s) in CoregPipeline case
         for method in pipelines:
-            if "affine" in method.meta["inputs"]:
-                method.meta["inputs"]["affine"]["initial_shift"] = None
+            if "affine" in method.meta["inputs"] and "initial_shift" in method.meta["inputs"]["affine"]:
+                del method.meta["inputs"]["affine"]["initial_shift"]
 
         return CoregPipeline(pipelines)
 

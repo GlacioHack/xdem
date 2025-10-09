@@ -488,6 +488,7 @@ class TestDEM:
         [
             xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
             xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
+            xdem.coreg.VerticalShift() + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
             xdem.coreg.NuthKaab(initial_shift=(10, 5))
             + xdem.coreg.VerticalShift()
             + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
@@ -502,7 +503,7 @@ class TestDEM:
         """
 
         for method in pipeline.pipeline:
-            assert method.meta["inputs"]["affine"]["initial_shift"] is None
+            assert "initial_shift" not in method.meta["inputs"]["affine"]
 
     def test_estimate_uncertainty(self) -> None:
 
