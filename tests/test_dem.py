@@ -453,9 +453,10 @@ class TestDEM:
             # Init coreg method and catch error
             with pytest.raises(expected_message[0], match=expected_message[1]):
                 coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)
+
+                # case warning
                 assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is not None
                 assert list(coreg_method.meta["inputs"]["affine"]["initial_shift"])[2] == 0
-
         else:
             coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
             if shift is not None:
