@@ -445,11 +445,13 @@ class TestBinning:
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
                 dvalues="not_an_array", stable_mask=~self.mask, list_var=[self.slope.get_nanarray()]
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Raster, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
                 dvalues=self.diff, stable_mask="not_a_vector_or_array", list_var=[self.slope.get_nanarray()]
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(
+            ValueError, match="The unstable mask must be a Vector, Raster, GeoDataFrame or NumPy array."
+        ):
             xdem.spatialstats.infer_heteroscedasticity_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_var=[self.slope.get_nanarray()]
             )
@@ -901,11 +903,13 @@ class TestVariogram:
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues="not_an_array", stable_mask=~self.mask, list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The stable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(ValueError, match="The stable mask must be a Vector, Raster, GeoDataFrame or NumPy array."):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, stable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )
-        with pytest.raises(ValueError, match="The unstable mask must be a Vector, Mask, GeoDataFrame or NumPy array."):
+        with pytest.raises(
+            ValueError, match="The unstable mask must be a Vector, Raster, GeoDataFrame or NumPy array."
+        ):
             xdem.spatialstats.infer_spatial_correlation_from_stable(
                 dvalues=self.diff, unstable_mask="not_a_vector_or_array", list_models=["Gau", "Sph"], random_state=42
             )

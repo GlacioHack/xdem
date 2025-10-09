@@ -30,7 +30,7 @@ import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # type: ignore
-from geoutils import Mask
+from geoutils import Raster
 from geoutils.raster import RasterType
 from yaml.dumper import SafeDumper  # type: ignore
 
@@ -143,7 +143,7 @@ class Workflows(ABC):
             return dict_with_floats
 
     @staticmethod
-    def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str | None]:
+    def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Raster, str | None]:
         """
         Generate DEM from user configuration dictionary
         :param config_dem: Configuration dictionary

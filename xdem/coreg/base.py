@@ -49,7 +49,7 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
-from geoutils.raster import Mask, RasterType, raster
+from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
@@ -129,7 +129,7 @@ dict_key_to_str = {
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-    inlier_mask: NDArrayb | Mask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -206,7 +206,7 @@ def _preprocess_coreg_fit_raster_raster(
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
-        if isinstance(inlier_mask, Mask):
+        if isinstance(inlier_mask, Raster):
             inlier_mask = inlier_mask.data.filled(False).squeeze()
         else:
             inlier_mask = np.asarray(inlier_mask).squeeze()
@@ -234,7 +234,7 @@ def _preprocess_coreg_fit_raster_raster(
 def _preprocess_coreg_fit_raster_point(
     raster_elev: NDArrayf | MArrayf | RasterType,
     point_elev: gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | Mask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -262,7 +262,7 @@ def _preprocess_coreg_fit_raster_point(
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
-        if isinstance(inlier_mask, Mask):
+        if isinstance(inlier_mask, Raster):
             inlier_mask = inlier_mask.data.filled(False).squeeze()
         else:
             inlier_mask = np.asarray(inlier_mask).squeeze()
@@ -294,7 +294,7 @@ def _preprocess_coreg_fit_point_point(
 def _preprocess_coreg_fit(
     reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
     to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | Mask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -520,7 +520,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
     """
     Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
 
-    :param valid_mask: Mask of valid values (inlier and not nodata).
+    :param valid_mask: Raster of valid values (inlier and not nodata).
     """
 
     # This should never happen
@@ -1977,7 +1977,7 @@ class Coreg:
         """
         Get mask of values to subsample on valid mask.
 
-        :param valid_mask: Mask of valid values (inlier and not nodata).
+        :param valid_mask: Raster of valid values (inlier and not nodata).
         """
 
         # Get random parameters
@@ -2049,7 +2049,7 @@ class Coreg:
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2065,7 +2065,7 @@ class Coreg:
 
         :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
         :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
-        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param inlier_mask: Raster or boolean array of areas to include (inliers=True).
         :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
         :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2272,7 +2272,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: MArrayf,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2292,7 +2292,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2312,7 +2312,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2331,7 +2331,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2349,7 +2349,7 @@ class Coreg:
 
         :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
         :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
-        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param inlier_mask: Raster or boolean array of areas to include (inliers=True).
         :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
         :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2762,7 +2762,7 @@ class CoregPipeline(Coreg):
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
