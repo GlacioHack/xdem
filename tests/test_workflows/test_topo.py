@@ -44,7 +44,7 @@ def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrai
     assert isinstance(workflows, Workflows)
     assert isinstance(workflows, Topo)
     assert Path(tmp_path / "plots").joinpath("elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("masked_elevation.png").exists()
+    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert workflows.config_attributes == list_default_terrain_attributes
 
     user_config = get_topo_inputs_config

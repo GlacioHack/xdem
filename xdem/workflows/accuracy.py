@@ -67,7 +67,7 @@ class Accuracy(Workflows):
         if self.inlier_mask is not None:
             self.generate_plot(
                 self.to_be_aligned_elev,
-                "masked_elevation",
+                "masked_elev_map",
                 mask_path=path_mask,
                 cmap="terrain",
                 cbar_title="Elevation (m)",

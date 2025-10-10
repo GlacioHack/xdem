@@ -148,6 +148,7 @@ xdem topo --display_template_config
         │   └─ elev_with_mask_stats.csv
         ├─ plots
         │   ├─ elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ terrain_attributes_map.png
         ├─ rasters
         ├─ report.html
@@ -164,6 +165,7 @@ xdem topo --display_template_config
         │   └─ elev_with_mask_stats.csv
         ├─ plots
         │   ├─ elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ terrain_attributes_map.png
         ├─ rasters
         │   ├─ aspect.tif
@@ -188,7 +190,7 @@ xdem topo --display_template_config
         <h2>Elevation Model</h2>
         <img src='_static/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>
         <h2>Masked elevation Model</h2>
-        <img src='_static/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
+        <img src='_static/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
         <div style='clear: both; margin-bottom: 30px;'>
         <h2>Information about inputs</h2>
         <table border='1' cellspacing='0' cellpadding='5'>

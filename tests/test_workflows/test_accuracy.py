@@ -172,7 +172,7 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
     assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg.png").exists()
     assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
-    assert Path(tmp_path / "plots").joinpath("masked_elevation.png").exists()
+    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
 
@@ -232,7 +232,7 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     assert Path(tmp_path / "plots").joinpath("diff_elev.png").exists()
     assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
     assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
-    assert Path(tmp_path / "plots").joinpath("masked_elevation.png").exists()
+    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
 
@@ -285,4 +285,4 @@ def test_mask_init(tmp_path, get_accuracy_inputs_config):
     mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
-    assert Path(tmp_path / "plots").joinpath("masked_elevation.png").exists()
+    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()

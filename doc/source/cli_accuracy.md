@@ -191,6 +191,7 @@ xdem accuracy --display_template_config
         │   ├─ diff_elev_before_coreg_map.png
         │   ├─ diff_elev_before_after_hist.png
         │   ├─ reference_elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ to_be_aligned_elev_map.png
         ├─ rasters
         │   └─ aligned_elev.tif
@@ -214,6 +215,7 @@ xdem accuracy --display_template_config
         │   ├─ diff_elev_before_coreg_map.png
         │   ├─ diff_elev_before_after_hist.png
         │   ├─ reference_elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ to_be_aligned_elev_map.png
         ├─ rasters
         │   ├─ aligned_elev.tif

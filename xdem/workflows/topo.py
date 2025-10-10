@@ -53,7 +53,7 @@ class Topo(Workflows):
         if self.inlier_mask is not None:
             self.generate_plot(
                 self.dem,
-                "masked_elevation",
+                "masked_elev_map",
                 mask_path=path_to_mask,
                 cmap="terrain",
                 cbar_title="Elevation (m)",
