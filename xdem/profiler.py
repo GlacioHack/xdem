@@ -26,9 +26,15 @@ from threading import Thread
 from typing import Any
 
 import pandas as pd
-import plotly.express as px  # type: ignore
-import plotly.graph_objects as go  # type: ignore
-import psutil  # type: ignore
+
+try:
+    import plotly.express as px  # type: ignore
+    import plotly.graph_objects as go  # type: ignore
+    import psutil  # type: ignore
+
+    _HAS_PLOTLY_PSUTIL = True
+except ImportError:
+    _HAS_PLOTLY_PSUTIL = False
 
 
 class Profiler:
@@ -55,12 +61,15 @@ class Profiler:
         :param save_graphs: save the default graphs generated
         :param save_raw_data: save the raw data on calls as a .pickle file
         """
-        Profiler.save_graphs = save_graphs
-        Profiler.save_raw_data = save_raw_data
-        Profiler.enabled = Profiler.save_graphs or Profiler.save_raw_data
+        if _HAS_PLOTLY_PSUTIL:
+            Profiler.save_graphs = save_graphs
+            Profiler.save_raw_data = save_raw_data
+            Profiler.enabled = Profiler.save_graphs or Profiler.save_raw_data
 
-        # Reset profiling information as a new Profiler is enabled
-        Profiler.reset()
+            # Reset profiling information as a new Profiler is enabled
+            Profiler.reset()
+        else:
+            pass
 
     @staticmethod
     def selection_functions(functions: list[str]) -> None:
