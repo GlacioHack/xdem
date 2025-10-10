@@ -19,6 +19,8 @@ dependencies:
   - cerberus
   - pyyaml
   - weasyprint
+  - psutil
+  - plotly
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip

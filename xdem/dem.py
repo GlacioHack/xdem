@@ -37,6 +37,7 @@ from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import Coreg
 from xdem.misc import copy_doc
+from xdem.profiler import profile
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
@@ -83,6 +84,7 @@ class DEM(Raster):  # type: ignore
     See the API for more details.
     """
 
+    @profile("dem.__init__", memprof=True)  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
@@ -115,7 +117,6 @@ class DEM(Raster):  # type: ignore
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
         self._vcrs_name: str | None = None
         self._vcrs_grid: str | None = None
-
         # If DEM is passed, simply point back to DEM
         if isinstance(filename_or_dataset, DEM):
             for key in filename_or_dataset.__dict__:
@@ -432,7 +433,6 @@ class DEM(Raster):  # type: ignore
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def profile_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
-
         return terrain.profile_curvature(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
@@ -491,6 +491,7 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
+    @profile("dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,

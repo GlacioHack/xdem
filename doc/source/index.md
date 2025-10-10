@@ -141,6 +141,7 @@ advanced_examples/index.rst
 global_cli_information
 api
 config
+profiling
 release_notes
 ```
 
