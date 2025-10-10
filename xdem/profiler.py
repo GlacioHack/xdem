@@ -146,10 +146,8 @@ class Profiler:
 
             # memory profiling graph
             for _, call_row in Profiler._profiling_info[Profiler._profiling_info["memory"].notnull()].iterrows():
-                fig = Profiler.plot_trace_for_call(call_row["uuid_function"], "memory")
-
-                if fig:
-                    fig.write_html(os.path.join(output, "memory_{}.html".format(call_row["name"])))
+                path_fig = os.path.join(output, "memory_{}.html".format(call_row["name"]))
+                Profiler.plot_trace_for_call(call_row["uuid_function"], "memory", path_fig)
 
     @staticmethod
     def get_profiling_info(function_name: str = None) -> pd.DataFrame:
@@ -176,14 +174,13 @@ class Profiler:
         Profiler._profiling_info = pd.DataFrame(columns=Profiler.columns)
 
     @staticmethod
-    def plot_trace_for_call(uuid_function: str, data_name: str) -> go.Figure:
+    def plot_trace_for_call(uuid_function: str, data_name: str, path_fig: str) -> None:
         """
         Plot memory (or any resource tracked) usage over time for a function call, with markers for its subcalls.
 
         :param uuid_function: UUID of the parent function call
         :param data_name: The name of the data to plot (if cpu consumption were to be added for example)
-
-        :return: The generated plotly figure
+        :param path_fig: The path to save the output plot
         """
 
         # Get the parent call entry
@@ -284,7 +281,7 @@ class Profiler:
             showlegend=True,
         )
 
-        return fig
+        fig.write_html(path_fig)
 
 
 def profile(name: str, interval: int | float = 0.05, memprof: bool = False):  # type: ignore
