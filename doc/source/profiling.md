@@ -75,5 +75,7 @@ def my_function():
 
 Here are two examples of graphs with a personal profiled function `my_program`, containing the computation of a few attributes and a co-registration:
 
-![time_graph.html](imgs/profiling_time_graph.html.png)
 ![memory_my_program.html](imgs/profiling_memory_my_program.html.png)
+![time_graph.html](imgs/profiling_time_graph.html.png)
+
+You can experiment theses graphs here : [memory_my_program.html](html/profiling/memory_my_program.html) and [time_graph.html](html/profiling/time_graph.html).
