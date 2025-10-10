@@ -69,21 +69,24 @@ xdem accuracy --display_template_config
 
         inputs:
             reference_elev:
-                path_to_elev: "path_to/ref_dem.tif"
+                path_to_elev: "path_to/reference_elev.tif"
                 force_source_nodata: -32768
                 from_vcrs: None
                 to_vcrs: None
             to_be_aligned_elev:
-                path_to_elev: "path_to/to_be_aligned_dem.tif"
+                path_to_elev: "path_to/to_be_aligned_elev.tif"
                 path_to_mask: "path_to/mask.tif"
 
    .. tab:: coregistration
 
       **Required:** No
 
-      Coregistration step details. You can create a pipeline with up to three coregistration steps by
-      using the keys step_one, step_two, and step_three.
-      Available coregistration : see coregistration information <coregistration.md>`
+      Coregistration step details.
+
+      You can create a pipeline with up to three coregistration steps by using the keys
+      ``step_one``, ``step_two`` and ``step_three``.
+
+      Available coregistration method see : :ref:`coregistration`
 
       .. note::
         By default, coregistration is carried out using the Nuth and Kääb method.
@@ -131,13 +134,16 @@ xdem accuracy --display_template_config
       **Required:** No
 
       Statistics step information. This section relates to the computed statistics:
-        1. If no block is specified, all available statistics are calculated by default.
-        [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
-        percentage valid points, inter quartile range]
 
-        2. If a block is specified but no statistics are provided, then no statistics will be computed.
+      1. If no block is specified, all available statistics are calculated by default:
 
-        3. If a block is specified and some statistics are provided, then only these statistics are computed.
+         [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
+         percentage valid points, inter quartile range]
+
+      2. If a block is specified but no statistics are provided, then no statistics will be computed.
+
+      3. If a block is specified and some statistics are provided, then only these statistics are computed.
+
 
       .. code-block:: yaml
 
@@ -154,8 +160,9 @@ xdem accuracy --display_template_config
 
      Outputs information.
      Operates by levels:
-     1. Level 1 → aligned elevation only
-     2. Level 2 → more detailed output
+
+     1. **Level 1** → aligned elevation only
+     2. **Level 2** → more detailed output
 
      .. csv-table:: Outputs parameters
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"

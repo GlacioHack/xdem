@@ -54,7 +54,7 @@ xdem topo --display_template_config
 
          inputs:
            reference_elev:
-             path_to_elev: "path_to/ref_dem.tif"
+             path_to_elev: "path_to/reference_elev.tif"
              force_source_nodata: -32768
              from_vcrs: None
              to_vcrs: None

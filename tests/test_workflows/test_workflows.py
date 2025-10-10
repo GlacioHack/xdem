@@ -66,10 +66,10 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
             "Information about inputs",
             {
                 "reference_elev": {
-                    "from_vcrs": None,
-                    "to_vcrs": None,
                     "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
                     "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                    "from_vcrs": None,
+                    "to_vcrs": None,
                 }
             },
         )
