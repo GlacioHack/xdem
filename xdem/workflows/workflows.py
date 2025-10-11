@@ -24,13 +24,13 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Union
 
 import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # type: ignore
-from geoutils import Mask
+from geoutils import Raster
 from geoutils.raster import RasterType
 from yaml.dumper import SafeDumper  # type: ignore
 
@@ -143,7 +143,7 @@ class Workflows(ABC):
             return dict_with_floats
 
     @staticmethod
-    def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Mask, str | None]:
+    def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Raster, str | None]:
         """
         Generate DEM from user configuration dictionary
         :param config_dem: Configuration dictionary
@@ -155,12 +155,14 @@ class Workflows(ABC):
             inlier_mask = None
             from_vcrs = config_dem["from_vcrs"]
             to_vcrs = config_dem["to_vcrs"]
-            dem.set_vcrs(from_vcrs)
-            if from_vcrs != to_vcrs:
-                dem.to_vcrs(to_vcrs)
-            if "force_source_nodata" in config_dem:
+            if from_vcrs:
+                dem.set_vcrs(from_vcrs)
+            if to_vcrs:
+                if from_vcrs != to_vcrs:
+                    dem.to_vcrs(to_vcrs)
+            if config_dem.get("force_source_nodata") is not None:
                 dem.set_nodata(config_dem["force_source_nodata"])
-            if "path_to_mask" in config_dem:
+            if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
                 mask = gu.Vector(mask_path)
                 inlier_mask = ~mask.create_mask(dem)
@@ -169,6 +171,22 @@ class Workflows(ABC):
         else:
             logging.warning("No DEM provided")
             return None, None, None  # type: ignore
+
+    def remove_none(self, dico: Union[Dict[str, Any], List[Any]]) -> Union[Dict[str, Any], List[Any]]:
+        """
+        Recursively remove all keys whose values are None from a dictionary.
+        :param dico: dictionary to clean
+        :return: cleaned dictionary
+        """
+        if isinstance(dico, dict):
+            return {
+                k: self.remove_none(v) for k, v in dico.items() if v is not None and self.remove_none(v) is not None
+            }
+        elif isinstance(dico, list):
+            cleaned_list = [self.remove_none(v) for v in dico if v is not None]
+            return [v for v in cleaned_list if v is not None]
+        else:
+            return dico
 
     @abstractmethod
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:

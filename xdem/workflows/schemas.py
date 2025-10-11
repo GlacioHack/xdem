@@ -34,31 +34,36 @@ class CustomValidator(Validator):  # type: ignore
         """
         {'type': 'boolean'}
         """
-        if path_exists and not os.path.exists(value):
-            self._error(field, f"Path does not exist: {value}")
+        if value is not None:
+            if path_exists and not os.path.exists(value):
+                self._error(field, f"Path does not exist: {value}")
         return True
 
     def _validate_crs(self, crs: bool, field: str, value: str | int) -> bool:
         """
         {'type': 'boolean'}
         """
-        try:
-            _vcrs_from_user_input(value)
-            return True
-        except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError):
-            logging.error(f"'{field}' field is not valid. See: https://xdem.readthedocs.io/en/stable/vertical_ref.html")
-            return False
+        if value is not None:
+            try:
+                _vcrs_from_user_input(value)
+                return True
+            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError):
+                logging.error(
+                    f"'{field}' field is not valid. See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
+                )
+                return False
+        return True
 
 
 INPUTS_DEM = {
     "path_to_elev": {"type": "string", "required": True, "path_exists": True},
-    "force_source_nodata": {"type": ["integer", "float"], "required": False},
-    "path_to_mask": {"type": "string", "required": False, "path_exists": True},
-    "from_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
-    "to_vcrs": {"type": ["integer", "string"], "required": False, "crs": True, "default": "EGM96"},
+    "force_source_nodata": {"type": ["integer", "float"], "required": False, "nullable": True},
+    "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
+    "from_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
+    "to_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
 }
 
-COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD"]
+COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
 
 STATS_METHODS = [
     "mean",
@@ -110,8 +115,9 @@ def make_coreg_step(required: bool = False, default_method: str = None) -> Valid
                 "type": "string",
                 "allowed": COREG_METHODS,
                 "required": True if required else False,
+                "nullable": False if required else True,
             },
-            "extra_information": {"type": "dict", "required": False},
+            "extra_information": {"type": "dict", "required": False, "nullable": True},
         },
     }
     if default_method:
@@ -167,9 +173,9 @@ ACCURACY_SCHEMA = {
     "coregistration": {
         "type": "dict",
         "required": False,
-        "default": {"step_one": {"method": "LZD"}, "sampling_grid": "reference_elev"},
+        "default": {"step_one": {"method": "NuthKaab"}, "sampling_grid": "reference_elev"},
         "schema": {
-            "step_one": make_coreg_step(default_method="LZD"),
+            "step_one": make_coreg_step(default_method="NuthKaab"),
             "step_two": make_coreg_step(required=False),
             "step_three": make_coreg_step(required=False),
             "sampling_grid": {
@@ -230,53 +236,85 @@ TOPO_SCHEMA = {
 COMPLETE_CONFIG_ACCURACY = {
     "inputs": {
         "reference_elev": {
-            "path_to_elev": "to_complete_with_an_elev",
-            "force_source_nodata": "to_complete_with_user_nodata",
-            "from_vcrs": "to_complete_with_vcrs",
-            "to_vcrs": "to_complete_with_vcrs",
+            "path_to_elev": "",
+            "force_source_nodata": None,
+            "from_vcrs": None,
+            "to_vcrs": None,
         },
         "to_be_aligned_elev": {
-            "path_to_elev": "to_complete_with_an_elev",
-            "force_source_nodata": "to_complete_with_user_nodata",
-            "from_vcrs": "to_complete_with_vcrs",
-            "to_vcrs": "to_complete_with_vcrs",
-            "path_to_mask": "to_complete_with_a_mask",
+            "path_to_elev": "",
+            "force_source_nodata": None,
+            "from_vcrs": None,
+            "to_vcrs": None,
+            "path_to_mask": None,
         },
     },
     "outputs": {
-        "level": "to_complete_with_level_1_or_2",
-        "path": "to_complete_with_a_folder_name",
-        "output_grid": "to_complete_with_output_grid_value",
+        "level": 1,
+        "path": "outputs",
+        "output_grid": "reference_elev",
     },
     "coregistration": {
-        "sampling_grid": "to_complete_with_sampling_grid_value",
+        "sampling_grid": "reference_elev",
         "step_one": {
-            "method": "to_complete_with_coreg_method",
-            "extra_informations": "to_complete_with_dict_of_parameters",
+            "method": "NuthKaab",
+            "extra_information": None,
         },
         "step_two": {
-            "method": "to_complete_with_coreg_method",
-            "extra_informations": "to_complete_with_dict_of_parameters",
+            "method": None,
+            "extra_information": None,
         },
         "step_three": {
-            "method": "to_complete_with_coreg_method",
-            "extra_informations": "to_complete_with_dict_of_parameters",
+            "method": None,
+            "extra_information": None,
         },
     },
-    "statistics": "to_complete_with_list_of_statistics",
+    "statistics": [
+        "mean",
+        "median",
+        "max",
+        "min",
+        "sum",
+        "sumofsquares",
+        "90thpercentile",
+        "le90",
+        "nmad",
+        "rmse",
+        "std",
+        "standarddeviation",
+        "validcount",
+        "totalcount",
+        "percentagevalidpoints",
+    ],
 }
 
 COMPLETE_CONFIG_TOPO = {
     "inputs": {
         "reference_elev": {
-            "path_to_elev": "to_complete_with_an_elev",
-            "force_source_nodata": "to_complete_with_user_nodata",
-            "from_vcrs": "to_complete_with_vcrs",
-            "to_vcrs": "to_complete_with_vcrs",
-            "path_to_mask": "to_complete_with_a_mask",
+            "path_to_elev": "",
+            "force_source_nodata": None,
+            "from_vcrs": None,
+            "to_vcrs": None,
+            "path_to_mask": None,
         },
     },
-    "outputs": {"level": "to_complete_with_level_1_or_2", "path": "to_complete_with_a_folder_name"},
-    "statistics": "to_complete_with_list_of_statistics",
-    "terrain_attributes": "to_complete_with_a_list_OR_dict_with_extra_information",
+    "outputs": {"level": 1, "path": "outputs"},
+    "statistics": [
+        "mean",
+        "median",
+        "max",
+        "min",
+        "sum",
+        "sumofsquares",
+        "90thpercentile",
+        "le90",
+        "nmad",
+        "rmse",
+        "std",
+        "standarddeviation",
+        "validcount",
+        "totalcount",
+        "percentagevalidpoints",
+    ],
+    "terrain_attributes": ["slope", "aspect", "curvature"],
 }

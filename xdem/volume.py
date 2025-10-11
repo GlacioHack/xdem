@@ -477,7 +477,7 @@ for areas filling the min_coverage criterion.
 
     for _k, index in enumerate(valid_geometry_index):
 
-        # Mask of valid pixel within geometry
+        # Raster of valid pixel within geometry
         local_mask = mask == index
         local_inlier_mask = inlier_mask & (local_mask)
 

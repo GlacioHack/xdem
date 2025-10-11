@@ -57,7 +57,7 @@ def gaussian_filter_scipy(array: NDArrayf, sigma: float) -> NDArrayf:
         gauss_no_nan = scipy.ndimage.gaussian_filter(array_no_nan, sigma=sigma)
         del array_no_nan
 
-        # Mask of NaN values
+        # Raster of NaN values
         nan_mask = 0 * array.copy() + 1
         nan_mask[np.isnan(array)] = 0
         gauss_mask = scipy.ndimage.gaussian_filter(nan_mask, sigma=sigma)
