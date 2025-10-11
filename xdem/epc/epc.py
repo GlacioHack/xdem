@@ -44,7 +44,7 @@ class EPC(PointCloud):
     """
 
     def __init__(filename_or_dataset, z_column = None, vcrs = None):
-    
+
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
         self._vcrs_name: str | None = None
         self._vcrs_grid: str | None = None
