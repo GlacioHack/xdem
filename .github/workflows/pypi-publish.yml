@@ -1,5 +1,5 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+# This workflow will upload a Python Package when a tagged commit is created
+# See reference: https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
 
 name: Publish to PyPI
 
@@ -40,7 +40,7 @@ jobs:
 
   publish-to-pypi:
     name: Publish distribution to PyPI
-    if: startsWith(github.ref, 'refs/tags/')  # Only publish to PyPI on tag pushes
+    # if: startsWith(github.ref, 'refs/tags/')  # Only publish to PyPI on tag pushes, required depending on trigger at the top
     needs:
       - build
     runs-on: ubuntu-latest
