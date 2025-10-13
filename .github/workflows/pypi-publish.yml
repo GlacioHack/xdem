@@ -1,4 +1,4 @@
-# This workflow will upload a Python Package when a tagged commit is created
+# This workflow will upload a Python Package when a release is created
 # See reference: https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
 
 name: Publish to PyPI
@@ -41,6 +41,10 @@ jobs:
   publish-to-pypi:
     name: Publish distribution to PyPI
     # if: startsWith(github.ref, 'refs/tags/')  # Only publish to PyPI on tag pushes, required depending on trigger at the top
+    env:
+      # This is to override the dynamic SCM version for publishing, see: https://setuptools-scm.readthedocs.io/en/latest/integrations/#publishing-to-pypi-from-cicd
+      SETUPTOOLS_SCM_OVERRIDES_FOR_XDEM: '{"local_scheme": "no-local-version"}'
+
     needs:
       - build
     runs-on: ubuntu-latest
