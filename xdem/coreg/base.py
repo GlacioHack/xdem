@@ -54,7 +54,6 @@ from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _translate
-from geoutils.stats.sampling import subsample_array
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
@@ -541,7 +540,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # Build a low memory masked array with invalid values masked to pass to subsampling
         ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
         # Take a subsample within the valid values
-        indices = subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             ma_valid,
             subsample=params_random["subsample"],
             return_indices=True,

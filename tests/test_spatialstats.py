@@ -1122,7 +1122,7 @@ class TestNeffEstimation:
             subsample=10,
         )
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_brom.create_mask(xres=res, as_array=True)
+        mask = outlines_brom.create_mask(res=res, as_array=True)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))
