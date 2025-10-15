@@ -200,8 +200,8 @@ class BiasCorr(Coreg):
         # Write final subsample to class
         self._meta["outputs"]["random"] = {"subsample_final": len(sub_ref)}
 
-        # Derive difference to get dh
-        diff = sub_ref - sub_tba
+        # Derive difference of Z axis to get dh
+        diff = sub_ref[2, :] - sub_tba[2, :]
 
         # Send to bin and fit
         self._bin_or_and_fit_nd(

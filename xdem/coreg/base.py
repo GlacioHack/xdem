@@ -601,7 +601,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # Build a low memory masked array with invalid values masked to pass to subsampling
         ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
         # Take a subsample within the valid values
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             ma_valid,
             subsample=params_random["subsample"],
             return_indices=True,
@@ -1177,7 +1177,7 @@ def _bin_or_and_fit_nd(
         results = params_fit_or_bin["fit_minimizer"](
             func_wrapped,
             **kwargs,
-        )
+        ).x
         df = None
 
     # Option 2: Run binning and save dataframe of result
@@ -1245,10 +1245,10 @@ def _bin_or_and_fit_nd(
         results = params_fit_or_bin["fit_minimizer"](
             func_wrapped,
             **kwargs,
-        )
+        ).x
     logging.debug("%dD bias estimated.", nd)
 
-    return df, results.x
+    return df, results
 
 
 ###############################################
@@ -1877,6 +1877,15 @@ class InFitOrBinDict(TypedDict, total=False):
     bias_var_names: list[str]
     nd: int | None
 
+    # Whether to trim residuals, and related parameters
+    trim_residuals: bool
+    # Trimming statistics and coverage (always symmetric)
+    trim_central_statistic: Callable[[NDArrayf], np.floating[Any]]
+    trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]]
+    trim_spread_coverage: float
+    # Whether to trim the residuals iteratively until trimming is over
+    trim_iterative: bool
+
 
 class OutFitOrBinDict(TypedDict, total=False):
     """Keys and types of outputs associated with binning and/or fitting."""
@@ -1974,7 +1983,6 @@ class InputCoregDict(TypedDict, total=False):
     iterative: InIterativeDict
     specific: InSpecificDict
     affine: InAffineDict
-
 
 class OutputCoregDict(TypedDict, total=False):
     random: OutRandomDict

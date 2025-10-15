@@ -57,6 +57,7 @@ from xdem.coreg.base import (
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
+from xdem.fit import index_trimmed
 
 try:
     import pytransform3d.rotations
@@ -460,6 +461,17 @@ def _nuth_kaab_bin_fit(
     with np.errstate(divide="ignore", invalid="ignore"):
         y = dh / slope_tan
 
+    # Trim if required
+    if params_fit_or_bin["trim_residuals"]:
+        ind = index_trimmed(y, central_estimator=params_fit_or_bin["trim_central_statistic"],
+                            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
+                            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
+                            iterative=params_fit_or_bin["trim_iterative"])
+        logging.info(f"Trimmed {np.count_nonzero(~ind)} residuals.")
+        # Keep data not trimmed
+        y = y[ind]
+        aspect = aspect[ind]
+
     # Make an initial guess of the a, b, and c parameters
     x0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
 
@@ -599,7 +611,7 @@ def _nuth_kaab_iteration_step(
 
     # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
     easting_offset, northing_offset, _ = _nuth_kaab_bin_fit(
-        dh=dh_step, slope_tan=slope_tan, aspect=aspect, params_fit_or_bin=params_fit_bin
+        dh=dh_step, slope_tan=slope_tan, aspect=aspect, params_fit_or_bin=params_fit_bin,
     )
 
     # Increment the offsets by the new offset
@@ -1003,6 +1015,19 @@ def _icp_fit(
 
     :return: Affine transform matrix.
     """
+
+    # Trim if required
+    if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
+        res = _icp_fit_func((ref, tba, norms), 0, 0, 0, 0, 0, 0, method=method)
+        ind = index_trimmed(res, central_estimator=params_fit_or_bin["trim_central_statistic"],
+                            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
+                            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
+                            iterative=params_fit_or_bin["trim_iterative"])
+        logging.info(f"Trimmed {np.count_nonzero(~ind)} residuals.")
+        # Keep data not trimmed
+        ref = ref[:, ind]
+        tba = tba[:, ind]
+        norms = norms[:, ind]
 
     # Group inputs into a single array
     inputs = (ref, tba, norms)
@@ -1642,7 +1667,6 @@ def cpd(
 # 6/ Least Z-difference
 #######################
 
-
 def _lzd_aux_vars(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
@@ -1736,6 +1760,130 @@ def _lzd_fit_func(
 
     return res
 
+def _lzd_fit_error_propag(x, y, z, dh, gx, gy, var_h_other, corr_h_other, var_h_grid=None, corr_h_grid=None,
+                          pixel_size=None):
+
+    # Test data
+    # import numpy as np
+    # x = np.random.normal(size=50)
+    # y = np.random.normal(size=50)
+    # z = np.random.normal(size=50)
+    # dh = np.random.normal(size=50)
+    # gx = np.random.normal(size=50)
+    # gy = np.random.normal(size=50)
+    #
+    # var_z = np.abs(np.random.normal(size=50))
+    # var_dh = np.abs(np.random.normal(size=50))
+    # var_gx = np.abs(np.random.normal(size=50))
+    # var_gy = np.abs(np.random.normal(size=50))
+    #
+
+    # Linear regression Y = β X
+    # Independent variable
+    X = np.stack([
+        -gx,
+        -gy,
+        y + gy * z,
+        -x - gx * z,
+        gx * y - gy * x
+    ])
+    # Dependent variable
+    Y = dh
+
+    # 1/ GENERALIZED LEAST SQUARES: No errors in the independent variable X
+    # In our case, if only the secondary (not necessarily gridded) elevation has significant errors
+    if var_h_grid is None:
+        import statsmodels.api as sm
+        from scipy.spatial.distance import pdist, squareform
+
+        # Add a constant to the independent variables for the intercept
+        X2 = sm.add_constant(X)
+
+        # Known error covariance matrix accounting for autocorrelation and heteroscedasticity
+        pdists = squareform(pdist(np.stack([x, y])))
+        covar = corr_h_other(pdists) * var_h_other
+
+        # Instantiate and fit the GLS model
+        gls_model = sm.GLS(Y, X2, sigma=covar)
+        gls_results = gls_model.fit()
+
+        # Print the summary of the results
+        print(gls_results.summary())
+
+        # Extract results
+        beta = gls_results.params
+        sd_beta = gls_results.bse
+        cov_beta = gls_results.cov_params()
+
+    # 2/ TOTAL LEAST SQUARES: Errors in both dependent variable Y and independent variable X
+    # In our case, if the gridded elevation and its gradient have significant errors
+    else:
+
+        # Get amplitude of gradient errors from elevation errors and their correlations
+        corr_grad_spacing = corr_h_grid(2 * pixel_size)
+        var_gx = np.sqrt(2) * var_h_grid / 2 * np.sqrt((1 - corr_grad_spacing))
+        var_gy = np.sqrt(2) * var_h_grid / 2 * np.sqrt((1 - corr_grad_spacing))
+        var_dh = var_h_grid + var_h_other
+        var_z = var_h_grid
+        var_x = var_h_grid / 10000
+        var_y = var_h_grid / 10000
+
+        from scipy.odr import ODR, multilinear, Data
+        # CAVEAT: This ODR implementation doesn't support autocorrelation of the variables,
+        # only heteroscedasticity and inter-correlation between independent variables
+
+        # Thankfully, both elevation errors and its gradient errors share the same correlation lengths,
+        # so we can simply sample sparse points according to the correlation error
+
+        # 1/ Covariance of dependent variable
+        cov_Y = var_dh
+        # Convert to weight, easy for a vector variance
+        w_Y = 1 / cov_Y
+
+        # 2/ Covariance of independent variable
+        # We need to build a (5, 5, N) covariance matrix describing the covariance between input variables
+        # The 6th term, the intercept constant (z translation), doesn't need to be defined yet for the covariance
+
+        # If we neglected the correlation between independent variables, this is the diagonals
+        # var_X = np.array([
+        #     var_gx,
+        #     var_gy,
+        #     z**2 * var_gy + var_z * gy**2,
+        #     z**2 * var_gx + var_z * gx**2,
+        #     y**2 * var_gx + x**2 * var_gy
+        # ])
+        # w_XX = 1 / var_X
+
+        zeros = np.zeros(len(z))
+        cov_XX = np.stack(
+            [[var_gx,       zeros,       zeros,                         z * var_gx,         -y * var_gx],
+             [zeros,        var_gy,      -z * var_gy,                   zeros,               x * var_gy],
+             [zeros,       -z * var_gy,  z**2 * var_gy + var_z * gy**2 + var_y, var_z * gx * gy,  - z * x *  var_gy + gx * var_y],
+             [z * var_gx,   zeros,       var_z * gx * gy,     z**2 * var_gx + var_z * gx**2 + var_x,- z * y * var_gx + gy * var_x],
+             [-y * var_gx,  x * var_gy,  -z * x * var_gy + gx * var_y,   -z * y * var_gx + gy * var_x , y**2 * var_gx +  x**2 * var_gy + var_x * gy**2 + var_y * gx**2],
+        ])
+        # Convert to weight, inverting each 5x5 matrix for a given observation (as those are assumed uncorrelated)
+        w_XX = np.ones(cov_XX.shape)
+        for i in range(cov_XX.shape[-1]):
+            w_XX[:, :, i] = np.linalg.inv(cov_XX[:, :, i])
+
+        # TODO: Move those to tests
+        ind_symmetric = [np.all(np.array_equal(cov_XX[:, :, i], cov_XX[:, :, i].T)) for i in range(cov_XX.shape[-1])]
+        ind_pos_semidef = [np.all(np.linalg.eigvals(cov_XX[:, :, i]) > 0) for i in range(cov_XX.shape[-1])]
+
+        # rd = RealData(x=X, y=Y, covx=cov_XX, covy=cov_Y)
+        rd = Data(x=X, y=Y, we=w_Y, wd=w_XX)
+        odr = ODR(rd, multilinear, beta0=np.zeros(6))  # We define the 6th term here in the multilinear model and beta0
+
+        output = odr.run()
+        output.pprint()
+
+        # Get output
+        beta = output.beta
+        sd_beta = output.sd_beta
+        cov_beta = output.cov_beta
+
+    return beta, sd_beta, cov_beta
 
 def _lzd_fit(
     x: NDArrayf,
@@ -1746,6 +1894,7 @@ def _lzd_fit(
     grady: NDArrayf,
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
+    errors: tuple[NDArrayf, Callable, NDArrayf, Callable] = None,
     **kwargs: Any,
 ) -> NDArrayf:
     """
@@ -1763,6 +1912,22 @@ def _lzd_fit(
 
     :return: Optimized affine matrix.
     """
+
+    # Trim if required
+    if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
+        res = _lzd_fit_func((x, y, z, dh, gradx, grady), 0, 0, 0, 0, 0, 0)
+        ind = index_trimmed(res, central_estimator=params_fit_or_bin["trim_central_statistic"],
+                            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
+                            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
+                            iterative=params_fit_or_bin["trim_iterative"])
+        logging.info(f"Trimmed {np.count_nonzero(~ind)} residuals.")
+        # Keep data not trimmed
+        x = x[ind]
+        y = y[ind]
+        z = z[ind]
+        dh = dh[ind]
+        gradx = gradx[ind]
+        grady = grady[ind]
 
     # Inputs that are not parameters to optimize
     inputs = (x, y, z, dh, gradx, grady)
@@ -1805,7 +1970,11 @@ def _lzd_fit(
         init_offsets = np.zeros(3)
 
     # Run optimizer on function
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
+    # TODO: Add parameter to force method (OLS, WLS, GLS, TLS?)
+    if errors is None:
+        results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
+    else:
+        results = _lzd_fit_error_propag(x=x, y=y, z=z, dh=dh, gx=gx, gy=gy)
 
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
@@ -1825,6 +1994,7 @@ def _lzd_iteration_step(
     sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
+    sub_errors: tuple[NDArrayf, Callable, NDArrayf, Callable],
 ) -> tuple[NDArrayf, dict[str, float]]:
     """
     Iteration step of Least Z-difference coregistration from Rosenholm and Torlegård (1988).
@@ -1844,6 +2014,7 @@ def _lzd_iteration_step(
     :param params_fit_or_bin: Dictionary of fitting and binning parameters.
     :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
         rotation as default.
+    :param sub_errors: (TO REFINE LATER) Input errors.
 
     :return Affine matrix, Iteration statistics to compare to tolerances.
     """
@@ -1859,6 +2030,14 @@ def _lzd_iteration_step(
     dh = sub_rst((y, x)) - z
     gradx = sub_gradx((y, x))
     grady = sub_grady((y, x))
+
+    if sub_errors is not None:
+        sub_sig_ref, corr_ref, sub_sig_tba, corr_tba = sub_errors
+        sig_ref = sub_sig_ref((y, x))
+        sig_tba = sub_sig_tba((y, x))
+        errors = (sig_ref, corr_ref, sig_tba, corr_tba)
+    else:
+        errors = None
 
     # Remove centroid before fit for better convergence
     x -= centroid[0]
@@ -1890,6 +2069,7 @@ def _lzd_iteration_step(
         grady=grady,
         params_fit_or_bin=params_fit_or_bin,
         only_translation=only_translation,
+        errors=errors,
     )
 
     # Increment transformation matrix by step
@@ -1922,6 +2102,10 @@ def lzd(
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
+    sig_ref: NDArrayf | gpd.GeoDataFrame = None,
+    sig_tba: NDArrayf | gpd.GeoDataFrame = None,
+    corr_ref: Callable[[NDArrayf, NDArrayf], NDArrayf] = None,
+    corr_tba: Callable[[NDArrayf, NDArrayf], NDArrayf] = None,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict]:
     """
     Least Z-differences coregistration.
@@ -1980,6 +2164,20 @@ def lzd(
     sub_gradx = _reproject_horizontal_shift_samecrs(gradx, src_transform=transform, return_interpolator=True)
     sub_grady = _reproject_horizontal_shift_samecrs(grady, src_transform=transform, return_interpolator=True)
 
+    # If input errors were defined
+    if any(x is not None for x in [sig_ref, sig_tba, corr_ref, corr_tba]):
+        if sig_ref is not None:
+            sub_sig_ref = _reproject_horizontal_shift_samecrs(sig_ref, src_transform=transform, return_interpolator=True)
+        else:
+            sub_sig_ref = None
+        if sig_tba is not None:
+            sub_sig_tba = _reproject_horizontal_shift_samecrs(sig_tba, src_transform=transform, return_interpolator=True)
+        else:
+            sub_sig_tba = None
+        sub_errors = (sub_sig_ref, corr_ref, sub_sig_tba, corr_tba)
+    else:
+        sub_errors = None
+
     # Estimate centroid to use
     centroid = _get_centroid_scale(ref_elev=ref_elev, transform=transform)[0]
 
@@ -1995,6 +2193,7 @@ def lzd(
         sub_grady,
         params_fit_or_bin,
         only_translation,
+        sub_errors
     )
     final_matrix, _, output_iterative = _iterate_method(
         method=_lzd_iteration_step,
@@ -2431,6 +2630,11 @@ class ICP(AffineCoreg):
         sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
         standardize: bool = True,
         subsample: float | int = 5e5,
+        trim_residuals: bool = False,
+        trim_central_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+        trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        trim_spread_coverage: float = 3,
+        trim_iterative: bool = False,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -2469,6 +2673,16 @@ class ICP(AffineCoreg):
             "sampling_strategy": sampling_strategy,
             "standardize": standardize,
         }
+        if trim_residuals:
+            meta_input_filtering = {
+                "trim_residuals": trim_residuals,
+                "trim_spread_statistic": trim_spread_statistic,
+                "trim_spread_coverage": trim_spread_coverage,
+                "trim_central_statistic": trim_central_statistic,
+                "trim_iterative": trim_iterative,
+            }
+            meta.update(meta_input_filtering)
+
         super().__init__(subsample=subsample, meta=meta)
 
     def _fit_any_rst_pts(
@@ -2659,6 +2873,11 @@ class NuthKaab(AffineCoreg):
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
+        trim_residuals: bool = False,
+        trim_central_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+        trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        trim_spread_coverage: float = 3,
+        trim_iterative: bool = False,
         vertical_shift: bool = True,
         initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
@@ -2693,6 +2912,15 @@ class NuthKaab(AffineCoreg):
             "tolerance_translation": tolerance_translation,
             "apply_vshift": vertical_shift,
         }
+        if trim_residuals:
+            meta_input_filtering = {
+                "trim_residuals": trim_residuals,
+                "trim_spread_statistic": trim_spread_statistic,
+                "trim_spread_coverage": trim_spread_coverage,
+                "trim_central_statistic": trim_central_statistic,
+                "trim_iterative": trim_iterative,
+            }
+            meta_input_iterative.update(meta_input_filtering)
 
         # Test consistency of the estimated initial shift given if provided
         if initial_shift:
@@ -2818,6 +3046,11 @@ class LZD(AffineCoreg):
         tolerance_translation: float | None = 0.01,
         tolerance_rotation: float | None = 0.001,
         subsample: float | int = 5e5,
+        trim_residuals: bool = False,
+        trim_central_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
+        trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        trim_spread_coverage: float = 3,
+        trim_iterative: bool = False,
     ):
         """
          Instantiate an LZD coregistration object.
@@ -2845,6 +3078,15 @@ class LZD(AffineCoreg):
             "tolerance_rotation": tolerance_rotation,
             "only_translation": only_translation,
         }
+        if trim_residuals:
+            meta_input_filtering = {
+                "trim_residuals": trim_residuals,
+                "trim_spread_statistic": trim_spread_statistic,
+                "trim_spread_coverage": trim_spread_coverage,
+                "trim_central_statistic": trim_central_statistic,
+                "trim_iterative": trim_iterative,
+            }
+            meta.update(meta_input_filtering)
         super().__init__(subsample=subsample, meta=meta)
 
     def _fit_any_rst_pts(
@@ -2882,6 +3124,10 @@ class LZD(AffineCoreg):
             tolerance_translation=self._meta["inputs"]["iterative"]["tolerance_translation"],
             tolerance_rotation=self._meta["inputs"]["iterative"]["tolerance_rotation"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            sig_tba=kwargs.get("sig_tba"),
+            sig_ref=kwargs.get("sig_ref"),
+            corr_ref=kwargs.get("corr_ref"),
+            corr_tba=kwargs.get("corr_tba")
         )
 
         # Write output to class

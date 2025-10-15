@@ -24,14 +24,15 @@ from __future__ import annotations
 import inspect
 import logging
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import numpy as np
 import scipy
-from geoutils.raster import subsample_array
+from geoutils.stats.sampling import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
-from xdem._typing import NDArrayf
+from geoutils.stats import nmad
+from xdem._typing import NDArrayf, NDArrayb
 
 try:
     from sklearn.linear_model import (
@@ -47,6 +48,39 @@ try:
 except ImportError:
     _has_sklearn = False
 
+def index_trimmed(res: NDArrayf, central_estimator=np.nanmedian, spread_estimator=nmad, spread_coverage: float = 2,
+                  iterative: bool = False) -> NDArrayb:
+    """
+    Trim residuals.
+
+    Returns: Index of values to trim.
+    """
+
+    nb_trimmed = 1
+    ind_final = np.zeros(len(res), dtype=bool)
+    res_step = res.copy()
+    while nb_trimmed != 0:
+
+        # Get central tendency and spread estimators
+        mu = central_estimator(res_step)
+        sig = spread_estimator(res_step)
+
+        # Get index of values that won't be trimmed
+        ind_trimmed = np.abs(res_step - mu) > spread_trim * sig
+
+        # Compute number of newly trimmed points
+        nb_trimmed = np.count_nonzero(ind_trimmed)
+
+        print(nb_trimmed)
+
+        if not iterative:
+            ind_final = ind_trimmed
+            break
+        else:
+            ind_final[ind_trimmed] = True
+            res_step[ind_trimmed] = np.nan
+
+    return ind_final
 
 def rmse(ytrue: NDArrayf, ypred: NDArrayf) -> float:
     """
