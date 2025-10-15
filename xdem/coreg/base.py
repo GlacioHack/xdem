@@ -1382,7 +1382,7 @@ def _apply_matrix_rst(
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
-    )
+    )[0]
 
     return new_dem, transform
 
