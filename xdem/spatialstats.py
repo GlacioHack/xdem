@@ -36,8 +36,9 @@ import numba
 import numpy as np
 import pandas as pd
 import scipy.ndimage
-from geoutils.raster import Raster, RasterType, subsample_array
+from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
+from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
 from numba import prange
 from numpy.typing import ArrayLike

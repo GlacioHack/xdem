@@ -51,7 +51,7 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
