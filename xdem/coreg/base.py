@@ -540,7 +540,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # Build a low memory masked array with invalid values masked to pass to subsampling
         ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
         # Take a subsample within the valid values
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             ma_valid,
             subsample=params_random["subsample"],
             return_indices=True,
@@ -1382,7 +1382,7 @@ def _apply_matrix_rst(
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
-    )
+    )[0]
 
     return new_dem, transform
 
