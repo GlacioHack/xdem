@@ -53,9 +53,8 @@ class Accuracy(Workflows):
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
-        self.generate_plot(self.reference_elev, "reference_elev_map")
-        self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
-
+        # self.generate_plot(self.reference_elev, "reference_elev_map")
+        #  self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
             self.inlier_mask = tba_mask
@@ -63,7 +62,6 @@ class Accuracy(Workflows):
         else:
             self.inlier_mask = ref_mask or tba_mask
             path_mask = ref_mask_path or tba_path_mask
-
         if self.inlier_mask is not None:
             self.generate_plot(
                 self.to_be_aligned_elev,
@@ -140,33 +138,36 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _compute_reproj(self, test_dem: str) -> None:
+    def _prepare_datas_for_coreg(self) -> None:
         """
         Compute reprojection
-        :param test_dem: str value for testing the target dem
         """
-        # Reproject data
+        sampling_source = self.config["coregistration"]["sampling_grid"]
 
-        sampling = self.config["coregistration"]["sampling_grid"]
-        if sampling == test_dem:
-            return  # No reprojection needed
+        # Reprojection
+        if sampling_source == "reference_elev":
+            crs_utm = self.reference_elev.get_utm_zone_as_epsg_code()
+        else:
+            crs_utm = self.to_be_aligned_elev.get_utm_zone_as_epsg_code()
 
-        logging.info(f"Computing reprojection on {test_dem}")
+        if crs_utm is None:
+            if sampling_source == "reference_elev":
+                self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
+            elif sampling_source == "to_be_aligned_elev":
+                self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
+        else:
+            self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm, res=(1, 1))
+            self.reference_elev = self.reference_elev.reproject(crs=crs_utm, res=(1, 1))
 
-        if sampling == "reference_elev":
-            src, target = self.to_be_aligned_elev, self.reference_elev
-            name = "to_be_aligned_elev"
-            reprojected = src.reproject(target, silent=True)
-            self.to_be_aligned_elev = reprojected
-        elif sampling == "to_be_aligned_elev":
-            src, target = self.reference_elev, self.to_be_aligned_elev
-            name = "reference_elevation"
-            reprojected = src.reproject(target, silent=True)
-            self.reference_elev = reprojected
-
-        if self.level > 1:
-            output_path = self.outputs_folder / "rasters" / f"{name}_reprojected.tif"
-            reprojected.save(output_path)
+        # Intersection
+        logging.info("Computing reprojection")
+        coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        if sampling_source == "reference_elev":
+            self.reference_elev = self.reference_elev.crop(coord_intersection)
+            self.generate_plot(self.to_be_aligned_elev, "crop_reference_elev_map")
+        else:
+            self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
+            self.generate_plot(self.to_be_aligned_elev, "crop_to_be_aligned_elev_map")
 
     def _get_stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
         """
@@ -244,9 +245,7 @@ class Accuracy(Workflows):
 
         if self.compute_coreg:
             # Reprojection step
-            self._compute_reproj("reference_elev")
-            self._compute_reproj("to_be_aligned_elev")
-
+            self._prepare_datas_for_coreg()
             # Coregistration step
             aligned_elev = self._compute_coregistration()
         else:
@@ -264,7 +263,7 @@ class Accuracy(Workflows):
             diff_pairs = [("", self.to_be_aligned_elev)]
 
         for label, dem in diff_pairs:
-            diff = dem - ref_elev
+            diff = dem.reproject(ref_elev) - ref_elev
             stats_keys = ["min", "max", "nmad", "median"]
             stats = diff.get_stats(stats_keys)
 
