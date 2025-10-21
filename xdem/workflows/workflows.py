@@ -161,7 +161,7 @@ class Workflows(ABC):
                 if from_vcrs != to_vcrs:
                     dem.to_vcrs(to_vcrs)
             if config_dem.get("force_source_nodata") is not None:
-                dem.set_nodata(config_dem["force_source_nodata"])
+                dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
                 mask = gu.Vector(mask_path)
