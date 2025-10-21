@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import RasterType
+from geoutils.raster import ClusterGenerator, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
@@ -136,6 +136,27 @@ class TestBlockwiseCoreg:
         ref, tba, mask = example_data
 
         config_mc = MultiprocConfig(chunk_size=block_size, outfile=tmp_path / "test.tif")
+        blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
+        blockwise_coreg.fit(ref, tba, mask)
+        blockwise_coreg.apply()
+
+        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
+
+        # Ground truth comparison with full image coregistration
+        nuth_kaab = xdem.coreg.NuthKaab()
+        expected = nuth_kaab.fit_and_apply(ref, tba, mask)
+
+        valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
+        assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=20)
+
+    @pytest.mark.parametrize("block_size", [500, 985, 1332], ids=["2d_shifts", "1d_shifts_x", "monotile"])
+    def test_blockwise_coreg_pipeline_with_multiprocessing(self, step, example_data, tmp_path, block_size):
+        """Test end-to-end blockwise coregistration in multiprocessing and validate output."""
+        ref, tba, mask = example_data
+
+        config_mc = MultiprocConfig(
+            chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
+        )
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)
         blockwise_coreg.apply()
