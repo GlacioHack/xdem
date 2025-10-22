@@ -53,8 +53,8 @@ class Accuracy(Workflows):
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
-        # self.generate_plot(self.reference_elev, "reference_elev_map")
-        #  self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
+        self.generate_plot(self.reference_elev, "reference_elev_map")
+        self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
             self.inlier_mask = tba_mask
@@ -168,6 +168,10 @@ class Accuracy(Workflows):
         else:
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(self.to_be_aligned_elev, "crop_to_be_aligned_elev_map")
+
+        if self.level > 1:
+            self.reference_elev.save(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
+            self.to_be_aligned_elev.save(self.outputs_folder / "rasters" / "to_be_aligned_elev_reprojected.tif")
 
     def _get_stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
         """
