@@ -17,4 +17,4 @@
 # limitations under the License.
 
 from xdem.workflows.accuracy import Accuracy  # noqa
-from xdem.workflows.topo import Topo  # noqa
+from xdem.workflows.topo import Topo, TopoBigData  # noqa

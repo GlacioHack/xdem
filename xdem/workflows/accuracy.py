@@ -49,8 +49,8 @@ class Accuracy(Workflows):
 
         super().__init__(config_dem)
 
-        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
-        self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_elev(self.config["inputs"]["to_be_aligned_elev"])
+        self.reference_elev, ref_mask, ref_mask_path = self.load_elev(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
         self.generate_plot(self.reference_elev, "reference_elev_map")
@@ -315,7 +315,7 @@ class Accuracy(Workflows):
                 self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg.tif")
                 self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg.tif")
 
-        self.create_html(self.dico_to_show)
+        self.create_html()
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):
@@ -325,10 +325,9 @@ class Accuracy(Workflows):
                 except OSError:
                     pass
 
-    def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
+    def create_html(self) -> None:
         """
         Create HTML page from png files and table
-        :param list_dict: list containing tuples of title and various dictionaries
         :return: None
         """
         html = "<html>\n<head><meta charset='UTF-8'><title>Qualify elevation results</title></head>\n<body>\n"
@@ -345,7 +344,7 @@ class Accuracy(Workflows):
         )
         html += "</div>\n"
 
-        for title, dictionary in list_dict:  # type: ignore
+        for title, dictionary in self.dico_to_show:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"
             html += f"<h2>{title}</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
