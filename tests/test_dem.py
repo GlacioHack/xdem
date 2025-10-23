@@ -520,3 +520,18 @@ class TestDEM:
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
+
+    def test_utm_zone_as_epsg_code(self) -> None:
+        """
+        Test utm_zone_as_epsg_code function with random faked data
+        """
+        dem = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        print(dem.crs.is_geographic)
+        epsg = dem.get_utm_zone_as_epsg_code()
+        assert epsg is None
+
+        # Fake crs to test
+        dem.crs = CRS.from_epsg(4326)
+        print(dem.crs.is_geographic)
+        epsg = dem.get_utm_zone_as_epsg_code()
+        assert epsg == 118652
