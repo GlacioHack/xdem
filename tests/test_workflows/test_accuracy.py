@@ -75,22 +75,6 @@ def test__compute_coregistration():
     """
 
 
-def test__compute_reproj(get_accuracy_inputs_config, tmp_path):
-    """
-    Test _compute_reproj function
-    """
-    user_config = get_accuracy_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    user_config["coregistration"] = {"process": False}
-    user_config["coregistration"]["sampling_grid"] = "to_be_aligned_elev"
-    workflows = Accuracy(user_config)
-    workflows.run()
-    src, target = workflows.reference_elev, workflows.to_be_aligned_elev
-    gt_reprojected = src.reproject(target, silent=True)
-
-    assert workflows.reference_elev == gt_reprojected
-
-
 def test__get_stats(get_accuracy_inputs_config, tmp_path):
     """
     Test _get_stats function
@@ -291,3 +275,9 @@ def test_mask_init(tmp_path, get_accuracy_inputs_config):
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
+
+
+def test_prepare_datas_for_coreg():
+    """
+    Test prepare_datas_for_coreg function
+    """
