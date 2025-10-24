@@ -41,9 +41,12 @@ available_attributes = [
     "aspect",
     "hillshade",
     "curvature",
-    "planform_curvature",
     "profile_curvature",
-    "maximum_curvature",
+    "tangential_curvature",
+    "planform_curvature",
+    "flowline_curvature",
+    "max_curvature",
+    "min_curvature",
     "topographic_position_index",
     "terrain_ruggedness_index",
     "roughness",
@@ -277,7 +280,18 @@ def _preprocess_surface_fit(
         c_curv = []
 
     # For other curvature, 5 coefs needed
-    if any(att in surface_attributes for att in ["planform_curvature", "profile_curvature", "maximum_curvature"]):
+    # if any(att in surface_attributes for att in ["planform_curvature", "profile_curvature", "maximum_curvature"]):
+    if any(
+        att in surface_attributes
+        for att in [
+            "profile_curvature",
+            "tangential_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+            "max_curvature",
+            "min_curvature",
+        ]
+    ):
         if surface_fit == "ZevenbergThorne":
             c_pcurv = ["zt_d", "zt_e", "zt_f", "zt_g", "zt_h"]
         elif surface_fit == "Florinsky":
@@ -301,18 +315,24 @@ def _preprocess_surface_fit(
     make_aspect = "aspect" in surface_attributes or "hillshade" in surface_attributes
     make_hillshade = "hillshade" in surface_attributes
     make_curvature = "curvature" in surface_attributes
-    make_planform_curvature = "planform_curvature" in surface_attributes or "maximum_curvature" in surface_attributes
-    make_profile_curvature = "profile_curvature" in surface_attributes or "maximum_curvature" in surface_attributes
-    make_maximum_curvature = "maximum_curvature" in surface_attributes
+    make_profile_curvature = "profile_curvature" in surface_attributes
+    make_tangential_curvature = "tangential_curvature" in surface_attributes
+    make_planform_curvature = "planform_curvature" in surface_attributes
+    make_flowline_curvature = "flowline_curvature" in surface_attributes
+    make_max_curvature = "max_curvature" in surface_attributes
+    make_min_curvature = "min_curvature" in surface_attributes
 
     make_attrs = [
         make_slope,
         make_aspect,
         make_hillshade,
         make_curvature,
-        make_planform_curvature,
         make_profile_curvature,
-        make_maximum_curvature,
+        make_tangential_curvature,
+        make_planform_curvature,
+        make_flowline_curvature,
+        make_max_curvature,
+        make_min_curvature,
     ]
 
     # Map index of attributes and coefficients to defined order
@@ -321,9 +341,12 @@ def _preprocess_surface_fit(
         "aspect",
         "hillshade",
         "curvature",
-        "planform_curvature",
         "profile_curvature",
-        "maximum_curvature",
+        "tangential_curvature",
+        "planform_curvature",
+        "flowline_curvature",
+        "max_curvature",
+        "min_curvature",
     ]
     order_coefs = [
         "zt_a",
@@ -379,13 +402,17 @@ def _make_attribute_from_coefs(
     aspect_idx: int,
     hs_idx: int,
     curv_idx: int,
-    plancurv_idx: int,
     profcurv_idx: int,
+    tancurv_idx: int,
+    plancurv_idx: int,
+    flowcurv_idx: int,
     maxcurv_idx: int,
+    mincurv_idx: int,
     make_attrs: list[bool],
     out_size: tuple[int, ...],
     # slope_method_id: int,
     surface_fit_id: int,
+    curv_method_id: int,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
@@ -401,19 +428,26 @@ def _make_attribute_from_coefs(
 
     # Indexes of attributes and coefficients are already mapped to the same indexes to avoid solving outside Numba loop
 
-    # For surface attributesxw
+    # For surface attributes
     # slope: 0,
     # aspect: 1,
     # hillshade: 2,
     # curvature: 3,
-    # planform_curvature: 4,
-    # profile_curvature: 5,
-    # maximum_curvature:
+    # profile_curvature: 4
+    # tangential_curvature: 5
+    # planform_curvature: 6
+    # flowline_curvature: 7
+    # max_curvature: 8
+    # min_curvature: 9
 
-    # For methods
+    # For surface fits (surface_fit_id)
     # horn: 0
     # zevenbergthorne: 1
     # florinsky: 2
+
+    # For curvature approach (curv_method_id)
+    # geometric: 0
+    # directional: 1
 
     # For coefficients names
     # zt_a: 0
@@ -438,9 +472,12 @@ def _make_attribute_from_coefs(
         make_aspect,
         make_hillshade,
         make_curvature,
-        make_planform_curvature,
         make_profile_curvature,
-        make_maximum_curvature,
+        make_tangential_curvature,
+        make_planform_curvature,
+        make_flowline_curvature,
+        make_max_curvature,
+        make_min_curvature,
     ) = make_attrs
 
     if surface_fit_id == 0:
@@ -456,6 +493,8 @@ def _make_attribute_from_coefs(
         # Extract surface derivatives based on Zevenbergen and Thorne (1987).
         # http://dx.doi.org/10.1002/esp.3290120107.
 
+        # Current ouput provisions do not currently require b, c
+
         z_x_idx = zt_g_idx
         z_y_idx = zt_h_idx
         z_xx_idx = zt_d_idx
@@ -468,6 +507,8 @@ def _make_attribute_from_coefs(
 
         # Extract surface derivatives based on Florinsky (2017).
         # https://doi.org/10.1177/0309133317733667.
+
+        # Current output provisions do not currently require a, b, d, c.
 
         z_x_idx = fl_p_idx
         z_y_idx = fl_q_idx
@@ -519,54 +560,314 @@ def _make_attribute_from_coefs(
 
     if make_curvature and surface_fit_id in [1, 2]:
 
+        # THIS FUNCTION IS NOT FOLLOWING THE MINÁR ET AL (2020).
+        # RETAINED FOR BACKWARD COMPATIBILITY BUT WITH A WARNING IN `curvature()`
+
         # Curvature is the second derivative of the surface fit equation.
         # (URL in get_quadric_coefficients() docstring)
         # Curvature = -2(D + E) * 100, see Moore et al. (1991) Equation 16 based on Zevenberg and Thorne (1987)
         attrs[curv_idx] = -2.0 * (C[z_xx_idx] + C[z_yy_idx]) * 100
 
-    if make_planform_curvature and surface_fit_id in [1, 2]:
-
-        # PLANC = 2(DH² + EG² -FGH)/(G²+H²)
-        # Completely flat surfaces need to be set to zero to avoid division by zero
-        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
-        # so we use a 1-d array and write in a 2-d array output
-        plancurv = np.where(
-            C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
-            np.array([0.0]),
-            -2
-            * (C[z_xx_idx] * C[z_y_idx] ** 2 + C[z_yy_idx] * C[z_x_idx] ** 2 - C[z_xy_idx] * C[z_x_idx] * C[z_y_idx])
-            / (C[z_x_idx] ** 2 + C[z_y_idx] ** 2)
-            * 100,
-        )
-
-        # In case plan curv is only derived for max curv
-        if plancurv_idx != 99:
-            attrs[plancurv_idx] = plancurv
-
     if make_profile_curvature and surface_fit_id in [1, 2]:
 
-        # PROFC = -2(DG² + EH² + FGH)/(G²+H²)
-        # Completely flat surfaces need to be set to zero to avoid division by zero
-        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
-        # so we use a 1-d array and write in a 2-d array output
-        profcurv = np.where(
-            C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
-            np.array([0.0]),
-            2
-            * (C[z_xx_idx] * C[z_x_idx] ** 2 + C[z_yy_idx] * C[z_y_idx] ** 2 + C[z_xy_idx] * C[z_x_idx] * C[z_y_idx])
-            / (C[z_x_idx] ** 2 + C[z_y_idx] ** 2)
-            * 100,
-        )
+        # # Completely flat surfaces need to be set to zero to avoid division by zero
+        # # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # # so we use a 1-d array and write in a 2-d array output
+
+        if curv_method_id == 0:
+
+            # Geometric profile curvature (normal slope line curvature) following Evans, 1979.
+            # profcurv = - (z_xx * z_x**2 + 2 * z_xy * z_x * z_y + z_yy * z_y**2) / ((z_x**2 + z_y**2) * sqrt((1 + z_x**2 + z_y**2)**3))
+
+            profcurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -(
+                    C[z_xx_idx] * C[z_x_idx] ** 2
+                    + 2 * C[z_xy_idx] * C[z_x_idx] * C[z_y_idx]
+                    + C[z_yy_idx] * C[z_y_idx] ** 2
+                )
+                / ((C[z_x_idx] ** 2 + C[z_y_idx] ** 2) * np.sqrt((1 + C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 3)),
+            )
+
+            # convert from m-1 to 100 m-1
+            profcurv *= 100
+
+        elif curv_method_id == 1:
+
+            # Directional derivative slope curvature (2nd slope line derivative) following Krcho, 1973.
+            # -(z_xx * z_x**2 + 2 * z_xy * z_x * z_y + z_yy * z_y**2) / (z_x**2 + z_y**2)
+
+            profcurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -(
+                    C[z_xx_idx] * C[z_x_idx] ** 2
+                    + 2 * C[z_xy_idx] * C[z_x_idx] * C[z_y_idx]
+                    + C[z_yy_idx] * C[z_y_idx] ** 2
+                )
+                / (C[z_x_idx] ** 2 + C[z_y_idx] ** 2),
+            )
+
+            # convert from m-1 to 100 m-1
+            profcurv *= 100
 
         # In case profile curv is only derived for max curv
         if profcurv_idx != 99:
             attrs[profcurv_idx] = profcurv
 
-    if make_maximum_curvature and surface_fit_id in [1, 2]:
+    if make_tangential_curvature and surface_fit_id in [1, 2]:
 
-        minc = np.minimum(plancurv, profcurv)
-        maxc = np.maximum(plancurv, profcurv)
-        attrs[maxcurv_idx] = np.where(np.abs(minc) > maxc, minc, maxc)
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
+
+        if curv_method_id == 0:
+
+            # Geometric tangential curvature (normal contour curvature) following Krcho, 1983.
+            # tancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / ((z_x**2 + z_y**2) * sqrt(1 + z_x**2 + z_y**2))
+
+            tancurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -(
+                    C[z_xx_idx] * C[z_y_idx] ** 2
+                    - 2 * C[z_xy_idx] * C[z_x_idx] * C[z_y_idx]
+                    + C[z_yy_idx] * C[z_x_idx] ** 2
+                )
+                / ((C[z_x_idx] ** 2 + C[z_y_idx] ** 2) * np.sqrt(1 + C[z_x_idx] ** 2 + C[z_y_idx] ** 2)),
+            )
+
+            # convert from m-1 to 100 m-1
+            tancurv *= 100
+
+        if curv_method_id == 1:
+
+            # Directional derivative tangential curvature: 2nd contour derivative "plan curvature", following Zevenberg and Thorne, 1979.
+            # tancurv = -(z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / (z_x**2 + z_y**2)
+
+            tancurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -(
+                    C[z_xx_idx] * C[z_y_idx] ** 2
+                    - 2 * C[z_xy_idx] * C[z_x_idx] * C[z_y_idx]
+                    + C[z_yy_idx] * C[z_x_idx] ** 2
+                )
+                / (C[z_x_idx] ** 2 + C[z_y_idx] ** 2),
+            )
+
+            # convert from m-1 to 100 m-1
+            tancurv *= 100
+
+        if tancurv_idx != 99:
+            attrs[tancurv_idx] = tancurv
+
+    if make_planform_curvature and surface_fit_id in [1, 2]:
+
+        # # Completely flat surfaces need to be set to zero to avoid division by zero
+        # # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # # so we use a 1-d array and write in a 2-d array output
+
+        if curv_method_id in [0, 1]:
+
+            # Geometric planform curvature following Sobolevsky, 1932
+            # Planform derivation is the same in a geometric and directional derivative context (see Minár et al. 2020 following Jenčo, 1992)
+            # plancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / sqrt((z_x**2 + z_y**2)**3)
+
+            plancurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -(
+                    C[z_xx_idx] * C[z_y_idx] ** 2
+                    - 2 * C[z_xy_idx] * C[z_x_idx] * C[z_y_idx]
+                    + C[z_yy_idx] * C[z_x_idx] ** 2
+                )
+                / np.sqrt((C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 3),
+            )
+
+            # convert from m-1 to 100 m-1
+            plancurv *= 100
+
+        # In case plan curv is only derived for max curv
+        if plancurv_idx != 99:
+            attrs[plancurv_idx] = plancurv
+
+    if make_flowline_curvature and surface_fit_id in [1, 2]:
+
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
+
+        if curv_method_id == 0:
+
+            # Geometric flowline curvature is geodesic slope line curvature following Minár et al. 2020
+            # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) / (((z_x**2 + z_y**2)**3)**0.5 * (1 + z_x**2 + z_y**2)**0.5)
+
+            flowcurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                (
+                    C[z_x_idx] * C[z_y_idx] * (C[z_xx_idx] - C[z_yy_idx])
+                    - C[z_xy_idx] * (C[z_x_idx] ** 2 - C[z_y_idx] ** 2)
+                )
+                / (((C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 3) ** 0.5 * (1 + C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 0.5),
+            )
+
+            # convert from m-1 to 100 m-1
+            flowcurv *= 100
+
+        elif curv_method_id == 1:
+
+            # Directional derivative flowline curvature (projected slope line curvature) following Shary et al. 1992
+            # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) / ((z_x**2 + z_y**2)**3)**0.5
+
+            flowcurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                (
+                    C[z_x_idx] * C[z_y_idx] * (C[z_xx_idx] - C[z_yy_idx])
+                    - C[z_xy_idx] * (C[z_x_idx] ** 2 - C[z_y_idx] ** 2)
+                )
+                / ((C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 3) ** 0.5,
+            )
+
+            # convert from m-1 to 100 m-1
+            flowcurv *= 100
+
+        if flowcurv_idx != 99:
+            attrs[flowcurv_idx] = flowcurv
+
+    if (make_max_curvature or make_min_curvature) and surface_fit_id in [1, 2] and curv_method_id == 0:
+
+        # Mean curvature and unsphericity curvature required for maximal and minimal
+        # curvature (could choose to make this explicit and exposed in future)
+
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
+
+        # Mean geometric curvature (Gauss, 1928)
+        # mean = -((1 + z_y**2) * z_xx - 2 * z_y * z_x * z_xy + (1 + z_x**2) * z_yy) / (2 * ((1 + z_x**2 + z_y**2)**3)**0.5)
+        mean = np.where(
+            C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+            np.array([0.0]),
+            -(
+                (1 + C[z_y_idx] ** 2) * C[z_xx_idx]
+                - 2 * C[z_xy_idx] * C[z_x_idx] * C[z_y_idx]
+                + (1 + C[z_x_idx] ** 2) * C[z_yy_idx]
+            )
+            / (2 * ((1 + C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 3) ** 0.5),
+        )
+
+        # Not converted from m-1 to 100 m-1 until post-calculation of maximal/minimal curvatures
+
+        # NB - the equivalent directional derivative mean curvature in Minár et al (2020) paper is defined as:
+        # mean = (z_xx + z_yy) / 2 ,
+        # following Wilson et al. (2007), but this seems to produce a mean curvature of the same
+        # magnitude but opposite sign to the geometric appraoch. I am confident in the geometric
+        # approach, however, as when I calculate the directional mean differently as (maximum_curv + minumum_curv)/2,
+        # the result aligns with the geometric method.
+        # If we were to expose 'mean' and 'unsphericity' as requestable outputs, we would need to diagnose what is
+        # going on with the mean approach...
+
+        # Unsphericity curvature (Shary, 1995)
+        # unsphericity = (((1 + z_y**2) * z_xx - 2 * z_y * z_x * z_xy + (1 + z_x**2) * z_yy)
+        # / (2 * ((1 + z_x**2 + z_y**2)**3)**0.5))**2 - (z_xx * z_yy - z_xy**2) / ((1 + z_x**2 + z_y**2)**2)**0.5
+
+        unsphericity = np.where(
+            C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+            np.array([0.0]),
+            (
+                (
+                    (
+                        (1 + C[z_y_idx] ** 2) * C[z_xx_idx]
+                        - 2 * C[z_y_idx] * C[z_x_idx] * C[z_xy_idx]
+                        + (1 + C[z_x_idx] ** 2) * C[z_yy_idx]
+                    )
+                    / (2 * ((1 + C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 3) ** 0.5)
+                )
+                ** 2
+                - (C[z_xx_idx] * C[z_yy_idx] - C[z_xy_idx] ** 2) / ((1 + C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 2)
+            )
+            ** 0.5,
+        )
+
+        # Not converted from m-1 to 100 m-1 until post-calculation of maximal/minimal curvatures
+
+    if make_max_curvature and surface_fit_id in [1, 2]:
+
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
+
+        if curv_method_id == 0:
+
+            # maximual curvature (Shary, 1995) = minimal curvature (Euler, 1760)
+            # maxcurv = mean + unsphericity
+
+            maxcurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                mean + unsphericity,
+            )
+
+            # convert from m-1 to 100 m-1
+            maxcurv *= 100
+
+        elif curv_method_id == 1:
+
+            # maximum curvature (Wood, 1996) is the minimum second derivative
+            # maxcurv = -((z_xx + z_yy) / 2 - (((z_xx - z_yy) / 2)**2 + z_xy**2)**0.5)
+
+            maxcurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -((C[z_xx_idx] + C[z_yy_idx]) / 2 - (((C[z_xx_idx] - C[z_yy_idx]) / 2) ** 2 + C[z_xy_idx] ** 2) ** 0.5),
+            )
+
+            # convert from m-1 to 100 m-1
+            maxcurv *= 100
+
+        if maxcurv_idx != 99:
+            attrs[maxcurv_idx] = maxcurv
+
+    if make_min_curvature and surface_fit_id in [1, 2]:
+
+        # Completely flat surfaces need to be set to zero to avoid division by zero
+        # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
+        # so we use a 1-d array and write in a 2-d array output
+
+        if curv_method_id == 0:
+
+            # minimal curvature (Shary, 1995) = maximal curvature (Euler, 1760)
+            # maxcurv = mean - unsphericity
+
+            mincurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                mean - unsphericity,
+            )
+
+            # convert from m-1 to 100 m-1
+            mincurv *= 100
+
+        elif curv_method_id == 1:
+
+            # minimum curvature (Wood, 1996) is the maximum second derivative
+            # mincurv = -((z_xx + z_yy) / 2 + (((z_xx - z_yy) / 2)**2 + z_xy**2)**0.5)
+
+            mincurv = np.where(
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                np.array([0.0]),
+                -((C[z_xx_idx] + C[z_yy_idx]) / 2 + (((C[z_xx_idx] - C[z_yy_idx]) / 2) ** 2 + C[z_xy_idx] ** 2) ** 0.5),
+            )
+
+            # convert from m-1 to 100 m-1
+            mincurv *= 100
+
+        if mincurv_idx != 99:
+            attrs[mincurv_idx] = mincurv
 
     return attrs
 
@@ -611,6 +912,7 @@ def _get_surface_attributes_numba(
     out_dtype: DTypeLike,
     # slope_method_id: int = 0,
     surface_fit_id: int,
+    curv_method_id: int,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
@@ -642,7 +944,18 @@ def _get_surface_attributes_numba(
     fl_s_idx = idx_coefs[17]
     fl_p_idx = idx_coefs[18]
     fl_q_idx = idx_coefs[19]
-    slope_idx, aspect_idx, hs_idx, curv_idx, plancurv_idx, profcurv_idx, maxcurv_idx = idx_attrs
+    (
+        slope_idx,
+        aspect_idx,
+        hs_idx,
+        curv_idx,
+        profcurv_idx,
+        tancurv_idx,
+        plancurv_idx,
+        flowcurv_idx,
+        maxcurv_idx,
+        mincurv_idx,
+    ) = idx_attrs
 
     # Define ranges to loop through given padding
     row_range = N1 - M1 + 1
@@ -682,11 +995,15 @@ def _get_surface_attributes_numba(
                 aspect_idx=aspect_idx,
                 hs_idx=hs_idx,
                 curv_idx=curv_idx,
-                plancurv_idx=plancurv_idx,
                 profcurv_idx=profcurv_idx,
+                tancurv_idx=tancurv_idx,
+                plancurv_idx=plancurv_idx,
+                flowcurv_idx=flowcurv_idx,
                 maxcurv_idx=maxcurv_idx,
+                mincurv_idx=mincurv_idx,
                 out_size=(attrs_size, 1),  # 2-d required for np.where inside func
                 surface_fit_id=surface_fit_id,
+                curv_method_id=curv_method_id,
                 out_dtype=np.float64,
                 hillshade_azimuth=hillshade_azimuth,
                 hillshade_altitude=hillshade_altitude,
@@ -707,6 +1024,7 @@ def _get_surface_attributes_scipy(
     idx_attrs: list[int],
     # slope_method_id: int,
     surface_fit_id: int,
+    curv_method_id: int,
     attrs_size: int,
     out_dtype: DTypeLike = np.float32,
     **kwargs: Any,
@@ -750,9 +1068,12 @@ def _get_surface_attributes_scipy(
             aspect_idx,
             hs_idx,
             curv_idx,
-            plancurv_idx,
             profcurv_idx,
+            tancurv_idx,
+            plancurv_idx,
+            flowcurv_idx,
             maxcurv_idx,
+            mincurv_idx,
         ) = idx_attrs
 
         attrs = _make_attribute_from_coefs(
@@ -778,11 +1099,15 @@ def _get_surface_attributes_scipy(
             aspect_idx=aspect_idx,
             hs_idx=hs_idx,
             curv_idx=curv_idx,
-            plancurv_idx=plancurv_idx,
             profcurv_idx=profcurv_idx,
+            tancurv_idx=tancurv_idx,
+            plancurv_idx=plancurv_idx,
+            flowcurv_idx=flowcurv_idx,
             maxcurv_idx=maxcurv_idx,
+            mincurv_idx=mincurv_idx,
             out_size=out_size,
             surface_fit_id=surface_fit_id,
+            curv_method_id=curv_method_id,
             out_dtype=out_dtype,
             **kwargs,
         )
@@ -796,6 +1121,7 @@ def _get_surface_attributes(
     surface_attributes: list[str],
     out_dtype: DTypeLike = np.float32,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     engine: Literal["scipy", "numba"] = "scipy",
     **kwargs: Any,
 ) -> NDArrayf:
@@ -816,6 +1142,7 @@ def _get_surface_attributes(
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
         input DEM if floating type or to float32 if integer type.
     :param surface_fit: Method for the slope, aspect and hillshade ("Horn", "ZevenbergThorne", or "Florinsky").
+    :param curv_method: Method for the curvatures ("geometric" or "directional").
     :param engine: Engine to compute the surface attributes ("scipy" or "numba").
     """
 
@@ -834,6 +1161,10 @@ def _get_surface_attributes(
     surface_fit_mapping = {"horn": 0, "zevenbergthorne": 1, "florinsky": 2}
     surface_fit_id = surface_fit_mapping.get(surface_fit.lower(), -1)
 
+    # Same, but for curvautre method
+    curv_method_mapping = {"geometric": 0, "directional": 1}
+    curv_method_id = curv_method_mapping.get(curv_method.lower(), -1)
+
     # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
     # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
     if engine == "scipy":
@@ -844,6 +1175,7 @@ def _get_surface_attributes(
             idx_attrs=idx_attrs,
             make_attrs=make_attrs,
             surface_fit_id=surface_fit_id,
+            curv_method_id=curv_method_id,
             attrs_size=attrs_size,
             out_dtype=out_dtype,
             **kwargs,
@@ -875,6 +1207,7 @@ def _get_surface_attributes(
             attrs_size=attrs_size,
             out_dtype=out_dtype,
             surface_fit_id=surface_fit_id,
+            curv_method_id=curv_method_id,
             **kwargs,
         )
 
@@ -1394,6 +1727,7 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1414,6 +1748,7 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1434,6 +1769,7 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1454,6 +1790,7 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1473,6 +1810,7 @@ def get_terrain_attribute(
     hillshade_z_factor: float = 1.0,
     slope_method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1482,7 +1820,7 @@ def get_terrain_attribute(
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
 
-    TODO: UPDATE DOC STRING TO ACCOUNT FOR FLORINSKY (2009) UPDATE
+    TODO: UPDATE DOC STRING TO ACCOUNT FOR FLORINSKY (2009) AND MINAR ET AL (2020) UPDATE
 
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
@@ -1571,7 +1909,15 @@ def get_terrain_attribute(
     # Check that we're not using Horn for curvatures
     if surface_fit == "Horn":
 
-        curvature_list = ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
+        curvature_list = [
+            "curvature",
+            "profile_curvature",
+            "tangential_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+            "max_curvature",
+            "min_curvature",
+        ]
 
         if isinstance(surface_fit, str):
             found = surface_fit in curvature_list
@@ -1606,6 +1952,7 @@ def get_terrain_attribute(
                     hillshade_azimuth,
                     hillshade_z_factor,
                     surface_fit,
+                    curv_method,
                     tri_method,
                     window_size,
                     engine,
@@ -1627,6 +1974,7 @@ def get_terrain_attribute(
             hillshade_azimuth,
             hillshade_z_factor,
             surface_fit,
+            curv_method,
             tri_method,
             window_size,
             engine,
@@ -1645,6 +1993,7 @@ def _get_terrain_attribute(
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1663,6 +2012,7 @@ def _get_terrain_attribute(
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1681,6 +2031,7 @@ def _get_terrain_attribute(
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1699,6 +2050,7 @@ def _get_terrain_attribute(
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1716,6 +2068,7 @@ def _get_terrain_attribute(
     hillshade_azimuth: float = 315.0,
     hillshade_z_factor: float = 1.0,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     engine: Literal["scipy", "numba"] = "numba",
@@ -1747,9 +2100,12 @@ def _get_terrain_attribute(
         "aspect",
         "hillshade",
         "curvature",
-        "planform_curvature",
         "profile_curvature",
-        "maximum_curvature",
+        "tangential_curvature",
+        "planform_curvature",
+        "flowline_curvature",
+        "max_curvature",
+        "min_curvature",
     ]
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
@@ -1798,6 +2154,9 @@ def _get_terrain_attribute(
     list_surface_fit = ["Horn", "ZevenbergThorne", "Florinsky"]
     if surface_fit.lower() not in [sm.lower() for sm in list_surface_fit]:
         raise ValueError(f"Slope method '{surface_fit}' is not supported. Must be one of: {list_surface_fit}")
+    list_curv_methods = ["geometric", "directional"]
+    if curv_method.lower() not in [cm.lower() for cm in list_curv_methods]:
+        raise ValueError(f"Curvature method '{curv_method}' is not supported. Must be one of: {list_curv_methods}")
     list_tri_methods = ["Riley", "Wilson"]
     if tri_method.lower() not in [tm.lower() for tm in list_tri_methods]:
         raise ValueError(f"TRI method '{tri_method}' is not supported. Must be one of: {list_tri_methods}")
@@ -1840,6 +2199,7 @@ def _get_terrain_attribute(
             surface_attributes=attributes_requiring_surface_fit,
             out_dtype=out_dtype,
             surface_fit=surface_fit,
+            curv_method=curv_method,
             engine=engine,
             **surface_kwargs,
         )
@@ -2178,6 +2538,8 @@ def curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
+    THIS FUNCTION IS DEPRECATED - REFER TO DOCS FOR SPECIFIC CURVATURE RECOMMENDATIONS
+
     Calculate the terrain curvature (second derivative of elevation) in m-1 multiplied by 100.
 
     Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
@@ -2206,6 +2568,13 @@ def curvature(
     :returns: The curvature array of the DEM.
     """
 
+    # Warn that this approach is deprecated and will be removed in a future version
+    warnings.warn(
+        "The curvature attribute is deprecated, refer to docs for specific curvature functions.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
         raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
 
@@ -2219,72 +2588,11 @@ def curvature(
 
 
 @overload
-def planform_curvature(
-    dem: NDArrayf | MArrayf,
-    resolution: float | tuple[float, float] | None = None,
-    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
-    mp_config: MultiprocConfig | None = None,
-) -> NDArrayf: ...
-
-
-@overload
-def planform_curvature(
-    dem: RasterType,
-    resolution: float | tuple[float, float] | None = None,
-    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
-    mp_config: MultiprocConfig | None = None,
-) -> RasterType: ...
-
-
-def planform_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
-    resolution: float | tuple[float, float] | None = None,
-    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
-    mp_config: MultiprocConfig | None = None,
-) -> NDArrayf | RasterType:
-    """
-    Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
-
-    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
-
-    :param dem: The DEM to calculate the curvature from.
-    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
-    :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
-
-    :raises ValueError: If the inputs are poorly formatted.
-
-    :examples:
-        >>> dem = np.array([[1, 2, 4],
-        ...                 [1, 2, 4],
-        ...                 [1, 2, 4]], dtype="float32")
-        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        np.float32(-0.0)
-        >>> dem = np.array([[1, 4, 8],
-        ...                 [1, 2, 4],
-        ...                 [1, 4, 8]], dtype="float32")
-        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        np.float32(-4.0)
-
-    :returns: The planform curvature array of the DEM.
-    """
-
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
-
-    return get_terrain_attribute(
-        dem=dem,
-        attribute="planform_curvature",
-        surface_fit=surface_fit,
-        resolution=resolution,
-        mp_config=mp_config,
-    )
-
-
-@overload
 def profile_curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
@@ -2294,6 +2602,7 @@ def profile_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
@@ -2302,15 +2611,20 @@ def profile_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
     Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
 
-    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    Geometric (default) method follows Krcho (1973) and Evans (1979) in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+
+    Directional derivative method follows Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
+    :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
+    :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
 
     :raises ValueError: If the inputs are poorly formatted.
@@ -2337,48 +2651,180 @@ def profile_curvature(
         dem=dem,
         attribute="profile_curvature",
         surface_fit=surface_fit,
+        curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
     )
 
 
 @overload
-def maximum_curvature(
+def tangential_curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
 
 
 @overload
-def maximum_curvature(
+def tangential_curvature(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
 ) -> RasterType: ...
 
 
-def maximum_curvature(
+def tangential_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
-    Calculate the signed maximum profile or planform curvature parallel to the direction of the slope in m-1
-    multiplied by 100.
+    Calculate the tangential curvature in m-1 multiplied by 100.
 
-    Based on Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
+    Geometric (default) tangential curvature (normal contour curvature) follows Krcho, 1983 in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+
+    Directional derivative tangential curvature follows 'plan curvature' of Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
+    :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
 
     :raises ValueError: If the inputs are poorly formatted.
 
-    :returns: The profile curvature array of the DEM.
+    :returns: The tangential curvature array of the DEM.
+    """
+
+    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
+        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
+
+    return get_terrain_attribute(
+        dem=dem,
+        attribute="tangential_curvature",
+        surface_fit=surface_fit,
+        curv_method=curv_method,
+        resolution=resolution,
+        mp_config=mp_config,
+    )
+
+
+@overload
+def planform_curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf: ...
+
+
+@overload
+def planform_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> RasterType: ...
+
+
+def planform_curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf | RasterType:
+    """
+    Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
+
+    Geometric nad directional derivatives are identical, following method based on Sobolevsky (1932) in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
+    :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
+    :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
+    :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
+        np.float32(-0.0)
+        >>> dem = np.array([[1, 4, 8],
+        ...                 [1, 2, 4],
+        ...                 [1, 4, 8]], dtype="float32")
+        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
+        np.float32(-4.0)
+
+    :returns: The planform curvature array of the DEM.
+    """
+
+    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
+        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
+
+    return get_terrain_attribute(
+        dem=dem,
+        attribute="planform_curvature",
+        surface_fit=surface_fit,
+        curv_method=curv_method,
+        resolution=resolution,
+        mp_config=mp_config,
+    )
+
+
+@overload
+def flowline_curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf: ...
+
+
+@overload
+def flowline_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> RasterType: ...
+
+
+def flowline_curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf:
+    """
+    Calculate the flowline curvature of the DEM in m-1 multiplied by 100.
+
+    Geometric (default) flowline curvature follows the contour torsion described by Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+
+    Directional derivative flowline curvature follows Shary, 1991 in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
+    :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
+    :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
+    :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The flowline curvature array of the DEM.
     """
 
     if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
@@ -2386,8 +2832,128 @@ def maximum_curvature(
 
     return get_terrain_attribute(
         dem=dem,
-        attribute="maximum_curvature",
+        attribute="flowline_curvature",
         surface_fit=surface_fit,
+        curv_method=curv_method,
+        resolution=resolution,
+        mp_config=mp_config,
+    )
+
+
+@overload
+def max_curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf: ...
+
+
+@overload
+def max_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> RasterType: ...
+
+
+def max_curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf | RasterType:
+    """
+    Calculate the maximal (geometric) or maximum (directional derivative) profile or planform curvature
+    parallel to the direction of the slope in m-1 multiplied by 100.
+
+    Geometric (default) maximal curvature is calculated following Shary (1995, https://doi.org/10.1007/BF02084608)
+    and is equal to the minimal curvature of Euler (1760).
+
+    Directional derivative maximum curvature is the minimum second derivative following Wood (1996), https://lra.le.ac.uk/handle/2381/34503
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
+    :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
+    :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
+    :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The maximal or maximum curvature array of the DEM.
+    """
+
+    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
+        raise ValueError("surface_fit must be 'ZevenbergThorne' or 'Florinsky'")
+
+    return get_terrain_attribute(
+        dem=dem,
+        attribute="max_curvature",
+        surface_fit=surface_fit,
+        curv_method=curv_method,
+        resolution=resolution,
+        mp_config=mp_config,
+    )
+
+
+@overload
+def min_curvature(
+    dem: NDArrayf | MArrayf,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf: ...
+
+
+@overload
+def min_curvature(
+    dem: RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> RasterType: ...
+
+
+def min_curvature(
+    dem: NDArrayf | MArrayf | RasterType,
+    resolution: float | tuple[float, float] | None = None,
+    surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    mp_config: MultiprocConfig | None = None,
+) -> NDArrayf | RasterType:
+    """
+    Calculate the minimal (geometric) or minimum (directional derivative) profile or planform curvature
+    parallel to the direction of the slope in m-1 multiplied by 100.
+
+    Geometric (default) minimal curvature is calculated following Shary (1995, https://doi.org/10.1007/BF02084608)
+    and is equal to the maximal curvature of Euler (1760).
+
+    Directional derivative minimum curvature is the maximum second derivative following Wood (1996), https://lra.le.ac.uk/handle/2381/34503
+
+    :param dem: The DEM to calculate the curvature from.
+    :param resolution: The X/Y resolution of the DEM, only if passed as an array.
+    :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
+    :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
+    :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+
+    :raises ValueError: If the inputs are poorly formatted.
+
+    :returns: The mimimal or minimum curvature array of the DEM.
+    """
+    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
+        raise ValueError("surface_fit must be 'ZevenbergThorne' or 'Florinsky'")
+
+    return get_terrain_attribute(
+        dem=dem,
+        attribute="min_curvature",
+        surface_fit=surface_fit,
+        curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
     )

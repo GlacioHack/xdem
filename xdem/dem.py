@@ -474,31 +474,64 @@ class DEM(Raster):  # type: ignore
         return terrain.curvature(self, surface_fit=surface_fit, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(
-        self,
-        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
-        mp_config: MultiprocConfig | None = None,
-    ) -> RasterType:
-
-        return terrain.planform_curvature(self, surface_fit=surface_fit, mp_config=mp_config)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
     def profile_curvature(
         self,
         surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.profile_curvature(self, surface_fit=surface_fit, mp_config=mp_config)
+        return terrain.profile_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(
+    def tangential_curvature(
         self,
         surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.maximum_curvature(self, mp_config=mp_config)
+        return terrain.tangential_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def planform_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.planform_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def flowline_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.flowline_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def max_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.max_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def min_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.min_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(
