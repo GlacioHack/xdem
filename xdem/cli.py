@@ -23,7 +23,7 @@ import logging
 
 import yaml  # type: ignore
 
-from xdem.workflows import Accuracy, Topo
+from xdem.workflows import Accuracy, Topo, TopoBigData
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
 lib_gobject_name = ctypes.util.find_library("gobject-2.0")
@@ -51,19 +51,16 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="command", help="Available workflows as subcommand")
 
-    # Subcommand: info
+    # Subcommand: topo
     topo_parser = subparsers.add_parser(
         "topo",
         help="Run DEM qualification workflow",
         description="Run a DEM information workflow using a YAML configuration file.",
-        epilog="Example: xdem topo config.yaml",
+        epilog="Example: xdem topo --config config.yaml [--big_data]",
     )
-    topo_group = topo_parser.add_mutually_exclusive_group(required=True)
-    topo_group.add_argument(
-        "--config",
-        help="Path to YAML configuration file",
-    )
-    topo_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
+    topo_parser.add_argument("--config", help="Path to YAML configuration file")
+    topo_parser.add_argument("--big_data", action="store_true", help="Activate big data processing")
+    topo_parser.add_argument("--display_template_config", action="store_true", help="Show configuration template")
 
     # Subcommand: accuracy
     diff_parser = subparsers.add_parser(
@@ -87,13 +84,24 @@ def main() -> None:
     logging.getLogger("fontTools").propagate = False
 
     if args.command == "topo":
+        # Verify user CLI arguments
+        if not args.config and not args.display_template_config:
+            parser.error("topo: you must specify --config or --display_template_config")
+        if args.big_data and not args.config:
+            parser.error("topo: --big_data requires --config to be specified")
+
         if args.display_template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
             logging.info("\n" + yaml_string)
         elif args.config:
-            logger.info("Running topo workflow")
-            workflow = Topo(args.config)
-            workflow.run()
+            if args.big_data:
+                logger.info("Running topo workflow for big data")
+                workflow = TopoBigData(args.config)
+                workflow.run()
+            else:
+                logger.info("Running topo workflow")
+                workflow = Topo(args.config)  # type: ignore
+                workflow.run()
 
     elif args.command == "accuracy":
         if args.display_template_config:

@@ -231,6 +231,15 @@ TOPO_SCHEMA = {
             "level": {"type": "integer", "default": 1, "required": False, "allowed": [1, 2]},
         },
     },
+    "big_data": {
+        "type": "dict",
+        "required": False,
+        "default": {"nb_workers": None, "block_size": None},
+        "schema": {
+            "nb_workers": {"type": "integer", "nullable": True},
+            "block_size": {"type": "integer", "nullable": True},
+        },
+    },
 }
 
 COMPLETE_CONFIG_ACCURACY = {
@@ -317,4 +326,8 @@ COMPLETE_CONFIG_TOPO = {
         "percentagevalidpoints",
     ],
     "terrain_attributes": ["slope", "aspect", "curvature"],
+    "big_data": {
+        "nb_workers": None,
+        "block_size": None,
+    },
 }

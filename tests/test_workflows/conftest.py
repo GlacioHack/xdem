@@ -116,6 +116,7 @@ def pipeline_topo():
         ],
         "terrain_attributes": TERRAIN_ATTRIBUTES_DEFAULT,
         "outputs": {"path": "outputs", "level": 1},
+        "big_data": {"block_size": None, "nb_workers": None},
     }
 
 
