@@ -54,7 +54,8 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
     assert isinstance(workflows, Workflows)
     pipeline_gt = pipeline_topo
     pipeline_gt["outputs"] = {"path": str(tmp_path), "level": 1}
-    assert workflows.config == pipeline_topo
+    pipeline_gt["big_data"] = {}
+    assert workflows.config == pipeline_gt
     assert workflows.level == 1
     assert workflows.outputs_folder == tmp_path
     assert workflows.outputs_folder.exists()

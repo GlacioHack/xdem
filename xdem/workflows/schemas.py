@@ -236,8 +236,8 @@ TOPO_SCHEMA = {
         "required": False,
         "default": {"nb_workers": None, "block_size": None},
         "schema": {
-            "nb_workers": {"type": "integer"},
-            "block_size": {"type": "integer"},
+            "nb_workers": {"type": "integer", "nullable": True},
+            "block_size": {"type": "integer", "nullable": True},
         },
     },
 }
