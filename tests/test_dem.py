@@ -532,6 +532,5 @@ class TestDEM:
 
         # Fake crs to test
         dem.crs = CRS.from_epsg(4326)
-        print(dem.crs.is_geographic)
         epsg = dem.get_utm_zone_as_epsg_code()
         assert epsg == 118652
