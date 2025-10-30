@@ -497,7 +497,7 @@ class TestDEM:
             + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
         ],
     )  # type: ignore
-    def test_nuthkaab_coregPipeline(pipeline) -> None:  # type: ignore
+    def test_nuthkaab_coregpipeline(pipeline) -> None:  # type: ignore
         """
         Test initial shift cancellation in coregPipeline method
         """
@@ -529,6 +529,5 @@ class TestDEM:
 
         # Fake crs to test
         dem.crs = CRS.from_epsg(4326)
-        print(dem.crs.is_geographic)
         epsg = dem.get_utm_zone_as_epsg_code()
         assert epsg == 118652
