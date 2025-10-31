@@ -80,6 +80,7 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
     "input_data,expected",
     [
         ({"a": 1, "b": None, "c": 3}, {"a": 1, "c": 3}),
+        ({"a": 1, "statistics": None, "c": 3}, {"a": 1, "statistics": None, "c": 3}),
         ({"a": {"x": None, "y": 2}, "b": None}, {"a": {"y": 2}}),
         ([1, None, 2, None, 3], [1, 2, 3]),
         ([{"a": 1, "b": None}, {"c": None}, None, {"d": 4}], [{"a": 1}, {}, {"d": 4}]),
