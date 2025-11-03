@@ -73,7 +73,6 @@ try:
 except ImportError:
     _HAS_P3D = False
 
-
 # Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
@@ -121,6 +120,8 @@ dict_key_to_str = {
     "icp_picky": "Picky closest pair selection",
     "cpd_weight": "Weight of CPD outlier removal",
 }
+
+
 #####################################
 # Generic functions for preprocessing
 ###########################################
@@ -312,6 +313,24 @@ def _preprocess_coreg_fit(
         isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for elev in (reference_elev, to_be_aligned_elev)
     ):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
+
+    # If inlier_mask has not the same shape of input dems, reproject it into an into dem # todo
+    if inlier_mask is not None:
+        if isinstance(inlier_mask, gu.Raster):
+            if isinstance(reference_elev, gu.Raster):
+                if reference_elev.shape != inlier_mask.shape:
+                    inlier_mask = inlier_mask.reproject(reference_elev, resampling=rio.warp.Resampling.nearest)
+            elif isinstance(to_be_aligned_elev, gu.Raster):
+                if to_be_aligned_elev.shape != inlier_mask.shape:
+                    inlier_mask = inlier_mask.reproject(to_be_aligned_elev, resampling=rio.warp.Resampling.nearest)
+            elif isinstance(reference_elev, np.ndarray) or isinstance(to_be_aligned_elev, np.ndarray):
+                if (isinstance(reference_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape) or (
+                    isinstance(to_be_aligned_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape
+                ):
+                    raise ValueError("Input mask (1) need to be the same size as the elevation input(s) array(s).")
+        else:
+            if isinstance(reference_elev, gu.Raster) and reference_elev.shape != inlier_mask.shape:
+                raise ValueError("Input mask (2) can't be a different size array as input elevation.")
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):
@@ -1704,7 +1723,6 @@ class OutAffineDict(TypedDict, total=False):
 
 
 class InputCoregDict(TypedDict, total=False):
-
     random: InRandomDict
     fitorbin: InFitOrBinDict
     iterative: InIterativeDict
@@ -2695,7 +2713,6 @@ class CoregPipeline(Coreg):
         # Get the pipeline information for each step as a string
         final_str = []
         for i, step in enumerate(self.pipeline):
-
             final_str.append(f"Pipeline step {i}:\n" f"################\n")
             step_str = step.info(as_str=True)
             final_str.append(step_str)

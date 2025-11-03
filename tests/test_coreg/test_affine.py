@@ -206,9 +206,13 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values), as_array=True) - ref_shifted["z"]
+                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values), as_array=True)
+                - ref_shifted["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_shifted.reproject(ref)
             dh = ref - coreg_elev.reproject(ref)
@@ -293,9 +297,13 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values), as_array=True) - ref_vshifted["z"]
+                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values), as_array=True)
+                - ref_vshifted["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_vshifted
             dh = ref - coreg_elev
@@ -398,10 +406,15 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values), as_array=True)
+                ref.interp_points(
+                    (ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values), as_array=True
+                )
                 - ref_shifted_rotated["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_shifted_rotated
             dh = ref - coreg_elev
@@ -621,3 +634,95 @@ class TestAffineCoreg:
         assert (dem_aligned_is.data == dem_aligned.data).min()
         assert dem_aligned_is.transform == dem_aligned.transform
         assert dem_aligned_is.crs == dem_aligned.crs
+
+    def test_nuthkaab_cropped_mask(self) -> None:
+        reference_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
+        transform = reference_dem.transform
+        crs = reference_dem.crs
+        reference_dem_pc = reference_dem.to_pointcloud().ds
+        reference_dem_pc.rename(columns={"b1": "z"}, inplace=True)
+
+        to_be_aligned_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
+
+        to_be_aligned_dem_pc = to_be_aligned_dem.to_pointcloud().ds
+        to_be_aligned_dem_pc.rename(columns={"b1": "z"}, inplace=True)
+
+        glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+        # We create a stable ground mask (not glacierized) to mark "inlier data".
+        inlier_mask = ~glacier_mask.create_mask(reference_dem)
+
+        # crop the mask by a few pixels on each side
+        nrows, ncols = inlier_mask.shape
+        inlier_mask_crop = inlier_mask.icrop((0, 0, ncols - 10, nrows - 10))
+        inlier_mask_crop_proj = inlier_mask_crop.reproject(reference_dem, resampling=rio.warp.Resampling.nearest)
+
+        # test crop raster vs raster
+        nuth_kaab = coreg.NuthKaab()
+        dem_aligned = nuth_kaab.fit_and_apply(reference_dem, to_be_aligned_dem, inlier_mask_crop, random_state=42)
+        shifts = [nuth_kaab.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+
+        nuth_kaab_crop = coreg.NuthKaab()
+        dem_aligned_crop = nuth_kaab_crop.fit_and_apply(
+            reference_dem, to_be_aligned_dem, inlier_mask_crop_proj, random_state=42
+        )
+
+        list_shift = ["shift_x", "shift_y", "shift_z"]
+        shifts_crop = [nuth_kaab_crop.meta["outputs"]["affine"][k] for k in list_shift]  # type: ignore
+
+        # Check the output translations match the exact values
+        assert shifts_crop == pytest.approx(shifts)
+        assert (dem_aligned_crop.data == dem_aligned.data).min()
+        assert dem_aligned_crop.transform == dem_aligned.transform
+        assert dem_aligned_crop.crs == dem_aligned.crs
+
+        """
+        # case (raster, array, cropped mask raster)
+        nuth_kaab_test = coreg.NuthKaab()
+        nuth_kaab_test.fit_and_apply(
+            reference_dem.data, to_be_aligned_dem, inlier_mask_crop_proj, transform=transform, crs=crs, random_state=42
+        )
+        # shift
+
+        # case (array, raster, cropped mask raster)
+        nuth_kaab_test = coreg.NuthKaab()
+        nuth_kaab_test.fit_and_apply(
+            reference_dem, to_be_aligned_dem.data, inlier_mask_crop, transform=transform, crs=crs, random_state=42
+        )
+        # shift
+        """
+        # test (array, array, cropped mask raster)
+        with pytest.raises(ValueError, match=re.escape("Input mask (1)")):
+            coreg.NuthKaab().fit_and_apply(
+                reference_dem.data,
+                to_be_aligned_dem.data,
+                inlier_mask_crop,
+                transform=transform,
+                crs=crs,
+                random_state=42,
+            )
+
+        # case (pc, array, cropped mask raster)
+        with pytest.raises(ValueError, match=re.escape("Input mask (1)")):
+            coreg.NuthKaab().fit_and_apply(
+                reference_dem_pc,
+                to_be_aligned_dem.data,
+                inlier_mask_crop,
+                transform=transform,
+                crs=crs,
+                random_state=42,
+            )
+
+        # case (array, pc, cropped mask raster)
+        with pytest.raises(ValueError, match=re.escape("Input mask (1)")):
+            coreg.NuthKaab().fit_and_apply(
+                reference_dem.data,
+                to_be_aligned_dem_pc,
+                inlier_mask_crop,
+                transform=transform,
+                crs=crs,
+                random_state=42,
+            )
+
+        # case cropped mask array
+        with pytest.raises(ValueError, match=re.escape("Input mask (2)")):
+            coreg.NuthKaab().fit_and_apply(reference_dem, to_be_aligned_dem, inlier_mask_crop.data, random_state=42)
