@@ -26,6 +26,7 @@ import geoutils as gu
 import numba
 import numpy as np
 import scipy.fft as fft
+from geoutils.profiler import profile_tool
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,
@@ -1629,6 +1630,7 @@ def slope(
 ) -> Raster: ...
 
 
+@profile_tool("terrain.slope", memprof=True)  # type: ignore
 def slope(
     dem: NDArrayf | MArrayf | RasterType,
     method: Literal["Horn", "ZevenbergThorne"] = "Horn",
@@ -1689,6 +1691,7 @@ def aspect(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.aspect", memprof=True)  # type: ignore
 def aspect(
     dem: NDArrayf | MArrayf | RasterType,
     method: Literal["Horn", "ZevenbergThorne"] = "Horn",
@@ -1762,6 +1765,7 @@ def hillshade(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.hillshade", memprof=True)  # type: ignore
 def hillshade(
     dem: NDArrayf | MArrayf,
     method: Literal["Horn", "ZevenbergThorne"] = "Horn",
@@ -1818,6 +1822,7 @@ def curvature(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.curvature", memprof=True)  # type: ignore
 def curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1875,6 +1880,7 @@ def planform_curvature(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.planform_curvature", memprof=True)  # type: ignore
 def planform_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1929,6 +1935,7 @@ def profile_curvature(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.profile_curvature", memprof=True)  # type: ignore
 def profile_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1983,6 +1990,7 @@ def maximum_curvature(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.maximum_curvature", memprof=True)  # type: ignore
 def maximum_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -2026,6 +2034,7 @@ def topographic_position_index(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.topographic_position_index", memprof=True)  # type: ignore
 def topographic_position_index(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
@@ -2083,6 +2092,7 @@ def terrain_ruggedness_index(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.terrain_ruggedness_index", memprof=True)  # type: ignore
 def terrain_ruggedness_index(
     dem: NDArrayf | MArrayf | RasterType,
     method: Literal["Riley", "Wilson"] = "Riley",
@@ -2146,6 +2156,7 @@ def roughness(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.roughness", memprof=True)  # type: ignore
 def roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
@@ -2201,6 +2212,7 @@ def rugosity(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.rugosity", memprof=True)  # type: ignore
 def rugosity(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -2256,6 +2268,7 @@ def fractal_roughness(
 ) -> RasterType: ...
 
 
+@profile_tool("terrain.fractal_roughness", memprof=True)  # type: ignore
 def fractal_roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 13,
