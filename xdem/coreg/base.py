@@ -327,10 +327,10 @@ def _preprocess_coreg_fit(
                 if (isinstance(reference_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape) or (
                     isinstance(to_be_aligned_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape
                 ):
-                    raise ValueError("Input mask (1) need to be the same size as the elevation input(s) array(s).")
+                    raise ValueError("Input mask raster need to be the same size as the elevation input(s) array(s).")
         else:
             if isinstance(reference_elev, gu.Raster) and reference_elev.shape != inlier_mask.shape:
-                raise ValueError("Input mask (2) can't be a different size array as input elevation.")
+                raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):

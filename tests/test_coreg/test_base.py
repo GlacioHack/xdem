@@ -440,6 +440,93 @@ class TestCoregClass:
     @pytest.mark.parametrize(
         "combination",
         [
+            ("raster", "raster", False, "raster", "passes", ""),
+            ("raster", "raster", False, "array", "error", "Input mask array"),
+            ("raster", "raster", True, "raster", "passes", ""),
+            ("array", "raster", True, "raster", "passes", ""),
+            ("raster", "array", True, "raster", "passes", ""),
+            ("array", "array", True, "raster", "error", "Input mask raster"),
+            ("pc", "raster", False, "raster", "passes", ""),
+            ("raster", "pc", False, "raster", "passes", ""),
+        ],
+    )  # type: ignore
+    def test_fit_and_apply__cropped_mask(self, combination: tuple[str, str, str, str, str, str]) -> None:
+        """
+        Assert that the same mask, no matter its projection, gives the same results after a fit_and_apply (by shift
+        output values). NuthKaab has been chosen if this case but the method doesn't change anything.
+
+        The 'combination' param contains this in order:
+            1. The ref_type : raster, array or pc for pointclouds
+            2. The tba_type : raster, array or pc for pointclouds
+            3. If the fit_and_apply needs ref_dem.transform and ref_dem.crs
+            4. The mask_type : raster or array
+            6. The expected outcome of the test
+            7. The error message (if applicable)
+        """
+
+        ref_type, tba_type, info, mask_type, result, text = combination
+
+        # Init data
+        ref_dem, tba_dem, mask = load_examples()
+        inlier_mask = ~mask.create_mask(ref_dem)
+
+        # Load dem_ref info if needed
+        transform = None
+        crs = None
+        if info:
+            transform = ref_dem.transform
+            crs = ref_dem.crs
+
+        # Crop mask
+        nrows, ncols = inlier_mask.shape
+        inlier_mask_crop = inlier_mask.icrop((0, 0, ncols - 10, nrows - 10))
+
+        # And reprojected the cropped mask to have the same size as before
+        inlier_mask_crop_proj = inlier_mask_crop.reproject(ref_dem, resampling=rio.warp.Resampling.nearest)
+
+        # Evaluate the type of the inputs
+        if ref_type == "array":
+            ref_dem = ref_dem.data
+        elif ref_type == "pc":
+            ref_dem = ref_dem.to_pointcloud().ds
+            ref_dem.rename(columns={"b1": "z"}, inplace=True)
+        if tba_type == "array":
+            tba_dem = tba_dem.data
+        elif tba_type == "pc":
+            tba_dem = tba_dem.to_pointcloud().ds
+            tba_dem.rename(columns={"b1": "z"}, inplace=True)
+        if mask_type == "array":
+            inlier_mask_crop = inlier_mask_crop.data
+
+        list_shift = ["shift_x", "shift_y", "shift_z"]
+        warnings.filterwarnings("ignore")  # to do the process until the end
+
+        # Use VerticalShift as a representative example.
+        nuthkaab_ref = xdem.coreg.NuthKaab()
+        nuthkaab_ref.fit_and_apply(
+            ref_dem, tba_dem, inlier_mask=inlier_mask_crop_proj, transform=transform, crs=crs, random_state=42
+        )
+        shifts_ref = [nuthkaab_ref.meta["outputs"]["affine"][k] for k in list_shift]  # type: ignore
+
+        nuthkaab_crop = xdem.coreg.NuthKaab()
+        if result == "error":
+            with pytest.raises(ValueError, match=re.escape(text)):
+                nuthkaab_crop.fit_and_apply(
+                    ref_dem, tba_dem, inlier_mask=inlier_mask_crop, transform=transform, crs=crs, random_state=42
+                )
+            return
+        else:
+            nuthkaab_crop.fit_and_apply(
+                ref_dem, tba_dem, inlier_mask=inlier_mask_crop, transform=transform, crs=crs, random_state=42
+            )
+        shifts_crop = [nuthkaab_crop.meta["outputs"]["affine"][k] for k in list_shift]  # type: ignore
+
+        # Check the output shifts match
+        assert shifts_ref == pytest.approx(shifts_crop)
+
+    @pytest.mark.parametrize(
+        "combination",
+        [
             ("dem1", "dem2", "None", "None", "fit", "passes", ""),
             ("dem1", "dem2", "None", "None", "apply", "passes", ""),
             ("dem1.data", "dem2.data", "dem1.transform", "dem1.crs", "fit", "passes", ""),
@@ -889,8 +976,9 @@ class TestAffineManipulation:
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud
         # Because the raster created as a constant slope (plan-like), the interpolated values should be very close
-        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
-                                                   as_array=True)
+        z_points = trans_dem.interp_points(
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+        )
         valids = np.isfinite(z_points)
         assert np.count_nonzero(valids) > 0
         assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
@@ -950,10 +1038,12 @@ class TestAffineManipulation:
         trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
-        z_points_it = trans_dem_it.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
-                                                 as_array=True)
-        z_points_gd = trans_dem_gd.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
-                                                 as_array=True)
+        z_points_it = trans_dem_it.interp_points(
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+        )
+        z_points_gd = trans_dem_gd.interp_points(
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+        )
 
         valids = np.logical_and(np.isfinite(z_points_it), np.isfinite(z_points_gd))
         assert np.count_nonzero(valids) > 0
