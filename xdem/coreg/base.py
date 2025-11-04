@@ -316,20 +316,29 @@ def _preprocess_coreg_fit(
 
     # If inlier_mask has not the same shape of input dems, reproject it into an into dem # todo
     if inlier_mask is not None:
+        # if mask is a raster
         if isinstance(inlier_mask, gu.Raster):
+            # if reference_elev is a raster
             if isinstance(reference_elev, gu.Raster):
                 if reference_elev.shape != inlier_mask.shape:
                     inlier_mask = inlier_mask.reproject(reference_elev, resampling=rio.warp.Resampling.nearest)
+            # elif to_be_aligned_elev is a raster
             elif isinstance(to_be_aligned_elev, gu.Raster):
                 if to_be_aligned_elev.shape != inlier_mask.shape:
                     inlier_mask = inlier_mask.reproject(to_be_aligned_elev, resampling=rio.warp.Resampling.nearest)
+            # elif there is an input array AND it does not have the same size as the mask
             elif isinstance(reference_elev, np.ndarray) or isinstance(to_be_aligned_elev, np.ndarray):
                 if (isinstance(reference_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape) or (
                     isinstance(to_be_aligned_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape
                 ):
                     raise ValueError("Input mask raster need to be the same size as the elevation input(s) array(s).")
+        # if mask is a raster
         else:
-            if isinstance(reference_elev, gu.Raster) and reference_elev.shape != inlier_mask.shape:
+            # if its size dont fit the input elevation :
+            if (isinstance(reference_elev, (gu.Raster, np.ndarray)) and reference_elev.shape != inlier_mask.shape) or (
+                isinstance(to_be_aligned_elev, (gu.Raster, np.ndarray))
+                and to_be_aligned_elev.shape != inlier_mask.shape
+            ):
                 raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
