@@ -267,20 +267,6 @@ class DEM(Raster):  # type: ignore
         self._vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
         self._vcrs_grid = _grid_from_user_input(vcrs_input=new_vcrs)
 
-    def get_utm_zone_as_epsg_code(self) -> int | None:
-        """
-        Get the UTM zone as an EPSG code.
-        """
-
-        if self.crs.is_geographic:
-            lon_center = (self.bounds.left + self.bounds.right) / 2
-            lat_center = (self.bounds.top + self.bounds.bottom) / 2
-
-            utm_zone = int((lon_center + 180) / 6) + 1
-            return 32600 + utm_zone if lat_center >= 0 else 32700 + utm_zone
-        else:
-            return None
-
     @property
     def ccrs(self) -> CompoundCRS | CRS | None:
         """Compound horizontal and vertical coordinate reference system of the DEM."""

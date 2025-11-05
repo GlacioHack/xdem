@@ -146,28 +146,29 @@ class Accuracy(Workflows):
 
         # Reprojection
         if sampling_source == "reference_elev":
-            crs_utm = self.reference_elev.get_utm_zone_as_epsg_code()
+            crs_utm = self.reference_elev.get_metric_crs()
         else:
-            crs_utm = self.to_be_aligned_elev.get_utm_zone_as_epsg_code()
+            crs_utm = self.to_be_aligned_elev.get_metric_crs()
 
+        logging.info("Computing reprojection")
         if crs_utm is None:
             if sampling_source == "reference_elev":
                 self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
             elif sampling_source == "to_be_aligned_elev":
                 self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
         else:
-            self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm, res=(1, 1))
-            self.reference_elev = self.reference_elev.reproject(crs=crs_utm, res=(1, 1))
+            self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm)
+            self.reference_elev = self.reference_elev.reproject(crs=crs_utm)
 
         # Intersection
-        logging.info("Computing reprojection")
+        logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
         if sampling_source == "reference_elev":
             self.reference_elev = self.reference_elev.crop(coord_intersection)
-            self.generate_plot(self.to_be_aligned_elev, "crop_reference_elev_map")
+            self.generate_plot(self.to_be_aligned_elev, "cropped_reference_elev_map")
         else:
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
-            self.generate_plot(self.to_be_aligned_elev, "crop_to_be_aligned_elev_map")
+            self.generate_plot(self.to_be_aligned_elev, "cropped_to_be_aligned_elev_map")
 
         if self.level > 1:
             self.reference_elev.save(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
@@ -294,7 +295,12 @@ class Accuracy(Workflows):
                     "Statistics on altitude difference before coregistration",
                     1,
                 ),
-                (self.diff_after, "diff_elev_after_coreg", "Statistics on altitude difference after coregistration", 1),
+                (
+                    self.diff_after,
+                    "diff_elev_after_coreg",
+                    "Statistics on altitude difference after coregistration",
+                    1,
+                ),
             ]
         else:
             stat_items = [
@@ -312,8 +318,8 @@ class Accuracy(Workflows):
         if self.compute_coreg:
             self._compute_histogram()
             if self.level > 1:
-                self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg.tif")
-                self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg.tif")
+                self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
+                self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
 
         self.create_html(self.dico_to_show)
 
@@ -359,11 +365,11 @@ class Accuracy(Workflows):
             html += "<h2>Altitude differences</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
             html += (
-                "  <img src='plots/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: "
                 "40%; height: auto; width: 50%;'>\n"
             )
             html += (
-                "  <img src='plots/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: "
                 "40%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
