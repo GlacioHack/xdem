@@ -178,8 +178,8 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
     ]
 
     raster_files = [
-        "diff_elev_after_coreg.tif",
-        "diff_elev_before_coreg.tif",
+        "diff_elev_after_coreg_map.tif",
+        "diff_elev_before_coreg_map.tif",
         "to_be_aligned_elev_reprojected.tif",
         "reference_elev_reprojected.tif",
     ]

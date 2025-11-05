@@ -168,6 +168,7 @@ class TestBlockwiseCoreg:
         expected = nuth_kaab.fit_and_apply(ref, tba, mask)
 
         valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
+        # TODO: careful with 20 value
         assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=20)
 
     def test_ransac_on_horizontal_tiles(self, blockwise_coreg) -> None:
