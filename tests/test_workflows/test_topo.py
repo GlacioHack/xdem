@@ -143,6 +143,7 @@ def test_run(get_topo_inputs_config, tmp_path):
                 "from_vcrs": None,
                 "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
                 "to_vcrs": None,
+                "downsample": 1,
             }
         },
     )
