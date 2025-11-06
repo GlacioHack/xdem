@@ -20,13 +20,14 @@
 Accuracy class from workflow
 """
 import logging
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # type: ignore
-from geoutils.raster import RasterType
+from geoutils.raster import MultiprocConfig, RasterType
 from numpy import floating
 
 import xdem
@@ -55,6 +56,7 @@ class Accuracy(Workflows):
             self.reference_elev = self._get_reference_elevation()
         self.generate_plot(self.reference_elev, "reference_elev_map")
         self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
+        self.block_size = self.config["coregistration"]["block_size"]
 
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
@@ -96,47 +98,52 @@ class Accuracy(Workflows):
         Wrapper for coregistration
         """
 
-        coreg_extra = {}
+        if not self.block_size:
+            coreg_steps = ["step_one", "step_two", "step_three"]
+            coreg_functions = []
 
-        # Coregister
-        from_str_to_fun = {
-            "NuthKaab": lambda: xdem.coreg.NuthKaab(**coreg_extra),
-            "DhMinimize": lambda: xdem.coreg.DhMinimize(**coreg_extra),
-            "VerticalShift": lambda: xdem.coreg.VerticalShift(**coreg_extra),
-            "DirectionalBias": lambda: xdem.coreg.DirectionalBias(**coreg_extra),
-            "TerrainBias": lambda: xdem.coreg.TerrainBias(**coreg_extra),
-            "LZD": lambda: xdem.coreg.LZD(**coreg_extra),
-        }
+            method_map = {
+                "NuthKaab": xdem.coreg.NuthKaab,
+                "DhMinimize": xdem.coreg.DhMinimize,
+                "VerticalShift": xdem.coreg.VerticalShift,
+                "DirectionalBias": xdem.coreg.DirectionalBias,
+                "TerrainBias": xdem.coreg.TerrainBias,
+                "LZD": xdem.coreg.LZD,
+            }
 
-        coreg_steps = ["step_one", "step_two", "step_three"]
-        coreg_functions = []
+            for step in coreg_steps:
+                config_coreg = self.config["coregistration"].get(step)
+                if config_coreg:
+                    method_name = config_coreg.get("method")
+                    coreg_extra = config_coreg.get("extra_information", {})
+                    coreg_fun = partial(method_map[method_name], **coreg_extra)
+                    coreg_functions.append(coreg_fun())
 
-        for step in coreg_steps:
-            config_coreg = self.config["coregistration"].get(step)
-            if config_coreg:
-                method_name = config_coreg.get("method")
-                coreg_extra = config_coreg.get("extra_information", {})
-                coreg_fun = from_str_to_fun[method_name]()
-                coreg_functions.append(coreg_fun)
+            my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
-        my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
+            # Coregister
+            aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
+            aligned_elev.save(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
-        # Coregister
-        aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
-        aligned_elev.save(self.outputs_folder / "rasters" / "aligned_elev.tif")
+            self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
-        self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
-
-        for idx, step in enumerate(coreg_steps):
-            config_coreg = self.config["coregistration"].get(step)
-            if config_coreg:
-                method_name = config_coreg.get("method")
-                self.dico_to_show.append(
-                    (f"{method_name} inputs", self.floats_process(coreg_functions[idx].meta["inputs"]))
-                )
-                self.dico_to_show.append(
-                    (f"{method_name} outputs", self.floats_process(coreg_functions[idx].meta["outputs"]))
-                )
+            for idx, step in enumerate(coreg_steps):
+                config_coreg = self.config["coregistration"].get(step)
+                if config_coreg:
+                    method_name = config_coreg.get("method")
+                    self.dico_to_show.append(
+                        (f"{method_name} inputs", self.floats_process(coreg_functions[idx].meta["inputs"]))
+                    )
+                    self.dico_to_show.append(
+                        (f"{method_name} outputs", self.floats_process(coreg_functions[idx].meta["outputs"]))
+                    )
+        else:
+            mp_config = MultiprocConfig(
+                chunk_size=self.block_size, outfile=self.outputs_folder / "rasters" / "aligned_elev.tif"
+            )
+            blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
+            blockwise.fit(self.reference_elev, self.to_be_aligned_elev, self.inlier_mask)
+            aligned_elev = blockwise.apply()
 
         return aligned_elev
 

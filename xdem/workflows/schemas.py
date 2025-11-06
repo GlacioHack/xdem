@@ -186,6 +186,7 @@ ACCURACY_SCHEMA = {
                 "required": False,
             },
             "process": {"type": "boolean", "default": True, "required": False},
+            "block_size": {"type": "integer", "default": 0, "required": False},
         },
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
