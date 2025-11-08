@@ -14,6 +14,7 @@ import xdem
 # Import optional sklearn or skip test
 pytest.importorskip("sklearn")
 
+
 class TestRobustFitting:
     @pytest.mark.parametrize(
         "pkg_estimator",

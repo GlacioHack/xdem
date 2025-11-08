@@ -10,7 +10,6 @@ import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
-import skgstat
 from geoutils import Raster, Vector
 
 import xdem
@@ -526,6 +525,8 @@ class TestVariogram:
 
     def test_sample_empirical_variogram_speed(self) -> None:
         """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
+
+        import skgstat
 
         values = self.diff
         subsample = 10

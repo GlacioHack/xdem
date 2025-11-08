@@ -19,6 +19,7 @@ from xdem.coreg import BlockwiseCoreg, Coreg
 
 pytest.importorskip("pytransform3d")
 
+
 @pytest.fixture(scope="module")  # type: ignore
 def example_data() -> tuple[RasterType, RasterType, Vector]:
     """Load example DEMs and glacier outlines with inlier mask."""

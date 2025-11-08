@@ -4,6 +4,7 @@ import logging
 import os
 import warnings
 
+
 class TestDocs:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "doc/")
     n_threads = os.getenv("N_CPUS")

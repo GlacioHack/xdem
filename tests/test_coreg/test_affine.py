@@ -29,6 +29,7 @@ from xdem.coreg.affine import (
 # Import optional pytransform3d or skip test
 pytest.importorskip("pytransform3d")
 
+
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
 
