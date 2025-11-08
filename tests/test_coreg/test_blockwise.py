@@ -17,6 +17,7 @@ from geoutils.raster.distributed_computing import MultiprocConfig
 import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
 
+pytest.importorskip("pytransform3d")
 
 @pytest.fixture(scope="module")  # type: ignore
 def example_data() -> tuple[RasterType, RasterType, Vector]:

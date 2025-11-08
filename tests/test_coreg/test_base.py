@@ -23,6 +23,7 @@ from xdem import coreg, examples
 from xdem._typing import NDArrayf
 from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
+pytest.importorskip("pytransform3d")
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""

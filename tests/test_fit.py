@@ -11,6 +11,8 @@ from sklearn.metrics import mean_squared_error, median_absolute_error
 
 import xdem
 
+# Import optional sklearn or skip test
+pytest.importorskip("sklearn")
 
 class TestRobustFitting:
     @pytest.mark.parametrize(

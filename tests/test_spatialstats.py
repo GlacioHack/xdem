@@ -18,10 +18,6 @@ from xdem import examples
 from xdem._typing import NDArrayf
 from xdem.spatialstats import EmpiricalVariogramKArgs, neff_hugonnet_approx
 
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
-    from skgstat import models
-
 PLOT = False
 
 
@@ -489,6 +485,9 @@ class TestBinning:
 
 class TestVariogram:
 
+    # Import optional skgstat or skip test
+    pytest.importorskip("skgstat")
+
     ref, diff, mask, outlines = load_ref_and_diff()
 
     def test_sample_multirange_variogram_default(self) -> None:
@@ -734,6 +733,10 @@ class TestVariogram:
     def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
 
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            from skgstat import models
+
         # First, generate a sum of modelled variograms: ranges and  partial sills for three models
         params_real = (100, 0.7, 1000, 0.2, 10000, 0.1)
         r1, ps1, r2, ps2, r3, ps3 = params_real
@@ -964,6 +967,9 @@ class TestVariogram:
 
 
 class TestNeffEstimation:
+
+    # Import optional skgstat or skip test
+    pytest.importorskip("skgstat")
 
     ref, diff, _, outlines = load_ref_and_diff()
 
