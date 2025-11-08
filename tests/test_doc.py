@@ -3,13 +3,17 @@
 import logging
 import os
 import warnings
-
+import pytest
 
 class TestDocs:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "doc/")
     n_threads = os.getenv("N_CPUS")
 
     def test_example_code(self) -> None:
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         """Try running each python script in the doc/source/code\
                 directory and check that it doesn't raise an error."""
         current_dir = os.getcwd()
