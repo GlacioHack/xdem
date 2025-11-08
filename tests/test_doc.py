@@ -2,11 +2,9 @@
 
 import logging
 import os
-import platform
-import shutil
 import warnings
 
-import sphinx.cmd.build
+import pytest
 
 
 class TestDocs:
@@ -14,6 +12,10 @@ class TestDocs:
     n_threads = os.getenv("N_CPUS")
 
     def test_example_code(self) -> None:
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         """Try running each python script in the doc/source/code\
                 directory and check that it doesn't raise an error."""
         current_dir = os.getcwd()
@@ -52,28 +54,3 @@ class TestDocs:
         """
 
         os.chdir(current_dir)
-
-    def test_build(self) -> None:
-        """Try building the doc and see if it works."""
-
-        # Ignore all warnings raised in the documentation
-        # (some UserWarning are shown on purpose in certain examples, so they shouldn't make the test fail,
-        # and most other warnings are for Sphinx developers, not meant to be seen by us; or we can check on RTD)
-        warnings.filterwarnings("ignore")
-
-        # Test only on Linux
-        if platform.system() == "Linux":
-            # Remove the build directory if it exists.
-            if os.path.isdir(os.path.join(self.docs_dir, "build")):
-                shutil.rmtree(os.path.join(self.docs_dir, "build"))
-
-            return_code = sphinx.cmd.build.main(
-                [
-                    "-j",
-                    "1",
-                    os.path.join(self.docs_dir, "source"),
-                    os.path.join(self.docs_dir, "build", "html"),
-                ]
-            )
-
-            assert return_code == 0

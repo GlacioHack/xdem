@@ -497,15 +497,18 @@ class TestDEM:
             + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
         ],
     )  # type: ignore
-    def test_nuthkaab_coregPipeline(pipeline) -> None:  # type: ignore
+    def test_nuthkaab_coregpipeline(pipeline) -> None:  # type: ignore
         """
-        Test initial shift cancellation in coregPipeline method
+        Test initial shift cancellation in coreg pipeline method
         """
 
         for method in pipeline.pipeline:
             assert "initial_shift" not in method.meta["inputs"]["affine"]
 
     def test_estimate_uncertainty(self) -> None:
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
