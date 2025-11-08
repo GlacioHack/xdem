@@ -3,7 +3,9 @@
 import logging
 import os
 import warnings
+
 import pytest
+
 
 class TestDocs:
     docs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../", "doc/")
