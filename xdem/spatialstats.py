@@ -37,10 +37,6 @@ import numpy as np
 import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
-<<<<<<< HEAD
-from geoutils.stats import subsample_array
-=======
->>>>>>> upstream/main
 from geoutils.raster.array import get_array_and_mask
 from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
