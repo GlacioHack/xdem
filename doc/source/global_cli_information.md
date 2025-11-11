@@ -15,6 +15,8 @@ All workflows follow the same command structure:
 ```{code}
 xdem workflow_name --config config_file.yaml
 ```
+We need to replace workflow_name by either accuracy or topo (see the description of each one for more detail)
+
 
 The YAML configuration file contains at least the required input parameters for the workflow.
 xDEM then automatically fills in the rest with suggested settings. Users are free to edit the
@@ -35,6 +37,6 @@ and its corresponding PDF version.
 ```{toctree}
 :caption: Available workflows
 :maxdepth: 2
-cli_topo
 cli_accuracy
+cli_topo
 ```

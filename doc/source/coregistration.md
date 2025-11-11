@@ -551,6 +551,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 - An input `only_translation` to define if a coregistration should solve only for translations instead of a full rigid transformation (translations and rotations),
 - An input `standardize` to define if the input data should be standardized to the unit sphere before coregistration (to improve numerical convergence),
+- An input `initial_shift` that defines the estimated initial x and y shifts in georeferenced units, applied before fit step.
 - An output `matrix` that stores the estimated affine matrix,
 - An output `centroid` that stores the centroid coordinates with which to apply the affine transformation,
 - Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.

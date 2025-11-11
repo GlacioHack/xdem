@@ -169,14 +169,9 @@ def test_extra_information_is_optional():
         ("from_vcrs", "Ellipsoid"),
         # ("from_vcrs", "no_kv_arcgp-2006-sk.tif"),
         ("from_vcrs", 4326),
-        ("to_vcrs", "EGM96"),
-        ("to_vcrs", "EGM08"),
-        ("to_vcrs", "Ellipsoid"),
-        # ("to_vcrs", "no_kv_arcgp-2006-sk.tif"),
-        ("to_vcrs", 4326),
     ],
 )
-def test_valid_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
+def test_valid_from_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
     """
     Test valid VCRS function for 'from' and 'to'
     """
@@ -184,8 +179,31 @@ def test_valid_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
     info_conf["inputs"]["reference_elev"].update({prefix: vcrs})
 
     pipeline_test = schemas.validate_configuration(info_conf, schemas.TOPO_SCHEMA)
-    pipeline_test["inputs"]["reference_elev"].update({prefix: vcrs})
     pipeline_topo["inputs"]["reference_elev"].update({prefix: vcrs})
+    pipeline_topo["inputs"]["reference_elev"]["to_vcrs"] = None
+    assert pipeline_topo == pipeline_test
+
+
+@pytest.mark.parametrize(
+    "prefix, vcrs",
+    [
+        ("to_vcrs", "EGM96"),
+        ("to_vcrs", "EGM08"),
+        ("to_vcrs", "Ellipsoid"),
+        # ("to_vcrs", "no_kv_arcgp-2006-sk.tif"),
+        ("to_vcrs", 4326),
+    ],
+)
+def test_valid_to_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
+    """
+    Test valid VCRS function for 'from' and 'to'
+    """
+    info_conf = get_topo_inputs_config
+    info_conf["inputs"]["reference_elev"].update({prefix: vcrs})
+
+    pipeline_test = schemas.validate_configuration(info_conf, schemas.TOPO_SCHEMA)
+    pipeline_topo["inputs"]["reference_elev"].update({prefix: vcrs})
+    pipeline_topo["inputs"]["reference_elev"]["from_vcrs"] = None
     assert pipeline_topo == pipeline_test
 
 

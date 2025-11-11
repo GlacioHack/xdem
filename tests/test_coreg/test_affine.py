@@ -26,6 +26,9 @@ from xdem.coreg.affine import (
     translations_rotations_from_matrix,
 )
 
+# Import optional pytransform3d or skip test
+pytest.importorskip("pytransform3d")
+
 
 def load_examples(crop: bool = True) -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
@@ -206,9 +209,13 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values)) - ref_shifted["z"]
+                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values), as_array=True)
+                - ref_shifted["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values)) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_shifted.reproject(ref)
             dh = ref - coreg_elev.reproject(ref)
@@ -293,9 +300,13 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values)) - ref_vshifted["z"]
+                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values), as_array=True)
+                - ref_vshifted["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values)) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_vshifted
             dh = ref - coreg_elev
@@ -398,10 +409,15 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values))
+                ref.interp_points(
+                    (ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values), as_array=True
+                )
                 - ref_shifted_rotated["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values)) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_shifted_rotated
             dh = ref - coreg_elev
@@ -596,3 +612,28 @@ class TestAffineCoreg:
         # Assert horizontal shifts are the same
         matrix2[2, 3] = matrix1[2, 3]
         assert np.array_equal(matrix1, matrix2)
+
+    def test_nuthkaab_initial_shift(self) -> None:
+        """
+        Test that the initial_shift does not impact fit_and_apply process for the Nuth and Kaab coregistration.
+        """
+
+        # Use entire DEMs here (to compare to original values from older package versions)
+        ref, tba = load_examples(crop=False)[0:2]
+
+        # Get the coregistration method and expected shifts from the inputs
+        inlier_mask = ~self.outlines.create_mask(ref)
+
+        c = coreg.NuthKaab(initial_shift=(0, 0, 0), subsample=50000)
+        dem_aligned_is = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
+        shifts_is = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+
+        c = coreg.NuthKaab(subsample=50000)
+        dem_aligned = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
+        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+
+        # Check the output translations match the exact values
+        assert shifts_is == pytest.approx(shifts)
+        assert (dem_aligned_is.data == dem_aligned.data).min()
+        assert dem_aligned_is.transform == dem_aligned.transform
+        assert dem_aligned_is.crs == dem_aligned.crs

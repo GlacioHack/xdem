@@ -10,17 +10,12 @@ import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
-import skgstat
 from geoutils import Raster, Vector
 
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
 from xdem.spatialstats import EmpiricalVariogramKArgs, neff_hugonnet_approx
-
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
-    from skgstat import models
 
 PLOT = False
 
@@ -51,7 +46,7 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
@@ -489,6 +484,9 @@ class TestBinning:
 
 class TestVariogram:
 
+    # Import optional skgstat or skip test
+    pytest.importorskip("skgstat")
+
     ref, diff, mask, outlines = load_ref_and_diff()
 
     def test_sample_multirange_variogram_default(self) -> None:
@@ -527,6 +525,8 @@ class TestVariogram:
 
     def test_sample_empirical_variogram_speed(self) -> None:
         """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
+
+        import skgstat
 
         values = self.diff
         subsample = 10
@@ -733,6 +733,10 @@ class TestVariogram:
 
     def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            from skgstat import models
 
         # First, generate a sum of modelled variograms: ranges and  partial sills for three models
         params_real = (100, 0.7, 1000, 0.2, 10000, 0.1)
@@ -965,6 +969,9 @@ class TestVariogram:
 
 class TestNeffEstimation:
 
+    # Import optional skgstat or skip test
+    pytest.importorskip("skgstat")
+
     ref, diff, _, outlines = load_ref_and_diff()
 
     @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
@@ -1122,7 +1129,7 @@ class TestNeffEstimation:
             subsample=10,
         )
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_brom.create_mask(xres=res, as_array=True)
+        mask = outlines_brom.create_mask(res=res, as_array=True)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))

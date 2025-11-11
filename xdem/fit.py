@@ -28,7 +28,7 @@ from typing import Any, Callable
 
 import numpy as np
 import scipy
-from geoutils.raster import subsample_array
+from geoutils.stats.sampling import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
 from xdem._typing import NDArrayf
