@@ -12,7 +12,6 @@ import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
-import pytransform3d.rotations
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
@@ -22,6 +21,8 @@ import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
 from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
+
+pytest.importorskip("pytransform3d")
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -806,6 +807,8 @@ class TestCoregPipeline:
 
 class TestAffineManipulation:
 
+    import pytransform3d.rotations
+
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
 
     # Identity transformation
@@ -889,7 +892,9 @@ class TestAffineManipulation:
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud
         # Because the raster created as a constant slope (plan-like), the interpolated values should be very close
-        z_points = trans_dem.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        z_points = trans_dem.interp_points(
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+        )
         valids = np.isfinite(z_points)
         assert np.count_nonzero(valids) > 0
         assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
@@ -949,8 +954,12 @@ class TestAffineManipulation:
         trans_epc = apply_matrix(epc, matrix=matrix, centroid=centroid)
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
-        z_points_it = trans_dem_it.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
-        z_points_gd = trans_dem_gd.interp_points(points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values))
+        z_points_it = trans_dem_it.interp_points(
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+        )
+        z_points_gd = trans_dem_gd.interp_points(
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+        )
 
         valids = np.logical_and(np.isfinite(z_points_it), np.isfinite(z_points_gd))
         assert np.count_nonzero(valids) > 0

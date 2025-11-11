@@ -1,5 +1,4 @@
 # Copyright (c) 2025 xDEM developers
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -20,7 +19,6 @@
 """This module defines the DEM class."""
 from __future__ import annotations
 
-import logging
 import pathlib
 import warnings
 from typing import Any, Callable, Literal, overload
@@ -29,7 +27,6 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geoutils._typing import Number
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
@@ -38,7 +35,7 @@ from pyproj.crs import CompoundCRS, VerticalCRS
 
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.coreg import AffineCoreg, Coreg, CoregPipeline
+from xdem.coreg import Coreg
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
@@ -500,7 +497,6 @@ class DEM(Raster):  # type: ignore
         coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-        estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs,
     ) -> DEM:
@@ -514,8 +510,6 @@ class DEM(Raster):  # type: ignore
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
-        :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
-            the coregistration process begins.
         :param random_state: Random state or seed number to use for subsampling and optimizer.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
             the array/transform will be updated (if possible) and no resampling is done. \
@@ -531,35 +525,6 @@ class DEM(Raster):  # type: ignore
         if not isinstance(coreg_method, Coreg):
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
-        # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
-        if estimated_initial_shift:
-            if not (
-                isinstance(estimated_initial_shift, (list, tuple))
-                and len(estimated_initial_shift) == 2
-                and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
-            ):
-                raise ValueError(
-                    "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
-                )
-            if isinstance(coreg_method, CoregPipeline):
-                if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
-                    raise TypeError(
-                        "An initial shift has been provided, but none of the coregistration methods in the pipeline "
-                        "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
-                    )
-            elif not isinstance(coreg_method, AffineCoreg):
-                raise TypeError(
-                    "An initial shift has been provided, but the coregistration method is not affine. "
-                    "An affine coregistration method (e.g., AffineCoreg) is required."
-                )
-
-            # convert shift
-            shift_x = estimated_initial_shift[0] * reference_elev.res[0]
-            shift_y = estimated_initial_shift[1] * reference_elev.res[1]
-
-            # Apply the shift to the source dem
-            reference_elev = reference_elev.translate(shift_x, shift_y)
-
         aligned_dem = coreg_method.fit_and_apply(
             reference_elev,
             src_dem,
@@ -568,27 +533,6 @@ class DEM(Raster):  # type: ignore
             bias_vars=bias_vars,
             **kwargs,
         )
-
-        # # Add the initial shift to the calculated shift
-        if estimated_initial_shift:
-
-            def update_shift(
-                coreg_method: Coreg | CoregPipeline, shift_x: float = shift_x, shift_y: float = shift_y
-            ) -> None:
-                if isinstance(coreg_method, CoregPipeline):
-                    for step in coreg_method.pipeline:
-                        update_shift(step)
-                else:
-                    # check if the keys exist
-                    if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
-                        if "shift_x" in coreg_method.meta["outputs"]["affine"]:
-                            coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
-                            logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
-                        if "shift_y" in coreg_method.meta["outputs"]["affine"]:
-                            coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
-                            logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
-
-            update_shift(coreg_method)
 
         return aligned_dem
 

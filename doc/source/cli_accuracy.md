@@ -46,8 +46,8 @@ xdem accuracy --display_template_config
                "path_to_elev", "Path to reference elevation", "str", "", "Yes"
                "force_source_nodata", "No data elevation", "int", "", "No"
                "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "str, int", "EGM96", "No"
-               "to_vcrs", "Destination vcrs", "str, int", "EGM96", "No"
+               "from_vcrs", "Original vcrs", "str, int", None, "No"
+               "to_vcrs", "Destination vcrs", "str, int", None, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
@@ -60,8 +60,8 @@ xdem accuracy --display_template_config
                "path_to_elev", "Path to to_be_aligned elevation", "str", "", "Yes"
                "force_source_nodata", "No data elevation", "int", "", "No"
                "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
-               "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
+               "from_vcrs", "Original vcrs", "int, str", None, "No"
+               "to_vcrs", "Destination vcrs", "int, str", None, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
@@ -69,21 +69,24 @@ xdem accuracy --display_template_config
 
         inputs:
             reference_elev:
-                path_to_elev: "path_to/ref_dem.tif"
+                path_to_elev: "path_to/reference_elev.tif"
                 force_source_nodata: -32768
-                from_vcrs: "EGM96"
-                to_vcrs: "Ellipsoid"
+                from_vcrs: None
+                to_vcrs: None
             to_be_aligned_elev:
-                path_to_elev: "path_to/to_be_aligned_dem.tif"
+                path_to_elev: "path_to/to_be_aligned_elev.tif"
                 path_to_mask: "path_to/mask.tif"
 
    .. tab:: coregistration
 
       **Required:** No
 
-      Coregistration step details. You can create a pipeline with up to three coregistration steps by
-      using the keys step_one, step_two, and step_three.
-      Available coregistration : see coregistration information <coregistration.md>`
+      Coregistration step details.
+
+      You can create a pipeline with up to three coregistration steps by using the keys
+      ``step_one``, ``step_two`` and ``step_three``.
+
+      Available coregistration method see : :ref:`coregistration`
 
       .. note::
         By default, coregistration is carried out using the Nuth and Kääb method.
@@ -110,7 +113,7 @@ xdem accuracy --display_template_config
         coregistration:
           step_one:
             method: "NuthKaab"
-            extra_informations : {"max_iterations": 10}
+            extra_information : {"max_iterations": 10}
           step_two:
             method: "DHMinimize"
           sampling_grid: "reference_elev"
@@ -131,13 +134,16 @@ xdem accuracy --display_template_config
       **Required:** No
 
       Statistics step information. This section relates to the computed statistics:
-        1. If no block is specified, all available statistics are calculated by default.
-        [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
-        percentage valid points, inter quartile range]
 
-        2. If a block is specified but no statistics are provided, then no statistics will be computed.
+      1. If no block is specified, all available statistics are calculated by default:
 
-        3. If a block is specified and some statistics are provided, then only these statistics are computed.
+         [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
+         percentage valid points, inter quartile range]
+
+      2. If a block is specified but no statistics are provided, then no statistics will be computed.
+
+      3. If a block is specified and some statistics are provided, then only these statistics are computed.
+
 
       .. code-block:: yaml
 
@@ -154,8 +160,9 @@ xdem accuracy --display_template_config
 
      Outputs information.
      Operates by levels:
-     1. Level 1 → aligned elevation only
-     2. Level 2 → more detailed output
+
+     1. **Level 1** → aligned elevation only
+     2. **Level 2** → more detailed output
 
      .. csv-table:: Outputs parameters
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
@@ -184,6 +191,7 @@ xdem accuracy --display_template_config
         │   ├─ diff_elev_before_coreg_map.png
         │   ├─ diff_elev_before_after_hist.png
         │   ├─ reference_elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ to_be_aligned_elev_map.png
         ├─ rasters
         │   └─ aligned_elev.tif
@@ -207,6 +215,7 @@ xdem accuracy --display_template_config
         │   ├─ diff_elev_before_coreg_map.png
         │   ├─ diff_elev_before_after_hist.png
         │   ├─ reference_elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ to_be_aligned_elev_map.png
         ├─ rasters
         │   ├─ aligned_elev.tif

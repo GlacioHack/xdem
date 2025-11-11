@@ -45,8 +45,8 @@ xdem topo --display_template_config
         "path_to_elev", "Path to reference elevation", "str", "", "Yes"
         "force_source_nodata", "No data elevation", "int", "", "No"
         "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-        "from_vcrs", "Original vcrs", "int, str", "EGM96", "No"
-        "to_vcrs", "Destination vcrs", "int, str", "EGM96", "No"
+        "from_vcrs", "Original vcrs", "int, str", None, "No"
+        "to_vcrs", "Destination vcrs", "int, str", None, "No"
 
      .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
 
@@ -54,10 +54,10 @@ xdem topo --display_template_config
 
          inputs:
            reference_elev:
-             path_to_elev: "path_to/ref_dem.tif"
+             path_to_elev: "path_to/reference_elev.tif"
              force_source_nodata: -32768
-             from_vcrs: "EGM96"
-             to_vcrs: "Ellipsoid"
+             from_vcrs: None
+             to_vcrs: None
 
    .. tab:: statistics
 
@@ -88,7 +88,7 @@ xdem topo --display_template_config
       List or set of dictionaries for extra information.
 
       .. note::
-          - If no block is specified, slope, aspect, and max_curvature attributes are calculated by default.
+          - If no block is specified, slope, aspect, and curvature attributes are calculated by default.
           - If a block is specified but no information is provided, then no attributes will be calculated.
 
       .. code-block:: yaml
@@ -103,11 +103,11 @@ xdem topo --display_template_config
 
          terrain_attributes:
            hillshade:
-               extra_informations:
+               extra_information:
            slope:
-              extra_informations:
+              extra_information:
            aspect:
-            extra_informations:
+            extra_information:
                 degrees: False
 
       .. note::
@@ -148,6 +148,7 @@ xdem topo --display_template_config
         │   └─ elev_with_mask_stats.csv
         ├─ plots
         │   ├─ elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ terrain_attributes_map.png
         ├─ rasters
         ├─ report.html
@@ -164,6 +165,7 @@ xdem topo --display_template_config
         │   └─ elev_with_mask_stats.csv
         ├─ plots
         │   ├─ elev_map.png
+        │   ├─ masked_elev_map.png (if mask_elev is given in input)
         │   └─ terrain_attributes_map.png
         ├─ rasters
         │   ├─ aspect.tif
@@ -188,7 +190,7 @@ xdem topo --display_template_config
         <h2>Elevation Model</h2>
         <img src='_static/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>
         <h2>Masked elevation Model</h2>
-        <img src='_static/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
+        <img src='_static/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
         <div style='clear: both; margin-bottom: 30px;'>
         <h2>Information about inputs</h2>
         <table border='1' cellspacing='0' cellpadding='5'>

@@ -48,12 +48,12 @@ class Topo(Workflows):
         super().__init__(config_dem)
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
-        self.generate_plot(self.dem, "elevation_(m)", cmap="terrain", cbar_title="Elevation (m)")
+        self.generate_plot(self.dem, "elev_map", cmap="terrain", cbar_title="Elevation (m)")
 
         if self.inlier_mask is not None:
             self.generate_plot(
                 self.dem,
-                "masked_elevation",
+                "masked_elev_map",
                 mask_path=path_to_mask,
                 cmap="terrain",
                 cbar_title="Elevation (m)",
@@ -67,6 +67,8 @@ class Topo(Workflows):
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
+
+        self.config = self.remove_none(self.config)  # type: ignore
 
     def generate_terrain_attributes_tiff(self) -> None:
         """
@@ -93,7 +95,7 @@ class Topo(Workflows):
             if isinstance(self.config_attributes, dict):
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
             attribute = from_str_to_fun[attr]()
-            logging.info(f"Compute {attr} as a rasters file")
+            logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
             attribute.save(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def generate_terrain_attributes_png(self) -> None:
@@ -102,7 +104,7 @@ class Topo(Workflows):
         :return: None
         """
 
-        logging.info(f"Computed attributes : {self.list_attributes}")
+        logging.info(f"Computing attributes : {self.list_attributes}")
 
         attributes = xdem.terrain.get_terrain_attribute(
             self.dem.data,
@@ -152,7 +154,7 @@ class Topo(Workflows):
             plt.yticks([])
 
         plt.tight_layout()
-        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes.png")
+        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png")
         plt.close()
 
     def run(self) -> None:
@@ -174,15 +176,18 @@ class Topo(Workflows):
             "Width": self.dem.width,
             "Height": self.dem.height,
             "Transform": self.dem.transform,
+            "Bounds": self.dem.bounds,
         }
 
         # Statistics
         list_metrics = self.config["statistics"]
-        stats_dem = self.dem.get_stats(list_metrics)
-        self.save_stat_as_csv(stats_dem, "stats_elev")
-        stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
-        self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
-        logging.info(f"Computed metrics: {list_metrics}")
+        if list_metrics is not None:
+            stats_dem = self.dem.get_stats(list_metrics)
+            self.save_stat_as_csv(stats_dem, "stats_elev")
+            stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
+            if self.inlier_mask is not None:
+                self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
+            logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
         # Terrain attributes
         if self.list_attributes is not None:
@@ -190,12 +195,14 @@ class Topo(Workflows):
             if self.level > 1:
                 self.generate_terrain_attributes_tiff()
         else:
-            logging.info("Computed terrain attributes: None")
+            logging.info("Computing terrain attributes: None")
 
         # Generate HTML
-        self.dico_to_show.append(("DEM information", dem_informations))
-        self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-        self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
+        self.dico_to_show.append(("Elevation information", dem_informations))
+        if list_metrics is not None:
+            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
+        if self.inlier_mask is not None:
+            self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
 
         self.create_html(self.dico_to_show)
 
@@ -217,10 +224,11 @@ class Topo(Workflows):
         html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
 
         html += "<h2>Elevation Model</h2>\n"
-        html += "<img src='plots/elevation_(m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
-        html += "<h2>Masked elevation Model</h2>\n"
-        html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        if self.inlier_mask is not None:
+            html += "<h2>Masked elevation Model</h2>\n"
+            html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore
@@ -233,7 +241,7 @@ class Topo(Workflows):
             html += "</div>\n"
 
         html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='plots/terrain_attributes.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 

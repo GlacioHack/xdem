@@ -68,12 +68,38 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
                 "reference_elev": {
                     "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
                     "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
-                    "from_vcrs": "EGM96",
-                    "to_vcrs": "EGM96",
+                    "from_vcrs": None,
+                    "to_vcrs": None,
                 }
             },
         )
     ]
+
+
+@pytest.mark.parametrize(
+    "input_data,expected",
+    [
+        ({"a": 1, "b": None, "c": 3}, {"a": 1, "c": 3}),
+        ({"a": {"x": None, "y": 2}, "b": None}, {"a": {"y": 2}}),
+        ([1, None, 2, None, 3], [1, 2, 3]),
+        ([{"a": 1, "b": None}, {"c": None}, None, {"d": 4}], [{"a": 1}, {}, {"d": 4}]),
+        (
+            {"a": [1, None, {"b": None, "c": 3}], "d": None, "e": {"f": None, "g": [None, 7]}},
+            {"a": [1, {"c": 3}], "e": {"g": [7]}},
+        ),
+        ({}, {}),
+        ([], []),
+        ({"a": 1, "b": [2, 3], "c": {"d": 4}}, {"a": 1, "b": [2, 3], "c": {"d": 4}}),
+    ],
+)
+def test_remove_none_cases(get_topo_inputs_config, tmp_path, input_data, expected):
+    """
+    Test remove_none from dictionary
+    """
+    user_config = get_topo_inputs_config
+    user_config["outputs"] = {"path": str(tmp_path)}
+    workflows = Topo(user_config)
+    assert workflows.remove_none(input_data) == expected
 
 
 def test_load_config(get_topo_inputs_config, tmp_path):

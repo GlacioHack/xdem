@@ -349,7 +349,7 @@ class BlockwiseCoreg:
                 grid_coords=tba_dem_tile.coords(grid=False),
                 data_column_name="z",
                 resampling=resampling,
-            )
+            )[0]
 
         applied_dem_tile = gu.Raster.from_array(new_dem, tba_dem_tile.transform, tba_dem_tile.crs, tba_dem_tile.nodata)
         return applied_dem_tile
