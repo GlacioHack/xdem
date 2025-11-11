@@ -123,7 +123,7 @@ class TestBlockwiseCoreg:
                 trans_epc,
                 grid_coords=tba_dem.coords(grid=False),
                 data_column_name="z",
-            )
+            )[0]
 
         expected = Raster.from_array(new_dem, tba_dem.transform, tba_dem.crs, tba_dem.nodata)
         actual = blockwise_coreg._wrapper_apply_epc(tba_dem, (1, 1, 1), (1, 1, 1), (1, 1, 1))

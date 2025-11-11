@@ -46,7 +46,7 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
@@ -1129,7 +1129,7 @@ class TestNeffEstimation:
             subsample=10,
         )
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_brom.create_mask(xres=res, as_array=True)
+        mask = outlines_brom.create_mask(res=res, as_array=True)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))
