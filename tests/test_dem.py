@@ -175,7 +175,7 @@ class TestDEM:
         - if r is copied, r.data changed, r2.data should be unchanged
         """
         # Open dataset, update data and make a copy
-        r = xdem.dem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        r = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
         r.data += 5
         r2 = r.copy()
 
@@ -183,7 +183,7 @@ class TestDEM:
         assert r is not r2
 
         # Check the object is a DEM
-        assert isinstance(r2, xdem.dem.DEM)
+        assert isinstance(r2, xdem.DEM)
 
         # Check all immutable attributes are equal
         # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'bands', 'nodata',
