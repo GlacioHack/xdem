@@ -209,9 +209,13 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values), as_array=True) - ref_shifted["z"]
+                ref.interp_points((ref_shifted.geometry.x.values, ref_shifted.geometry.y.values), as_array=True)
+                - ref_shifted["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_shifted.reproject(ref)
             dh = ref - coreg_elev.reproject(ref)
@@ -296,9 +300,13 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values), as_array=True) - ref_vshifted["z"]
+                ref.interp_points((ref_vshifted.geometry.x.values, ref_vshifted.geometry.y.values), as_array=True)
+                - ref_vshifted["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_vshifted
             dh = ref - coreg_elev
@@ -401,10 +409,15 @@ class TestAffineCoreg:
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             init_dh = (
-                ref.interp_points((ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values), as_array=True)
+                ref.interp_points(
+                    (ref_shifted_rotated.geometry.x.values, ref_shifted_rotated.geometry.y.values), as_array=True
+                )
                 - ref_shifted_rotated["z"]
             )
-            dh = ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True) - coreg_elev["z"]
+            dh = (
+                ref.interp_points((coreg_elev.geometry.x.values, coreg_elev.geometry.y.values), as_array=True)
+                - coreg_elev["z"]
+            )
         else:
             init_dh = ref - ref_shifted_rotated
             dh = ref - coreg_elev
