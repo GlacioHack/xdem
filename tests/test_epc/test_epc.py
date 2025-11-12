@@ -2,26 +2,28 @@
 
 import os
 import tempfile
-import pytest
-import xdem
-import numpy as np
-from pyproj import CRS
-from xdem import EPC
-import geoutils as gu
-import geopandas as gpd
-from geopandas.testing import assert_geodataframe_equal
-
 import warnings
+
+import geopandas as gpd
+import geoutils as gu
+import numpy as np
+import pytest
+from geopandas.testing import assert_geodataframe_equal
+from pyproj import CRS
 from pyproj.transformer import Transformer
 from shapely import Polygon
+
+import xdem
+from xdem import EPC
+
 
 class TestEPC:
 
     # 1/ Elevation point cloud with 3D points
     rng = np.random.default_rng(42)
     arr_points = rng.integers(low=1, high=1000, size=(100, 3)) + rng.normal(0, 0.15, size=(100, 3))
-    gdf1 = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=arr_points[:, 0], y=arr_points[:, 1], z=arr_points[:, 2]),
-        crs=4326
+    gdf1 = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy(x=arr_points[:, 0], y=arr_points[:, 1], z=arr_points[:, 2]), crs=4326
     )
 
     # 2/ Elevation point cloud with 2D points and data column
@@ -54,7 +56,6 @@ class TestEPC:
         # Assert that both the dataframe and data column name are equal
         assert epc2.data_column == "Z"
         assert_geodataframe_equal(epc2.ds, self.gdf2)
-
 
     def test_init__las(self) -> None:
         """Test that LAS files work properly in EPC class init."""
@@ -108,9 +109,9 @@ class TestEPC:
 
         # Check that a warning is raised when trying to override with user input
         with pytest.warns(
-                UserWarning,
-                match="The CRS in the point cloud metadata already has a vertical component, "
-                      "the user-input 'EGM08' will override it.",
+            UserWarning,
+            match="The CRS in the point cloud metadata already has a vertical component, "
+            "the user-input 'EGM08' will override it.",
         ):
             EPC(temp_file, vcrs="EGM08")
 
