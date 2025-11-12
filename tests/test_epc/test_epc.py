@@ -8,17 +8,59 @@ import numpy as np
 from pyproj import CRS
 from xdem import EPC
 import geoutils as gu
+import geopandas as gpd
+from geopandas.testing import assert_geodataframe_equal
+
 import warnings
 from pyproj.transformer import Transformer
+from shapely import Polygon
 
 class TestEPC:
 
+    # 1/ Elevation point cloud with 3D points
+    rng = np.random.default_rng(42)
+    arr_points = rng.integers(low=1, high=1000, size=(100, 3)) + rng.normal(0, 0.15, size=(100, 3))
+    gdf1 = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=arr_points[:, 0], y=arr_points[:, 1], z=arr_points[:, 2]),
+        crs=4326
+    )
+
+    # 2/ Elevation point cloud with 2D points and data column
+    rng = np.random.default_rng(42)
+    arr_points = rng.integers(low=1, high=1000, size=(100, 3)) + rng.normal(0, 0.15, size=(100, 3))
+    gdf2 = gpd.GeoDataFrame(
+        data={"Z": arr_points[:, 2]}, geometry=gpd.points_from_xy(x=arr_points[:, 0], y=arr_points[:, 1]), crs=4326
+    )
+
+    # 3/ LAS file
+    fn_las = gu.examples.get_path_test("coromandel_lidar")
+
+    # 4/ Non-point vector (for error raising)
+    poly = Polygon([(5, 5), (6, 5), (6, 6), (5, 6)])
+    gdf3 = gpd.GeoDataFrame({"geometry": [poly]}, crs="EPSG:4326")
+
     def test_init(self) -> None:
         """Test that inputs work properly in EPC class init."""
-        fn_pc = gu.examples.get_path_test("coromandel_lidar")
+
+        # 1/ For a single column point cloud with 3D points
+        epc = EPC(self.gdf1)
+
+        # Assert that both the dataframe and data column name are equal
+        assert epc.data_column is None
+        assert_geodataframe_equal(epc.ds, self.gdf1)
+
+        # 2/ For a single column point cloud with 2D points and a data column
+        epc2 = EPC(self.gdf2, data_column="Z")
+
+        # Assert that both the dataframe and data column name are equal
+        assert epc2.data_column == "Z"
+        assert_geodataframe_equal(epc2.ds, self.gdf2)
+
+
+    def test_init__las(self) -> None:
+        """Test that LAS files work properly in EPC class init."""
 
         # From filename
-        epc = EPC(fn_pc)
+        epc = EPC(self.fn_las)
         assert isinstance(epc, EPC)
 
         # From EPC
@@ -26,23 +68,14 @@ class TestEPC:
         assert isinstance(epc2, EPC)
 
         # From PointCloud
-        r = gu.PointCloud(fn_pc)
+        r = gu.PointCloud(self.fn_las)
         epc3 = EPC(r)
         assert isinstance(epc3, EPC)
-
-        list_epc = [epc, epc2, epc3]
 
         assert np.logical_and.reduce(
             (
                 np.array_equal(epc.data, epc2.data, equal_nan=True),
                 np.array_equal(epc2.data, epc3.data, equal_nan=True),
-            )
-        )
-
-        assert np.logical_and.reduce(
-            (
-                np.all(epc.data.mask == epc2.data.mask),
-                np.all(epc2.data.mask == epc3.data.mask),
             )
         )
 
@@ -52,17 +85,16 @@ class TestEPC:
         # Tests 1: instantiation with a file that has a 2D CRS
 
         # First, check a EPC that does not have any vertical CRS set
-        fn_pc = gu.examples.get_path_test("coromandel_lidar")
-        epc = EPC(fn_pc)
+        epc = EPC(self.gdf1)
         assert epc.vcrs is None
 
         # Setting a vertical CRS during instantiation should work here
-        epc = EPC(fn_pc, vcrs="EGM96")
+        epc = EPC(self.gdf1, vcrs="EGM96")
         assert epc.vcrs_name == "EGM96 height"
 
         # Tests 2: instantiation with a file that has a 3D CRS
         # Create such a file
-        epc = EPC(fn_pc)
+        epc = EPC(self.gdf1)
         epc_reproj = epc.reproject(crs=4979)
 
         # Save to temporary folder
@@ -77,7 +109,7 @@ class TestEPC:
         # Check that a warning is raised when trying to override with user input
         with pytest.warns(
                 UserWarning,
-                match="The CRS in the raster metadata already has a vertical component, "
+                match="The CRS in the point cloud metadata already has a vertical component, "
                       "the user-input 'EGM08' will override it.",
         ):
             EPC(temp_file, vcrs="EGM08")
@@ -90,7 +122,7 @@ class TestEPC:
         - if pc is copied, pc.data changed, pc2.data should be unchanged
         """
         # Open dataset, update data and make a copy
-        epc = xdem.EPC(gu.examples.get_path_test("coromandel_lidar"))
+        epc = xdem.EPC(self.gdf1)
         epc.data += 5
         epc2 = epc.copy()
 
@@ -115,8 +147,7 @@ class TestEPC:
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
 
-        fn_epc = xdem.examples.get_path_test("coromandel_lidar")
-        epc = EPC(fn_epc)
+        epc = EPC(self.gdf1)
 
         # -- Test 1: we check with names --
 
@@ -163,8 +194,9 @@ class TestEPC:
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
 
-        fn_epc = xdem.examples.get_path_test("coromandel_lidar")
-        epc = EPC(fn_epc)
+        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem = xdem.DEM(fn_dem)
+        epc = EPC(dem.to_pointcloud(subsample=500))
 
         # Reproject in WGS84 2D
         epc = epc.reproject(crs=4326)
@@ -177,7 +209,7 @@ class TestEPC:
         # Transform to EGM96 geoid not inplace (default)
         trans_epc = epc.to_vcrs(vcrs="EGM96")
 
-        # The output should be a DEM, input shouldn't have changed
+        # The output should be a EPC, input shouldn't have changed
         assert isinstance(trans_epc, EPC)
         assert epc.pointcloud_equal(epc_before_trans)
 
@@ -205,7 +237,7 @@ class TestEPC:
         assert z_out == pytest.approx(epc.data[5])
 
     def test_to_vcrs__equal_warning(self) -> None:
-        """Test that DEM.to_vcrs() does not transform if both 3D CRS are equal."""
+        """Test that EPC.to_vcrs() does not transform if both 3D CRS are equal."""
 
         fn_epc = gu.examples.get_path_test("coromandel_lidar")
         epc = EPC(fn_epc)
@@ -263,14 +295,14 @@ class TestEPC:
     #     fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
     #
     #     dem_ref = EPC(fn_ref)
-    #     dem_tba = DEM(fn_tba)
+    #     dem_tba = EPC(fn_tba)
     #
     #     # Run coregistration
     #     dem_aligned = dem_tba.coregister_3d(
     #         dem_ref, coreg_method=coreg_method, estimated_initial_shift=initial_shift, random_state=42
     #     )
     #
-    #     assert isinstance(dem_aligned, xdem.DEM)
+    #     assert isinstance(dem_aligned, xdem.EPC)
     #     assert isinstance(coreg_method, xdem.coreg.Coreg)
     #
     #     pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
@@ -278,8 +310,8 @@ class TestEPC:
     #         assert isinstance(pipeline[i], expected_type)
     #
     #     if coreg_method is xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift():
-    #         dem_ref = DEM(fn_ref)
-    #         dem_tba = DEM(fn_tba)
+    #         dem_ref = EPC(fn_ref)
+    #         dem_tba = EPC(fn_tba)
     #         nk = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
     #         nk.fit(dem_ref, dem_tba, random_state=42)
     #         manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)

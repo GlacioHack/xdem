@@ -25,6 +25,7 @@ from shapely.geometry.base import BaseGeometry
 import geopandas as gpd
 import pathlib
 
+import numpy as np
 from geoutils import PointCloud
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
@@ -46,7 +47,7 @@ class EPC(PointCloud):
     """
     The georeferenced elevation point cloud.
 
-    An elevation point cloud is a vector of either 3D point geometries, or 2D point geometries associated to
+    An elevation point cloud is a vector of either 3D point geometries or 2D point geometries associated to
     an elevation value from a main data column, optionally with auxiliary data columns.
 
      Main attributes:
@@ -67,21 +68,22 @@ class EPC(PointCloud):
     def __init__(
         self,
         filename_or_dataset: str | pathlib.Path | gpd.GeoDataFrame | gpd.GeoSeries | BaseGeometry,
-        z_column: str = None,
-        vcrs = None):
+        data_column: str | None = None,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None):
         """
         Instantiate an elevation point cloud from either a z column name and a vector (filename, GeoPandas
         dataframe or series, or a Shapely geometry), or only with a point cloud file type.
 
         :param filename_or_dataset: Path to point cloud file, or GeoPandas dataframe or series, or Shapely geometry.
-        :param z_column: Name of Z column defining the elevation point cloud.
+        :param data_column: If the point geometries are only 2D, the data column to define the Z coordinate of the
+            elevation point cloud.
         """
 
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
         self._vcrs_name: str | None = None
         self._vcrs_grid: str | None = None
 
-        super().__init__(filename_or_dataset=filename_or_dataset, data_column=z_column)
+        super().__init__(filename_or_dataset=filename_or_dataset, data_column=data_column)
 
         # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
         vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))
@@ -100,13 +102,37 @@ class EPC(PointCloud):
             else:
                 vcrs = vcrs_from_crs
 
-        # If no vertical CRS was provided by the user or defined in the CRS
-        if vcrs is None and "product" in self.tags:
-            vcrs = _parse_vcrs_name_from_product(self.tags["product"])
-
         # If a vertical reference was parsed or provided by user
         if vcrs is not None:
             self.set_vcrs(vcrs)
+
+    @property
+    def _has_z(self):
+        """Whether the point geometries all have a Z coordinate or not."""
+
+        return all(p.has_z for p in self.ds.geometry)
+
+    @property
+    def data(self) -> NDArrayf:
+        """
+        Data of the elevation point cloud.
+
+        Points to either the Z axis of the point geometries, or the associated data column of the geodataframe.
+        """
+        # Triggers the loading mechanism through self.ds
+        if not self._has_z:
+            return self.ds[self.data_column].values
+        else:
+            return self.geometry.z.values
+
+    @data.setter
+    def data(self, new_data: NDArrayf) -> None:
+        """Set new data for the point cloud."""
+
+        if not self._has_z:
+            self.ds[self.data_column] = new_data
+        else:
+            self.ds.geometry = gpd.points_from_xy(x=self.geometry.x, y=self.geometry.y, z=new_data, crs=self.crs)
 
     def copy(self, new_array: NDArrayf | NDArrayb | None = None) -> EPC:
         """
@@ -129,6 +155,39 @@ class EPC(PointCloud):
         """Vertical coordinate reference system of the elevation point cloud."""
 
         return self._vcrs
+
+    @property
+    def vcrs_grid(self) -> str | None:
+        """Grid path of vertical coordinate reference system of the DEM."""
+
+        return self._vcrs_grid
+
+    @property
+    def vcrs_name(self) -> str | None:
+        """Name of vertical coordinate reference system of the DEM."""
+
+        if self.vcrs is not None:
+            # If it is the ellipsoid
+            if isinstance(self.vcrs, str):
+                # Need to call CRS() here to make it work with rasterio.CRS...
+                vcrs_name = f"Ellipsoid (No vertical CRS). Datum: {CRS(self.crs).ellipsoid.name}."
+            # Otherwise, return the vertical reference name
+            else:
+                vcrs_name = self.vcrs.name
+        else:
+            vcrs_name = None
+
+        return vcrs_name
+
+    @property
+    def ccrs(self) -> CompoundCRS | CRS | None:
+        """Compound horizontal and vertical coordinate reference system of the DEM."""
+
+        if self.vcrs is not None:
+            ccrs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=self.vcrs)
+            return ccrs
+        else:
+            return None
 
     def set_vcrs(
         self,
@@ -234,7 +293,7 @@ class EPC(PointCloud):
         zz = self.data
         xx, yy = self.geometry.x.values, self.geometry.y.values
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
-        new_data = zz_trans.astype(self.dtype)  # type: ignore
+        new_data = zz_trans.astype(self.data.dtype)  # type: ignore
 
         # If inplace, update EPC and vcrs
         if inplace:
@@ -243,7 +302,7 @@ class EPC(PointCloud):
             return None
         # Otherwise, return new EPC
         else:
-            epc = EPC.copy(new_array=new_data)
+            epc = self.copy(new_array=new_data)
             epc.set_vcrs(new_vcrs=vcrs)
             return epc
 

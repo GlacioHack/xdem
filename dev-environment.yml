@@ -26,6 +26,8 @@ dependencies:
   # Optional dependencies
   - pytransform3d
   - scikit-learn
+  - laspy
+  - lazrs-python # For LAZ files
 
   # Test dependencies
   - pytest
