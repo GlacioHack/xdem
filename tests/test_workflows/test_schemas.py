@@ -194,6 +194,7 @@ def test_valid_from_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
     pipeline_test = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
     pipeline_topo["inputs"]["reference_elev"].update({prefix: vcrs})
     pipeline_topo["inputs"]["reference_elev"]["to_vcrs"] = None
+    pipeline_topo["inputs"]["reference_elev"]["downsample"] = 1
     assert pipeline_topo == pipeline_test
 
 
