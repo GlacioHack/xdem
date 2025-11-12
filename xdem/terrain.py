@@ -1132,9 +1132,9 @@ def _get_surface_attributes(
     - Slope, aspect and hillshade from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918, page 18 bottom left
       equations computed on a 3x3 window.
     - Slope, aspect, hillshade and curvatures from Zevenbergen and Thorne (1987),
-      http://dx.doi.org/10.1002/esp.3290120107 also computed on a 3x3 window.
+      http://dx.doi.org/10.1002/esp.3290120107, computed on a 3x3 window.
     - Slope, aspect, hillshade and curvatures from Florinsky (2008),
-      https://doi.org/10.1080/13658810802527499 also computed on a 5x5 window.
+      https://doi.org/10.1080/13658810802527499, computed on a 5x5 window.
 
     :param dem: Input DEM as 2D array.
     :param resolution: Resolution of the DEM (X and Y length are equal).
@@ -1820,14 +1820,14 @@ def get_terrain_attribute(
 ) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
     """
 
-    TODO: UPDATE DOC STRING TO ACCOUNT FOR FLORINSKY (2009) AND MINAR ET AL (2020) UPDATE
-
     Derive one or multiple terrain attributes from a DEM.
     The attributes are based on:
 
     - Slope, aspect, hillshade (first method) from Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918,
     - Slope, aspect, hillshade (second method), and terrain curvatures from Zevenbergen and Thorne (1987),
         http://dx.doi.org/10.1002/esp.3290120107, with curvature expanded in Moore et al. (1991),
+    - Curvatures (profile, tangential, planform, flowline, max, min) following the methods outlined
+        in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414,
     - Topographic Position Index from Weiss (2001), http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf.
     - Terrain Ruggedness Index (topography) from Riley et al. (1999),
         http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf.
@@ -1847,9 +1847,15 @@ def get_terrain_attribute(
     * 'aspect': The slope aspect in degrees or radians (degs: 0=N, 90=E, 180=S, 270=W).
     * 'hillshade': The shaded slope in relation to its aspect.
     * 'curvature': The second derivative of elevation (the rate of slope change per pixel), multiplied by 100.
-    * 'planform_curvature': The curvature perpendicular to the direction of the slope, multiplied by 100.
-    * 'profile_curvature': The curvature parallel to the direction of the slope, multiplied by 100.
-    * 'maximum_curvature': The maximum curvature.
+    * 'profile_curvature': The curvature of a normal section having a common tangent line with a steepest slope,
+        multiplied by 100.
+    * 'tangential_curvature': The curvature perpendicular to the profile curvature, multiplied by 100.
+    * 'planform_curvature': The curvature of a projected contour line, multiplied by 100.
+    * 'flowline_curvature': The curvature of a projected slope line, multiplied by 100.
+    * 'max_curvature': The maximal (geometric) or maximum (directional derivative) curvature at a point in any
+        direction, multiplied by 100.
+    * 'min_curvature': The minimal (geometric) or minimum (directional derivative) curvature at a point in any
+        direction, multiplied by 100.
     * 'surface_fit': A quadric surface fit for each individual pixel.
     * 'topographic_position_index': The topographic position index defined by a difference to the average of
         neighbouring pixels.
@@ -1870,7 +1876,9 @@ def get_terrain_attribute(
     :param hillshade_altitude: Shading altitude in degrees (0-90°). 90° is straight from above.
     :param hillshade_azimuth: Shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param hillshade_z_factor: Vertical exaggeration factor.
-    :param slope_method: Method to calculate the slope, aspect and hillshade: "Horn" or "ZevenbergThorne".
+    :param slope_method: Deprecated. Use surface_fit instead. Accepts "Horn" or "ZevenbergThorne".
+    :param surface_fit: Surface fit method to use for slope, aspect, hillshade and curvatures: "Horn", "ZevenbergThorne" or "Florinsky".
+    :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param window_size: Window size for windowed ruggedness and roughness indexes.
     :param engine: Engine to use for computing the attributes with convolution or other windowed calculations, currently
@@ -2615,9 +2623,12 @@ def profile_curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
-    Calculate the terrain curvature parallel to the direction of the slope in m-1 multiplied by 100.
 
-    Geometric (default) method follows Krcho (1973) and Evans (1979) in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+    Calculates profile curvature in units of m-1 multiplied by 100. Defined as the curvature of a normal section of
+    slope that is tangential to the slope line (steepest slope). Also known as vertical curvature.
+
+    Geometric (default) method follows Krcho (1973) and Evans (1979) as outlined in in Minár et al. (2020),
+    https://doi.org/10.1016/j.earscirev.2020.103414
 
     Directional derivative method follows Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107.
 
@@ -2685,11 +2696,16 @@ def tangential_curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
-    Calculate the tangential curvature in m-1 multiplied by 100.
 
-    Geometric (default) tangential curvature (normal contour curvature) follows Krcho, 1983 in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+    Calculates tangential curvature in units of m-1 multiplied by 100. Defined as the curvature of a normal section of
+    slope that is tangential to the contour line. Sometimes known as the horizontal curvature, although this
+    terminology has been shared with planform curvature.
 
-    Directional derivative tangential curvature follows 'plan curvature' of Zevenbergen and Thorne (1987), http://dx.doi.org/10.1002/esp.3290120107
+    Geometric (default) tangential curvature (normal contour curvature) follows Krcho, 1983 in Minár et al. (2020),
+    https://doi.org/10.1016/j.earscirev.2020.103414
+
+    Directional derivative tangential curvature follows 'plan curvature' of Zevenbergen and Thorne (1987),
+    http://dx.doi.org/10.1002/esp.3290120107
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
@@ -2742,9 +2758,12 @@ def planform_curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
-    Calculate the terrain curvature perpendicular to the direction of the slope in m-1 multiplied by 100.
 
-    Geometric nad directional derivatives are identical, following method based on Sobolevsky (1932) in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+    Calculates planform (or plan) curvature in units of m-1 multiplied by 100., defined as the curvature of a
+    projection of the contour line onto a horizontal plane. Sometimes known as the horizontal curvature, although this
+    terminology has been shared with tangential curvature.
+
+    Geometric and directional derivatives are identical, following method based on Sobolevsky (1932) in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
@@ -2810,7 +2829,8 @@ def flowline_curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf:
     """
-    Calculate the flowline curvature of the DEM in m-1 multiplied by 100.
+    Calculates flow line curvature in units of m-1 multiplied by 100. Defined as the curvature of a projection of the
+    slope line onto a horizontal plane. Sometimes known as the rotor or steam line curvature.
 
     Geometric (default) flowline curvature follows the contour torsion described by Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
 
@@ -2868,8 +2888,8 @@ def max_curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
-    Calculate the maximal (geometric) or maximum (directional derivative) profile or planform curvature
-    parallel to the direction of the slope in m-1 multiplied by 100.
+    Calculate the maximal (geometric) or maximum (directional derivative) curvature in units of m-1 multiplied by 100.
+    Defined as curvature of the normal section of slope with the greatest curvature value.
 
     Geometric (default) maximal curvature is calculated following Shary (1995, https://doi.org/10.1007/BF02084608)
     and is equal to the minimal curvature of Euler (1760).
@@ -2928,8 +2948,8 @@ def min_curvature(
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf | RasterType:
     """
-    Calculate the minimal (geometric) or minimum (directional derivative) profile or planform curvature
-    parallel to the direction of the slope in m-1 multiplied by 100.
+    Calculate the minimal (geometric) or minimum (directional derivative) curvature in units of m-1 multiplied by 100.
+    Defined as curvature of the normal section of slope with the smallest curvature value.
 
     Geometric (default) minimal curvature is calculated following Shary (1995, https://doi.org/10.1007/BF02084608)
     and is equal to the maximal curvature of Euler (1760).
