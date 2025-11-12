@@ -58,7 +58,8 @@ plt.show()
 # Let's prepare a coregistration class with a tiling configuration
 # BlockwiseCoreg is also available without mp_config but with parent_path parameters
 
-mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif")
+# Create a configuration without multiprocessing cluster (tasks will be processed sequentially)
+mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=None)
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
 
 # %%
