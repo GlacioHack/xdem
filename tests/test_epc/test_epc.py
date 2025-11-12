@@ -14,7 +14,7 @@ from pyproj.transformer import Transformer
 from shapely import Polygon
 
 import xdem
-from xdem import EPC
+from xdem import DEM, EPC
 
 
 class TestEPC:
@@ -257,63 +257,68 @@ class TestEPC:
         ):
             epc.to_vcrs(CRS("EPSG:4979"))
 
-    # @staticmethod
-    # @pytest.mark.parametrize(  # type: ignore
-    #     "coreg_method, initial_shift, expected_pipeline_types",
-    #     [
-    #         pytest.param(xdem.coreg.Deramp(), None, [xdem.coreg.Deramp], id="Custom method: Deramp"),
-    #         pytest.param(
-    #             xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
-    #             [10, 5],
-    #             [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
-    #             id="Pipeline: NuthKaab + VerticalShift with initial shift",
-    #         ),
-    #         pytest.param(
-    #             xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
-    #             None,
-    #             [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
-    #             id="Pipeline: NuthKaab + VerticalShift without initial shift",
-    #         ),
-    #         pytest.param(
-    #             xdem.coreg.DhMinimize(),
-    #             (-5, 2),
-    #             [xdem.coreg.AffineCoreg],
-    #             id="Simple affine method: DhMinimize with initial shift",
-    #         ),
-    #         pytest.param(
-    #             xdem.coreg.DhMinimize(),
-    #             None,
-    #             [xdem.coreg.AffineCoreg],
-    #             id="Simple affine method: DhMinimize without initial shift",
-    #         ),
-    #     ],
-    # )
-    # def test_coregister_3d(coreg_method, initial_shift, expected_pipeline_types) -> None:  # type: ignore
-    #     """
-    #     Test coregister_3d functionality
-    #     """
-    #     fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-    #     fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
-    #
-    #     dem_ref = EPC(fn_ref)
-    #     dem_tba = EPC(fn_tba)
-    #
-    #     # Run coregistration
-    #     dem_aligned = dem_tba.coregister_3d(
-    #         dem_ref, coreg_method=coreg_method, estimated_initial_shift=initial_shift, random_state=42
-    #     )
-    #
-    #     assert isinstance(dem_aligned, xdem.EPC)
-    #     assert isinstance(coreg_method, xdem.coreg.Coreg)
-    #
-    #     pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
-    #     for i, expected_type in enumerate(expected_pipeline_types):
-    #         assert isinstance(pipeline[i], expected_type)
-    #
-    #     if coreg_method is xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift():
-    #         dem_ref = EPC(fn_ref)
-    #         dem_tba = EPC(fn_tba)
-    #         nk = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
-    #         nk.fit(dem_ref, dem_tba, random_state=42)
-    #         manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
-    #         assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
+    @staticmethod
+    @pytest.mark.parametrize(  # type: ignore
+        "coreg_method, expected_pipeline_types",
+        [
+            pytest.param(
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
+                [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
+                id="Pipeline: NuthKaab + VerticalShift with initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+                [xdem.coreg.AffineCoreg],
+                id="Pipeline: NuthKaab with initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
+                [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
+                id="Pipeline: NuthKaab + VerticalShift without initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.DhMinimize(),
+                [xdem.coreg.AffineCoreg],
+                id="Simple affine method: DhMinimize without initial shift",
+            ),
+        ],
+    )
+    def test_coregister_3d(coreg_method, expected_pipeline_types) -> None:  # type: ignore
+        """
+        Test coregister_3d functionality
+        """
+        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+        epc_tba = dem_tba.to_pointcloud(subsample=5000)
+
+        # Run coregistration
+        dem_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+
+        assert isinstance(dem_aligned, xdem.EPC)
+        assert isinstance(coreg_method, xdem.coreg.Coreg)
+
+        # Test pipeline
+        pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
+        for i, expected_type in enumerate(expected_pipeline_types):
+            assert isinstance(pipeline[i], expected_type)
+
+
+    def test_coregister_3d__raises(self) -> None:  # type: ignore
+        """
+        Test coregister_3d functionality
+        """
+        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+        epc_tba = dem_tba.to_pointcloud(subsample=5000)
+
+        coreg_method = xdem.coreg.Deramp()
+
+        # Run coregistration
+        with pytest.raises(ValueError, match=".* has no implemented _apply_pts."):
+            dem_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)

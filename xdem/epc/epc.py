@@ -30,8 +30,9 @@ from geoutils.raster import Raster, RasterType
 from pyproj.crs import CRS, CompoundCRS, VerticalCRS
 from shapely.geometry.base import BaseGeometry
 
+import xdem
 from xdem import coreg
-from xdem._typing import NDArrayb, NDArrayf
+from xdem._typing import NDArrayb, NDArrayf, MArrayf
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
     _grid_from_user_input,
@@ -303,47 +304,47 @@ class EPC(PointCloud):  # type: ignore
             epc.set_vcrs(new_vcrs=vcrs)
             return epc
 
-    # def coregister_3d(  # type: ignore
-    #     self,
-    #     reference_elev: DEM | gpd.GeoDataFrame,
-    #     coreg_method: coreg.Coreg,
-    #     inlier_mask: Raster | NDArrayb = None,
-    #     bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-    #     random_state: int | np.random.Generator | None = None,
-    #     **kwargs,
-    # ) -> EPC:
-    #     """
-    #     Coregister elevation point cloud to a reference elevation data in three dimensions.
-    #
-    #     Any coregistration method or pipeline from xdem.Coreg can be passed. Default is only horizontal and vertical
-    #     shifts of Nuth and Kääb (2011).
-    #
-    #     :param reference_elev: Reference elevation, DEM or elevation point cloud, for the alignment.
-    #     :param coreg_method: Coregistration method or pipeline.
-    #     :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
-    #     :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
-    #     :param random_state: Random state or seed number to use for subsampling and optimizer.
-    #
-    #     :param kwargs: Keyword arguments passed to Coreg.fit().
-    #
-    #     :return: Coregistered DEM
-    #     """
-    #
-    #     src_epc = self.copy()
-    #
-    #     # Check inputs
-    #     if not isinstance(coreg_method, coreg.Coreg):
-    #         raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
-    #
-    #     aligned_epc = coreg_method.fit_and_apply(
-    #         reference_elev,
-    #         src_epc,
-    #         inlier_mask=inlier_mask,
-    #         random_state=random_state,
-    #         bias_vars=bias_vars,
-    #         **kwargs,
-    #     )
-    #
-    #     return aligned_epc
+    def coregister_3d(  # type: ignore
+        self,
+        reference_elev: xdem.DEM | gpd.GeoDataFrame | EPC,
+        coreg_method: coreg.Coreg,
+        inlier_mask: Raster | NDArrayb = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
+        random_state: int | np.random.Generator | None = None,
+        **kwargs,
+    ) -> EPC:
+        """
+        Coregister elevation point cloud to a reference elevation data in three dimensions.
+
+        Any coregistration method or pipeline from xdem.Coreg can be passed. Default is only horizontal and vertical
+        shifts of Nuth and Kääb (2011).
+
+        :param reference_elev: Reference elevation, DEM or elevation point cloud, for the alignment.
+        :param coreg_method: Coregistration method or pipeline.
+        :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
+        :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
+
+        :param kwargs: Keyword arguments passed to Coreg.fit().
+
+        :return: Coregistered DEM
+        """
+
+        src_epc = self.copy()
+
+        # Check inputs
+        if not isinstance(coreg_method, coreg.Coreg):
+            raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
+
+        aligned_epc = coreg_method.fit_and_apply(
+            reference_elev,
+            src_epc,
+            inlier_mask=inlier_mask,
+            random_state=random_state,
+            bias_vars=bias_vars,
+            **kwargs,
+        )
+
+        return aligned_epc
 
     # def estimate_uncertainty(self):
