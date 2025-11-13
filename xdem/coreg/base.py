@@ -144,6 +144,23 @@ def _preprocess_coreg_fit_raster_raster(
             f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
         )
 
+    if inlier_mask is not None:
+        # If inlier_mask has not the same shape of the input dem, reproject it
+        if reference_dem.shape != inlier_mask.shape:
+            if isinstance(inlier_mask, gu.Raster):
+                if isinstance(reference_dem, gu.Raster):
+                    inlier_mask = inlier_mask.reproject(reference_dem, resampling=rio.warp.Resampling.nearest)
+                elif isinstance(dem_to_be_aligned, gu.Raster):
+                    inlier_mask = inlier_mask.reproject(dem_to_be_aligned, resampling=rio.warp.Resampling.nearest)
+                # in case of two input arrays
+                else:
+                    ref_rst = Raster.from_array(data=dem_to_be_aligned, transform=transform, crs=crs)
+                    inlier_mask = inlier_mask.reproject(ref_rst, resampling=rio.warp.Resampling.nearest)
+
+            # in case of mask is a array
+            else:
+                raise ValueError("Input mask array can't be a different size array as input elevation.")
+
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
         dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
@@ -242,6 +259,20 @@ def _preprocess_coreg_fit_raster_point(
 ) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
 
+    if inlier_mask is not None:
+        # If inlier_mask has not the same shape of the input dem, reproject it
+        if raster_elev.shape != inlier_mask.shape:
+            if isinstance(inlier_mask, gu.Raster):
+                if isinstance(raster_elev, gu.Raster):
+                    inlier_mask = inlier_mask.reproject(raster_elev, resampling=rio.warp.Resampling.nearest)
+                else:
+                    raster_rst = Raster.from_array(data=raster_elev, transform=transform, crs=crs)
+                    inlier_mask = inlier_mask.reproject(raster_rst, resampling=rio.warp.Resampling.nearest)
+
+            # If inlier_mask is an array, it is not possible to reproject it
+            else:
+                raise ValueError("Input mask array can't be a different size array as input elevation.")
+
     # TODO: Convert to point cloud once class is done
     # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
     if isinstance(raster_elev, gu.Raster):
@@ -313,33 +344,6 @@ def _preprocess_coreg_fit(
         isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for elev in (reference_elev, to_be_aligned_elev)
     ):
         raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
-
-    # If inlier_mask has not the same shape of input dems, reproject it into an into dem # todo
-    if inlier_mask is not None:
-        # if mask is a raster
-        if isinstance(inlier_mask, gu.Raster):
-            # if reference_elev is a raster
-            if isinstance(reference_elev, gu.Raster):
-                if reference_elev.shape != inlier_mask.shape:
-                    inlier_mask = inlier_mask.reproject(reference_elev, resampling=rio.warp.Resampling.nearest)
-            # elif to_be_aligned_elev is a raster
-            elif isinstance(to_be_aligned_elev, gu.Raster):
-                if to_be_aligned_elev.shape != inlier_mask.shape:
-                    inlier_mask = inlier_mask.reproject(to_be_aligned_elev, resampling=rio.warp.Resampling.nearest)
-            # elif there is an input array AND it does not have the same size as the mask
-            elif isinstance(reference_elev, np.ndarray) or isinstance(to_be_aligned_elev, np.ndarray):
-                if (isinstance(reference_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape) or (
-                    isinstance(to_be_aligned_elev, np.ndarray) and reference_elev.shape != inlier_mask.shape
-                ):
-                    raise ValueError("Input mask raster need to be the same size as the elevation input(s) array(s).")
-        # if mask is a raster
-        else:
-            # if its size dont fit the input elevation :
-            if (isinstance(reference_elev, (gu.Raster, np.ndarray)) and reference_elev.shape != inlier_mask.shape) or (
-                isinstance(to_be_aligned_elev, (gu.Raster, np.ndarray))
-                and to_be_aligned_elev.shape != inlier_mask.shape
-            ):
-                raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):

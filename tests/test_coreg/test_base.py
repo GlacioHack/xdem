@@ -445,9 +445,11 @@ class TestCoregClass:
             ("raster", "raster", True, "raster", "passes", ""),
             ("array", "raster", True, "raster", "passes", ""),
             ("raster", "array", True, "raster", "passes", ""),
-            ("array", "array", True, "raster", "error", "Input mask raster"),
+            ("array", "array", True, "raster", "passes", ""),
             ("pc", "raster", False, "raster", "passes", ""),
             ("raster", "pc", False, "raster", "passes", ""),
+            ("pc", "array", True, "array", "error", "Input mask array"),
+            ("array", "pc", True, "array", "error", "Input mask array"),
         ],
     )  # type: ignore
     def test_fit_and_apply__cropped_mask(self, combination: tuple[str, str, str, str, str, str]) -> None:
