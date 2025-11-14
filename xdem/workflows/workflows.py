@@ -71,7 +71,7 @@ class Workflows(ABC):
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
-        logging.info(f"Outputs will be save at {self.outputs_folder}")
+        logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
