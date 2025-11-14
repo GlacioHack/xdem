@@ -126,7 +126,7 @@ dh_err.plot(ax="new", vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation change
 vect_gla.plot(dh_err, fc='none', ec='k', lw=0.5)
 
 # Save to file
-dh_err.save("dh_error.tif")
+dh_err.to_file("dh_error.tif")
 ```
 
 ```{code-cell} ipython3

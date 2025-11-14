@@ -106,7 +106,7 @@ dem = xdem.DEM.from_array(data=np.ones((2,2)),
                      transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2),
                      crs=pyproj.CRS("EPSG:4326+5773"),
                      nodata=None)
-dem.save("mydem_with3dcrs.tif")
+dem.to_file("mydem_with3dcrs.tif")
 ```
 
 ```{code-cell} ipython3
@@ -147,7 +147,7 @@ dem = xdem.DEM.from_array(data=np.ones((2,2)),
                      crs=pyproj.CRS("EPSG:4326"),
                      nodata=None)
 # Save with the name of an ArcticDEM strip file
-dem.save("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
+dem.to_file("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
 ```
 
 ```{code-cell} ipython3
