@@ -56,7 +56,7 @@ def main() -> None:
         "topo",
         help="Run DEM qualification workflow",
         description="Run a DEM information workflow using a YAML configuration file.",
-        epilog="Example: xdem topo config.yaml",
+        epilog="Example: xdem topo --config config.yaml",
     )
     topo_group = topo_parser.add_mutually_exclusive_group(required=True)
     topo_group.add_argument(
@@ -70,7 +70,7 @@ def main() -> None:
         "accuracy",
         help="Run DEM comparison workflow",
         description="Run a DEM comparison workflow using a YAML configuration file.",
-        epilog="Example: xdem accuracy config.yaml",
+        epilog="Example: xdem accuracy --config config.yaml",
     )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
