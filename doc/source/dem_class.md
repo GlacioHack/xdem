@@ -71,7 +71,7 @@ A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.save` with a {
 
 ```{code-cell} ipython3
 # Save raster to disk
-dem.save("mydem.tif")
+dem.to_file("mydem.tif")
 ```
 ```{code-cell} ipython3
 :tags: [remove-cell]

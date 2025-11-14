@@ -139,7 +139,7 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
 
         # Save it so that future calls won't need to recreate the file
         os.makedirs(os.path.dirname(_FILEPATHS_PROCESSED["longyearbyen_ddem"]), exist_ok=True)
-        diff.save(_FILEPATHS_PROCESSED["longyearbyen_ddem"])
+        diff.to_file(_FILEPATHS_PROCESSED["longyearbyen_ddem"])
 
     # If the tba_dem_coreg file does not exist, create it
     if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]):
@@ -148,7 +148,7 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
         ddem = xdem.DEM(get_path("longyearbyen_ddem"), silent=True)
 
         # Save it so that future calls won't need to recreate the file
-        (dem_2009 - ddem).save(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
+        (dem_2009 - ddem).to_file(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
 
 
 def get_path(name: str) -> str:
