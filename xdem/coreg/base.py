@@ -150,13 +150,17 @@ def _preprocess_coreg_fit_raster_raster(
             if isinstance(inlier_mask, gu.Raster):
                 if isinstance(reference_dem, gu.Raster):
                     inlier_mask = inlier_mask.reproject(reference_dem, resampling=rio.warp.Resampling.nearest)
-                elif isinstance(dem_to_be_aligned, gu.Raster):
-                    inlier_mask = inlier_mask.reproject(dem_to_be_aligned, resampling=rio.warp.Resampling.nearest)
-                # in case of two input arrays
+                    if not inlier_mask.get_footprint_projected(reference_dem.crs).intersects(
+                        reference_dem.get_footprint_projected(reference_dem.crs)
+                    )[0]:
+                        raise ValueError("Intersection")
                 else:
-                    ref_rst = Raster.from_array(data=dem_to_be_aligned, transform=transform, crs=crs)
-                    inlier_mask = inlier_mask.reproject(ref_rst, resampling=rio.warp.Resampling.nearest)
-
+                    ref = Raster.from_array(data=reference_dem, transform=transform, crs=crs)
+                    inlier_mask = inlier_mask.reproject(ref, resampling=rio.warp.Resampling.nearest)
+                    if not inlier_mask.get_footprint_projected(ref.crs).intersects(
+                        ref.get_footprint_projected(ref.crs)
+                    )[0]:
+                        raise ValueError("Intersection")
             # in case of mask is a array
             else:
                 raise ValueError("Input mask array can't be a different size array as input elevation.")
@@ -272,6 +276,19 @@ def _preprocess_coreg_fit_raster_point(
             # If inlier_mask is an array, it is not possible to reproject it
             else:
                 raise ValueError("Input mask array can't be a different size array as input elevation.")
+
+        if isinstance(raster_elev, gu.Raster):
+            print("e")
+            if not inlier_mask.get_footprint_projected(raster_elev.crs).intersects(
+                raster_elev.get_footprint_projected(raster_elev.crs)
+            )[0]:
+                raise ValueError("Intersection")
+        else:
+            raster_rst = Raster.from_array(data=raster_elev, transform=transform, crs=crs)
+            if not inlier_mask.get_footprint_projected(raster_rst.crs).intersects(
+                raster_rst.get_footprint_projected(raster_rst.crs)
+            )[0]:
+                raise ValueError("Intersection")
 
     # TODO: Convert to point cloud once class is done
     # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
