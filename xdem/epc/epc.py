@@ -108,34 +108,6 @@ class EPC(PointCloud):  # type: ignore
         if vcrs is not None:
             self.set_vcrs(vcrs)
 
-    @property
-    def _has_z(self) -> bool:
-        """Whether the point geometries all have a Z coordinate or not."""
-
-        return all(p.has_z for p in self.ds.geometry)
-
-    @property
-    def data(self) -> NDArrayf:
-        """
-        Data of the elevation point cloud.
-
-        Points to either the Z axis of the point geometries, or the associated data column of the geodataframe.
-        """
-        # Triggers the loading mechanism through self.ds
-        if not self._has_z:
-            return self.ds[self.data_column].values
-        else:
-            return self.geometry.z.values
-
-    @data.setter
-    def data(self, new_data: NDArrayf) -> None:
-        """Set new data for the point cloud."""
-
-        if not self._has_z:
-            self.ds[self.data_column] = new_data
-        else:
-            self.ds.geometry = gpd.points_from_xy(x=self.geometry.x, y=self.geometry.y, z=new_data, crs=self.crs)
-
     def copy(self, new_array: NDArrayf | NDArrayb | None = None) -> EPC:
         """
         Copy the elevation point cloud, possibly updating the data array.

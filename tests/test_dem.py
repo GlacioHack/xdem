@@ -11,6 +11,7 @@ import geoutils as gu
 import numpy as np
 import pytest
 import rasterio as rio
+from geoutils import PointCloud
 from geoutils.raster.raster import _default_rio_attrs
 from pyproj import CRS
 from pyproj.transformer import Transformer
@@ -520,3 +521,11 @@ class TestDEM:
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
+
+    def test_to_pointcloud__type_override(self):
+
+        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem_ref = DEM(fn_ref)
+        epc_ref = dem_ref.to_pointcloud(subsample=500)
+
+        assert isinstance(epc_ref, xdem.EPC)

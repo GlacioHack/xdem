@@ -2785,8 +2785,8 @@ class CoregPipeline(Coreg):
     # Need to override base Coreg method to work on pipeline steps
     def fit(
         self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
