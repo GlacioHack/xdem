@@ -296,8 +296,8 @@ and keeps the best performing fit.
 :  code_prompt_show: "Show the code for adding a curvature bias"
 :  code_prompt_hide: "Hide the code for adding a curvature bias"
 
-# Get maximum curvature
-maxc = ref_dem.maximum_curvature()
+# Get max curvature
+maxc = ref_dem.max_curvature()
 
 # Create a bias depending on bins
 synthetic_bias = np.zeros(np.shape(ref_dem.data))
@@ -312,12 +312,12 @@ tbc_dem_curv = ref_dem + synthetic_bias
 
 ```{code-cell} ipython3
 # Instantiate a 1st order terrain bias correction for curvature
-terbias = xdem.coreg.TerrainBias(terrain_attribute="maximum_curvature",
-                                 bin_sizes={"maximum_curvature": np.linspace(-5, 5, 1000)},
+terbias = xdem.coreg.TerrainBias(terrain_attribute="max_curvature",
+                                 bin_sizes={"max_curvature": np.linspace(-5, 5, 1000)},
                                  bin_apply_method="per_bin")
 
 # We have to pass the original curvature here
-corrected_dem = terbias.fit_and_apply(ref_dem, tbc_dem_curv, bias_vars={"maximum_curvature": maxc})
+corrected_dem = terbias.fit_and_apply(ref_dem, tbc_dem_curv, bias_vars={"max_curvature": maxc})
 ```
 
 ```{code-cell} ipython3

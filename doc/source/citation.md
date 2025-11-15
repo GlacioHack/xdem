@@ -22,10 +22,11 @@ More details are available on each feature page!
 
    * - Method
      - Reference
+   * - Partial derivatives of slope
+     - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+
    * - Slope, aspect and hillshade
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Curvatures
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) and [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103)
    * - Topographic position index
      - [Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf)
    * - Terrain ruggedness index
@@ -38,6 +39,39 @@ More details are available on each feature page!
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
    * - Texture shading
      - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1)
+```
+
+### Curvatures
+
+There are two parrallel ways of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). `xdem` defaults to the geometric method.
+
+Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
+
+```{list-table}
+   :widths: 1 1 1
+   :header-rows: 1
+   :stub-columns: 1
+   * - Method
+     - Geometric
+     - Directional Derivative
+   * - Profile
+     - Krcho (1973) and Evans (1979)
+     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+   * - Tangential
+     - Krcho (1983)
+     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+   * - Planform
+     - Sobolevsky (1932)
+     - Sobolevsky (1932)
+   * - Flowline
+     - [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414)
+     - Shary (1991)
+   * - Maximal/Maximum
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608)
+     - [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503)
+   * - Minimal/Minimum
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608)
+     - [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503)
 ```
 
 ### Coregistration

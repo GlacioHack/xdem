@@ -385,35 +385,69 @@ class DEM(Raster):  # type: ignore
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
         self,
-        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
         degrees: bool = True,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
-        return terrain.slope(self, method=method, degrees=degrees, mp_config=mp_config)
+
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.slope(self, surface_fit=surface_fit, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
         self,
-        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
         degrees: bool = True,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        return terrain.aspect(self, method=method, degrees=degrees, mp_config=mp_config)
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.aspect(self, surface_fit=surface_fit, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
         self,
-        method: Literal["Horn", "ZevenbergThorne"] = "Horn",
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
         azimuth: float = 315.0,
         altitude: float = 45.0,
         z_factor: float = 1.0,
         mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
         return terrain.hillshade(
             self,
-            method=method,
+            surface_fit=surface_fit,
             azimuth=azimuth,
             altitude=altitude,
             z_factor=z_factor,
@@ -421,24 +455,73 @@ class DEM(Raster):  # type: ignore
         )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        return terrain.curvature(self, mp_config=mp_config)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
-
-        return terrain.planform_curvature(self, mp_config=mp_config)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
-
-        return terrain.profile_curvature(self, mp_config=mp_config)
+        return terrain.curvature(self, surface_fit=surface_fit, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def profile_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        return terrain.maximum_curvature(self, mp_config=mp_config)
+        return terrain.profile_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def tangential_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.tangential_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def planform_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.planform_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def flowline_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.flowline_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def max_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.max_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def min_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.min_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def topographic_position_index(
@@ -544,7 +627,7 @@ class DEM(Raster):  # type: ignore
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
         variogram_estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
-        list_vars: tuple[RasterType | str, ...] = ("slope", "maximum_curvature"),
+        list_vars: tuple[RasterType | str, ...] = ("slope", "max_curvature"),
         list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
         z_name: str = "z",
         random_state: int | np.random.Generator | None = None,
@@ -619,7 +702,10 @@ class DEM(Raster):  # type: ignore
 
             # Estimate variable error from these variables
             sig_dh = infer_heteroscedasticity_from_stable(
-                dvalues=dh, list_var=list_var_rast, spread_statistic=spread_estimator, stable_mask=stable_terrain
+                dvalues=dh,
+                list_var=list_var_rast,
+                spread_statistic=spread_estimator,
+                stable_mask=stable_terrain,
             )[0]
         # Otherwise, return a constant error raster
         else:
