@@ -88,13 +88,13 @@ dem_aligned = mycoreg.apply(dem_tba)
 dh = dem_ref - dem_aligned
 
 # Derive slope and curvature attributes
-slope, maximum_curvature = xdem.terrain.get_terrain_attribute(
-    dem_ref, attribute=["slope", "maximum_curvature"]
+slope, max_curvature = xdem.terrain.get_terrain_attribute(
+    dem_ref, attribute=["slope", "max_curvature"]
 )
 
 # Estimate elevation change error from stable terrain as a function of slope and curvature
 dh_err = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-    dh, list_var=[slope, maximum_curvature], unstable_mask=mask_gla
+    dh, list_var=[slope, max_curvature], unstable_mask=mask_gla
 )[0]
 
 # Plot dh, glacier outlines and its error map
