@@ -627,7 +627,7 @@ class DEM(Raster):  # type: ignore
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
         variogram_estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
-        list_vars: tuple[RasterType | str, ...] = ("slope", "maximum_curvature"),
+        list_vars: tuple[RasterType | str, ...] = ("slope", "max_curvature"),
         list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
         z_name: str = "z",
         random_state: int | np.random.Generator | None = None,
