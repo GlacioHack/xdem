@@ -56,6 +56,8 @@ extensions = [
     "sphinx.ext.intersphinx",
     # "myst_parser",  !! Not needed with myst_nb !! # Form of Markdown that works with sphinx, used a lot by the Sphinx Book Theme
     "myst_nb",  # MySt for rendering Jupyter notebook in documentation
+    "sphinx_tabs.tabs",  # Include tabs
+    "sphinx_design",
 ]
 
 # For sphinx design to work properly
@@ -116,7 +118,6 @@ plot_formats = [(".png", 600)]
 # To avoid long path names in inheritance diagrams
 inheritance_alias = {
     "geoutils.georaster.raster.Raster": "geoutils.Raster",
-    "geoutils.georaster.raster.Mask": "geoutils.Mask",
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
     "xdem.coreg.base.Coreg": "xdem.Coreg",

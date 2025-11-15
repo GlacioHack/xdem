@@ -49,7 +49,7 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
-from geoutils.raster import Mask, RasterType, raster
+from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
@@ -113,6 +113,7 @@ dict_key_to_str = {
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
+    "initial_shift": "Estimated initial shift (georeferenced unit)",
     "matrix": "Affine transformation matrix estimated",
     "only_translation": "Only translations are considered",
     "standardize": "Input data was standardized",
@@ -128,7 +129,7 @@ dict_key_to_str = {
 def _preprocess_coreg_fit_raster_raster(
     reference_dem: NDArrayf | MArrayf | RasterType,
     dem_to_be_aligned: NDArrayf | MArrayf | RasterType,
-    inlier_mask: NDArrayb | Mask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -205,7 +206,7 @@ def _preprocess_coreg_fit_raster_raster(
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
-        if isinstance(inlier_mask, Mask):
+        if isinstance(inlier_mask, Raster):
             inlier_mask = inlier_mask.data.filled(False).squeeze()
         else:
             inlier_mask = np.asarray(inlier_mask).squeeze()
@@ -233,7 +234,7 @@ def _preprocess_coreg_fit_raster_raster(
 def _preprocess_coreg_fit_raster_point(
     raster_elev: NDArrayf | MArrayf | RasterType,
     point_elev: gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | Mask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -261,7 +262,7 @@ def _preprocess_coreg_fit_raster_point(
 
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
-        if isinstance(inlier_mask, Mask):
+        if isinstance(inlier_mask, Raster):
             inlier_mask = inlier_mask.data.filled(False).squeeze()
         else:
             inlier_mask = np.asarray(inlier_mask).squeeze()
@@ -293,7 +294,7 @@ def _preprocess_coreg_fit_point_point(
 def _preprocess_coreg_fit(
     reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
     to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb | Mask | None = None,
+    inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
@@ -519,7 +520,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
     """
     Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
 
-    :param valid_mask: Mask of valid values (inlier and not nodata).
+    :param valid_mask: Raster of valid values (inlier and not nodata).
     """
 
     # This should never happen
@@ -539,7 +540,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # Build a low memory masked array with invalid values masked to pass to subsampling
         ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
         # Take a subsample within the valid values
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             ma_valid,
             subsample=params_random["subsample"],
             return_indices=True,
@@ -1381,7 +1382,7 @@ def _apply_matrix_rst(
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
-    )
+    )[0]
 
     return new_dem, transform
 
@@ -1677,6 +1678,8 @@ class OutSpecificDict(TypedDict, total=False):
 class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
+    # Estimated initial shift (z currently always equal to zero)
+    initial_shift: tuple[float, float, float] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
@@ -1804,6 +1807,13 @@ class Coreg:
         """Return a pipeline consisting of self and the other processing function."""
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
+
+        # Cancel possible initial shift(s) in CoregPipeline case
+        if "affine" in self.meta["inputs"] and "initial_shift" in self.meta["inputs"]["affine"]:
+            del self.meta["inputs"]["affine"]["initial_shift"]
+        if "affine" in other.meta["inputs"] and "initial_shift" in other.meta["inputs"]["affine"]:
+            del other.meta["inputs"]["affine"]["initial_shift"]
+
         return CoregPipeline([self, other])
 
     @property
@@ -1967,7 +1977,7 @@ class Coreg:
         """
         Get mask of values to subsample on valid mask.
 
-        :param valid_mask: Mask of valid values (inlier and not nodata).
+        :param valid_mask: Raster of valid values (inlier and not nodata).
         """
 
         # Get random parameters
@@ -2039,7 +2049,7 @@ class Coreg:
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2049,13 +2059,13 @@ class Coreg:
         z_name: str = "z",
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
-    ) -> CoregType:
+    ) -> CoregType:  # type: ignore
         """
         Estimate the coregistration transform on the given DEMs.
 
         :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
         :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
-        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param inlier_mask: Raster or boolean array of areas to include (inliers=True).
         :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
         :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2091,6 +2101,15 @@ class Coreg:
         # Save random_state if a subsample is used
         if self._meta["inputs"]["random"]["subsample"] != 1:
             self._meta["inputs"]["random"]["random_state"] = random_state
+
+        # Apply the shift to the source dem if given
+        initial_shift_apply = False
+        if self._meta["inputs"]["affine"].get("initial_shift") is not None:
+            shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
+            shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
+            # shift_z is currently always equal to zero
+            reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
+            initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
@@ -2130,6 +2149,15 @@ class Coreg:
             **main_args,
             **kwargs,
         )
+
+        # Unapply the shift to the source dem if apply before
+        if initial_shift_apply and "outputs" in self.meta and "affine" in self.meta["outputs"]:
+            if "shift_x" in self.meta["outputs"]["affine"]:
+                self.meta["outputs"]["affine"]["shift_x"] += shift_x
+                logging.debug(f"Updated shift_x by {shift_x} in {self}")
+            if "shift_y" in self.meta["outputs"]["affine"]:
+                self.meta["outputs"]["affine"]["shift_y"] += shift_y
+                logging.debug(f"Updated shift_y by {shift_y} in {self}")
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -2244,7 +2272,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: MArrayf,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2264,7 +2292,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2284,7 +2312,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2303,7 +2331,7 @@ class Coreg:
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2321,7 +2349,7 @@ class Coreg:
 
         :param reference_elev: Reference elevation, either a DEM or an elevation point cloud.
         :param to_be_aligned_elev: To-be-aligned elevation, either a DEM or an elevation point cloud.
-        :param inlier_mask: Mask or boolean array of areas to include (inliers=True).
+        :param inlier_mask: Raster or boolean array of areas to include (inliers=True).
         :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
         :param weights: Array of weights for the coregistration.
         :param subsample: Subsample the input to increase performance. <1 is parsed as a fraction. >1 is a pixel count.
@@ -2356,7 +2384,6 @@ class Coreg:
             random_state=random_state,
             **fit_kwargs,
         )
-
         aligned_dem = self.apply(
             elev=to_be_aligned_elev,
             bias_vars=bias_vars,
@@ -2735,7 +2762,7 @@ class CoregPipeline(Coreg):
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
         to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb | Mask | None = None,
+        inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
         subsample: float | int | None = None,
@@ -2773,7 +2800,6 @@ class CoregPipeline(Coreg):
             crs=crs,
             area_or_point=area_or_point,
         )
-
         tba_dem_mod = tba_dem.copy()
         out_transform = transform
 
@@ -2930,6 +2956,11 @@ class CoregPipeline(Coreg):
             other = [other]
 
         pipelines = self.pipeline + other
+
+        # Cancel possible initial shift(s) in CoregPipeline case
+        for method in pipelines:
+            if "affine" in method.meta["inputs"] and "initial_shift" in method.meta["inputs"]["affine"]:
+                del method.meta["inputs"]["affine"]["initial_shift"]
 
         return CoregPipeline(pipelines)
 

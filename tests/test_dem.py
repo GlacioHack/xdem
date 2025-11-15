@@ -165,7 +165,7 @@ class TestDEM:
         dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
 
         mask_dem = dem > 1
-        assert isinstance(mask_dem, gu.Mask)
+        assert isinstance(mask_dem, gu.Raster) and np.dtype(mask_dem.dtype) == np.bool_
 
     def test_copy(self) -> None:
         """
@@ -371,36 +371,32 @@ class TestDEM:
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
-        "coreg_method, initial_shift, expected_pipeline_types",
+        "coreg_method, expected_pipeline_types",
         [
-            pytest.param(xdem.coreg.Deramp(), None, [xdem.coreg.Deramp], id="Custom method: Deramp"),
+            pytest.param(xdem.coreg.Deramp(), [xdem.coreg.Deramp], id="Custom method: Deramp"),
             pytest.param(
-                xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
-                [10, 5],
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
                 [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
                 id="Pipeline: NuthKaab + VerticalShift with initial shift",
             ),
             pytest.param(
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+                [xdem.coreg.AffineCoreg],
+                id="Pipeline: NuthKaab with initial shift",
+            ),
+            pytest.param(
                 xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
-                None,
                 [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
                 id="Pipeline: NuthKaab + VerticalShift without initial shift",
             ),
             pytest.param(
                 xdem.coreg.DhMinimize(),
-                (-5, 2),
-                [xdem.coreg.AffineCoreg],
-                id="Simple affine method: DhMinimize with initial shift",
-            ),
-            pytest.param(
-                xdem.coreg.DhMinimize(),
-                None,
                 [xdem.coreg.AffineCoreg],
                 id="Simple affine method: DhMinimize without initial shift",
             ),
         ],
     )
-    def test_coregister_3d(coreg_method, initial_shift, expected_pipeline_types) -> None:  # type: ignore
+    def test_coregister_3d(coreg_method, expected_pipeline_types) -> None:  # type: ignore
         """
         Test coregister_3d functionality
         """
@@ -411,61 +407,108 @@ class TestDEM:
         dem_tba = DEM(fn_tba)
 
         # Run coregistration
-        dem_aligned = dem_tba.coregister_3d(
-            dem_ref, coreg_method=coreg_method, estimated_initial_shift=initial_shift, random_state=42
-        )
+        dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
 
         assert isinstance(dem_aligned, xdem.DEM)
         assert isinstance(coreg_method, xdem.coreg.Coreg)
 
+        # Test pipeline
         pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
         for i, expected_type in enumerate(expected_pipeline_types):
             assert isinstance(pipeline[i], expected_type)
 
-        if coreg_method is xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift():
-            dem_ref = DEM(fn_ref)
-            dem_tba = DEM(fn_tba)
-            nk = xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift()
-            nk.fit(dem_ref, dem_tba, random_state=42)
-            manually_aligned = nk.apply(dem_tba, resample=False, resampling=rio.warp.Resampling.bilinear)
-            assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
-
-    @pytest.mark.parametrize(  # type: ignore
-        "coreg_method, error, expected_match, test_shift_tuple",
+    @staticmethod
+    @pytest.mark.parametrize(
+        "shift, expected_message",
         [
-            pytest.param(xdem.coreg.Deramp(), TypeError, r".*affine.*", (-5, 2)),
-            pytest.param(xdem.coreg.Deramp() + xdem.coreg.TerrainBias(), TypeError, r".*affine.*", (-5, 2)),
+            pytest.param(None, None, id="NuthKaab method: No initial shift"),
+            pytest.param((0, 0), None, id="NuthKaab method: (0, 0) initial shift"),
+            pytest.param((50, 10), None, id="NuthKaab method: (50, 10) initial shift"),
+            pytest.param((10, 50), None, id="NuthKaab method: (10, 50) initial shift"),
+            pytest.param((10, 50, 0), None, id="NuthKaab method: (10, 50, 20) initial shift"),
             pytest.param(
-                xdem.coreg.AffineCoreg() + xdem.coreg.VerticalShift(), ValueError, r".*two numerical values.*", ["2", 2]
+                (10, 50, 20),
+                (UserWarning, r".*altitude is currently work*"),
+                id="NuthKaab method: (10, 50, 20) initial shift",
             ),
             pytest.param(
-                xdem.coreg.AffineCoreg() + xdem.coreg.VerticalShift(),
-                ValueError,
-                r".*two numerical values.*",
-                [2, 3, 5],
+                ("2", 2), (ValueError, r".*three numerical values.*"), id='NuthKaab method: ("2", 2) initial shift'
+            ),
+            pytest.param(
+                (2, 3, 4, 5),
+                (ValueError, r".*three numerical values.*"),
+                id="NuthKaab method: (2, 3, 4, 5) initial shift",
             ),
         ],
-    )
-    def test_exceptions_initial_shift(
-        self, coreg_method, error, expected_match, test_shift_tuple
-    ) -> None:  # type: ignore
+    )  # type: ignore
+    def test_nuthkaab_initial_shift(shift, expected_message) -> None:  # type: ignore
         """
-        Test that the initial shift method exceptions work correctly
-        without an affine coregistration method.
+        Test coregister_3d initial and output shift
         """
 
-        dem_tba = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-        dem_ref = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+        dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 
-        with pytest.raises(error, match=expected_match):
-            dem_tba.coregister_3d(
-                dem_ref,
-                coreg_method=coreg_method,
-                estimated_initial_shift=test_shift_tuple,
-                random_state=42,
-            )
+        if expected_message is not None:
+            # Init coreg method and catch error
+            with pytest.raises(expected_message[0], match=expected_message[1]):
+                coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)
+
+                # case warning
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is not None
+                assert list(coreg_method.meta["inputs"]["affine"]["initial_shift"])[2] == 0
+        else:
+            coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
+            if shift is not None:
+                if len(shift) == 2:
+                    shift += (0,)
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"]
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] == shift
+                assert isinstance(coreg_method.meta["inputs"]["affine"]["initial_shift"], tuple)
+            else:
+                assert "initial_shift" not in coreg_method.meta["inputs"]["affine"]
+
+            # Test output shift vs fit result
+            dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+            output_shift = coreg_method.meta["outputs"]["affine"]
+
+            nk = xdem.coreg.NuthKaab(initial_shift=shift)
+            nk.fit(dem_ref, dem_tba, random_state=42)
+            manually_aligned = nk.apply(dem_tba, resampling=rio.warp.Resampling.bilinear)
+
+            # Output metadata
+            assert nk.meta["outputs"]["affine"] == output_shift
+
+            # Output DEM
+            assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "pipeline",
+        [
+            xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
+            xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
+            xdem.coreg.VerticalShift() + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+            xdem.coreg.NuthKaab(initial_shift=(10, 5))
+            + xdem.coreg.VerticalShift()
+            + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+            xdem.coreg.VerticalShift()
+            + xdem.coreg.NuthKaab(initial_shift=(10, 5))
+            + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+        ],
+    )  # type: ignore
+    def test_nuthkaab_coregpipeline(pipeline) -> None:  # type: ignore
+        """
+        Test initial shift cancellation in coreg pipeline method
+        """
+
+        for method in pipeline.pipeline:
+            assert "initial_shift" not in method.meta["inputs"]["affine"]
 
     def test_estimate_uncertainty(self) -> None:
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")

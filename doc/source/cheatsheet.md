@@ -24,7 +24,7 @@ identify on **a map of elevation differences with another elevation dataset (loo
 
 ## Cheatsheet
 
-The patterns of errors categories listed in this spreadsheet **are linked to visual examples further below** that
+The patterns of error categories listed in this spreadsheet **are linked to visual examples further below** that
 you can use to compare to your own elevation differences.
 
 ```{list-table}
@@ -250,7 +250,7 @@ y = np.linspace(dem.bounds.top - 5000, dem.bounds.bottom + 5000, 100)
 # Interpolate DEM at these coordinates to build the point cloud
 # (to approximate the real elevation at these coordinates,
 # which has negligible impact compared to rasterization)
-z = dem.interp_points((x,y))
+z = dem.interp_points((x,y), as_array=True)
 epc = gu.Vector(gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=x, y=y, crs=dem.crs), data={"z": z}))
 
 # Rasterize point cloud back on the DEM grid

@@ -1,5 +1,4 @@
 # Copyright (c) 2025 xDEM developers
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -20,7 +19,6 @@
 """This module defines the DEM class."""
 from __future__ import annotations
 
-import logging
 import pathlib
 import warnings
 from typing import Any, Callable, Literal, overload
@@ -29,9 +27,7 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geoutils import Raster
-from geoutils._typing import Number
-from geoutils.raster import Mask, RasterType
+from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
@@ -39,7 +35,7 @@ from pyproj.crs import CompoundCRS, VerticalCRS
 
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.coreg import AffineCoreg, Coreg, CoregPipeline
+from xdem.coreg import Coreg
 from xdem.misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
@@ -199,7 +195,7 @@ class DEM(Raster):  # type: ignore
         vcrs: (
             Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
         ) = None,
-    ) -> DEM | Mask:
+    ) -> DEM:
         """Create a DEM from a numpy array and the georeferencing information.
 
         :param data: Input array.
@@ -215,7 +211,6 @@ class DEM(Raster):  # type: ignore
 
         :returns: DEM created from the provided array and georeferencing.
         """
-        # We first apply the from_array of the parent class
         rast = Raster.from_array(
             data=data,
             transform=transform,
@@ -226,12 +221,7 @@ class DEM(Raster):  # type: ignore
             cast_nodata=cast_nodata,
         )
 
-        # This is for casting to Mask to work
-        if not isinstance(rast, Mask):
-            # Then add the vcrs to the class call (that builds on top of the parent class)
-            return cls(filename_or_dataset=rast, vcrs=vcrs)
-        else:
-            return rast
+        return cls(filename_or_dataset=rast, vcrs=vcrs)
 
     @property
     def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
@@ -588,11 +578,9 @@ class DEM(Raster):  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
         coreg_method: coreg.Coreg,
-        inlier_mask: Mask | NDArrayb = None,
+        inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-        estimated_initial_shift: list[Number] | tuple[Number, Number] | None = None,
         random_state: int | np.random.Generator | None = None,
-        resample: bool = False,
         **kwargs,
     ) -> DEM:
         """
@@ -605,8 +593,6 @@ class DEM(Raster):  # type: ignore
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
-        :param estimated_initial_shift: List containing x and y shifts (in pixels). These shifts are applied before \
-            the coregistration process begins.
         :param random_state: Random state or seed number to use for subsampling and optimizer.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
             the array/transform will be updated (if possible) and no resampling is done. \
@@ -622,74 +608,21 @@ class DEM(Raster):  # type: ignore
         if not isinstance(coreg_method, Coreg):
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
-        # # Ensure that if an initial shift is provided, at least one coregistration method is affine.
-        if estimated_initial_shift:
-            if not (
-                isinstance(estimated_initial_shift, (list, tuple))
-                and len(estimated_initial_shift) == 2
-                and all(isinstance(val, (float, int)) for val in estimated_initial_shift)
-            ):
-                raise ValueError(
-                    "Argument `estimated_initial_shift` must be a list or tuple of exactly two numerical values."
-                )
-            if isinstance(coreg_method, CoregPipeline):
-                if not any(isinstance(step, AffineCoreg) for step in coreg_method.pipeline):
-                    raise TypeError(
-                        "An initial shift has been provided, but none of the coregistration methods in the pipeline "
-                        "are affine. At least one affine coregistration method (e.g., AffineCoreg) is required."
-                    )
-            elif not isinstance(coreg_method, AffineCoreg):
-                raise TypeError(
-                    "An initial shift has been provided, but the coregistration method is not affine. "
-                    "An affine coregistration method (e.g., AffineCoreg) is required."
-                )
-
-            # convert shift
-            shift_x = estimated_initial_shift[0] * reference_elev.res[0]
-            shift_y = estimated_initial_shift[1] * reference_elev.res[1]
-
-            # Apply the shift to the source dem
-            reference_elev = reference_elev.translate(shift_x, shift_y)
-
         aligned_dem = coreg_method.fit_and_apply(
             reference_elev,
             src_dem,
             inlier_mask=inlier_mask,
             random_state=random_state,
             bias_vars=bias_vars,
-            resample=resample,
             **kwargs,
         )
-
-        # # Add the initial shift to the calculated shift
-        if estimated_initial_shift:
-
-            def update_shift(
-                coreg_method: Coreg | CoregPipeline,
-                shift_x: float = shift_x,
-                shift_y: float = shift_y,
-            ) -> None:
-                if isinstance(coreg_method, CoregPipeline):
-                    for step in coreg_method.pipeline:
-                        update_shift(step)
-                else:
-                    # check if the keys exist
-                    if "outputs" in coreg_method.meta and "affine" in coreg_method.meta["outputs"]:
-                        if "shift_x" in coreg_method.meta["outputs"]["affine"]:
-                            coreg_method.meta["outputs"]["affine"]["shift_x"] += shift_x
-                            logging.debug(f"Updated shift_x by {shift_x} in {coreg_method}")
-                        if "shift_y" in coreg_method.meta["outputs"]["affine"]:
-                            coreg_method.meta["outputs"]["affine"]["shift_y"] += shift_y
-                            logging.debug(f"Updated shift_y by {shift_y} in {coreg_method}")
-
-            update_shift(coreg_method)
 
         return aligned_dem
 
     def estimate_uncertainty(
         self,
         other_elev: DEM | gpd.GeoDataFrame,
-        stable_terrain: Mask | NDArrayb = None,
+        stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
         spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
@@ -711,7 +644,7 @@ class DEM(Raster):  # type: ignore
 
         :param other_elev: Other elevation dataset to use for estimation, either of finer or similar precision for
             reliable estimates.
-        :param stable_terrain: Mask of stable terrain to use as error proxy.
+        :param stable_terrain: Raster of stable terrain to use as error proxy.
         :param approach: Whether to use Hugonnet et al., 2022 (variable errors, multiple ranges of error correlation),
             or Rolstad et al., 2009 (constant error, multiple ranges of error correlation), or a basic approach
             (constant error, single range of error correlation). Note that all approaches use robust estimators of
