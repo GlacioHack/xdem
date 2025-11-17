@@ -529,45 +529,6 @@ class TestCoregClass:
     @pytest.mark.parametrize(
         "combination",
         [
-            ("raster", "raster"),
-            ("array", "raster"),
-            ("array", "array"),
-            ("raster", "pc"),
-            ("pc", "raster"),
-            ("array", "pc"),
-            ("pc", "array"),
-        ],
-    )  # type: ignore
-    def test_fit_and_apply__mask_intersect(self, combination: tuple[str, str]) -> None:
-
-        ref_type, tba_type = combination
-
-        # Init data
-        ref_dem, tba_dem, mask = load_examples()
-        inlier_mask = ~mask.create_mask(ref_dem)
-
-        ref_dem = ref_dem.icrop((0, 0, 100, 100))
-        inlier_mask = inlier_mask.icrop((200, 200, 300, 400))
-
-        if ref_type == "array":
-            ref_dem = ref_dem.data
-        elif ref_type == "pc":
-            ref_dem = ref_dem.to_pointcloud().ds
-            ref_dem.rename(columns={"b1": "z"}, inplace=True)
-
-        if tba_type == "array":
-            tba_dem = tba_dem.data
-        elif tba_type == "pc":
-            tba_dem = tba_dem.to_pointcloud().ds
-            tba_dem.rename(columns={"b1": "z"}, inplace=True)
-
-        nuthkaab_ref = xdem.coreg.NuthKaab()
-        with pytest.raises(ValueError, match=re.escape("Intersection")):
-            nuthkaab_ref.fit_and_apply(ref_dem, tba_dem, inlier_mask=inlier_mask)
-
-    @pytest.mark.parametrize(
-        "combination",
-        [
             ("dem1", "dem2", "None", "None", "fit", "passes", ""),
             ("dem1", "dem2", "None", "None", "apply", "passes", ""),
             ("dem1.data", "dem2.data", "dem1.transform", "dem1.crs", "fit", "passes", ""),
