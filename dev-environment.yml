@@ -11,7 +11,7 @@ dependencies:
   - rasterio>=1.3,<2
   - scipy=1.*
   - tqdm
-  - geoutils=2.0.0
+  - geoutils=0.2.0
   - affine
   - pandas
   - pyogrio
