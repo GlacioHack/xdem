@@ -1977,7 +1977,7 @@ def get_terrain_attribute(
         array([[2, 2, 2],
                [1, 1, 1],
                [0, 0, 0]])
-        >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1)
+        >>> slope, aspect = get_terrain_attribute(dem, ["slope", "aspect"], resolution=1, surface_fit="ZevenbergThorne")
         >>> slope[1, 1]
         np.float32(45.0)
         >>> aspect[1, 1]
@@ -2407,9 +2407,9 @@ def slope(
         array([[0, 0, 0],
                [1, 1, 1],
                [2, 2, 2]])
-        >>> slope(dem, resolution=1, degrees=True)[1, 1] # Slope in degrees
+        >>> slope(dem, surface_fit="ZevenbergThorne", resolution=1, degrees=True)[1, 1] # Slope in degrees
         np.float32(45.0)
-        >>> np.round(np.tan(slope(dem, resolution=2, degrees=True)[1, 1] * np.pi / 180.), 1) # Slope in percentage
+        >>> np.round(np.tan(slope(dem, surface_fit="ZevenbergThorne", resolution=2, degrees=True)[1, 1]* np.pi / 180.), 1) # Slope in percentage
         np.float32(0.5)
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
@@ -2484,14 +2484,14 @@ def aspect(
         array([[0, 1, 2],
                [0, 1, 2],
                [0, 1, 2]])
-        >>> aspect(dem, degrees=True)[1, 1]
+        >>> aspect(dem, surface_fit="ZevenbergThorne", degrees=True)[1, 1]
         np.float32(270.0)
         >>> dem2 = np.repeat(np.arange(3), 3)[::-1].reshape(3, 3)
         >>> dem2
         array([[2, 2, 2],
                [1, 1, 1],
                [0, 0, 0]])
-        >>> aspect(dem2, degrees=True)[1, 1]
+        >>> aspect(dem2, surface_fit="ZevenbergThorne", degrees=True)[1, 1]
         np.float32(180.0)
 
     """
@@ -2640,13 +2640,6 @@ def curvature(
 
     :raises ValueError: If the inputs are poorly formatted.
 
-    :examples:
-        >>> dem = np.array([[1, 1, 1],
-        ...                 [1, 2, 1],
-        ...                 [1, 1, 1]], dtype="float32")
-        >>> curvature(dem, resolution=1.0)[1, 1] / 100.
-        np.float32(4.0)
-
     :returns: The curvature array of the DEM.
     """
 
@@ -2715,13 +2708,13 @@ def profile_curvature(
         >>> dem = np.array([[1, 2, 4],
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
-        >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        np.float32(1.0)
+        >>> profile_curvature(dem, surface_fit="ZevenbergThorne", curv_method="directional", resolution=1.0)[1, 1]
+        np.float32(-100.0)
         >>> dem = np.array([[1, 2, 3],
         ...                 [1, 2, 3],
         ...                 [1, 2, 3]], dtype="float32")
-        >>> profile_curvature(dem, resolution=1.0)[1, 1] / 100.
-        np.float32(0.0)
+        >>> profile_curvature(dem, surface_fit="ZevenbergThorne", curv_method="directional", resolution=1.0)[1, 1]
+        np.float32(-0.0)
 
     :returns: The profile curvature array of the DEM.
     """
@@ -2783,6 +2776,18 @@ def tangential_curvature(
     :raises ValueError: If the inputs are poorly formatted.
 
     :returns: The tangential curvature array of the DEM.
+
+      :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> tangential_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
+        np.float32(-0.0)
+        >>> dem = np.array([[1, 4, 8],
+        ...                 [1, 2, 4],
+        ...                 [1, 4, 8]], dtype="float32")
+        >>> tangential_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
+        np.float32(-221.88008)
     """
 
     return get_terrain_attribute(
@@ -2843,13 +2848,13 @@ def planform_curvature(
         >>> dem = np.array([[1, 2, 4],
         ...                 [1, 2, 4],
         ...                 [1, 2, 4]], dtype="float32")
-        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
+        >>> planform_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
         np.float32(-0.0)
         >>> dem = np.array([[1, 4, 8],
         ...                 [1, 2, 4],
         ...                 [1, 4, 8]], dtype="float32")
-        >>> planform_curvature(dem, resolution=1.0)[1, 1] / 100.
-        np.float32(-4.0)
+        >>> planform_curvature(dem, surface_fit="ZevenbergThorne", curv_method="directional", resolution=1.0)[1, 1]
+        np.float32(-266.66666)
 
     :returns: The planform curvature array of the DEM.
     """
@@ -2910,6 +2915,18 @@ def flowline_curvature(
     :raises ValueError: If the inputs are poorly formatted.
 
     :returns: The flowline curvature array of the DEM.
+
+    :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> flowline_curvature(dem, surface_fit="ZevenbergThorne", curv_method="directional", resolution=1.0)[1, 1]
+        np.float32(-0.0)
+        >>> dem = np.array([[1, 4, 8],
+        ...                 [1, 2, 4],
+        ...                 [1, 4, 8]], dtype="float32")
+        >>> flowline_curvature(dem, surface_fit="ZevenbergThorne", curv_method="directional", resolution=1.0)[1, 1]
+        np.float32(0.0)
     """
 
     return get_terrain_attribute(
