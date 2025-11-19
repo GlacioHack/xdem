@@ -11,6 +11,7 @@ import pytest
 import rasterio as rio
 from geoutils.raster.distributed_computing import MultiprocConfig
 from pyproj import CRS
+from scipy.ndimage import binary_dilation
 
 import xdem
 
@@ -1046,6 +1047,92 @@ class TestTerrainAttribute:
             result = xdem.terrain._nextprod_fft(size)
             assert result >= size
 
+    @pytest.mark.parametrize(
+        "attribute",
+         [attr for attr in xdem.terrain.available_attributes if attr in ["aspect", "slope", "hillshade"]
+          or "curvature" in attr])  # type: ignore
+    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])   # type: ignore
+    def test_surface_fit_attribute__nan_propag(self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne",
+    "Florinsky"
+    ]) -> None:
+        """
+        Check that NaN propagation behaves as intended for surface fit attributes, in short: NaN are propagated
+        from the edges and from NaNs based on window size associated with the surface fit (3x3 or 5x5).
+        """
+
+        if surface_fit == "Horn" and attribute not in ["aspect", "slope", "hillshade"]:
+            return
+
+        # Generate DEM
+        rng = np.random.default_rng(42)
+        dem = rng.normal(size=(20, 20))
+        # Introduce NaNs
+        dem[4, 4:6] = np.nan
+        dem[17, 16] = np.nan
+        mask_nan_dem = ~np.isfinite(dem)
+
+        # Generate attribute
+        attr = xdem.terrain.get_terrain_attribute(dem, resolution=1, attribute=attribute, surface_fit=surface_fit)
+        mask_nan_attr = ~np.isfinite(attr)
+
+        # We dilate the initial mask by a structuring element matching the window size of the surface fit
+        if surface_fit == "Florinsky":
+            struct = np.ones((5, 5), dtype=bool)
+            hw = 2
+        else:
+            struct = np.ones((3, 3), dtype=bool)
+            hw = 1
+        eroded_mask_dem = binary_dilation(mask_nan_dem.astype(int), structure=struct, iterations=1)
+        # On edges, NaN should be expanded by the half-width rounded down of the window
+        eroded_mask_dem[:hw, :] = True
+        eroded_mask_dem[-hw:, :] = True
+        eroded_mask_dem[:, :hw] = True
+        eroded_mask_dem[:, -hw:] = True
+        # We check the two masks are indeed the same
+        assert np.array_equal(eroded_mask_dem, mask_nan_attr)
+
+    @pytest.mark.parametrize(
+        "attribute",
+        [attr for attr in xdem.terrain.available_attributes if attr not in ["aspect", "slope", "hillshade"]
+         and "curvature" not in attr])  # type: ignore
+    @pytest.mark.parametrize("window_size", [3, 5, 7])  # type: ignore
+    def test_windowed_index_attribute__nan_propag(self, attribute: str, window_size: int) -> None:
+        """
+        Check that NaN propagation behaves as intended for windowed index attributes, in short: NaN are propagated
+        from the edges and from NaNs based on window size.
+        """
+
+        # Rugosity is only defined for a window size of 3
+        if attribute == "rugosity" and window_size != 3:
+            return
+
+        # TODO: Open issue on why fractal roughness/texture shading don't behave the same
+        if attribute in ["fractal_roughness", "texture_shading"]:
+            return
+
+        # Generate DEM
+        rng = np.random.default_rng(42)
+        dem = rng.normal(size=(20, 20))
+        # Introduce NaNs
+        dem[4, 4:6] = np.nan
+        dem[17, 16] = np.nan
+        mask_nan_dem = ~np.isfinite(dem)
+
+        # Generate attribute
+        attr = xdem.terrain.get_terrain_attribute(dem, resolution=1, attribute=attribute, window_size=window_size)
+        mask_nan_attr = ~np.isfinite(attr)
+
+        # We dilate the initial mask by a structuring element matching the window size of the surface fit
+        struct = np.ones((window_size, window_size), dtype=bool)
+        hw = int(window_size / 2)
+        eroded_mask_dem = binary_dilation(mask_nan_dem.astype(int), structure=struct, iterations=1)
+        # On edges, NaN should be expanded by the half-width rounded down of the window
+        eroded_mask_dem[:hw, :] = True
+        eroded_mask_dem[-hw:, :] = True
+        eroded_mask_dem[:, :hw] = True
+        eroded_mask_dem[:, -hw:] = True
+        # We check the two masks are indeed the same
+        assert np.array_equal(eroded_mask_dem, mask_nan_attr)
 
 class TestConvolution:
 
