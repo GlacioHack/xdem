@@ -1049,12 +1049,16 @@ class TestTerrainAttribute:
 
     @pytest.mark.parametrize(
         "attribute",
-         [attr for attr in xdem.terrain.available_attributes if attr in ["aspect", "slope", "hillshade"]
-          or "curvature" in attr])  # type: ignore
-    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])   # type: ignore
-    def test_surface_fit_attribute__nan_propag(self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne",
-    "Florinsky"
-    ]) -> None:
+        [
+            attr
+            for attr in xdem.terrain.available_attributes
+            if attr in ["aspect", "slope", "hillshade"] or "curvature" in attr
+        ],
+    )  # type: ignore
+    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])  # type: ignore
+    def test_surface_fit_attribute__nan_propag(
+        self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"]
+    ) -> None:
         """
         Check that NaN propagation behaves as intended for surface fit attributes, in short: NaN are propagated
         from the edges and from NaNs based on window size associated with the surface fit (3x3 or 5x5).
@@ -1093,8 +1097,12 @@ class TestTerrainAttribute:
 
     @pytest.mark.parametrize(
         "attribute",
-        [attr for attr in xdem.terrain.available_attributes if attr not in ["aspect", "slope", "hillshade"]
-         and "curvature" not in attr])  # type: ignore
+        [
+            attr
+            for attr in xdem.terrain.available_attributes
+            if attr not in ["aspect", "slope", "hillshade"] and "curvature" not in attr
+        ],
+    )  # type: ignore
     @pytest.mark.parametrize("window_size", [3, 5, 7])  # type: ignore
     def test_windowed_index_attribute__nan_propag(self, attribute: str, window_size: int) -> None:
         """
@@ -1133,6 +1141,7 @@ class TestTerrainAttribute:
         eroded_mask_dem[:, -hw:] = True
         # We check the two masks are indeed the same
         assert np.array_equal(eroded_mask_dem, mask_nan_attr)
+
 
 class TestConvolution:
 
