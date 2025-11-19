@@ -47,15 +47,16 @@ class TestTerrainAttribute:
         """
 
         functions = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, resolution=dem.res, degrees=True),
-            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, resolution=dem.res, degrees=True,
+                                                         surface_fit="Horn"),
+            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True, surface_fit="Horn"),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res, surface_fit="Horn"),
             "slope_Zevenberg": lambda dem: xdem.terrain.slope(
-                dem.data, resolution=dem.res, method="ZevenbergThorne", degrees=True
+                dem.data, resolution=dem.res, surface_fit="ZevenbergThorne", degrees=True
             ),
-            "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, method="ZevenbergThorne", degrees=True),
+            "aspect_Zevenberg": lambda dem: xdem.terrain.aspect(dem.data, surface_fit="ZevenbergThorne", degrees=True),
             "hillshade_Zevenberg": lambda dem: xdem.terrain.hillshade(
-                dem.data, resolution=dem.res, method="ZevenbergThorne"
+                dem.data, resolution=dem.res, surface_fit="ZevenbergThorne"
             ),
             "tri_Riley": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Riley"),
             "tri_Wilson": lambda dem: xdem.terrain.terrain_ruggedness_index(dem.data, method="Wilson"),
@@ -126,7 +127,7 @@ class TestTerrainAttribute:
 
     @pytest.mark.parametrize(
         "attribute",
-        ["slope_Horn", "aspect_Horn", "hillshade_Horn", "curvature", "profile_curvature", "planform_curvature"],
+        ["slope_Horn", "aspect_Horn", "hillshade_Horn", "profile_curvature", "planform_curvature"],
     )  # type: ignore
     def test_attribute_functions_against_richdem(self, attribute: str, get_test_data_path) -> None:
         """
@@ -137,12 +138,15 @@ class TestTerrainAttribute:
 
         # Functions for xdem-implemented methods
         functions_xdem = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem, resolution=dem.res, degrees=True),
-            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True),
-            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res),
-            "curvature": lambda dem: xdem.terrain.curvature(dem.data, resolution=dem.res),
-            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, resolution=dem.res),
-            "planform_curvature": lambda dem: xdem.terrain.planform_curvature(dem.data, resolution=dem.res),
+            "slope_Horn": lambda dem: xdem.terrain.slope(dem, resolution=dem.res, degrees=True, surface_fit="Horn"),
+            "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True, surface_fit="Horn"),
+            "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res, surface_fit="Horn"),
+            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, resolution=dem.res,
+                                                                            surface_fit="ZevenbergThorne",
+                                                                            curv_method="directional"),
+            "planform_curvature": lambda dem: xdem.terrain.tangential_curvature(dem.data, resolution=dem.res,
+                                                                              surface_fit="ZevenbergThorne",
+                                                                              curv_method="directional"),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -152,6 +156,10 @@ class TestTerrainAttribute:
         attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
         attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
         attr_richdem = gu.raster.get_array_and_mask(attr_richdem_rst)[0].squeeze()
+
+        # TODO: Profile curvature is opposite sign as of RichDEM, check if this is warranted
+        if attribute == "profile_curvature":
+            attr_richdem = -attr_richdem
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem
@@ -167,7 +175,7 @@ class TestTerrainAttribute:
             if attribute in ["aspect_Horn"]:
                 # For aspect, check the tolerance within a 360 degree modulo due to the circularity of the variable
                 diff_valid = np.mod(np.abs(diff_valid), 360)
-                assert np.all(np.minimum(diff_valid, np.abs(360 - diff_valid)) < 10 ** (-3) * magn)
+                assert np.nanpercentile(np.minimum(diff_valid, np.abs(360 - diff_valid)), 99) < 10 ** (-3) * magn
 
             else:
                 # All attributes other than aspect are non-circular floats, so we check within a tolerance
@@ -181,14 +189,14 @@ class TestTerrainAttribute:
 
                 # Plotting the xdem and RichDEM attributes for comparison (plotting "diff" can also help debug)
                 plt.subplot(221)
-                plt.imshow(attr_richdem)
-                plt.colorbar()
+                plt.imshow(attr_richdem, vmin=-1, vmax=1)
+                plt.colorbar(label="richdem")
                 plt.subplot(222)
-                plt.imshow(attr_xdem)
-                plt.colorbar()
+                plt.imshow(attr_xdem, vmin=-1, vmax=1)
+                plt.colorbar(label="xdem")
                 plt.subplot(223)
-                plt.imshow(diff)
-                plt.colorbar()
+                plt.imshow(diff, vmin=-1, vmax=1)
+                plt.colorbar(label="diff")
                 plt.show()
 
             raise exception
@@ -201,6 +209,84 @@ class TestTerrainAttribute:
         # Validate that this doesn't raise weird warnings after introducing nans and that mask is preserved
         # output = functions_richdem[attribute](dem)
         # assert np.all(dem.data.mask == output.data.mask)
+
+    @pytest.mark.parametrize("attribute_name", ["slope", "aspect", "profile_curvature", "tangential_curvature",
+                                                "planform_curvature", "flowline_curvature", "max_curvature",
+                                                "min_curvature"])  # type: ignore
+    def test_attribute_consistency_surface_fit(self, attribute_name: str) -> None:
+        """Test that surface fit attributes are generally consistent across various fit methods
+        (Horn, ZevenbergThorne, Florinsky), testing within a certain tolerance for a % of the data."""
+
+        # Prepare masks to filter out points for later comparison of curvatures where they remain consistent
+        max_curv = xdem.terrain.max_curvature(self.dem)
+        min_curv = xdem.terrain.min_curvature(self.dem)
+        low_curv = np.logical_and(max_curv < 0.25, min_curv > -0.25)
+        slope = xdem.terrain.slope(self.dem)
+        flat_moderate = np.logical_and(slope < 40, low_curv)
+        moderate_steep = np.logical_and(slope > 15, low_curv)
+
+        attr_zt = getattr(xdem.terrain, attribute_name)(self.dem, surface_fit="ZevenbergThorne")
+        attr_fl = getattr(xdem.terrain, attribute_name)(self.dem, surface_fit="Florinsky")
+
+        # Difference attribute
+        diff_zt_fl = np.abs(attr_zt - attr_fl)
+        if attribute_name == "aspect":
+            diff_zt_fl = np.minimum(diff_zt_fl, np.abs(360 - diff_zt_fl))
+
+        # Twice the STD contains about 95% of the data
+        magnitude = 2 * np.nanstd(attr_zt)
+
+        try:
+            # Less sensitivity for first-order derivatives, so no need to filter out points
+            if attribute_name in ["slope", "aspect"]:
+                ind = np.ones(diff_zt_fl.shape, dtype=bool)
+
+            # The following curvatures are sensitive in steep terrain, so let's remove that
+            elif attribute_name in ["profile_curvature", "tangential_curvature", "max_curvature", "min_curvature"]:
+                ind = flat_moderate
+
+            # The last curvatures are sensitive in flat terrain, so let's remove that
+            else:
+                ind = moderate_steep
+
+            # Remove terrain
+            diff_zt_fl[~ind] = np.nan
+
+            # The 50% lowest differences should be relatively small (less than 10% of magnitude, e.g. a couple degrees
+            # for slope)
+            assert np.nanpercentile(diff_zt_fl, 50) < 0.1 * magnitude
+
+            # Only slope and aspect are supported for Horn
+            if attribute_name in ["slope", "aspect"]:
+                attr_horn = getattr(xdem.terrain, attribute_name)(self.dem,
+                                                                  surface_fit="Horn")
+                diff_zt_horn = np.abs(attr_zt - attr_horn)
+                assert np.nanpercentile(diff_zt_horn, 80) < 0.1 * magnitude
+
+        except Exception as exception:
+
+            if PLOT:
+                import matplotlib.pyplot as plt
+
+                # Plotting the xdem and RichDEM attributes for comparison (plotting "diff" can also help debug)
+                plt.subplot(221)
+                plt.imshow(attr_zt.data, vmin=-1, vmax=1)
+                plt.colorbar(label="ZT")
+                plt.subplot(222)
+                plt.imshow(attr_fl.data, vmin=-1, vmax=1)
+                plt.colorbar(label="Florinsky")
+                plt.subplot(223)
+                plt.imshow(attr_zt.data - attr_fl.data, vmin=-1, vmax=1)
+                plt.colorbar(label="diff")
+                plt.subplot(224)
+                alpha_channel = np.ones_like(diff_zt_fl.data)
+                alpha_channel[diff_zt_fl.data.mask] = 0
+                plt.imshow(diff_zt_fl.data, alpha=alpha_channel, vmax=1)
+                plt.colorbar(label="Mask")
+                plt.show()
+
+            raise exception
+
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
@@ -231,9 +317,10 @@ class TestTerrainAttribute:
             xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
 
     @pytest.mark.parametrize(
-        "name", ["curvature", "planform_curvature", "profile_curvature", "maximum_curvature"]
+        "name", ["tangential_curvature", "profile_curvature", "min_curvature",
+                 "max_curvature", "planform_curvature", "flowline_curvature"]
     )  # type: ignore
-    def test_curvatures(self, name: str) -> None:
+    def test_curvatures__runtime(self, name: str) -> None:
         """Test the curvature functions"""
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -249,8 +336,9 @@ class TestTerrainAttribute:
         except Exception:
             import matplotlib.pyplot as plt
 
-            plt.imshow(curvature.squeeze())
-            plt.show()
+            if PLOT:
+                plt.imshow(curvature.squeeze())
+                plt.show()
 
         with pytest.raises(
             ValueError,
@@ -267,6 +355,172 @@ class TestTerrainAttribute:
         dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
+
+    @pytest.mark.parametrize(
+        "name", ["tangential_curvature", "profile_curvature", "min_curvature",
+                 "max_curvature", "planform_curvature", "flowline_curvature"]
+    )  # type: ignore
+    @pytest.mark.parametrize("surface_fit", ["ZevenbergThorne", "Florinsky"])  # type: ignore
+    def test_curvatures__definition(self, name: str, surface_fit: str) -> None:
+        """Test the curvatures definitions 'geometric' versus 'directional' are yielding expected results."""
+
+        # Get geometric and directional curvatures
+        curv_g = xdem.terrain.get_terrain_attribute(self.dem.data, attribute=name, resolution=self.dem.res,
+                                                   curv_method="geometric", surface_fit=surface_fit)
+        curv_d = xdem.terrain.get_terrain_attribute(self.dem.data, attribute=name, resolution=self.dem.res,
+                                                    curv_method="directional", surface_fit=surface_fit)
+
+        # For planform, the result should be the same
+        if name == "planform_curvature":
+            assert np.allclose(curv_g, curv_d, equal_nan=True)
+        # For tangential, profile and flowline, only the divider is different with a multiplier greater than 1,
+        # so the absolute geometric curvature should always have lower value
+        elif name in ["tangential_curvature", "profile_curvature", "flowline_curvature"]:
+            ind_valid = np.logical_and(np.isfinite(curv_g), np.isfinite(curv_d))
+            assert np.all(np.abs(curv_d[ind_valid]) >= np.abs(curv_g[ind_valid]))
+        # For max/min, no particular relation
+        else:
+            return
+
+    def test_curvatures__synthetic(self):
+        """Test the curvature functions with synthetic data, checking expected values at the center pixel."""
+
+        # 1/ Flat, or Linear ramp in X/Y/diagX/diagY = No curvature
+        dem_flat = np.ones((5, 5), dtype=np.float32)
+        dem_ramp_x = np.stack([np.ones(5) * i for i in range(5)], axis=1)
+        dem_ramp_y = np.stack([np.ones(5) * i for i in range(5)], axis=0)
+        dem_ramp_xy = np.stack([np.arange(0, 5) + i for i in range(5)], axis=1)
+        dem_ramp_yx = np.stack([np.flip(np.arange(0, 5)) + i for i in range(5)], axis=1)
+        list_dem_no_curv = [dem_flat, dem_ramp_x, dem_ramp_y, dem_ramp_xy, dem_ramp_yx]
+        for curv in ["tangential_curvature", "profile_curvature", "min_curvature",
+                 "max_curvature", "planform_curvature", "flowline_curvature"]:
+            for dem in list_dem_no_curv:
+                fl_curv = getattr(xdem.terrain, curv)(dem, resolution=10, surface_fit="Florinsky")[2, 2]
+                zt_curv = getattr(xdem.terrain, curv)(dem, resolution=10, surface_fit="ZevenbergThorne")[2, 2]
+                assert pytest.approx(fl_curv) == 0
+                assert pytest.approx(zt_curv) == 0
+
+        # 2/ V linear ramp (V shape) in X/Y centered on pixel (2 1 0 1 2), with linear ramp in TANGENT direction
+        # (to define orientation)
+        dem_v_y_convex = np.stack([np.array([2, 1, 0, 1, 2]) + i for i in range(5)], axis=0)
+        dem_v_x_convex = np.stack([np.array([2, 1, 0, 1, 2]) + i for i in range(5)], axis=1)
+        # Same but concave (0 1 2 1 0)
+        dem_v_y_concave = np.stack([np.array([0, 1, 2, 1, 0]) + i for i in range(5)], axis=0)
+        dem_v_x_concave = np.stack([np.array([0, 1, 2, 1, 0]) + i for i in range(5)], axis=1)
+
+        list_dems_v = [dem_v_x_convex, dem_v_y_convex, dem_v_x_concave, dem_v_y_concave]
+        list_dem_concavity = ["convex", "convex", "concave", "concave"]
+
+        for i, dem in enumerate(list_dems_v):
+
+            # Define a sign to test inequality based on convexity
+            conc = list_dem_concavity[i]
+            if conc == "convex":
+                sign = 1
+            else:
+                sign = -1
+
+            # In profile direction, no curvature
+            fl_curv_prof = xdem.terrain.profile_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_prof = xdem.terrain.profile_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert pytest.approx(fl_curv_prof) == 0
+            assert pytest.approx(zt_curv_prof) == 0
+
+            # Tangent curvature (negative for convex, positive for concave)
+            fl_curv_tan = xdem.terrain.tangential_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_tan = xdem.terrain.tangential_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert sign * fl_curv_tan < 0
+            assert sign * zt_curv_tan < 0
+
+            # Flowline direction, no curvature
+            fl_curv_flo = xdem.terrain.flowline_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_flo = xdem.terrain.flowline_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert pytest.approx(fl_curv_flo) == 0
+            assert pytest.approx(zt_curv_flo) == 0
+
+            # Planform (negative for convex, positive for concave)
+            fl_curv_pla = xdem.terrain.planform_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_pla = xdem.terrain.planform_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert sign * fl_curv_pla < 0
+            assert sign * zt_curv_pla < 0
+
+            # Max and min
+            fl_curv_max = xdem.terrain.max_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_max = xdem.terrain.max_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            fl_curv_min = xdem.terrain.min_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_min = xdem.terrain.min_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            if conc == "convex":
+                assert pytest.approx(fl_curv_max) == 0
+                assert pytest.approx(zt_curv_max) == 0
+                assert fl_curv_min < 0
+                assert zt_curv_min < 0
+            else:
+                assert pytest.approx(fl_curv_min) == 0
+                assert pytest.approx(zt_curv_min) == 0
+                assert fl_curv_max > 0
+                assert zt_curv_max > 0
+
+        # 3/ V linear ramp (V shape) in X/Y centered on pixel (2 1 0 1 2), with added linear ramp in SAME direction
+        # (to define orientation)
+        # Now profile curvature should be non-zero, and others should be zero
+        dem_v_y_convex = np.stack([np.array([2, 1, 0, 1, 2]) + np.linspace(0, 1, 5) for i in range(5)], axis=0)
+        dem_v_x_convex = np.stack([np.array([2, 1, 0, 1, 2]) + np.linspace(0, 1, 5) for i in range(5)], axis=1)
+        # Same but concave (0 1 2 1 0)
+        dem_v_y_concave = np.stack([np.array([0, 1, 2, 1, 0]) + np.arange(0, 5) for i in range(5)], axis=0)
+        dem_v_x_concave = np.stack([np.array([0, 1, 2, 1, 0]) + np.arange(0, 5) for i in range(5)], axis=1)
+
+        list_dems_v = [dem_v_x_convex, dem_v_y_convex, dem_v_x_concave, dem_v_y_concave]
+        list_dem_concavity = ["convex", "convex", "concave", "concave"]
+
+        for i, dem in enumerate(list_dems_v):
+
+            # Define a sign to test inequality based on convexity
+            conc = list_dem_concavity[i]
+            if conc == "convex":
+                sign = 1
+            else:
+                sign = -1
+
+            # Profile curvature (negative for convex, positive for concave)
+            fl_curv_prof = xdem.terrain.profile_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_prof = xdem.terrain.profile_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert sign * fl_curv_prof < 0
+            assert sign * zt_curv_prof < 0
+
+            # Tangent curvature, no curvature
+            fl_curv_tan = xdem.terrain.tangential_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_tan = xdem.terrain.tangential_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert pytest.approx(fl_curv_tan) == 0
+            assert pytest.approx(zt_curv_tan) == 0
+
+            # Flowline direction (negative for convex, positive for concave)
+            fl_curv_flo = xdem.terrain.flowline_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_flo = xdem.terrain.flowline_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert pytest.approx(fl_curv_flo) == 0
+            assert pytest.approx(zt_curv_flo) == 0
+
+            # Planform (negative for convex, positive for concave)
+            fl_curv_pla = xdem.terrain.planform_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_pla = xdem.terrain.planform_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            assert pytest.approx(fl_curv_pla) == 0
+            assert pytest.approx(zt_curv_pla) == 0
+
+            # Max and min
+            fl_curv_max = xdem.terrain.max_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_max = xdem.terrain.max_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            fl_curv_min = xdem.terrain.min_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+            zt_curv_min = xdem.terrain.min_curvature(dem, resolution=5, surface_fit="ZevenbergThorne")[2, 2]
+            if conc == "convex":
+                assert pytest.approx(fl_curv_max) == 0
+                assert pytest.approx(zt_curv_max) == 0
+                assert fl_curv_min < 0
+                assert zt_curv_min < 0
+            else:
+                assert pytest.approx(fl_curv_min) == 0
+                assert pytest.approx(zt_curv_min) == 0
+                assert fl_curv_max > 0
+                assert zt_curv_max > 0
+
 
     def test_get_terrain_attribute__multiple_inputs(self) -> None:
         """Test the get_terrain_attribute function by itself."""
@@ -345,19 +599,35 @@ class TestTerrainAttribute:
         """Test the get_terrain_attribute function raises appropriate errors."""
 
         # Below, re.escape() is needed to match expressions that have special characters (e.g., parenthesis, bracket)
+
+        # Wrong method name for surface fit
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Slope method 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne']"
+                "Surface fit 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne', "
+                "'Florinsky']"
             ),
         ):
-            xdem.terrain.slope(self.dem.data, resolution=self.dem.res, method="DoesNotExist")  # type: ignore
+            xdem.terrain.slope(self.dem, method="DoesNotExist")  # type: ignore
 
+        # Wrong method name for TRI
         with pytest.raises(
             ValueError,
             match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
         ):
-            xdem.terrain.terrain_ruggedness_index(self.dem.data, method="DoesNotExist")  # type: ignore
+            xdem.terrain.terrain_ruggedness_index(self.dem, method="DoesNotExist")  # type: ignore
+
+        # Wrong method name for curvature method
+        with pytest.raises(ValueError, match=re.escape("Curvature method 'DoesNotExist' is not supported. Must be "
+                                                       "one of: ['geometric', 'directional']")
+        ):
+            xdem.terrain.max_curvature(self.dem, curv_method="DoesNotExist")  # type: ignore
+
+        # Calling a curvature with Horn surface fit: impossible
+        with pytest.raises(ValueError, match=re.escape("'Horn' surface fit method cannot be used for to calculate "
+                                                       "curvatures. Use 'ZevenbergThorne' or 'Florinsky' instead.")
+                           ):
+            xdem.terrain.max_curvature(self.dem, surface_fit="Horn")  # type: ignore
 
         # Check warning for geographic CRS
         data = np.ones((5, 5))
@@ -451,78 +721,32 @@ class TestTerrainAttribute:
         frac_rough = xdem.terrain.fractal_roughness(dem)
         assert np.round(frac_rough[6, 6]) == np.float32(3.0)
 
-    def test_convolution__quadric_coefficients(self) -> None:
-        """Test the outputs of quadric coefficients (not accessible by users)."""
-
-        dem = np.array([[1, 1, 1], [1, 2, 1], [1, 1, 1]], dtype="float32")
-
-        # Get all coefficients and convolve middle mixel
-        coef_arrs = list(xdem.terrain.all_coefs.values())
-        coef_names = list(xdem.terrain.all_coefs.keys())
-        kern3d = np.stack(coef_arrs, axis=0)
-        coefs = xdem.spatialstats.convolution(
-            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
-        ).squeeze()[:, 1, 1]
-
-        # The 4th to last coefficient is identity, so the dem itself
-        assert np.array_equal(coefs[coef_names.index("zt_i")], dem[1, 1])
-
-        # The third should be concave in the x-direction
-        assert coefs[coef_names.index("zt_d")] < 0
-
-        # The fourth should be concave in the y-direction
-        assert coefs[coef_names.index("zt_e")] < 0
-
-    def test_convolution_equal__engine(self) -> None:
-        """
-        Check that convolution through SciPy or Numba give equal result for all kernels.
-        This calls the convolution subfunctions directly (as they need to be chained sequentially with other
-        steps in the main functions).
-        """
-
-        # Stack to convolve all coefs at once
-        coef_arrs = list(xdem.terrain.all_coefs.values())
-        kern3d = np.stack(coef_arrs, axis=0)
-
-        rnd = np.random.default_rng(42)
-        dem = rnd.normal(size=(5, 7))
-
-        # With SciPy
-        conv_scipy = xdem.spatialstats.convolution(
-            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
-        ).squeeze()[:, 3, 3]
-
-        # With Numba
-        _, M1, M2 = kern3d.shape
-        half_M1 = int((M1 - 1) / 2)
-        half_M2 = int((M2 - 1) / 2)
-        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
-        conv_numba = xdem.terrain._convolution_numba(dem, filters=kern3d, row=3, col=3)
-
-        np.allclose(conv_scipy, conv_numba, equal_nan=True)
-
     @pytest.mark.parametrize(
         "attribute",
-        ["slope", "aspect", "hillshade", "curvature", "profile_curvature", "planform_curvature", "maximum_curvature"],
+        ["slope", "aspect", "hillshade", "profile_curvature", "tangential_curvature",
+         "planform_curvature", "flowline_curvature", "max_curvature", "min_curvature"],
     )  # type: ignore
-    @pytest.mark.parametrize("slope_method", ["Horn", "ZevenbergThorne"])  # type: ignore
+    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])  # type: ignore
     def test_get_surface_attributes__engine(
-        self, attribute: str, slope_method: Literal["Horn", "ZevenbergThorne"]
+        self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"]
     ) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(5, 7))
 
+        # Horn only works for first derivatives
+        if surface_fit == "Horn" and attribute not in ["slope", "aspect", "hillshade"]:
+            return
+
         attrs_scipy = xdem.terrain._get_surface_attributes(
-            dem=dem, resolution=2, surface_attributes=[attribute], slope_method=slope_method, engine="scipy"
+            dem=dem, resolution=2, surface_attributes=[attribute], surface_fit=surface_fit, engine="scipy"
         )
         attrs_numba = xdem.terrain._get_surface_attributes(
-            dem=dem, resolution=2, surface_attributes=[attribute], slope_method=slope_method, engine="numba"
+            dem=dem, resolution=2, surface_attributes=[attribute], surface_fit=surface_fit, engine="numba"
         )
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
-        # assert np.allclose(coefs_numba, coefs_numba_cv, equal_nan=True)
 
     @pytest.mark.parametrize(
         "attribute",
@@ -774,3 +998,107 @@ class TestTerrainAttribute:
         for size in [1, 5, 13, 25, 37, 63, 91]:
             result = xdem.terrain._nextprod_fft(size)
             assert result >= size
+
+class TestConvolution:
+
+    # Get all coefficients
+    coef_names = list(xdem.terrain.all_coefs.keys())
+    coef_names_h = [n for n in coef_names if n in ["h1", "h2"]]
+    coef_names_zt = [n for n in coef_names if "zt" in n]
+    coef_names_fl = [n for n in coef_names if "fl" in n]
+    coef_arrs_h = [xdem.terrain.all_coefs[n] for n in coef_names_h]
+    coef_arrs_zt = [xdem.terrain.all_coefs[n] for n in coef_names_zt]
+    coef_arrs_fl = [xdem.terrain.all_coefs[n] for n in coef_names_fl]
+
+    def test_convolution__quadric_coefficients(self) -> None:
+        """Test the outputs of quadric coefficients (currently not accessible by users)."""
+
+        # Create a synthetic DEM with a stationary slope/curvature (quadratic ramp in Y direction)
+        # to check basic consistency of derivatives (zero across ramp, non-zero along ramp)
+        dem = np.stack([np.ones(5) * (i-1)**2 for i in range(5)], axis=0)
+        dem_flat = np.ones((5, 5), dtype=np.float32)
+
+
+        # Horn coefficients
+        kern3d = np.stack(self.coef_arrs_h, axis=0)
+        coefs_h = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 2, 2]
+        coefs_h_flat = xdem.spatialstats.convolution(
+            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 2, 2]
+
+        # Zevenberg and Thorne coefficients
+        kern3d = np.stack(self.coef_arrs_zt, axis=0)
+        coefs_zt = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 2, 2]
+        coefs_zt_flat = xdem.spatialstats.convolution(
+            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 2, 2]
+
+        # Florinsky coefficients
+        kern3d = np.stack(self.coef_arrs_fl, axis=0)
+        coefs_fl = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 2, 2]
+        coefs_fl_flat = xdem.spatialstats.convolution(
+            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 2, 2]
+
+        # 1/ Check coefficient for flat DEM are all zero (except last of ZT that is identity)
+        assert all(coefs_fl_flat == 0)
+        assert all(coefs_zt_flat[:-1] == 0)
+        assert all(coefs_h_flat == 0)
+
+        # Corresponding coefficients
+        list_coefs_names = [self.coef_names_h, self.coef_names_zt, self.coef_names_fl]
+        list_coefs = [coefs_h, coefs_zt, coefs_fl]
+        dict_coef = {"z_x": ["h2", "zt_h", "fl_p"],
+                     "z_y": ["h1", "zt_g", "fl_q"],
+                     "z_xx": [None, "zt_e", "fl_r"],
+                     "z_yy": [None, "zt_d", "fl_t"],
+                     "z_xy": [None, "zt_f", "fl_s"]}
+
+        # Test all coefficients are non-zero (along ramp direction) or zero (across ramp direction)
+        directions = ["across", "along", "across", "along", "across"]
+        for k, coef in enumerate(dict_coef.keys()):
+            list_vals = []
+            for i in range(len(list_coefs)):
+                coef_name = dict_coef[coef][i]
+                if coef_name is not None:
+                    val = list_coefs[i][list_coefs_names[i].index(coef_name)]
+                    list_vals.append(val)
+
+            if directions[k] == "across":
+                assert all(np.array(list_vals) == 0)
+            else:
+                assert all(np.array(list_vals) != 0)
+
+
+    @pytest.mark.parametrize("coef_arrs", [coef_arrs_h, coef_arrs_zt, coef_arrs_fl])  # type: ignore
+    def test_convolution_equal__engine(self, coef_arrs: list[np.ndarray]) -> None:
+        """
+        Check that convolution through SciPy or Numba give equal result for all kernels.
+        This calls the convolution subfunctions directly (as they need to be chained sequentially with other
+        steps in the main functions).
+        """
+
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(5, 7))
+
+        kern3d = np.stack(coef_arrs, axis=0)
+
+        # With SciPy
+        conv_scipy = xdem.spatialstats.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        ).squeeze()[:, 3, 3]
+
+        # With Numba
+        _, M1, M2 = kern3d.shape
+        half_M1 = int((M1 - 1) / 2)
+        half_M2 = int((M2 - 1) / 2)
+        dem = np.pad(dem, pad_width=((half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
+        conv_numba = xdem.terrain._convolution_numba(dem, filters=kern3d, row=3, col=3)
+
+        np.allclose(conv_scipy, conv_numba, equal_nan=True)

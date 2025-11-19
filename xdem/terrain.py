@@ -62,23 +62,78 @@ available_attributes = [
 # Store coefficient of fixed window-size attributes outside functions
 # to allow reuse with several engines (Numba, SciPy, Cuda)
 
+# Remove black formating to facilitate reading the arrays
+# fmt: off
+
 # Zevenberg and Thorne (1987) coefficients, Equations 3 to 11
 #############################################################
 
 # A, B, C and I are effectively unused for terrain attributes, only useful to get quadric fit
-zt_a = np.array([[1 / 4, -1 / 2, 1 / 4], [-1 / 2, 1, -1 / 2], [1 / 4, -1 / 2, 1 / 4]])
-zt_b = np.array([[-1 / 4, 0, 1 / 4], [1 / 2, 0, -1 / 2], [-1 / 4, 0, 1 / 4]])
-zt_c = np.array([[1 / 4, -1 / 2, 1 / 4], [0, 0, 0], [-1 / 4, 1 / 2, -1 / 4]])
-zt_i = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]])
+zt_a = np.array(
+    [
+        [1, -2, 1],
+        [-2, 4, -2],
+        [1, -2, 1]
+    ]
+)
+zt_b = np.array(
+    [
+        [-1, 0, 1],
+        [2, 0, -2],
+        [-1, 0, 1]
+    ]
+)
+zt_c = np.array(
+    [
+        [1, -2, 1],
+        [0, 0, 0],
+        [-1, 2, -1]])
+zt_i = np.array(
+    [
+        [0, 0, 0],
+        [0, 1, 0],
+        [0, 0, 0]
+    ]
+)
 
 # All below useful for curvature
-zt_d = np.array([[0, 1 / 2, 0], [0, -1, 0], [0, 1 / 2, 0]])
-zt_e = np.array([[0, 0, 0], [1 / 2, -1, 1 / 2], [0, 0, 0]])
-zt_f = np.array([[-1 / 4, 0, 1 / 4], [0, 0, 0], [1 / 4, 0, -1 / 4]])
+zt_d = np.array(
+    [
+        [0, 1, 0],
+        [0, -2, 0],
+        [0, 1, 0]
+    ]
+)
+zt_e = np.array(
+    [
+        [0, 0, 0],
+        [1, -2, 1],
+        [0, 0, 0]
+    ]
+)
+zt_f = np.array(
+    [
+        [-1, 0, 1],
+        [0, 0, 0],
+        [1, 0, -1]
+    ]
+)
 
 # The G and H coefficients are the only ones needed for slope/aspect/hillshade
-zt_g = np.array([[0, 1 / 2, 0], [0, 0, 0], [0, -1 / 2, 0]])
-zt_h = np.array([[0, 0, 0], [-1 / 2, 0, 1 / 2], [0, 0, 0]])
+zt_g = np.array(
+    [
+        [0, 1, 0],
+        [0, 0, 0],
+        [0, -1, 0]
+    ]
+)
+zt_h = np.array(
+    [
+        [0, 0, 0],
+        [-1, 0, 1],
+        [0, 0, 0]
+    ]
+)
 zv_coefs = {
     "zt_a": zt_a,
     "zt_b": zt_b,
@@ -94,8 +149,20 @@ zv_coefs = {
 # Horn (1981) coefficients, page 18 bottom left equations
 #########################################################
 
-h1 = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
-h2 = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
+h1 = np.array(
+    [
+        [1,  2,  1],
+        [0,  0,  0],
+        [-1, -2, -1]
+    ]
+)
+h2 = np.array(
+    [
+        [-1, 0, 1],
+        [-2, 0, 2],
+        [-1, 0, 1]]
+)
+
 horn_coefs = {"h1": h1, "h2": h2}
 
 # Florinsky (2009) coefficients, equations 12-20
@@ -191,6 +258,7 @@ fl_q = np.array(
     ]
 )
 
+# fmt: on
 
 fl_coefs = {
     "fl_a": fl_a,
@@ -217,14 +285,14 @@ def _divider_method_coef(res: float, coef: str) -> float:
     """Divider for a given coefficient based on resolution."""
 
     mapping_div_coef = {
-        "zt_a": res**4,
-        "zt_b": res**3,
-        "zt_c": res**3,
-        "zt_d": res**2,
-        "zt_e": res**2,
-        "zt_f": res**2,
-        "zt_g": res,
-        "zt_h": res,
+        "zt_a": 4 * res**4,
+        "zt_b": 4 * res**3,
+        "zt_c": 4 * res**3,
+        "zt_d": res**2,  # Divided by 2 compared to Zevenberg to match z_xx definition
+        "zt_e": res**2,   # Divided by 2 compared to Zevenberg to match z_xx definition
+        "zt_f": 4 * res**2,  # Times 2 what is reported in ZevenbergThorne because later formula multiplies by 2
+        "zt_g": 2 * res,
+        "zt_h": 2 * res,
         "zt_i": 1,
         "h1": 8 * res,
         "h2": 8 * res,
@@ -276,6 +344,9 @@ def _preprocess_surface_fit(
             c_curv = ["zt_d", "zt_e"]
         elif surface_fit == "Florinsky":
             c_curv = ["fl_r", "fl_t"]
+        # For other methods not supporting curvatures (e.g. Horn)
+        else:
+            c_curv = []
     else:
         c_curv = []
 
@@ -296,6 +367,9 @@ def _preprocess_surface_fit(
             c_pcurv = ["zt_d", "zt_e", "zt_f", "zt_g", "zt_h"]
         elif surface_fit == "Florinsky":
             c_pcurv = ["fl_r", "fl_t", "fl_s", "fl_p", "fl_q"]
+        # For other methods not supporting curvatures (e.g. Horn)
+        else:
+            c_pcurv = []
     else:
         c_pcurv = []
 
@@ -485,8 +559,8 @@ def _make_attribute_from_coefs(
         # Extract surface derivatives based on Horn (1981).
         # http://dx.doi.org/10.1109/PROC.1981.11918.
 
-        z_x_idx = h1_idx
-        z_y_idx = h2_idx
+        z_x_idx = h2_idx
+        z_y_idx = h1_idx
 
     elif surface_fit_id == 1:
 
@@ -495,10 +569,10 @@ def _make_attribute_from_coefs(
 
         # Current ouput provisions do not currently require b, c
 
-        z_x_idx = zt_g_idx
-        z_y_idx = zt_h_idx
-        z_xx_idx = zt_d_idx
-        z_yy_idx = zt_e_idx
+        z_x_idx = zt_h_idx
+        z_y_idx = zt_g_idx
+        z_xx_idx = zt_e_idx
+        z_yy_idx = zt_d_idx
         z_xy_idx = zt_f_idx
         # z_xxy = zt_b_idx
         # z_xyy = zt_c_idx
@@ -530,7 +604,7 @@ def _make_attribute_from_coefs(
 
     if make_aspect:
 
-        aspect = (-np.arctan2(-C[z_x_idx], C[z_y_idx]) - np.pi) % (2 * np.pi)
+        aspect = (-np.arctan2(-C[z_x_idx], C[z_y_idx])) % (2 * np.pi)
 
         # In case aspect is only derived for hillshade
         if aspect_idx != 99:
@@ -676,7 +750,7 @@ def _make_attribute_from_coefs(
             # plancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / sqrt((z_x**2 + z_y**2)**3)
 
             plancurv = np.where(
-                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 < 10e-15,
                 np.array([0.0]),
                 -(
                     C[z_xx_idx] * C[z_y_idx] ** 2
@@ -705,7 +779,7 @@ def _make_attribute_from_coefs(
             # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) / (((z_x**2 + z_y**2)**3)**0.5 * (1 + z_x**2 + z_y**2)**0.5)
 
             flowcurv = np.where(
-                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
+                C[z_x_idx] ** 2 + C[z_y_idx] ** 2 < 10e-15,
                 np.array([0.0]),
                 (
                     C[z_x_idx] * C[z_y_idx] * (C[z_xx_idx] - C[z_yy_idx])
@@ -1927,14 +2001,15 @@ def get_terrain_attribute(
             "min_curvature",
         ]
 
-        if isinstance(surface_fit, str):
-            found = surface_fit in curvature_list
+        if isinstance(attribute, str):
+            found = attribute in curvature_list
         else:
-            found = any(item in curvature_list for item in surface_fit)
+            found = any(item in curvature_list for item in attribute)
 
         if found:
             raise ValueError(
-                "Horn surface fit method cannot be used for to calculate curvatures. Use ZevenbergThorne or Florinsky instead."
+                "'Horn' surface fit method cannot be used for to calculate curvatures. "
+                "Use 'ZevenbergThorne' or 'Florinsky' instead."
             )
 
     if mp_config is not None:
@@ -2161,7 +2236,7 @@ def _get_terrain_attribute(
     # list_slope_methods = ["Horn", "ZevenbergThorne"]
     list_surface_fit = ["Horn", "ZevenbergThorne", "Florinsky"]
     if surface_fit.lower() not in [sm.lower() for sm in list_surface_fit]:
-        raise ValueError(f"Slope method '{surface_fit}' is not supported. Must be one of: {list_surface_fit}")
+        raise ValueError(f"Surface fit '{surface_fit}' is not supported. Must be one of: {list_surface_fit}")
     list_curv_methods = ["geometric", "directional"]
     if curv_method.lower() not in [cm.lower() for cm in list_curv_methods]:
         raise ValueError(f"Curvature method '{curv_method}' is not supported. Must be one of: {list_curv_methods}")
@@ -2342,9 +2417,6 @@ def slope(
         surface_fit = method  # override
         method = None
 
-    if surface_fit not in ["Horn", "ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be one of ['Horn', 'ZevenbergThorne', 'Florinsky'], got {surface_fit}")
-
     return get_terrain_attribute(
         dem,
         attribute="slope",
@@ -2426,9 +2498,6 @@ def aspect(
         surface_fit = method  # override
         method = None
 
-    if surface_fit not in ["Horn", "ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be one of ['Horn', 'ZevenbergThorne', 'Florinsky'], got {surface_fit}")
-
     return get_terrain_attribute(
         dem,
         attribute="aspect",
@@ -2494,9 +2563,6 @@ def hillshade(
 
     :returns: A hillshade with the dtype "float32" with value ranges of 0-255.
     """
-
-    if surface_fit not in ["Horn", "ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be one of ['Horn', 'ZevenbergThorne', 'Florinsky'], got {surface_fit}")
 
     # Deprecating slope method
     if method is not None:
@@ -2583,9 +2649,6 @@ def curvature(
         stacklevel=2,
     )
 
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
-
     return get_terrain_attribute(
         dem=dem,
         attribute="curvature",
@@ -2655,9 +2718,6 @@ def profile_curvature(
     :returns: The profile curvature array of the DEM.
     """
 
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
-
     return get_terrain_attribute(
         dem=dem,
         attribute="profile_curvature",
@@ -2716,9 +2776,6 @@ def tangential_curvature(
 
     :returns: The tangential curvature array of the DEM.
     """
-
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
 
     return get_terrain_attribute(
         dem=dem,
@@ -2788,9 +2845,6 @@ def planform_curvature(
     :returns: The planform curvature array of the DEM.
     """
 
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError(f"surface_fit must be 'ZevenbergThorne' or 'Florinsky', got {surface_fit}")
-
     return get_terrain_attribute(
         dem=dem,
         attribute="planform_curvature",
@@ -2846,9 +2900,6 @@ def flowline_curvature(
 
     :returns: The flowline curvature array of the DEM.
     """
-
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError("surface_fit must be 'ZevenbergThorne' or 'Florinsky'")
 
     return get_terrain_attribute(
         dem=dem,
@@ -2907,9 +2958,6 @@ def max_curvature(
     :returns: The maximal or maximum curvature array of the DEM.
     """
 
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError("surface_fit must be 'ZevenbergThorne' or 'Florinsky'")
-
     return get_terrain_attribute(
         dem=dem,
         attribute="max_curvature",
@@ -2966,8 +3014,6 @@ def min_curvature(
 
     :returns: The mimimal or minimum curvature array of the DEM.
     """
-    if surface_fit not in ["ZevenbergThorne", "Florinsky"]:
-        raise ValueError("surface_fit must be 'ZevenbergThorne' or 'Florinsky'")
 
     return get_terrain_attribute(
         dem=dem,
