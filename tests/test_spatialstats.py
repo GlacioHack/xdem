@@ -39,7 +39,7 @@ class TestBinning:
 
     # Derive terrain attributes
     slope, aspect, maximum_curv = xdem.terrain.get_terrain_attribute(
-        ref, attribute=["slope", "aspect", "maximum_curvature"]
+        ref, attribute=["slope", "aspect", "max_curvature"]
     )
 
     def test_nd_binning(self) -> None:
