@@ -98,7 +98,7 @@ Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.o
      - [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) (geometric) or Shary (1991) (directional)
    * - {ref}`maxcurv`
      - Meters{sup}`-1` * 100
-     - [Shary (1995)](https://doi.org/10.1007/BF02084608) (geometric) or [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503) (directional) 
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608) (geometric) or [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503) (directional)
    * - {ref}`mincurv`
      - Meters{sup}`-1` * 100
      - [Shary (1995)](https://doi.org/10.1007/BF02084608) (geometric) or [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503) (directional)
@@ -143,13 +143,13 @@ z_{xx} &= \frac{\partial^2 z}{\partial x^2}, & z_{yy} &= \frac{\partial^2 z}{\pa
 \end{align*}
 $$
 
-`xdem` offers multiple methods of calculating these partial derivatives, which can be set using the `surface_fit` parameter:
+xDEM offers multiple methods of calculating these partial derivatives, which can be set using the `surface_fit` parameter:
 
  - `"Horn"`: Derivatives are calculated based on a refined gradient formulation of a 3 $\times$ 3 px window following [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918)
  - `"ZevenbergThorne"`: Derivatives are calculated based on a partial quartic polynomial fit to a 3 $\times$ 3 px window following [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
  - `"Florinsky"`: Derivatives are calculated based on a third-order polynomial fit to a 5 $\times$ 5 px window following [Florinsky (2009)](https://doi.org/10.1080/13658810802527499)
 
-By default, `"Florinsky"` is used, as this provides opportunites for higher-order derivatives and the 5 $\times$ 5 px fit is theoretically more robust to noise than a 3 $\times$ 3 px fit. Note that `"Horn"` only calcualtes `z_{x}` and `z_{y}` derivatives, and as such cannot be used for advanced terrain attributes such as curvatures.
+By default, `"Florinsky"` is used, as this provides opportunities for higher-order derivatives and the 5 $\times$ 5 px fit is theoretically more robust to noise than a 3 $\times$ 3 px fit. Note that `"Horn"` only calculates `z_{x}` and `z_{y}` derivatives, and as such cannot be used for advanced terrain attributes such as curvatures.
 
 <!-- For [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918):
 
@@ -286,7 +286,7 @@ Curvatures are the second derivative of elevation, aiming to describe the convex
 
 There are countless possible curvatures to calculate, the most common of which we provide functions for. Terminology can be confused in the literature, which the same word (e.g. 'horizontal curvature') often refer to very different mathematical definitions. For consistency, we name and define our curvatures following the work of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). We provide the functions for six basic curvatures (profile, tangential, planform, flowline, maximal/maximum, and minimal/minimum) which should suffice for many users. For more advanced users, these form the basis from which others (e.g. mean, unsphericity) may be calculated.
 
-There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in `xdem` functions via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested. 
+There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in `xdem` functions via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
 
 All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default) slope derivative methods can be used.
 
@@ -325,7 +325,7 @@ profile_curvature.plot(cmap="RdGy_r", cbar_title="Profile curvature (100 / m)", 
 
 The tangential curvature is defined as the curvature of a normal section of slope that is tangential to the contour line. It is sometimes known as the principal, normal contour, or horizontal curvature, although the latter terminology has been shared with planform curvature.
 
-The geometric (default) method follows Krcho (1983) as desribed in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
+The geometric (default) method follows Krcho (1983) as described in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
 
 $$
 - \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
@@ -431,7 +431,7 @@ max_curvature.plot(cmap="RdGy_r", cbar_title="Maximal curvature (100 / m)", vmin
 
 {func}`xdem.DEM.min_curvature`
 
-The mimimal (geometric) or minimum (directional derivative) curvature is defined as curvature of the normal section of slope with the lowest curvature value.
+The minimal (geometric) or minimum (directional derivative) curvature is defined as curvature of the normal section of slope with the lowest curvature value.
 
 The geometric (default) minimal curvature is calculated following [Shary (1995)](https://doi.org/10.1007/BF02084608), which is equal to the maximal curvature of [Euler (1767)](https://scholarlycommons.pacific.edu/cgi/viewcontent.cgi?article=1332&context=euler-works) (!), and is defined in terms of the mean curvature $k_{mean}$ and the unsphericity $k_u$:
 

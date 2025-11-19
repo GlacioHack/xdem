@@ -47,8 +47,9 @@ class TestTerrainAttribute:
         """
 
         functions = {
-            "slope_Horn": lambda dem: xdem.terrain.slope(dem.data, resolution=dem.res, degrees=True,
-                                                         surface_fit="Horn"),
+            "slope_Horn": lambda dem: xdem.terrain.slope(
+                dem.data, resolution=dem.res, degrees=True, surface_fit="Horn"
+            ),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True, surface_fit="Horn"),
             "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res, surface_fit="Horn"),
             "slope_Zevenberg": lambda dem: xdem.terrain.slope(
@@ -141,12 +142,12 @@ class TestTerrainAttribute:
             "slope_Horn": lambda dem: xdem.terrain.slope(dem, resolution=dem.res, degrees=True, surface_fit="Horn"),
             "aspect_Horn": lambda dem: xdem.terrain.aspect(dem.data, degrees=True, surface_fit="Horn"),
             "hillshade_Horn": lambda dem: xdem.terrain.hillshade(dem.data, resolution=dem.res, surface_fit="Horn"),
-            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(dem.data, resolution=dem.res,
-                                                                            surface_fit="ZevenbergThorne",
-                                                                            curv_method="directional"),
-            "planform_curvature": lambda dem: xdem.terrain.tangential_curvature(dem.data, resolution=dem.res,
-                                                                              surface_fit="ZevenbergThorne",
-                                                                              curv_method="directional"),
+            "profile_curvature": lambda dem: xdem.terrain.profile_curvature(
+                dem.data, resolution=dem.res, surface_fit="ZevenbergThorne", curv_method="directional"
+            ),
+            "planform_curvature": lambda dem: xdem.terrain.tangential_curvature(
+                dem.data, resolution=dem.res, surface_fit="ZevenbergThorne", curv_method="directional"
+            ),
         }
 
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
@@ -210,9 +211,19 @@ class TestTerrainAttribute:
         # output = functions_richdem[attribute](dem)
         # assert np.all(dem.data.mask == output.data.mask)
 
-    @pytest.mark.parametrize("attribute_name", ["slope", "aspect", "profile_curvature", "tangential_curvature",
-                                                "planform_curvature", "flowline_curvature", "max_curvature",
-                                                "min_curvature"])  # type: ignore
+    @pytest.mark.parametrize(
+        "attribute_name",
+        [
+            "slope",
+            "aspect",
+            "profile_curvature",
+            "tangential_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+            "max_curvature",
+            "min_curvature",
+        ],
+    )  # type: ignore
     def test_attribute_consistency_surface_fit(self, attribute_name: str) -> None:
         """Test that surface fit attributes are generally consistent across various fit methods
         (Horn, ZevenbergThorne, Florinsky), testing within a certain tolerance for a % of the data."""
@@ -258,8 +269,7 @@ class TestTerrainAttribute:
 
             # Only slope and aspect are supported for Horn
             if attribute_name in ["slope", "aspect"]:
-                attr_horn = getattr(xdem.terrain, attribute_name)(self.dem,
-                                                                  surface_fit="Horn")
+                attr_horn = getattr(xdem.terrain, attribute_name)(self.dem, surface_fit="Horn")
                 diff_zt_horn = np.abs(attr_zt - attr_horn)
                 assert np.nanpercentile(diff_zt_horn, 80) < 0.1 * magnitude
 
@@ -286,7 +296,6 @@ class TestTerrainAttribute:
                 plt.show()
 
             raise exception
-
 
     def test_hillshade(self) -> None:
         """Test hillshade-specific settings."""
@@ -317,8 +326,15 @@ class TestTerrainAttribute:
             xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, z_factor=np.inf)
 
     @pytest.mark.parametrize(
-        "name", ["tangential_curvature", "profile_curvature", "min_curvature",
-                 "max_curvature", "planform_curvature", "flowline_curvature"]
+        "name",
+        [
+            "tangential_curvature",
+            "profile_curvature",
+            "min_curvature",
+            "max_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+        ],
     )  # type: ignore
     def test_curvatures__runtime(self, name: str) -> None:
         """Test the curvature functions"""
@@ -357,18 +373,27 @@ class TestTerrainAttribute:
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
     @pytest.mark.parametrize(
-        "name", ["tangential_curvature", "profile_curvature", "min_curvature",
-                 "max_curvature", "planform_curvature", "flowline_curvature"]
+        "name",
+        [
+            "tangential_curvature",
+            "profile_curvature",
+            "min_curvature",
+            "max_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+        ],
     )  # type: ignore
     @pytest.mark.parametrize("surface_fit", ["ZevenbergThorne", "Florinsky"])  # type: ignore
-    def test_curvatures__definition(self, name: str, surface_fit: str) -> None:
+    def test_curvatures__definition(self, name: str, surface_fit: Literal["ZevenbergThorne", "Florinsky"]) -> None:
         """Test the curvatures definitions 'geometric' versus 'directional' are yielding expected results."""
 
         # Get geometric and directional curvatures
-        curv_g = xdem.terrain.get_terrain_attribute(self.dem.data, attribute=name, resolution=self.dem.res,
-                                                   curv_method="geometric", surface_fit=surface_fit)
-        curv_d = xdem.terrain.get_terrain_attribute(self.dem.data, attribute=name, resolution=self.dem.res,
-                                                    curv_method="directional", surface_fit=surface_fit)
+        curv_g = xdem.terrain.get_terrain_attribute(
+            self.dem.data, attribute=name, resolution=self.dem.res, curv_method="geometric", surface_fit=surface_fit
+        )
+        curv_d = xdem.terrain.get_terrain_attribute(
+            self.dem.data, attribute=name, resolution=self.dem.res, curv_method="directional", surface_fit=surface_fit
+        )
 
         # For planform, the result should be the same
         if name == "planform_curvature":
@@ -382,7 +407,7 @@ class TestTerrainAttribute:
         else:
             return
 
-    def test_curvatures__synthetic(self):
+    def test_curvatures__synthetic(self) -> None:
         """Test the curvature functions with synthetic data, checking expected values at the center pixel."""
 
         # 1/ Flat, or Linear ramp in X/Y/diagX/diagY = No curvature
@@ -392,8 +417,14 @@ class TestTerrainAttribute:
         dem_ramp_xy = np.stack([np.arange(0, 5) + i for i in range(5)], axis=1)
         dem_ramp_yx = np.stack([np.flip(np.arange(0, 5)) + i for i in range(5)], axis=1)
         list_dem_no_curv = [dem_flat, dem_ramp_x, dem_ramp_y, dem_ramp_xy, dem_ramp_yx]
-        for curv in ["tangential_curvature", "profile_curvature", "min_curvature",
-                 "max_curvature", "planform_curvature", "flowline_curvature"]:
+        for curv in [
+            "tangential_curvature",
+            "profile_curvature",
+            "min_curvature",
+            "max_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+        ]:
             for dem in list_dem_no_curv:
                 fl_curv = getattr(xdem.terrain, curv)(dem, resolution=10, surface_fit="Florinsky")[2, 2]
                 zt_curv = getattr(xdem.terrain, curv)(dem, resolution=10, surface_fit="ZevenbergThorne")[2, 2]
@@ -521,7 +552,6 @@ class TestTerrainAttribute:
                 assert fl_curv_max > 0
                 assert zt_curv_max > 0
 
-
     def test_get_terrain_attribute__multiple_inputs(self) -> None:
         """Test the get_terrain_attribute function by itself."""
 
@@ -604,7 +634,8 @@ class TestTerrainAttribute:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Surface fit 'DoesNotExist' is not supported. Must be one of: " "['Horn', 'ZevenbergThorne', "
+                "Surface fit 'DoesNotExist' is not supported. Must be one of: "
+                "['Horn', 'ZevenbergThorne', "
                 "'Florinsky']"
             ),
         ):
@@ -618,15 +649,22 @@ class TestTerrainAttribute:
             xdem.terrain.terrain_ruggedness_index(self.dem, method="DoesNotExist")  # type: ignore
 
         # Wrong method name for curvature method
-        with pytest.raises(ValueError, match=re.escape("Curvature method 'DoesNotExist' is not supported. Must be "
-                                                       "one of: ['geometric', 'directional']")
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Curvature method 'DoesNotExist' is not supported. Must be " "one of: ['geometric', 'directional']"
+            ),
         ):
             xdem.terrain.max_curvature(self.dem, curv_method="DoesNotExist")  # type: ignore
 
         # Calling a curvature with Horn surface fit: impossible
-        with pytest.raises(ValueError, match=re.escape("'Horn' surface fit method cannot be used for to calculate "
-                                                       "curvatures. Use 'ZevenbergThorne' or 'Florinsky' instead.")
-                           ):
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "'Horn' surface fit method cannot be used for to calculate "
+                "curvatures. Use 'ZevenbergThorne' or 'Florinsky' instead."
+            ),
+        ):
             xdem.terrain.max_curvature(self.dem, surface_fit="Horn")  # type: ignore
 
         # Check warning for geographic CRS
@@ -723,8 +761,17 @@ class TestTerrainAttribute:
 
     @pytest.mark.parametrize(
         "attribute",
-        ["slope", "aspect", "hillshade", "profile_curvature", "tangential_curvature",
-         "planform_curvature", "flowline_curvature", "max_curvature", "min_curvature"],
+        [
+            "slope",
+            "aspect",
+            "hillshade",
+            "profile_curvature",
+            "tangential_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+            "max_curvature",
+            "min_curvature",
+        ],
     )  # type: ignore
     @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])  # type: ignore
     def test_get_surface_attributes__engine(
@@ -999,6 +1046,7 @@ class TestTerrainAttribute:
             result = xdem.terrain._nextprod_fft(size)
             assert result >= size
 
+
 class TestConvolution:
 
     # Get all coefficients
@@ -1015,9 +1063,8 @@ class TestConvolution:
 
         # Create a synthetic DEM with a stationary slope/curvature (quadratic ramp in Y direction)
         # to check basic consistency of derivatives (zero across ramp, non-zero along ramp)
-        dem = np.stack([np.ones(5) * (i-1)**2 for i in range(5)], axis=0)
+        dem = np.stack([np.ones(5) * (i - 1) ** 2 for i in range(5)], axis=0)
         dem_flat = np.ones((5, 5), dtype=np.float32)
-
 
         # Horn coefficients
         kern3d = np.stack(self.coef_arrs_h, axis=0)
@@ -1054,18 +1101,20 @@ class TestConvolution:
         # Corresponding coefficients
         list_coefs_names = [self.coef_names_h, self.coef_names_zt, self.coef_names_fl]
         list_coefs = [coefs_h, coefs_zt, coefs_fl]
-        dict_coef = {"z_x": ["h2", "zt_h", "fl_p"],
-                     "z_y": ["h1", "zt_g", "fl_q"],
-                     "z_xx": [None, "zt_e", "fl_r"],
-                     "z_yy": [None, "zt_d", "fl_t"],
-                     "z_xy": [None, "zt_f", "fl_s"]}
+        dict_coef = {
+            "z_x": ["h2", "zt_h", "fl_p"],
+            "z_y": ["h1", "zt_g", "fl_q"],
+            "z_xx": [None, "zt_e", "fl_r"],
+            "z_yy": [None, "zt_d", "fl_t"],
+            "z_xy": [None, "zt_f", "fl_s"],
+        }
 
         # Test all coefficients are non-zero (along ramp direction) or zero (across ramp direction)
         directions = ["across", "along", "across", "along", "across"]
         for k, coef in enumerate(dict_coef.keys()):
             list_vals = []
             for i in range(len(list_coefs)):
-                coef_name = dict_coef[coef][i]
+                coef_name = dict_coef[coef][i]  # type: ignore
                 if coef_name is not None:
                     val = list_coefs[i][list_coefs_names[i].index(coef_name)]
                     list_vals.append(val)
@@ -1075,9 +1124,8 @@ class TestConvolution:
             else:
                 assert all(np.array(list_vals) != 0)
 
-
     @pytest.mark.parametrize("coef_arrs", [coef_arrs_h, coef_arrs_zt, coef_arrs_fl])  # type: ignore
-    def test_convolution_equal__engine(self, coef_arrs: list[np.ndarray]) -> None:
+    def test_convolution_equal__engine(self, coef_arrs: list[np.ndarray]) -> None:  # type: ignore
         """
         Check that convolution through SciPy or Numba give equal result for all kernels.
         This calls the convolution subfunctions directly (as they need to be chained sequentially with other

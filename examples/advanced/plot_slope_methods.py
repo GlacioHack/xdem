@@ -5,7 +5,7 @@ Slope and aspect methods
 Within `xdem`, slope is always calculated as
 
 $$
-\alpha = arctan \left( \sqrt{ \left( \frac{\partial z}{\partial x} \right)^2 + \left( \frac{\partial z}{\partial y} \right)^2 } \right),
+\alpha = arctan \\left( \\sqrt{ \\left( \frac{\\partial z}{\\partial x} \right)^2 + \\left( \frac{\\partial z}{\\partial y} \right)^2 } \right),
 $$
 
 Where $z$ is elevation, and $x$ and $y$ are the Cartesian co-ordinates.
@@ -13,10 +13,10 @@ Where $z$ is elevation, and $x$ and $y$ are the Cartesian co-ordinates.
 Aspect is always calculated as
 
 $$
-\theta = \left( -\tan^{-1}\left( \frac{ \partial z / \partial x }{ \partial z / \partial y } \right) - \pi \right) \bmod (2\pi).
+\theta = \\left( -\tan^{-1}\\left( \frac{ \\partial z / \\partial x }{ \\partial z / \\partial y } \right) - \\pi \right) \bmod (2\\pi).
 $$
 
-However, calculating terrain attributes - not only slope and aspect but also curvatures - requires estimating the elevation derivatives of the surface (e.g. $\frac{\partial z}{\partial x}$). `xdem` offers three different ways to calculate elevation derivatives, which can result in slightly different results.
+However, calculating terrain attributes - not only slope and aspect but also curvatures - requires estimating the elevation derivatives of the surface (e.g. $\frac{\\partial z}{\\partial x}$). `xdem` offers three different ways to calculate elevation derivatives, which can result in slightly different results.
 
 Here is an example of how to generate the two with each method, and understand their differences.
 

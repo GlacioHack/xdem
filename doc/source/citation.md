@@ -15,6 +15,8 @@ More details are available on each feature page!
 
 ### Terrain attributes
 
+References of terrain attribute are described in the following table, except for curvatures detailed directly below.
+
 ```{list-table}
    :widths: 1 2
    :header-rows: 1
@@ -24,7 +26,6 @@ More details are available on each feature page!
      - Reference
    * - Partial derivatives of slope
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-
    * - Slope, aspect and hillshade
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
    * - Topographic position index
@@ -41,9 +42,8 @@ More details are available on each feature page!
      - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1)
 ```
 
-### Curvatures
-
-There are two parrallel ways of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). `xdem` defaults to the geometric method.
+There are two ways of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field).
+xDEM defaults to the geometric method.
 
 Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
 
@@ -53,7 +53,7 @@ Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.o
    :stub-columns: 1
    * - Method
      - Geometric
-     - Directional Derivative
+     - Directional derivative
    * - Profile
      - Krcho (1973) and Evans (1979)
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)

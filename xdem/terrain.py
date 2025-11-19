@@ -62,7 +62,7 @@ available_attributes = [
 # Store coefficient of fixed window-size attributes outside functions
 # to allow reuse with several engines (Numba, SciPy, Cuda)
 
-# Remove black formating to facilitate reading the arrays
+# Remove black formatting to facilitate reading the arrays
 # fmt: off
 
 # Zevenberg and Thorne (1987) coefficients, Equations 3 to 11
@@ -258,6 +258,7 @@ fl_q = np.array(
     ]
 )
 
+# Reacting black formatting
 # fmt: on
 
 fl_coefs = {
@@ -289,7 +290,7 @@ def _divider_method_coef(res: float, coef: str) -> float:
         "zt_b": 4 * res**3,
         "zt_c": 4 * res**3,
         "zt_d": res**2,  # Divided by 2 compared to Zevenberg to match z_xx definition
-        "zt_e": res**2,   # Divided by 2 compared to Zevenberg to match z_xx definition
+        "zt_e": res**2,  # Divided by 2 compared to Zevenberg to match z_xx definition
         "zt_f": 4 * res**2,  # Times 2 what is reported in ZevenbergThorne because later formula multiplies by 2
         "zt_g": 2 * res,
         "zt_h": 2 * res,
@@ -567,7 +568,7 @@ def _make_attribute_from_coefs(
         # Extract surface derivatives based on Zevenbergen and Thorne (1987).
         # http://dx.doi.org/10.1002/esp.3290120107.
 
-        # Current ouput provisions do not currently require b, c
+        # Current output provisions do not currently require b, c
 
         z_x_idx = zt_h_idx
         z_y_idx = zt_g_idx
@@ -629,7 +630,7 @@ def _make_attribute_from_coefs(
         )
 
     # From here on out: no action is taken if surface_fit_id == 0. Cannot raise
-    # ValueError here because numba cannot parralelise assertions. However,
+    # ValueError here because numba cannot parallelise assertions. However,
     # checks should have occurred prior to this private function being called.
 
     if make_curvature and surface_fit_id in [1, 2]:
@@ -651,7 +652,8 @@ def _make_attribute_from_coefs(
         if curv_method_id == 0:
 
             # Geometric profile curvature (normal slope line curvature) following Evans, 1979.
-            # profcurv = - (z_xx * z_x**2 + 2 * z_xy * z_x * z_y + z_yy * z_y**2) / ((z_x**2 + z_y**2) * sqrt((1 + z_x**2 + z_y**2)**3))
+            # profcurv = - (z_xx * z_x**2 + 2 * z_xy * z_x * z_y + z_yy * z_y**2) /
+            # ((z_x**2 + z_y**2) * sqrt((1 + z_x**2 + z_y**2)**3))
 
             profcurv = np.where(
                 C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
@@ -699,7 +701,8 @@ def _make_attribute_from_coefs(
         if curv_method_id == 0:
 
             # Geometric tangential curvature (normal contour curvature) following Krcho, 1983.
-            # tancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / ((z_x**2 + z_y**2) * sqrt(1 + z_x**2 + z_y**2))
+            # tancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) /
+            # ((z_x**2 + z_y**2) * sqrt(1 + z_x**2 + z_y**2))
 
             tancurv = np.where(
                 C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
@@ -717,7 +720,8 @@ def _make_attribute_from_coefs(
 
         if curv_method_id == 1:
 
-            # Directional derivative tangential curvature: 2nd contour derivative "plan curvature", following Zevenberg and Thorne, 1979.
+            # Directional derivative tangential curvature: 2nd contour derivative "plan curvature",
+            # following Zevenberg and Thorne, 1979.
             # tancurv = -(z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / (z_x**2 + z_y**2)
 
             tancurv = np.where(
@@ -746,7 +750,8 @@ def _make_attribute_from_coefs(
         if curv_method_id in [0, 1]:
 
             # Geometric planform curvature following Sobolevsky, 1932
-            # Planform derivation is the same in a geometric and directional derivative context (see Minár et al. 2020 following Jenčo, 1992)
+            # Planform derivation is the same in a geometric and directional derivative context
+            # (see Minár et al. 2020 following Jenčo, 1992)
             # plancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / sqrt((z_x**2 + z_y**2)**3)
 
             plancurv = np.where(
@@ -776,7 +781,8 @@ def _make_attribute_from_coefs(
         if curv_method_id == 0:
 
             # Geometric flowline curvature is geodesic slope line curvature following Minár et al. 2020
-            # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) / (((z_x**2 + z_y**2)**3)**0.5 * (1 + z_x**2 + z_y**2)**0.5)
+            # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) /
+            # (((z_x**2 + z_y**2)**3)**0.5 * (1 + z_x**2 + z_y**2)**0.5)
 
             flowcurv = np.where(
                 C[z_x_idx] ** 2 + C[z_y_idx] ** 2 < 10e-15,
@@ -822,7 +828,8 @@ def _make_attribute_from_coefs(
         # so we use a 1-d array and write in a 2-d array output
 
         # Mean geometric curvature (Gauss, 1928)
-        # mean = -((1 + z_y**2) * z_xx - 2 * z_y * z_x * z_xy + (1 + z_x**2) * z_yy) / (2 * ((1 + z_x**2 + z_y**2)**3)**0.5)
+        # mean = -((1 + z_y**2) * z_xx - 2 * z_y * z_x * z_xy + (1 + z_x**2) * z_yy) /
+        # (2 * ((1 + z_x**2 + z_y**2)**3)**0.5)
         mean = np.where(
             C[z_x_idx] ** 2 + C[z_y_idx] ** 2 == 0.0,
             np.array([0.0]),
@@ -839,7 +846,7 @@ def _make_attribute_from_coefs(
         # NB - the equivalent directional derivative mean curvature in Minár et al (2020) paper is defined as:
         # mean = (z_xx + z_yy) / 2 ,
         # following Wilson et al. (2007), but this seems to produce a mean curvature of the same
-        # magnitude but opposite sign to the geometric appraoch. I am confident in the geometric
+        # magnitude but opposite sign to the geometric approach. I am confident in the geometric
         # approach, however, as when I calculate the directional mean differently as (maximum_curv + minumum_curv)/2,
         # the result aligns with the geometric method.
         # If we were to expose 'mean' and 'unsphericity' as requestable outputs, we would need to diagnose what is
@@ -1951,7 +1958,8 @@ def get_terrain_attribute(
     :param hillshade_azimuth: Shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param hillshade_z_factor: Vertical exaggeration factor.
     :param slope_method: Deprecated. Use surface_fit instead. Accepts "Horn" or "ZevenbergThorne".
-    :param surface_fit: Surface fit method to use for slope, aspect, hillshade and curvatures: "Horn", "ZevenbergThorne" or "Florinsky".
+    :param surface_fit: Surface fit method to use for slope, aspect, hillshade and curvatures: "Horn",
+        "ZevenbergThorne" or "Florinsky".
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param window_size: Window size for windowed ruggedness and roughness indexes.
@@ -2820,7 +2828,8 @@ def planform_curvature(
     projection of the contour line onto a horizontal plane. Sometimes known as the horizontal curvature, although this
     terminology has been shared with tangential curvature.
 
-    Geometric and directional derivatives are identical, following method based on Sobolevsky (1932) in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+    Geometric and directional derivatives are identical, following method based on Sobolevsky (1932) in
+    Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
@@ -2886,9 +2895,11 @@ def flowline_curvature(
     Calculates flow line curvature in units of m-1 multiplied by 100. Defined as the curvature of a projection of the
     slope line onto a horizontal plane. Sometimes known as the rotor or steam line curvature.
 
-    Geometric (default) flowline curvature follows the contour torsion described by Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+    Geometric (default) flowline curvature follows the contour torsion described by Minár et al. (2020),
+    https://doi.org/10.1016/j.earscirev.2020.103414
 
-    Directional derivative flowline curvature follows Shary, 1991 in Minár et al. (2020), https://doi.org/10.1016/j.earscirev.2020.103414
+    Directional derivative flowline curvature follows Shary, 1991 in Minár et al. (2020),
+    https://doi.org/10.1016/j.earscirev.2020.103414
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
@@ -2945,7 +2956,8 @@ def max_curvature(
     Geometric (default) maximal curvature is calculated following Shary (1995, https://doi.org/10.1007/BF02084608)
     and is equal to the minimal curvature of Euler (1760).
 
-    Directional derivative maximum curvature is the minimum second derivative following Wood (1996), https://lra.le.ac.uk/handle/2381/34503
+    Directional derivative maximum curvature is the minimum second derivative following Wood (1996),
+    https://lra.le.ac.uk/handle/2381/34503
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
@@ -3002,7 +3014,8 @@ def min_curvature(
     Geometric (default) minimal curvature is calculated following Shary (1995, https://doi.org/10.1007/BF02084608)
     and is equal to the maximal curvature of Euler (1760).
 
-    Directional derivative minimum curvature is the maximum second derivative following Wood (1996), https://lra.le.ac.uk/handle/2381/34503
+    Directional derivative minimum curvature is the maximum second derivative following Wood (1996),
+    https://lra.le.ac.uk/handle/2381/34503
 
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
@@ -3012,7 +3025,7 @@ def min_curvature(
 
     :raises ValueError: If the inputs are poorly formatted.
 
-    :returns: The mimimal or minimum curvature array of the DEM.
+    :returns: The minimal or minimum curvature array of the DEM.
     """
 
     return get_terrain_attribute(
