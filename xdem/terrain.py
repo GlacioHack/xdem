@@ -2985,6 +2985,18 @@ def max_curvature(
     :raises ValueError: If the inputs are poorly formatted.
 
     :returns: The maximal or maximum curvature array of the DEM.
+
+    :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> max_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
+        np.float32(0.0)
+        >>> dem = np.array([[1, 4, 8],
+        ...                 [1, 2, 4],
+        ...                 [1, 4, 8]], dtype="float32")
+        >>> max_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
+        np.float32(-17.067698)
     """
 
     return get_terrain_attribute(
@@ -3043,6 +3055,18 @@ def min_curvature(
     :raises ValueError: If the inputs are poorly formatted.
 
     :returns: The minimal or minimum curvature array of the DEM.
+
+    :examples:
+        >>> dem = np.array([[1, 2, 4],
+        ...                 [1, 2, 4],
+        ...                 [1, 2, 4]], dtype="float32")
+        >>> min_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
+        np.float32(-17.067698)
+        >>> dem = np.array([[1, 4, 8],
+        ...                 [1, 2, 4],
+        ...                 [1, 4, 8]], dtype="float32")
+        >>> min_curvature(dem, surface_fit="ZevenbergThorne", resolution=1.0)[1, 1]
+        np.float32(-221.88008)
     """
 
     return get_terrain_attribute(
