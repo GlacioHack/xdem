@@ -252,6 +252,6 @@ def test_topo_without_terrain_attributes_in_config(get_topo_inputs_config):
     assert doc["terrain_attributes"] == []
 
     info_conf = get_topo_inputs_config
-    info_conf["terrain_attributes"] = ["hillshade", "slope", "curvature"]
+    info_conf["terrain_attributes"] = ["hillshade", "slope", "max_curvature"]
     doc = schemas.validate_configuration(info_conf, schemas.TOPO_SCHEMA)
-    assert doc["terrain_attributes"] == ["hillshade", "slope", "curvature"]
+    assert doc["terrain_attributes"] == ["hillshade", "slope", "max_curvature"]
