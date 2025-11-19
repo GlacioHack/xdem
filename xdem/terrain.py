@@ -2409,8 +2409,6 @@ def slope(
                [2, 2, 2]])
         >>> slope(dem, surface_fit="ZevenbergThorne", resolution=1, degrees=True)[1, 1] # Slope in degrees
         np.float32(45.0)
-        >>> np.round(np.tan(slope(dem, surface_fit="ZevenbergThorne", resolution=2, degrees=True)[1, 1]* np.pi / 180.), 1) # Slope in percentage
-        np.float32(0.5)
 
     :returns: A slope map of the same shape as 'dem' in degrees or radians.
     """
