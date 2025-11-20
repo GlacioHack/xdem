@@ -404,7 +404,7 @@ class TestTerrainAttribute:
         elif name in ["tangential_curvature", "profile_curvature", "flowline_curvature"]:
             ind_valid = np.logical_and(np.isfinite(curv_g), np.isfinite(curv_d))
             assert np.all(np.abs(curv_d[ind_valid]) >= np.abs(curv_g[ind_valid]))
-        # For max/min, no particular relation
+        # For max/min, no particular relation between the geometric and direction definitions
         else:
             return
 
@@ -552,6 +552,46 @@ class TestTerrainAttribute:
                 assert pytest.approx(zt_curv_min) == 0
                 assert fl_curv_max > 0
                 assert zt_curv_max > 0
+
+        # 4/ Saddle-shaped DEM (hyperbolic paraboloid): Check min/max
+        n = 5
+        x = np.linspace(-1, 1, n)
+        y = np.linspace(-1, 1, n)
+        X, Y = np.meshgrid(x, y)
+        dem = X ** 2 - Y ** 2
+
+        # Min and max should be exactly opposite
+        fl_curv_max = xdem.terrain.max_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_min = xdem.terrain.min_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
+
+        assert pytest.approx(fl_curv_max) == - fl_curv_min
+
+        # 5/ Linear slope with Gaussian ridge/trough: Check planform/tangential
+        a = 0.6
+        b = 1.0
+        sigma = 1
+        # ridge
+        dem_ridge = a * X + b * np.exp(-(Y / sigma) ** 2)
+        # trough
+        dem_trough = a * X - b * np.exp(-(Y / sigma) ** 2)
+
+        # Planform/tangential should be exactly opposite, respectively
+        fl_curv_pla_ridge = xdem.terrain.planform_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_tan_ridge = xdem.terrain.tangential_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_pla_trough = xdem.terrain.planform_curvature(dem_trough, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_tan_trough = xdem.terrain.tangential_curvature(dem_trough, resolution=5, surface_fit="Florinsky")[2, 2]
+        assert pytest.approx(fl_curv_tan_ridge) == - fl_curv_tan_trough
+        assert pytest.approx(fl_curv_pla_ridge) == - fl_curv_pla_trough
+
+        # Flowline and profile should be zero
+        fl_curv_prof_ridge = xdem.terrain.profile_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_flo_ridge = xdem.terrain.flowline_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_prof_trough = xdem.terrain.profile_curvature(dem_trough, resolution=5, surface_fit="Florinsky")[2, 2]
+        fl_curv_flo_trough = xdem.terrain.flowline_curvature(dem_trough, resolution=5, surface_fit="Florinsky")[2, 2]
+        assert pytest.approx(fl_curv_prof_ridge) == 0
+        assert pytest.approx(fl_curv_flo_ridge) == 0
+        assert pytest.approx(fl_curv_prof_trough) == 0
+        assert pytest.approx(fl_curv_flo_trough) == 0
 
     def test_get_terrain_attribute__multiple_inputs(self) -> None:
         """Test the get_terrain_attribute function by itself."""
