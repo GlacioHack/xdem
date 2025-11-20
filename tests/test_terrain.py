@@ -558,30 +558,30 @@ class TestTerrainAttribute:
         x = np.linspace(-1, 1, n)
         y = np.linspace(-1, 1, n)
         X, Y = np.meshgrid(x, y)
-        dem = X ** 2 - Y ** 2
+        dem = X**2 - Y**2
 
         # Min and max should be exactly opposite
         fl_curv_max = xdem.terrain.max_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
         fl_curv_min = xdem.terrain.min_curvature(dem, resolution=5, surface_fit="Florinsky")[2, 2]
 
-        assert pytest.approx(fl_curv_max) == - fl_curv_min
+        assert pytest.approx(fl_curv_max) == -fl_curv_min
 
         # 5/ Linear slope with Gaussian ridge/trough: Check planform/tangential
         a = 0.6
         b = 1.0
         sigma = 1
         # ridge
-        dem_ridge = a * X + b * np.exp(-(Y / sigma) ** 2)
+        dem_ridge = a * X + b * np.exp(-((Y / sigma) ** 2))
         # trough
-        dem_trough = a * X - b * np.exp(-(Y / sigma) ** 2)
+        dem_trough = a * X - b * np.exp(-((Y / sigma) ** 2))
 
         # Planform/tangential should be exactly opposite, respectively
         fl_curv_pla_ridge = xdem.terrain.planform_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
         fl_curv_tan_ridge = xdem.terrain.tangential_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
         fl_curv_pla_trough = xdem.terrain.planform_curvature(dem_trough, resolution=5, surface_fit="Florinsky")[2, 2]
         fl_curv_tan_trough = xdem.terrain.tangential_curvature(dem_trough, resolution=5, surface_fit="Florinsky")[2, 2]
-        assert pytest.approx(fl_curv_tan_ridge) == - fl_curv_tan_trough
-        assert pytest.approx(fl_curv_pla_ridge) == - fl_curv_pla_trough
+        assert pytest.approx(fl_curv_tan_ridge) == -fl_curv_tan_trough
+        assert pytest.approx(fl_curv_pla_ridge) == -fl_curv_pla_trough
 
         # Flowline and profile should be zero
         fl_curv_prof_ridge = xdem.terrain.profile_curvature(dem_ridge, resolution=5, surface_fit="Florinsky")[2, 2]
