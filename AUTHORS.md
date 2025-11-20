@@ -36,6 +36,7 @@ This file keeps track of authors contributions.
 ---
 
 - **Valentin Schaffner** [@vschaffn](https://github.com/vschaffn)
+- **Tom Chudley** [@trchudley](https://github.com/trchudley)
 - **Friedrich Knuth** [@friedrichknuth](https://github.com/friedrichknuth)
 - **Marine Bouchet** [@marinebcht](https://github.com/marinebcht)
 - **Andrew Tedstone** [@atedstone](https://github.com/atedstone)
