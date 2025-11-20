@@ -145,11 +145,11 @@ $$
 
 xDEM offers multiple methods of calculating these partial derivatives, which can be set using the `surface_fit` parameter:
 
- - `"Horn"`: Derivatives are calculated based on a refined gradient formulation of a 3 $\times$ 3 px window following [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918)
- - `"ZevenbergThorne"`: Derivatives are calculated based on a partial quartic polynomial fit to a 3 $\times$ 3 px window following [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
- - `"Florinsky"`: Derivatives are calculated based on a third-order polynomial fit to a 5 $\times$ 5 px window following [Florinsky (2009)](https://doi.org/10.1080/13658810802527499)
+ - `"Horn"`: Derivatives are calculated based on a refined gradient formulation of a 3 $\times$ 3 pixel window following [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918),
+ - `"ZevenbergThorne"`: Derivatives are calculated based on a partial quartic polynomial fit to a 3 $\times$ 3 pixel window following [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107),
+ - `"Florinsky"`: Derivatives are calculated based on a third-order polynomial fit to a 5 $\times$ 5 pixel window following [Florinsky (2009)](https://doi.org/10.1080/13658810802527499).
 
-By default, `"Florinsky"` is used, as this provides opportunities for higher-order derivatives and the 5 $\times$ 5 px fit is theoretically more robust to noise than a 3 $\times$ 3 px fit. Note that `"Horn"` only calculates `z_{x}` and `z_{y}` derivatives, and as such cannot be used for advanced terrain attributes such as curvatures.
+By default, `"Florinsky"` is used, as this provides opportunities for higher-order derivatives and the 5 $\times$ 5 pixel fit is theoretically more robust to noise than a 3 $\times$ 3 pixel fit. Note that `"Horn"` only calculates $z_{x}$ and $z_{y}$ derivatives, and as such cannot be used for advanced terrain attributes such as curvatures.
 
 <!-- For [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918):
 
@@ -211,7 +211,7 @@ No tilt direction is stored in the slope map; a 45° tilt westward is identical 
 The slope $\alpha$ is defined as
 
 $$
-arctan \left( \sqrt{ \left( \frac{\partial z}{\partial x} \right)^2 + \left( \frac{\partial z}{\partial y} \right)^2 } \right),
+\arctan \left( \sqrt{ z_x^2 + z_y^2 } \right),
 $$
 
 and the surface derivatives can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default).
@@ -233,16 +233,10 @@ aspect is 90°, south is 180° and west is 270°. By default, a flat slope is gi
 The aspect $\theta$ is defined as
 
 $$
-\left( -\tan^{-1}\left( \frac{-z_x}{z_y} \right) - \pi \right) \bmod (2\pi).
+\theta = -\arctan\left( \frac{-z_x}{z_y} \right) \bmod (2\pi).
 $$
 
-Like with slope, the surface derivatives can be calculated following the methods of of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default):
-
-$$
-\theta = arctan(\frac{z_{x}}{z_{y}}),
-$$
-
-with $z_{x}$ and $z_{y}$ defined above.
+Like with slope, the surface derivatives can be calculated following the methods of of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default).
 
 ```{warning}
 A north aspect represents the upper direction of the Y axis in the coordinate reference system of the
@@ -266,7 +260,7 @@ This mode of shading the slopes often generates a map that is much more easily i
 The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default). It is often scaled between 1 and 255:
 
 $$
-hs = 1 + 254 \left[ sin(alt) cos(\alpha) + cos(alt) sin(\alpha) sin(2\pi - azim - \theta) \right],
+hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
 $$
 
 where $alt$ is the shading altitude (90° = from above) and $azim$ is the shading azimuth (0° = north).
@@ -286,9 +280,9 @@ Curvatures are the second derivative of elevation, aiming to describe the convex
 
 There are countless possible curvatures to calculate, the most common of which we provide functions for. Terminology can be confused in the literature, which the same word (e.g. 'horizontal curvature') often refer to very different mathematical definitions. For consistency, we name and define our curvatures following the work of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). We provide the functions for six basic curvatures (profile, tangential, planform, flowline, maximal/maximum, and minimal/minimum) which should suffice for many users. For more advanced users, these form the basis from which others (e.g. mean, unsphericity) may be calculated.
 
-There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in `xdem` functions via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
+There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in xDEM via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
 
-All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default) slope derivative methods can be used.
+All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default) surfacr fit methods can be used.
 
 The curvature values in units of m{sup}`-1` are quite small, so they are by convention multiplied by 100.
 
@@ -301,16 +295,16 @@ We are grateful to [Ian Evans](https://www.durham.ac.uk/staff/i-s-evans/) and [J
 
 The profile curvature is the curvature of a normal section of slope that is tangential to the slope line (i.e. the curvature along the direction of steepest slope at a point).
 
-The geometric (default) method follows Krcho (1973) and Evans (1979) as outlined in in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414).
+The geometric (default) method follows Krcho (1973) and Evans (1979) as outlined in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
 
 $$
-- \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)\,\sqrt{(1 + z_x^2 + z_y^2)^3}}
+- \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)\,\sqrt{(1 + z_x^2 + z_y^2)^3}},
 $$
 
-The directional derivative method follows [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107).
+while the directional derivative method follows [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107).
 
 $$
-- \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)}
+- \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)}.
 $$
 
 ```{code-cell} ipython3
@@ -329,14 +323,14 @@ The geometric (default) method follows Krcho (1983) as described in [Minár et a
 
 $$
 - \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
-{(z_x^2 + z_y^2)\,\sqrt{1 + z_x^2 + z_y^2}}
+{(z_x^2 + z_y^2)\,\sqrt{1 + z_x^2 + z_y^2}},
 $$
 
-The directional derivative method follows the 'plan curvature' of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (although in the Minár terminology, this should not be called the plan or planform curvature).
+while the directional derivative method follows the 'plan curvature' of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (although in the Minár terminology, this should not be called the plan or planform curvature).
 
 $$
 - \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
-{(z_x^2 + z_y^2)}
+{(z_x^2 + z_y^2)}.
 $$
 
 ```{code-cell} ipython3
@@ -356,7 +350,7 @@ This curvature is the same in both the geometric and directional derivative syst
 
 $$
 - \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
-{\sqrt{(z_x^2 + z_y^2)^3}}
+{\sqrt{(z_x^2 + z_y^2)^3}}.
 $$
 
 ```{code-cell} ipython3
@@ -375,14 +369,14 @@ The geometric (default) flowline curvature follows the "contour torsion" describ
 
 $$
 \frac{z_x z_y (z_{xx} - z_{yy}) - z_{xy} (z_x^2 - z_y^2)}
-{\sqrt{(z_x^2 + z_y^2)^3}\,\sqrt{1 + z_x^2 + z_y^2}}
+{\sqrt{(z_x^2 + z_y^2)^3}\,\sqrt{1 + z_x^2 + z_y^2}},
 $$
 
-The directional derivative flowline curvature follows that of Shary (1991) in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
+while the directional derivative flowline curvature follows that of Shary (1991) in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
 
 $$
 \frac{z_x z_y (z_{xx} - z_{yy}) - z_{xy} (z_x^2 - z_y^2)}
-{\sqrt{(z_x^2 + z_y^2)^3}}
+{\sqrt{(z_x^2 + z_y^2)^3}}.
 $$
 
 ```{code-cell} ipython3
@@ -407,10 +401,10 @@ k_{mean} + k_u = -\frac{(1 + z_y^2) z_{xx} - 2 z_x z_y z_{xy} + (1 + z_x^2) z_{y
 \right)^2
 -
 \frac{z_{xx} z_{yy} - z_{xy}^2}
-{\sqrt{(1 + z_x^2 + z_y^2)^2}} }
+{\sqrt{(1 + z_x^2 + z_y^2)^2}} },
 $$
 
-The directional derivative maximum curvature is the minimum second derivative following [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503):
+while the directional derivative maximum curvature is the minimum second derivative following [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503):
 
 $$
 -
@@ -418,7 +412,7 @@ $$
 \frac{z_{xx} + z_{yy}}{2}
 -
 \sqrt{\left(\frac{z_{xx} - z_{yy}}{2}\right)^2 + z_{xy}^2}
-\right)
+\right).
 $$
 
 ```{code-cell} ipython3
@@ -443,10 +437,10 @@ k_{mean} - k_u = -\frac{(1 + z_y^2) z_{xx} - 2 z_x z_y z_{xy} + (1 + z_x^2) z_{y
 \right)^2
 -
 \frac{z_{xx} z_{yy} - z_{xy}^2}
-{\sqrt{(1 + z_x^2 + z_y^2)^2}} }
+{\sqrt{(1 + z_x^2 + z_y^2)^2}} },
 $$
 
-The directional derivative minimum curvature is the maximum second derivative following [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503):
+while the directional derivative minimum curvature is the maximum second derivative following [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503):
 
 $$
 -
@@ -454,7 +448,7 @@ $$
 \frac{z_{xx} + z_{yy}}{2}
 +
 \sqrt{\left(\frac{z_{xx} - z_{yy}}{2}\right)^2 + z_{xy}^2}
-\right)
+\right).
 $$
 
 ```{code-cell} ipython3
@@ -472,7 +466,7 @@ pixel with the average of that of neighbouring pixels. Its unit is that of the D
 computed for any window size (default 3x3 pixels).
 
 $$
-tpi = h_{00} - \textrm{mean}_{i\neq 0, j\neq 0} (h_{ij}) .
+tpi = h_{00} - \textrm{mean}_{i\neq 0, j\neq 0} (h_{ij}).
 $$
 
 ```{code-cell} ipython3

@@ -15,7 +15,7 @@ More details are available on each feature page!
 
 ### Terrain attributes
 
-References of terrain attribute are described in the following table, except for curvatures detailed directly below.
+References for **curvatures** are detailed further below the other terrain attributes.
 
 ```{list-table}
    :widths: 1 2
@@ -42,10 +42,9 @@ References of terrain attribute are described in the following table, except for
      - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1)
 ```
 
+**Curvatures** follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
 There are two ways of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field).
 xDEM defaults to the geometric method.
-
-Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
 
 ```{list-table}
    :widths: 1 1 1
@@ -54,22 +53,22 @@ Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.o
    * - Method
      - Geometric
      - Directional derivative
-   * - Profile
+   * - Profile curvature
      - Krcho (1973) and Evans (1979)
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Tangential
+   * - Tangential curvature
      - Krcho (1983)
      - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Planform
+   * - Planform curvature
      - Sobolevsky (1932)
      - Sobolevsky (1932)
-   * - Flowline
+   * - Flowline curvature
      - [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414)
      - Shary (1991)
-   * - Maximal/Maximum
+   * - Maximal/Maximum curvature
      - [Shary (1995)](https://doi.org/10.1007/BF02084608)
      - [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503)
-   * - Minimal/Minimum
+   * - Minimal/Minimum curvature
      - [Shary (1995)](https://doi.org/10.1007/BF02084608)
      - [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503)
 ```
