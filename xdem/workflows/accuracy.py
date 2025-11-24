@@ -151,14 +151,15 @@ class Accuracy(Workflows):
             crs_utm = self.to_be_aligned_elev.get_metric_crs()
 
         logging.info("Computing reprojection")
-        if crs_utm is None:
-            if sampling_source == "reference_elev":
-                self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
-            elif sampling_source == "to_be_aligned_elev":
-                self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
-        else:
+        if not crs_utm.is_geographic:
+            logging.info(f"CRS not geographic: data reprojection with {crs_utm}")
             self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm)
             self.reference_elev = self.reference_elev.reproject(crs=crs_utm)
+
+        if sampling_source == "reference_elev":
+            self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
+        elif sampling_source == "to_be_aligned_elev":
+            self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
 
         # Intersection
         logging.info("Computing intersection")
@@ -268,7 +269,7 @@ class Accuracy(Workflows):
             diff_pairs = [("", self.to_be_aligned_elev)]
 
         for label, dem in diff_pairs:
-            diff = dem.reproject(ref_elev) - ref_elev
+            diff = dem - ref_elev
             stats_keys = ["min", "max", "nmad", "median"]
             stats = diff.get_stats(stats_keys)
 
@@ -281,7 +282,7 @@ class Accuracy(Workflows):
                 self.diff = diff
                 vmin, vmax = stats["min"], stats["max"]
 
-            suffix = f"_elev_{label}_coreg" if label else "_elev"
+            suffix = f"_elev_{label}_coreg_map" if label else "_elev"
             self.generate_plot(diff, f"diff{suffix}", vmin=vmin, vmax=vmax, cmap="RdBu")
 
         if self.compute_coreg:
@@ -291,13 +292,13 @@ class Accuracy(Workflows):
                 (aligned_elev, "aligned_elev", "Statistics on aligned elevation", 1),
                 (
                     self.diff_before,
-                    "diff_elev_before_coreg",
+                    "diff_elev_before_coreg_map",
                     "Statistics on altitude difference before coregistration",
                     1,
                 ),
                 (
                     self.diff_after,
-                    "diff_elev_after_coreg",
+                    "diff_elev_after_coreg_map",
                     "Statistics on altitude difference after coregistration",
                     1,
                 ),
