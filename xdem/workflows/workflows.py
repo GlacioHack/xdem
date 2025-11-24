@@ -70,6 +70,7 @@ class Workflows(ABC):
         self.level = self.config["outputs"]["level"]
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
+        logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
 
         for folder in ["plots", "rasters", "tables"]:
