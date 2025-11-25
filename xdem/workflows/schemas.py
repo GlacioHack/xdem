@@ -47,9 +47,9 @@ class CustomValidator(Validator):  # type: ignore
             try:
                 _vcrs_from_user_input(value)
                 return True
-            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError):
+            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError) as e:
                 logging.error(
-                    f"'{field}' field is not valid. See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
+                    f"'{field}' field is not valid. {e} See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
                 )
                 return False
         return True

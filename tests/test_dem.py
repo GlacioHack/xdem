@@ -252,13 +252,13 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.warns(UserWarning, match="Grid not found in*"):
+        with pytest.warns(UserWarning, match="Grid 'grid.tif' not found in*"):
             with pytest.raises(
                 ValueError,
-                match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. "
                 "Provide an existing grid.",
             ):
-                dem.set_vcrs(new_vcrs="the best grid")
+                dem.set_vcrs(new_vcrs="grid.tif")
 
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""

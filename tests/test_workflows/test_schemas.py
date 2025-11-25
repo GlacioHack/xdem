@@ -212,12 +212,12 @@ def test_valid_to_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
     [
         pytest.param(
             "wrong",
-            UserWarning,
+            ValueError,
             id="wrong_common",
         ),
         pytest.param(
             "wrong.txt",
-            UserWarning,
+            ValueError,
             id="wrong_proj_grid",
         ),
         pytest.param(
