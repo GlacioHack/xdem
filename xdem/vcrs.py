@@ -19,11 +19,11 @@
 """Routines for vertical CRS transformation (fully based on pyproj)."""
 from __future__ import annotations
 
-from urllib.error import HTTPError
 import os
 import pathlib
 import warnings
 from typing import Literal, TypedDict
+from urllib.error import HTTPError
 
 import pyproj
 from pyproj import CRS

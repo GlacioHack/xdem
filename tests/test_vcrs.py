@@ -136,9 +136,8 @@ class TestVCRS:
         vcrs_oldway = xdem.vcrs._build_vcrs_from_grid(grid=grid, old_way=True)
         assert vcrs.equals(vcrs_oldway)
 
-    def test_build_vcrs_from_grid__errors(self):
+    def test_build_vcrs_from_grid__errors(self) -> None:
         """Check errors for non-existing grids."""
-
 
         with pytest.warns(UserWarning, match="Grid 'not_a_grid.tif' not found in .*"):
             with pytest.raises(ValueError, match="The provided grid 'not_a_grid.tif' does not exist.*"):
