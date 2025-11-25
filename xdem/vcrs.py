@@ -24,6 +24,7 @@ import os
 import pathlib
 import warnings
 from typing import Literal, TypedDict
+import urllib
 
 import pyproj
 from pyproj import CRS
@@ -136,9 +137,8 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
 
     if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
         warnings.warn(
-            "Grid not found in "
-            + str(pyproj.datadir.get_data_dir())
-            + ". Attempting to download from https://cdn.proj.org/..."
+            f"Grid {grid} not found in {pyproj.datadir.get_data_dir()}. Attempting to download from "
+            f"https://cdn.proj.org/..."
         )
         from pyproj.sync import _download_resource_file
 
@@ -278,12 +278,16 @@ def _vcrs_from_user_input(
             vcrs_meta = _vcrs_meta[vcrs_input]
             vcrs = CRS.from_epsg(vcrs_meta["epsg"])
         # Otherwise, attempt to read a grid from the string
-        else:
+        elif os.path.splitext(vcrs_input)[-1] in [".tif", ".json", ".pol"]:
             if isinstance(vcrs_input, pathlib.Path):
                 grid = vcrs_input.name
             else:
                 grid = vcrs_input
             vcrs = _build_vcrs_from_grid(grid=grid)
+        else:
+            raise ValueError(f"String vcrs input '{vcrs_input}' is not recognized. Must be one of '"
+                             f"{", ".join(_vcrs_meta.keys())}, Ellipsoid', "
+                             f"or a path with extension .tif/.json/.pol to a PROJ grid file.")
 
     return vcrs
 

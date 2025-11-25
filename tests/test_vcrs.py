@@ -115,6 +115,10 @@ class TestVCRS:
         ):
             xdem.vcrs._vcrs_from_user_input(CRS("EPSG:4326+5773"))
 
+        # Check that an error is raised for impossible strings (not in key strings and doesn't end with .tif/.json/pol)
+        with pytest.raises(ValueError, match="String vcrs input 'EGM2008' is not recognized.*"):
+            xdem.vcrs._vcrs_from_user_input("EGM2008")
+
     @pytest.mark.parametrize(
         "grid", ["us_noaa_geoid06_ak.tif", "is_lmi_Icegeoid_ISN93.tif", "us_nga_egm08_25.tif", "us_nga_egm96_15.tif"]
     )  # type: ignore
