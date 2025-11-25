@@ -61,6 +61,7 @@ INPUTS_DEM = {
     "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
     "from_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
     "to_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
+    "downsample": {"type": "integer", "required": False, "default": 1},
 }
 
 COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
@@ -185,6 +186,7 @@ ACCURACY_SCHEMA = {
                 "required": False,
             },
             "process": {"type": "boolean", "default": True, "required": False},
+            "block_size": {"type": "integer", "default": 0, "required": False},
         },
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
@@ -240,6 +242,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "force_source_nodata": None,
             "from_vcrs": None,
             "to_vcrs": None,
+            "downsample": 1,
         },
         "to_be_aligned_elev": {
             "path_to_elev": "",
@@ -247,6 +250,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "from_vcrs": None,
             "to_vcrs": None,
             "path_to_mask": None,
+            "downsample": 1,
         },
     },
     "outputs": {
@@ -296,6 +300,7 @@ COMPLETE_CONFIG_TOPO = {
             "from_vcrs": None,
             "to_vcrs": None,
             "path_to_mask": None,
+            "downsample": 1,
         },
     },
     "outputs": {"level": 1, "path": "outputs"},

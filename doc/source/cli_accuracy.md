@@ -102,6 +102,7 @@ xdem accuracy --display_template_config
            "", "extra_information", "Extra parameters fitting with the method", "dict", "", "", "No"
            "sampling_grid", "", "Destination elevation for reprojection", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
            "process", "", "Activate the coregistration", "bool", "True", "True or False", "No"
+           "block_size", "", "Activate the blockwise coregistration", "int", "0", ">0", "No"
 
         .. note::
 
