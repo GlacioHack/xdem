@@ -19,12 +19,11 @@
 """Routines for vertical CRS transformation (fully based on pyproj)."""
 from __future__ import annotations
 
-import http.client
+from urllib.error import HTTPError
 import os
 import pathlib
 import warnings
 from typing import Literal, TypedDict
-import urllib
 
 import pyproj
 from pyproj import CRS
@@ -137,7 +136,7 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
 
     if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
         warnings.warn(
-            f"Grid {grid} not found in {pyproj.datadir.get_data_dir()}. Attempting to download from "
+            f"Grid '{grid}' not found in {pyproj.datadir.get_data_dir()}. Attempting to download from "
             f"https://cdn.proj.org/..."
         )
         from pyproj.sync import _download_resource_file
@@ -149,7 +148,7 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
                 directory=pyproj.datadir.get_data_dir(),
                 verbose=False,
             )
-        except http.client.InvalidURL:
+        except HTTPError:
             raise ValueError(
                 "The provided grid '{}' does not exist at https://cdn.proj.org/. "
                 "Provide an existing grid.".format(grid)
@@ -285,9 +284,11 @@ def _vcrs_from_user_input(
                 grid = vcrs_input
             vcrs = _build_vcrs_from_grid(grid=grid)
         else:
-            raise ValueError(f"String vcrs input '{vcrs_input}' is not recognized. Must be one of '"
-                             f"{", ".join(_vcrs_meta.keys())}, Ellipsoid', "
-                             f"or a path with extension .tif/.json/.pol to a PROJ grid file.")
+            raise ValueError(
+                f"String vcrs input '{vcrs_input}' is not recognized. Must be one of '"
+                f"{", ".join(_vcrs_meta.keys())}, Ellipsoid', "
+                f"or a path with extension .tif/.json/.pol to a PROJ grid file."
+            )
 
     return vcrs
 

@@ -136,6 +136,14 @@ class TestVCRS:
         vcrs_oldway = xdem.vcrs._build_vcrs_from_grid(grid=grid, old_way=True)
         assert vcrs.equals(vcrs_oldway)
 
+    def test_build_vcrs_from_grid__errors(self):
+        """Check errors for non-existing grids."""
+
+
+        with pytest.warns(UserWarning, match="Grid 'not_a_grid.tif' not found in .*"):
+            with pytest.raises(ValueError, match="The provided grid 'not_a_grid.tif' does not exist.*"):
+                xdem.vcrs._build_vcrs_from_grid(grid="not_a_grid.tif")
+
     # Test for WGS84 in 2D and 3D, UTM, CompoundCRS, everything should work
     @pytest.mark.parametrize(
         "crs", [CRS("EPSG:4326"), CRS("EPSG:4979"), CRS("32610"), CRS("EPSG:4326+5773")]
