@@ -284,10 +284,10 @@ def _vcrs_from_user_input(
                 grid = vcrs_input
             vcrs = _build_vcrs_from_grid(grid=grid)
         else:
+            all_keys = ", ".join(_vcrs_meta.keys()) + ", Ellipsoid"
             raise ValueError(
                 f"String vcrs input '{vcrs_input}' is not recognized. Must be one of '"
-                f"{", ".join(_vcrs_meta.keys())}, Ellipsoid', "
-                f"or a path with extension .tif/.json/.pol to a PROJ grid file."
+                f"{all_keys}' or a path with extension .tif/.json/.pol to a PROJ grid file."
             )
 
     return vcrs
