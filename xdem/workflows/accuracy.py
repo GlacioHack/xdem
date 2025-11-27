@@ -292,13 +292,13 @@ class Accuracy(Workflows):
                 (aligned_elev, "aligned_elev", "Statistics on aligned elevation", 1),
                 (
                     self.diff_before,
-                    "diff_elev_before_coreg_map",
+                    "diff_elev_before_coreg",
                     "Statistics on altitude difference before coregistration",
                     1,
                 ),
                 (
                     self.diff_after,
-                    "diff_elev_after_coreg_map",
+                    "diff_elev_after_coreg",
                     "Statistics on altitude difference after coregistration",
                     1,
                 ),

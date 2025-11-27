@@ -153,8 +153,8 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg.png").exists()
-    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
