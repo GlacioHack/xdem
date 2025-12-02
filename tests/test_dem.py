@@ -370,7 +370,7 @@ class TestDEM:
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
     def test_info(self) -> None:
-        """Tests infos function."""
+        """Tests info function."""
         dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
         raster = gu.Raster(dem_path)
         dem = xdem.dem.DEM(dem_path)
