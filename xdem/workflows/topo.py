@@ -228,7 +228,7 @@ class Topo(Workflows):
 
         if self.inlier_mask is not None:
             html += "<h2>Masked elevation Model</h2>\n"
-            html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore

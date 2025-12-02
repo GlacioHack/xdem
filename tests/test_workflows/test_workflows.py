@@ -23,6 +23,7 @@ test for workflow class
 # mypy: disable-error-code=no-untyped-def
 import csv
 
+import geoutils as gu
 import numpy as np
 import pytest
 import yaml  # type: ignore
@@ -184,8 +185,52 @@ def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
     assert final_dict == [{"a": "1.2345", "b": "2.9876"}]
 
 
-@pytest.mark.skip(reason="not implemented")
-def test_load_dem():
+@pytest.mark.parametrize(
+    "from_vcrs, to_vcrs",
+    [
+        [None, None],
+        # [None, "EGM96"],
+        ["EGM96", None],
+        # [None, "Ellipsoid"],
+        ["Ellipsoid", None],
+        ["EGM96", "EGM96"],
+        ["Ellipsoid", "Ellipsoid"],
+        ["EGM96", "Ellipsoid"],
+        ["Ellipsoid", "EGM96"],
+    ],
+)
+def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
     """
-    Test generate_dem function
+    Test load_dem function
     """
+    config_dem = get_dem_config
+    config_dem["from_vcrs"] = from_vcrs
+    config_dem["to_vcrs"] = to_vcrs
+    input_dem = xdem.DEM(config_dem["path_to_elev"])
+    median_before = np.nanmean(input_dem)
+    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    median_after = np.nanmean(output_dem)
+
+    # Check output_dem vcrs reference
+    if to_vcrs == "EGM96" or (to_vcrs is None and from_vcrs == "EGM96"):
+        assert output_dem.vcrs_name == "EGM96 height"
+    elif to_vcrs == "Ellipsoid" or (to_vcrs is None and from_vcrs == "Ellipsoid"):
+        assert output_dem.vcrs == "Ellipsoid"
+    else:
+        assert output_dem.vcrs is None
+
+    # Check output_dem
+    if from_vcrs == to_vcrs:
+        assert output_dem.raster_equal(input_dem)
+
+    # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
+    if to_vcrs == "Ellipsoid" and from_vcrs == "EGM96":
+        assert median_after - median_before == pytest.approx(32, rel=0.1)
+
+    if to_vcrs == "EGM96" and from_vcrs == "Ellipsoid":
+        assert median_after - median_before == pytest.approx(-32, rel=0.1)
+
+    # Other outputs
+    assert mask_path == config_dem["path_to_mask"]
+    mask = gu.Vector(mask_path)
+    assert inlier_mask == ~mask.create_mask(input_dem)
