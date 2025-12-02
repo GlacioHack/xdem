@@ -369,6 +369,35 @@ class TestDEM:
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
+    def test_info(self) -> None:
+        """Tests infos function."""
+        dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
+        raster = gu.Raster(dem_path)
+        dem = xdem.dem.DEM(dem_path)
+
+        # Test addition of one line
+        dem_infos_array = dem.info(stats=True, verbose=False).split("\n")
+        assert len(dem_infos_array) == len(raster.info(stats=True, verbose=False).split("\n")) + 1
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        assert len(dem_infos_array) == len(raster.info(verbose=False).split("\n")) + 1
+
+        # Test vcrs (None) with onyy generic info
+        vcrs_line = dem_infos_array[-2]
+        assert vcrs_line.split(":")[0] == "VCRS"
+        assert vcrs_line.split(":")[1].strip() == "None"
+
+        # Test vcrs (specific)
+        dem.set_vcrs(new_vcrs="EGM96")
+        vcrs_line = dem.info(verbose=False).split("\n")[-2]
+        assert vcrs_line.split(":")[1].strip() == dem.vcrs_name
+
+        # Test no infos
+        assert dem.info(generic=False, stats=False, verbose=False) == ""
+
+        # Test no generic infos
+        output = dem.info(generic=False, stats=True, verbose=False)
+        assert output.startswith("Statistics:")
+
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
         "coreg_method, expected_pipeline_types",

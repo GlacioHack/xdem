@@ -166,6 +166,43 @@ class DEM(Raster):  # type: ignore
         if vcrs is not None:
             self.set_vcrs(vcrs)
 
+    @overload
+    def info(self, generic: bool = True, stats: bool = False, *, verbose: Literal[True] = ...) -> None: ...
+
+    @overload
+    def info(self, generic: bool = True, stats: bool = False, *, verbose: Literal[False]) -> str: ...
+
+    def info(self, generic: bool = True, stats: bool = False, verbose: bool = True) -> None | str:
+        """
+        Print summary information about the DEM.
+
+        :param generic: Add generics information.
+        :param stats: Add statistics for each band of the dataset (max, min, median, mean, std. dev.). Default is to
+            not calculate statistics.
+        :param verbose: If set to True (default) will directly print to screen and return None
+
+        :returns: Summary string or None.
+        """
+
+        raster_info = ""
+
+        if generic:
+            as_str = [f"VCRS:                 {self.vcrs_name}\n"]
+
+            raster_info = super().info(stats=False, verbose=False)  # type: ignore
+            raster_info = raster_info + "".join(as_str)
+
+        if stats:
+            if raster_info:
+                raster_info = raster_info + "\n"
+            raster_info = raster_info + super().info(generic=False, stats=True, verbose=False)
+
+        if verbose:
+            print(raster_info)
+            return None
+        else:
+            return raster_info
+
     def copy(self, new_array: NDArrayf | None = None) -> DEM:
         """
         Copy the DEM, possibly updating the data array.
