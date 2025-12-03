@@ -19,6 +19,7 @@
 """
 test for schema files
 """
+import logging
 import pyproj
 
 # mypy: disable-error-code=no-untyped-def
@@ -212,12 +213,12 @@ def test_valid_to_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
     [
         pytest.param(
             "wrong",
-            ValueError,
+            "LoggingError",
             id="wrong_common",
         ),
         pytest.param(
             "wrong.txt",
-            ValueError,
+            "LoggingError",
             id="wrong_proj_grid",
         ),
         pytest.param(
@@ -227,15 +228,20 @@ def test_valid_to_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
         ),
     ],
 )
-def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, error):
+def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, error, caplog):
     """
     Test invalid crs
     """
     info_conf = get_topo_inputs_config
     info_conf["inputs"]["reference_elev"].update({"from_vcrs": wrong_vcrs})
 
-    with pytest.raises(error):
+    if error == "LoggingError":
+        caplog.set_level(logging.ERROR)
         _ = schemas.validate_configuration(info_conf, schemas.TOPO_SCHEMA)
+        assert len(caplog.records) == 1
+    else:
+        with pytest.raises(error):
+            _ = schemas.validate_configuration(info_conf, schemas.TOPO_SCHEMA)
 
 
 def test_topo_without_terrain_attributes_in_config(get_topo_inputs_config):
