@@ -83,16 +83,18 @@ STATS_METHODS = [
     "percentagevalidpoints",
 ]
 
-TERRAIN_ATTRIBUTES_DEFAULT = ["slope", "aspect", "curvature"]
+TERRAIN_ATTRIBUTES_DEFAULT = ["slope", "aspect", "max_curvature"]
 
 TERRAIN_ATTRIBUTES = [
     "slope",
     "aspect",
     "hillshade",
-    "curvature",
-    "planform_curvature",
     "profile_curvature",
-    "maximum_curvature",
+    "tangential_curvature",
+    "planform_curvature",
+    "flowline_curvature",
+    "max_curvature",
+    "min_curvature",
     "terrain_ruggedness_index",
     "topographic_position_index",
     "roughness",
@@ -316,5 +318,5 @@ COMPLETE_CONFIG_TOPO = {
         "totalcount",
         "percentagevalidpoints",
     ],
-    "terrain_attributes": ["slope", "aspect", "curvature"],
+    "terrain_attributes": ["slope", "aspect", "max_curvature"],
 }

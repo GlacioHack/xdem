@@ -17,7 +17,7 @@ repos:
           hooks:
                 - id: codespell
                   args: [
-                    '--ignore-words-list', 'nd,alos,inout,theses',
+                    '--ignore-words-list', 'nd,alos,inout,theses,trough',
                     '--ignore-regex', '\bhist\b',
                     '--'
                   ]
